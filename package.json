@@ -1,0 +1,39 @@
+{
+  "name": "pi-extensions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "fallow": "fallow audit --gate new-only --coverage coverage/coverage-final.json",
+    "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
+    "check": "biome ci . && npm run typecheck && npm run test:coverage && npm run fallow && npm run markdownlint"
+  },
+  "pi": {
+    "extensions": [
+      "./packages/*/index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "@earendil-works/pi-ai": "0.84.4",
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@earendil-works/pi-tui": "0.84.4",
+    "@types/node": "latest",
+    "@vitest/coverage-v8": "latest",
+    "fallow": "latest",
+    "markdownlint-cli2": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

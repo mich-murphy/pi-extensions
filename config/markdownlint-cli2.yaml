@@ -1,0 +1,27 @@
+ignores:
+  - "**/node_modules/**"
+config:
+  line-length: false
+  first-line-heading: false
+  ol-prefix:
+    style: ordered
+  # Vendored agent skills embed a whole document — with its own H1 — as a
+  # template for the agent to fill in.
+  single-title: false
+  no-inline-html:
+    allowed_elements:
+      - important
+      # Skill section delimiters.
+      - issue-template
+      - local-ticket-template
+      - spec-template
+      - user-story-example
+      - vertical-slice-rules
+      # Angle-bracket placeholders inside those templates.
+      - actor
+      - benefit
+      - changing
+      - feature
+      - NN
+      - Ticket
+      - X
