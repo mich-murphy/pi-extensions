@@ -24,10 +24,6 @@
       "./packages/*/index.ts"
     ]
   },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.251",
-    "zod": "4.4.3"
-  },
   "devDependencies": {
     "@biomejs/biome": "latest",
     "@earendil-works/pi-ai": "0.84.4",
