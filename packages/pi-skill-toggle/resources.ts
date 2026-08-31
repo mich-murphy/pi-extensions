@@ -28,6 +28,9 @@ export interface ToggleResource {
   readonly order: number;
 }
 
+type ContextFile = NonNullable<BuildSystemPromptOptions["contextFiles"]>[number];
+type PromptSkill = NonNullable<BuildSystemPromptOptions["skills"]>[number];
+
 /** Extract eligible user-managed resources from Pi's structured prompt options. */
 export function toggleResourcesFromPrompt(
   options: BuildSystemPromptOptions,
@@ -38,63 +41,67 @@ export function toggleResourcesFromPrompt(
     resourcePathId(join(getAgentDir(), "skills"), cwd),
     resourcePathId(join(homedir(), ".agents", "skills"), cwd),
   ];
-
   const instructions = (options.contextFiles ?? []).flatMap<ToggleResource>((file, index) => {
-    const id = resourcePathId(file.path, cwd);
-    const parent = dirname(id);
-    const origin: ToggleResourceOrigin | undefined =
-      parent === agentDirectory
-        ? "global"
-        : isPathInsideOrEqual(cwd, parent)
-          ? "project"
-          : undefined;
-    if (!origin) return [];
-    return [
-      {
-        id,
-        kind: "instruction" as const,
-        origin,
-        owner: resourcePathId(parent),
-        label: basename(id),
-        description: `${origin} instruction\n${id}`,
-        editability: "editable" as const,
-        order: index,
-      },
-    ];
+    const resource = instructionResource(file, index, cwd, agentDirectory);
+    return resource ? [resource] : [];
   });
-
   const skills = (options.skills ?? []).flatMap<ToggleResource>((skill) => {
-    if (skill.sourceInfo.origin !== "top-level") return [];
-    if (skill.sourceInfo.scope !== "user" && skill.sourceInfo.scope !== "project") return [];
-
-    const id = resourcePathId(skill.filePath, cwd);
-    const globalRoot = globalSkillRoots.find((root) => isPathInsideOrEqual(id, root));
-    const projectOwner =
-      skill.sourceInfo.scope === "project" ? projectSkillOwner(id, cwd) : undefined;
-    const origin: ToggleResourceOrigin | undefined = globalRoot
-      ? "global"
-      : projectOwner
-        ? "project"
-        : undefined;
-    if (!origin) return [];
-
-    return [
-      {
-        id,
-        kind: "skill" as const,
-        origin,
-        owner: globalRoot ?? projectOwner ?? cwd,
-        label: skill.name.trim(),
-        description: `${skill.description.trim() || "(no description)"}\n${id}`,
-        editability: skill.disableModelInvocation
-          ? ("manual-only" as const)
-          : ("editable" as const),
-        order: 0,
-      },
-    ];
+    const resource = skillResource(skill, cwd, globalSkillRoots);
+    return resource ? [resource] : [];
   });
-
   return uniqueResources([...instructions, ...skills]).sort(compareResources);
+}
+
+function instructionResource(
+  file: ContextFile,
+  order: number,
+  cwd: ResourcePath,
+  agentDirectory: ResourcePath,
+): ToggleResource | undefined {
+  const id = resourcePathId(file.path, cwd);
+  const parent = dirname(id);
+  const origin: ToggleResourceOrigin | undefined =
+    parent === agentDirectory ? "global" : isPathInsideOrEqual(cwd, parent) ? "project" : undefined;
+  if (!origin) return undefined;
+  return {
+    id,
+    kind: "instruction",
+    origin,
+    owner: resourcePathId(parent),
+    label: basename(id),
+    description: `${origin} instruction\n${id}`,
+    editability: "editable",
+    order,
+  };
+}
+
+function skillResource(
+  skill: PromptSkill,
+  cwd: ResourcePath,
+  globalSkillRoots: ReadonlyArray<ResourcePath>,
+): ToggleResource | undefined {
+  if (skill.sourceInfo.origin !== "top-level") return undefined;
+  if (skill.sourceInfo.scope !== "user" && skill.sourceInfo.scope !== "project") return undefined;
+  const id = resourcePathId(skill.filePath, cwd);
+  const globalRoot = globalSkillRoots.find((root) => isPathInsideOrEqual(id, root));
+  const projectOwner =
+    skill.sourceInfo.scope === "project" ? projectSkillOwner(id, cwd) : undefined;
+  const origin: ToggleResourceOrigin | undefined = globalRoot
+    ? "global"
+    : projectOwner
+      ? "project"
+      : undefined;
+  if (!origin) return undefined;
+  return {
+    id,
+    kind: "skill",
+    origin,
+    owner: globalRoot ?? projectOwner ?? cwd,
+    label: skill.name.trim(),
+    description: `${skill.description.trim() || "(no description)"}\n${id}`,
+    editability: skill.disableModelInvocation ? "manual-only" : "editable",
+    order: 0,
+  };
 }
 
 function uniqueResources(resources: ReadonlyArray<ToggleResource>): ToggleResource[] {

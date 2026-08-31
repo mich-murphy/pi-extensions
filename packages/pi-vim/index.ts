@@ -13,6 +13,8 @@ const INPUT_LINE_START = "\x01";
 const INPUT_LINE_END = "\x05";
 const INPUT_DELETE_TO_LINE_END = "\x0b";
 const INPUT_UNDO = "\x1f";
+const WHITESPACE_PATTERN = /\s/u;
+const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u;
 
 type PendingCommand = "none" | "delete" | "delete-inner" | "change" | "change-inner";
 type ActivePendingCommand = Exclude<PendingCommand, "none">;
@@ -22,8 +24,8 @@ type VimState =
 type CharacterClass = "punctuation" | "whitespace" | "word";
 
 function characterClass(value: string): CharacterClass {
-  if (/\s/u.test(value)) return "whitespace";
-  if (/[\p{L}\p{N}_]/u.test(value)) return "word";
+  if (WHITESPACE_PATTERN.test(value)) return "whitespace";
+  if (WORD_CHARACTER_PATTERN.test(value)) return "word";
   return "punctuation";
 }
 
@@ -42,94 +44,119 @@ class VimEditor extends CustomEditor {
       return;
     }
 
+    const key = parseKey(data) ?? data;
     if (this.vimState.pending !== "none") {
-      this.handlePending(this.vimState.pending, parseKey(data) ?? data);
+      this.handlePending(this.vimState.pending, key);
       return;
     }
 
-    const key = parseKey(data) ?? data;
+    if (this.handleInsertCommand(key)) return;
+    if (this.handleMovementCommand(key)) return;
+    if (this.handleEditCommand(key)) return;
+    if (key === "enter") {
+      this.handleSubmit(data);
+      return;
+    }
+    this.handleUnhandledNormalInput(data, key);
+  }
+
+  private handleInsertCommand(key: string): boolean {
     switch (key) {
       case "i":
         this.enterInsertMode();
-        return;
+        return true;
       case "a":
         super.handleInput(INPUT_RIGHT);
         this.enterInsertMode();
-        return;
+        return true;
       case "A":
         super.handleInput(INPUT_LINE_END);
         this.enterInsertMode();
-        return;
+        return true;
       case "I":
         super.handleInput(INPUT_LINE_START);
         this.enterInsertMode();
-        return;
+        return true;
       case "o":
         this.openLineBelow();
-        return;
+        return true;
       case "O":
         this.openLineAbove();
-        return;
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private handleMovementCommand(key: string): boolean {
+    switch (key) {
       case "h":
         super.handleInput(INPUT_LEFT);
-        return;
+        return true;
       case "j":
         super.handleInput(INPUT_DOWN);
         this.clampNormalCursor();
-        return;
+        return true;
       case "k":
         super.handleInput(INPUT_UP);
         this.clampNormalCursor();
-        return;
+        return true;
       case "l":
         this.moveNormalCursorRight();
-        return;
+        return true;
       case "w":
         this.moveWordForward();
-        return;
+        return true;
       case "b":
         super.handleInput(INPUT_WORD_LEFT);
         this.clampNormalCursor();
-        return;
+        return true;
       case "0":
         super.handleInput(INPUT_LINE_START);
-        return;
+        return true;
       case "$":
         super.handleInput(INPUT_LINE_END);
         this.clampNormalCursor();
-        return;
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private handleEditCommand(key: string): boolean {
+    switch (key) {
       case "x":
         super.handleInput(INPUT_DELETE);
         this.clampNormalCursor();
-        return;
+        return true;
       case "D":
         super.handleInput(INPUT_DELETE_TO_LINE_END);
         this.clampNormalCursor();
-        return;
+        return true;
       case "C":
         super.handleInput(INPUT_DELETE_TO_LINE_END);
         this.enterInsertMode();
-        return;
+        return true;
       case "u":
         super.handleInput(INPUT_UNDO);
         this.clampNormalCursor();
-        return;
+        return true;
       case "d":
         this.vimState = { mode: "normal", pending: "delete" };
-        return;
+        return true;
       case "c":
         this.vimState = { mode: "normal", pending: "change" };
-        return;
-      case "enter": {
-        const textBeforeSubmit = this.getText();
-        super.handleInput(data);
-        if (textBeforeSubmit.length > 0 && this.getText().length === 0) {
-          this.enterInsertMode();
-        }
-        return;
-      }
+        return true;
       default:
-        this.handleUnhandledNormalInput(data, key);
+        return false;
+    }
+  }
+
+  private handleSubmit(data: string): void {
+    const textBeforeSubmit = this.getText();
+    super.handleInput(data);
+    if (textBeforeSubmit.length > 0 && this.getText().length === 0) {
+      this.enterInsertMode();
     }
   }
 
@@ -164,30 +191,37 @@ class VimEditor extends CustomEditor {
   }
 
   private handlePending(pending: ActivePendingCommand, key: string): void {
-    if (pending === "delete") {
-      if (key === "i") {
-        this.vimState = { mode: "normal", pending: "delete-inner" };
+    switch (pending) {
+      case "delete":
+        this.handlePendingOperator(key, "delete");
         return;
-      }
-      this.vimState = { mode: "normal", pending: "none" };
-      if (key === "d") this.deleteLine();
-      else if (key === "w") this.deleteVimWordForward();
-      return;
-    }
-    if (pending === "change") {
-      if (key === "i") {
-        this.vimState = { mode: "normal", pending: "change-inner" };
+      case "change":
+        this.handlePendingOperator(key, "change");
         return;
-      }
-      this.vimState = { mode: "normal", pending: "none" };
-      if (key === "c") this.changeLine();
-      else if (key === "w") this.changeWordForward();
-      return;
+      case "delete-inner":
+        this.finishInnerWordCommand(key, "delete");
+        return;
+      case "change-inner":
+        this.finishInnerWordCommand(key, "change");
     }
+  }
 
+  private handlePendingOperator(key: string, operation: "change" | "delete"): void {
+    if (key === "i") {
+      this.vimState = { mode: "normal", pending: `${operation}-inner` };
+      return;
+    }
+    this.vimState = { mode: "normal", pending: "none" };
+    if (operation === "delete" && key === "d") this.deleteLine();
+    else if (operation === "change" && key === "c") this.changeLine();
+    else if (key === "w" && operation === "delete") this.deleteVimWordForward();
+    else if (key === "w") this.changeWordForward();
+  }
+
+  private finishInnerWordCommand(key: string, operation: "change" | "delete"): void {
     this.vimState = { mode: "normal", pending: "none" };
     if (key !== "w") return;
-    if (pending === "delete-inner") {
+    if (operation === "delete") {
       this.deleteInnerWord();
       return;
     }
@@ -275,18 +309,18 @@ class VimEditor extends CustomEditor {
       super.handleInput(INPUT_WORD_RIGHT);
     }
 
-    while (true) {
-      const cursor = this.getCursor();
-      const lines = this.getLines();
-      const text = lines[cursor.line] ?? "";
-      if (
-        cursor.col < text.length &&
-        characterClass(text.slice(cursor.col, cursor.col + 1)) !== "whitespace"
-      ) {
-        break;
-      }
+    let cursor = this.getCursor();
+    let lines = this.getLines();
+    let text = lines[cursor.line] ?? "";
+    while (
+      cursor.col >= text.length ||
+      characterClass(text.slice(cursor.col, cursor.col + 1)) === "whitespace"
+    ) {
       if (cursor.col >= text.length && cursor.line >= lines.length - 1) break;
       super.handleInput(INPUT_RIGHT);
+      cursor = this.getCursor();
+      lines = this.getLines();
+      text = lines[cursor.line] ?? "";
     }
     this.clampNormalCursor();
   }

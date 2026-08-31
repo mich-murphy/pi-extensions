@@ -14,11 +14,6 @@ export interface DeferredCall {
   readonly arguments: Readonly<Record<string, unknown>>;
 }
 
-interface DeferredPiCallInput {
-  readonly name: string;
-  readonly arguments: Record<string, unknown>;
-}
-
 const PI_CALL_INPUT_SCHEMA = {
   name: z
     .string()
@@ -72,27 +67,15 @@ function parseDeferredCall(
   return { _tag: "failure", error: new InvalidDeferredCallError(requestedName, message) };
 }
 
-/**
- * Create the defensive MCP handler used when the SDK fails to honor the defer hook.
- *
- * @returns A handler that always reports a failed, unexecuted tool request.
- */
-export function createDeferredPiCallHandler(): (input: DeferredPiCallInput) => Promise<{
-  readonly content: Array<{ readonly type: "text"; readonly text: string }>;
-  readonly isError: true;
-}> {
-  return async () => ({
-    content: [
-      {
-        type: "text",
-        text: "Pi's PreToolUse defer decision was not honored by the Claude Agent SDK; this tool call did not run and was not forwarded to Pi.",
-      },
-    ],
-    isError: true,
-  });
-}
-
-const DEFERRED_PI_CALL_HANDLER = createDeferredPiCallHandler();
+const DEFERRED_PI_CALL_HANDLER = async () => ({
+  content: [
+    {
+      type: "text" as const,
+      text: "Pi's PreToolUse defer decision was not honored by the Claude Agent SDK; this tool call did not run and was not forwarded to Pi.",
+    },
+  ],
+  isError: true,
+});
 
 /**
  * Create the in-process MCP gateway exposed to the Claude Agent SDK.

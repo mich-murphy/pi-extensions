@@ -1,5 +1,5 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { ImageAttachment, PromptBlock } from "../bridge";
+import type { ImageAttachment, PromptBlock } from "../agent-request";
 
 // Anthropic's vision input accepts these four raster formats. Unsupported
 // historical images become deterministic text notes so replay keeps working.

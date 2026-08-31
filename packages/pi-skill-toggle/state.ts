@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import process from "node:process";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { type ResourcePath, resourcePathId } from "./resource-path";
 import type { ToggleResource, ToggleResourceKind, ToggleResourceOrigin } from "./resources";
@@ -38,9 +39,16 @@ export type ResourceToggleValue = "enabled" | "disabled";
 /** Operation that can fail at the persistent state boundary. */
 export type SkillToggleStateOperation = "load" | "update";
 
+/** Safe public shape of an expected persistent-state failure. */
+export interface SkillToggleStateFailure extends Error {
+  readonly _tag: "SkillToggleStateError";
+  readonly operation: SkillToggleStateOperation;
+  readonly cause?: unknown;
+}
+
 /** Expected persistent state or lock failure. */
-export class SkillToggleStateError extends Error {
-  /** Stable discriminator for state failures. */
+class SkillToggleStateError extends Error implements SkillToggleStateFailure {
+  /** Stable error discriminator. */
   readonly _tag = "SkillToggleStateError" as const;
 
   /** State operation that failed. */
@@ -61,7 +69,7 @@ export class SkillToggleStateError extends Error {
 /** Result returned by state load and update operations. */
 export type SkillToggleStateResult =
   | { readonly _tag: "ok"; readonly value: SkillToggleState }
-  | { readonly _tag: "err"; readonly error: SkillToggleStateError };
+  | { readonly _tag: "err"; readonly error: SkillToggleStateFailure };
 
 /** File-store timing and test seam options. */
 export interface SkillToggleStoreOptions {
@@ -360,20 +368,46 @@ function resourceExists(path: string): boolean {
   }
 }
 
+type LockOwnerStatus = "active" | "abandoned" | "invalid";
+
+function validProcessId(owner: number): boolean {
+  return Number.isSafeInteger(owner) && owner > 0;
+}
+
+function missingProcess(cause: unknown): boolean {
+  return isNodeError(cause) && cause.code === "ESRCH";
+}
+
+function processIsActive(owner: number): boolean {
+  try {
+    process.kill(owner, 0);
+    return true;
+  } catch (cause) {
+    return !missingProcess(cause);
+  }
+}
+
+function lockOwnerStatus(path: string): LockOwnerStatus {
+  const owner = Number.parseInt(readFileSync(path, "utf8").trim(), 10);
+  if (!validProcessId(owner)) return "invalid";
+  return processIsActive(owner) ? "active" : "abandoned";
+}
+
+function freshInvalidLock(
+  path: string,
+  ownerStatus: LockOwnerStatus,
+  staleLockMs: number,
+): boolean {
+  if (ownerStatus !== "invalid") return false;
+  return Date.now() - statSync(path).mtimeMs <= staleLockMs;
+}
+
 function removeAbandonedLock(path: string, staleLockMs: number): void {
   try {
-    const owner = Number.parseInt(readFileSync(path, "utf8").trim(), 10);
-    if (Number.isSafeInteger(owner) && owner > 0) {
-      try {
-        process.kill(owner, 0);
-        return;
-      } catch (cause) {
-        if (!isNodeError(cause) || cause.code !== "ESRCH") return;
-        rmSync(path, { force: true });
-        return;
-      }
-    }
-    if (Date.now() - statSync(path).mtimeMs > staleLockMs) rmSync(path, { force: true });
+    const ownerStatus = lockOwnerStatus(path);
+    if (ownerStatus === "active") return;
+    if (freshInvalidLock(path, ownerStatus, staleLockMs)) return;
+    rmSync(path, { force: true });
   } catch {
     // Another process released the lock between open and inspection.
   }

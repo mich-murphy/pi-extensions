@@ -1,11 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { buildAgentRequest } from "../bridge";
-import {
-  type CacheDiagnostic,
-  cacheDiagnosticsFromEnvironment,
-  createCacheDiagnosticTracker,
-} from "../cache-diagnostics";
-import { buildPromptStream } from "../sdk-runner";
+import { buildAgentRequest } from "../agent-request";
+import { cacheDiagnosticsFromEnvironment } from "../cache-diagnostics";
+import { type CacheDiagnostic, createCacheDiagnosticTracker } from "../cache-tracker";
+import { buildPromptStream } from "../sdk/prompt-stream";
 import { contextFixture, sdkContentRecords } from "./fixtures";
 
 async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
@@ -107,5 +104,6 @@ describe("cache diagnostics", () => {
 
   test("is opt-in", () => {
     expect(cacheDiagnosticsFromEnvironment({})).toBeUndefined();
+    expect(cacheDiagnosticsFromEnvironment({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" })).toBeDefined();
   });
 });

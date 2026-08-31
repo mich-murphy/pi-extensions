@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import process from "node:process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   type CaffeinateProcess,

@@ -57,7 +57,7 @@ export function sdkPromptFixture(prompt: unknown): AsyncIterable<SDKUserMessage>
 export function sdkContentRecords(
   message: SDKUserMessage | undefined,
 ): Array<Record<string, unknown>> {
-  if (!message || !Array.isArray(message.message.content)) return [];
+  if (!(message && Array.isArray(message.message.content))) return [];
   // SAFETY: SDK content is verified as an array. Record values remain unknown, and tests only inspect metadata after narrowing.
   return message.message.content as unknown as Array<Record<string, unknown>>;
 }

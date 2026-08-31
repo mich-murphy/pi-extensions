@@ -7,6 +7,8 @@ import { describe, expect, test } from "vitest";
 import { applyResourceToggles } from "../prompt-filter";
 import { resourcePathId } from "../resource-path";
 
+const skillFileSuffix = /\/SKILL\.md$/;
+
 function resourcePaths(...paths: string[]) {
   return new Set(paths.map((path) => resourcePathId(path)));
 }
@@ -29,7 +31,7 @@ function skill(name: string, filePath: string): Skill {
     name,
     description: `${name} at ${filePath}`,
     filePath,
-    baseDir: filePath.replace(/\/SKILL\.md$/, ""),
+    baseDir: filePath.replace(skillFileSuffix, ""),
     sourceInfo: {
       path: filePath,
       source: "local",
@@ -44,8 +46,9 @@ describe("applyResourceToggles", () => {
   test("removes resources by path without affecting same-named resources", () => {
     const first = skill("deploy", "/work/client-a/.agents/skills/deploy/SKILL.md");
     const second = skill("deploy", "/work/client-b/.agents/skills/deploy/SKILL.md");
+    const firstContextPath = "/work/client-a/AGENTS.md";
     const contextFiles = [
-      { path: "/work/client-a/AGENTS.md", content: "client a" },
+      { path: firstContextPath, content: "client a" },
       { path: "/work/client-b/AGENTS.md", content: "client b" },
     ];
     const options: BuildSystemPromptOptions = {
@@ -59,7 +62,7 @@ describe("applyResourceToggles", () => {
     const result = applyResourceToggles(
       prompt,
       options,
-      resourcePaths(first.filePath, contextFiles[0]?.path ?? ""),
+      resourcePaths(first.filePath, firstContextPath),
     );
 
     expect(result.failures).toEqual([]);

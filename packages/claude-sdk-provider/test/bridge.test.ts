@@ -1,26 +1,25 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
+import { type AgentRequest, buildAgentRequest } from "../agent-request";
+import { type BridgeEvent, createAgentSdkStream } from "../bridge";
+import registerClaudeSdkProvider, { models } from "../index";
 import {
-  type AgentRequest,
-  type BridgeEvent,
-  buildAgentRequest,
-  createAgentSdkStream,
-  serializeConversation,
-} from "../bridge";
-import { models } from "../index";
-import {
-  agentSdkTurnOptions,
-  buildPromptStream,
-  createClaudeAgentSdkRunner,
-  createDeferredPiCallHandler,
+  createDeferredPiCallTool,
   createPreToolUseHook,
   type DeferredCall,
-  type RunSdkQuery,
-  resultOutcome,
-  subscriptionEnvironment,
-  translateSdkStreamEvent,
-} from "../sdk-runner";
+} from "../sdk/deferred-tools";
+import {
+  InvalidDeferredCallLimitError,
+  SdkProtocolError,
+  SdkQueryError,
+  SdkResultError,
+} from "../sdk/errors";
+import { resultOutcome, translateSdkStreamEvent } from "../sdk/event-translation";
+import { buildPromptStream } from "../sdk/prompt-stream";
+import { createClaudeAgentSdkRunner, type RunSdkQuery } from "../sdk/runner";
+import { subscriptionEnvironment } from "../sdk/subscription-environment";
 import {
   contextFixture,
   hookInputFixture,
@@ -34,6 +33,27 @@ async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   for await (const item of iterable) items.push(item);
   return items;
 }
+
+describe("provider registration", () => {
+  test("the package entry point registers commands, safety hooks, and the provider", () => {
+    const registrations: string[] = [];
+    const piMock = {
+      registerCommand: (name: string) => registrations.push(`command:${name}`),
+      on: (name: string) => registrations.push(`event:${name}`),
+      registerProvider: (name: string) => registrations.push(`provider:${name}`),
+    };
+    registerClaudeSdkProvider(piMock as unknown as ExtensionAPI);
+    expect(registrations).toEqual([
+      "command:claude-sdk-status",
+      "command:claude-sdk-usage",
+      "event:before_agent_start",
+      "event:tool_call",
+      "event:tool_result",
+      "event:context",
+      "provider:claude-sdk",
+    ]);
+  });
+});
 
 describe("serializeConversation", () => {
   test("starts each Pi turn in a stateless SDK session with the complete transcript", async () => {
@@ -115,7 +135,7 @@ describe("serializeConversation", () => {
       return (async function* () {})();
     };
     const runner = createClaudeAgentSdkRunner(runSdkQuery);
-    const haiku = models.find((model) => model.id === "haiku");
+    const haiku = models.find((candidate) => candidate.id === "haiku");
     expect(haiku).toBeDefined();
     const model = modelFixture({
       ...haiku,
@@ -146,7 +166,9 @@ describe("serializeConversation", () => {
       expect(options === undefined ? false : "effort" in options).toBe(false);
     }
   });
+});
 
+describe("conversation serialization", () => {
   test("preserves text, tool calls, and tool results as a JSONL transcript", () => {
     const context = contextFixture({
       systemPrompt: "Use Pi's tools.",
@@ -170,7 +192,7 @@ describe("serializeConversation", () => {
       tools: [],
     });
 
-    expect(serializeConversation(context)).toBe(
+    expect(buildAgentRequest(context).conversationEntries.join("\n")).toBe(
       [
         '{"role":"user","content":[{"type":"text","text":"Read the package file"}]}',
         '{"role":"assistant","content":[{"type":"toolCall","id":"call-1","name":"read","arguments":{"path":"package.json"}}]}',
@@ -194,12 +216,12 @@ describe("serializeConversation", () => {
     const run = async function* (): AsyncGenerator<BridgeEvent> {
       yield { type: "text_delta", text: "Hello" };
       yield { type: "text_delta", text: " from Claude" };
-      yield { type: "usage", input: 12, output: 3, cacheRead: 4, cacheWrite: 0 };
+      yield { type: "usage", input: 12, cacheRead: 4, cacheWrite: 0 };
+      yield { type: "usage", output: 3 };
       yield { type: "done", reason: "stop" };
     };
 
-    const events = [];
-    for await (const event of createAgentSdkStream(model, context, {}, run)) events.push(event);
+    const events = await drain(createAgentSdkStream(model, context, {}, run));
 
     expect(events.map((event) => event.type)).toEqual([
       "start",
@@ -242,8 +264,7 @@ describe("serializeConversation", () => {
       yield { type: "done", reason: "stop" };
     };
 
-    const events = [];
-    for await (const event of createAgentSdkStream(model, context, {}, run)) events.push(event);
+    const events = await drain(createAgentSdkStream(model, context, {}, run));
 
     expect(events.map((event) => event.type)).toEqual([
       "start",
@@ -264,7 +285,9 @@ describe("serializeConversation", () => {
       ]);
     }
   });
+});
 
+describe("provider event streaming", () => {
   test("ends the Pi turn with a deferred tool call from the SDK gateway", async () => {
     const context = contextFixture({
       systemPrompt: "Use tools when needed.",
@@ -281,8 +304,7 @@ describe("serializeConversation", () => {
       yield { type: "tool_call", id: "tool-1", name: "read", arguments: { path: "package.json" } };
     };
 
-    const events = [];
-    for await (const event of createAgentSdkStream(model, context, {}, run)) events.push(event);
+    const events = await drain(createAgentSdkStream(model, context, {}, run));
 
     expect(events.map((event) => event.type)).toEqual([
       "start",
@@ -317,8 +339,7 @@ describe("serializeConversation", () => {
       yield { type: "tool_call", id: "tool-2", name: "read", arguments: { path: "README.md" } };
     };
 
-    const events = [];
-    for await (const event of createAgentSdkStream(model, context, {}, run)) events.push(event);
+    const events = await drain(createAgentSdkStream(model, context, {}, run));
 
     const done = events.at(-1);
     expect(done?.type).toBe("done");
@@ -348,8 +369,7 @@ describe("serializeConversation", () => {
       yield { type: "done", reason: "length" };
     };
 
-    const events = [];
-    for await (const event of createAgentSdkStream(model, context, {}, run)) events.push(event);
+    const events = await drain(createAgentSdkStream(model, context, {}, run));
 
     const done = events.at(-1);
     expect(done?.type).toBe("done");
@@ -374,7 +394,9 @@ describe("serializeConversation", () => {
     expect(environment.CLAUDE_CODE_USE_VERTEX).toBeUndefined();
     expect(environment.CLAUDE_CODE_USE_FOUNDRY).toBeUndefined();
   });
+});
 
+describe("subscription environment", () => {
   test("pins the 1h prompt-cache TTL opt-in and beta header so the extended cache TTL is deterministic", () => {
     const environment = subscriptionEnvironment({
       FORCE_PROMPT_CACHING_5M: "1",
@@ -405,10 +427,6 @@ describe("serializeConversation", () => {
     expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ANTHROPIC_BETAS).toBeUndefined();
-  });
-
-  test("lets Pi own the multi-turn tool loop instead of capping each SDK query at one model turn", () => {
-    expect(agentSdkTurnOptions()).toEqual({});
   });
 
   test("returns an SDK result error even after the hook captured a deferred call", async () => {
@@ -452,6 +470,7 @@ describe("serializeConversation", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("failed");
     if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(SdkResultError);
       expect(events[0].error._tag).toBe("SdkResultError");
       expect(events[0].error.message).toBe("the SDK could not honor the deferred tool call");
     }
@@ -491,9 +510,14 @@ describe("serializeConversation", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("failed");
-    if (events[0]?.type === "failed") expect(events[0].error._tag).toBe("SdkQueryError");
+    if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(SdkQueryError);
+      expect(events[0].error._tag).toBe("SdkQueryError");
+    }
   });
+});
 
+describe("SDK query cancellation", () => {
   test("does not start an SDK query for an already-aborted signal", async () => {
     const request: AgentRequest = {
       systemPrompt: "s",
@@ -566,7 +590,9 @@ describe("serializeConversation", () => {
       { type: "tool_call", id: "toolu_ok", name: "read", arguments: { path: "package.json" } },
     ]);
   });
+});
 
+describe("deferred tool isolation", () => {
   test("keeps each turn's allowed-tool set independent even though the MCP schema and handler are shared module singletons", async () => {
     const model = modelFixture({
       api: "claude-sdk",
@@ -652,7 +678,9 @@ describe("serializeConversation", () => {
     for await (const event of thirdRunner(thirdRequest, model)) thirdEvents.push(event);
     expect(thirdEvents).toEqual([{ type: "done", reason: "stop" }]);
   });
+});
 
+describe("deferred tool retries", () => {
   test("lets the model retry after an invalid pi_call within the same query instead of ending the turn", async () => {
     const request: AgentRequest = {
       systemPrompt: "Use tools when needed.",
@@ -754,11 +782,14 @@ describe("serializeConversation", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("failed");
     if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(InvalidDeferredCallLimitError);
       expect(events[0].error._tag).toBe("InvalidDeferredCallLimitError");
       expect(events[0].error.message).toMatch(/pi_call.*is this gateway's own name/);
     }
   });
+});
 
+describe("deferred tool retry limits", () => {
   test("tolerates exactly MAX_INVALID_PI_CALLS invalid attempts before a valid one — the cap is inclusive, not exclusive", async () => {
     const request: AgentRequest = {
       systemPrompt: "Use tools when needed.",
@@ -871,11 +902,15 @@ describe("serializeConversation", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("failed");
     if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(InvalidDeferredCallLimitError);
       expect(events[0].error._tag).toBe("InvalidDeferredCallLimitError");
     }
   });
 
   // Together with the four-attempt failure, this pins the inclusive boundary at three.
+});
+
+describe("deferred tool termination", () => {
   test("ends a turn cleanly at exactly MAX_INVALID_PI_CALLS invalid attempts with no valid pi_call ever captured", async () => {
     const request: AgentRequest = {
       systemPrompt: "Use tools when needed.",
@@ -925,14 +960,21 @@ describe("serializeConversation", () => {
   });
 
   test("fails loudly instead of faking a successful defer when the SDK invokes the MCP gateway directly", async () => {
-    const handler = createDeferredPiCallHandler();
+    const gateway = createDeferredPiCallTool("available tools");
 
-    const result = await handler({ name: "read", arguments: { path: "package.json" } });
+    const result = await gateway.handler(
+      { name: "read", arguments: { path: "package.json" } },
+      undefined,
+    );
 
     expect(result.isError).toBe(true);
     expect(result.content).toHaveLength(1);
-    expect(result.content[0]?.text).not.toContain("Tool execution is deferred to Pi.");
-    expect(result.content[0]?.text).toContain("not honored");
+    const content = result.content[0];
+    expect(content?.type).toBe("text");
+    if (content?.type === "text") {
+      expect(content.text).not.toContain("Tool execution is deferred to Pi.");
+      expect(content.text).toContain("not honored");
+    }
   });
 
   test("defers the pi_call gateway tool via a PreToolUse hook instead of denying and aborting", async () => {
@@ -984,7 +1026,9 @@ describe("serializeConversation", () => {
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny" },
     });
   });
+});
 
+describe("deferred tool validation", () => {
   test("denies (not fatally) an unknown inner tool name from the PreToolUse hook, naming real tools to retry with", async () => {
     let capturedError: Error | undefined;
     const hook = createPreToolUseHook(
@@ -1076,7 +1120,9 @@ describe("serializeConversation", () => {
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny" },
     });
   });
+});
 
+describe("SDK event translation", () => {
   test("translates official Agent SDK stream events without depending on private endpoints", () => {
     expect(
       translateSdkStreamEvent({
@@ -1118,14 +1164,33 @@ describe("serializeConversation", () => {
     });
 
     expect(parsed._tag).toBe("err");
-    if (parsed._tag === "err") expect(parsed.error._tag).toBe("SdkProtocolError");
+    if (parsed._tag === "err") {
+      expect(parsed.error).toBeInstanceOf(SdkProtocolError);
+      expect(parsed.error._tag).toBe("SdkProtocolError");
+    }
   });
 
-  test("rejects an unknown SDK stop reason instead of treating it as a clean stop", () => {
-    const outcome = resultOutcome({ is_error: false, stop_reason: "new_unhandled_reason" });
+  test("maps the SDK's expanded stop reasons", () => {
+    expect(resultOutcome({ is_error: false, stop_reason: "pause_turn" })).toEqual({
+      _tag: "success",
+      stopReason: "stop",
+      terminalReason: undefined,
+    });
+    expect(
+      resultOutcome({ is_error: false, stop_reason: "model_context_window_exceeded" }),
+    ).toEqual({
+      _tag: "success",
+      stopReason: "length",
+      terminalReason: undefined,
+    });
+  });
 
+  test("rejects unknown SDK stop reasons", () => {
+    const outcome = resultOutcome({ is_error: false, stop_reason: "future_reason" });
     expect(outcome._tag).toBe("malformed");
-    if (outcome._tag === "malformed") expect(outcome.error._tag).toBe("SdkProtocolError");
+    if (outcome._tag === "malformed") {
+      expect(outcome.error.message).toContain("unsupported stop_reason future_reason");
+    }
   });
 
   test("maps a clean SDK result to a stop or length reason", () => {
@@ -1174,7 +1239,9 @@ describe("serializeConversation", () => {
       );
     }
   });
+});
 
+describe("agent request construction", () => {
   test("builds an honest Pi system prompt and a catalog for the deferred tool gateway", () => {
     const context = contextFixture({
       systemPrompt: "Repository rule: run tests.",
@@ -1252,7 +1319,9 @@ describe("serializeConversation", () => {
     expect(breakpointIndexes(41)).toEqual([41]);
     expect(breakpointIndexes(62)).toEqual([62]);
   });
+});
 
+describe("stable transcript caching", () => {
   test("keeps the stable transcript prefix byte-identical as new entries are appended, so a later turn can hit cache on it", () => {
     const baseContext = contextFixture({
       systemPrompt: "s",
@@ -1358,7 +1427,9 @@ describe("serializeConversation", () => {
     );
     expect(entryBlock?.images).toEqual([{ data: "dG9vbC1pbWFnZQ==", mediaType: "image/jpeg" }]);
   });
+});
 
+describe("image transcript caching", () => {
   test("keeps the stable transcript prefix (text and images) byte-identical across turns when images are present", () => {
     const baseContext = contextFixture({
       systemPrompt: "s",
@@ -1548,7 +1619,9 @@ describe("buildPromptStream", () => {
       },
     ]);
   });
+});
 
+describe("buildPromptStream image handling", () => {
   test("puts the cache breakpoint on the last image, not the text block, when a cached entry carries images", async () => {
     const messages = await drain(
       buildPromptStream([

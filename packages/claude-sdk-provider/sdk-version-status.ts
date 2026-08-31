@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
+const SEMANTIC_VERSION = /(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/;
 const sdkPackageMetadataSchema = z.object({
   version: z.string(),
   claudeCodeVersion: z.string(),
@@ -27,8 +28,15 @@ export interface ClaudeSdkVersionStatus {
   readonly updateSuggested: boolean;
 }
 
+/** Safe public shape of an expected version-inspection failure. */
+export interface ClaudeSdkVersionInspectionFailure extends Error {
+  readonly _tag: "ClaudeSdkVersionInspectionError";
+  readonly operation: "read-sdk-metadata" | "read-installed-version" | "parse-version";
+  readonly cause?: unknown;
+}
+
 /** Expected failure while inspecting local Claude versions. */
-export class ClaudeSdkVersionInspectionError extends Error {
+class ClaudeSdkVersionInspectionError extends Error implements ClaudeSdkVersionInspectionFailure {
   readonly _tag = "ClaudeSdkVersionInspectionError" as const;
 
   /**
@@ -42,13 +50,14 @@ export class ClaudeSdkVersionInspectionError extends Error {
     override readonly cause?: unknown,
   ) {
     super(`Could not ${operation.replaceAll("-", " ")}`);
+    this.name = "ClaudeSdkVersionInspectionError";
   }
 }
 
 /** Result of inspecting local Claude versions. */
 export type ClaudeSdkVersionStatusResult =
   | { readonly _tag: "ok"; readonly value: ClaudeSdkVersionStatus }
-  | { readonly _tag: "err"; readonly error: ClaudeSdkVersionInspectionError };
+  | { readonly _tag: "err"; readonly error: ClaudeSdkVersionInspectionFailure };
 
 /** Dependencies used to inspect SDK and installed CLI versions. */
 export interface ClaudeSdkVersionSources {
@@ -59,7 +68,7 @@ export interface ClaudeSdkVersionSources {
 }
 
 function parseSemanticVersion(input: string): SemanticVersion | undefined {
-  const match = /(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/.exec(input);
+  const match = SEMANTIC_VERSION.exec(input);
   if (!match) return undefined;
   const major = Number(match[1]);
   const minor = Number(match[2]);
@@ -74,9 +83,17 @@ function isNewer(candidate: SemanticVersion, baseline: SemanticVersion): boolean
   return candidate.patch > baseline.patch;
 }
 
-async function defaultReadSdkPackageMetadata(): Promise<string> {
+function defaultReadSdkPackageMetadata(): Promise<string> {
   const sdkEntryUrl = import.meta.resolve("@anthropic-ai/claude-agent-sdk");
   return readFile(new URL("./package.json", sdkEntryUrl), "utf8");
+}
+
+function parseJson(input: string): unknown {
+  try {
+    return JSON.parse(input) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 async function defaultReadInstalledClaudeVersion(): Promise<string> {
@@ -108,15 +125,7 @@ export async function inspectClaudeSdkVersions(
     return { _tag: "err", error: new ClaudeSdkVersionInspectionError("read-sdk-metadata", cause) };
   }
 
-  const metadata = sdkPackageMetadataSchema.safeParse(
-    (() => {
-      try {
-        return JSON.parse(metadataText) as unknown;
-      } catch {
-        return undefined;
-      }
-    })(),
-  );
+  const metadata = sdkPackageMetadataSchema.safeParse(parseJson(metadataText));
   if (!metadata.success) {
     return { _tag: "err", error: new ClaudeSdkVersionInspectionError("read-sdk-metadata") };
   }
@@ -133,7 +142,7 @@ export async function inspectClaudeSdkVersions(
 
   const bundled = parseSemanticVersion(metadata.data.claudeCodeVersion);
   const installed = parseSemanticVersion(installedOutput);
-  if (!bundled || !installed) {
+  if (!(bundled && installed)) {
     return { _tag: "err", error: new ClaudeSdkVersionInspectionError("parse-version") };
   }
 

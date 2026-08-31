@@ -1,4 +1,6 @@
 // The API beta required for ttl: "1h" cache-control blocks.
+import process from "node:process";
+
 const EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11";
 
 const NON_SUBSCRIPTION_AUTH_VARIABLES = [
@@ -19,7 +21,9 @@ export function subscriptionEnvironment(
   source: Readonly<Record<string, string | undefined>> = process.env,
 ): Record<string, string | undefined> {
   const environment = { ...source };
-  for (const name of NON_SUBSCRIPTION_AUTH_VARIABLES) delete environment[name];
+  for (const name of NON_SUBSCRIPTION_AUTH_VARIABLES) {
+    delete environment[name];
+  }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "pi-coding-agent-provider/0.1.0";
 
   // Pin the extended TTL because Claude Code otherwise gates its own 1h choice

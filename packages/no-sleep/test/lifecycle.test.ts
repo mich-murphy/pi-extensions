@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
+import noSleep from "../index";
 import { CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
 
 type TestHandler = (event: unknown, context: unknown) => unknown | Promise<unknown>;
@@ -9,7 +10,7 @@ class FakeCaffeinateProcess {
   readonly signals: Array<"SIGTERM" | "SIGKILL"> = [];
   private readonly exitListeners = new Set<ExitListener>();
   private errorListener: ((error: CaffeinateProcessError) => void) | undefined;
-  private exited = false;
+  private exited: boolean = false;
 
   constructor(private readonly exitOnSignal: "SIGTERM" | "SIGKILL" | "never" = "SIGTERM") {}
 
@@ -17,7 +18,9 @@ class FakeCaffeinateProcess {
     return this.exited;
   }
 
-  unref(): void {}
+  unref(): void {
+    // The fake process does not keep an event loop alive.
+  }
 
   kill(signal: "SIGTERM" | "SIGKILL") {
     this.signals.push(signal);
@@ -80,7 +83,7 @@ function harness(
   });
 
   const emit = async (name: string): Promise<void> => {
-    for (const handler of handlers.get(name) ?? []) await handler({}, ctx);
+    await Promise.all((handlers.get(name) ?? []).map((handler) => handler({}, ctx)));
   };
 
   return {
@@ -94,6 +97,12 @@ function harness(
 }
 
 describe("no-sleep lifecycle", () => {
+  test("the package entry point registers every lifecycle hook", () => {
+    const events: string[] = [];
+    noSleep({ on: (name: string) => events.push(name) } as unknown as ExtensionAPI);
+    expect(events).toEqual(["agent_start", "agent_settled", "session_shutdown"]);
+  });
+
   test("does nothing outside macOS", async () => {
     const testHarness = harness("linux");
 
@@ -199,7 +208,7 @@ describe("no-sleep lifecycle", () => {
       }),
     });
 
-    for (const handler of handlers.get("agent_start") ?? []) await handler({}, ctx);
+    await Promise.all((handlers.get("agent_start") ?? []).map((handler) => handler({}, ctx)));
     expect(notifications).toEqual(["No Sleep could not start caffeinate: not executable"]);
   });
 

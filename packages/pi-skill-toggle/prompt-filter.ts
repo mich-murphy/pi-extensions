@@ -4,7 +4,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type ResourcePath, resourcePathId } from "./resource-path";
 
-interface PromptToggleResult {
+/** Prompt filtering result and any sections that could not be matched safely. */
+export interface PromptToggleResult {
   readonly systemPrompt: string;
   readonly failures: ReadonlyArray<"instructions" | "skills">;
 }

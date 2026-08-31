@@ -2,14 +2,21 @@ import { join } from "node:path";
 import {
   type BuildSystemPromptOptions,
   type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionUIContext,
   formatSkillsForPrompt,
   getAgentDir,
+  initTheme,
+  type KeybindingsManager,
+  type RegisteredCommand,
   type Skill,
+  type Theme,
 } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
-import { registerSkillToggle } from "../index";
+import skillToggle, { registerSkillToggle } from "../index";
 import { resourcePathId } from "../resource-path";
-import { type SkillToggleState, SkillToggleStateError, type SkillToggleStateStore } from "../state";
+import type { SkillToggleState, SkillToggleStateStore } from "../state";
 
 const skillPath = join(getAgentDir(), "skills/research/SKILL.md");
 const research: Skill = {
@@ -28,6 +35,24 @@ const research: Skill = {
 const options: BuildSystemPromptOptions = { cwd: "/work/project", skills: [research] };
 
 type TestHandler = (event: unknown, context: unknown) => unknown | Promise<unknown>;
+type CommandOptions = Omit<RegisteredCommand, "name" | "sourceInfo">;
+type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
+
+async function selectFirstDialogItem(factory: DialogFactory): Promise<void> {
+  initTheme();
+  const fakeTheme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  // SAFETY: The dialog uses only requestRender() on TUI and fg()/bold() on Theme; keybindings are not read.
+  const component = await factory(
+    { requestRender: () => undefined } as unknown as TUI,
+    fakeTheme as unknown as Theme,
+    {} as KeybindingsManager,
+    () => undefined,
+  );
+  component.handleInput?.(" ");
+}
 
 function state(resources: SkillToggleState["resources"] = {}): SkillToggleState {
   return { version: 4, resources };
@@ -35,14 +60,14 @@ function state(resources: SkillToggleState["resources"] = {}): SkillToggleState 
 
 function harness(store: SkillToggleStateStore) {
   const handlers = new Map<string, TestHandler[]>();
-  const commands: string[] = [];
+  const commands = new Map<string, CommandOptions>();
   const notifications: string[] = [];
   const piMock = {
     on(name: string, handler: TestHandler) {
       handlers.set(name, [...(handlers.get(name) ?? []), handler]);
     },
-    registerCommand(name: string) {
-      commands.push(name);
+    registerCommand(name: string, command: CommandOptions) {
+      commands.set(name, command);
     },
   };
   const ctx = {
@@ -51,24 +76,170 @@ function harness(store: SkillToggleStateStore) {
       notify: (message: string) => notifications.push(message),
     },
   };
-  // SAFETY: Registration uses only on() and registerCommand(). The test double captures both and supplies a separate event context to handlers.
+  // SAFETY: Registration uses only on() and registerCommand(). The test double captures both and supplies separate event and command contexts.
   registerSkillToggle(piMock as unknown as ExtensionAPI, store);
-  const emit = async (name: string, event: unknown): Promise<unknown> => {
-    let result: unknown;
-    for (const handler of handlers.get(name) ?? []) result = await handler(event, ctx);
-    return result;
+  const emit = (name: string, event: unknown): Promise<unknown> =>
+    (handlers.get(name) ?? []).reduce<Promise<unknown>>(
+      (previous, handler) => previous.then(() => handler(event, ctx)),
+      Promise.resolve(undefined),
+    );
+  const runCommand = async (
+    args: string,
+    commandOptions: {
+      readonly mode?: ExtensionCommandContext["mode"];
+      readonly promptOptions?: BuildSystemPromptOptions;
+      readonly custom?: (factory: DialogFactory) => Promise<unknown>;
+    } = {},
+  ): Promise<void> => {
+    const command = commands.get("skill-toggle");
+    if (!command) throw new Error("skill-toggle command was not registered");
+    const commandContext = {
+      cwd: "/work/project",
+      mode: commandOptions.mode ?? "tui",
+      getSystemPromptOptions: () => commandOptions.promptOptions ?? options,
+      ui: {
+        notify: (message: string) => notifications.push(message),
+        custom: commandOptions.custom ?? (async () => undefined),
+      },
+    };
+    // SAFETY: The command paths under test use only mode, getSystemPromptOptions(), ui.notify(), and ui.custom().
+    await command.handler(args, commandContext as unknown as ExtensionCommandContext);
   };
-  return { commands, emit, notifications };
+  return { commands, emit, notifications, runCommand };
 }
 
 describe("extension lifecycle", () => {
+  test("the package entry point registers its command and prompt hook", () => {
+    const registrations: string[] = [];
+    const piMock = {
+      registerCommand: (name: string) => registrations.push(`command:${name}`),
+      on: (name: string) => registrations.push(`event:${name}`),
+    };
+    skillToggle(piMock as unknown as ExtensionAPI);
+    expect(registrations).toEqual(["command:skill-toggle", "event:before_agent_start"]);
+  });
+
   test("registers only the skill-toggle command", () => {
     const testHarness = harness({
       load: () => ({ _tag: "ok", value: state() }),
       setValue: () => ({ _tag: "ok", value: state() }),
     });
 
-    expect(testHarness.commands).toEqual(["skill-toggle"]);
+    expect([...testHarness.commands.keys()]).toEqual(["skill-toggle"]);
+  });
+
+  test("rejects command arguments and non-TUI sessions", async () => {
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: () => ({ _tag: "ok", value: state() }),
+    });
+
+    await testHarness.runCommand("unexpected");
+    await testHarness.runCommand("", { mode: "rpc" });
+
+    expect(testHarness.notifications).toEqual([
+      "Usage: /skill-toggle",
+      "/skill-toggle requires TUI mode",
+    ]);
+  });
+
+  test("reports when the command has no user-managed resources", async () => {
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: () => ({ _tag: "ok", value: state() }),
+    });
+
+    await testHarness.runCommand("", {
+      promptOptions: { cwd: "/work/project", skills: [] },
+    });
+
+    expect(testHarness.notifications).toEqual([
+      "No user-managed instructions or skills are loaded",
+    ]);
+  });
+
+  test("does not open the dialog when command state loading fails", async () => {
+    const error = Object.assign(new Error("load failed"), {
+      _tag: "SkillToggleStateError" as const,
+      operation: "load" as const,
+    });
+    let opened = false;
+    const testHarness = harness({
+      load: () => ({ _tag: "err", error }),
+      setValue: () => ({ _tag: "ok", value: state() }),
+    });
+
+    await testHarness.runCommand("", {
+      custom: async () => {
+        opened = true;
+      },
+    });
+
+    expect(opened).toBe(false);
+    expect(testHarness.notifications).toEqual(["load failed\nThe prompt was left unchanged."]);
+  });
+
+  test("opens the dialog and persists a toggle selected by the user", async () => {
+    const writes: Array<{ readonly id: string; readonly value: string }> = [];
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: (resource, value) => {
+        writes.push({ id: resource.id, value });
+        return { _tag: "ok", value: state() };
+      },
+    });
+    await testHarness.runCommand("", { custom: selectFirstDialogItem });
+
+    expect(writes).toEqual([{ id: skillPath, value: "disabled" }]);
+  });
+
+  test("restores the prior toggle value when persistence fails", async () => {
+    const error = Object.assign(new Error("write failed"), {
+      _tag: "SkillToggleStateError" as const,
+      operation: "update" as const,
+    });
+    const disabled = {
+      [skillPath]: {
+        kind: "skill" as const,
+        origin: "global" as const,
+        owner: resourcePathId(join(getAgentDir(), "skills")),
+        enabled: false as const,
+      },
+    };
+    const writes: string[] = [];
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state(disabled) }),
+      setValue: (_resource, value) => {
+        writes.push(value);
+        return { _tag: "err", error };
+      },
+    });
+
+    await testHarness.runCommand("", { custom: selectFirstDialogItem });
+
+    expect(writes).toEqual(["enabled"]);
+    expect(testHarness.notifications).toEqual(["write failed\nThe prompt was left unchanged."]);
+  });
+
+  test("does not persist manual-only skills selected in the dialog", async () => {
+    const writes: string[] = [];
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: (_resource, value) => {
+        writes.push(value);
+        return { _tag: "ok", value: state() };
+      },
+    });
+
+    await testHarness.runCommand("", {
+      promptOptions: {
+        cwd: "/work/project",
+        skills: [{ ...research, disableModelInvocation: true }],
+      },
+      custom: selectFirstDialogItem,
+    });
+
+    expect(writes).toEqual([]);
   });
 
   test("applies persisted path toggles before the model starts", async () => {
@@ -128,8 +299,33 @@ describe("extension lifecycle", () => {
     expect(result).toEqual({ systemPrompt: prompt });
   });
 
+  test("reports prompt sections that cannot be updated and deduplicates the warning", async () => {
+    const disabled = {
+      [skillPath]: {
+        kind: "skill" as const,
+        origin: "global" as const,
+        owner: resourcePathId(join(getAgentDir(), "skills")),
+        enabled: false as const,
+      },
+    };
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state(disabled) }),
+      setValue: () => ({ _tag: "ok", value: state(disabled) }),
+    });
+    const event = { systemPrompt: "base", systemPromptOptions: options };
+
+    expect(await testHarness.emit("before_agent_start", event)).toEqual({ systemPrompt: "base" });
+    expect(await testHarness.emit("before_agent_start", event)).toEqual({ systemPrompt: "base" });
+    expect(testHarness.notifications).toEqual([
+      "Skill toggle could not update the skills prompt section. Pi's prompt format may have changed.",
+    ]);
+  });
+
   test("leaves the prompt unchanged and deduplicates state failures", async () => {
-    const error = new SkillToggleStateError("load", "broken state");
+    const error = Object.assign(new Error("broken state"), {
+      _tag: "SkillToggleStateError" as const,
+      operation: "load" as const,
+    });
     const testHarness = harness({
       load: () => ({ _tag: "err", error }),
       setValue: () => ({ _tag: "err", error }),

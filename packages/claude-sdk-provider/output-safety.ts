@@ -7,6 +7,8 @@ export type SuspiciousOutputKind = "binary" | "base64";
 
 const MIN_SUSPICIOUS_CHARACTERS = 4_096;
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/;
+const DISCOVERED_EXECUTABLE_CAT =
+  /\bcat\b[\s\S]*(?:\$\(\s*(?:which|command\s+-v)\b|`\s*(?:which|command\s+-v)\b)/i;
 
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
   if (text.length < MIN_SUSPICIOUS_CHARACTERS) return undefined;
@@ -46,7 +48,7 @@ function quarantineNotice(kind: SuspiciousOutputKind, characters: number): strin
 /** Result of inspecting shell tool content. */
 export interface SanitizedBashContent {
   /** Original content or a short quarantine notice. */
-  readonly content: ContentBlock[];
+  readonly content: Array<TextContent | ImageContent>;
   /** Detected category, or `undefined` when the content is safe. */
   readonly detected: SuspiciousOutputKind | undefined;
 }
@@ -57,7 +59,9 @@ export interface SanitizedBashContent {
  * @param content - Parsed Pi text and image content blocks.
  * @returns The original readonly content or replacement notice.
  */
-export function sanitizeBashContent(content: ReadonlyArray<ContentBlock>): SanitizedBashContent {
+export function sanitizeBashContent(
+  content: ReadonlyArray<TextContent | ImageContent>,
+): SanitizedBashContent {
   for (const block of content) {
     if (block.type !== "text") continue;
     const detected = suspiciousOutputKind(block.text);
@@ -78,11 +82,7 @@ export function sanitizeBashContent(content: ReadonlyArray<ContentBlock>): Sanit
  * @returns A blocking explanation when the unsafe pattern is present.
  */
 export function inspectBashCommand(command: string): string | undefined {
-  if (
-    !/\bcat\b[\s\S]*(?:\$\(\s*(?:which|command\s+-v)\b|`\s*(?:which|command\s+-v)\b)/i.test(command)
-  ) {
-    return undefined;
-  }
+  if (!DISCOVERED_EXECUTABLE_CAT.test(command)) return undefined;
   return 'Refusing to pipe a discovered executable through cat. Inspect it with file "$(which COMMAND)", otool, or strings "$(which COMMAND)" | head instead.';
 }
 

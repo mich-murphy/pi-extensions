@@ -1,4 +1,5 @@
 import { normalize, resolve } from "node:path";
+import process from "node:process";
 
 declare const resourcePathBrand: unique symbol;
 

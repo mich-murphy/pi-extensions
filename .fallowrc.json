@@ -3,16 +3,53 @@
   "entry": ["packages/*/index.ts", "packages/*/test/**/*.test.ts", "vitest.config.ts"],
   "rules": {
     "unused-files": "error",
-    "unused-exports": "warn",
+    "unused-exports": "error",
+    "unused-types": "error",
+    "private-type-leaks": "warn",
+    "unused-dependencies": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "unused-enum-members": "error",
+    "unused-class-members": "error",
     "unresolved-imports": "error",
-    "coverage-gaps": "warn"
+    "unlisted-dependencies": "error",
+    "duplicate-exports": "error",
+    "type-only-dependencies": "error",
+    "test-only-dependencies": "error",
+    "dev-dependencies-in-production": "error",
+    "circular-dependencies": "error",
+    "re-export-cycle": "error",
+    "coverage-gaps": "off",
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error"
   },
-  "audit": {
-    "gate": "new-only"
-  },
+  "usedClassMembers": [
+    {
+      "extends": "Error",
+      "members": ["_tag"]
+    }
+  ],
   "typeAware": {
     "enabled": true,
     "projects": ["tsconfig.json"],
     "require": "best-effort"
+  },
+  "health": {
+    "coverage": "coverage/coverage-final.json"
+  },
+  "duplicates": {
+    "enabled": true,
+    "mode": "strict",
+    "near": false,
+    "minTokens": 100,
+    "minLines": 10,
+    "minOccurrences": 3,
+    "threshold": 0,
+    "ignoreImports": true,
+    "ignoreDefaults": true
+  },
+  "production": false,
+  "audit": {
+    "gate": "new-only"
   }
 }

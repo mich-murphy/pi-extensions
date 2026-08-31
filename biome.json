@@ -15,8 +15,20 @@
   },
   "linter": {
     "enabled": true,
+    "domains": {
+      "project": "none",
+      "test": "recommended",
+      "types": "recommended"
+    },
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "noUnsafePlusOperands": "error",
+        "useAwaitThenable": "error",
+        "useExhaustiveSwitchCases": "error"
+      }
     }
   },
   "javascript": {

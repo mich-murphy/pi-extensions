@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -12,6 +20,14 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+function expectFailure(result: SkillToggleStateResult, operation: "load" | "update"): void {
+  expect(result._tag).toBe("err");
+  if (result._tag === "err") {
+    expect(result.error._tag).toBe("SkillToggleStateError");
+    expect(result.error.operation).toBe(operation);
+  }
+}
 
 function testContext(options = {}) {
   const directory = mkdtempSync(join(tmpdir(), "pi-skill-toggle-"));
@@ -68,15 +84,12 @@ describe("SkillToggleStore", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "skill");
 
-    const result: unknown = Reflect.apply(context.store.setValue, context.store, [
+    const result = Reflect.apply(context.store.setValue, context.store, [
       resource(path, "invalid"),
       "unexpected",
-    ]);
+    ]) as SkillToggleStateResult;
 
-    expect(result).toMatchObject({
-      _tag: "err",
-      error: { _tag: "SkillToggleStateError", operation: "update" },
-    });
+    expectFailure(result, "update");
     expect(context.store.load()).toMatchObject({ _tag: "ok", value: { resources: {} } });
   });
 
@@ -98,6 +111,35 @@ describe("SkillToggleStore", () => {
 
     expect(Object.keys(state.resources)).toEqual([retainedPath]);
     expect(state.resources[retainedPath]).toMatchObject({ enabled: false });
+  });
+
+  test("enabling and manual-only updates remove persisted overrides", () => {
+    const context = testContext();
+    const path = join(context.directory, "toggle", "SKILL.md");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "toggle");
+    const editable = resource(path, "toggle");
+    loaded(context.store.setValue(editable, "disabled", [editable]));
+
+    expect(loaded(context.store.setValue(editable, "enabled", [editable])).resources).toEqual({});
+    loaded(context.store.setValue(editable, "disabled", [editable]));
+    const locked = resource(path, "toggle", "project", "manual-only");
+
+    expect(loaded(context.store.setValue(locked, "disabled", [locked])).resources).toEqual({});
+  });
+
+  test("synchronizes persisted metadata when a resource changes origin", () => {
+    const context = testContext();
+    const path = join(context.directory, "moved", "SKILL.md");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "moved");
+    const global = resource(path, "moved", "global");
+    loaded(context.store.setValue(global, "disabled", [global]));
+    const project = resource(path, "moved", "project");
+
+    const synchronized = loaded(context.store.load([project]));
+
+    expect(synchronized.resources[path]).toMatchObject({ origin: "project" });
   });
 
   test("source-authored manual-only skills cannot retain an extension override", () => {
@@ -139,11 +181,87 @@ describe("SkillToggleStore", () => {
 
     const result = context.store.load();
 
-    expect(result).toMatchObject({
-      _tag: "err",
-      error: { _tag: "SkillToggleStateError", operation: "load" },
-    });
+    expectFailure(result, "load");
     expect(readFileSync(context.statePath, "utf8")).toBe("{broken");
+  });
+
+  test("rejects unsupported versions and every malformed persisted resource field", () => {
+    const malformedStates: ReadonlyArray<unknown> = [
+      null,
+      [],
+      {},
+      { version: 4 },
+      { version: 4, resources: [] },
+      { version: 5, resources: {} },
+      { version: 4, resources: { "/skill": null } },
+      {
+        version: 4,
+        resources: {
+          "/skill": { kind: "other", origin: "global", owner: "/", enabled: false },
+        },
+      },
+      {
+        version: 4,
+        resources: {
+          "/skill": { kind: "skill", origin: "other", owner: "/", enabled: false },
+        },
+      },
+      {
+        version: 4,
+        resources: {
+          "/skill": { kind: "skill", origin: "global", owner: 1, enabled: false },
+        },
+      },
+      {
+        version: 4,
+        resources: {
+          "/skill": { kind: "skill", origin: "global", owner: "/", enabled: true },
+        },
+      },
+    ];
+
+    for (const malformed of malformedStates) {
+      const context = testContext();
+      mkdirSync(dirname(context.statePath), { recursive: true });
+      writeFileSync(context.statePath, JSON.stringify(malformed));
+
+      expectFailure(context.store.load(), "load");
+      expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toEqual(malformed);
+    }
+  });
+
+  test("recovers abandoned and stale invalid state locks", () => {
+    const abandoned = testContext({ lockTimeoutMs: 100 });
+    mkdirSync(dirname(abandoned.statePath), { recursive: true });
+    writeFileSync(`${abandoned.statePath}.lock`, "999999\n");
+
+    expect(loaded(abandoned.store.load())).toEqual({ version: 4, resources: {} });
+
+    const stale = testContext({ lockTimeoutMs: 100, staleLockMs: 1 });
+    mkdirSync(dirname(stale.statePath), { recursive: true });
+    const staleLockPath = `${stale.statePath}.lock`;
+    writeFileSync(staleLockPath, "not-a-pid\n");
+    const old = new Date(0);
+    utimesSync(staleLockPath, old, old);
+
+    expect(loaded(stale.store.load())).toEqual({ version: 4, resources: {} });
+  });
+
+  test("does not remove active or fresh invalid state locks", () => {
+    const cases = [
+      { contents: `${process.pid}\n`, staleLockMs: 0 },
+      { contents: "not-a-pid\n", staleLockMs: 60_000 },
+    ];
+
+    for (const lock of cases) {
+      const context = testContext({ lockTimeoutMs: 0, staleLockMs: lock.staleLockMs });
+      mkdirSync(dirname(context.statePath), { recursive: true });
+      const lockPath = `${context.statePath}.lock`;
+      writeFileSync(lockPath, lock.contents);
+
+      expectFailure(context.store.load(), "load");
+      expect(readFileSync(lockPath, "utf8")).toBe(lock.contents);
+    }
   });
 
   test("reports atomic replacement failures and removes temporary files", () => {
@@ -158,10 +276,7 @@ describe("SkillToggleStore", () => {
 
     const result = context.store.setValue(resource(path, "skill"), "disabled");
 
-    expect(result).toMatchObject({
-      _tag: "err",
-      error: { _tag: "SkillToggleStateError", operation: "update" },
-    });
+    expectFailure(result, "update");
     expect(readdirSync(dirname(context.statePath)).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );

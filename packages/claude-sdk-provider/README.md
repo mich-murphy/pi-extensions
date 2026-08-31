@@ -30,7 +30,7 @@ Open `/model` and select one of:
 
 This provider is experimental. For cache-sensitive or API-billed work, select Pi's standard `anthropic/...` provider until the Agent SDK path has accumulated stable cache diagnostics.
 
-Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`.
+Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
 
 The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routing variables from the Agent SDK subprocess. This keeps the provider on Claude's first-party subscription authentication instead of silently falling back to separately billed API or cloud-provider usage.
 

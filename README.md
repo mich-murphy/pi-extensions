@@ -27,10 +27,10 @@ Pi supplies its core packages to extensions at runtime. Keep those packages in `
 
 ## Checks
 
-- Vitest runs the behavioral tests and writes V8 coverage in Istanbul format.
-- TypeScript checks every workspace with strict compiler options.
+- Vitest runs the behavioral tests, enforces at least 80% statement, branch, and line coverage, and writes V8 coverage in Istanbul format.
+- TypeScript checks every workspace with strict compiler options and Node 22 types.
 - Biome formats and lints TypeScript, JSON, and configuration files.
-- Fallow audits changed code for dead code, duplication, complexity, dependency problems, and coverage gaps.
+- Fallow audits changed code for dead code, duplication, complexity, and dependency problems.
 - markdownlint-cli2 checks package documentation.
 
-The Fallow audit uses `new-only` gating. Existing complexity remains visible, but CI fails only when a change introduces a new error-level finding.
+The Fallow audit uses `new-only` gating. Existing findings remain visible, but CI fails only when a change introduces a new error-level finding. Use `npm run fallow:review` for a non-blocking changed-code review and `npm run fallow:audit:all` when an explicit all-findings gate is wanted.
