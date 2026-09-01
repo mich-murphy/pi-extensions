@@ -577,8 +577,7 @@ describe("SDK query cancellation", () => {
       yield {
         type: "result",
         is_error: false,
-        stop_reason: null,
-        terminal_reason: "tool_deferred",
+        stop_reason: "tool_deferred",
       };
     };
 
@@ -1182,6 +1181,11 @@ describe("SDK event translation", () => {
       _tag: "success",
       stopReason: "length",
       terminalReason: undefined,
+    });
+    expect(resultOutcome({ is_error: false, stop_reason: "tool_deferred" })).toEqual({
+      _tag: "success",
+      stopReason: "stop",
+      terminalReason: "tool_deferred",
     });
   });
 

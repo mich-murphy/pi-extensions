@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { type AgentRequest, buildAgentRequest } from "./agent-request";
 import { SdkQueryError, type SdkRunError } from "./sdk/errors";
+import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
 
 /** Events exchanged between the SDK adapter and Pi stream adapter. */
 export type BridgeEvent =
@@ -229,7 +230,8 @@ class AgentStreamAdapter {
   private fail(error: SdkRunError): void {
     this.closeOpenBlocks();
     this.output.stopReason = this.options?.signal?.aborted ? "aborted" : "error";
-    this.output.errorMessage = error.message;
+    this.output.errorMessage = formatSdkRunError(error);
+    writeSdkFailureDiagnostic(error);
     this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
     this.stream.end();
   }
