@@ -547,6 +547,126 @@ describe("SDK query cancellation", () => {
     expect(events[0]?.type).toBe("failed");
   });
 
+  test("forwards cancellation during iteration and ends Pi with one aborted event", async () => {
+    const context = contextFixture({
+      systemPrompt: "Be concise.",
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+    });
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "sonnet",
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    });
+    let markTextYielded = (): void => {
+      throw new Error("test setup: text-yield promise was not initialized");
+    };
+    const textYielded = new Promise<void>((resolve) => {
+      markTextYielded = resolve;
+    });
+    let sdkSignal: AbortSignal | undefined;
+    const runSdkQuery: RunSdkQuery = async function* (params) {
+      const signal = params.options?.abortController?.signal;
+      if (!signal) throw new Error("test setup: SDK abort signal missing");
+      sdkSignal = signal;
+      yield {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "Partial" } },
+      };
+      markTextYielded();
+      await new Promise<void>((_resolve, reject) => {
+        const rejectWithReason = () => reject(signal.reason);
+        if (signal.aborted) rejectWithReason();
+        else signal.addEventListener("abort", rejectWithReason, { once: true });
+      });
+    };
+    const controller = new AbortController();
+    const stream = createAgentSdkStream(
+      model,
+      context,
+      { signal: controller.signal },
+      createClaudeAgentSdkRunner(runSdkQuery),
+    );
+    const eventsPromise = drain(stream);
+    await textYielded;
+    const cancellationReason = new Error("cancelled by test");
+
+    controller.abort(cancellationReason);
+    const events = await eventsPromise;
+
+    expect(sdkSignal?.aborted).toBe(true);
+    expect(sdkSignal?.reason).toBe(cancellationReason);
+    expect(events.map((event) => event.type)).toEqual([
+      "start",
+      "text_start",
+      "text_delta",
+      "text_end",
+      "error",
+    ]);
+    const terminal = events.at(-1);
+    expect(terminal?.type).toBe("error");
+    if (terminal?.type === "error") {
+      expect(terminal.reason).toBe("aborted");
+      expect(terminal.error.content).toEqual([{ type: "text", text: "Partial" }]);
+    }
+  });
+
+  test("fails when SDK iteration ends without a terminal result", async () => {
+    const request: AgentRequest = {
+      systemPrompt: "Be concise.",
+      promptBlocks: [{ text: "Hello" }],
+      toolDescription: "No tools",
+      toolNames: [],
+      conversationEntries: [],
+    };
+    const model = modelFixture({ api: "claude-sdk", provider: "claude-sdk", id: "sonnet" });
+    const runSdkQuery: RunSdkQuery = async function* () {
+      yield {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "Truncated" } },
+      };
+    };
+
+    const events = await drain(createClaudeAgentSdkRunner(runSdkQuery)(request, model));
+
+    expect(events[0]).toEqual({ type: "text_delta", text: "Truncated" });
+    expect(events[1]?.type).toBe("failed");
+    if (events[1]?.type === "failed") {
+      expect(events[1].error).toBeInstanceOf(SdkQueryError);
+      if (!(events[1].error instanceof SdkQueryError)) {
+        throw new Error("test setup: expected terminal-result query error");
+      }
+      expect(events[1].error.operation).toBe("terminal-result");
+    }
+    expect(events.some((event) => event.type === "done")).toBe(false);
+
+    const piEvents = await drain(
+      createAgentSdkStream(
+        model,
+        contextFixture({
+          systemPrompt: "Be concise.",
+          messages: [{ role: "user", content: "Hello" }],
+          tools: [],
+        }),
+        {},
+        createClaudeAgentSdkRunner(runSdkQuery),
+      ),
+    );
+    expect(piEvents.map((event) => event.type)).toEqual([
+      "start",
+      "text_start",
+      "text_delta",
+      "text_end",
+      "error",
+    ]);
+    const terminal = piEvents.at(-1);
+    if (terminal?.type !== "error") throw new Error("test setup: expected Pi error event");
+    expect(terminal.reason).toBe("error");
+    expect(terminal.error.content).toEqual([{ type: "text", text: "Truncated" }]);
+    expect(terminal.error.errorMessage).toContain("terminal-result");
+  });
+
   test("yields the hook-captured tool call once the SDK result confirms a clean defer", async () => {
     const request: AgentRequest = {
       systemPrompt: "Use tools when needed.",
@@ -599,7 +719,11 @@ describe("deferred tool isolation", () => {
       id: "sonnet",
     });
 
-    const makeRun = (toolUseId: string, name: string): RunSdkQuery =>
+    const makeRun = (
+      toolUseId: string,
+      name: string,
+      stopReason: "tool_deferred" | "end_turn" = "tool_deferred",
+    ): RunSdkQuery =>
       async function* (params) {
         const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
         if (!hook) throw new Error("test setup: PreToolUse hook missing from SDK query options");
@@ -616,8 +740,7 @@ describe("deferred tool isolation", () => {
         yield {
           type: "result",
           is_error: false,
-          stop_reason: null,
-          terminal_reason: "tool_deferred",
+          stop_reason: stopReason,
         };
       };
 
@@ -665,7 +788,7 @@ describe("deferred tool isolation", () => {
     // And a tool name valid in turn one but not turn two must still be denied in turn
     // two — but denial alone is non-fatal (see the invalid-pi_call contract below), so
     // this ends the turn cleanly with "done" rather than throwing.
-    const thirdRunner = createClaudeAgentSdkRunner(makeRun("toolu_c", "read"));
+    const thirdRunner = createClaudeAgentSdkRunner(makeRun("toolu_c", "read", "end_turn"));
     const thirdRequest: AgentRequest = {
       systemPrompt: "s",
       promptBlocks: [{ text: "p" }],
@@ -956,6 +1079,125 @@ describe("deferred tool termination", () => {
     for await (const event of runner(request, model)) events.push(event);
 
     expect(events).toEqual([{ type: "done", reason: "stop" }]);
+  });
+
+  test("rejects tool_deferred when the hook captured no Pi call", async () => {
+    const request: AgentRequest = {
+      systemPrompt: "Use tools when needed.",
+      promptBlocks: [{ text: "Read package.json" }],
+      toolDescription: "stable tools",
+      toolNames: ["read"],
+      conversationEntries: [],
+    };
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "sonnet",
+    });
+    const runSdkQuery: RunSdkQuery = async function* () {
+      yield { type: "result", is_error: false, stop_reason: "tool_deferred" };
+    };
+
+    const events = await drain(createClaudeAgentSdkRunner(runSdkQuery)(request, model));
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("failed");
+    if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(SdkProtocolError);
+      expect(events[0].error.message).toContain("PreToolUse hook captured no calls");
+    }
+  });
+
+  test("rejects a captured Pi call unless the result confirms tool_deferred", async () => {
+    const request: AgentRequest = {
+      systemPrompt: "Use tools when needed.",
+      promptBlocks: [{ text: "Read package.json" }],
+      toolDescription: "stable tools",
+      toolNames: ["read"],
+      conversationEntries: [],
+    };
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "sonnet",
+    });
+    const runSdkQuery: RunSdkQuery = async function* (params) {
+      const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+      if (!hook) throw new Error("test setup: PreToolUse hook missing from SDK query options");
+      await hook(
+        hookInputFixture({
+          hook_event_name: "PreToolUse",
+          tool_name: "mcp__pi__pi_call",
+          tool_use_id: "toolu_unconfirmed",
+          tool_input: { name: "read", arguments: { path: "package.json" } },
+        }),
+        "toolu_unconfirmed",
+        { signal: new AbortController().signal },
+      );
+      yield { type: "result", is_error: false, stop_reason: "end_turn" };
+    };
+
+    const events = await drain(createClaudeAgentSdkRunner(runSdkQuery)(request, model));
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("failed");
+    if (events[0]?.type === "failed") {
+      expect(events[0].error).toBeInstanceOf(SdkProtocolError);
+      expect(events[0].error.message).toContain("terminal_reason was missing");
+    }
+  });
+
+  test("preserves batched calls and deduplicates repeated hook delivery by tool-use ID", async () => {
+    const request: AgentRequest = {
+      systemPrompt: "Use tools when needed.",
+      promptBlocks: [{ text: "Read both files" }],
+      toolDescription: "stable tools",
+      toolNames: ["read"],
+      conversationEntries: [],
+    };
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "sonnet",
+    });
+    const runSdkQuery: RunSdkQuery = async function* (params) {
+      const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+      if (!hook) throw new Error("test setup: PreToolUse hook missing from SDK query options");
+      for (const [id, path] of [
+        ["toolu_first", "package.json"],
+        ["toolu_first", "package.json"],
+        ["toolu_second", "README.md"],
+      ] as const) {
+        await hook(
+          hookInputFixture({
+            hook_event_name: "PreToolUse",
+            tool_name: "mcp__pi__pi_call",
+            tool_use_id: id,
+            tool_input: { name: "read", arguments: { path } },
+          }),
+          id,
+          { signal: new AbortController().signal },
+        );
+      }
+      yield { type: "result", is_error: false, stop_reason: "tool_deferred" };
+    };
+
+    const events = await drain(createClaudeAgentSdkRunner(runSdkQuery)(request, model));
+
+    expect(events).toEqual([
+      {
+        type: "tool_call",
+        id: "toolu_first",
+        name: "read",
+        arguments: { path: "package.json" },
+      },
+      {
+        type: "tool_call",
+        id: "toolu_second",
+        name: "read",
+        arguments: { path: "README.md" },
+      },
+    ]);
   });
 
   test("fails loudly instead of faking a successful defer when the SDK invokes the MCP gateway directly", async () => {
