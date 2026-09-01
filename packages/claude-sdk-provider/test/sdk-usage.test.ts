@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   type ClaudeUsageQuery,
   formatClaudeUsageStatus,
@@ -116,6 +116,34 @@ describe("Claude SDK usage", () => {
     );
 
     expect(result._tag === "err" && result.error.operation).toBe("timeout");
+  });
+
+  test("bounds cleanup after both a successful read and a read timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const successfulRead = inspectClaudeUsage(
+        () => ({
+          readUsage: async () => usageResponse,
+          close: () => new Promise<void>(() => undefined),
+        }),
+        10,
+      );
+      const timedOutRead = inspectClaudeUsage(
+        () => ({
+          readUsage: () => new Promise<unknown>(() => undefined),
+          close: () => new Promise<void>(() => undefined),
+        }),
+        10,
+      );
+
+      await vi.runAllTimersAsync();
+      const [cleanupResult, readResult] = await Promise.all([successfulRead, timedOutRead]);
+
+      expect(cleanupResult._tag === "err" && cleanupResult.error.operation).toBe("close");
+      expect(readResult._tag === "err" && readResult.error.operation).toBe("timeout");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("aborts the idle SDK query after reading usage", async () => {

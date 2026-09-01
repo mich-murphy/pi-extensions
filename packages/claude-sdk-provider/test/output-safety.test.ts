@@ -32,6 +32,53 @@ describe("bash output safety", () => {
     expect(notice.text.length).toBeLessThan(1_000);
   });
 
+  test("quarantines base64 split across content blocks in live and historical results", () => {
+    const splitPayload = ["iVBORw0KGgo", "A".repeat(7_000), "B".repeat(7_000)].map((text) => ({
+      type: "text" as const,
+      text,
+    }));
+
+    const live = sanitizeBashContent(splitPayload);
+    expect(live.detected).toBe("base64");
+    const liveNotice = live.content[0];
+    if (liveNotice?.type !== "text") throw new Error("missing live quarantine notice");
+    expect(liveNotice.text).toContain("Base64-like bash output quarantined");
+    expect(liveNotice.text).not.toContain("AAAA");
+
+    const historical = sanitizeContextMessages([
+      {
+        role: "toolResult",
+        toolName: "bash",
+        toolCallId: "call-split",
+        isError: false,
+        content: splitPayload,
+      },
+    ]);
+    // SAFETY: The only fixture entry is a bash result with text content, and this test inspects its sanitized replacement.
+    const historicalResult = historical[0] as unknown as {
+      content: Array<{ type: string; text: string }>;
+    };
+    expect(historicalResult.content).toHaveLength(1);
+    expect(historicalResult.content[0]?.text).toContain("Base64-like bash output quarantined");
+    expect(historicalResult.content[0]?.text).not.toContain("AAAA");
+  });
+
+  test("quarantines binary-like output split below the per-block detection threshold", () => {
+    const splitPayload = Array.from({ length: 3 }, () => ({
+      type: "text" as const,
+      text: "\u0000payload".repeat(375),
+    }));
+
+    const result = sanitizeBashContent(splitPayload);
+
+    expect(splitPayload.every((block) => block.text.length < 4_096)).toBe(true);
+    expect(result.detected).toBe("binary");
+    const notice = result.content[0];
+    if (notice?.type !== "text") throw new Error("missing quarantine notice");
+    expect(notice.text).toContain("Binary-like bash output quarantined");
+    expect(notice.text).not.toContain("payload");
+  });
+
   test("leaves normal command output unchanged", () => {
     const content = [{ type: "text" as const, text: "src/index.ts\nREADME.md\n3 files changed" }];
     expect(sanitizeBashContent(content)).toEqual({ content, detected: undefined });

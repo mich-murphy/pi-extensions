@@ -260,6 +260,16 @@ class ClaudeSdkTurn {
     }
     this.recordUsage();
     if (this.deferredCalls.size === 0) {
+      if (this.outcome.terminalReason === "tool_deferred") {
+        yield {
+          type: "failed",
+          error: new SdkProtocolError(
+            "result",
+            "terminal_reason was tool_deferred but the PreToolUse hook captured no calls",
+          ),
+        };
+        return;
+      }
       yield { type: "done", reason: this.outcome.stopReason };
       return;
     }

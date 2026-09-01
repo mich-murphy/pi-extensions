@@ -62,15 +62,16 @@ export interface SanitizedBashContent {
 export function sanitizeBashContent(
   content: ReadonlyArray<TextContent | ImageContent>,
 ): SanitizedBashContent {
-  for (const block of content) {
-    if (block.type !== "text") continue;
-    const detected = suspiciousOutputKind(block.text);
-    if (detected) {
-      return {
-        content: [{ type: "text", text: quarantineNotice(detected, block.text.length) }],
-        detected,
-      };
-    }
+  const combinedText = content
+    .filter((block): block is TextContent => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+  const detected = suspiciousOutputKind(combinedText);
+  if (detected) {
+    return {
+      content: [{ type: "text", text: quarantineNotice(detected, combinedText.length) }],
+      detected,
+    };
   }
   return { content: [...content], detected: undefined };
 }

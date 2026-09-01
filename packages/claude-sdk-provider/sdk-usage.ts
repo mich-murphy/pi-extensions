@@ -189,11 +189,33 @@ function parseUsageResponse(input: unknown): ClaudeUsageStatusResult {
   };
 }
 
+type CloseOutcome =
+  | { readonly _tag: "ok" }
+  | { readonly _tag: "err"; readonly cause: unknown }
+  | { readonly _tag: "timeout" };
+
+async function closeUsageQuery(
+  usageQuery: ClaudeUsageQuery,
+  timeoutMilliseconds: number,
+): Promise<CloseOutcome> {
+  const closeOutcome = usageQuery.close().then(
+    () => ({ _tag: "ok" }) as const,
+    (cause: unknown) => ({ _tag: "err", cause }) as const,
+  );
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutOutcome = new Promise<{ readonly _tag: "timeout" }>((resolve) => {
+    timeout = setTimeout(() => resolve({ _tag: "timeout" }), timeoutMilliseconds);
+  });
+  const outcome = await Promise.race([closeOutcome, timeoutOutcome]);
+  if (timeout !== undefined) clearTimeout(timeout);
+  return outcome;
+}
+
 /**
  * Read current Claude subscription usage without sending a model prompt.
  *
  * @param startQuery - Injectable SDK subprocess boundary.
- * @param timeoutMilliseconds - Maximum time to wait for the SDK usage response.
+ * @param timeoutMilliseconds - Maximum time to wait for the SDK response and subsequent cleanup.
  * @returns Parsed usage or a typed startup, read, parse, timeout, or cleanup failure.
  */
 export async function inspectClaudeUsage(
@@ -228,12 +250,13 @@ export async function inspectClaudeUsage(
   }
 
   abortController.abort();
-  try {
-    await usageQuery.close();
-  } catch (cause) {
-    if (result._tag === "ok") {
-      return { _tag: "err", error: new ClaudeUsageInspectionError("close", cause) };
-    }
+  const closeOutcome = await closeUsageQuery(usageQuery, timeoutMilliseconds);
+  if (result._tag === "ok" && closeOutcome._tag !== "ok") {
+    const cause =
+      closeOutcome._tag === "err"
+        ? closeOutcome.cause
+        : new Error("Claude usage query cleanup timed out");
+    return { _tag: "err", error: new ClaudeUsageInspectionError("close", cause) };
   }
   return result;
 }
