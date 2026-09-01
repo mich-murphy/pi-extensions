@@ -32,6 +32,8 @@ This provider is experimental. For cache-sensitive or API-billed work, select Pi
 
 Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
 
+Failed turns include a stable category such as `usage-limit`, `network`, `timeout`, `protocol`, or `tool-contract`. The provider also writes one `[claude-sdk-error]` JSON record to stderr. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause.
+
 The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routing variables from the Agent SDK subprocess. This keeps the provider on Claude's first-party subscription authentication instead of silently falling back to separately billed API or cloud-provider usage.
 
 ## Architecture
@@ -70,11 +72,26 @@ Each request emits a `[claude-sdk-cache]` JSON line on stderr. Consecutive reque
 - Reasoning/thinking deltas are streamed to Pi as a `thinking` content block, but the block is dropped (not replayed) when a later turn re-serializes the transcript — thinking is ephemeral, not part of the durable Pi conversation.
 - An SDK `result` that ends in an error (`is_error: true`) is surfaced as a real provider error instead of a silent empty response; a `max_tokens` stop is reported to Pi as a `length` stop reason.
 
+## SDK upgrade gate
+
+The Agent SDK dependency must remain an exact version. Ordinary CI verifies that `package.json`, `package-lock.json`, the installed SDK metadata, and `sdk-release-contract.json` agree.
+
+Before changing the pinned SDK version:
+
+1. Update the exact dependency and lockfile.
+2. Authenticate the local Claude Code installation intended for the live check.
+3. Run `npm run test:claude-sdk-upgrade`. It first sends two small Sonnet requests to verify normal text streaming plus the real deferred Pi tool-call contract, then checks the pinned versions.
+4. Only after that command passes, update `sdk-release-contract.json` with the SDK version, bundled Claude Code version, UTC verification time, and observed defer shape.
+5. Run `npm run check` before publishing the change. Include the live command and result in the pull request for reviewer verification.
+
+Do not update the attestation from a mocked result or a text-only model check. GitHub-hosted CI has no Claude subscription credential, so it validates version consistency and the committed attestation but does not pretend to prove the workstation live check. The reviewer owns that external-evidence decision.
+
 ## Checks
 
 ```sh
 npm test
 npm run typecheck
+npm run test:claude-sdk-upgrade
 pi --list-models claude-sdk
 
 # Optional live cache trace (inspect stderr; no raw prompt content is logged)

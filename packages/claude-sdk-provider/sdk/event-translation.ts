@@ -142,6 +142,7 @@ const SDK_STOP_REASONS: ReadonlySet<unknown> = new Set([
   "model_context_window_exceeded",
   "pause_turn",
   "stop_sequence",
+  "tool_deferred",
   "tool_use",
 ]);
 
@@ -165,8 +166,11 @@ export function resultOutcome(message: Record<string, unknown>): ResultOutcome {
     message.stop_reason === "max_tokens" || message.stop_reason === "model_context_window_exceeded"
       ? "length"
       : "stop";
-  const terminalReason =
+  const reportedTerminalReason =
     typeof message.terminal_reason === "string" ? message.terminal_reason : undefined;
+  const terminalReason =
+    reportedTerminalReason ??
+    (message.stop_reason === "tool_deferred" ? "tool_deferred" : undefined);
   if (!(message.is_error || terminalReason === "tool_deferred_unavailable")) {
     return { _tag: "success", stopReason, terminalReason };
   }
