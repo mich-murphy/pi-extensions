@@ -5,16 +5,16 @@ import type { BridgeEvent } from "../bridge";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 
 const model: Model<Api> = {
-  id: "sonnet",
-  name: "Claude Sonnet live contract",
+  id: "fable",
+  name: "Claude Fable 5.1 live contract",
   api: "claude-sdk",
   provider: "claude-sdk",
   baseUrl: "agent-sdk://local-claude-code",
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200_000,
-  maxTokens: 64_000,
+  contextWindow: 1_000_000,
+  maxTokens: 128_000,
 };
 
 async function collect(request: AgentRequest): Promise<ReadonlyArray<BridgeEvent>> {

@@ -10,21 +10,47 @@ import { createClaudeAgentSdkRunner } from "./sdk/runner";
 import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
 import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
 
+const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
 /** Models exposed by the official Claude Agent SDK provider. */
 export const models: ReadonlyArray<ProviderModelConfig> = [
-  { id: "sonnet", name: "Claude Sonnet (official Agent SDK)", reasoning: true },
-  { id: "opus", name: "Claude Opus (official Agent SDK)", reasoning: true },
-  { id: "fable", name: "Claude Fable (official Agent SDK)", reasoning: true },
-  { id: "haiku", name: "Claude Haiku (official Agent SDK)", reasoning: false },
-].map<ProviderModelConfig>(({ id, name, reasoning }) => ({
-  id,
-  name,
-  reasoning,
-  input: ["text", "image"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200_000,
-  maxTokens: 64_000,
-}));
+  {
+    id: "sonnet",
+    name: "Claude Sonnet (official Agent SDK)",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: subscriptionCost,
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "opus",
+    name: "Claude Opus (official Agent SDK)",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: subscriptionCost,
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "fable",
+    name: "Claude Fable 5.1 (official Agent SDK)",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: subscriptionCost,
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "haiku",
+    name: "Claude Haiku (official Agent SDK)",
+    reasoning: false,
+    input: ["text", "image"],
+    cost: subscriptionCost,
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+  },
+];
 
 function registerStatusCommands(pi: ExtensionAPI): void {
   pi.registerCommand("claude-sdk-status", {

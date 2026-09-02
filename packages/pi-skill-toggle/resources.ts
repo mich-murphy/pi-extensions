@@ -83,9 +83,13 @@ function skillResource(
   if (skill.sourceInfo.origin !== "top-level") return undefined;
   if (skill.sourceInfo.scope !== "user" && skill.sourceInfo.scope !== "project") return undefined;
   const id = resourcePathId(skill.filePath, cwd);
-  const globalRoot = globalSkillRoots.find((root) => isPathInsideOrEqual(id, root));
+  const globalRoot =
+    skill.sourceInfo.scope === "user"
+      ? globalSkillRoots.find((root) => isPathInsideOrEqual(id, root))
+      : undefined;
+  // Pi's scope is authoritative because project settings may load skills from any directory.
   const projectOwner =
-    skill.sourceInfo.scope === "project" ? projectSkillOwner(id, cwd) : undefined;
+    skill.sourceInfo.scope === "project" ? (projectSkillOwner(id, cwd) ?? cwd) : undefined;
   const origin: ToggleResourceOrigin | undefined = globalRoot
     ? "global"
     : projectOwner

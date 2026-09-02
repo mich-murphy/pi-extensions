@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "agentSdkVersion": "0.3.251",
-  "bundledClaudeCodeVersion": "2.1.251",
-  "verifiedAt": "2026-09-01T03:54:58Z",
-  "model": "sonnet",
+  "agentSdkVersion": "0.3.258",
+  "bundledClaudeCodeVersion": "2.1.258",
+  "verifiedAt": "2026-09-02T02:08:31Z",
+  "model": "fable",
   "contracts": ["text-response", "deferred-tool-call"],
   "observedDeferredResult": "stop_reason:tool_deferred"
 }

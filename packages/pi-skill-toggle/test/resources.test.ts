@@ -70,6 +70,32 @@ describe("toggleResourcesFromPrompt", () => {
     ]);
   });
 
+  test("includes project-scoped skills loaded from a configured non-Pi directory", () => {
+    const cwd = "/Users/mm/businesscraft/businesscraft";
+    const path = join(cwd, ".claude/skills/businesscraft-design/SKILL.md");
+    const resources = toggleResourcesFromPrompt({
+      cwd,
+      skills: [
+        skill("businesscraft-design", path, {
+          path,
+          source: "local",
+          scope: "project",
+          origin: "top-level",
+        }),
+      ],
+    });
+
+    expect(resources).toMatchObject([
+      {
+        id: path,
+        origin: "project",
+        kind: "skill",
+        label: "businesscraft-design",
+        owner: cwd,
+      },
+    ]);
+  });
+
   test("deduplicates repeated discovery paths", () => {
     const path = join(getAgentDir(), "AGENTS.md");
     const resources = toggleResourcesFromPrompt({

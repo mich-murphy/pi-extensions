@@ -25,7 +25,7 @@ Open `/model` and select one of:
 
 - `claude-sdk/sonnet`
 - `claude-sdk/opus`
-- `claude-sdk/fable`
+- `claude-sdk/fable` (Claude Fable 5.1)
 - `claude-sdk/haiku`
 
 This provider is experimental. For cache-sensitive or API-billed work, select Pi's standard `anthropic/...` provider until the Agent SDK path has accumulated stable cache diagnostics.
@@ -66,8 +66,8 @@ Each request emits a `[claude-sdk-cache]` JSON line on stderr. Consecutive reque
 ## Current boundaries
 
 - Image input is limited to Anthropic's JPEG, PNG, GIF, and WebP formats. Unsupported images become deterministic text notes so they cannot permanently break transcript replay.
-- Model IDs use Claude Code's documented moving aliases (`sonnet`, `opus`, `fable`, and `haiku`), so the underlying model can change when Anthropic updates an alias.
-- Haiku is declared with its current 200K context window and 64K maximum output. Haiku 4.5 does not support the Agent SDK's `effort` option, so the provider omits effort-based reasoning settings for every Haiku request, including requests from headless callers and Pi sub-agents.
+- Model IDs use Claude Code's documented moving aliases (`sonnet`, `opus`, `fable`, and `haiku`), so the underlying model can change when Anthropic updates an alias. With bundled Claude Code 2.1.258, `fable` resolves to Claude Fable 5.1.
+- Fable, Opus, and Sonnet are declared with their current 1M context windows and 128K maximum output. Haiku keeps its 200K context window and 64K maximum output. Haiku 4.5 does not support the Agent SDK's `effort` option, so the provider omits effort-based reasoning settings for every Haiku request, including requests from headless callers and Pi sub-agents.
 - Pi records subscription cost as zero. Token usage is retained when the SDK reports it, but Pi cannot infer the monetary value of an included subscription allocation.
 - Reasoning/thinking deltas are streamed to Pi as a `thinking` content block, but the block is dropped (not replayed) when a later turn re-serializes the transcript — thinking is ephemeral, not part of the durable Pi conversation.
 - An SDK `result` that ends in an error (`is_error: true`) is surfaced as a real provider error instead of a silent empty response; a `max_tokens` stop is reported to Pi as a `length` stop reason.
@@ -80,7 +80,7 @@ Before changing the pinned SDK version:
 
 1. Update the exact dependency and lockfile.
 2. Authenticate the local Claude Code installation intended for the live check.
-3. Run `npm run test:claude-sdk-upgrade`. It first sends two small Sonnet requests to verify normal text streaming plus the real deferred Pi tool-call contract, then checks the pinned versions.
+3. Run `npm run test:claude-sdk-upgrade`. It first sends two small Fable requests to verify normal text streaming plus the real deferred Pi tool-call contract, then checks the pinned versions.
 4. Only after that command passes, update `sdk-release-contract.json` with the SDK version, bundled Claude Code version, UTC verification time, and observed defer shape.
 5. Run `npm run check` before publishing the change. Include the live command and result in the pull request for reviewer verification.
 

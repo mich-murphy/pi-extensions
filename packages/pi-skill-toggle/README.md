@@ -21,8 +21,17 @@ every editable skill uses the same values.
 
 Pi may load `AGENTS.override.md`, `AGENTS.md`, or `CLAUDE.md`. The extension
 shows whichever files Pi loaded. It includes only user-managed global and
-project resources. Package, extension-provided, internal, and temporary CLI
-skills are outside its scope.
+project resources. Project-scoped skills may live outside `.pi/skills` and
+`.agents/skills` when the project configures another directory. Package,
+extension-provided, internal, and temporary CLI skills are outside its scope.
+The extension does not discover skills itself. For example, a project that keeps
+skills under `.claude/skills` can expose them to Pi with `.pi/settings.json`:
+
+```json
+{
+  "skills": ["../.claude/skills"]
+}
+```
 
 A disabled skill remains available through `/skill:name`; the extension only
 removes it from automatic model discovery. A skill that declares
