@@ -14,7 +14,7 @@ const releaseContractSchema = z.object({
   agentSdkVersion: z.string(),
   bundledClaudeCodeVersion: z.string(),
   verifiedAt: z.iso.datetime(),
-  model: z.literal("sonnet"),
+  model: z.literal("fable"),
   contracts: z.tuple([z.literal("text-response"), z.literal("deferred-tool-call")]),
   observedDeferredResult: z.literal("stop_reason:tool_deferred"),
 });
