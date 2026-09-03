@@ -12,7 +12,12 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resourcePathId } from "../resource-path";
 import type { ToggleResource } from "../resources";
-import { type SkillToggleStateResult, SkillToggleStore } from "../state";
+import {
+  type SkillToggleState,
+  type SkillToggleStateResult,
+  SkillToggleStore,
+  type SkillToggleStoreOptions,
+} from "../state";
 
 const temporaryDirectories: string[] = [];
 afterEach(() => {
@@ -29,7 +34,7 @@ function expectFailure(result: SkillToggleStateResult, operation: "load" | "upda
   }
 }
 
-function testContext(options = {}) {
+function testContext(options: SkillToggleStoreOptions = {}) {
   const directory = mkdtempSync(join(tmpdir(), "pi-skill-toggle-"));
   temporaryDirectories.push(directory);
   const statePath = join(directory, "state", "pi-skill-toggle.json");
@@ -54,7 +59,7 @@ function resource(
   };
 }
 
-function loaded(result: SkillToggleStateResult) {
+function loaded(result: SkillToggleStateResult): SkillToggleState {
   expect(result._tag).toBe("ok");
   if (result._tag === "err") throw result.error;
   return result.value;
@@ -84,6 +89,7 @@ describe("SkillToggleStore", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "skill");
 
+    // SAFETY: Reflect.apply intentionally bypasses the static input type to test runtime validation.
     const result = Reflect.apply(context.store.setValue, context.store, [
       resource(path, "invalid"),
       "unexpected",

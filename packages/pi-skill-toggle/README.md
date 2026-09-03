@@ -22,11 +22,13 @@ every editable skill uses the same values.
 
 Pi may load `AGENTS.override.md`, `AGENTS.md`, or `CLAUDE.md`. The extension
 shows whichever files Pi loaded. It includes only user-managed global and
-project resources. It adds project skill directories used by Pi, Claude Code,
-and Codex: `.pi/skills`, `.agents/skills`, `.claude/skills`, and `.codex/skills`.
-It checks the working directory and each ancestor through the Git root. Projects
-outside a Git worktree are limited to the working directory so a parent user's
-skills are not mistaken for project skills.
+project resources. It discovers project skills used by Pi, Claude Code, and
+Codex under `.pi/skills`, `.agents/skills`, `.claude/skills`, and `.codex/skills`.
+It checks the working directory and each ancestor through the Git root. When
+harness directories contain the same skill name, the first copy wins without a
+startup collision warning. Unique skills from later directories are still
+loaded. Projects outside a Git worktree are limited to the working directory so
+a parent user's skills are not mistaken for project skills.
 
 Project-scoped skills may also live elsewhere when project settings configure
 their directory. Package, internal, unrelated extension-provided, and temporary
@@ -62,7 +64,7 @@ silently claiming success.
 - Never edit an instruction file or `SKILL.md`.
 - Never override source-level `disable-model-invocation`.
 - Preserve manual `/skill:name` invocation.
-- Contribute common project skill directories, then use Pi's loaded resources.
+- Contribute deduplicated project skill files, then use Pi's loaded resources.
 - Keep global resources before project resources in the menu.
 - Identify resources by path, never by display or project name.
 - Keep project skills model-hidden until the user enables them.

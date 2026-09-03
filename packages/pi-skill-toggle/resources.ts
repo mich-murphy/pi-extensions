@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { type BuildSystemPromptOptions, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { PROJECT_SKILL_RELATIVE_PATHS } from "./project-skill-paths";
-import { type ResourcePath, resourcePathId } from "./resource-path";
+import { pathIsInsideOrEqual, type ResourcePath, resourcePathId } from "./resource-path";
 
 /** Kind of model-facing resource controlled by the extension. */
 export type ToggleResourceKind = "instruction" | "skill";
@@ -63,7 +63,7 @@ function instructionResource(
   const id = resourcePathId(file.path, cwd);
   const parent = dirname(id);
   const origin: ToggleResourceOrigin | undefined =
-    parent === agentDirectory ? "global" : isPathInsideOrEqual(cwd, parent) ? "project" : undefined;
+    parent === agentDirectory ? "global" : pathIsInsideOrEqual(cwd, parent) ? "project" : undefined;
   if (!origin) return undefined;
   return {
     id,
@@ -86,7 +86,7 @@ function skillResource(
   const id = resourcePathId(skill.filePath, cwd);
   const globalRoot =
     skill.sourceInfo.scope === "user"
-      ? globalSkillRoots.find((root) => isPathInsideOrEqual(id, root))
+      ? globalSkillRoots.find((root) => pathIsInsideOrEqual(id, root))
       : undefined;
   const discoveredProjectOwner = projectSkillOwner(id, cwd);
   // Pi marks paths contributed by resources_discover as temporary, so their location
@@ -149,15 +149,7 @@ function projectSkillOwner(path: string, cwd: string): ResourcePath | undefined 
     const markerIndex = path.indexOf(marker);
     if (markerIndex < 0) continue;
     const owner = path.slice(0, markerIndex) || sep;
-    if (isPathInsideOrEqual(cwd, owner)) return resourcePathId(owner);
+    if (pathIsInsideOrEqual(cwd, owner)) return resourcePathId(owner);
   }
   return undefined;
-}
-
-function isPathInsideOrEqual(path: string, parent: string): boolean {
-  const difference = relative(parent, path);
-  return (
-    difference === "" ||
-    (!difference.startsWith(`..${sep}`) && difference !== ".." && !isAbsolute(difference))
-  );
 }
