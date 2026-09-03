@@ -48,5 +48,10 @@
     "markdownlint-cli2": "latest",
     "typescript": "latest",
     "vitest": "latest"
+  },
+  "allowScripts": {
+    "@google/genai": false,
+    "fsevents": false,
+    "protobufjs": false
   }
 }
