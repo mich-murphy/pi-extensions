@@ -116,6 +116,7 @@ describe("extension lifecycle", () => {
       registerCommand: (name: string) => registrations.push(`command:${name}`),
       on: (name: string) => registrations.push(`event:${name}`),
     };
+    // SAFETY: The entry point registers only commands and event handlers, which this test double captures.
     skillToggle(piMock as unknown as ExtensionAPI);
     expect(registrations).toEqual([
       "command:skill-toggle",
