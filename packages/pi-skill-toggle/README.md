@@ -27,7 +27,8 @@ Codex under `.pi/skills`, `.agents/skills`, `.claude/skills`, and `.codex/skills
 It checks the working directory and each ancestor through the Git root. When
 harness directories contain the same skill name, the first copy wins without a
 startup collision warning. Unique skills from later directories are still
-loaded. Projects outside a Git worktree are limited to the working directory so
+loaded. Malformed skills are skipped rather than reported as extension loading
+errors. Projects outside a Git worktree are limited to the working directory so
 a parent user's skills are not mistaken for project skills.
 
 Project-scoped skills may also live elsewhere when project settings configure

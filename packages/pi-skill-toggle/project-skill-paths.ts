@@ -1,12 +1,6 @@
 import { existsSync } from "node:fs";
-import { dirname, join, parse, relative } from "node:path";
-import {
-  CONFIG_DIR_NAME,
-  getAgentDir,
-  loadSkills,
-  type ResourceDiagnostic,
-} from "@earendil-works/pi-coding-agent";
-import { pathIsInsideOrEqual } from "./resource-path";
+import { dirname, join, parse } from "node:path";
+import { CONFIG_DIR_NAME, getAgentDir, loadSkills } from "@earendil-works/pi-coding-agent";
 
 /** Project-local skill directories understood by Pi and other common agent clients. */
 export const PROJECT_SKILL_RELATIVE_PATHS = [
@@ -37,50 +31,14 @@ export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
     skillPaths: roots,
     includeDefaults: false,
   });
-  const selectedPaths = result.skills.map((skill) => skill.filePath);
-  const selected = new Set(selectedPaths);
-  const collisionLosers = new Set(
+  const invalidPaths = new Set(
     result.diagnostics.flatMap((diagnostic) =>
-      diagnostic.collision ? [diagnostic.collision.loserPath] : [],
+      diagnostic.type !== "collision" && diagnostic.path ? [diagnostic.path] : [],
     ),
   );
-  const diagnosticPaths = uniqueDiagnosticPaths(
-    result.diagnostics,
-    roots,
-    selected,
-    collisionLosers,
-  );
-  return [...selectedPaths, ...diagnosticPaths];
-}
-
-function uniqueDiagnosticPaths(
-  diagnostics: ReadonlyArray<ResourceDiagnostic>,
-  roots: ReadonlyArray<string>,
-  selected: ReadonlySet<string>,
-  collisionLosers: ReadonlySet<string>,
-): ReadonlyArray<string> {
-  const seen = new Set<string>();
-  const paths: string[] = [];
-  for (const diagnostic of diagnostics) {
-    const path = diagnostic.path;
-    if (
-      !(path && diagnostic.type !== "collision") ||
-      selected.has(path) ||
-      collisionLosers.has(path)
-    ) {
-      continue;
-    }
-    const key = relativeToOwningRoot(path, roots);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    paths.push(path);
-  }
-  return paths;
-}
-
-function relativeToOwningRoot(path: string, roots: ReadonlyArray<string>): string {
-  const root = roots.find((candidate) => pathIsInsideOrEqual(path, candidate));
-  return root ? relative(root, path) : path;
+  return result.skills
+    .filter((skill) => !invalidPaths.has(skill.filePath))
+    .map((skill) => skill.filePath);
 }
 
 function findGitRoot(cwd: string): string | undefined {

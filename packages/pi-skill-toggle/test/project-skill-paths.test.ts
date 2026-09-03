@@ -58,7 +58,38 @@ describe("discoverProjectSkillPaths", () => {
     expect(loaded.diagnostics.filter((diagnostic) => diagnostic.type === "collision")).toEqual([]);
   });
 
-  test("keeps one diagnostic path for mirrored malformed skills", () => {
+  test("does not report a malformed mirror when another harness has a valid copy", () => {
+    const root = temporaryDirectory();
+    mkdirSync(join(root, ".git"));
+    const claudePath = join(root, ".claude", "skills", "shared", "SKILL.md");
+    mkdirSync(dirname(claudePath), { recursive: true });
+    writeFileSync(claudePath, "---\nname: [\n---\n");
+    const codexPath = writeSkill(join(root, ".codex", "skills"), "shared", "shared");
+
+    const paths = discoverProjectSkillPaths(root);
+    const loaded = loadSkills({
+      cwd: root,
+      agentDir: getAgentDir(),
+      skillPaths: [...paths],
+      includeDefaults: false,
+    });
+
+    expect(paths).toEqual([codexPath]);
+    expect(loaded.skills.map((skill) => skill.filePath)).toEqual([codexPath]);
+    expect(loaded.diagnostics).toEqual([]);
+  });
+
+  test("ignores invalid skill metadata instead of attributing its diagnostics to the extension", () => {
+    const root = temporaryDirectory();
+    mkdirSync(join(root, ".git"));
+    const path = join(root, ".claude", "skills", "invalid", "SKILL.md");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `---\nname: invalid\ndescription: ${"x".repeat(1025)}\n---\n`);
+
+    expect(discoverProjectSkillPaths(root)).toEqual([]);
+  });
+
+  test("ignores malformed skills instead of attributing their diagnostics to the extension", () => {
     const root = temporaryDirectory();
     mkdirSync(join(root, ".git"));
     const claudePath = join(root, ".claude", "skills", "broken", "SKILL.md");
@@ -68,7 +99,7 @@ describe("discoverProjectSkillPaths", () => {
       writeFileSync(path, "---\nname: [\n---\n");
     }
 
-    expect(discoverProjectSkillPaths(root)).toEqual([claudePath]);
+    expect(discoverProjectSkillPaths(root)).toEqual([]);
   });
 
   test("does not search ancestors when cwd is outside a Git worktree", () => {
