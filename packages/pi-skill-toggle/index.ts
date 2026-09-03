@@ -1,10 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, type SettingItem, SettingsList, Text } from "@earendil-works/pi-tui";
+import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { applyResourceToggles } from "./prompt-filter";
 import { type ResourcePath, resourcePathId } from "./resource-path";
 import { type ToggleResource, toggleResourcesFromPrompt } from "./resources";
 import {
+  resourceIsEnabled,
   type SkillToggleState,
   type SkillToggleStateResult,
   type SkillToggleStateStore,
@@ -22,6 +24,11 @@ export function registerSkillToggle(pi: ExtensionAPI, store: SkillToggleStateSto
   pi.registerCommand("skill-toggle", {
     description: "Enable or disable user-managed instructions and skills",
     handler: (args, ctx) => runToggleCommand(args, ctx, store, stateAccess),
+  });
+  pi.on("resources_discover", (_event, ctx) => {
+    if (!ctx.isProjectTrusted()) return;
+    const skillPaths = discoverProjectSkillPaths(ctx.cwd);
+    return skillPaths.length > 0 ? { skillPaths: [...skillPaths] } : undefined;
   });
   registerPromptHandler(pi, stateAccess);
 }
@@ -163,7 +170,7 @@ function createToggleHandler(session: ToggleSession): (id: string, value: string
     const resource = session.resourcesById.get(id);
     const item = session.itemsById.get(id);
     if (!(resource && item) || resource.editability === "manual-only") return;
-    const previousValue = Object.hasOwn(session.state.resources, id) ? "disabled" : "enabled";
+    const previousValue = resourceIsEnabled(session.state, resource) ? "enabled" : "disabled";
     if (!isToggleValue(value)) {
       item.currentValue = previousValue;
       session.ctx.ui.notify(`Unsupported toggle value: ${value}`, "error");
@@ -186,11 +193,10 @@ function registerPromptHandler(pi: ExtensionAPI, stateAccess: StateAccess): void
     const resources = toggleResourcesFromPrompt(event.systemPromptOptions);
     const state = stateAccess.load(resources, ctx);
     if (!state) return;
-    const eligiblePaths = new Set<string>(resources.map((resource) => resource.id));
     const disabledPaths = new Set<ResourcePath>(
-      Object.keys(state.resources)
-        .filter((path) => eligiblePaths.has(path))
-        .map((path) => resourcePathId(path)),
+      resources
+        .filter((resource) => !resourceIsEnabled(state, resource))
+        .map((resource) => resourcePathId(resource.id)),
     );
     const result = applyResourceToggles(
       event.systemPrompt,
@@ -220,9 +226,9 @@ function buildSettingItems(
     currentValue:
       resource.editability === "manual-only"
         ? "manual only"
-        : Object.hasOwn(state.resources, resource.id)
-          ? "disabled"
-          : "enabled",
+        : resourceIsEnabled(state, resource)
+          ? "enabled"
+          : "disabled",
     ...(resource.editability === "manual-only" ? {} : { values: ["enabled", "disabled"] }),
   }));
 }

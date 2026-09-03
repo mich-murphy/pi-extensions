@@ -5,8 +5,9 @@ model.
 
 ## Command
 
-Run `/skill-toggle` to open one settings list. Changes apply immediately and
-persist across projects and sessions.
+Run `/skill-toggle` to open one settings list. Project skills start disabled and
+must be enabled from this list before Pi advertises them to the model. Changes
+apply immediately and persist across projects and sessions.
 
 Resources are ordered by hierarchy:
 
@@ -21,17 +22,15 @@ every editable skill uses the same values.
 
 Pi may load `AGENTS.override.md`, `AGENTS.md`, or `CLAUDE.md`. The extension
 shows whichever files Pi loaded. It includes only user-managed global and
-project resources. Project-scoped skills may live outside `.pi/skills` and
-`.agents/skills` when the project configures another directory. Package,
-extension-provided, internal, and temporary CLI skills are outside its scope.
-The extension does not discover skills itself. For example, a project that keeps
-skills under `.claude/skills` can expose them to Pi with `.pi/settings.json`:
+project resources. It adds project skill directories used by Pi, Claude Code,
+and Codex: `.pi/skills`, `.agents/skills`, `.claude/skills`, and `.codex/skills`.
+It checks the working directory and each ancestor through the Git root. Projects
+outside a Git worktree are limited to the working directory so a parent user's
+skills are not mistaken for project skills.
 
-```json
-{
-  "skills": ["../.claude/skills"]
-}
-```
+Project-scoped skills may also live elsewhere when project settings configure
+their directory. Package, internal, unrelated extension-provided, and temporary
+CLI skills remain outside the toggle's scope.
 
 A disabled skill remains available through `/skill:name`; the extension only
 removes it from automatic model discovery. A skill that declares
@@ -44,10 +43,12 @@ Disabled resources are stored by absolute discovery path in
 `~/.pi/agent/pi-skill-toggle.json`, or the agent directory selected by Pi's
 configuration. Paths prevent collisions between projects or same-named skills.
 
-Version 3 and older state is discarded when first loaded. Version 4 keeps only
-disabled resources. Writes use a cross-process lock and atomic replacement.
-Settings for existing files remain unchanged. Entries whose source path no
-longer exists are removed during a successful state load.
+Version 3 and older state is discarded when first loaded. Version 4 state is
+migrated to version 5. Version 5 stores only values that differ from the default:
+disabled global resources and enabled project skills. Writes use a cross-process
+lock and atomic replacement. Settings for existing files remain unchanged.
+Entries whose source path no longer exists are removed during a successful state
+load.
 
 ## Failure behavior
 
@@ -61,7 +62,8 @@ silently claiming success.
 - Never edit an instruction file or `SKILL.md`.
 - Never override source-level `disable-model-invocation`.
 - Preserve manual `/skill:name` invocation.
-- Use Pi's loaded resources rather than independently discovering skills.
+- Contribute common project skill directories, then use Pi's loaded resources.
 - Keep global resources before project resources in the menu.
 - Identify resources by path, never by display or project name.
+- Keep project skills model-hidden until the user enables them.
 - Preserve unrelated state during updates and cleanup.

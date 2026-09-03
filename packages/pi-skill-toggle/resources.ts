@@ -1,10 +1,7 @@
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import {
-  type BuildSystemPromptOptions,
-  CONFIG_DIR_NAME,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { type BuildSystemPromptOptions, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { PROJECT_SKILL_RELATIVE_PATHS } from "./project-skill-paths";
 import { type ResourcePath, resourcePathId } from "./resource-path";
 
 /** Kind of model-facing resource controlled by the extension. */
@@ -26,6 +23,11 @@ export interface ToggleResource {
   readonly description: string;
   readonly editability: ToggleResourceEditability;
   readonly order: number;
+}
+
+/** Whether a resource is model-visible before the user sets an override. */
+export function resourceDefaultEnabled(resource: Pick<ToggleResource, "kind" | "origin">): boolean {
+  return resource.kind !== "skill" || resource.origin !== "project";
 }
 
 type ContextFile = NonNullable<BuildSystemPromptOptions["contextFiles"]>[number];
@@ -81,15 +83,20 @@ function skillResource(
   globalSkillRoots: ReadonlyArray<ResourcePath>,
 ): ToggleResource | undefined {
   if (skill.sourceInfo.origin !== "top-level") return undefined;
-  if (skill.sourceInfo.scope !== "user" && skill.sourceInfo.scope !== "project") return undefined;
   const id = resourcePathId(skill.filePath, cwd);
   const globalRoot =
     skill.sourceInfo.scope === "user"
       ? globalSkillRoots.find((root) => isPathInsideOrEqual(id, root))
       : undefined;
-  // Pi's scope is authoritative because project settings may load skills from any directory.
+  const discoveredProjectOwner = projectSkillOwner(id, cwd);
+  // Pi marks paths contributed by resources_discover as temporary, so their location
+  // establishes project ownership. Project settings remain authoritative for other paths.
   const projectOwner =
-    skill.sourceInfo.scope === "project" ? (projectSkillOwner(id, cwd) ?? cwd) : undefined;
+    skill.sourceInfo.scope === "project"
+      ? (discoveredProjectOwner ?? cwd)
+      : skill.sourceInfo.scope === "temporary"
+        ? discoveredProjectOwner
+        : undefined;
   const origin: ToggleResourceOrigin | undefined = globalRoot
     ? "global"
     : projectOwner
@@ -137,7 +144,7 @@ function kindRank(kind: ToggleResourceKind): number {
 }
 
 function projectSkillOwner(path: string, cwd: string): ResourcePath | undefined {
-  const markers = [`${sep}${CONFIG_DIR_NAME}${sep}skills${sep}`, `${sep}.agents${sep}skills${sep}`];
+  const markers = PROJECT_SKILL_RELATIVE_PATHS.map((parts) => `${sep}${parts.join(sep)}${sep}`);
   for (const marker of markers) {
     const markerIndex = path.indexOf(marker);
     if (markerIndex < 0) continue;
