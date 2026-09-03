@@ -96,6 +96,35 @@ describe("toggleResourcesFromPrompt", () => {
     ]);
   });
 
+  test("includes project skills contributed by the extension resource hook", () => {
+    const cwd = "/Users/mm/businesscraft/businesscraft/web";
+    const owner = "/Users/mm/businesscraft/businesscraft";
+    const claudePath = join(owner, ".claude/skills/businesscraft-design/SKILL.md");
+    const codexPath = join(owner, ".codex/skills/businesscraft-review/SKILL.md");
+    const resources = toggleResourcesFromPrompt({
+      cwd,
+      skills: [
+        skill("businesscraft-design", claudePath, {
+          path: claudePath,
+          source: "extension:index",
+          scope: "temporary",
+          origin: "top-level",
+        }),
+        skill("businesscraft-review", codexPath, {
+          path: codexPath,
+          source: "extension:index",
+          scope: "temporary",
+          origin: "top-level",
+        }),
+      ],
+    });
+
+    expect(resources).toMatchObject([
+      { id: claudePath, origin: "project", owner },
+      { id: codexPath, origin: "project", owner },
+    ]);
+  });
+
   test("deduplicates repeated discovery paths", () => {
     const path = join(getAgentDir(), "AGENTS.md");
     const resources = toggleResourcesFromPrompt({

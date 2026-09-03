@@ -55,7 +55,7 @@ async function selectFirstDialogItem(factory: DialogFactory): Promise<void> {
 }
 
 function state(resources: SkillToggleState["resources"] = {}): SkillToggleState {
-  return { version: 4, resources };
+  return { version: 5, resources };
 }
 
 function harness(store: SkillToggleStateStore) {
@@ -72,6 +72,7 @@ function harness(store: SkillToggleStateStore) {
   };
   const ctx = {
     cwd: "/work/project",
+    isProjectTrusted: () => true,
     ui: {
       notify: (message: string) => notifications.push(message),
     },
@@ -116,7 +117,11 @@ describe("extension lifecycle", () => {
       on: (name: string) => registrations.push(`event:${name}`),
     };
     skillToggle(piMock as unknown as ExtensionAPI);
-    expect(registrations).toEqual(["command:skill-toggle", "event:before_agent_start"]);
+    expect(registrations).toEqual([
+      "command:skill-toggle",
+      "event:resources_discover",
+      "event:before_agent_start",
+    ]);
   });
 
   test("registers only the skill-toggle command", () => {
@@ -193,6 +198,47 @@ describe("extension lifecycle", () => {
     expect(writes).toEqual([{ id: skillPath, value: "disabled" }]);
   });
 
+  test("enables a project skill only after the user toggles it", async () => {
+    const projectPath = "/work/project/.agents/skills/deploy/SKILL.md";
+    const projectSkill: Skill = {
+      ...research,
+      name: "deploy",
+      filePath: projectPath,
+      baseDir: join(projectPath, ".."),
+      sourceInfo: {
+        path: projectPath,
+        source: "local",
+        scope: "project",
+        origin: "top-level",
+      },
+    };
+    const writes: Array<{ readonly id: string; readonly value: string }> = [];
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: (resource, value) => {
+        writes.push({ id: resource.id, value });
+        return {
+          _tag: "ok",
+          value: state({
+            [resource.id]: {
+              kind: resource.kind,
+              origin: resource.origin,
+              owner: resource.owner,
+              enabled: true,
+            },
+          }),
+        };
+      },
+    });
+
+    await testHarness.runCommand("", {
+      promptOptions: { cwd: "/work/project", skills: [projectSkill] },
+      custom: selectFirstDialogItem,
+    });
+
+    expect(writes).toEqual([{ id: projectPath, value: "enabled" }]);
+  });
+
   test("restores the prior toggle value when persistence fails", async () => {
     const error = Object.assign(new Error("write failed"), {
       _tag: "SkillToggleStateError" as const,
@@ -262,6 +308,69 @@ describe("extension lifecycle", () => {
     });
 
     expect(result).toEqual({ systemPrompt: "base" });
+  });
+
+  test("hides project skills from the model by default", async () => {
+    const projectPath = "/work/project/.agents/skills/deploy/SKILL.md";
+    const projectSkill: Skill = {
+      ...research,
+      name: "deploy",
+      filePath: projectPath,
+      baseDir: join(projectPath, ".."),
+      sourceInfo: {
+        path: projectPath,
+        source: "local",
+        scope: "project",
+        origin: "top-level",
+      },
+    };
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state() }),
+      setValue: () => ({ _tag: "ok", value: state() }),
+    });
+
+    const result = await testHarness.emit("before_agent_start", {
+      systemPrompt: `base${formatSkillsForPrompt([projectSkill])}`,
+      systemPromptOptions: { cwd: "/work/project", skills: [projectSkill] },
+    });
+
+    expect(result).toEqual({ systemPrompt: "base" });
+  });
+
+  test("advertises an activated project skill to the model", async () => {
+    const projectPath = "/work/project/.agents/skills/deploy/SKILL.md";
+    const projectSkill: Skill = {
+      ...research,
+      name: "deploy",
+      filePath: projectPath,
+      baseDir: join(projectPath, ".."),
+      sourceInfo: {
+        path: projectPath,
+        source: "local",
+        scope: "project",
+        origin: "top-level",
+      },
+    };
+    const enabled = {
+      [projectPath]: {
+        kind: "skill" as const,
+        origin: "project" as const,
+        owner: resourcePathId("/work/project"),
+        enabled: true,
+      },
+    };
+    const testHarness = harness({
+      load: () => ({ _tag: "ok", value: state(enabled) }),
+      setValue: () => ({ _tag: "ok", value: state(enabled) }),
+    });
+    const prompt = `base${formatSkillsForPrompt([projectSkill])}`;
+
+    const result = await testHarness.emit("before_agent_start", {
+      systemPrompt: prompt,
+      systemPromptOptions: { cwd: "/work/project", skills: [projectSkill] },
+    });
+
+    expect(result).toEqual({ systemPrompt: prompt });
   });
 
   test("does not apply stale state to package or other excluded resources", async () => {

@@ -13,24 +13,34 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { type ResourcePath, resourcePathId } from "./resource-path";
-import type { ToggleResource, ToggleResourceKind, ToggleResourceOrigin } from "./resources";
+import {
+  resourceDefaultEnabled,
+  type ToggleResource,
+  type ToggleResourceKind,
+  type ToggleResourceOrigin,
+} from "./resources";
 
-const STATE_VERSION = 4;
+const STATE_VERSION = 5;
 
 const DEFAULT_STATE_PATH = join(getAgentDir(), "pi-skill-toggle.json");
 
-/** One disabled resource retained in persistent state. */
+/** One resource whose persisted value differs from its default. */
 export interface StoredToggleResource {
   readonly kind: ToggleResourceKind;
   readonly origin: ToggleResourceOrigin;
   readonly owner: ResourcePath;
-  readonly enabled: false;
+  readonly enabled: boolean;
 }
 
-/** Parsed version 4 skill-toggle state. */
+/** Parsed version 5 skill-toggle state. */
 export interface SkillToggleState {
   readonly version: typeof STATE_VERSION;
   readonly resources: Readonly<Record<string, StoredToggleResource>>;
+}
+
+/** Resolve a resource's persisted override or its origin-based default. */
+export function resourceIsEnabled(state: SkillToggleState, resource: ToggleResource): boolean {
+  return state.resources[resource.id]?.enabled ?? resourceDefaultEnabled(resource);
 }
 
 /** Requested persisted value for an editable resource. */
@@ -110,7 +120,7 @@ export class SkillToggleStore implements SkillToggleStateStore {
     this.staleLockMs = options.staleLockMs ?? 30_000;
   }
 
-  /** Load state, discard pre-v4 state, and remove entries whose source path no longer exists. */
+  /** Load state, migrate version 4, and remove entries whose source path no longer exists. */
   load(resources: ReadonlyArray<ToggleResource> = []): SkillToggleStateResult {
     return this.run("load", () =>
       this.withLock(() => {
@@ -142,10 +152,14 @@ export class SkillToggleStore implements SkillToggleStateStore {
         const loaded = this.readState();
         const synchronized = synchronizeState(loaded.state, resources);
         const current = { ...synchronized.state.resources };
-        if (value === "enabled" || resource.editability === "manual-only") {
+        const enabled = value === "enabled";
+        if (
+          resource.editability === "manual-only" ||
+          enabled === resourceDefaultEnabled(resource)
+        ) {
           delete current[resource.id];
         } else {
-          current[resource.id] = storedResource(resource);
+          current[resource.id] = storedResource(resource, enabled);
         }
         const state = normalizeState({ version: STATE_VERSION, resources: current });
         this.writeState(state);
@@ -198,7 +212,9 @@ export class SkillToggleStore implements SkillToggleStateStore {
         needsWrite: JSON.stringify(value) !== JSON.stringify(parsed),
       };
     }
-    if (isRecord(value) && typeof value.version === "number" && value.version < STATE_VERSION) {
+    const legacy = parseVersion4State(value);
+    if (legacy) return { state: legacy, needsWrite: true };
+    if (isRecord(value) && typeof value.version === "number" && value.version < 4) {
       return { state: emptyState(), needsWrite: true };
     }
     const version = isRecord(value) && "version" in value ? String(value.version) : "missing";
@@ -273,7 +289,11 @@ function synchronizeState(
       changed = true;
       continue;
     }
-    const updated = resource ? storedResource(resource) : stored;
+    const updated = resource ? storedResource(resource, stored.enabled) : stored;
+    if (updated.enabled === resourceDefaultEnabled(updated)) {
+      changed = true;
+      continue;
+    }
     next[path] = updated;
     if (!storedResourcesEqual(stored, updated)) changed = true;
   }
@@ -287,17 +307,22 @@ function isResourceToggleValue(value: unknown): value is ResourceToggleValue {
   return value === "enabled" || value === "disabled";
 }
 
-function storedResource(resource: ToggleResource): StoredToggleResource {
+function storedResource(resource: ToggleResource, enabled: boolean): StoredToggleResource {
   return {
     kind: resource.kind,
     origin: resource.origin,
     owner: resource.owner,
-    enabled: false,
+    enabled,
   };
 }
 
 function storedResourcesEqual(left: StoredToggleResource, right: StoredToggleResource): boolean {
-  return left.kind === right.kind && left.origin === right.origin && left.owner === right.owner;
+  return (
+    left.kind === right.kind &&
+    left.origin === right.origin &&
+    left.owner === right.owner &&
+    left.enabled === right.enabled
+  );
 }
 
 function normalizeState(state: SkillToggleState): SkillToggleState {
@@ -310,7 +335,7 @@ function normalizeState(state: SkillToggleState): SkillToggleState {
             kind: resource.kind,
             origin: resource.origin,
             owner: resourcePathId(resource.owner),
-            enabled: false as const,
+            enabled: resource.enabled,
           },
         ] as const,
     )
@@ -333,6 +358,21 @@ function parseSkillToggleState(value: unknown): SkillToggleState | undefined {
       kind: resource.kind,
       origin: resource.origin,
       owner: resourcePathId(resource.owner),
+      enabled: resource.enabled,
+    };
+  }
+  return normalizeState({ version: STATE_VERSION, resources });
+}
+
+function parseVersion4State(value: unknown): SkillToggleState | undefined {
+  if (!isRecord(value) || value.version !== 4 || !isRecord(value.resources)) return undefined;
+  const resources: Record<string, StoredToggleResource> = {};
+  for (const [path, resource] of Object.entries(value.resources)) {
+    if (!isRawVersion4Resource(resource)) return undefined;
+    resources[resourcePathId(path)] = {
+      kind: resource.kind,
+      origin: resource.origin,
+      owner: resourcePathId(resource.owner),
       enabled: false,
     };
   }
@@ -343,15 +383,24 @@ function isRawStoredToggleResource(value: unknown): value is {
   readonly kind: ToggleResourceKind;
   readonly origin: ToggleResourceOrigin;
   readonly owner: string;
-  readonly enabled: false;
+  readonly enabled: boolean;
 } {
   return (
     isRecord(value) &&
     (value.kind === "instruction" || value.kind === "skill") &&
     (value.origin === "global" || value.origin === "project") &&
     typeof value.owner === "string" &&
-    value.enabled === false
+    typeof value.enabled === "boolean"
   );
+}
+
+function isRawVersion4Resource(value: unknown): value is {
+  readonly kind: ToggleResourceKind;
+  readonly origin: ToggleResourceOrigin;
+  readonly owner: string;
+  readonly enabled: false;
+} {
+  return isRawStoredToggleResource(value) && value.enabled === false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -61,7 +61,7 @@ function loaded(result: SkillToggleStateResult) {
 }
 
 describe("SkillToggleStore", () => {
-  test("stores disabled resources by path and preserves same-named resources independently", () => {
+  test("stores enabled project resources by path and preserves same-named resources independently", () => {
     const context = testContext();
     const firstPath = join(context.directory, "client-a", "deploy", "SKILL.md");
     const secondPath = join(context.directory, "client-b", "deploy", "SKILL.md");
@@ -72,8 +72,8 @@ describe("SkillToggleStore", () => {
     const first = resource(firstPath, "deploy");
     const second = resource(secondPath, "deploy");
 
-    loaded(context.store.setValue(first, "disabled", [first, second]));
-    const state = loaded(context.store.setValue(second, "disabled", [first, second]));
+    loaded(context.store.setValue(first, "enabled", [first, second]));
+    const state = loaded(context.store.setValue(second, "enabled", [first, second]));
 
     expect(Object.keys(state.resources)).toEqual([firstPath, secondPath]);
   });
@@ -103,32 +103,32 @@ describe("SkillToggleStore", () => {
     writeFileSync(removedPath, "removed");
     const retained = resource(retainedPath, "same-name");
     const removed = resource(removedPath, "same-name");
-    loaded(context.store.setValue(retained, "disabled", [retained, removed]));
-    loaded(context.store.setValue(removed, "disabled", [retained, removed]));
+    loaded(context.store.setValue(retained, "enabled", [retained, removed]));
+    loaded(context.store.setValue(removed, "enabled", [retained, removed]));
 
     rmSync(removedPath);
     const state = loaded(context.store.load([retained]));
 
     expect(Object.keys(state.resources)).toEqual([retainedPath]);
-    expect(state.resources[retainedPath]).toMatchObject({ enabled: false });
+    expect(state.resources[retainedPath]).toMatchObject({ enabled: true });
   });
 
-  test("enabling and manual-only updates remove persisted overrides", () => {
+  test("project defaults and manual-only updates remove persisted overrides", () => {
     const context = testContext();
     const path = join(context.directory, "toggle", "SKILL.md");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "toggle");
     const editable = resource(path, "toggle");
-    loaded(context.store.setValue(editable, "disabled", [editable]));
+    loaded(context.store.setValue(editable, "enabled", [editable]));
 
-    expect(loaded(context.store.setValue(editable, "enabled", [editable])).resources).toEqual({});
-    loaded(context.store.setValue(editable, "disabled", [editable]));
+    expect(loaded(context.store.setValue(editable, "disabled", [editable])).resources).toEqual({});
+    loaded(context.store.setValue(editable, "enabled", [editable]));
     const locked = resource(path, "toggle", "project", "manual-only");
 
-    expect(loaded(context.store.setValue(locked, "disabled", [locked])).resources).toEqual({});
+    expect(loaded(context.store.setValue(locked, "enabled", [locked])).resources).toEqual({});
   });
 
-  test("synchronizes persisted metadata when a resource changes origin", () => {
+  test("removes an override when changed metadata makes it the default", () => {
     const context = testContext();
     const path = join(context.directory, "moved", "SKILL.md");
     mkdirSync(dirname(path), { recursive: true });
@@ -137,9 +137,7 @@ describe("SkillToggleStore", () => {
     loaded(context.store.setValue(global, "disabled", [global]));
     const project = resource(path, "moved", "project");
 
-    const synchronized = loaded(context.store.load([project]));
-
-    expect(synchronized.resources[path]).toMatchObject({ origin: "project" });
+    expect(loaded(context.store.load([project])).resources).toEqual({});
   });
 
   test("source-authored manual-only skills cannot retain an extension override", () => {
@@ -148,7 +146,7 @@ describe("SkillToggleStore", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "manual");
     const editable = resource(path, "manual");
-    loaded(context.store.setValue(editable, "disabled", [editable]));
+    loaded(context.store.setValue(editable, "enabled", [editable]));
 
     const locked = resource(path, "manual", "project", "manual-only");
     const state = loaded(context.store.load([locked]));
@@ -169,8 +167,45 @@ describe("SkillToggleStore", () => {
 
     expect(loaded(context.store.load()).resources).toEqual({});
     expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toEqual({
-      version: 4,
+      version: 5,
       resources: {},
+    });
+  });
+
+  test("migrates version 4 while dropping project-skill disables that are now defaults", () => {
+    const context = testContext();
+    const globalPath = join(context.directory, "global", "SKILL.md");
+    const projectPath = join(context.directory, "project", "SKILL.md");
+    mkdirSync(dirname(globalPath), { recursive: true });
+    mkdirSync(dirname(projectPath), { recursive: true });
+    writeFileSync(globalPath, "global");
+    writeFileSync(projectPath, "project");
+    const global = resource(globalPath, "global", "global");
+    const project = resource(projectPath, "project");
+    mkdirSync(dirname(context.statePath), { recursive: true });
+    writeFileSync(
+      context.statePath,
+      JSON.stringify({
+        version: 4,
+        resources: {
+          [globalPath]: { kind: "skill", origin: "global", owner: global.owner, enabled: false },
+          [projectPath]: {
+            kind: "skill",
+            origin: "project",
+            owner: project.owner,
+            enabled: false,
+          },
+        },
+      }),
+    );
+
+    const migrated = loaded(context.store.load([global, project]));
+
+    expect(migrated).toEqual({
+      version: 5,
+      resources: {
+        [globalPath]: { kind: "skill", origin: "global", owner: global.owner, enabled: false },
+      },
     });
   });
 
@@ -190,26 +225,32 @@ describe("SkillToggleStore", () => {
       null,
       [],
       {},
-      { version: 4 },
-      { version: 4, resources: [] },
-      { version: 5, resources: {} },
-      { version: 4, resources: { "/skill": null } },
+      { version: 5 },
+      { version: 5, resources: [] },
+      { version: 6, resources: {} },
+      { version: 5, resources: { "/skill": null } },
       {
-        version: 4,
+        version: 5,
         resources: {
           "/skill": { kind: "other", origin: "global", owner: "/", enabled: false },
         },
       },
       {
-        version: 4,
+        version: 5,
         resources: {
           "/skill": { kind: "skill", origin: "other", owner: "/", enabled: false },
         },
       },
       {
-        version: 4,
+        version: 5,
         resources: {
           "/skill": { kind: "skill", origin: "global", owner: 1, enabled: false },
+        },
+      },
+      {
+        version: 5,
+        resources: {
+          "/skill": { kind: "skill", origin: "global", owner: "/", enabled: "yes" },
         },
       },
       {
@@ -235,7 +276,7 @@ describe("SkillToggleStore", () => {
     mkdirSync(dirname(abandoned.statePath), { recursive: true });
     writeFileSync(`${abandoned.statePath}.lock`, "999999\n");
 
-    expect(loaded(abandoned.store.load())).toEqual({ version: 4, resources: {} });
+    expect(loaded(abandoned.store.load())).toEqual({ version: 5, resources: {} });
 
     const stale = testContext({ lockTimeoutMs: 100, staleLockMs: 1 });
     mkdirSync(dirname(stale.statePath), { recursive: true });
@@ -244,7 +285,7 @@ describe("SkillToggleStore", () => {
     const old = new Date(0);
     utimesSync(staleLockPath, old, old);
 
-    expect(loaded(stale.store.load())).toEqual({ version: 4, resources: {} });
+    expect(loaded(stale.store.load())).toEqual({ version: 5, resources: {} });
   });
 
   test("does not remove active or fresh invalid state locks", () => {
