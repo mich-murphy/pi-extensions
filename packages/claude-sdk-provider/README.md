@@ -23,14 +23,16 @@ This Pi extension routes model turns through Anthropic's official Claude Agent S
 
 Open `/model` and select one of:
 
-- `claude-sdk/sonnet`
-- `claude-sdk/opus`
-- `claude-sdk/fable` (Claude Fable 5.1)
-- `claude-sdk/haiku`
+- `claude-sdk/claude-5-sonnet`
+- `claude-sdk/claude-5-opus`
+- `claude-sdk/claude-5.1-fable` (Claude Fable 5.1)
+- `claude-sdk/claude-4.5-haiku`
+
+Model IDs are version-aligned with Pi's other providers (`claude-<version>-<model>`, like `gpt-5.2-codex` or `glm-4.6`). Each version segment names the model the alias resolves to under the bundled Claude Code. Earlier releases exposed the bare aliases (`claude-sdk/sonnet` and friends); update any saved default model to the new IDs.
 
 This provider is experimental. For cache-sensitive or API-billed work, select Pi's standard `anthropic/...` provider until the Agent SDK path has accumulated stable cache diagnostics.
 
-Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
+Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`, and to show each model's advertised ID next to the canonical model it actually resolves to. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
 
 Failed turns include a stable category such as `usage-limit`, `network`, `timeout`, `protocol`, or `tool-contract`. The provider also writes one `[claude-sdk-error]` JSON record to stderr. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause.
 
@@ -63,10 +65,17 @@ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi
 
 Each request emits a `[claude-sdk-cache]` JSON line on stderr. Consecutive request records include `commonPrefixBlocks` and `commonPrefixCharacters`; usage records include `cacheReadPercent` and flag a large turn below 50% reuse as `possibleCollapse`. Use these records to distinguish local prefix divergence from an upstream cache miss.
 
+## Model routing
+
+Each advertised ID routes to a Claude Code moving alias (`sonnet`, `opus`, `fable`, `haiku`), and `models.ts` records the concrete model each alias resolves to under the pinned Agent SDK. Two checks keep that table honest:
+
+- Every turn observes the concrete model the main conversation ran on, taken from the SDK's `message_start` message. `/claude-sdk-status` prints the advertised ID, selector, and last observed model per family and flags any mismatch against the table.
+- The live upgrade gate probes every advertised model and fails when the observed model or context window differs from the table, so an alias that moved with a new Claude Code bundle is caught before the SDK pin lands.
+
 ## Current boundaries
 
 - Image input is limited to Anthropic's JPEG, PNG, GIF, and WebP formats. Unsupported images become deterministic text notes so they cannot permanently break transcript replay.
-- Model IDs use Claude Code's documented moving aliases (`sonnet`, `opus`, `fable`, and `haiku`), so the underlying model can change when Anthropic updates an alias. With bundled Claude Code 2.1.258, `fable` resolves to Claude Fable 5.1.
+- Pi-facing model IDs are version-aligned (`claude-5-sonnet`, `claude-5-opus`, `claude-5.1-fable`, `claude-4.5-haiku`), and each request names Claude Code's documented moving alias (`sonnet`, `opus`, `fable`, `haiku`) to the Agent SDK. The Agent SDK ships its own Claude Code binary, so alias resolutions move only when the pinned SDK is upgraded; with bundled Claude Code 2.1.263, `fable` resolves to Claude Fable 5.1, `opus` to Claude Opus 5, `sonnet` to Claude Sonnet 5, and `haiku` to Claude Haiku 4.5. The live gate fails when an alias resolution or context window no longer matches `models.ts`, so the table is updated together with the SDK pin.
 - Fable, Opus, and Sonnet are declared with their current 1M context windows and 128K maximum output. Haiku keeps its 200K context window and 64K maximum output. Haiku 4.5 does not support the Agent SDK's `effort` option, so the provider omits effort-based reasoning settings for every Haiku request, including requests from headless callers and Pi sub-agents.
 - Pi records subscription cost as zero. Token usage is retained when the SDK reports it, but Pi cannot infer the monetary value of an included subscription allocation.
 - Reasoning/thinking deltas are streamed to Pi as a `thinking` content block, but the block is dropped (not replayed) when a later turn re-serializes the transcript — thinking is ephemeral, not part of the durable Pi conversation.
@@ -80,8 +89,8 @@ Before changing the pinned SDK version:
 
 1. Update the exact dependency and lockfile.
 2. Authenticate the local Claude Code installation intended for the live check.
-3. Run `npm run test:claude-sdk-upgrade`. It first sends two small Fable requests to verify normal text streaming plus the real deferred Pi tool-call contract, then checks the pinned versions.
-4. Only after that command passes, update `sdk-release-contract.json` with the SDK version, bundled Claude Code version, UTC verification time, and observed defer shape.
+3. Run `npm run test:claude-sdk-upgrade`. It sends two small Fable requests to verify normal text streaming plus the real deferred Pi tool-call contract, then probes every registered model to assert the advertised IDs and context windows match what the new bundled Claude Code actually serves (fix `models.ts` if the probe reports a moved alias), then checks the pinned versions.
+4. Only after that command passes, update `sdk-release-contract.json` with the SDK version, bundled Claude Code version, UTC verification time, and observed defer shape. The attestation's `contracts` tuple lists every live-verified contract, including `advertised-models`.
 5. Run `npm run check` before publishing the change. Include the live command and result in the pull request for reviewer verification.
 
 Do not update the attestation from a mocked result or a text-only model check. GitHub-hosted CI has no Claude subscription credential, so it validates version consistency and the committed attestation but does not pretend to prove the workstation live check. The reviewer owns that external-evidence decision.
@@ -95,5 +104,5 @@ npm run test:claude-sdk-upgrade
 pi --list-models claude-sdk
 
 # Optional live cache trace (inspect stderr; no raw prompt content is logged)
-PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi --model claude-sdk/sonnet
+PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi --model claude-sdk/claude-5-sonnet
 ```

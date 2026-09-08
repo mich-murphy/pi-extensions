@@ -15,7 +15,11 @@ const releaseContractSchema = z.object({
   bundledClaudeCodeVersion: z.string(),
   verifiedAt: z.iso.datetime(),
   model: z.literal("fable"),
-  contracts: z.tuple([z.literal("text-response"), z.literal("deferred-tool-call")]),
+  contracts: z.tuple([
+    z.literal("text-response"),
+    z.literal("deferred-tool-call"),
+    z.literal("advertised-models"),
+  ]),
   observedDeferredResult: z.literal("stop_reason:tool_deferred"),
 });
 

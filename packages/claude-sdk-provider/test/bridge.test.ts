@@ -17,6 +17,7 @@ import {
   SdkResultError,
 } from "../sdk/errors";
 import { resultOutcome, translateSdkStreamEvent } from "../sdk/event-translation";
+import type { ModelObservation } from "../sdk/model-usage";
 import { buildPromptStream } from "../sdk/prompt-stream";
 import { createClaudeAgentSdkRunner, type RunSdkQuery } from "../sdk/runner";
 import { subscriptionEnvironment } from "../sdk/subscription-environment";
@@ -66,7 +67,7 @@ describe("serializeConversation", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const firstRequest: AgentRequest = {
       systemPrompt: "stable system prompt",
@@ -117,15 +118,157 @@ describe("serializeConversation", () => {
   });
 
   test("registers Haiku with its Agent SDK limits and without effort-based reasoning", () => {
-    const haiku = models.find((model) => model.id === "haiku");
+    const haiku = models.find((model) => model.id === "claude-4.5-haiku");
 
     expect(haiku).toMatchObject({
-      name: "Claude Haiku (official Agent SDK)",
+      name: "Claude Haiku 4.5 (official Agent SDK)",
       reasoning: false,
       input: ["text", "image"],
       contextWindow: 200_000,
       maxTokens: 64_000,
     });
+  });
+
+  test("routes each registered versioned model ID to its Claude Code moving alias", async () => {
+    const sdkRequests: Array<Parameters<RunSdkQuery>[0]> = [];
+    const runSdkQuery: RunSdkQuery = (params) => {
+      sdkRequests.push(params);
+      return (async function* () {})();
+    };
+    const runner = createClaudeAgentSdkRunner(runSdkQuery);
+    const request: AgentRequest = {
+      systemPrompt: "stable system prompt",
+      promptBlocks: [{ text: "hello" }],
+      toolDescription: "stable tools",
+      toolNames: [],
+      conversationEntries: [],
+    };
+
+    for (const model of models) {
+      await drain(
+        runner(request, modelFixture({ ...model, api: "claude-sdk", provider: "claude-sdk" })),
+      );
+    }
+
+    expect(sdkRequests.map(({ options }) => options?.model)).toEqual([
+      "sonnet",
+      "opus",
+      "fable",
+      "haiku",
+    ]);
+  });
+
+  test("passes unknown model IDs through to the Agent SDK unchanged", async () => {
+    const sdkRequests: Array<Parameters<RunSdkQuery>[0]> = [];
+    const runSdkQuery: RunSdkQuery = (params) => {
+      sdkRequests.push(params);
+      return (async function* () {})();
+    };
+    const runner = createClaudeAgentSdkRunner(runSdkQuery);
+    const request: AgentRequest = {
+      systemPrompt: "stable system prompt",
+      promptBlocks: [{ text: "hello" }],
+      toolDescription: "stable tools",
+      toolNames: [],
+      conversationEntries: [],
+    };
+
+    for (const id of ["best", "claude-mythos-5-1"]) {
+      await drain(runner(request, modelFixture({ api: "claude-sdk", provider: "claude-sdk", id })));
+    }
+
+    expect(sdkRequests.map(({ options }) => options?.model)).toEqual(["best", "claude-mythos-5-1"]);
+  });
+
+  test("reports the observed model resolution from a completed turn", async () => {
+    const observations: ModelObservation[] = [];
+    const runSdkQuery: RunSdkQuery = () =>
+      (async function* () {
+        yield {
+          type: "stream_event",
+          event: {
+            type: "message_start",
+            message: {
+              model: "claude-sonnet-5",
+              usage: {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+              },
+            },
+          },
+        };
+        yield {
+          type: "result",
+          is_error: false,
+          stop_reason: "end_turn",
+          modelUsage: {
+            "claude-haiku-4-5-20251001": {
+              canonicalModel: "claude-haiku-4-5",
+              contextWindow: 200_000,
+            },
+            "claude-sonnet-5": { canonicalModel: "claude-sonnet-5", contextWindow: 1_000_000 },
+          },
+        };
+      })();
+    const runner = createClaudeAgentSdkRunner(runSdkQuery, {
+      modelObserver: (observation) => observations.push(observation),
+    });
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "claude-5-sonnet",
+    });
+    const request: AgentRequest = {
+      systemPrompt: "stable system prompt",
+      promptBlocks: [{ text: "hello" }],
+      toolDescription: "stable tools",
+      toolNames: [],
+      conversationEntries: [],
+    };
+
+    const events = await drain(runner(request, model));
+
+    expect(events).toEqual([
+      { type: "usage", input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      { type: "done", reason: "stop" },
+    ]);
+    expect(observations).toEqual([
+      {
+        selector: "sonnet",
+        canonicalModel: "claude-sonnet-5",
+        contextWindow: 1_000_000,
+      },
+    ]);
+  });
+
+  test("reports no observation when a result carries no usable model usage", async () => {
+    const observations: ModelObservation[] = [];
+    const runSdkQuery: RunSdkQuery = () =>
+      (async function* () {
+        yield { type: "result", is_error: false, stop_reason: "end_turn" };
+      })();
+    const runner = createClaudeAgentSdkRunner(runSdkQuery, {
+      modelObserver: (observation) => observations.push(observation),
+    });
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "claude-5-sonnet",
+    });
+    const request: AgentRequest = {
+      systemPrompt: "stable system prompt",
+      promptBlocks: [{ text: "hello" }],
+      toolDescription: "stable tools",
+      toolNames: [],
+      conversationEntries: [],
+    };
+
+    const events = await drain(runner(request, model));
+
+    expect(events).toEqual([{ type: "done", reason: "stop" }]);
+    expect(observations).toEqual([]);
   });
 
   test("omits effort for Haiku regardless of the reasoning level supplied by a caller", async () => {
@@ -135,7 +278,7 @@ describe("serializeConversation", () => {
       return (async function* () {})();
     };
     const runner = createClaudeAgentSdkRunner(runSdkQuery);
-    const haiku = models.find((candidate) => candidate.id === "haiku");
+    const haiku = models.find((candidate) => candidate.id === "claude-4.5-haiku");
     expect(haiku).toBeDefined();
     const model = modelFixture({
       ...haiku,
@@ -210,7 +353,7 @@ describe("conversation serialization", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     const run = async function* (): AsyncGenerator<BridgeEvent> {
@@ -254,7 +397,7 @@ describe("conversation serialization", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     const run = async function* (): AsyncGenerator<BridgeEvent> {
@@ -297,7 +440,7 @@ describe("provider event streaming", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     const run = async function* (): AsyncGenerator<BridgeEvent> {
@@ -331,7 +474,7 @@ describe("provider event streaming", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     const run = async function* (): AsyncGenerator<BridgeEvent> {
@@ -361,7 +504,7 @@ describe("provider event streaming", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     const run = async function* (): AsyncGenerator<BridgeEvent> {
@@ -440,7 +583,7 @@ describe("subscription environment", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -487,7 +630,7 @@ describe("subscription environment", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = async function* (params) {
       yield* [];
@@ -529,7 +672,7 @@ describe("SDK query cancellation", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     let queryStarted = false;
     const runSdkQuery: RunSdkQuery = () => {
@@ -556,7 +699,7 @@ describe("SDK query cancellation", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     let markTextYielded = (): void => {
@@ -620,7 +763,11 @@ describe("SDK query cancellation", () => {
       toolNames: [],
       conversationEntries: [],
     };
-    const model = modelFixture({ api: "claude-sdk", provider: "claude-sdk", id: "sonnet" });
+    const model = modelFixture({
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      id: "claude-5-sonnet",
+    });
     const runSdkQuery: RunSdkQuery = async function* () {
       yield {
         type: "stream_event",
@@ -678,7 +825,7 @@ describe("SDK query cancellation", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -716,7 +863,7 @@ describe("deferred tool isolation", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const makeRun = (
@@ -814,7 +961,7 @@ describe("deferred tool retries", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -870,7 +1017,7 @@ describe("deferred tool retries", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -923,7 +1070,7 @@ describe("deferred tool retry limits", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -981,7 +1128,7 @@ describe("deferred tool retry limits", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -1044,7 +1191,7 @@ describe("deferred tool termination", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
 
     const runSdkQuery: RunSdkQuery = async function* (params) {
@@ -1092,7 +1239,7 @@ describe("deferred tool termination", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = async function* () {
       yield { type: "result", is_error: false, stop_reason: "tool_deferred" };
@@ -1119,7 +1266,7 @@ describe("deferred tool termination", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = async function* (params) {
       const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
@@ -1158,7 +1305,7 @@ describe("deferred tool termination", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = async function* (params) {
       const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
@@ -1730,7 +1877,7 @@ describe("unsupported image mime types", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = () =>
       (async function* () {
@@ -1788,7 +1935,7 @@ describe("buildPromptStream", () => {
     const model = modelFixture({
       api: "claude-sdk",
       provider: "claude-sdk",
-      id: "sonnet",
+      id: "claude-5-sonnet",
     });
     const runSdkQuery: RunSdkQuery = async function* ({ prompt }) {
       const [message] = await drain(sdkPromptFixture(prompt));
