@@ -4,6 +4,7 @@ import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
+import { sdkModelSelectorFor } from "../models";
 import {
   createDeferredPiCallTool,
   createPreToolUseHook,
@@ -23,11 +24,22 @@ import {
   resultOutcome,
   translateSdkStreamEvent,
 } from "./event-translation";
+import { contextWindowForModel, type ModelObservation, mainLoopModel } from "./model-usage";
 import { buildPromptStream } from "./prompt-stream";
 import { subscriptionEnvironment } from "./subscription-environment";
 
 /** Injectable Claude Agent SDK query function used by the runner and its tests. */
 export type RunSdkQuery = (params: Parameters<typeof query>[0]) => AsyncIterable<unknown>;
+
+/** Receives the model usage observed on a terminal SDK result. */
+export type ModelObserver = (observation: ModelObservation) => void;
+
+/** Optional runner collaborators. Each falls back to production behaviour. */
+export interface RunnerOptions {
+  readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
+  readonly sdkEnvironment?: Readonly<Record<string, string | undefined>>;
+  readonly modelObserver?: ModelObserver;
+}
 
 type UsageEvent = Required<Extract<BridgeEvent, { type: "usage" }>>;
 type QueryStart =
@@ -40,6 +52,7 @@ type TurnDependencies = {
   readonly runSdkQuery: RunSdkQuery;
   readonly cacheDiagnostics: CacheDiagnosticTracker | undefined;
   readonly sdkEnvironment: Readonly<Record<string, string | undefined>>;
+  readonly modelObserver: ModelObserver | undefined;
 };
 
 const MAX_INVALID_PI_CALLS = 3;
@@ -77,13 +90,17 @@ class ClaudeSdkTurn {
   private latestUsage: UsageEvent | undefined;
   private outcome: Extract<ResultOutcome, { _tag: "success" }> | undefined;
   private diagnosticTurn: number | undefined;
+  private readonly sdkModelSelector: string;
+  private observedModel: string | undefined;
 
   constructor(
     private readonly request: AgentRequest,
     private readonly model: Model<Api>,
     private readonly options: SimpleStreamOptions | undefined,
     private readonly dependencies: TurnDependencies,
-  ) {}
+  ) {
+    this.sdkModelSelector = sdkModelSelectorFor(model.id);
+  }
 
   async *run(): AsyncGenerator<BridgeEvent> {
     const removeAbortListener = this.forwardCancellation();
@@ -143,7 +160,7 @@ class ClaudeSdkTurn {
       options: {
         abortController: this.abortController,
         cwd: process.cwd(),
-        model: this.model.id,
+        model: this.sdkModelSelector,
         ...reasoningOptions(this.model, this.options?.reasoning),
         includePartialMessages: true,
         persistSession: false,
@@ -206,6 +223,7 @@ class ClaudeSdkTurn {
   private processMessage(message: unknown): MessageAction {
     const asRecord = record(message);
     if (asRecord?.type === "result") return this.processResult(asRecord);
+    this.trackObservedModel(asRecord);
     const translated = translateSdkStreamEvent(message);
     if (translated._tag === "err") return { _tag: "fail", error: translated.error };
     if (translated.value?.type !== "usage") {
@@ -215,7 +233,25 @@ class ClaudeSdkTurn {
     return { _tag: "emit", event: this.latestUsage };
   }
 
+  private trackObservedModel(message: Record<string, unknown> | undefined): void {
+    if (!this.dependencies.modelObserver) return;
+    const model = mainLoopModel(message);
+    if (model) this.observedModel ??= model;
+  }
+
+  private observeModel(message: Record<string, unknown>): void {
+    const observer = this.dependencies.modelObserver;
+    const model = this.observedModel;
+    if (!observer || !model) return;
+    observer({
+      selector: this.sdkModelSelector,
+      canonicalModel: model,
+      contextWindow: contextWindowForModel(message, model),
+    });
+  }
+
   private processResult(message: Record<string, unknown>): MessageAction {
+    this.observeModel(message);
     const parsed = resultOutcome(message);
     if (parsed._tag !== "success") return { _tag: "fail", error: parsed.error };
     this.outcome = parsed;
@@ -306,10 +342,18 @@ function usageValue(value: number | undefined, previous: number): number {
 /** Create a stateless Claude Agent SDK runner. */
 export function createClaudeAgentSdkRunner(
   runSdkQuery: RunSdkQuery = query,
-  cacheDiagnostics?: CacheDiagnosticTracker,
-  sdkEnvironment: Readonly<Record<string, string | undefined>> = subscriptionEnvironment(),
+  {
+    cacheDiagnostics,
+    sdkEnvironment = subscriptionEnvironment(),
+    modelObserver,
+  }: RunnerOptions = {},
 ): AgentSdkRun {
-  const dependencies: TurnDependencies = { runSdkQuery, cacheDiagnostics, sdkEnvironment };
+  const dependencies: TurnDependencies = {
+    runSdkQuery,
+    cacheDiagnostics,
+    sdkEnvironment,
+    modelObserver,
+  };
   return (request, model, options) =>
     new ClaudeSdkTurn(request, model, options, dependencies).run();
 }

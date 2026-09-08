@@ -2,10 +2,13 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import type { AgentRequest } from "../agent-request";
 import type { BridgeEvent } from "../bridge";
-import { createClaudeAgentSdkRunner } from "../sdk/runner";
+import { models, undatedModelId } from "../models";
+import type { ModelObservation } from "../sdk/model-usage";
+import { createClaudeAgentSdkRunner, type RunnerOptions } from "../sdk/runner";
+import { modelFixture } from "./fixtures";
 
 const model: Model<Api> = {
-  id: "fable",
+  id: "claude-5.1-fable",
   name: "Claude Fable 5.1 live contract",
   api: "claude-sdk",
   provider: "claude-sdk",
@@ -17,9 +20,16 @@ const model: Model<Api> = {
   maxTokens: 128_000,
 };
 
-async function collect(request: AgentRequest): Promise<ReadonlyArray<BridgeEvent>> {
+async function collect(
+  request: AgentRequest,
+  probeModel: Model<Api> = model,
+  options: RunnerOptions = {},
+): Promise<ReadonlyArray<BridgeEvent>> {
   const events: BridgeEvent[] = [];
-  for await (const event of createClaudeAgentSdkRunner()(request, model)) events.push(event);
+  const runner = createClaudeAgentSdkRunner(undefined, options);
+  for await (const event of runner(request, probeModel)) {
+    events.push(event);
+  }
   return events;
 }
 
@@ -69,5 +79,29 @@ describe("pinned Claude Agent SDK live contract", () => {
       arguments: { value: "CLAUDE_SDK_TOOL_OK" },
     });
     expect(events.some((event) => event.type === "failed")).toBe(false);
+  });
+
+  test("serves the advertised model id and limits for every registered selector", async () => {
+    for (const entry of models) {
+      const observations: ModelObservation[] = [];
+      const probeModel = modelFixture({
+        ...entry,
+        api: "claude-sdk",
+        provider: "claude-sdk",
+      });
+
+      const events = await collect(
+        request('Reply with exactly "CLAUDE_SDK_MODEL_OK".'),
+        probeModel,
+        { modelObserver: (observation) => observations.push(observation) },
+      );
+
+      expect(events.at(-1)).toEqual({ type: "done", reason: "stop" });
+      expect(observations).toHaveLength(1);
+      const observation = observations[0];
+      if (!observation) throw new Error("test setup: no model observation recorded");
+      expect(undatedModelId(observation.canonicalModel)).toBe(entry.canonicalModel);
+      expect(observation.contextWindow).toBe(entry.contextWindow);
+    }
   });
 });

@@ -1,60 +1,20 @@
-import {
-  type ExtensionAPI,
-  isToolCallEventType,
-  type ProviderModelConfig,
-} from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { type AgentSdkRun, createAgentSdkStream } from "./bridge";
 import { cacheDiagnosticsFromEnvironment } from "./cache-diagnostics";
+import { formatModelStatus, models, providerModel } from "./models";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "./output-safety";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
 import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
 import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
 
-const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+export { models } from "./models";
 
-/** Models exposed by the official Claude Agent SDK provider. */
-export const models: ReadonlyArray<ProviderModelConfig> = [
-  {
-    id: "sonnet",
-    name: "Claude Sonnet (official Agent SDK)",
-    reasoning: true,
-    input: ["text", "image"],
-    cost: subscriptionCost,
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "opus",
-    name: "Claude Opus (official Agent SDK)",
-    reasoning: true,
-    input: ["text", "image"],
-    cost: subscriptionCost,
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "fable",
-    name: "Claude Fable 5.1 (official Agent SDK)",
-    reasoning: true,
-    input: ["text", "image"],
-    cost: subscriptionCost,
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "haiku",
-    name: "Claude Haiku (official Agent SDK)",
-    reasoning: false,
-    input: ["text", "image"],
-    cost: subscriptionCost,
-    contextWindow: 200_000,
-    maxTokens: 64_000,
-  },
-];
-
-function registerStatusCommands(pi: ExtensionAPI): void {
+function registerStatusCommands(
+  pi: ExtensionAPI,
+  observedModels: ReadonlyMap<string, string>,
+): void {
   pi.registerCommand("claude-sdk-status", {
-    description: "Show Agent SDK and Claude Code versions",
+    description: "Show Agent SDK versions and observed model mappings",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       const result = await inspectClaudeSdkVersions();
@@ -63,7 +23,7 @@ function registerStatusCommands(pi: ExtensionAPI): void {
         return;
       }
       ctx.ui.notify(
-        formatClaudeSdkVersionStatus(result.value),
+        `${formatClaudeSdkVersionStatus(result.value)}\n\n${formatModelStatus(observedModels)}`,
         result.value.updateSuggested ? "warning" : "info",
       );
     },
@@ -112,7 +72,7 @@ function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): voi
     baseUrl: "agent-sdk://local-claude-code",
     apiKey: "claude-sdk-managed-auth",
     api: "claude-sdk",
-    models: [...models],
+    models: models.map(providerModel),
     streamSimple: (model, context, options) =>
       createAgentSdkStream(model, context, options, runClaudeAgentSdk),
   });
@@ -120,11 +80,15 @@ function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): voi
 
 /** Register the Claude Agent SDK provider and bash-output safety hooks. */
 export default function registerClaudeSdkProvider(pi: ExtensionAPI): void {
-  const runClaudeAgentSdk = createClaudeAgentSdkRunner(
-    undefined,
-    cacheDiagnosticsFromEnvironment(),
-  );
-  registerStatusCommands(pi);
+  // Selector -> concrete model last observed on a real turn, for /claude-sdk-status.
+  const observedModels = new Map<string, string>();
+  const runClaudeAgentSdk = createClaudeAgentSdkRunner(undefined, {
+    cacheDiagnostics: cacheDiagnosticsFromEnvironment(),
+    modelObserver: (observation) => {
+      observedModels.set(observation.selector, observation.canonicalModel);
+    },
+  });
+  registerStatusCommands(pi, observedModels);
   registerSafetyHooks(pi);
   registerProvider(pi, runClaudeAgentSdk);
 }
