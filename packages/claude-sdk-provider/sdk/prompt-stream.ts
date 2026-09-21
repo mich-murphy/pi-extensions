@@ -31,15 +31,14 @@ function toAnthropicContentBlock(image: ImageAttachment) {
 // A breakpoint belongs on the final expanded block so an entry's images are
 // included in the cached prefix along with its text.
 function toContentBlocks(block: PromptBlock, cacheBreakpoint: boolean) {
-  const textBlock = { type: "text" as const, text: block.text };
-  const imageBlocks = (block.images ?? []).map(toAnthropicContentBlock);
-  const blocks = [textBlock, ...imageBlocks];
+  const blocks = [
+    { type: "text" as const, text: block.text },
+    ...block.images.map(toAnthropicContentBlock),
+  ];
   if (!cacheBreakpoint) return blocks;
-  const lastIndex = blocks.length - 1;
+  const cacheControl = { type: "ephemeral" as const, ttl: "1h" as const };
   return blocks.map((contentBlock, index) =>
-    index === lastIndex
-      ? { ...contentBlock, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } }
-      : contentBlock,
+    index === blocks.length - 1 ? { ...contentBlock, cache_control: cacheControl } : contentBlock,
   );
 }
 
@@ -47,20 +46,13 @@ function toContentBlocks(block: PromptBlock, cacheBreakpoint: boolean) {
  * Build the single-message streaming prompt consumed by the Claude Agent SDK.
  *
  * @param promptBlocks - Stable transcript blocks in wire order.
+ * @param cacheBreakpoint - Index of the block that ends the cacheable prefix.
  * @returns An async stream containing one SDK user message.
  */
 export async function* buildPromptStream(
   promptBlocks: ReadonlyArray<PromptBlock>,
+  cacheBreakpoint: number | undefined,
 ): AsyncGenerator<SDKUserMessage> {
-  // The pinned Agent SDK's Claude Code adds three cache breakpoints of its own.
-  // Anthropic accepts four, so retain only our latest transcript-tail marker.
-  let cacheBreakpointIndex = -1;
-  for (let index = promptBlocks.length - 1; index >= 0; index -= 1) {
-    if (promptBlocks[index]?.cacheBreakpoint === true) {
-      cacheBreakpointIndex = index;
-      break;
-    }
-  }
   yield {
     type: "user",
     session_id: "",
@@ -68,7 +60,7 @@ export async function* buildPromptStream(
     message: {
       role: "user",
       content: promptBlocks.flatMap((block, index) =>
-        toContentBlocks(block, index === cacheBreakpointIndex),
+        toContentBlocks(block, index === cacheBreakpoint),
       ),
     },
   };

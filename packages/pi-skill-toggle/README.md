@@ -42,23 +42,50 @@ appears as a read-only `manual only` row.
 
 ## State
 
-Disabled resources are stored by absolute discovery path in
-`~/.pi/agent/pi-skill-toggle.json`, or the agent directory selected by Pi's
-configuration. Paths prevent collisions between projects or same-named skills.
+Only choices that differ from the default are stored: disabled global resources
+and enabled project skills. They live in `~/.pi/agent/pi-skill-toggle.json`, or
+the agent directory selected by Pi's configuration, keyed by absolute discovery
+path so projects and same-named skills never collide:
 
-Version 3 and older state is discarded when first loaded. Version 4 state is
-migrated to version 5. Version 5 stores only values that differ from the default:
-disabled global resources and enabled project skills. Writes use a cross-process
-lock and atomic replacement. Settings for existing files remain unchanged.
-Entries whose source path no longer exists are removed during a successful state
-load.
+```json
+{
+  "version": 6,
+  "overrides": {
+    "/Users/me/.pi/agent/skills/research/SKILL.md": "disabled",
+    "/work/project/.agents/skills/deploy/SKILL.md": "enabled"
+  }
+}
+```
+
+Loading only reads the file. A toggle re-reads the file, changes one entry,
+drops entries whose path no longer exists, and replaces the file atomically, so
+toggles made in other Pi sessions are kept and a reader never sees a partial
+file. There is no lock: if two sessions toggle in the same instant, the last
+write wins.
+
+Version 4 and 5 files are read as they are and rewritten as version 6 by the
+next toggle. Older, name-keyed state is ignored.
+
+## Pi versions
+
+Pi 0.86 and newer hand each run a private, mutable copy of the prompt options.
+The extension removes hidden resources from that copy and Pi renders the prompt,
+so prompt caching and section diffing keep working. If another extension
+replaces the whole system prompt, Pi sends that text and toggles do not apply
+to it.
+
+Pi 0.85 and older expose only the rendered prompt. There the extension replaces
+the exact project-context and skills sections and returns the new text.
+`hideResources` in `prompt-filter.ts` holds both strategies; the second half can
+be deleted once Pi 0.85 support is dropped.
 
 ## Failure behavior
 
-If state cannot be loaded, the prompt remains unchanged. Prompt replacement is
-exact and section-specific. If Pi changes the relevant prompt format while a
-resource is disabled, the extension reports the affected section instead of
-silently claiming success.
+The prompt is touched only when a loaded resource is hidden. If state cannot be
+loaded, the prompt remains unchanged and the error is shown once until it
+changes or clears. A failed toggle restores the row and is never half-written.
+On Pi 0.85 and older, a section that cannot be matched exactly is reported
+instead of silently claiming success.
 
 ## Maintainer invariants
 
@@ -68,5 +95,10 @@ silently claiming success.
 - Contribute deduplicated project skill files, then use Pi's loaded resources.
 - Keep global resources before project resources in the menu.
 - Identify resources by path, never by display or project name.
+- Treat a `temporary` skill as a project skill only when this extension
+  contributed its path.
+- Never mutate prompt options on Pi 0.85 and older. They are Pi's live objects.
+- Return a replacement prompt only on Pi 0.85 and older, and only when a
+  resource is hidden.
 - Keep project skills model-hidden until the user enables them.
 - Preserve unrelated state during updates and cleanup.

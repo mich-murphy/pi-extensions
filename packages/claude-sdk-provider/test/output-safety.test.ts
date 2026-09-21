@@ -1,6 +1,26 @@
 import { describe, expect, test } from "vitest";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "../output-safety";
 
+function bashResult(toolCallId: string, content: Array<{ type: "text"; text: string }>) {
+  return {
+    role: "toolResult" as const,
+    toolName: "bash",
+    toolCallId,
+    isError: false,
+    content,
+    timestamp: 0,
+  };
+}
+
+function sanitizedText(messages: Parameters<typeof sanitizeContextMessages>[0], index: number) {
+  const message = sanitizeContextMessages(messages)[index];
+  if (message?.role !== "toolResult") throw new Error("test setup: expected a tool result");
+  expect(message.content).toHaveLength(1);
+  const [block] = message.content;
+  if (block?.type !== "text") throw new Error("test setup: expected a text notice");
+  return block.text;
+}
+
 describe("bash output safety", () => {
   test("blocks the executable-dump pattern that poisoned the investigated session", () => {
     expect(inspectBashCommand("cat $(which plannotator) 2>/dev/null | head -100")).toContain(
@@ -45,22 +65,9 @@ describe("bash output safety", () => {
     expect(liveNotice.text).toContain("Base64-like bash output quarantined");
     expect(liveNotice.text).not.toContain("AAAA");
 
-    const historical = sanitizeContextMessages([
-      {
-        role: "toolResult",
-        toolName: "bash",
-        toolCallId: "call-split",
-        isError: false,
-        content: splitPayload,
-      },
-    ]);
-    // SAFETY: The only fixture entry is a bash result with text content, and this test inspects its sanitized replacement.
-    const historicalResult = historical[0] as unknown as {
-      content: Array<{ type: string; text: string }>;
-    };
-    expect(historicalResult.content).toHaveLength(1);
-    expect(historicalResult.content[0]?.text).toContain("Base64-like bash output quarantined");
-    expect(historicalResult.content[0]?.text).not.toContain("AAAA");
+    const historical = sanitizedText([bashResult("call-split", splitPayload)], 0);
+    expect(historical).toContain("Base64-like bash output quarantined");
+    expect(historical).not.toContain("AAAA");
   });
 
   test("quarantines binary-like output split below the per-block detection threshold", () => {
@@ -85,23 +92,15 @@ describe("bash output safety", () => {
   });
 
   test("removes already-recorded suspicious bash output from provider context", () => {
-    const messages = [
-      { role: "user", content: "inspect it" },
-      {
-        role: "toolResult",
-        toolName: "bash",
-        toolCallId: "call-1",
-        isError: false,
-        content: [{ type: "text", text: `header${"\u0000payload".repeat(5_000)}` }],
-      },
-    ];
+    const text = sanitizedText(
+      [
+        { role: "user", content: "inspect it", timestamp: 0 },
+        bashResult("call-1", [{ type: "text", text: `header${"\u0000payload".repeat(5_000)}` }]),
+      ],
+      1,
+    );
 
-    const sanitized = sanitizeContextMessages(messages);
-    // SAFETY: The second fixture entry is the bash tool result, and this test only inspects its sanitized text content.
-    const toolResult = sanitized[1] as unknown as {
-      content: Array<{ type: string; text: string }>;
-    };
-    expect(toolResult.content[0]?.text).toContain("Binary-like bash output quarantined");
-    expect(toolResult.content[0]?.text?.length).toBeLessThan(1_000);
+    expect(text).toContain("Binary-like bash output quarantined");
+    expect(text.length).toBeLessThan(1_000);
   });
 });

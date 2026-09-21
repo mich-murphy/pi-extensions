@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
-import { dirname, join, parse } from "node:path";
+import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, loadSkills } from "@earendil-works/pi-coding-agent";
 
 /** Project-local skill directories understood by Pi and other common agent clients. */
-export const PROJECT_SKILL_RELATIVE_PATHS = [
-  [CONFIG_DIR_NAME, "skills"],
-  [".agents", "skills"],
-  [".claude", "skills"],
-  [".codex", "skills"],
-] as const;
+const PROJECT_SKILL_DIRECTORIES = [
+  join(CONFIG_DIR_NAME, "skills"),
+  join(".agents", "skills"),
+  join(".claude", "skills"),
+  join(".codex", "skills"),
+];
 
 /**
  * Find project skills from the working directory through the Git root.
@@ -18,10 +18,8 @@ export const PROJECT_SKILL_RELATIVE_PATHS = [
  * from later roots remain available.
  */
 export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
-  const projectRoot = findGitRoot(cwd);
-  const directories = directoriesThroughRoot(cwd, projectRoot ?? cwd);
-  const roots = directories.flatMap((directory) =>
-    PROJECT_SKILL_RELATIVE_PATHS.map((parts) => join(directory, ...parts)).filter(existsSync),
+  const roots = directoriesThroughGitRoot(cwd).flatMap((directory) =>
+    PROJECT_SKILL_DIRECTORIES.map((skills) => join(directory, skills)).filter(existsSync),
   );
   if (roots.length === 0) return [];
 
@@ -41,24 +39,12 @@ export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
     .map((skill) => skill.filePath);
 }
 
-function findGitRoot(cwd: string): string | undefined {
-  let directory = cwd;
-  const filesystemRoot = parse(cwd).root;
-  while (true) {
-    if (existsSync(join(directory, ".git"))) return directory;
-    if (directory === filesystemRoot) return undefined;
-    directory = dirname(directory);
-  }
-}
-
-function directoriesThroughRoot(cwd: string, root: string): ReadonlyArray<string> {
+/** Outside a Git worktree only `cwd` counts, so a parent user's skills are not claimed. */
+function directoriesThroughGitRoot(cwd: string): ReadonlyArray<string> {
   const directories: string[] = [];
-  let directory = cwd;
-  while (true) {
+  for (let directory = cwd; ; directory = dirname(directory)) {
     directories.push(directory);
-    if (directory === root) return directories;
-    const parent = dirname(directory);
-    if (parent === directory) return directories;
-    directory = parent;
+    if (existsSync(join(directory, ".git"))) return directories;
+    if (dirname(directory) === directory) return [cwd];
   }
 }

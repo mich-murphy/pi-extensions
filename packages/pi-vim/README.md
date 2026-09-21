@@ -3,9 +3,10 @@
 Adds a small Vim-style normal mode to Pi's main prompt editor without replacing
 Pi's editor implementation.
 
-The editor starts in Insert mode and returns to Insert mode after a successful
-submission. Press `Esc` for Normal mode. The editor border shows the current
-mode.
+The editor starts in Insert mode. Press `Esc` or `Ctrl+[` for Normal mode. The
+editor border shows the current mode and any pending command, such as
+`NORMAL di`. When Pi empties the editor, for example after it accepts a
+submission, the editor returns to Insert mode for the next prompt.
 
 ## Normal-mode bindings
 
@@ -13,9 +14,24 @@ mode.
 - Insert: `i`, `a`, `A`, `I`, `o`, `O`
 - Editing: `x`, `D`, `C`, `u`, `dd`, `dw`, `diw`, `cc`, `cw`, `ciw`
 
-Normal-mode `Esc` retains Pi's interrupt behavior. Other Pi application
-shortcuts continue to use the configured Pi keybindings.
+Printable keys never reach Pi in Normal mode, so an unbound key does nothing.
+`Esc` cancels a pending command. With nothing pending, `Esc` keeps Pi's
+interrupt behavior. Control keys such as `Enter`, arrows, and Pi's application
+shortcuts keep their configured Pi meaning.
 
-Word operations intentionally use Pi's existing word boundaries. `dd` is made
-from Pi's delete-to-line-end and forward-delete actions, so restoring it may
-require two undo operations.
+`h`, `l`, `x`, `D`, and `dw` stay within the current line, as they do in Vim.
+`j` and `k` move like Pi's arrow keys, so they follow wrapped lines and browse
+prompt history from the first and last line.
+
+## How it works
+
+Each binding is a list of base-editor actions, such as "line start" or "delete
+word". The extension performs an action by sending the base editor the input
+that Pi's default keybindings map to it. It sends that input under the default
+keybindings and past Pi's application shortcuts, so rebinding Pi's editor keys
+does not change what a Vim command does.
+
+Word operations intentionally use Pi's existing word boundaries. `dw` and `cw`
+delete to the end of the word, and `diw` does nothing on whitespace. Pi offers
+no atomic way to delete a whole line, so `dd` on a line with text needs two `u`
+presses to restore it.

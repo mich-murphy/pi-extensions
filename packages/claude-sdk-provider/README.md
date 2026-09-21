@@ -49,6 +49,8 @@ The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routi
 - The hook captures every deferred call it sees, so a turn in which the model batches several `pi_call` requests together (parallel tool use) hands all of them back to Pi, not just the first.
 - The `pi_call` MCP tool's own `handler` is a defensive fallback only — the hook resolves permission before it can run in normal operation. If the SDK ever invokes it anyway (the hook's `defer` decision was not honored), it returns an error result and does not forward the call to Pi, instead of faking a successful defer.
 - A `result` message that reports `is_error: true`, or `terminal_reason: "tool_deferred_unavailable"`, becomes a typed provider failure. A rejected SDK query also wins over captured calls. Pi receives deferred calls only after a clean `terminal_reason: "tool_deferred"` result.
+- The prompt is a single message, so the first `result` ends the turn. The runner stops reading there and aborts the SDK query whenever a turn ends, including a cancelled or abandoned one. A turn never waits on the SDK to close its own stream, and no subprocess outlives it.
+- The runner parses every SDK message once, against a table keyed by message, stream event, and delta type. It ignores any type missing from the table, so a new SDK message type cannot fail a turn. A listed type with the wrong shape is a `protocol` failure that names the field and never echoes its value.
 - Pi executes the tool(s) normally. The next model turn includes the resulting Pi transcript.
 - SDK session persistence is disabled because Pi is the durable conversation owner.
 - The transcript is sent as one content block per JSONL entry (via the SDK's streaming-input `prompt: AsyncIterable<SDKUserMessage>` mode, not the plain-string `prompt` path, which always collapses everything into a single block). Pi only ever appends to the transcript, so entries the previous turn already sent are byte-identical this turn; the last entry carries an explicit `cache_control: { type: "ephemeral" }` breakpoint (Anthropic's documented moving multi-turn pattern) so the API can serve that unchanged prefix from cache and pay only for the newly appended suffix. Anthropic only searches 20 blocks backwards from a breakpoint, so diagnostics report the exact common block prefix between consecutive turns.
@@ -63,7 +65,7 @@ Diagnostics are opt-in and contain only counts, breakpoint positions, usage, and
 PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi
 ```
 
-Each request emits a `[claude-sdk-cache]` JSON line on stderr. Consecutive request records include `commonPrefixBlocks` and `commonPrefixCharacters`; usage records include `cacheReadPercent` and flag a large turn below 50% reuse as `possibleCollapse`. Use these records to distinguish local prefix divergence from an upstream cache miss.
+Each request emits a `[claude-sdk-cache]` JSON line on stderr. A request carries at most one provider cache breakpoint, reported as `breakpointBlock`. Consecutive request records include `commonPrefixBlocks` and `commonPrefixCharacters`; usage records include `cacheReadPercent` and flag a large turn below 50% reuse as `possibleCollapse`. Use these records to distinguish local prefix divergence from an upstream cache miss.
 
 ## Model routing
 
@@ -79,7 +81,8 @@ Each advertised ID routes to a Claude Code moving alias (`sonnet`, `opus`, `fabl
 - Fable, Opus, and Sonnet are declared with their current 1M context windows and 128K maximum output. Haiku keeps its 200K context window and 64K maximum output. Haiku 4.5 does not support the Agent SDK's `effort` option, so the provider omits effort-based reasoning settings for every Haiku request, including requests from headless callers and Pi sub-agents.
 - Pi records subscription cost as zero. Token usage is retained when the SDK reports it, but Pi cannot infer the monetary value of an included subscription allocation.
 - Reasoning/thinking deltas are streamed to Pi as a `thinking` content block, but the block is dropped (not replayed) when a later turn re-serializes the transcript — thinking is ephemeral, not part of the durable Pi conversation.
-- An SDK `result` that ends in an error (`is_error: true`) is surfaced as a real provider error instead of a silent empty response; a `max_tokens` stop is reported to Pi as a `length` stop reason.
+- An SDK `result` that ends in an error (`is_error: true`) is surfaced as a real provider error instead of a silent empty response, whatever its `stop_reason`. A `refusal` stop is a provider error too, matching Pi's Anthropic provider. A `max_tokens` stop is reported to Pi as a `length` stop reason. An unknown `stop_reason` on a clean result is a `protocol` failure.
+- Usage is the latest model call's token counts, which is what Pi needs to size the context. The API sends `null` for counts it has no value for, and the provider treats `null` like an omitted count.
 
 ## SDK upgrade gate
 

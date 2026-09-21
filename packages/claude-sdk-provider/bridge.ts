@@ -1,36 +1,47 @@
 import {
   type Api,
   type AssistantMessage,
-  type AssistantMessageEvent,
   type AssistantMessageEventStream,
   type Context,
   calculateCost,
   createAssistantMessageEventStream,
   type Model,
   type SimpleStreamOptions,
+  type TextContent,
+  type ThinkingContent,
 } from "@earendil-works/pi-ai";
 import { type AgentRequest, buildAgentRequest } from "./agent-request";
 import { SdkQueryError, type SdkRunError } from "./sdk/errors";
 import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
 
-/** Events exchanged between the SDK adapter and Pi stream adapter. */
+/** Complete token counts for the latest model call of a turn. */
+export interface TokenUsage {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+}
+
+/** A Pi tool request captured by the SDK hook and deferred to Pi for execution. */
+export interface DeferredCall {
+  /** SDK tool-use identifier. */
+  readonly id: string;
+  /** Exact Pi tool name. */
+  readonly name: string;
+  /** Parsed object arguments supplied for the Pi tool. */
+  readonly arguments: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Events exchanged between the SDK adapter and Pi stream adapter. A turn is any
+ * number of deltas and usage updates followed by exactly one terminal event:
+ * `done`, `tool_calls`, or `failed`.
+ */
 export type BridgeEvent =
-  | { readonly type: "text_delta"; readonly text: string }
-  | { readonly type: "thinking_delta"; readonly text: string }
-  | {
-      readonly type: "tool_call";
-      readonly id: string;
-      readonly name: string;
-      readonly arguments: Readonly<Record<string, unknown>>;
-    }
-  | {
-      readonly type: "usage";
-      readonly input?: number;
-      readonly output?: number;
-      readonly cacheRead?: number;
-      readonly cacheWrite?: number;
-    }
+  | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
+  | { readonly type: "usage"; readonly usage: TokenUsage }
   | { readonly type: "done"; readonly reason: "stop" | "length" }
+  | { readonly type: "tool_calls"; readonly calls: ReadonlyArray<DeferredCall> }
   | { readonly type: "failed"; readonly error: SdkRunError };
 
 /** Stateless SDK operation used by the Pi stream adapter. */
@@ -60,78 +71,43 @@ function initialAssistantMessage(model: Model<Api>): AssistantMessage {
   };
 }
 
-function textualDeltaEvent(
-  kind: "text" | "thinking",
-  contentIndex: number,
-  delta: string,
-  partial: AssistantMessage,
-): AssistantMessageEvent {
-  if (kind === "text") return { type: "text_delta", contentIndex, delta, partial };
-  return { type: "thinking_delta", contentIndex, delta, partial };
-}
-
-function textualEndEvent(
-  kind: "text" | "thinking",
-  contentIndex: number,
-  content: string,
-  partial: AssistantMessage,
-): AssistantMessageEvent {
-  if (kind === "text") return { type: "text_end", contentIndex, content, partial };
-  return { type: "thinking_end", contentIndex, content, partial };
-}
-
-class AgentStreamAdapter {
-  private readonly stream = createAssistantMessageEventStream();
+/** Builds one Pi assistant message while mirroring each change onto Pi's event stream. */
+class AssistantMessageWriter {
+  readonly stream = createAssistantMessageEventStream();
   private readonly output: AssistantMessage;
-  private textIndex: number | undefined;
-  private thinkingIndex: number | undefined;
+  // Deltas only ever extend the newest content block, so one reference is the whole cursor.
+  private open: TextContent | ThinkingContent | undefined;
 
   constructor(
     private readonly model: Model<Api>,
-    private readonly context: Context,
-    private readonly options: SimpleStreamOptions | undefined,
-    private readonly runSdk: AgentSdkRun,
+    private readonly signal: AbortSignal | undefined,
   ) {
     this.output = initialAssistantMessage(model);
+    this.stream.push({ type: "start", partial: this.output });
   }
 
-  start(): AssistantMessageEventStream {
-    this.consume().catch((cause: unknown) => this.fail(new SdkQueryError("iterate", cause)));
-    return this.stream;
-  }
-
-  private async consume(): Promise<void> {
-    try {
-      this.stream.push({ type: "start", partial: this.output });
-      for await (const event of this.runSdk(
-        buildAgentRequest(this.context),
-        this.model,
-        this.options,
-      )) {
-        if (this.handle(event)) return;
-      }
-      this.finishIncompleteStream();
-    } catch (cause) {
-      this.fail(new SdkQueryError("iterate", cause));
-    }
-  }
-
-  private handle(event: BridgeEvent): boolean {
+  /** Apply one bridge event and report whether it ended the turn. */
+  write(event: BridgeEvent): boolean {
     switch (event.type) {
       case "text_delta":
-        this.appendText(event.text);
+        this.append("text", event.text);
         return false;
       case "thinking_delta":
-        this.appendThinking(event.text);
+        this.append("thinking", event.text);
         return false;
-      case "usage":
-        this.updateUsage(event);
+      case "usage": {
+        const { input, output, cacheRead, cacheWrite } = event.usage;
+        const totalTokens = input + output + cacheRead + cacheWrite;
+        Object.assign(this.output.usage, event.usage, { totalTokens });
+        calculateCost(this.model, this.output.usage);
         return false;
-      case "tool_call":
-        this.appendToolCall(event);
-        return false;
+      }
       case "done":
         this.finish(event.reason);
+        return true;
+      case "tool_calls":
+        for (const call of event.calls) this.appendToolCall(call);
+        this.finish("toolUse");
         return true;
       case "failed":
         this.fail(event.error);
@@ -139,117 +115,77 @@ class AgentStreamAdapter {
     }
   }
 
-  private appendText(delta: string): void {
-    this.closeThinking();
-    this.textIndex ??= this.startContent("text");
-    this.appendContent("text", this.textIndex, delta);
-  }
-
-  private appendThinking(delta: string): void {
-    this.closeText();
-    this.thinkingIndex ??= this.startContent("thinking");
-    this.appendContent("thinking", this.thinkingIndex, delta);
-  }
-
-  private appendContent(kind: "text" | "thinking", contentIndex: number, delta: string): void {
-    const block = this.output.content[contentIndex];
-    if (kind === "text" && block?.type === "text") block.text += delta;
-    if (kind === "thinking" && block?.type === "thinking") block.thinking += delta;
-    this.stream.push(textualDeltaEvent(kind, contentIndex, delta, this.output));
-  }
-
-  private startContent(kind: "text" | "thinking"): number {
-    const contentIndex = this.output.content.length;
-    if (kind === "text") {
-      this.output.content.push({ type: "text", text: "" });
-      this.stream.push({ type: "text_start", contentIndex, partial: this.output });
-    } else {
-      this.output.content.push({ type: "thinking", thinking: "" });
-      this.stream.push({ type: "thinking_start", contentIndex, partial: this.output });
-    }
-    return contentIndex;
-  }
-
-  private closeText(): void {
-    const index = this.textIndex;
-    this.textIndex = undefined;
-    this.closeContent("text", index);
-  }
-
-  private closeThinking(): void {
-    const index = this.thinkingIndex;
-    this.thinkingIndex = undefined;
-    this.closeContent("thinking", index);
-  }
-
-  private closeContent(kind: "text" | "thinking", contentIndex: number | undefined): void {
-    if (contentIndex === undefined) return;
-    const block = this.output.content[contentIndex];
-    let content: string | undefined;
-    if (kind === "text" && block?.type === "text") content = block.text;
-    if (kind === "thinking" && block?.type === "thinking") content = block.thinking;
-    if (content === undefined) return;
-    this.stream.push(textualEndEvent(kind, contentIndex, content, this.output));
-  }
-
-  private updateUsage(event: Extract<BridgeEvent, { type: "usage" }>): void {
-    if (event.input !== undefined) this.output.usage.input = event.input;
-    if (event.output !== undefined) this.output.usage.output = event.output;
-    if (event.cacheRead !== undefined) this.output.usage.cacheRead = event.cacheRead;
-    if (event.cacheWrite !== undefined) this.output.usage.cacheWrite = event.cacheWrite;
-    this.output.usage.totalTokens =
-      this.output.usage.input +
-      this.output.usage.output +
-      this.output.usage.cacheRead +
-      this.output.usage.cacheWrite;
-    calculateCost(this.model, this.output.usage);
-  }
-
-  private appendToolCall(event: Extract<BridgeEvent, { type: "tool_call" }>): void {
-    this.closeOpenBlocks();
-    const contentIndex = this.output.content.length;
-    const toolCall = {
-      type: "toolCall" as const,
-      id: event.id,
-      name: event.name,
-      arguments: event.arguments,
-    };
-    this.output.content.push(toolCall);
-    this.stream.push({ type: "toolcall_start", contentIndex, partial: this.output });
-    this.stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: this.output });
-    this.output.stopReason = "toolUse";
-  }
-
-  private finish(reason: "stop" | "length"): void {
-    this.closeOpenBlocks();
-    this.output.stopReason = reason;
-    this.stream.push({ type: "done", reason, message: this.output });
-    this.stream.end();
-  }
-
-  private fail(error: SdkRunError): void {
-    this.closeOpenBlocks();
-    this.output.stopReason = this.options?.signal?.aborted ? "aborted" : "error";
+  fail(error: SdkRunError): void {
+    this.closeOpenBlock();
+    this.output.stopReason = this.signal?.aborted ? "aborted" : "error";
     this.output.errorMessage = formatSdkRunError(error);
     writeSdkFailureDiagnostic(error);
     this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
     this.stream.end();
   }
 
-  private finishIncompleteStream(): void {
-    if (this.output.content.some((block) => block.type === "toolCall")) {
-      this.closeOpenBlocks();
-      this.output.stopReason = "toolUse";
-      this.stream.push({ type: "done", reason: "toolUse", message: this.output });
-      this.stream.end();
-      return;
-    }
-    this.fail(new SdkQueryError("terminal-result", "bridge stream ended without a terminal event"));
+  private get lastIndex(): number {
+    return this.output.content.length - 1;
   }
 
-  private closeOpenBlocks(): void {
-    this.closeText();
-    this.closeThinking();
+  private append(kind: "text" | "thinking", delta: string): void {
+    if (this.open?.type !== kind) {
+      this.closeOpenBlock();
+      this.open = kind === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "" };
+      this.output.content.push(this.open);
+      this.stream.push({
+        type: `${kind}_start`,
+        contentIndex: this.lastIndex,
+        partial: this.output,
+      });
+    }
+    if (this.open.type === "text") this.open.text += delta;
+    else this.open.thinking += delta;
+    this.stream.push({
+      type: `${kind}_delta`,
+      contentIndex: this.lastIndex,
+      delta,
+      partial: this.output,
+    });
+  }
+
+  private closeOpenBlock(): void {
+    const block = this.open;
+    if (!block) return;
+    this.open = undefined;
+    this.stream.push({
+      type: `${block.type}_end`,
+      contentIndex: this.lastIndex,
+      content: block.type === "text" ? block.text : block.thinking,
+      partial: this.output,
+    });
+  }
+
+  private appendToolCall(call: DeferredCall): void {
+    this.closeOpenBlock();
+    const toolCall = { ...call, type: "toolCall" as const, arguments: { ...call.arguments } };
+    this.output.content.push(toolCall);
+    const position = { contentIndex: this.lastIndex, partial: this.output };
+    this.stream.push({ type: "toolcall_start", ...position });
+    this.stream.push({ type: "toolcall_end", toolCall, ...position });
+  }
+
+  private finish(reason: "stop" | "length" | "toolUse"): void {
+    this.closeOpenBlock();
+    this.output.stopReason = reason;
+    this.stream.push({ type: "done", reason, message: this.output });
+    this.stream.end();
+  }
+}
+
+async function pump(writer: AssistantMessageWriter, events: () => AsyncIterable<BridgeEvent>) {
+  try {
+    for await (const event of events()) if (writer.write(event)) return;
+    writer.fail(
+      new SdkQueryError("terminal-result", "bridge stream ended without a terminal event"),
+    );
+  } catch (cause) {
+    writer.fail(new SdkQueryError("iterate", cause));
   }
 }
 
@@ -260,5 +196,7 @@ export function createAgentSdkStream(
   options: SimpleStreamOptions | undefined,
   run: AgentSdkRun,
 ): AssistantMessageEventStream {
-  return new AgentStreamAdapter(model, context, options, run).start();
+  const writer = new AssistantMessageWriter(model, options?.signal);
+  void pump(writer, () => run(buildAgentRequest(context), model, options));
+  return writer.stream;
 }

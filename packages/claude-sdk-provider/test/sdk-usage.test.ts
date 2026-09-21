@@ -148,8 +148,8 @@ describe("Claude SDK usage", () => {
 
   test("aborts the idle SDK query after reading usage", async () => {
     let observedSignal: AbortSignal | undefined;
-    const start: StartClaudeUsageQuery = (signal) => {
-      observedSignal = signal;
+    const start: StartClaudeUsageQuery = (abortController) => {
+      observedSignal = abortController.signal;
       return usageQuery(usageResponse);
     };
 

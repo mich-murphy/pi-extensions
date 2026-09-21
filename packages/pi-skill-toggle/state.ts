@@ -1,471 +1,150 @@
 import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import process from "node:process";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { type ResourcePath, resourcePathId } from "./resource-path";
-import {
-  resourceDefaultEnabled,
-  type ToggleResource,
-  type ToggleResourceKind,
-  type ToggleResourceOrigin,
-} from "./resources";
+import { parseResourcePath, type ResourcePath } from "./resource-path";
+import { isToggleValue, type ToggleOverrides, type ToggleValue } from "./resources";
 
-const STATE_VERSION = 5;
+const STATE_VERSION = 6;
 
-const DEFAULT_STATE_PATH = join(getAgentDir(), "pi-skill-toggle.json");
-
-/** One resource whose persisted value differs from its default. */
-export interface StoredToggleResource {
-  readonly kind: ToggleResourceKind;
-  readonly origin: ToggleResourceOrigin;
-  readonly owner: ResourcePath;
-  readonly enabled: boolean;
-}
-
-/** Parsed version 5 skill-toggle state. */
-export interface SkillToggleState {
-  readonly version: typeof STATE_VERSION;
-  readonly resources: Readonly<Record<string, StoredToggleResource>>;
-}
-
-/** Resolve a resource's persisted override or its origin-based default. */
-export function resourceIsEnabled(state: SkillToggleState, resource: ToggleResource): boolean {
-  return state.resources[resource.id]?.enabled ?? resourceDefaultEnabled(resource);
-}
-
-/** Requested persisted value for an editable resource. */
-export type ResourceToggleValue = "enabled" | "disabled";
-
-/** Operation that can fail at the persistent state boundary. */
-export type SkillToggleStateOperation = "load" | "update";
-
-/** Safe public shape of an expected persistent-state failure. */
-export interface SkillToggleStateFailure extends Error {
-  readonly _tag: "SkillToggleStateError";
-  readonly operation: SkillToggleStateOperation;
-  readonly cause?: unknown;
-}
-
-/** Expected persistent state or lock failure. */
-class SkillToggleStateError extends Error implements SkillToggleStateFailure {
+/** Expected failure to read or replace the persisted state file. */
+export class ToggleStateError extends Error {
   /** Stable error discriminator. */
-  readonly _tag = "SkillToggleStateError" as const;
+  readonly _tag = "ToggleStateError" as const;
 
-  /** State operation that failed. */
-  readonly operation: SkillToggleStateOperation;
-
-  /** Lower-level failure retained for local diagnosis. */
-  override readonly cause: unknown;
-
-  /** Create a classified persistent state failure. */
-  constructor(operation: SkillToggleStateOperation, message: string, cause?: unknown) {
-    super(message);
-    this.name = "SkillToggleStateError";
-    this.operation = operation;
-    this.cause = cause;
+  /**
+   * Create a classified state failure.
+   *
+   * @param operation - State operation that failed.
+   * @param path - State file the operation targeted.
+   * @param cause - Lower-level failure retained for local diagnosis.
+   */
+  constructor(
+    readonly operation: "load" | "update",
+    path: string,
+    override readonly cause: unknown,
+  ) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`Could not ${operation} Pi skill-toggle state at ${path}: ${detail}`);
+    this.name = "ToggleStateError";
   }
 }
 
-/** Result returned by state load and update operations. */
-export type SkillToggleStateResult =
-  | { readonly _tag: "ok"; readonly value: SkillToggleState }
-  | { readonly _tag: "err"; readonly error: SkillToggleStateFailure };
-
-/** File-store timing and test seam options. */
-export interface SkillToggleStoreOptions {
-  /** Maximum time spent waiting for the state lock. */
-  readonly lockTimeoutMs?: number;
-
-  /** Age after which an abandoned lock can be removed. */
-  readonly staleLockMs?: number;
-
-  /** Test seam invoked before atomic replacement. */
-  readonly beforeRename?: (temporaryPath: string, destinationPath: string) => void;
-}
+/** Overrides after a state operation, or the reason it failed. */
+export type ToggleStateResult =
+  | { readonly _tag: "ok"; readonly value: ToggleOverrides }
+  | { readonly _tag: "err"; readonly error: ToggleStateError };
 
 /** State operations required by the extension command and prompt handler. */
-export interface SkillToggleStateStore {
-  /** Load and synchronize persistent state. */
-  load(resources?: ReadonlyArray<ToggleResource>): SkillToggleStateResult;
+export interface ToggleStateStore {
+  /** Read every persisted override without modifying the store. */
+  load(): ToggleStateResult;
 
-  /** Enable or disable one resource. */
-  setValue(
-    resource: ToggleResource,
-    value: ResourceToggleValue,
-    resources?: ReadonlyArray<ToggleResource>,
-  ): SkillToggleStateResult;
+  /** Persist one resource's override, or clear it with `"default"`. */
+  set(id: ResourcePath, value: ToggleValue | "default"): ToggleStateResult;
 }
 
-/** Persistent resource-toggle store using locked atomic replacement. */
-export class SkillToggleStore implements SkillToggleStateStore {
-  private readonly lockTimeoutMs: number;
-  private readonly staleLockMs: number;
+/**
+ * Overrides persisted as one JSON file shared by every Pi session.
+ *
+ * Writes replace the file atomically, so loads never need a lock. Updates re-read the file
+ * immediately before replacing it; the last of two simultaneous toggles wins.
+ */
+export class ToggleStateFile implements ToggleStateStore {
+  /** Create a store at the supplied path, or in Pi's agent directory. */
+  constructor(private readonly path = join(getAgentDir(), "pi-skill-toggle.json")) {}
 
-  /** Create a store at the supplied path. */
-  constructor(
-    private readonly path = DEFAULT_STATE_PATH,
-    private readonly options: SkillToggleStoreOptions = {},
-  ) {
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 2_000;
-    this.staleLockMs = options.staleLockMs ?? 30_000;
+  /** Read every persisted override. A missing file is an empty state. */
+  load(): ToggleStateResult {
+    return this.attempt("load", () => this.read());
   }
 
-  /** Load state, migrate version 4, and remove entries whose source path no longer exists. */
-  load(resources: ReadonlyArray<ToggleResource> = []): SkillToggleStateResult {
-    return this.run("load", () =>
-      this.withLock(() => {
-        const loaded = this.readState();
-        const synchronized = synchronizeState(loaded.state, resources);
-        if (loaded.needsWrite || synchronized.changed) this.writeState(synchronized.state);
-        return synchronized.state;
-      }),
-    );
+  /** Change one override, keep the others, and drop entries whose file no longer exists. */
+  set(id: ResourcePath, value: ToggleValue | "default"): ToggleStateResult {
+    return this.attempt("update", () => {
+      const overrides = new Map(
+        [...this.read()].filter(([path]) => statSync(path, { throwIfNoEntry: false })),
+      );
+      if (value === "default") overrides.delete(id);
+      else overrides.set(id, value);
+      this.write(overrides);
+      return overrides;
+    });
   }
 
-  /** Enable or disable one resource while preserving every unrelated setting. */
-  setValue(
-    resource: ToggleResource,
-    value: ResourceToggleValue,
-    resources: ReadonlyArray<ToggleResource> = [],
-  ): SkillToggleStateResult {
-    if (!isResourceToggleValue(value)) {
-      return {
-        _tag: "err",
-        error: new SkillToggleStateError(
-          "update",
-          `Unsupported resource toggle value: ${String(value)}`,
-        ),
-      };
-    }
-    return this.run("update", () =>
-      this.withLock(() => {
-        const loaded = this.readState();
-        const synchronized = synchronizeState(loaded.state, resources);
-        const current = { ...synchronized.state.resources };
-        const enabled = value === "enabled";
-        if (
-          resource.editability === "manual-only" ||
-          enabled === resourceDefaultEnabled(resource)
-        ) {
-          delete current[resource.id];
-        } else {
-          current[resource.id] = storedResource(resource, enabled);
-        }
-        const state = normalizeState({ version: STATE_VERSION, resources: current });
-        this.writeState(state);
-        return state;
-      }),
-    );
-  }
-
-  private run(
-    operation: SkillToggleStateOperation,
-    effect: () => SkillToggleState,
-  ): SkillToggleStateResult {
+  private attempt(
+    operation: ToggleStateError["operation"],
+    effect: () => ToggleOverrides,
+  ): ToggleStateResult {
     try {
       return { _tag: "ok", value: effect() };
     } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      return {
-        _tag: "err",
-        error: new SkillToggleStateError(
-          operation,
-          `Could not ${operation} Pi skill-toggle state at ${this.path}: ${detail}`,
-          cause,
-        ),
-      };
+      return { _tag: "err", error: new ToggleStateError(operation, this.path, cause) };
     }
   }
 
-  private readState(): { state: SkillToggleState; needsWrite: boolean } {
+  private read(): ToggleOverrides {
     let content: string;
     try {
       content = readFileSync(this.path, "utf8");
     } catch (cause) {
-      if (isNodeError(cause) && cause.code === "ENOENT") {
-        return { state: emptyState(), needsWrite: false };
-      }
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return new Map();
       throw cause;
     }
-
-    let value: unknown;
-    try {
-      value = JSON.parse(content);
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(`Malformed state. Fix or remove the file. ${detail}`);
-    }
-    const parsed = parseSkillToggleState(value);
-    if (parsed) {
-      return {
-        state: parsed,
-        needsWrite: JSON.stringify(value) !== JSON.stringify(parsed),
-      };
-    }
-    const legacy = parseVersion4State(value);
-    if (legacy) return { state: legacy, needsWrite: true };
-    if (isRecord(value) && typeof value.version === "number" && value.version < 4) {
-      return { state: emptyState(), needsWrite: true };
-    }
-    const version = isRecord(value) && "version" in value ? String(value.version) : "missing";
-    throw new Error(`Unsupported state version ${version}. Fix or remove the file.`);
+    const overrides = parseState(content);
+    if (!overrides) throw new Error("The file is malformed or unsupported. Fix or remove it.");
+    return overrides;
   }
 
-  private writeState(state: SkillToggleState): void {
-    const normalized = normalizeState(state);
+  private write(overrides: ToggleOverrides): void {
+    const entries = [...overrides].sort(([left], [right]) => left.localeCompare(right));
+    const state = { version: STATE_VERSION, overrides: Object.fromEntries(entries) };
     mkdirSync(dirname(this.path), { recursive: true });
-    const temporaryPath = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporaryPath, `${JSON.stringify(normalized, null, 2)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
-      this.options.beforeRename?.(temporaryPath, this.path);
+      writeFileSync(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
       renameSync(temporaryPath, this.path);
     } finally {
       rmSync(temporaryPath, { force: true });
     }
   }
-
-  private withLock<T>(effect: () => T): T {
-    const lockPath = `${this.path}.lock`;
-    mkdirSync(dirname(this.path), { recursive: true });
-    const deadline = Date.now() + this.lockTimeoutMs;
-    let descriptor: number | undefined;
-    while (descriptor === undefined) {
-      try {
-        const openedDescriptor = openSync(lockPath, "wx", 0o600);
-        try {
-          writeFileSync(openedDescriptor, `${process.pid}\n`, "utf8");
-          descriptor = openedDescriptor;
-        } catch (cause) {
-          closeSync(openedDescriptor);
-          rmSync(lockPath, { force: true });
-          throw cause;
-        }
-      } catch (cause) {
-        if (!isNodeError(cause) || cause.code !== "EEXIST") throw cause;
-        removeAbandonedLock(lockPath, this.staleLockMs);
-        if (Date.now() >= deadline)
-          throw new Error(`Timed out waiting for state lock: ${lockPath}`);
-        sleepSync(Math.min(20, this.lockTimeoutMs));
-      }
-    }
-    try {
-      return effect();
-    } finally {
-      closeSync(descriptor);
-      rmSync(lockPath, { force: true });
-    }
-  }
 }
 
-function synchronizeState(
-  state: SkillToggleState,
-  resources: ReadonlyArray<ToggleResource>,
-): { state: SkillToggleState; changed: boolean } {
-  const discovered = new Map<string, ToggleResource>(
-    resources.map((resource) => [resource.id, resource]),
-  );
-  const next: Record<string, StoredToggleResource> = {};
-  let changed = false;
-  for (const [path, stored] of Object.entries(state.resources)) {
-    if (!resourceExists(path)) {
-      changed = true;
-      continue;
-    }
-    const resource = discovered.get(path);
-    if (resource?.editability === "manual-only") {
-      changed = true;
-      continue;
-    }
-    const updated = resource ? storedResource(resource, stored.enabled) : stored;
-    if (updated.enabled === resourceDefaultEnabled(updated)) {
-      changed = true;
-      continue;
-    }
-    next[path] = updated;
-    if (!storedResourcesEqual(stored, updated)) changed = true;
-  }
-  return {
-    state: normalizeState({ version: STATE_VERSION, resources: next }),
-    changed,
-  };
-}
-
-function isResourceToggleValue(value: unknown): value is ResourceToggleValue {
-  return value === "enabled" || value === "disabled";
-}
-
-function storedResource(resource: ToggleResource, enabled: boolean): StoredToggleResource {
-  return {
-    kind: resource.kind,
-    origin: resource.origin,
-    owner: resource.owner,
-    enabled,
-  };
-}
-
-function storedResourcesEqual(left: StoredToggleResource, right: StoredToggleResource): boolean {
-  return (
-    left.kind === right.kind &&
-    left.origin === right.origin &&
-    left.owner === right.owner &&
-    left.enabled === right.enabled
-  );
-}
-
-function normalizeState(state: SkillToggleState): SkillToggleState {
-  const entries = Object.entries(state.resources)
-    .map(
-      ([path, resource]) =>
-        [
-          resourcePathId(path),
-          {
-            kind: resource.kind,
-            origin: resource.origin,
-            owner: resourcePathId(resource.owner),
-            enabled: resource.enabled,
-          },
-        ] as const,
-    )
-    .sort(([left], [right]) => left.localeCompare(right));
-  return { version: STATE_VERSION, resources: Object.fromEntries(entries) };
-}
-
-function emptyState(): SkillToggleState {
-  return { version: STATE_VERSION, resources: {} };
-}
-
-function parseSkillToggleState(value: unknown): SkillToggleState | undefined {
-  if (!isRecord(value) || value.version !== STATE_VERSION || !isRecord(value.resources)) {
+function parseState(content: string): ToggleOverrides | undefined {
+  let state: unknown;
+  try {
+    state = JSON.parse(content);
+  } catch {
     return undefined;
   }
-  const resources: Record<string, StoredToggleResource> = {};
-  for (const [path, resource] of Object.entries(value.resources)) {
-    if (!isRawStoredToggleResource(resource)) return undefined;
-    resources[resourcePathId(path)] = {
-      kind: resource.kind,
-      origin: resource.origin,
-      owner: resourcePathId(resource.owner),
-      enabled: resource.enabled,
-    };
+  if (!isRecord(state) || typeof state.version !== "number") return undefined;
+  if (state.version === STATE_VERSION) return parseOverrides(state.overrides, (entry) => entry);
+  // Versions 4 and 5 stored `{ enabled }` beside metadata that is now derived from the path.
+  if (state.version === 4 || state.version === 5) {
+    return parseOverrides(state.resources, (entry) => {
+      if (!isRecord(entry) || typeof entry.enabled !== "boolean") return undefined;
+      return entry.enabled ? "enabled" : "disabled";
+    });
   }
-  return normalizeState({ version: STATE_VERSION, resources });
+  // Versions before 4 identified resources by name, which cannot be mapped to a path.
+  return state.version < 4 ? new Map() : undefined;
 }
 
-function parseVersion4State(value: unknown): SkillToggleState | undefined {
-  if (!isRecord(value) || value.version !== 4 || !isRecord(value.resources)) return undefined;
-  const resources: Record<string, StoredToggleResource> = {};
-  for (const [path, resource] of Object.entries(value.resources)) {
-    if (!isRawVersion4Resource(resource)) return undefined;
-    resources[resourcePathId(path)] = {
-      kind: resource.kind,
-      origin: resource.origin,
-      owner: resourcePathId(resource.owner),
-      enabled: false,
-    };
+function parseOverrides(
+  entries: unknown,
+  toValue: (entry: unknown) => unknown,
+): ToggleOverrides | undefined {
+  if (!isRecord(entries)) return undefined;
+  const overrides = new Map<ResourcePath, ToggleValue>();
+  for (const [path, entry] of Object.entries(entries)) {
+    const id = parseResourcePath(path);
+    const value = toValue(entry);
+    if (!(id && isToggleValue(value))) return undefined;
+    overrides.set(id, value);
   }
-  return normalizeState({ version: STATE_VERSION, resources });
-}
-
-function isRawStoredToggleResource(value: unknown): value is {
-  readonly kind: ToggleResourceKind;
-  readonly origin: ToggleResourceOrigin;
-  readonly owner: string;
-  readonly enabled: boolean;
-} {
-  return (
-    isRecord(value) &&
-    (value.kind === "instruction" || value.kind === "skill") &&
-    (value.origin === "global" || value.origin === "project") &&
-    typeof value.owner === "string" &&
-    typeof value.enabled === "boolean"
-  );
-}
-
-function isRawVersion4Resource(value: unknown): value is {
-  readonly kind: ToggleResourceKind;
-  readonly origin: ToggleResourceOrigin;
-  readonly owner: string;
-  readonly enabled: false;
-} {
-  return isRawStoredToggleResource(value) && value.enabled === false;
+  return overrides;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function resourceExists(path: string): boolean {
-  try {
-    statSync(path);
-    return true;
-  } catch (cause) {
-    if (isNodeError(cause) && (cause.code === "ENOENT" || cause.code === "ENOTDIR")) return false;
-    throw cause;
-  }
-}
-
-type LockOwnerStatus = "active" | "abandoned" | "invalid";
-
-function validProcessId(owner: number): boolean {
-  return Number.isSafeInteger(owner) && owner > 0;
-}
-
-function missingProcess(cause: unknown): boolean {
-  return isNodeError(cause) && cause.code === "ESRCH";
-}
-
-function processIsActive(owner: number): boolean {
-  try {
-    process.kill(owner, 0);
-    return true;
-  } catch (cause) {
-    return !missingProcess(cause);
-  }
-}
-
-function lockOwnerStatus(path: string): LockOwnerStatus {
-  const owner = Number.parseInt(readFileSync(path, "utf8").trim(), 10);
-  if (!validProcessId(owner)) return "invalid";
-  return processIsActive(owner) ? "active" : "abandoned";
-}
-
-function freshInvalidLock(
-  path: string,
-  ownerStatus: LockOwnerStatus,
-  staleLockMs: number,
-): boolean {
-  if (ownerStatus !== "invalid") return false;
-  return Date.now() - statSync(path).mtimeMs <= staleLockMs;
-}
-
-function removeAbandonedLock(path: string, staleLockMs: number): void {
-  try {
-    const ownerStatus = lockOwnerStatus(path);
-    if (ownerStatus === "active") return;
-    if (freshInvalidLock(path, ownerStatus, staleLockMs)) return;
-    rmSync(path, { force: true });
-  } catch {
-    // Another process released the lock between open and inspection.
-  }
-}
-
-function sleepSync(milliseconds: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
 }

@@ -1,6 +1,5 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-
-type ContentBlock = TextContent | ImageContent;
+import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
 /** Suspicious shell-output category recognized by the quarantine guard. */
 export type SuspiciousOutputKind = "binary" | "base64";
@@ -87,37 +86,20 @@ export function inspectBashCommand(command: string): string | undefined {
   return 'Refusing to pipe a discovered executable through cat. Inspect it with file "$(which COMMAND)", otool, or strings "$(which COMMAND)" | head instead.';
 }
 
-function isContentBlock(value: unknown): value is ContentBlock {
-  if (typeof value !== "object" || value === null) return false;
-  // SAFETY: The object check permits property reads while every consumed property remains unknown until checked below.
-  const block = value as Record<string, unknown>;
-  if (block.type === "text") return typeof block.text === "string";
-  return (
-    block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
-  );
-}
-
 /**
  * Quarantine suspicious bash results already stored in a Pi context.
  *
- * @param messages - Pi context messages. The generic preserves the caller's concrete message union.
+ * @param messages - Pi context messages, possibly recorded before this guard loaded.
  * @returns A new message array with only suspicious bash results replaced.
  */
-export function sanitizeContextMessages<T>(messages: ReadonlyArray<T>): T[] {
+export function sanitizeContextMessages(
+  messages: Readonly<ContextEvent["messages"]>,
+): ContextEvent["messages"] {
   return messages.map((message) => {
-    if (typeof message !== "object" || message === null) return message;
-    // SAFETY: This is an interop boundary over Pi's message union. Fields are checked before use and the original value is returned when the shape does not match.
-    const fields = message as Record<string, unknown>;
-    if (
-      fields.role !== "toolResult" ||
-      fields.toolName !== "bash" ||
-      !Array.isArray(fields.content)
-    )
-      return message;
-    if (!fields.content.every(isContentBlock)) return message;
-    const sanitized = sanitizeBashContent(fields.content);
-    if (!sanitized.detected) return message;
-    // SAFETY: The replacement preserves every field of T and replaces tool-result content with valid Pi content blocks after the role and content checks above.
-    return { ...fields, content: [...sanitized.content] } as T;
+    if (message.role !== "toolResult" || message.toolName !== "bash") return message;
+    // Sessions persist across versions, so recorded content is not trusted to match its type.
+    if (!Array.isArray(message.content)) return message;
+    const sanitized = sanitizeBashContent(message.content);
+    return sanitized.detected ? { ...message, content: sanitized.content } : message;
   });
 }
