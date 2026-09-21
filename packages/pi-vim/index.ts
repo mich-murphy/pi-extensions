@@ -1,353 +1,244 @@
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { matchesKey, parseKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  decodeKittyPrintable,
+  Editor,
+  getKeybindings,
+  KeybindingsManager,
+  matchesKey,
+  setKeybindings,
+  TUI_KEYBINDINGS,
+  truncateToWidth,
+} from "@earendil-works/pi-tui";
 
-const INPUT_LEFT = "\x1b[D";
-const INPUT_RIGHT = "\x1b[C";
-const INPUT_UP = "\x1b[A";
-const INPUT_DOWN = "\x1b[B";
-const INPUT_DELETE = "\x1b[3~";
-const INPUT_WORD_LEFT = "\x1b[1;3D";
-const INPUT_WORD_RIGHT = "\x1b[1;3C";
-const INPUT_DELETE_WORD_RIGHT = "\x1b[3;3~";
-const INPUT_LINE_START = "\x01";
-const INPUT_LINE_END = "\x05";
-const INPUT_DELETE_TO_LINE_END = "\x0b";
-const INPUT_UNDO = "\x1f";
-const WHITESPACE_PATTERN = /\s/u;
-const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u;
+/** The cursor and its surroundings: everything an action or command may depend on. */
+type View = {
+  readonly line: number;
+  readonly col: number;
+  /** Text of the cursor line. */
+  readonly text: string;
+  readonly lineCount: number;
+};
+type Guard = (view: View) => boolean;
 
-type PendingCommand = "none" | "delete" | "delete-inner" | "change" | "change-inner";
-type ActivePendingCommand = Exclude<PendingCommand, "none">;
-type VimState =
-  | { readonly mode: "insert" }
-  | { readonly mode: "normal"; readonly pending: PendingCommand };
-type CharacterClass = "punctuation" | "whitespace" | "word";
+/**
+ * A base-editor action, named by the terminal input Pi's default keybindings map to it. Pi's
+ * actions wrap and join across line boundaries where Vim's stay within the line, so each action
+ * carries the guard that keeps it to the Vim behavior its name promises.
+ */
+type Action = { readonly input: string; readonly when: Guard; readonly repeats: boolean };
 
-function characterClass(value: string): CharacterClass {
-  if (WHITESPACE_PATTERN.test(value)) return "whitespace";
-  if (WORD_CHARACTER_PATTERN.test(value)) return "word";
-  return "punctuation";
+const always: Guard = () => true;
+const inLine: Guard = (view) => view.col < view.text.length;
+const onLastLine: Guard = (view) => view.line >= view.lineCount - 1;
+/** The end of a line counts as blank, so word motions continue onto the next line. */
+const onBlank: Guard = (view) => !/\S/u.test(view.text.slice(view.col, view.col + 1));
+
+const once = (input: string, when: Guard = always): Action => ({ input, when, repeats: false });
+const repeatedly = (input: string, when: Guard): Action => ({ input, when, repeats: true });
+
+const ACTIONS = {
+  left: once("\x1b[D", (view) => view.col > 0),
+  right: once("\x1b[C", inLine),
+  up: once("\x1b[A"),
+  down: once("\x1b[B"),
+  lineStart: once("\x01"),
+  lineEnd: once("\x05"),
+  wordLeft: once("\x1b[1;3D"),
+  wordRight: once("\x1b[1;3C", (view) => !onBlank(view)),
+  skipBlanks: repeatedly("\x1b[C", (view) => onBlank(view) && (inLine(view) || !onLastLine(view))),
+  newline: once("\n"),
+  deleteChar: once("\x1b[3~", inLine),
+  deleteWord: once("\x1b[3;3~", inLine),
+  deleteToLineEnd: once("\x0b", inLine),
+  joinNextLine: once("\x1b[3~", (view) => !inLine(view)),
+  joinPreviousLine: once("\x7f", (view) => view.col === 0),
+  undo: once("\x1f"),
+  /** Normal mode keeps the cursor on a character, never after the last one. */
+  clamp: once("\x1b[D", (view) => view.col > 0 && !inLine(view)),
+} satisfies Record<string, Action>;
+type ActionName = keyof typeof ACTIONS;
+
+/** Actions run under these bindings, so a user's remapped keys cannot redirect them. */
+const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
+
+/** A Normal-mode command: the actions to perform, then the mode to continue in. */
+type Command = {
+  readonly mode: "insert" | "normal";
+  readonly steps: (view: View) => ReadonlyArray<ActionName>;
+};
+
+const insert = (...steps: ReadonlyArray<ActionName>): Command => ({
+  mode: "insert",
+  steps: () => steps,
+});
+const normal = (...steps: ReadonlyArray<ActionName>): Command => ({
+  mode: "normal",
+  steps: () => steps,
+});
+/** Pi's word boundaries find the word under the cursor. A blank has no word, so it is left alone. */
+const innerWord: Command["steps"] = (view) =>
+  onBlank(view) ? [] : ["wordRight", "wordLeft", "deleteWord"];
+const wholeLine: Command["steps"] = (view) => [
+  "lineStart",
+  "deleteToLineEnd",
+  onLastLine(view) ? "joinPreviousLine" : "joinNextLine",
+];
+
+/** Every binding, keyed by its full key sequence. A sequence's proper prefixes are pending states. */
+const COMMANDS: ReadonlyMap<string, Command> = new Map(
+  Object.entries<Command>({
+    i: insert(),
+    a: insert("right"),
+    A: insert("lineEnd"),
+    I: insert("lineStart"),
+    o: insert("lineEnd", "newline"),
+    O: insert("lineStart", "newline", "up"),
+    h: normal("left"),
+    j: normal("down"),
+    k: normal("up"),
+    l: normal("right"),
+    w: normal("wordRight", "skipBlanks"),
+    b: normal("wordLeft"),
+    "0": normal("lineStart"),
+    $: normal("lineEnd"),
+    x: normal("deleteChar"),
+    D: normal("deleteToLineEnd"),
+    C: insert("deleteToLineEnd"),
+    u: normal("undo"),
+    dd: { mode: "normal", steps: wholeLine },
+    dw: normal("deleteWord"),
+    diw: { mode: "normal", steps: innerWord },
+    cc: insert("lineStart", "deleteToLineEnd"),
+    cw: insert("deleteWord"),
+    ciw: { mode: "insert", steps: innerWord },
+  }),
+);
+
+/** `pending` holds the keys typed so far of an unfinished command, or "" when there are none. */
+type VimState = { readonly mode: "insert" } | { readonly mode: "normal"; readonly pending: string };
+
+const INSERT: VimState = { mode: "insert" };
+const NORMAL: VimState = { mode: "normal", pending: "" };
+
+function modeLabel(state: VimState): string {
+  if (state.mode === "insert") return " INSERT ";
+  return state.pending === "" ? " NORMAL " : ` NORMAL ${state.pending} `;
+}
+
+/** The text this input types, or undefined for control and navigation keys. */
+function printableText(data: string): string | undefined {
+  const decoded = decodeKittyPrintable(data);
+  if (decoded !== undefined) return decoded;
+  const code = data.charCodeAt(0);
+  return code >= 0x20 && code !== 0x7f ? data : undefined;
 }
 
 /** Pi's main prompt editor with a deliberately small set of Vim bindings. */
 class VimEditor extends CustomEditor {
-  private vimState: VimState = { mode: "insert" };
+  private vimState: VimState = INSERT;
 
   override handleInput(data: string): void {
-    if (matchesKey(data, "escape")) {
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+[")) {
       this.handleEscape(data);
       return;
     }
-
     if (this.vimState.mode === "insert") {
       super.handleInput(data);
       return;
     }
 
-    const key = parseKey(data) ?? data;
-    if (this.vimState.pending !== "none") {
-      this.handlePending(this.vimState.pending, key);
-      return;
-    }
-
-    if (this.handleInsertCommand(key)) return;
-    if (this.handleMovementCommand(key)) return;
-    if (this.handleEditCommand(key)) return;
-    if (key === "enter") {
-      this.handleSubmit(data);
-      return;
-    }
-    this.handleUnhandledNormalInput(data, key);
-  }
-
-  private handleInsertCommand(key: string): boolean {
-    switch (key) {
-      case "i":
-        this.enterInsertMode();
-        return true;
-      case "a":
-        super.handleInput(INPUT_RIGHT);
-        this.enterInsertMode();
-        return true;
-      case "A":
-        super.handleInput(INPUT_LINE_END);
-        this.enterInsertMode();
-        return true;
-      case "I":
-        super.handleInput(INPUT_LINE_START);
-        this.enterInsertMode();
-        return true;
-      case "o":
-        this.openLineBelow();
-        return true;
-      case "O":
-        this.openLineAbove();
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  private handleMovementCommand(key: string): boolean {
-    switch (key) {
-      case "h":
-        super.handleInput(INPUT_LEFT);
-        return true;
-      case "j":
-        super.handleInput(INPUT_DOWN);
-        this.clampNormalCursor();
-        return true;
-      case "k":
-        super.handleInput(INPUT_UP);
-        this.clampNormalCursor();
-        return true;
-      case "l":
-        this.moveNormalCursorRight();
-        return true;
-      case "w":
-        this.moveWordForward();
-        return true;
-      case "b":
-        super.handleInput(INPUT_WORD_LEFT);
-        this.clampNormalCursor();
-        return true;
-      case "0":
-        super.handleInput(INPUT_LINE_START);
-        return true;
-      case "$":
-        super.handleInput(INPUT_LINE_END);
-        this.clampNormalCursor();
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  private handleEditCommand(key: string): boolean {
-    switch (key) {
-      case "x":
-        super.handleInput(INPUT_DELETE);
-        this.clampNormalCursor();
-        return true;
-      case "D":
-        super.handleInput(INPUT_DELETE_TO_LINE_END);
-        this.clampNormalCursor();
-        return true;
-      case "C":
-        super.handleInput(INPUT_DELETE_TO_LINE_END);
-        this.enterInsertMode();
-        return true;
-      case "u":
-        super.handleInput(INPUT_UNDO);
-        this.clampNormalCursor();
-        return true;
-      case "d":
-        this.vimState = { mode: "normal", pending: "delete" };
-        return true;
-      case "c":
-        this.vimState = { mode: "normal", pending: "change" };
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  private handleSubmit(data: string): void {
-    const textBeforeSubmit = this.getText();
-    super.handleInput(data);
-    if (textBeforeSubmit.length > 0 && this.getText().length === 0) {
-      this.enterInsertMode();
+    // Printable input belongs to Vim and never reaches Pi. Everything else is Pi's, unless it
+    // interrupts a pending command. One character is a key press. Longer text is a paste the
+    // terminal did not bracket, which must not run as commands.
+    const text = printableText(data);
+    if (text !== undefined && [...text].length === 1) {
+      this.handleSequence(this.vimState.pending + text);
+    } else if (text !== undefined || this.vimState.pending !== "") {
+      this.vimState = NORMAL;
+    } else {
+      this.passToPi(data);
     }
   }
 
   override render(width: number): string[] {
     const lines = super.render(width);
-    const lastIndex = lines.length - 1;
-    const lastLine = lines[lastIndex];
-    if (lastLine === undefined) return lines;
+    const lastLine = lines.at(-1);
+    const label = modeLabel(this.vimState);
+    // An open autocomplete list renders below the border, where a label would cover an item.
+    if (lastLine === undefined || this.isShowingAutocomplete() || width < label.length)
+      return lines;
 
-    const pending =
-      this.vimState.mode === "normal" && this.vimState.pending !== "none"
-        ? ` ${this.pendingLabel(this.vimState.pending)}`
-        : "";
-    const label = this.vimState.mode === "insert" ? " INSERT " : ` NORMAL${pending} `;
-    if (visibleWidth(lastLine) < label.length) return lines;
-
-    lines[lastIndex] = truncateToWidth(lastLine, width - label.length, "") + label;
+    lines[lines.length - 1] =
+      truncateToWidth(lastLine, width - label.length, "") + this.borderColor(label);
     return lines;
   }
 
   private handleEscape(data: string): void {
+    if (this.vimState.mode === "normal" && this.vimState.pending === "") {
+      super.handleInput(data);
+      return;
+    }
     if (this.vimState.mode === "insert") {
-      this.vimState = { mode: "normal", pending: "none" };
-      this.clampNormalCursor();
+      if (this.isShowingAutocomplete()) super.handleInput(data);
+      this.perform("left");
+    }
+    this.vimState = NORMAL;
+  }
+
+  private handleSequence(sequence: string): void {
+    const command = COMMANDS.get(sequence);
+    if (command === undefined) {
+      const isPrefix = [...COMMANDS.keys()].some((keys) => keys.startsWith(sequence));
+      this.vimState = { mode: "normal", pending: isPrefix ? sequence : "" };
       return;
     }
-    if (this.vimState.pending !== "none") {
-      this.vimState = { mode: "normal", pending: "none" };
+
+    for (const step of command.steps(this.view())) this.perform(step);
+    if (command.mode === "insert") {
+      this.vimState = INSERT;
       return;
     }
+    this.vimState = NORMAL;
+    this.perform("clamp");
+  }
+
+  private passToPi(data: string): void {
+    const hadText = this.getText().length > 0;
     super.handleInput(data);
+    // Pi empties the editor when it accepts a submission. The next prompt starts in Insert mode.
+    if (hadText && this.getText().length === 0) this.vimState = INSERT;
+    else this.perform("clamp");
   }
 
-  private handlePending(pending: ActivePendingCommand, key: string): void {
-    switch (pending) {
-      case "delete":
-        this.handlePendingOperator(key, "delete");
-        return;
-      case "change":
-        this.handlePendingOperator(key, "change");
-        return;
-      case "delete-inner":
-        this.finishInnerWordCommand(key, "delete");
-        return;
-      case "change-inner":
-        this.finishInnerWordCommand(key, "change");
+  private perform(name: ActionName): void {
+    const { input, when, repeats } = ACTIONS[name];
+    for (let view = this.view(); when(view); ) {
+      this.performInput(input);
+      const next = this.view();
+      // A repeating action ends when its guard fails or when the cursor stops moving.
+      if (!repeats || (next.line === view.line && next.col === view.col)) return;
+      view = next;
     }
   }
 
-  private handlePendingOperator(key: string, operation: "change" | "delete"): void {
-    if (key === "i") {
-      this.vimState = { mode: "normal", pending: `${operation}-inner` };
-      return;
+  /**
+   * Send input straight to the base editor under Pi's default keybindings. Going through
+   * `super` would let app shortcuts and extension shortcuts claim it first.
+   */
+  private performInput(input: string): void {
+    const configured = getKeybindings();
+    setKeybindings(DEFAULT_KEYBINDINGS);
+    try {
+      Editor.prototype.handleInput.call(this, input);
+    } finally {
+      setKeybindings(configured);
     }
-    this.vimState = { mode: "normal", pending: "none" };
-    if (operation === "delete" && key === "d") this.deleteLine();
-    else if (operation === "change" && key === "c") this.changeLine();
-    else if (key === "w" && operation === "delete") this.deleteVimWordForward();
-    else if (key === "w") this.changeWordForward();
   }
 
-  private finishInnerWordCommand(key: string, operation: "change" | "delete"): void {
-    this.vimState = { mode: "normal", pending: "none" };
-    if (key !== "w") return;
-    if (operation === "delete") {
-      this.deleteInnerWord();
-      return;
-    }
-    this.changeInnerWord();
-  }
-
-  private deleteLine(): void {
-    super.handleInput(INPUT_LINE_START);
-    super.handleInput(INPUT_DELETE_TO_LINE_END);
-    super.handleInput(INPUT_DELETE);
-    this.clampNormalCursor();
-  }
-
-  private changeLine(): void {
-    super.handleInput(INPUT_LINE_START);
-    super.handleInput(INPUT_DELETE_TO_LINE_END);
-    this.enterInsertMode();
-  }
-
-  private deleteVimWordForward(): void {
-    super.handleInput(INPUT_DELETE_WORD_RIGHT);
-    this.clampNormalCursor();
-  }
-
-  private changeWordForward(): void {
-    super.handleInput(INPUT_DELETE_WORD_RIGHT);
-    this.enterInsertMode();
-  }
-
-  private deleteInnerWord(): void {
-    this.deleteInnerWordContent();
-    this.clampNormalCursor();
-  }
-
-  private changeInnerWord(): void {
-    this.deleteInnerWordContent();
-    this.enterInsertMode();
-  }
-
-  private deleteInnerWordContent(): void {
+  private view(): View {
     const { line, col } = this.getCursor();
-    const text = this.getLines()[line] ?? "";
-    const current = text.slice(col, col + 1);
-    const previous = text.slice(Math.max(0, col - 1), col);
-    if (
-      col > 0 &&
-      current.length > 0 &&
-      previous.length > 0 &&
-      characterClass(current) === characterClass(previous)
-    ) {
-      super.handleInput(INPUT_WORD_LEFT);
-    }
-    super.handleInput(INPUT_DELETE_WORD_RIGHT);
-  }
-
-  private openLineBelow(): void {
-    super.handleInput(INPUT_LINE_END);
-    this.insertTextAtCursor("\n");
-    this.enterInsertMode();
-  }
-
-  private openLineAbove(): void {
-    super.handleInput(INPUT_LINE_START);
-    this.insertTextAtCursor("\n");
-    super.handleInput(INPUT_UP);
-    this.enterInsertMode();
-  }
-
-  private enterInsertMode(): void {
-    this.vimState = { mode: "insert" };
-  }
-
-  private moveNormalCursorRight(): void {
-    const { line, col } = this.getCursor();
-    const text = this.getLines()[line] ?? "";
-    if (col >= text.length) return;
-    super.handleInput(INPUT_RIGHT);
-    this.clampNormalCursor();
-  }
-
-  private moveWordForward(): void {
-    const { line, col } = this.getCursor();
-    const current = (this.getLines()[line] ?? "").slice(col, col + 1);
-    if (characterClass(current) !== "whitespace") {
-      super.handleInput(INPUT_WORD_RIGHT);
-    }
-
-    let cursor = this.getCursor();
-    let lines = this.getLines();
-    let text = lines[cursor.line] ?? "";
-    while (
-      cursor.col >= text.length ||
-      characterClass(text.slice(cursor.col, cursor.col + 1)) === "whitespace"
-    ) {
-      if (cursor.col >= text.length && cursor.line >= lines.length - 1) break;
-      super.handleInput(INPUT_RIGHT);
-      cursor = this.getCursor();
-      lines = this.getLines();
-      text = lines[cursor.line] ?? "";
-    }
-    this.clampNormalCursor();
-  }
-
-  private clampNormalCursor(): void {
-    if (this.vimState.mode !== "normal") return;
-    const { line, col } = this.getCursor();
-    const text = this.getLines()[line] ?? "";
-    if (text.length > 0 && col >= text.length) super.handleInput(INPUT_LEFT);
-  }
-
-  private handleUnhandledNormalInput(data: string, key: string): void {
-    if (key.length === 1) return;
-    super.handleInput(data);
-  }
-
-  private pendingLabel(pending: ActivePendingCommand): string {
-    switch (pending) {
-      case "delete":
-        return "d";
-      case "delete-inner":
-        return "di";
-      case "change":
-        return "c";
-      case "change-inner":
-        return "ci";
-    }
+    const lines = this.getLines();
+    return { line, col, text: lines[line] ?? "", lineCount: lines.length };
   }
 }
 
