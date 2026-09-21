@@ -3,9 +3,12 @@ import { describe, expect, test } from "vitest";
 import type { AgentRequest } from "../agent-request";
 import type { BridgeEvent } from "../bridge";
 import { models, undatedModelId } from "../models";
-import type { ModelObservation } from "../sdk/model-usage";
-import { createClaudeAgentSdkRunner, type RunnerOptions } from "../sdk/runner";
-import { modelFixture } from "./fixtures";
+import {
+  createClaudeAgentSdkRunner,
+  type ModelObservation,
+  type RunnerOptions,
+} from "../sdk/runner";
+import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 
 const model: Model<Api> = {
   id: "claude-5.1-fable",
@@ -20,41 +23,31 @@ const model: Model<Api> = {
   maxTokens: 128_000,
 };
 
-async function collect(
+function collect(
   request: AgentRequest,
   probeModel: Model<Api> = model,
   options: RunnerOptions = {},
 ): Promise<ReadonlyArray<BridgeEvent>> {
-  const events: BridgeEvent[] = [];
-  const runner = createClaudeAgentSdkRunner(undefined, options);
-  for await (const event of runner(request, probeModel)) {
-    events.push(event);
-  }
-  return events;
+  return drain(createClaudeAgentSdkRunner(options)(request, probeModel));
 }
 
 function request(prompt: string, toolNames: ReadonlyArray<string> = []): AgentRequest {
-  return {
+  return requestFixture({
     systemPrompt: "You are a live protocol contract probe. Follow the user request exactly.",
-    promptBlocks: [{ text: prompt }],
+    promptBlocks: [textBlock(prompt)],
     toolDescription:
       toolNames.length === 0
         ? "No Pi tools are available."
         : 'Available Pi tools: [{"name":"contract_probe","description":"Complete the live deferred-tool contract probe","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}]',
-    toolNames,
-    conversationEntries: [],
-  };
+    toolNames: new Set(toolNames),
+  });
 }
 
 describe("pinned Claude Agent SDK live contract", () => {
   test("streams a normal text response", async () => {
     const events = await collect(request('Reply with exactly "CLAUDE_SDK_TEXT_OK".'));
     const text = events
-      .filter(
-        (event): event is Extract<BridgeEvent, { type: "text_delta" }> =>
-          event.type === "text_delta",
-      )
-      .map((event) => event.text)
+      .flatMap((event) => (event.type === "text_delta" ? [event.text] : []))
       .join("");
 
     expect(text.trim()).toBe("CLAUDE_SDK_TEXT_OK");
@@ -68,17 +61,10 @@ describe("pinned Claude Agent SDK live contract", () => {
         ["contract_probe"],
       ),
     );
-    const calls = events.filter(
-      (event): event is Extract<BridgeEvent, { type: "tool_call" }> => event.type === "tool_call",
-    );
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      type: "tool_call",
-      name: "contract_probe",
-      arguments: { value: "CLAUDE_SDK_TOOL_OK" },
+    expect(events.at(-1)).toMatchObject({
+      type: "tool_calls",
+      calls: [{ name: "contract_probe", arguments: { value: "CLAUDE_SDK_TOOL_OK" } }],
     });
-    expect(events.some((event) => event.type === "failed")).toBe(false);
   });
 
   test("serves the advertised model id and limits for every registered selector", async () => {

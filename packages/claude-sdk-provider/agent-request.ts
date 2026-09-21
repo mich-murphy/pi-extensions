@@ -8,24 +8,12 @@ export interface ImageAttachment {
   readonly mediaType: string;
 }
 
-interface SerializedMessage {
-  readonly json: object;
-  readonly images: ReadonlyArray<ImageAttachment>;
-}
-
-interface TranscriptEntry {
-  readonly text: string;
-  readonly images: ReadonlyArray<ImageAttachment>;
-}
-
 /** One stable prompt block sent through the SDK streaming-input API. */
 export interface PromptBlock {
   /** Text sent in this SDK content block. */
   readonly text: string;
-  /** Whether this block requests the provider-owned cache marker. */
-  readonly cacheBreakpoint?: boolean;
   /** Image blocks expanded immediately after the text block. */
-  readonly images?: ReadonlyArray<ImageAttachment>;
+  readonly images: ReadonlyArray<ImageAttachment>;
 }
 
 /** Parsed request passed from the Pi adapter to the SDK runner. */
@@ -34,12 +22,16 @@ export interface AgentRequest {
   readonly systemPrompt: string;
   /** Stable prompt blocks in wire order. */
   readonly promptBlocks: ReadonlyArray<PromptBlock>;
+  /**
+   * Index of the prompt block that ends the cacheable prefix. The pinned Agent
+   * SDK's Claude Code adds three cache breakpoints of its own and Anthropic
+   * accepts four, so a request can carry at most this one.
+   */
+  readonly cacheBreakpoint: number | undefined;
   /** Per-turn deferred Pi tool catalog. */
   readonly toolDescription: string;
   /** Pi tool names allowed during this turn. */
-  readonly toolNames: ReadonlyArray<string>;
-  /** Serialized conversation entries used by diagnostics. */
-  readonly conversationEntries: ReadonlyArray<string>;
+  readonly toolNames: ReadonlySet<string>;
 }
 
 const BRIDGE_INSTRUCTIONS = [
@@ -51,92 +43,55 @@ const BRIDGE_INSTRUCTIONS = [
   "When no tool is needed, answer the user directly.",
 ].join("\n");
 
-function serializeImageBlocks(content: ReadonlyArray<TextContent | ImageContent>): {
-  readonly content: ReadonlyArray<object>;
-  readonly images: ReadonlyArray<ImageAttachment>;
-} {
+// Image bytes travel as separate SDK blocks; the JSONL text only references them.
+function transcriptEntry(
+  fields: object,
+  content: string | ReadonlyArray<TextContent | ImageContent>,
+): PromptBlock {
+  const blocks = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
   const images: ImageAttachment[] = [];
-  const serialized = content.map((block) => {
+  const serialized = blocks.map((block) => {
     if (block.type === "text") return { type: "text", text: block.text };
     images.push({ data: block.data, mediaType: block.mimeType });
     return { type: "image", mediaType: block.mimeType, imageRef: images.length - 1 };
   });
-  return { content: serialized, images };
+  return { text: JSON.stringify({ ...fields, content: serialized }), images };
 }
 
-function serializeAssistantMessage(
-  message: Extract<Message, { role: "assistant" }>,
-): SerializedMessage | undefined {
-  const content: object[] = [];
-  for (const block of message.content) {
-    if (block.type === "text") content.push({ type: "text", text: block.text });
-    if (block.type === "toolCall") {
-      content.push({
-        type: "toolCall",
-        id: block.id,
-        name: block.name,
-        arguments: block.arguments,
-      });
+// Thinking is ephemeral, so an assistant message with nothing else has no entry.
+function assistantEntry(message: Extract<Message, { role: "assistant" }>): PromptBlock | undefined {
+  const content = message.content.flatMap((block): object[] => {
+    if (block.type === "text") return [{ type: "text", text: block.text }];
+    if (block.type !== "toolCall") return [];
+    return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
+  });
+  if (content.length === 0) return undefined;
+  return { text: JSON.stringify({ role: "assistant", content }), images: [] };
+}
+
+function transcriptEntries(messages: ReadonlyArray<Message>): PromptBlock[] {
+  return messages.flatMap((message) => {
+    switch (message.role) {
+      case "user":
+        return [transcriptEntry({ role: "user" }, message.content)];
+      case "assistant":
+        return assistantEntry(message) ?? [];
+      case "toolResult":
+        return [
+          transcriptEntry(
+            {
+              role: "toolResult",
+              toolCallId: message.toolCallId,
+              toolName: message.toolName,
+              isError: message.isError,
+            },
+            message.content,
+          ),
+        ];
+      default:
+        return [];
     }
-  }
-  return content.length > 0 ? { json: { role: "assistant", content }, images: [] } : undefined;
-}
-
-function serializeMessage(message: Message): SerializedMessage | undefined {
-  if (message.role === "user") {
-    if (typeof message.content === "string") {
-      return {
-        json: { role: "user", content: [{ type: "text", text: message.content }] },
-        images: [],
-      };
-    }
-    const { content, images } = serializeImageBlocks(message.content);
-    return { json: { role: "user", content }, images };
-  }
-  if (message.role === "assistant") return serializeAssistantMessage(message);
-  if (message.role !== "toolResult") return undefined;
-  const { content, images } = serializeImageBlocks(message.content);
-  return {
-    json: {
-      role: "toolResult",
-      toolCallId: message.toolCallId,
-      toolName: message.toolName,
-      isError: message.isError,
-      content,
-    },
-    images,
-  };
-}
-
-function serializeConversationEntries(context: Context): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  for (const message of context.messages) {
-    const serialized = serializeMessage(message);
-    if (serialized)
-      entries.push({ text: JSON.stringify(serialized.json), images: serialized.images });
-  }
-  return entries;
-}
-
-function promptBlocks(context: Context, entries: ReadonlyArray<TranscriptEntry>): PromptBlock[] {
-  const lastEntryIndex = entries.length - 1;
-  return [
-    {
-      text: [
-        "Pi working instructions:",
-        context.systemPrompt ?? "",
-        "Complete prior Pi conversation (JSONL). Each following block is one transcript entry.",
-      ].join("\n\n"),
-    },
-    ...entries.map(
-      (entry, index): PromptBlock => ({
-        text: entry.text,
-        cacheBreakpoint: index === lastEntryIndex,
-        ...(entry.images.length > 0 ? { images: entry.images } : {}),
-      }),
-    ),
-    { text: "Continue from the final conversation entry above." },
-  ];
+  });
 }
 
 /** Build the stateless SDK request from Pi's typed provider context. */
@@ -146,16 +101,26 @@ export function buildAgentRequest(context: Context): AgentRequest {
     description: tool.description,
     inputSchema: tool.parameters,
   }));
-  const entries = serializeConversationEntries(context);
+  const entries = transcriptEntries(context.messages);
+  const preamble = [
+    "Pi working instructions:",
+    context.systemPrompt ?? "",
+    "Complete prior Pi conversation (JSONL). Each following block is one transcript entry.",
+  ].join("\n\n");
   return {
     systemPrompt: BRIDGE_INSTRUCTIONS,
-    promptBlocks: promptBlocks(context, entries),
+    promptBlocks: [
+      { text: preamble, images: [] },
+      ...entries,
+      { text: "Continue from the final conversation entry above.", images: [] },
+    ],
+    // Pi only appends to the transcript, so the newest entry ends the reusable prefix.
+    cacheBreakpoint: entries.length > 0 ? entries.length : undefined,
     toolDescription: [
       "Request one tool from Pi. The call is deferred to Pi and this SDK process must not execute it.",
       'The "name" field must be one of the Pi tool names below, never "pi_call" (this gateway\'s own name).',
       `Available Pi tools: ${JSON.stringify(tools)}`,
     ].join("\n"),
-    toolNames: tools.map((tool) => tool.name),
-    conversationEntries: entries.map((entry) => entry.text),
+    toolNames: new Set(tools.map((tool) => tool.name)),
   };
 }

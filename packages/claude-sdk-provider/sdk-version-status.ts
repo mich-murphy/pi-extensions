@@ -10,11 +10,7 @@ const sdkPackageMetadataSchema = z.object({
   claudeCodeVersion: z.string(),
 });
 
-interface SemanticVersion {
-  readonly major: number;
-  readonly minor: number;
-  readonly patch: number;
-}
+type SemanticVersion = readonly [major: number, minor: number, patch: number];
 
 /** Safe version information for the Agent SDK and Claude Code installations. */
 export interface ClaudeSdkVersionStatus {
@@ -28,15 +24,8 @@ export interface ClaudeSdkVersionStatus {
   readonly updateSuggested: boolean;
 }
 
-/** Safe public shape of an expected version-inspection failure. */
-export interface ClaudeSdkVersionInspectionFailure extends Error {
-  readonly _tag: "ClaudeSdkVersionInspectionError";
-  readonly operation: "read-sdk-metadata" | "read-installed-version" | "parse-version";
-  readonly cause?: unknown;
-}
-
 /** Expected failure while inspecting local Claude versions. */
-class ClaudeSdkVersionInspectionError extends Error implements ClaudeSdkVersionInspectionFailure {
+class ClaudeSdkVersionInspectionError extends Error {
   readonly _tag = "ClaudeSdkVersionInspectionError" as const;
 
   /**
@@ -54,10 +43,12 @@ class ClaudeSdkVersionInspectionError extends Error implements ClaudeSdkVersionI
   }
 }
 
+export type { ClaudeSdkVersionInspectionError };
+
 /** Result of inspecting local Claude versions. */
 export type ClaudeSdkVersionStatusResult =
   | { readonly _tag: "ok"; readonly value: ClaudeSdkVersionStatus }
-  | { readonly _tag: "err"; readonly error: ClaudeSdkVersionInspectionFailure };
+  | { readonly _tag: "err"; readonly error: ClaudeSdkVersionInspectionError };
 
 /** Dependencies used to inspect SDK and installed CLI versions. */
 export interface ClaudeSdkVersionSources {
@@ -70,17 +61,13 @@ export interface ClaudeSdkVersionSources {
 function parseSemanticVersion(input: string): SemanticVersion | undefined {
   const match = SEMANTIC_VERSION.exec(input);
   if (!match) return undefined;
-  const major = Number(match[1]);
-  const minor = Number(match[2]);
-  const patch = Number(match[3]);
-  if (![major, minor, patch].every(Number.isSafeInteger)) return undefined;
-  return { major, minor, patch };
+  const version = [Number(match[1]), Number(match[2]), Number(match[3])] as const;
+  return version.every(Number.isSafeInteger) ? version : undefined;
 }
 
 function isNewer(candidate: SemanticVersion, baseline: SemanticVersion): boolean {
-  if (candidate.major !== baseline.major) return candidate.major > baseline.major;
-  if (candidate.minor !== baseline.minor) return candidate.minor > baseline.minor;
-  return candidate.patch > baseline.patch;
+  const difference = candidate.map((part, index) => part - (baseline[index] ?? 0));
+  return (difference.find((part) => part !== 0) ?? 0) > 0;
 }
 
 function defaultReadSdkPackageMetadata(): Promise<string> {
@@ -151,7 +138,7 @@ export async function inspectClaudeSdkVersions(
     value: {
       agentSdk: metadata.data.version,
       bundledClaudeCode: metadata.data.claudeCodeVersion,
-      installedClaudeCode: `${installed.major}.${installed.minor}.${installed.patch}`,
+      installedClaudeCode: installed.join("."),
       updateSuggested: isNewer(installed, bundled),
     },
   };

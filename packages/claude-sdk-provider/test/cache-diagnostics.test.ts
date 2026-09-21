@@ -3,13 +3,7 @@ import { buildAgentRequest } from "../agent-request";
 import { cacheDiagnosticsFromEnvironment } from "../cache-diagnostics";
 import { type CacheDiagnostic, createCacheDiagnosticTracker } from "../cache-tracker";
 import { buildPromptStream } from "../sdk/prompt-stream";
-import { contextFixture, sdkContentRecords } from "./fixtures";
-
-async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const values: T[] = [];
-  for await (const value of iterable) values.push(value);
-  return values;
-}
+import { contextFixture, drain, sdkContentRecords, textBlock } from "./fixtures";
 
 describe("cache diagnostics", () => {
   test("reports a byte-identical common prefix for long transcripts containing images without logging content", async () => {
@@ -43,20 +37,21 @@ describe("cache diagnostics", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = createCacheDiagnosticTracker((event) => events.push(event));
 
-    tracker.request("claude-sdk/sonnet", first.promptBlocks);
-    tracker.request("claude-sdk/sonnet", second.promptBlocks);
+    tracker("claude-sdk/sonnet", first);
+    tracker("claude-sdk/sonnet", second);
 
     const secondDiagnostic = events[1];
     expect(secondDiagnostic?.type).toBe("request");
     if (secondDiagnostic?.type !== "request") throw new Error("missing request diagnostic");
     expect(secondDiagnostic.commonPrefixBlocks).toBe(first.promptBlocks.length - 1);
+    expect(secondDiagnostic.breakpointBlock).toBe(second.cacheBreakpoint);
     expect(secondDiagnostic.commonPrefixCharacters).toBeGreaterThan(100_000);
     expect(secondDiagnostic.imageBase64Characters).toBe(16_000);
     expect(JSON.stringify(secondDiagnostic)).not.toContain("stable build output");
     expect(JSON.stringify(secondDiagnostic)).not.toContain("cGl4ZWxz");
 
-    const firstWire = await drain(buildPromptStream(first.promptBlocks));
-    const secondWire = await drain(buildPromptStream(second.promptBlocks));
+    const firstWire = await drain(buildPromptStream(first.promptBlocks, first.cacheBreakpoint));
+    const secondWire = await drain(buildPromptStream(second.promptBlocks, second.cacheBreakpoint));
     const firstContent = sdkContentRecords(firstWire[0]);
     const secondContent = sdkContentRecords(secondWire[0]);
     const withoutCacheMetadata = (block: Record<string, unknown>) => {
@@ -72,11 +67,11 @@ describe("cache diagnostics", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = createCacheDiagnosticTracker((event) => events.push(event));
 
-    tracker.request("claude-sdk/sonnet", [{ text: "first", cacheBreakpoint: true }]);
-    tracker.request("claude-sdk/sonnet", [
-      { text: "first" },
-      { text: "second", cacheBreakpoint: true },
-    ]);
+    tracker("claude-sdk/sonnet", { promptBlocks: [textBlock("first")], cacheBreakpoint: 0 });
+    tracker("claude-sdk/sonnet", {
+      promptBlocks: [textBlock("first"), textBlock("second")],
+      cacheBreakpoint: 1,
+    });
 
     const [first, second] = events;
     if (first?.type !== "request" || second?.type !== "request")
@@ -89,10 +84,11 @@ describe("cache diagnostics", () => {
   test("flags a large low-reuse turn as a possible cache collapse", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = createCacheDiagnosticTracker((event) => events.push(event));
-    const turn = tracker.request("claude-sdk/sonnet", [
-      { text: "x".repeat(100_000), cacheBreakpoint: true },
-    ]);
-    tracker.usage(turn, { input: 94_337, output: 100, cacheRead: 27_165, cacheWrite: 0 });
+    const recordUsage = tracker("claude-sdk/sonnet", {
+      promptBlocks: [textBlock("x".repeat(100_000))],
+      cacheBreakpoint: 0,
+    });
+    recordUsage({ input: 94_337, output: 100, cacheRead: 27_165, cacheWrite: 0 });
 
     expect(events[1]).toMatchObject({
       type: "usage",

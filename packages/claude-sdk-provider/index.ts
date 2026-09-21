@@ -82,7 +82,7 @@ function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): voi
 export default function registerClaudeSdkProvider(pi: ExtensionAPI): void {
   // Selector -> concrete model last observed on a real turn, for /claude-sdk-status.
   const observedModels = new Map<string, string>();
-  const runClaudeAgentSdk = createClaudeAgentSdkRunner(undefined, {
+  const runClaudeAgentSdk = createClaudeAgentSdkRunner({
     cacheDiagnostics: cacheDiagnosticsFromEnvironment(),
     modelObserver: (observation) => {
       observedModels.set(observation.selector, observation.canonicalModel);

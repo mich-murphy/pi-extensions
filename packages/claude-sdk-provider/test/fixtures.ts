@@ -1,5 +1,19 @@
 import type { HookCallback, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Context, Model } from "@earendil-works/pi-ai";
+import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
+import type { RunSdkQuery } from "../sdk/runner";
+
+/**
+ * Collect every value of an async iterable.
+ *
+ * @param iterable - Stream under test.
+ * @returns All yielded values in order.
+ */
+export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
+  const items: T[] = [];
+  for await (const item of iterable) items.push(item);
+  return items;
+}
 
 /**
  * Build the minimal Pi context needed by provider adapter tests.
@@ -23,15 +37,107 @@ export function modelFixture(input: unknown): Model<"claude-sdk"> {
   return input as Model<"claude-sdk">;
 }
 
+/** The registered Sonnet model with subscription pricing, as most tests need it. */
+export const sonnet = modelFixture({
+  api: "claude-sdk",
+  provider: "claude-sdk",
+  id: "claude-5-sonnet",
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+});
+
 /**
- * Build an SDK hook input without repeating third-party fixture casts.
+ * Build a prompt block.
  *
- * @param input - Minimal hook event used by the test.
- * @returns The event as the SDK hook input type.
+ * @param text - Block text.
+ * @param images - Images expanded after the text.
+ * @returns The prompt block.
  */
-export function hookInputFixture(input: unknown): Parameters<HookCallback>[0] {
-  // SAFETY: Tests supply every field read by createPreToolUseHook. Remaining SDK fields are irrelevant to this hook and owned by the third-party runtime.
-  return input as Parameters<HookCallback>[0];
+export function textBlock(text: string, images: ReadonlyArray<ImageAttachment> = []): PromptBlock {
+  return { text, images };
+}
+
+/**
+ * Build a runner request, overriding only what a test cares about.
+ *
+ * @param overrides - Fields that differ from the single-block default request.
+ * @returns A complete agent request.
+ */
+export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequest {
+  return {
+    systemPrompt: "stable system prompt",
+    promptBlocks: [textBlock("hello")],
+    cacheBreakpoint: undefined,
+    toolDescription: "stable tools",
+    toolNames: new Set(["read"]),
+    ...overrides,
+  };
+}
+
+/**
+ * Deliver one `PreToolUse` event to a hook the way the SDK does.
+ *
+ * @param hook - Hook under test.
+ * @param toolUseId - SDK tool-use identifier.
+ * @param toolInput - Raw model-supplied tool input.
+ * @param toolName - SDK tool name, the Pi gateway by default.
+ * @returns The hook's permission output.
+ */
+export function deliverToolUse(
+  hook: HookCallback,
+  toolUseId: string,
+  toolInput: unknown,
+  toolName = "mcp__pi__pi_call",
+): ReturnType<HookCallback> {
+  // SAFETY: Tests supply every field read by the PreToolUse hook. Remaining SDK fields are irrelevant to it and owned by the third-party runtime.
+  const input = {
+    hook_event_name: "PreToolUse",
+    tool_name: toolName,
+    tool_use_id: toolUseId,
+    tool_input: toolInput,
+  } as Parameters<HookCallback>[0];
+  return hook(input, toolUseId, { signal: new AbortController().signal });
+}
+
+/**
+ * Read the `PreToolUse` hook the runner installed on an SDK query.
+ *
+ * @param params - Parameters captured from the fake SDK query.
+ * @returns The installed hook.
+ */
+export function installedHook(params: Parameters<RunSdkQuery>[0]): HookCallback {
+  const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+  if (!hook) throw new Error("test setup: PreToolUse hook missing from SDK query options");
+  return hook;
+}
+
+/**
+ * Build a terminal SDK result message.
+ *
+ * @param fields - Fields that differ from a clean `end_turn` result.
+ * @returns The SDK result message.
+ */
+export function resultMessage(fields: Record<string, unknown> = {}): Record<string, unknown> {
+  return { type: "result", is_error: false, stop_reason: "end_turn", ...fields };
+}
+
+/**
+ * Build an SDK partial-message stream event.
+ *
+ * @param event - Anthropic stream event payload.
+ * @returns The SDK stream message.
+ */
+export function streamEvent(event: Record<string, unknown>): Record<string, unknown> {
+  return { type: "stream_event", event };
+}
+
+/**
+ * Build the SDK stream message for one text delta.
+ *
+ * @param text - Delta text.
+ * @returns The SDK stream message.
+ */
+export function textDelta(text: string): Record<string, unknown> {
+  return streamEvent({ type: "content_block_delta", delta: { type: "text_delta", text } });
 }
 
 /**
