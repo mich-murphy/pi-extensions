@@ -72,6 +72,66 @@ describe("applyResourceToggles", () => {
     expect(result.systemPrompt).toContain(second.description);
   });
 
+  test("filters Pi's structured prompt sections", () => {
+    const first = skill("deploy", "/work/client-a/.agents/skills/deploy/SKILL.md");
+    const second = skill("review", "/work/client-b/.agents/skills/review/SKILL.md");
+    const firstContextPath = "/work/client-a/AGENTS.md";
+    const contextFiles = [
+      { path: firstContextPath, content: "client a" },
+      { path: "/work/client-b/AGENTS.md", content: "client b" },
+    ];
+    const options: BuildSystemPromptOptions = {
+      cwd: "/work",
+      selectedTools: ["read"],
+      contextFiles,
+      skills: [first, second],
+    };
+    const contextContent = [
+      "Project-specific instructions and guidelines:",
+      ...contextFiles.map(
+        ({ path, content }) =>
+          `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
+      ),
+    ].join("\n\n");
+    const prompt = [
+      "base",
+      `<project_context>\n${contextContent}\n</project_context>`,
+      `<skills>\n${formatSkillsForPrompt([first, second]).trim()}\n</skills>`,
+    ].join("\n\n");
+
+    const result = applyResourceToggles(
+      prompt,
+      options,
+      resourcePaths(first.filePath, firstContextPath),
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(result.systemPrompt).not.toContain("client a");
+    expect(result.systemPrompt).toContain("client b");
+    expect(result.systemPrompt).not.toContain(first.description);
+    expect(result.systemPrompt).toContain(second.description);
+    expect(result.systemPrompt).toContain("<project_context>");
+    expect(result.systemPrompt).toContain("<skills>");
+  });
+
+  test("filters skills rendered for bash-only sessions", () => {
+    const deploy = skill("deploy", "/work/project/.agents/skills/deploy/SKILL.md");
+    const options: BuildSystemPromptOptions = {
+      cwd: "/work/project",
+      selectedTools: ["bash"],
+      skills: [deploy],
+    };
+    const bashSkills = formatSkillsForPrompt([deploy]).replace(
+      "Use the read tool to load a skill's file when the task matches its description.",
+      "Use bash to load a skill's file when the task matches its description.",
+    );
+    const prompt = `base\n\n<skills>\n${bashSkills.trim()}\n</skills>`;
+
+    const result = applyResourceToggles(prompt, options, resourcePaths(deploy.filePath));
+
+    expect(result).toEqual({ systemPrompt: "base\n\n", failures: [] });
+  });
+
   test("reports section-specific prompt drift only when a replacement is required", () => {
     const deploy = skill("deploy", "/work/project/.agents/skills/deploy/SKILL.md");
     const options: BuildSystemPromptOptions = {
@@ -92,11 +152,11 @@ describe("applyResourceToggles", () => {
     });
   });
 
-  test("does not expect a skill section when read is inactive", () => {
+  test("does not expect a skill section when no file-reading tool is active", () => {
     const deploy = skill("deploy", "/work/project/.agents/skills/deploy/SKILL.md");
     const options: BuildSystemPromptOptions = {
       cwd: "/work/project",
-      selectedTools: ["bash"],
+      selectedTools: ["edit"],
       skills: [deploy],
     };
 
