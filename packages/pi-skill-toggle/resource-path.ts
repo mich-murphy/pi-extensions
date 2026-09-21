@@ -1,15 +1,19 @@
-import { isAbsolute, normalize, relative, resolve, sep } from "node:path";
-import process from "node:process";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 declare const resourcePathBrand: unique symbol;
 
-/** Absolute normalized identity for a Pi-loaded resource or its owner directory. */
+/** Absolute normalized identity for a Pi-loaded resource. */
 export type ResourcePath = string & { readonly [resourcePathBrand]: true };
 
-/** Parse a resource path into an absolute identity without dereferencing symlinks. */
-export function resourcePathId(path: string, cwd = process.cwd()): ResourcePath {
-  // SAFETY: resolve() makes the path absolute and normalize() removes lexical ambiguity. The brand is private to this parser.
-  return normalize(resolve(cwd, path)) as ResourcePath;
+/** Resolve a path against a working directory into an identity without dereferencing symlinks. */
+export function resourcePathId(path: string, cwd: string): ResourcePath {
+  // SAFETY: resolve() returns an absolute, lexically normalized path. Only this module brands.
+  return resolve(cwd, path) as ResourcePath;
+}
+
+/** Parse a persisted path, which must already be absolute. */
+export function parseResourcePath(path: string): ResourcePath | undefined {
+  return isAbsolute(path) ? resourcePathId(path, path) : undefined;
 }
 
 /** Whether a path is lexically inside a parent path or equal to it. */

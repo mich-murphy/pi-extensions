@@ -1,234 +1,183 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  BeforeAgentStartEvent,
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, type SettingItem, SettingsList, Text } from "@earendil-works/pi-tui";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
-import { applyResourceToggles } from "./prompt-filter";
+import { hideResources } from "./prompt-filter";
 import { type ResourcePath, resourcePathId } from "./resource-path";
-import { type ToggleResource, toggleResourcesFromPrompt } from "./resources";
 import {
-  resourceIsEnabled,
-  type SkillToggleState,
-  type SkillToggleStateResult,
-  type SkillToggleStateStore,
-  SkillToggleStore,
-} from "./state";
+  defaultToggleValue,
+  isToggleValue,
+  type ToggleOverrides,
+  type ToggleResource,
+  toggleResources,
+  toggleValue,
+} from "./resources";
+import { ToggleStateFile, type ToggleStateResult, type ToggleStateStore } from "./state";
 
 /** Register the skill-toggle extension with its default persistent store. */
 export default function skillToggle(pi: ExtensionAPI): void {
-  registerSkillToggle(pi, new SkillToggleStore());
+  registerSkillToggle(pi, new ToggleStateFile());
 }
 
-/** Register the skill-toggle command and prompt handler with an injected store. */
-export function registerSkillToggle(pi: ExtensionAPI, store: SkillToggleStateStore): void {
-  const stateAccess = createStateAccess(store);
+/** Register the skill-toggle command and event handlers with an injected store. */
+export function registerSkillToggle(pi: ExtensionAPI, store: ToggleStateStore): void {
+  const extension = new SkillToggle(store);
   pi.registerCommand("skill-toggle", {
     description: "Enable or disable user-managed instructions and skills",
-    handler: (args, ctx) => runToggleCommand(args, ctx, store, stateAccess),
+    handler: (args, ctx) => extension.openMenu(args, ctx),
   });
-  pi.on("resources_discover", (_event, ctx) => {
-    if (!ctx.isProjectTrusted()) return;
-    const skillPaths = discoverProjectSkillPaths(ctx.cwd);
-    return skillPaths.length > 0 ? { skillPaths: [...skillPaths] } : undefined;
-  });
-  registerPromptHandler(pi, stateAccess);
+  pi.on("resources_discover", (_event, ctx) => extension.contributeProjectSkills(ctx));
+  pi.on("before_agent_start", (event, ctx) => extension.filterPrompt(event, ctx));
 }
 
-interface StateAccess {
-  load(
-    resources: ReadonlyArray<ToggleResource>,
-    ctx: Pick<ExtensionCommandContext, "ui">,
-  ): SkillToggleState | undefined;
-  report(
-    result: Extract<SkillToggleStateResult, { readonly _tag: "err" }>,
-    ctx: Pick<ExtensionCommandContext, "ui">,
-  ): void;
-  clearFailure(): void;
-}
+type UiContext = Pick<ExtensionContext, "ui">;
 
-function createStateAccess(store: SkillToggleStateStore): StateAccess {
-  let lastFailure = "";
-  const report: StateAccess["report"] = (result, ctx) => {
-    if (result.error.message !== lastFailure) {
-      ctx.ui.notify(`${result.error.message}\nThe prompt was left unchanged.`, "error");
-    }
-    lastFailure = result.error.message;
-  };
-  return {
-    load: (resources, ctx) => {
-      const result = store.load(resources);
-      if (result._tag === "err") {
-        report(result, ctx);
-        return;
-      }
-      lastFailure = "";
-      return result.value;
-    },
-    report,
-    clearFailure: () => {
-      lastFailure = "";
-    },
+const STATE_FAILURE_CONSEQUENCE = {
+  load: "The prompt was left unchanged.",
+  update: "The toggle was not saved.",
+} as const;
+
+/** Report a failure once until it changes or clears, so it does not repeat on every prompt. */
+function createFailureReporter(): (ctx: UiContext, failure: string | undefined) => void {
+  let lastFailure: string | undefined;
+  return (ctx, failure) => {
+    if (failure !== undefined && failure !== lastFailure) ctx.ui.notify(failure, "error");
+    lastFailure = failure;
   };
 }
 
-// fallow-ignore-next-line complexity -- Command validation branches are explicit user-facing outcomes.
-async function runToggleCommand(
-  args: string,
-  ctx: ExtensionCommandContext,
-  store: SkillToggleStateStore,
-  stateAccess: StateAccess,
-): Promise<void> {
-  if (args.trim()) {
-    ctx.ui.notify("Usage: /skill-toggle", "error");
-    return;
-  }
-  if (ctx.mode !== "tui") {
-    ctx.ui.notify("/skill-toggle requires TUI mode", "error");
-    return;
-  }
-  const resources = toggleResourcesFromPrompt(ctx.getSystemPromptOptions());
-  if (resources.length === 0) {
-    ctx.ui.notify("No user-managed instructions or skills are loaded", "info");
-    return;
-  }
-  const state = stateAccess.load(resources, ctx);
-  if (state) await openToggleDialog({ ctx, resources, state, store, stateAccess });
-}
+/** Session state shared by the command and event handlers. */
+class SkillToggle {
+  private contributedSkills: ReadonlySet<ResourcePath> = new Set();
+  private readonly reportStateFailure = createFailureReporter();
+  private readonly reportPromptFailure = createFailureReporter();
 
-interface ToggleDialogOptions {
-  readonly ctx: ExtensionCommandContext;
-  readonly resources: ReadonlyArray<ToggleResource>;
-  readonly state: SkillToggleState;
-  readonly store: SkillToggleStateStore;
-  readonly stateAccess: StateAccess;
-}
+  constructor(private readonly store: ToggleStateStore) {}
 
-interface ToggleSession {
-  state: SkillToggleState;
-  readonly resources: ReadonlyArray<ToggleResource>;
-  readonly resourcesById: ReadonlyMap<string, ToggleResource>;
-  readonly itemsById: ReadonlyMap<string, SettingItem>;
-  readonly ctx: ExtensionCommandContext;
-  readonly store: SkillToggleStateStore;
-  readonly stateAccess: StateAccess;
-}
+  contributeProjectSkills(
+    ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+  ): { skillPaths: string[] } | undefined {
+    const skillPaths = ctx.isProjectTrusted() ? [...discoverProjectSkillPaths(ctx.cwd)] : [];
+    this.contributedSkills = new Set(skillPaths.map((path) => resourcePathId(path, ctx.cwd)));
+    return skillPaths.length > 0 ? { skillPaths } : undefined;
+  }
 
-async function openToggleDialog(options: ToggleDialogOptions): Promise<void> {
-  const { ctx, resources, state, store, stateAccess } = options;
-  const items = buildSettingItems(resources, state);
-  const session: ToggleSession = {
-    state,
-    resources,
-    resourcesById: new Map(resources.map((resource) => [resource.id, resource])),
-    itemsById: new Map(items.map((item) => [item.id, item])),
-    ctx,
-    store,
-    stateAccess,
-  };
-  await ctx.ui.custom((tui, theme, _keybindings, done) => {
-    const container = new Container();
-    const title = new Text("", 1, 0);
-    const help = new Text("", 1, 0);
-    const updateText = (): void => {
-      title.setText(theme.fg("accent", theme.bold("Skill Toggle")));
-      help.setText(theme.fg("dim", "enter/space toggle · type to search · esc close"));
-    };
-    updateText();
-    container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-    container.addChild(title);
-    const list = new SettingsList(
-      items,
-      Math.min(items.length + 2, 20),
-      getSettingsListTheme(),
-      createToggleHandler(session),
-      () => done(undefined),
-      { enableSearch: true },
+  filterPrompt(
+    event: Pick<BeforeAgentStartEvent, "systemPrompt" | "systemPromptOptions">,
+    ctx: UiContext,
+  ): { systemPrompt: string } | undefined {
+    const options = event.systemPromptOptions;
+    const overrides = this.overridesFrom(this.store.load(), ctx);
+    if (!overrides) return;
+    const hidden = new Set<ResourcePath>(
+      toggleResources(options, this.contributedSkills)
+        .filter((resource) => toggleValue(overrides, resource) === "disabled")
+        .map((resource) => resource.id),
     );
-    container.addChild(list);
-    container.addChild(help);
-    container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-    return {
-      render: (width: number) => container.render(width),
-      invalidate: () => {
-        updateText();
-        container.invalidate();
-      },
-      handleInput: (data: string) => {
-        list.handleInput?.(data);
-        tui.requestRender();
-      },
-    };
-  });
-}
+    if (hidden.size === 0) return;
 
-function isToggleValue(value: string): value is "enabled" | "disabled" {
-  return value === "enabled" || value === "disabled";
-}
+    const result = hideResources(event, (path) => hidden.has(resourcePathId(path, options.cwd)));
+    if (result._tag === "options-filtered") return;
+    this.reportPromptFailure(
+      ctx,
+      result.unmatched.length > 0
+        ? `Skill toggle could not update the ${result.unmatched.join(" and ")} prompt section. Another extension may have rewritten it.`
+        : undefined,
+    );
+    return result.systemPrompt === event.systemPrompt
+      ? undefined
+      : { systemPrompt: result.systemPrompt };
+  }
 
-function createToggleHandler(session: ToggleSession): (id: string, value: string) => void {
-  // fallow-ignore-next-line complexity -- The UI callback keeps validation, persistence, and rollback atomic.
-  return (id, value) => {
-    const resource = session.resourcesById.get(id);
-    const item = session.itemsById.get(id);
-    if (!(resource && item) || resource.editability === "manual-only") return;
-    const previousValue = resourceIsEnabled(session.state, resource) ? "enabled" : "disabled";
-    if (!isToggleValue(value)) {
-      item.currentValue = previousValue;
-      session.ctx.ui.notify(`Unsupported toggle value: ${value}`, "error");
+  async openMenu(args: string, ctx: ExtensionCommandContext): Promise<void> {
+    if (args.trim()) {
+      ctx.ui.notify("Usage: /skill-toggle", "error");
       return;
     }
-    const result = session.store.setValue(resource, value, session.resources);
-    if (result._tag === "err") {
-      item.currentValue = previousValue;
-      session.stateAccess.report(result, session.ctx);
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify("/skill-toggle requires TUI mode", "error");
       return;
     }
-    session.state = result.value;
-    session.stateAccess.clearFailure();
-  };
-}
+    const resources = toggleResources(ctx.getSystemPromptOptions(), this.contributedSkills);
+    if (resources.length === 0) {
+      ctx.ui.notify("No user-managed instructions or skills are loaded", "info");
+      return;
+    }
+    const loaded = this.overridesFrom(this.store.load(), ctx);
+    if (!loaded) return;
+    let overrides = loaded;
 
-function registerPromptHandler(pi: ExtensionAPI, stateAccess: StateAccess): void {
-  let lastPromptFailure = "";
-  pi.on("before_agent_start", (event, ctx) => {
-    const resources = toggleResourcesFromPrompt(event.systemPromptOptions);
-    const state = stateAccess.load(resources, ctx);
-    if (!state) return;
-    const disabledPaths = new Set<ResourcePath>(
-      resources
-        .filter((resource) => !resourceIsEnabled(state, resource))
-        .map((resource) => resourcePathId(resource.id)),
+    const resourcesById = new Map<string, ToggleResource>(
+      resources.map((resource) => [resource.id, resource]),
     );
-    const result = applyResourceToggles(
-      event.systemPrompt,
-      event.systemPromptOptions,
-      disabledPaths,
-    );
-    const failure = result.failures.join(",");
-    if (failure && failure !== lastPromptFailure) {
-      ctx.ui.notify(
-        `Skill toggle could not update the ${result.failures.join(" and ")} prompt section. Pi's prompt format may have changed.`,
-        "error",
+    // Rows without `values` cannot be changed, which keeps manual-only skills read-only.
+    const items = resources.map<SettingItem>((resource) => ({
+      id: resource.id,
+      label: `[${resource.origin}] ${resource.label}`,
+      description: resource.description,
+      ...(resource.editability === "editable"
+        ? { currentValue: toggleValue(loaded, resource), values: ["enabled", "disabled"] }
+        : { currentValue: "manual only" }),
+    }));
+
+    await ctx.ui.custom((tui, theme, _keybindings, done) => {
+      const accentBorder = (): DynamicBorder =>
+        new DynamicBorder((text: string) => theme.fg("accent", text));
+      const title = new Text("", 1, 0);
+      const help = new Text("", 1, 0);
+      const updateText = (): void => {
+        title.setText(theme.fg("accent", theme.bold("Skill Toggle")));
+        help.setText(theme.fg("dim", "enter/space toggle · type to search · esc close"));
+      };
+      const list = new SettingsList(
+        items,
+        Math.min(items.length + 2, 20),
+        getSettingsListTheme(),
+        (id, value) => {
+          const resource = resourcesById.get(id);
+          if (!(resource && isToggleValue(value))) return;
+          const saved = this.overridesFrom(
+            this.store.set(resource.id, value === defaultToggleValue(resource) ? "default" : value),
+            ctx,
+          );
+          if (saved) overrides = saved;
+          else list.updateValue(id, toggleValue(overrides, resource));
+        },
+        () => done(undefined),
+        { enableSearch: true },
       );
-    }
-    lastPromptFailure = failure;
-    return { systemPrompt: result.systemPrompt };
-  });
-}
+      const container = new Container();
+      for (const child of [accentBorder(), title, list, help, accentBorder()]) {
+        container.addChild(child);
+      }
+      updateText();
+      return {
+        render: (width: number) => container.render(width),
+        invalidate: () => {
+          updateText();
+          container.invalidate();
+        },
+        handleInput: (data: string) => {
+          list.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    });
+  }
 
-function buildSettingItems(
-  resources: ReadonlyArray<ToggleResource>,
-  state: SkillToggleState,
-): SettingItem[] {
-  return resources.map((resource) => ({
-    id: resource.id,
-    label: `[${resource.origin}] ${resource.label}`,
-    description: resource.description,
-    currentValue:
-      resource.editability === "manual-only"
-        ? "manual only"
-        : resourceIsEnabled(state, resource)
-          ? "enabled"
-          : "disabled",
-    ...(resource.editability === "manual-only" ? {} : { values: ["enabled", "disabled"] }),
-  }));
+  /** Unwrap a state result, surfacing a failure to the user once. */
+  private overridesFrom(result: ToggleStateResult, ctx: UiContext): ToggleOverrides | undefined {
+    if (result._tag === "ok") {
+      this.reportStateFailure(ctx, undefined);
+      return result.value;
+    }
+    const consequence = STATE_FAILURE_CONSEQUENCE[result.error.operation];
+    this.reportStateFailure(ctx, `${result.error.message}\n${consequence}`);
+    return undefined;
+  }
 }

@@ -1,132 +1,85 @@
 import {
+  type BeforeAgentStartEvent,
   type BuildSystemPromptOptions,
   formatSkillsForPrompt,
 } from "@earendil-works/pi-coding-agent";
-import { type ResourcePath, resourcePathId } from "./resource-path";
 
-/** Prompt filtering result and any sections that could not be matched safely. */
-export interface PromptToggleResult {
-  readonly systemPrompt: string;
-  readonly failures: ReadonlyArray<"instructions" | "skills">;
-}
+/** Rendered prompt section that holds toggleable resources. */
+export type PromptSection = "instructions" | "skills";
 
-/** Remove disabled instruction files and skills from Pi's model-facing prompt. */
-export function applyResourceToggles(
-  systemPrompt: string,
-  options: BuildSystemPromptOptions,
-  disabledResourcePaths: ReadonlySet<ResourcePath>,
-): PromptToggleResult {
-  const failures: Array<"instructions" | "skills"> = [];
+/** How hidden resources were kept from the model. */
+export type PromptFilterResult =
+  /** Pi 0.86+ renders the prompt from the filtered options. Nothing is returned to Pi. */
+  | { readonly _tag: "options-filtered" }
+  /** Pi 0.85 and older need replacement text. Unmatched sections still show hidden resources. */
+  | {
+      readonly _tag: "prompt-filtered";
+      readonly systemPrompt: string;
+      readonly unmatched: ReadonlyArray<PromptSection>;
+    };
+
+/**
+ * Hide instruction files and skills from the prompt Pi is about to send.
+ *
+ * @param event - Pi's `before_agent_start` event.
+ * @param isHidden - Whether the resource at a Pi-reported path must be hidden.
+ * @returns The strategy that applied, with replacement text when Pi needs it.
+ */
+export function hideResources(
+  event: Pick<BeforeAgentStartEvent, "systemPrompt" | "systemPromptOptions">,
+  isHidden: (path: string) => boolean,
+): PromptFilterResult {
+  const options = event.systemPromptOptions;
   const contextFiles = options.contextFiles ?? [];
-  const enabledContextFiles = contextFiles.filter(
-    (file) => !disabledResourcePaths.has(resourcePathId(file.path, options.cwd)),
-  );
-  const originalContext = renderProjectContext(contextFiles);
-  const enabledContext = renderProjectContext(enabledContextFiles);
-  const contextResult =
-    enabledContextFiles.length === contextFiles.length
-      ? { value: systemPrompt, matched: true }
-      : replaceSectionFormats(systemPrompt, originalContext, enabledContext);
-  if (!contextResult.matched) failures.push("instructions");
-
-  const skillFileReadTool = options.selectedTools
-    ? (["read", "bash"] as const).find((tool) => options.selectedTools?.includes(tool))
-    : "read";
-  if (!skillFileReadTool) return { systemPrompt: contextResult.value, failures };
-
   const skills = options.skills ?? [];
-  const enabledSkills = skills.filter(
-    (skill) => !disabledResourcePaths.has(resourcePathId(skill.filePath, options.cwd)),
-  );
-  const originalSkills = renderSkills(skills, skillFileReadTool);
-  const enabledSkillsPrompt = renderSkills(enabledSkills, skillFileReadTool);
-  const skillResult =
-    enabledSkills.length === skills.length
-      ? { value: contextResult.value, matched: true }
-      : replacePromptSection(contextResult.value, "skills", originalSkills, enabledSkillsPrompt);
-  if (!skillResult.matched) failures.push("skills");
-  return { systemPrompt: skillResult.value, failures };
+  const shownContextFiles = contextFiles.filter((file) => !isHidden(file.path));
+  const shownSkills = skills.filter((skill) => !isHidden(skill.filePath));
+
+  // Pi 0.86 introduced `sections` together with a per-run copy of the options that extensions
+  // may mutate. Older releases share their live options object, which must stay untouched.
+  if ("sections" in options) {
+    options.contextFiles = shownContextFiles;
+    options.skills = shownSkills;
+    return { _tag: "options-filtered" };
+  }
+
+  const tools = options.selectedTools ?? ["read"];
+  const replacements: ReadonlyArray<readonly [PromptSection, string, string]> = [
+    ["instructions", renderContext(contextFiles), renderContext(shownContextFiles)],
+    ["skills", renderSkills(skills, tools), renderSkills(shownSkills, tools)],
+  ];
+  let systemPrompt = event.systemPrompt;
+  const unmatched: PromptSection[] = [];
+  for (const [section, original, replacement] of replacements) {
+    if (original === replacement) continue;
+    const index = systemPrompt.lastIndexOf(original);
+    if (index < 0) {
+      unmatched.push(section);
+      continue;
+    }
+    systemPrompt = `${systemPrompt.slice(0, index)}${replacement}${systemPrompt.slice(index + original.length)}`;
+  }
+  return { _tag: "prompt-filtered", systemPrompt, unmatched };
 }
 
-type ContextFile = NonNullable<BuildSystemPromptOptions["contextFiles"]>[number];
+type ContextFiles = NonNullable<BuildSystemPromptOptions["contextFiles"]>;
+type PromptSkills = NonNullable<BuildSystemPromptOptions["skills"]>;
 
-interface PromptSectionFormats {
-  readonly legacy: string;
-  readonly structured: string;
-}
-
-function renderProjectContext(contextFiles: readonly ContextFile[]): PromptSectionFormats {
-  if (contextFiles.length === 0) return { legacy: "", structured: "" };
-  const instructionBlocks = contextFiles.map(
+/** Mirror of the project context section rendered by Pi 0.85 and older. */
+function renderContext(contextFiles: ContextFiles): string {
+  if (contextFiles.length === 0) return "";
+  const blocks = contextFiles.map(
     ({ path, content }) =>
-      `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
+      `<project_instructions path="${path}">\n${content}\n</project_instructions>\n\n`,
   );
-  const content = ["Project-specific instructions and guidelines:", ...instructionBlocks].join(
-    "\n\n",
-  );
-  return {
-    legacy: `\n\n<project_context>\n\n${content}\n\n</project_context>\n`,
-    structured: `<project_context>\n${content}\n</project_context>`,
-  };
+  return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${blocks.join("")}</project_context>\n`;
 }
 
-type SkillPromptFormatter = (
-  skills: NonNullable<BuildSystemPromptOptions["skills"]>,
-  fileReadTool?: "read" | "bash",
-) => string;
-
-function renderSkills(
-  skills: NonNullable<BuildSystemPromptOptions["skills"]>,
-  fileReadTool: "read" | "bash",
-): string {
-  // SAFETY: Pi 0.85 added the optional reader argument. Older releases ignore extra JavaScript arguments.
-  const formatSkills = formatSkillsForPrompt as SkillPromptFormatter;
-  const prompt = formatSkills(skills, fileReadTool);
-  return fileReadTool === "read"
-    ? prompt
-    : prompt.replace(
-        "Use the read tool to load a skill's file when the task matches its description.",
-        "Use bash to load a skill's file when the task matches its description.",
-      );
-}
-
-function replaceSectionFormats(
-  input: string,
-  original: PromptSectionFormats,
-  replacement: PromptSectionFormats,
-): { value: string; matched: boolean } {
-  const legacyResult = replaceLastExact(input, original.legacy, replacement.legacy);
-  return legacyResult.matched
-    ? legacyResult
-    : replaceLastExact(input, original.structured, replacement.structured);
-}
-
-function replacePromptSection(
-  input: string,
-  sectionName: string,
-  originalContent: string,
-  replacementContent: string,
-): { value: string; matched: boolean } {
-  const legacyResult = replaceLastExact(input, originalContent, replacementContent);
-  if (legacyResult.matched) return legacyResult;
-
-  const originalSection = `<${sectionName}>\n${originalContent.trim()}\n</${sectionName}>`;
-  const replacementSection = replacementContent
-    ? `<${sectionName}>\n${replacementContent.trim()}\n</${sectionName}>`
-    : "";
-  return replaceLastExact(input, originalSection, replacementSection);
-}
-
-function replaceLastExact(
-  input: string,
-  original: string,
-  replacement: string,
-): { value: string; matched: boolean } {
-  if (original.length === 0) return { value: input, matched: false };
-  const index = input.lastIndexOf(original);
-  if (index < 0) return { value: input, matched: false };
-  return {
-    value: `${input.slice(0, index)}${replacement}${input.slice(index + original.length)}`,
-    matched: true,
-  };
+/** Pi advertises skills only when a tool that can read their files is active. */
+function renderSkills(skills: PromptSkills, tools: ReadonlyArray<string>): string {
+  const reader = (["read", "bash"] as const).find((tool) => tools.includes(tool));
+  if (!reader) return "";
+  // SAFETY: Pi 0.85 added the reader argument. JavaScript ignores it on older releases.
+  const format = formatSkillsForPrompt as (skills: PromptSkills, reader: "read" | "bash") => string;
+  return format(skills, reader);
 }

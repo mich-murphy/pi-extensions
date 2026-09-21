@@ -6,8 +6,8 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
-import { resourcePathId } from "../resource-path";
-import { toggleResourcesFromPrompt } from "../resources";
+import { type ResourcePath, resourcePathId } from "../resource-path";
+import { defaultToggleValue, toggleResources, toggleValue } from "../resources";
 
 function skill(
   name: string,
@@ -25,7 +25,13 @@ function skill(
   };
 }
 
-describe("toggleResourcesFromPrompt", () => {
+const noContributedSkills: ReadonlySet<ResourcePath> = new Set();
+
+function toggleResourcesFromPrompt(options: BuildSystemPromptOptions) {
+  return toggleResources(options, noContributedSkills);
+}
+
+describe("toggleResources", () => {
   test("groups global resources before project resources and sorts skills by name", () => {
     const options: BuildSystemPromptOptions = {
       cwd: "/work/project/src",
@@ -91,38 +97,23 @@ describe("toggleResourcesFromPrompt", () => {
         origin: "project",
         kind: "skill",
         label: "businesscraft-design",
-        owner: cwd,
       },
     ]);
   });
 
-  test("includes project skills contributed by the extension resource hook", () => {
+  test("treats temporary skills as project skills only when this extension contributed them", () => {
     const cwd = "/Users/mm/businesscraft/businesscraft/web";
-    const owner = "/Users/mm/businesscraft/businesscraft";
-    const claudePath = join(owner, ".claude/skills/businesscraft-design/SKILL.md");
-    const codexPath = join(owner, ".codex/skills/businesscraft-review/SKILL.md");
-    const resources = toggleResourcesFromPrompt({
-      cwd,
-      skills: [
-        skill("businesscraft-design", claudePath, {
-          path: claudePath,
-          source: "extension:index",
-          scope: "temporary",
-          origin: "top-level",
-        }),
-        skill("businesscraft-review", codexPath, {
-          path: codexPath,
-          source: "extension:index",
-          scope: "temporary",
-          origin: "top-level",
-        }),
-      ],
-    });
+    const contributedPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/design/SKILL.md";
+    const cliPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/review/SKILL.md";
+    const temporary = (name: string, path: string): Skill =>
+      skill(name, path, { path, source: "cli", scope: "temporary", origin: "top-level" });
 
-    expect(resources).toMatchObject([
-      { id: claudePath, origin: "project", owner },
-      { id: codexPath, origin: "project", owner },
-    ]);
+    const resources = toggleResources(
+      { cwd, skills: [temporary("design", contributedPath), temporary("review", cliPath)] },
+      new Set([resourcePathId(contributedPath, cwd)]),
+    );
+
+    expect(resources).toMatchObject([{ id: contributedPath, origin: "project", kind: "skill" }]);
   });
 
   test("deduplicates repeated discovery paths", () => {
@@ -136,7 +127,7 @@ describe("toggleResourcesFromPrompt", () => {
     });
 
     expect(resources).toHaveLength(1);
-    expect(resources[0]?.id).toBe(resourcePathId(path));
+    expect(resources[0]?.id).toBe(resourcePathId(path, "/work/project"));
   });
 
   test("preserves the discovery path when a global instruction is symlinked elsewhere", () => {
@@ -197,5 +188,21 @@ describe("toggleResourcesFromPrompt", () => {
     });
 
     expect(resources[0]?.editability).toBe("manual-only");
+  });
+
+  test("hides project skills by default and lets an override win either way", () => {
+    const projectSkill = { kind: "skill", origin: "project" } as const;
+    const path = join(getAgentDir(), "AGENTS.md");
+    const [instruction] = toggleResourcesFromPrompt({
+      cwd: "/work/project",
+      contextFiles: [{ path, content: "rules" }],
+    });
+    if (!instruction) throw new Error("expected the global instruction");
+
+    expect(defaultToggleValue(projectSkill)).toBe("disabled");
+    expect(defaultToggleValue({ kind: "skill", origin: "global" })).toBe("enabled");
+    expect(defaultToggleValue({ kind: "instruction", origin: "project" })).toBe("enabled");
+    expect(toggleValue(new Map(), instruction)).toBe("enabled");
+    expect(toggleValue(new Map([[instruction.id, "disabled"]]), instruction)).toBe("disabled");
   });
 });
