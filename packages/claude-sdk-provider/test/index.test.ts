@@ -49,7 +49,7 @@ describe("extension entry point", () => {
 
     expect(provider?.models.map((model) => model.id)).toEqual([
       "claude-5-sonnet",
-      "claude-5-opus",
+      "claude-5.5-opus",
       "claude-5.1-fable",
       "claude-4.5-haiku",
     ]);

@@ -51,7 +51,7 @@ describe("formatModelStatus", () => {
       [
         "Models:",
         "  claude-5-sonnet → sonnet → not observed yet",
-        "  claude-5-opus → opus → claude-opus-5-2 (expected claude-opus-5)",
+        "  claude-5.5-opus → opus → claude-opus-5-2 (expected claude-opus-5-5)",
         "  claude-5.1-fable → fable → claude-fable-5-1",
         "  claude-4.5-haiku → haiku → claude-haiku-4-5-20251001",
       ].join("\n"),

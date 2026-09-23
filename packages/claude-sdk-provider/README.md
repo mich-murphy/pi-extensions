@@ -24,11 +24,11 @@ This Pi extension routes model turns through Anthropic's official Claude Agent S
 Open `/model` and select one of:
 
 - `claude-sdk/claude-5-sonnet`
-- `claude-sdk/claude-5-opus`
+- `claude-sdk/claude-5.5-opus`
 - `claude-sdk/claude-5.1-fable` (Claude Fable 5.1)
 - `claude-sdk/claude-4.5-haiku`
 
-Model IDs are version-aligned with Pi's other providers (`claude-<version>-<model>`, like `gpt-5.2-codex` or `glm-4.6`). Each version segment names the model the alias resolves to under the bundled Claude Code. Earlier releases exposed the bare aliases (`claude-sdk/sonnet` and friends); update any saved default model to the new IDs.
+Model IDs are version-aligned with Pi's other providers (`claude-<version>-<model>`, like `gpt-5.2-codex` or `glm-4.6`). Each version segment names the model the alias resolves to under the bundled Claude Code. Earlier releases exposed the bare aliases (`claude-sdk/sonnet` and friends), and the Opus entry was `claude-sdk/claude-5-opus` before its alias moved to Claude Opus 5.5; update any saved default model to the current IDs.
 
 This provider is experimental. For cache-sensitive or API-billed work, select Pi's standard `anthropic/...` provider until the Agent SDK path has accumulated stable cache diagnostics.
 
@@ -73,12 +73,12 @@ Each request emits a `[claude-sdk-cache]` JSON line on stderr. A request carries
 Each advertised ID routes to a Claude Code moving alias (`sonnet`, `opus`, `fable`, `haiku`), and `models.ts` records the concrete model each alias resolves to under the pinned Agent SDK. Two checks keep that table honest:
 
 - Every turn observes the concrete model the main conversation ran on, taken from the SDK's `message_start` message. `/claude-sdk-status` prints the advertised ID, selector, and last observed model per family and flags any mismatch against the table.
-- The live upgrade gate probes every advertised model and fails when the observed model or context window differs from the table, so an alias that moved with a new Claude Code bundle is caught before the SDK pin lands.
+- The live upgrade gate probes every advertised model and fails when the observed model or context window differs from the table, so a moved alias is caught before the SDK pin lands. An alias can also move without any pin change, so run the gate whenever a resolution is in doubt, not only at upgrade time.
 
 ## Current boundaries
 
 - Image input is limited to Anthropic's JPEG, PNG, GIF, and WebP formats. Unsupported images become deterministic text notes so they cannot permanently break transcript replay.
-- Pi-facing model IDs are version-aligned (`claude-5-sonnet`, `claude-5-opus`, `claude-5.1-fable`, `claude-4.5-haiku`), and each request names Claude Code's documented moving alias (`sonnet`, `opus`, `fable`, `haiku`) to the Agent SDK. The Agent SDK ships its own Claude Code binary, so alias resolutions move only when the pinned SDK is upgraded; with bundled Claude Code 2.1.263, `fable` resolves to Claude Fable 5.1, `opus` to Claude Opus 5, `sonnet` to Claude Sonnet 5, and `haiku` to Claude Haiku 4.5. The live gate fails when an alias resolution or context window no longer matches `models.ts`, so the table is updated together with the SDK pin.
+- Pi-facing model IDs are version-aligned (`claude-5-sonnet`, `claude-5.5-opus`, `claude-5.1-fable`, `claude-4.5-haiku`), and each request names Claude Code's documented moving alias (`sonnet`, `opus`, `fable`, `haiku`) to the Agent SDK. Under bundled Claude Code 2.1.280, `fable` resolves to Claude Fable 5.1, `opus` to Claude Opus 5.5, `sonnet` to Claude Sonnet 5, and `haiku` to Claude Haiku 4.5. The bundled binary does not pin those resolutions on its own: `opus` was observed resolving to Claude Opus 5.5 under the unchanged 2.1.274 bundle, so a table entry can go stale without any SDK upgrade. The live gate fails when an alias resolution or context window no longer matches `models.ts`, so the table is reverified on every pin change and whenever a resolution is in doubt.
 - Fable, Opus, and Sonnet are declared with their current 1M context windows and 128K maximum output. Haiku keeps its 200K context window and 64K maximum output. Haiku 4.5 does not support the Agent SDK's `effort` option, so the provider omits effort-based reasoning settings for every Haiku request, including requests from headless callers and Pi sub-agents.
 - Pi records subscription cost as zero. Token usage is retained when the SDK reports it, but Pi cannot infer the monetary value of an included subscription allocation.
 - Reasoning/thinking deltas are streamed to Pi as a `thinking` content block, but the block is dropped (not replayed) when a later turn re-serializes the transcript — thinking is ephemeral, not part of the durable Pi conversation.

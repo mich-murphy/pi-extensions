@@ -32,10 +32,10 @@ export const models: ReadonlyArray<SdkModelConfig> = [
     maxTokens: 128_000,
   },
   {
-    id: "claude-5-opus",
-    name: "Claude Opus 5 (official Agent SDK)",
+    id: "claude-5.5-opus",
+    name: "Claude Opus 5.5 (official Agent SDK)",
     sdkModel: "opus",
-    canonicalModel: "claude-opus-5",
+    canonicalModel: "claude-opus-5-5",
     reasoning: true,
     input: ["text", "image"],
     cost: subscriptionCost,
