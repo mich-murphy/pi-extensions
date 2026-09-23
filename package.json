@@ -43,11 +43,11 @@
     "@earendil-works/pi-coding-agent": "0.87.1",
     "@earendil-works/pi-tui": "0.87.1",
     "@types/node": "22.20.1",
-    "@vitest/coverage-v8": "latest",
+    "@vitest/coverage-v8": "4.1.11",
     "fallow": "3.21.0",
-    "markdownlint-cli2": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "markdownlint-cli2": "0.23.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "allowScripts": {
     "@google/genai": false,
