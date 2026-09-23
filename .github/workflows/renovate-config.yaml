@@ -1,0 +1,30 @@
+name: Renovate Config
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/renovate-config.json"
+      - "renovate.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      # renovate: datasource=npm depName=renovate
+      RENOVATE_VERSION: 44.108.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate repository config
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" renovate-config-validator --strict
+      - name: Validate Renovate bot config
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" renovate-config-validator --strict .github/renovate-config.json
