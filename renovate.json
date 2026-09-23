@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "customManagers:githubActionsVersions",
+    ":rebaseStalePrs"
+  ],
+  "semanticCommits": "enabled",
+  "branchPrefix": "actions-renovate/",
+  "prHourlyLimit": 5,
+  "prConcurrentLimit": 5,
+  "branchConcurrentLimit": 5,
+  "rebaseWhen": "conflicted",
+  "automergeStrategy": "rebase",
+  "osvVulnerabilityAlerts": true,
+  "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
+  "major": {
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "Automerge low-risk updates for every package: digests, pins and patch releases. Rules below deliberately override this for the two dependencies that can break a release silently",
+      "matchUpdateTypes": ["digest", "pinDigest", "pin", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Pi's own packages define the provider and extension contracts, and the extensions resolve them from the running Pi at runtime. They are pinned to one exact version, so raise them as a single PR and never automerge: a provider-contract change compiles clean against the old types and only fails in a live session",
+      "matchPackageNames": ["@earendil-works/**"],
+      "groupName": "pi harness",
+      "automerge": false
+    },
+    {
+      "description": "The Agent SDK pin is gated on sdk-release-contract.json, which records a live verification that cannot run in CI. Never automerge; the pin and the attestation move together",
+      "matchPackageNames": ["@anthropic-ai/claude-agent-sdk"],
+      "automerge": false,
+      "prBodyNotes": [
+        ":warning: Run `npm run test:claude-sdk-upgrade` on a workstation with a Claude subscription, then update `sdk-release-contract.json` with the SDK version, the bundled Claude Code version, the UTC verification time, and the observed defer shape. CI checks that the attestation matches the pin but cannot produce it. See `packages/claude-sdk-provider/README.md`."
+      ]
+    }
+  ]
+}
