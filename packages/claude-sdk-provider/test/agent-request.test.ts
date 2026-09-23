@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
-import { contextFixture } from "./fixtures";
+import { contextFixture, transcriptFixture } from "./fixtures";
 
 const readCall = {
   role: "assistant",
@@ -13,6 +13,17 @@ const readResult = {
   isError: false,
   content: [{ type: "text", text: "{}" }],
 };
+
+const readTool = {
+  name: "read",
+  description: "Read a file",
+  parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+};
+const bashTool = { name: "bash", description: "Run a command", parameters: { type: "object" } };
+
+function systemMessage(fields: Record<string, unknown>) {
+  return { role: "system", content: "", timestamp: 0, ...fields };
+}
 
 function requestFor(messages: ReadonlyArray<unknown>, tools: ReadonlyArray<unknown> = []) {
   return buildAgentRequest(contextFixture({ systemPrompt: "s", messages, tools }));
@@ -141,6 +152,67 @@ describe("agent request construction", () => {
 
   test("requests no cache breakpoint for an empty transcript", () => {
     expect(requestFor([]).cacheBreakpoint).toBeUndefined();
+  });
+});
+
+describe("prompt and tools replayed from the transcript", () => {
+  test("reads the Pi prompt and tool catalog from the leading system message", () => {
+    const request = buildAgentRequest(
+      transcriptFixture([
+        systemMessage({ content: "Repository rule: run tests.", toolsAdded: [readTool] }),
+        { role: "user", content: "Inspect package.json" },
+      ]),
+    );
+
+    expect(request.promptBlocks[0]?.text).toContain(
+      "Pi working instructions:\n\nRepository rule: run tests.",
+    );
+    expect(request.toolNames).toEqual(new Set(["read"]));
+    expect(request.toolDescription).toContain('"required":["path"]');
+  });
+
+  test("applies a mid-conversation system message's added and removed tools", () => {
+    const request = buildAgentRequest(
+      transcriptFixture([
+        systemMessage({ content: "Base prompt.", toolsAdded: [readTool, bashTool] }),
+        { role: "user", content: "Search the web" },
+        systemMessage({
+          content: "Web access is enabled.",
+          toolsAdded: [{ name: "web_search", description: "Search", parameters: {} }],
+          toolsRemoved: [{ name: "bash" }],
+        }),
+      ]),
+    );
+
+    expect(request.toolNames).toEqual(new Set(["read", "web_search"]));
+    expect(request.promptBlocks[0]?.text).toContain("Base prompt.");
+    expect(request.promptBlocks[0]?.text).toContain("Web access is enabled.");
+  });
+
+  test("keeps system messages out of the JSONL transcript, which carries conversation only", () => {
+    const request = buildAgentRequest(
+      transcriptFixture([
+        systemMessage({ content: "Base prompt.", toolsAdded: [readTool] }),
+        { role: "user", content: "Hello" },
+        systemMessage({ content: "An extra instruction.", toolsAdded: [bashTool] }),
+      ]),
+    );
+
+    expect(transcriptOf(request).map((block) => block.text)).toEqual([
+      '{"role":"user","content":[{"type":"text","text":"Hello"}]}',
+    ]);
+  });
+
+  test("reports an empty catalog only when the transcript declares no tools", () => {
+    const request = buildAgentRequest(
+      transcriptFixture([
+        systemMessage({ content: "Base prompt." }),
+        { role: "user", content: "Hi" },
+      ]),
+    );
+
+    expect(request.toolNames).toEqual(new Set());
+    expect(request.toolDescription).toContain("Available Pi tools: []");
   });
 });
 

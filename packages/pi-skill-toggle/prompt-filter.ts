@@ -1,5 +1,4 @@
 import {
-  type BeforeAgentStartEvent,
   type BuildSystemPromptOptions,
   formatSkillsForPrompt,
 } from "@earendil-works/pi-coding-agent";
@@ -19,6 +18,18 @@ export type PromptFilterResult =
     };
 
 /**
+ * The part of `before_agent_start` this filter reads.
+ *
+ * Pi 0.86+ types the options as normalized, with every collection present. The
+ * looser input type covers that and the pre-0.86 shape the legacy path handles,
+ * which the current release no longer describes.
+ */
+export interface PromptFilterEvent {
+  readonly systemPrompt: string;
+  readonly systemPromptOptions: BuildSystemPromptOptions;
+}
+
+/**
  * Hide instruction files and skills from the prompt Pi is about to send.
  *
  * @param event - Pi's `before_agent_start` event.
@@ -26,7 +37,7 @@ export type PromptFilterResult =
  * @returns The strategy that applied, with replacement text when Pi needs it.
  */
 export function hideResources(
-  event: Pick<BeforeAgentStartEvent, "systemPrompt" | "systemPromptOptions">,
+  event: PromptFilterEvent,
   isHidden: (path: string) => boolean,
 ): PromptFilterResult {
   const options = event.systemPromptOptions;
