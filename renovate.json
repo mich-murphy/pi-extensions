@@ -1,10 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
-    "customManagers:githubActionsVersions",
-    ":rebaseStalePrs"
-  ],
+  "extends": ["config:best-practices", "customManagers:githubActionsVersions", ":rebaseStalePrs"],
   "semanticCommits": "enabled",
   "branchPrefix": "actions-renovate/",
   "prHourlyLimit": 5,
