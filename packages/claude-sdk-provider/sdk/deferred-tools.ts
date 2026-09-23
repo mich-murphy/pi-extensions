@@ -12,8 +12,9 @@ const PI_CALL_INPUT_SCHEMA = {
     .describe(
       'Exact Pi tool name from the available-tools catalog; never "pi_call" itself, which is this gateway\'s own name',
     ),
+  // Tool input arrives as JSON, and Pi's tool-call content block requires JSON values.
   arguments: z
-    .record(z.string(), z.unknown())
+    .record(z.string(), z.json())
     .describe("Arguments matching that Pi tool's input schema"),
 };
 

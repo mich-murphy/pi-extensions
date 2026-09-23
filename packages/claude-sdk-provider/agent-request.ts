@@ -1,4 +1,11 @@
-import type { Context, ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
+import {
+  getCurrentSystemPrompt,
+  getCurrentTools,
+  type ImageContent,
+  type Message,
+  type TextContent,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 
 /** Image bytes extracted from a stable JSONL transcript entry. */
 export interface ImageAttachment {
@@ -88,15 +95,29 @@ function transcriptEntries(messages: ReadonlyArray<Message>): PromptBlock[] {
             message.content,
           ),
         ];
+      // System messages carry the prompt and tool declarations. The preamble and
+      // the gateway catalog replay both in full, so an entry would duplicate them.
+      case "system":
+        return [];
       default:
         return [];
     }
   });
 }
 
-/** Build the stateless SDK request from Pi's typed provider context. */
-export function buildAgentRequest(context: Context): AgentRequest {
-  const tools = (context.tools ?? []).map((tool) => ({
+/**
+ * Build the stateless SDK request from Pi's normalized transcript.
+ *
+ * Pi carries the system prompt and the tool declarations inside the transcript's
+ * system messages rather than on the context, and a later system message can
+ * amend either. Both are replayed to their current state here, because the Agent
+ * SDK takes one prompt and one tool catalog for the whole turn.
+ *
+ * @param context - Normalized provider context for this turn.
+ * @returns The request the SDK runner sends.
+ */
+export function buildAgentRequest(context: TranscriptContext): AgentRequest {
+  const tools = getCurrentTools(context.messages).map((tool) => ({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.parameters,
@@ -104,7 +125,7 @@ export function buildAgentRequest(context: Context): AgentRequest {
   const entries = transcriptEntries(context.messages);
   const preamble = [
     "Pi working instructions:",
-    context.systemPrompt ?? "",
+    getCurrentSystemPrompt(context.messages),
     "Complete prior Pi conversation (JSONL). Each following block is one transcript entry.",
   ].join("\n\n");
   return {

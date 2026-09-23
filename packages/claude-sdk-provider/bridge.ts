@@ -2,13 +2,14 @@ import {
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
-  type Context,
   calculateCost,
   createAssistantMessageEventStream,
+  type JsonObject,
   type Model,
   type SimpleStreamOptions,
   type TextContent,
   type ThinkingContent,
+  type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { type AgentRequest, buildAgentRequest } from "./agent-request";
 import { SdkQueryError, type SdkRunError } from "./sdk/errors";
@@ -28,8 +29,8 @@ export interface DeferredCall {
   readonly id: string;
   /** Exact Pi tool name. */
   readonly name: string;
-  /** Parsed object arguments supplied for the Pi tool. */
-  readonly arguments: Readonly<Record<string, unknown>>;
+  /** Parsed JSON arguments supplied for the Pi tool. */
+  readonly arguments: Readonly<JsonObject>;
 }
 
 /**
@@ -192,7 +193,7 @@ async function pump(writer: AssistantMessageWriter, events: () => AsyncIterable<
 /** Adapt SDK bridge events to Pi's assistant-message event stream. */
 export function createAgentSdkStream(
   model: Model<Api>,
-  context: Context,
+  context: TranscriptContext,
   options: SimpleStreamOptions | undefined,
   run: AgentSdkRun,
 ): AssistantMessageEventStream {

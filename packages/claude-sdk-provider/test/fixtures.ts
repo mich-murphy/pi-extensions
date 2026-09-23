@@ -1,5 +1,10 @@
 import type { HookCallback, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { Context, Model } from "@earendil-works/pi-ai";
+import {
+  type Context,
+  type Model,
+  normalizeContext,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
 
@@ -16,14 +21,32 @@ export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 }
 
 /**
- * Build the minimal Pi context needed by provider adapter tests.
+ * Build the provider-facing context for a prompt, tools, and messages.
+ *
+ * Normalization is Pi's own, so the fixture folds the prompt and tools into a
+ * leading system message exactly as a real turn does.
  *
  * @param input - Deliberately partial framework context fixture.
- * @returns The fixture as a Pi provider context.
+ * @returns The fixture as a normalized provider context.
  */
-export function contextFixture(input: unknown): Context {
+export function contextFixture(input: unknown): TranscriptContext {
   // SAFETY: Adapter tests intentionally omit framework-owned timestamps and metadata that the provider never reads. Each test supplies systemPrompt, messages, and tools for the behavior under test.
-  return input as Context;
+  return normalizeContext(input as Context);
+}
+
+/**
+ * Build a provider-facing context from transcript messages verbatim.
+ *
+ * Use this for transcripts whose system messages are the subject of the test,
+ * such as a mid-conversation prompt or tool change; {@link contextFixture}
+ * covers the ordinary case.
+ *
+ * @param messages - Deliberately partial transcript messages, system messages included.
+ * @returns The messages as a normalized provider context.
+ */
+export function transcriptFixture(messages: ReadonlyArray<unknown>): TranscriptContext {
+  // SAFETY: Only normalizeContext() can brand a TranscriptContext, and it would prepend a second system message to a transcript that already declares its own. These tests supply the transcript Pi would have produced.
+  return { messages } as unknown as TranscriptContext;
 }
 
 /**
