@@ -37,22 +37,26 @@ export type CacheDiagnosticTracker = (
 ) => (usage: TokenUsage) => void;
 
 interface BlockStats {
-  readonly payload: string;
+  /** Digest of the serialized block, so the previous turn is kept without its text or images. */
+  readonly digest: string;
   readonly textCharacters: number;
   readonly imageCharacters: number;
 }
 
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
 function blockStats(block: PromptBlock): BlockStats {
   return {
-    payload: JSON.stringify(block),
+    digest: sha256(JSON.stringify(block)),
     textCharacters: block.text.length,
     imageCharacters: block.images.reduce((total, image) => total + image.data.length, 0),
   };
 }
 
 function fingerprint(blocks: ReadonlyArray<BlockStats>): string {
-  const payloads = blocks.map((block) => block.payload).join("\n");
-  return createHash("sha256").update(payloads).digest("hex").slice(0, 16);
+  return sha256(blocks.map((block) => block.digest).join("\n")).slice(0, 16);
 }
 
 function sum(values: ReadonlyArray<number>): number {
@@ -92,7 +96,7 @@ export function createCacheDiagnosticTracker(
     const at = now();
     const blocks = promptBlocks.map(blockStats);
     const divergence = blocks.findIndex(
-      (block, index) => block.payload !== previous?.blocks[index]?.payload,
+      (block, index) => block.digest !== previous?.blocks[index]?.digest,
     );
     const commonPrefix = blocks.slice(0, divergence === -1 ? blocks.length : divergence);
     sink({

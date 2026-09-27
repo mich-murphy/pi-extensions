@@ -32,11 +32,13 @@ export function subscriptionEnvironment(
   if (environment.PI_CLAUDE_SDK_5M_CACHE === "1") return environment;
   delete environment.FORCE_PROMPT_CACHING_5M;
   environment.ENABLE_PROMPT_CACHING_1H = "1";
-  const betas = (environment.ANTHROPIC_BETAS ?? "")
-    .split(",")
-    .map((beta) => beta.trim())
-    .filter(Boolean);
-  if (!betas.includes(EXTENDED_CACHE_TTL_BETA)) betas.push(EXTENDED_CACHE_TTL_BETA);
-  environment.ANTHROPIC_BETAS = betas.join(",");
+  const betas = new Set(
+    (environment.ANTHROPIC_BETAS ?? "")
+      .split(",")
+      .map((beta) => beta.trim())
+      .filter(Boolean),
+  );
+  betas.add(EXTENDED_CACHE_TTL_BETA);
+  environment.ANTHROPIC_BETAS = [...betas].join(",");
   return environment;
 }

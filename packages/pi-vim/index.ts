@@ -114,6 +114,13 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map(
   }),
 );
 
+/** The pending states: every proper prefix of a command's key sequence. */
+const PENDING_SEQUENCES: ReadonlySet<string> = new Set(
+  [...COMMANDS.keys()].flatMap((keys) =>
+    Array.from({ length: keys.length - 1 }, (_, index) => keys.slice(0, index + 1)),
+  ),
+);
+
 /** `pending` holds the keys typed so far of an unfinished command, or "" when there are none. */
 type VimState = { readonly mode: "insert" } | { readonly mode: "normal"; readonly pending: string };
 
@@ -188,8 +195,7 @@ class VimEditor extends CustomEditor {
   private handleSequence(sequence: string): void {
     const command = COMMANDS.get(sequence);
     if (command === undefined) {
-      const isPrefix = [...COMMANDS.keys()].some((keys) => keys.startsWith(sequence));
-      this.vimState = { mode: "normal", pending: isPrefix ? sequence : "" };
+      this.vimState = { mode: "normal", pending: PENDING_SEQUENCES.has(sequence) ? sequence : "" };
       return;
     }
 

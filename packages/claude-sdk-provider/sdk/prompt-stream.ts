@@ -3,13 +3,9 @@ import type { ImageAttachment, PromptBlock } from "../agent-request";
 
 // Anthropic's vision input accepts these four raster formats. Unsupported
 // historical images become deterministic text notes so replay keeps working.
-const SUPPORTED_IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
-type AnthropicImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+const ANTHROPIC_IMAGE_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+type AnthropicImageMediaType = (typeof ANTHROPIC_IMAGE_MEDIA_TYPES)[number];
+const SUPPORTED_IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set(ANTHROPIC_IMAGE_MEDIA_TYPES);
 
 function isSupportedImageMediaType(mediaType: string): mediaType is AnthropicImageMediaType {
   return SUPPORTED_IMAGE_MEDIA_TYPES.has(mediaType);

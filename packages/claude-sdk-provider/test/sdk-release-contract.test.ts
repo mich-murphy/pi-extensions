@@ -1,54 +1,54 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
+import {
+  AGENT_SDK_PACKAGE,
+  formatReleaseContract,
+  RELEASE_CONTRACT_URL,
+  readInstalledSdk,
+  readJson,
+  releaseContractSchema,
+} from "./release-contract";
 
 const packageSchema = z.object({
-  dependencies: z.object({ "@anthropic-ai/claude-agent-sdk": z.string() }),
+  dependencies: z.object({ [AGENT_SDK_PACKAGE]: z.string() }),
 });
-const sdkMetadataSchema = z.object({ version: z.string(), claudeCodeVersion: z.string() });
 const lockSchema = z.object({
   packages: z.record(z.string(), z.object({ version: z.string().optional() }).passthrough()),
 });
-const releaseContractSchema = z.object({
-  schemaVersion: z.literal(1),
-  agentSdkVersion: z.string(),
-  bundledClaudeCodeVersion: z.string(),
-  verifiedAt: z.iso.datetime(),
-  model: z.literal("fable"),
-  contracts: z.tuple([
-    z.literal("text-response"),
-    z.literal("deferred-tool-call"),
-    z.literal("advertised-models"),
-  ]),
-  observedDeferredResult: z.literal("stop_reason:tool_deferred"),
-});
-
-async function readJson(url: URL): Promise<unknown> {
-  return JSON.parse(await readFile(url, "utf8")) as unknown;
-}
 
 describe("Claude SDK release contract", () => {
-  test("keeps the dependency, lockfile, SDK bundle, and live attestation on one exact version", async () => {
+  test("pins, locks, and live-attests the installed SDK version", async () => {
+    const installed = await readInstalledSdk();
     const packageMetadata = packageSchema.parse(
       await readJson(new URL("../package.json", import.meta.url)),
-    );
-    const releaseContract = releaseContractSchema.parse(
-      await readJson(new URL("../sdk-release-contract.json", import.meta.url)),
     );
     const lock = lockSchema.parse(
       await readJson(new URL("../../../package-lock.json", import.meta.url)),
     );
-    const sdkEntry = import.meta.resolve("@anthropic-ai/claude-agent-sdk");
-    const sdkMetadata = sdkMetadataSchema.parse(
-      await readJson(new URL("./package.json", sdkEntry)),
-    );
-    const pinnedVersion = packageMetadata.dependencies["@anthropic-ai/claude-agent-sdk"];
-    const lockedVersion = lock.packages["node_modules/@anthropic-ai/claude-agent-sdk"]?.version;
+    const attestation = releaseContractSchema.parse(await readJson(RELEASE_CONTRACT_URL));
 
-    expect(pinnedVersion).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(lockedVersion).toBe(pinnedVersion);
-    expect(sdkMetadata.version).toBe(pinnedVersion);
-    expect(releaseContract.agentSdkVersion).toBe(pinnedVersion);
-    expect(releaseContract.bundledClaudeCodeVersion).toBe(sdkMetadata.claudeCodeVersion);
+    expect(packageMetadata.dependencies[AGENT_SDK_PACKAGE], "exact package.json pin").toBe(
+      installed.version,
+    );
+    expect(lock.packages[`node_modules/${AGENT_SDK_PACKAGE}`]?.version, "lockfile").toBe(
+      installed.version,
+    );
+    expect(
+      {
+        agentSdkVersion: attestation.agentSdkVersion,
+        bundledClaudeCodeVersion: attestation.bundledClaudeCodeVersion,
+      },
+      "sdk-release-contract.json must attest the installed SDK. Run `npm run test:claude-sdk-upgrade`; the live gate rewrites it once every contract passes.",
+    ).toEqual({
+      agentSdkVersion: installed.version,
+      bundledClaudeCodeVersion: installed.claudeCodeVersion,
+    });
+  });
+
+  test("keeps the attestation in the format the live gate writes", async () => {
+    const attestation = releaseContractSchema.parse(await readJson(RELEASE_CONTRACT_URL));
+
+    expect(await readFile(RELEASE_CONTRACT_URL, "utf8")).toBe(formatReleaseContract(attestation));
   });
 });
