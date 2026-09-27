@@ -31,13 +31,20 @@ export type SdkFailureDiagnostic = {
   readonly terminalReason?: string;
 };
 
-const USAGE_LIMIT =
-  /(?:credits_required|extra usage|individual spend limit|out of (?:extra )?usage|usage limit)/i;
-const HOST_SLEEP = /(?:computer|host|machine).{0,40}(?:went to sleep|slept|sleep mid-response)/i;
-const TIMEOUT = /(?:deadline exceeded|request timed out|timed out|timeout)/i;
-const NETWORK =
-  /(?:can't reach the API server|dns|econnrefused|econnreset|enotfound|network|fetch failed|socket hang up)/i;
-const CANCELLED = /(?:abort|cancelled|canceled|interrupted)/i;
+// Failure text matches in this order, so the first matching pattern names the kind.
+const TEXT_KINDS: ReadonlyArray<readonly [kind: SdkFailureKind, pattern: RegExp]> = [
+  [
+    "usage-limit",
+    /(?:credits_required|extra usage|individual spend limit|out of (?:extra )?usage|usage limit)/i,
+  ],
+  ["host-sleep", /(?:computer|host|machine).{0,40}(?:went to sleep|slept|sleep mid-response)/i],
+  ["timeout", /(?:deadline exceeded|request timed out|timed out|timeout)/i],
+  [
+    "network",
+    /(?:can't reach the API server|dns|econnrefused|econnreset|enotfound|network|fetch failed|socket hang up)/i,
+  ],
+  ["cancelled", /(?:abort|cancelled|canceled|interrupted)/i],
+];
 
 function safeFailureText(error: SdkRunError): string {
   if (error instanceof SdkQueryError) {
@@ -46,22 +53,18 @@ function safeFailureText(error: SdkRunError): string {
   return error.message;
 }
 
+function failureKind(error: SdkRunError): SdkFailureKind {
+  if (error instanceof SdkProtocolError) return "protocol";
+  if (error instanceof InvalidDeferredCallLimitError) return "tool-contract";
+  const text = safeFailureText(error);
+  return TEXT_KINDS.find(([, pattern]) => pattern.test(text))?.[0] ?? "provider";
+}
+
 /** Classify a typed SDK failure without exposing its message or cause. */
 export function diagnoseSdkRunError(error: SdkRunError): SdkFailureDiagnostic {
-  const text = safeFailureText(error);
-  let kind: SdkFailureKind;
-  if (error instanceof SdkProtocolError) kind = "protocol";
-  else if (error instanceof InvalidDeferredCallLimitError) kind = "tool-contract";
-  else if (USAGE_LIMIT.test(text)) kind = "usage-limit";
-  else if (HOST_SLEEP.test(text)) kind = "host-sleep";
-  else if (TIMEOUT.test(text)) kind = "timeout";
-  else if (NETWORK.test(text)) kind = "network";
-  else if (CANCELLED.test(text)) kind = "cancelled";
-  else kind = "provider";
-
   return {
     schemaVersion: 1,
-    kind,
+    kind: failureKind(error),
     errorTag: error._tag,
     ...(error instanceof SdkQueryError ? { operation: error.operation } : {}),
     ...(error instanceof SdkResultError && error.terminalReason !== undefined

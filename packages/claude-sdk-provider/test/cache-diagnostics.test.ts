@@ -63,6 +63,28 @@ describe("cache diagnostics", () => {
     );
   });
 
+  test("fingerprints equal prompts equally and a changed block differently", () => {
+    const events: CacheDiagnostic[] = [];
+    const tracker = createCacheDiagnosticTracker((event) => events.push(event));
+    const prompt = { promptBlocks: [textBlock("stable"), textBlock("first")], cacheBreakpoint: 0 };
+
+    tracker("claude-sdk/sonnet", prompt);
+    tracker("claude-sdk/sonnet", prompt);
+    tracker("claude-sdk/sonnet", {
+      ...prompt,
+      promptBlocks: [textBlock("stable"), textBlock("x")],
+    });
+
+    const [first, repeated, changed] = events;
+    if (first?.type !== "request" || repeated?.type !== "request" || changed?.type !== "request")
+      throw new Error("missing request diagnostics");
+    expect(repeated.contentFingerprint).toBe(first.contentFingerprint);
+    expect(repeated.commonPrefixBlocks).toBe(2);
+    expect(changed.contentFingerprint).not.toBe(first.contentFingerprint);
+    expect(changed.reusablePrefixFingerprint).toBe(first.reusablePrefixFingerprint);
+    expect(changed.commonPrefixBlocks).toBe(1);
+  });
+
   test("reports wall-clock gap since the previous request so TTL-expiry misses are distinguishable in logs", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = createCacheDiagnosticTracker((event) => events.push(event));
