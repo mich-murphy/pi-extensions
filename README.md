@@ -8,8 +8,9 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `no-sleep` keeps macOS awake while Pi is working.
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
+- `pi-web-tools` adds public web search and fetch tools that work without API keys.
 
-Pi loads all four extensions from the root package manifest. Install the repository with:
+Pi loads all five extensions from the root package manifest. Install the repository with:
 
 ```sh
 pi install git:github.com/mich-murphy/pi-extensions
