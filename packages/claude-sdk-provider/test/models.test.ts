@@ -15,6 +15,17 @@ describe("providerModel", () => {
 });
 
 describe("model table", () => {
+  test("registers Sonnet 5.5 through the moving alias with its limits", () => {
+    expect(models.find((model) => model.id === "claude-5.5-sonnet")).toMatchObject({
+      name: "Claude Sonnet 5.5 (official Agent SDK)",
+      sdkModel: "sonnet",
+      canonicalModel: "claude-sonnet-5-5",
+      reasoning: true,
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+    });
+  });
+
   test("registers Haiku with its Agent SDK limits and without effort-based reasoning", () => {
     expect(models.find((model) => model.id === "claude-4.5-haiku")).toMatchObject({
       name: "Claude Haiku 4.5 (official Agent SDK)",
@@ -50,7 +61,7 @@ describe("formatModelStatus", () => {
     expect(text).toBe(
       [
         "Models:",
-        "  claude-5-sonnet → sonnet → not observed yet",
+        "  claude-5.5-sonnet → sonnet → not observed yet",
         "  claude-5.5-opus → opus → claude-opus-5-2 (expected claude-opus-5-5)",
         "  claude-5.1-fable → fable → claude-fable-5-1",
         "  claude-4.5-haiku → haiku → claude-haiku-4-5-20251001",

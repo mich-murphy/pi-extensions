@@ -111,6 +111,24 @@ describe("installed Claude Agent SDK live contract", () => {
       calls: [{ name: "contract_probe", arguments: { value: "CLAUDE_SDK_TOOL_OK" } }],
     });
     expect(observedDeferredResult).toBeDefined();
+
+    // Regression for a coding request that once printed <invoke> markup instead
+    // of making a real call. A plain text answer must not satisfy this check.
+    const codingRequest = request(
+      "Update this project's SDK dependency. First read package.json using the read Pi tool with path package.json. Wait for the tool result before editing or answering.",
+      ["read"],
+    );
+    const readEvents = await collect({
+      ...codingRequest,
+      toolDescription: [
+        "Request one tool from Pi; do not print tool-call markup in your response.",
+        'Available Pi tools: [{"name":"read","description":"Read a file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}]',
+      ].join("\n"),
+    });
+    expect(readEvents.at(-1)).toMatchObject({
+      type: "tool_calls",
+      calls: [{ name: "read", arguments: { path: "package.json" } }],
+    });
     verified.add("deferred-tool-call");
   });
 
