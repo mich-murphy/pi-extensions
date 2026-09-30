@@ -32,6 +32,14 @@ describe("subscription environment", () => {
     expect(environment.ANTHROPIC_BETAS).toBe("extended-cache-ttl-2025-04-11");
   });
 
+  test("disables the CLI's own cache breakpoints so the provider breakpoint is the only one", () => {
+    const environment = subscriptionEnvironment({ DISABLE_PROMPT_CACHING: undefined });
+
+    // The CLI adds breakpoints on top of the provider's transcript breakpoint,
+    // and Anthropic rejects more than four cache_control blocks per request.
+    expect(environment.DISABLE_PROMPT_CACHING).toBe("1");
+  });
+
   test("appends the extended-cache beta without clobbering existing betas or the experimental-betas opt-out", () => {
     const environment = subscriptionEnvironment({
       ANTHROPIC_BETAS: "context-1m-2025-08-07, extended-cache-ttl-2025-04-11",
@@ -49,6 +57,7 @@ describe("subscription environment", () => {
     });
 
     expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
+    expect(environment.DISABLE_PROMPT_CACHING).toBeUndefined();
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ANTHROPIC_BETAS).toBeUndefined();
   });

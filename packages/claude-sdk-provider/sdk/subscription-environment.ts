@@ -26,10 +26,16 @@ export function subscriptionEnvironment(
   }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "pi-coding-agent-provider/0.1.0";
 
-  // Pin the extended TTL because Claude Code otherwise gates its own 1h choice
-  // independently of the cache_control block supplied by this provider.
-  // PI_CLAUDE_SDK_5M_CACHE restores the CLI's native policy as an escape hatch.
+  // The CLI places cache breakpoints of its own (system blocks, the trailing
+  // environment message, and possibly more as its policy evolves) on top of
+  // the single transcript-prefix breakpoint this provider supplies. Anthropic
+  // rejects requests with more than four cache_control blocks, so the CLI's
+  // automatic caching must stay off: its breakpoints sit on blocks far below
+  // the 1024-token cache-creation minimum anyway, while the transcript prefix
+  // this provider marks is where the tokens are. PI_CLAUDE_SDK_5M_CACHE
+  // restores the CLI's native policy as an escape hatch.
   if (environment.PI_CLAUDE_SDK_5M_CACHE === "1") return environment;
+  environment.DISABLE_PROMPT_CACHING = "1";
   delete environment.FORCE_PROMPT_CACHING_5M;
   environment.ENABLE_PROMPT_CACHING_1H = "1";
   const betas = new Set(
