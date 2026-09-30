@@ -21,14 +21,15 @@ describe("subscription environment", () => {
     expect(environment.CLAUDE_CODE_USE_FOUNDRY).toBeUndefined();
   });
 
-  test("pins the 1h prompt-cache TTL opt-in and beta header so the extended cache TTL is deterministic", () => {
+  test("disables the CLI's cache breakpoints and pins the extended-ttl beta the provider breakpoint needs", () => {
     const environment = subscriptionEnvironment({
       FORCE_PROMPT_CACHING_5M: "1",
       ENABLE_PROMPT_CACHING_1H: undefined,
     });
 
-    expect(environment.ENABLE_PROMPT_CACHING_1H).toBe("1");
-    expect(environment.FORCE_PROMPT_CACHING_5M).toBeUndefined();
+    expect(environment.DISABLE_PROMPT_CACHING).toBe("1");
+    expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
+    expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
     expect(environment.ANTHROPIC_BETAS).toBe("extended-cache-ttl-2025-04-11");
   });
 
@@ -42,13 +43,13 @@ describe("subscription environment", () => {
     expect(environment.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe("1");
   });
 
-  test("PI_CLAUDE_SDK_5M_CACHE=1 restores the CLI's own cache-TTL decision as an escape hatch", () => {
+  test("PI_CLAUDE_SDK_CLI_CACHE=1 restores the CLI's native caching policy as an escape hatch", () => {
     const environment = subscriptionEnvironment({
-      PI_CLAUDE_SDK_5M_CACHE: "1",
+      PI_CLAUDE_SDK_CLI_CACHE: "1",
       FORCE_PROMPT_CACHING_5M: "1",
     });
 
-    expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
+    expect(environment.DISABLE_PROMPT_CACHING).toBeUndefined();
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ANTHROPIC_BETAS).toBeUndefined();
   });

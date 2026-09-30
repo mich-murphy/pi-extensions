@@ -1,4 +1,3 @@
-// The API beta required for ttl: "1h" cache-control blocks.
 import process from "node:process";
 
 const EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11";
@@ -26,12 +25,11 @@ export function subscriptionEnvironment(
   }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "pi-coding-agent-provider/0.1.0";
 
-  // Pin the extended TTL because Claude Code otherwise gates its own 1h choice
-  // independently of the cache_control block supplied by this provider.
-  // PI_CLAUDE_SDK_5M_CACHE restores the CLI's native policy as an escape hatch.
-  if (environment.PI_CLAUDE_SDK_5M_CACHE === "1") return environment;
-  delete environment.FORCE_PROMPT_CACHING_5M;
-  environment.ENABLE_PROMPT_CACHING_1H = "1";
+  // Anthropic rejects more than four cache_control blocks, so the CLI's own breakpoints stay off.
+  if (environment.PI_CLAUDE_SDK_CLI_CACHE === "1") return environment;
+  environment.DISABLE_PROMPT_CACHING = "1";
+
+  // The provider's ttl: "1h" breakpoint is rejected without this beta.
   const betas = new Set(
     (environment.ANTHROPIC_BETAS ?? "")
       .split(",")
