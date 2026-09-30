@@ -29,12 +29,7 @@ export interface AgentRequest {
   readonly systemPrompt: string;
   /** Stable prompt blocks in wire order. */
   readonly promptBlocks: ReadonlyArray<PromptBlock>;
-  /**
-   * Index of the prompt block that ends the cacheable prefix. The runner's
-   * environment disables the CLI's own automatic cache breakpoints, so this is
-   * the only cache_control block on the wire and Anthropic's four-block limit
-   * cannot be exceeded.
-   */
+  /** Index of the prompt block that ends the cacheable prefix. */
   readonly cacheBreakpoint: number | undefined;
   /** Per-turn deferred Pi tool catalog. */
   readonly toolDescription: string;

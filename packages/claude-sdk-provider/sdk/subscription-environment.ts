@@ -1,4 +1,3 @@
-// The API beta required for ttl: "1h" cache-control blocks.
 import process from "node:process";
 
 const EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11";
@@ -26,23 +25,11 @@ export function subscriptionEnvironment(
   }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "pi-coding-agent-provider/0.1.0";
 
-  // The CLI places cache breakpoints of its own (system blocks, the trailing
-  // environment message, and possibly more as its policy evolves) on top of
-  // the single transcript-prefix breakpoint this provider supplies. Anthropic
-  // rejects requests with more than four cache_control blocks, so the CLI's
-  // automatic caching must stay off: its breakpoints sit on blocks far below
-  // the 1024-token cache-creation minimum anyway, while the transcript prefix
-  // this provider marks is where the tokens are. With the CLI's caching
-  // disabled, its caching knobs (ENABLE_PROMPT_CACHING_1H,
-  // FORCE_PROMPT_CACHING_5M) are inert and pass through untouched.
-  // PI_CLAUDE_SDK_CLI_CACHE restores the CLI's native caching policy as an
-  // escape hatch.
+  // Anthropic rejects more than four cache_control blocks, so the CLI's own breakpoints stay off.
   if (environment.PI_CLAUDE_SDK_CLI_CACHE === "1") return environment;
   environment.DISABLE_PROMPT_CACHING = "1";
 
-  // The provider's own breakpoint uses ttl: "1h", which the API only accepts
-  // when the extended-cache-ttl beta rides on the request. With the CLI's
-  // automatic caching disabled it no longer adds that beta itself, so pin it.
+  // The provider's ttl: "1h" breakpoint is rejected without this beta.
   const betas = new Set(
     (environment.ANTHROPIC_BETAS ?? "")
       .split(",")

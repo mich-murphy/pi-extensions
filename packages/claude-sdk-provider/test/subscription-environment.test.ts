@@ -27,14 +27,9 @@ describe("subscription environment", () => {
       ENABLE_PROMPT_CACHING_1H: undefined,
     });
 
-    // The CLI adds breakpoints on top of the provider's transcript breakpoint,
-    // and Anthropic rejects more than four cache_control blocks per request.
     expect(environment.DISABLE_PROMPT_CACHING).toBe("1");
-    // With the CLI's caching disabled, its caching knobs are inert pass-throughs.
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
-    // The API rejects ttl: "1h" blocks unless this beta rides on the request,
-    // and the CLI no longer adds it once its own caching is disabled.
     expect(environment.ANTHROPIC_BETAS).toBe("extended-cache-ttl-2025-04-11");
   });
 
