@@ -21,10 +21,10 @@ export interface SdkModelConfig extends ProviderModelConfig {
 /** Models exposed by the official Claude Agent SDK provider. */
 export const models: ReadonlyArray<SdkModelConfig> = [
   {
-    id: "claude-5-sonnet",
-    name: "Claude Sonnet 5 (official Agent SDK)",
+    id: "claude-5.5-sonnet",
+    name: "Claude Sonnet 5.5 (official Agent SDK)",
     sdkModel: "sonnet",
-    canonicalModel: "claude-sonnet-5",
+    canonicalModel: "claude-sonnet-5-5",
     reasoning: true,
     input: ["text", "image"],
     cost: subscriptionCost,
