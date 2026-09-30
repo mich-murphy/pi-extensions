@@ -21,23 +21,21 @@ describe("subscription environment", () => {
     expect(environment.CLAUDE_CODE_USE_FOUNDRY).toBeUndefined();
   });
 
-  test("pins the 1h prompt-cache TTL opt-in and beta header so the extended cache TTL is deterministic", () => {
+  test("disables the CLI's cache breakpoints and pins the extended-ttl beta the provider breakpoint needs", () => {
     const environment = subscriptionEnvironment({
       FORCE_PROMPT_CACHING_5M: "1",
       ENABLE_PROMPT_CACHING_1H: undefined,
     });
 
-    expect(environment.ENABLE_PROMPT_CACHING_1H).toBe("1");
-    expect(environment.FORCE_PROMPT_CACHING_5M).toBeUndefined();
-    expect(environment.ANTHROPIC_BETAS).toBe("extended-cache-ttl-2025-04-11");
-  });
-
-  test("disables the CLI's own cache breakpoints so the provider breakpoint is the only one", () => {
-    const environment = subscriptionEnvironment({ DISABLE_PROMPT_CACHING: undefined });
-
     // The CLI adds breakpoints on top of the provider's transcript breakpoint,
     // and Anthropic rejects more than four cache_control blocks per request.
     expect(environment.DISABLE_PROMPT_CACHING).toBe("1");
+    // With the CLI's caching disabled, its caching knobs are inert pass-throughs.
+    expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
+    expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
+    // The API rejects ttl: "1h" blocks unless this beta rides on the request,
+    // and the CLI no longer adds it once its own caching is disabled.
+    expect(environment.ANTHROPIC_BETAS).toBe("extended-cache-ttl-2025-04-11");
   });
 
   test("appends the extended-cache beta without clobbering existing betas or the experimental-betas opt-out", () => {
@@ -50,13 +48,12 @@ describe("subscription environment", () => {
     expect(environment.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe("1");
   });
 
-  test("PI_CLAUDE_SDK_5M_CACHE=1 restores the CLI's own cache-TTL decision as an escape hatch", () => {
+  test("PI_CLAUDE_SDK_CLI_CACHE=1 restores the CLI's native caching policy as an escape hatch", () => {
     const environment = subscriptionEnvironment({
-      PI_CLAUDE_SDK_5M_CACHE: "1",
+      PI_CLAUDE_SDK_CLI_CACHE: "1",
       FORCE_PROMPT_CACHING_5M: "1",
     });
 
-    expect(environment.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
     expect(environment.DISABLE_PROMPT_CACHING).toBeUndefined();
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ANTHROPIC_BETAS).toBeUndefined();

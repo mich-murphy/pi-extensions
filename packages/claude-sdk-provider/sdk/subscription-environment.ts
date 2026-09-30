@@ -32,12 +32,17 @@ export function subscriptionEnvironment(
   // rejects requests with more than four cache_control blocks, so the CLI's
   // automatic caching must stay off: its breakpoints sit on blocks far below
   // the 1024-token cache-creation minimum anyway, while the transcript prefix
-  // this provider marks is where the tokens are. PI_CLAUDE_SDK_5M_CACHE
-  // restores the CLI's native policy as an escape hatch.
-  if (environment.PI_CLAUDE_SDK_5M_CACHE === "1") return environment;
+  // this provider marks is where the tokens are. With the CLI's caching
+  // disabled, its caching knobs (ENABLE_PROMPT_CACHING_1H,
+  // FORCE_PROMPT_CACHING_5M) are inert and pass through untouched.
+  // PI_CLAUDE_SDK_CLI_CACHE restores the CLI's native caching policy as an
+  // escape hatch.
+  if (environment.PI_CLAUDE_SDK_CLI_CACHE === "1") return environment;
   environment.DISABLE_PROMPT_CACHING = "1";
-  delete environment.FORCE_PROMPT_CACHING_5M;
-  environment.ENABLE_PROMPT_CACHING_1H = "1";
+
+  // The provider's own breakpoint uses ttl: "1h", which the API only accepts
+  // when the extended-cache-ttl beta rides on the request. With the CLI's
+  // automatic caching disabled it no longer adds that beta itself, so pin it.
   const betas = new Set(
     (environment.ANTHROPIC_BETAS ?? "")
       .split(",")

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "agentSdkVersion": "0.3.285",
   "bundledClaudeCodeVersion": "2.1.285",
-  "verifiedAt": "2026-09-30T21:57:35Z",
+  "verifiedAt": "2026-09-30T22:38:47Z",
   "model": "fable",
   "contracts": ["text-response", "deferred-tool-call", "advertised-models"],
   "observedDeferredResult": "stop_reason:tool_deferred"
