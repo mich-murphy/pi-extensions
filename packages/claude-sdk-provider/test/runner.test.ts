@@ -135,15 +135,10 @@ describe("SDK query parameters", () => {
     };
     const levels = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
-    expect(await Promise.all(levels.map((level) => effortFor("claude-5-sonnet", level)))).toEqual([
-      "low",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]);
-    expect(await effortFor("claude-5-sonnet", undefined)).toBe("omitted");
+    expect(await Promise.all(levels.map((level) => effortFor("claude-5.5-sonnet", level)))).toEqual(
+      ["low", "low", "medium", "high", "xhigh", "max"],
+    );
+    expect(await effortFor("claude-5.5-sonnet", undefined)).toBe("omitted");
     for (const level of levels) expect(await effortFor("claude-4.5-haiku", level)).toBe("omitted");
   });
 
@@ -257,7 +252,7 @@ describe("model observation", () => {
   test("reports the first main-loop model and its context window from a completed turn", async () => {
     const usage = { input_tokens: 1, output_tokens: 1 };
     const { events, observations } = await observe(
-      streamEvent({ type: "message_start", message: { model: "claude-sonnet-5", usage } }),
+      streamEvent({ type: "message_start", message: { model: "claude-sonnet-5-5", usage } }),
       { type: "assistant", message: { model: "claude-haiku-4-5-20251001", usage } },
       resultMessage({
         modelUsage: {
@@ -265,14 +260,14 @@ describe("model observation", () => {
             canonicalModel: "claude-haiku-4-5",
             contextWindow: 200_000,
           },
-          "claude-sonnet-5": { canonicalModel: "claude-sonnet-5", contextWindow: 1_000_000 },
+          "claude-sonnet-5-5": { canonicalModel: "claude-sonnet-5-5", contextWindow: 1_000_000 },
         },
       }),
     );
 
     expect(events.at(-1)).toEqual({ type: "done", reason: "stop" });
     expect(observations).toEqual([
-      { selector: "sonnet", canonicalModel: "claude-sonnet-5", contextWindow: 1_000_000 },
+      { selector: "sonnet", canonicalModel: "claude-sonnet-5-5", contextWindow: 1_000_000 },
     ]);
   });
 
@@ -544,7 +539,7 @@ describe("cache diagnostics", () => {
 
   test("records the request and the final usage of a completed turn", async () => {
     expect(await diagnose(usage, resultMessage())).toMatchObject([
-      { type: "request", turn: 1, model: "claude-sdk/claude-5-sonnet", breakpointBlock: 0 },
+      { type: "request", turn: 1, model: "claude-sdk/claude-5.5-sonnet", breakpointBlock: 0 },
       { type: "usage", turn: 1, input: 5, cacheRead: 95, cacheReadPercent: 95 },
     ]);
   });

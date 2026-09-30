@@ -64,7 +64,7 @@ export function modelFixture(input: unknown): Model<"claude-sdk"> {
 export const sonnet = modelFixture({
   api: "claude-sdk",
   provider: "claude-sdk",
-  id: "claude-5-sonnet",
+  id: "claude-5.5-sonnet",
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 });
 
