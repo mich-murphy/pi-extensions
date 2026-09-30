@@ -115,6 +115,71 @@ describe("readable root extraction", () => {
   }
 });
 
+describe("htmlToMarkdown block links", () => {
+  test.each([
+    [
+      "moves a link wrapping only a heading inside the heading",
+      '<a href="/x" title="T"><h2>Heading <em>one</em></h2></a><p>body</p>',
+      '## [Heading *one*](https://example.com/x "T")\n\nbody',
+    ],
+    [
+      "ignores whitespace around the heading",
+      '<a href="/w">\n  <h4>Spaced</h4>\n</a>',
+      "#### [Spaced](https://example.com/w)",
+    ],
+    [
+      "leaves a link with several element children",
+      '<a href="/y"><h3>A</h3><p>b</p></a>',
+      "[\n\n### A\n\nb\n\n](https://example.com/y)",
+    ],
+    [
+      "leaves a link whose only child is not a heading",
+      '<a href="/z"><span>not heading</span></a>',
+      "[not heading](https://example.com/z)",
+    ],
+  ])("%s", (_label, content, expected) => {
+    const html = `<html><body><article>${content}</article></body></html>`;
+    expect(htmlToMarkdown(html, "https://example.com")).toBe(expected);
+  });
+});
+
+describe("htmlToMarkdown on large documents", () => {
+  // Large enough, with enough children in one container, that the conversion runs in chunks.
+  const paragraphs = Array.from(
+    { length: 3_000 },
+    (_, index) => `Paragraph ${index} with some words to fill the line out.`,
+  );
+
+  test("converts a large flat document as a single pass would", () => {
+    const html = `<html><body><article><section>\n${paragraphs
+      .map((text) => `<p>${text}</p>`)
+      .join("\n")}\n</section></article></body></html>`;
+    expect(html.length).toBeGreaterThan(128 * 1024);
+    expect(htmlToMarkdown(html, "https://example.com")).toBe(paragraphs.join("\n\n"));
+  });
+
+  test("keeps edge whitespace, preformatted text, and misnested lists across chunk edges", () => {
+    const blocks = paragraphs.map((text, index) => {
+      if (index % 500 === 499) return `<pre>\tcode ${index}</pre>`;
+      if (index % 700 === 699) return `<ol><li><div><li>nested ${index}</li></div></li></ol>`;
+      return `<p>${text}&nbsp;</p>`;
+    });
+    // What a single pass produces for each block: a bare pre keeps its leading tab unfenced, the
+    // HTML parser closes the outer list item before the misnested one, and the trailing
+    // no-break space survives.
+    const expected = paragraphs.map((text, index) => {
+      if (index % 500 === 499) return `\tcode ${index}`;
+      if (index % 700 === 699) return `2.  nested ${index}`;
+      return `${text} `;
+    });
+    const markdown = htmlToMarkdown(
+      `<html><body><article>${blocks.join("")}</article></body></html>`,
+      "https://example.com",
+    );
+    expect(markdown).toBe(expected.join("\n\n").trim());
+  });
+});
+
 describe("htmlToMarkdown tables", () => {
   const inArticle = (content: string) => `<html><body><article>${content}</article></body></html>`;
 
@@ -212,6 +277,14 @@ describe("layout table detection", () => {
       "https://example.com",
     );
     expect(sanitized.includes("<table")).toBe(verdict === "data");
+  });
+
+  test("ignores a Hacker News id on an ancestor outside the readable root", () => {
+    const sanitized = sanitizeHtml(
+      `<html><body><div id="hnmain"><article><table>${grid}</table></article></div></body></html>`,
+      "https://example.com",
+    );
+    expect(sanitized).toBe(`<div><table>${grid}</table></div>`);
   });
 
   test("flattens a table that contains another table and keeps the inner one", () => {

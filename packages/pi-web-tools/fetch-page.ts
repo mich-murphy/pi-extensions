@@ -1,4 +1,4 @@
-import { htmlToMarkdown, htmlToText, isPoorMarkdownConversion } from "./html";
+import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
 import {
   decodeTextBuffer,
   type PublicWebClient,
@@ -144,8 +144,7 @@ function convertText(
 ): Result<string, FetchPageError> {
   try {
     if (kind === "html" && format === "markdown") {
-      const markdown = htmlToMarkdown(text, baseUrl);
-      return ok(isPoorMarkdownConversion(markdown) ? htmlToText(text, baseUrl) : markdown);
+      return ok(htmlToMarkdownWithTextFallback(text, baseUrl));
     }
     if (kind === "html" && format === "text") {
       return ok(htmlToText(text, baseUrl));
