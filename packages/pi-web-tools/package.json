@@ -16,6 +16,7 @@
     ]
   },
   "dependencies": {
+    "@mixmark-io/domino": "2.2.0",
     "html-to-text": "10.0.1",
     "linkedom": "0.18.13",
     "turndown": "7.2.4",
