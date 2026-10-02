@@ -44,7 +44,7 @@
     "@types/node": "24.13.6",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.2",
-    "fallow": "3.28.0",
+    "fallow": "3.30.0",
     "markdownlint-cli2": "0.23.3",
     "typescript": "7.0.2",
     "vitest": "5.0.2"
