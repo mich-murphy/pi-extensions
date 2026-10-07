@@ -49,9 +49,12 @@ function registerStatusCommands(
 }
 
 function registerSafetyHooks(pi: ExtensionAPI): void {
-  pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\nBash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.`,
-  }));
+  // A section, not a returned systemPrompt: returning one replaces the whole prompt and drops
+  // the sections other extensions set in the same event.
+  pi.on("before_agent_start", (event) => {
+    event.systemPromptOptions.sections["bash-output-safety"] =
+      "Bash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.";
+  });
   pi.on("tool_call", (event) => {
     if (!isToolCallEventType("bash", event)) {
       return undefined;
