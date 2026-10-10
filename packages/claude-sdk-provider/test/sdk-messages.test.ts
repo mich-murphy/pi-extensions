@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
 import { applyUsage, contextWindowFor, parseSdkMessage } from "../sdk/messages";
@@ -6,20 +7,20 @@ import { resultMessage, streamEvent, textDelta } from "./fixtures";
 
 function parsed(input: unknown): SdkMessage {
   const result = parseSdkMessage(input);
-  if (result._tag === "err") {
-    throw result.error;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.value;
+  return result.success;
 }
 
 function protocolError(input: unknown): SdkProtocolError {
   const result = parseSdkMessage(input);
-  if (result._tag === "ok") {
+  if (Result.isSuccess(result)) {
     throw new Error("test setup: expected a protocol error");
   }
-  expect(result.error).toBeInstanceOf(SdkProtocolError);
-  expect(result.error._tag).toBe("SdkProtocolError");
-  return result.error;
+  expect(result.failure).toBeInstanceOf(SdkProtocolError);
+  expect(result.failure._tag).toBe("SdkProtocolError");
+  return result.failure;
 }
 
 function turnResult(fields: Readonly<Record<string, unknown>>) {
@@ -70,6 +71,22 @@ describe("SDK stream messages", () => {
       usage,
     });
     expect(parsed({ type: "assistant", message })).toStrictEqual({
+      type: "usage",
+      model: "claude-fable-5-1",
+      usage,
+    });
+  });
+
+  test("carries an assistant message's typed API error, ignoring a non-string one", () => {
+    const message = { model: "claude-fable-5-1", usage };
+
+    expect(parsed({ type: "assistant", message, error: "authentication_failed" })).toStrictEqual({
+      type: "usage",
+      model: "claude-fable-5-1",
+      usage,
+      apiError: "authentication_failed",
+    });
+    expect(parsed({ type: "assistant", message, error: 7 })).toStrictEqual({
       type: "usage",
       model: "claude-fable-5-1",
       usage,
@@ -214,7 +231,7 @@ describe("terminal SDK result", () => {
     expect(failedResult({ result: "The model refused to respond." }).message).toBe(
       "The model refused to respond.",
     );
-    expect(failedResult({}).message).toBe("Claude Agent SDK reported an error result");
+    expect(failedResult({}).message).toBe("the query failed without an error description");
     expect(failedResult({ terminal_reason: "model_error" }).terminalReason).toBe("model_error");
   });
 
@@ -236,8 +253,7 @@ describe("terminal SDK result", () => {
       error: {
         _tag: "SdkResultError",
         terminalReason: "tool_deferred_unavailable",
-        message:
-          "Claude Agent SDK could not honor the deferred Pi tool call (terminal_reason: tool_deferred_unavailable)",
+        message: "could not hand the requested Pi tool call back to Pi",
       },
     });
   });
@@ -245,7 +261,7 @@ describe("terminal SDK result", () => {
   test("treats a model refusal as a failure, like Pi's Anthropic provider", () => {
     expect(turnResult({ stop_reason: "refusal" })).toMatchObject({
       _tag: "failed",
-      error: { message: "The model refused to complete the request" },
+      error: { message: "the model refused to complete the request" },
     });
   });
 });

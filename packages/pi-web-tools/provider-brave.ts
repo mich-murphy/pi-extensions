@@ -1,15 +1,14 @@
+import { Effect } from "effect";
 import { z } from "zod";
 import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
-import { lenientArray, optionalTextSchema, publicHttpUrlSchema } from "./provider-types";
-import type {
-  ProviderCallOptions,
-  ProviderError,
-  SearchInput,
-  SearchProvider,
+import {
+  lenientArray,
+  optionalTextSchema,
+  ProviderProtocolInvalid,
+  publicHttpUrlSchema,
 } from "./provider-types";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import type { ProviderError, SearchInput, SearchProvider } from "./provider-types";
 import {
   BRAVE_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
@@ -54,18 +53,15 @@ export class BraveApiSearchProvider implements SearchProvider {
   ) {}
 
   /** Run one Brave web search call and normalize its results. */
-  async search(
-    input: SearchInput,
-    options: ProviderCallOptions = {},
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
+  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     const url = new URL(BRAVE_API_SEARCH_URL);
     url.searchParams.set("q", input.query);
     url.searchParams.set("count", String(input.maxResults));
     url.searchParams.set("safesearch", "moderate");
     url.searchParams.set("text_decorations", "false");
 
-    const response = this.http.getJson(
-      {
+    return readProviderJson(
+      this.http.getJson({
         url: url.toString(),
         headers: {
           accept: "application/json",
@@ -74,17 +70,14 @@ export class BraveApiSearchProvider implements SearchProvider {
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
         timeoutMs: BRAVE_SEARCH_TIMEOUT_MS,
-      },
-      { signal: options.signal },
+      }),
+    ).pipe(
+      Effect.flatMap((payload) => {
+        const parsed = braveSearchPayloadSchema.safeParse(payload);
+        return parsed.success
+          ? Effect.succeed(parsed.data.web.results.slice(0, input.maxResults))
+          : Effect.fail(new ProviderProtocolInvalid({ reason: "Missing web results" }));
+      }),
     );
-    const payload = await readProviderJson(response);
-    if (payload._tag === "err") {
-      return payload;
-    }
-    const parsed = braveSearchPayloadSchema.safeParse(payload.value);
-    if (!parsed.success) {
-      return err({ _tag: "ProviderProtocolInvalid", reason: "Missing web results" });
-    }
-    return ok(parsed.data.web.results.slice(0, input.maxResults));
   }
 }

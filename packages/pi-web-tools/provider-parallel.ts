@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import { z } from "zod";
 import type { McpClient, McpToolCallResult } from "./mcp";
 import { readProviderJson } from "./provider-http";
@@ -6,17 +7,10 @@ import {
   lenientArray,
   optionalTextSchema,
   parseJsonBody,
+  ProviderProtocolInvalid,
   publicHttpUrlSchema,
 } from "./provider-types";
-import type {
-  FetchProvider,
-  ProviderCallOptions,
-  ProviderError,
-  SearchInput,
-  SearchProvider,
-} from "./provider-types";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import type { FetchProvider, ProviderError, SearchInput, SearchProvider } from "./provider-types";
 import {
   PARALLEL_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
@@ -63,27 +57,29 @@ const parallelFetchPayloadSchema = z.object({
 /** Parse Parallel's structured results payload (MCP structuredContent, JSON text, or REST body). */
 export function parseParallelResults(
   payload: unknown,
-): Result<readonly NormalizedSearchResult[], string> {
+): Result.Result<readonly NormalizedSearchResult[], string> {
   const parsed = parallelResultsPayloadSchema.safeParse(payload);
-  return parsed.success ? ok(parsed.data.results) : err("Missing results array");
+  return parsed.success
+    ? Result.succeed(parsed.data.results)
+    : Result.fail("Missing results array");
 }
 
 /** Extract Parallel's results payload from an MCP tool result (structuredContent or JSON text). */
 export function parseParallelMcpPayload(
   toolResult: McpToolCallResult,
-): Result<readonly NormalizedSearchResult[], string> {
+): Result.Result<readonly NormalizedSearchResult[], string> {
   if (toolResult.structuredContent !== undefined) {
     return parseParallelResults(toolResult.structuredContent);
   }
 
   const [firstText] = toolResult.text;
   if (firstText === undefined) {
-    return err("Missing structured search results");
+    return Result.fail("Missing structured search results");
   }
   const payload = parseJsonBody(firstText);
-  return payload._tag === "ok"
-    ? parseParallelResults(payload.value)
-    : err("Invalid structured search results");
+  return Result.isSuccess(payload)
+    ? parseParallelResults(payload.success)
+    : Result.fail("Invalid structured search results");
 }
 
 /** Search Parallel through its official hosted MCP endpoint (keyless or proxied). */
@@ -97,28 +93,16 @@ export class ParallelMcpSearchProvider implements SearchProvider {
   ) {}
 
   /** Run one Parallel MCP web_search call and normalize its structured results. */
-  async search(
-    input: SearchInput,
-    options: ProviderCallOptions = {},
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
-    const call = await this.mcp.callTool(
-      "web_search",
-      {
+  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+    return this.mcp
+      .callTool("web_search", {
         objective: input.query,
         search_queries: [input.query],
         session_id: this.sessionId,
-      },
-      { signal: options.signal },
-    );
-    if (call._tag === "err") {
-      return call;
-    }
-
-    const parsed = parseParallelMcpPayload(call.value);
-    if (parsed._tag === "err") {
-      return err({ _tag: "ProviderProtocolInvalid", reason: parsed.error });
-    }
-    return ok(parsed.value.slice(0, input.maxResults));
+      })
+      .pipe(
+        Effect.flatMap((call) => limitedResults(parseParallelMcpPayload(call), input.maxResults)),
+      );
   }
 }
 
@@ -133,12 +117,9 @@ export class ParallelApiSearchProvider implements SearchProvider {
   ) {}
 
   /** Run one Parallel REST search call and normalize its structured results. */
-  async search(
-    input: SearchInput,
-    options: ProviderCallOptions = {},
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
-    const response = this.http.postJson(
-      {
+  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+    return readProviderJson(
+      this.http.postJson({
         url: PARALLEL_API_SEARCH_URL,
         headers: { "x-api-key": this.apiKey },
         body: {
@@ -149,19 +130,20 @@ export class ParallelApiSearchProvider implements SearchProvider {
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
         timeoutMs: PARALLEL_SEARCH_TIMEOUT_MS,
-      },
-      { signal: options.signal },
+      }),
+    ).pipe(
+      Effect.flatMap((payload) => limitedResults(parseParallelResults(payload), input.maxResults)),
     );
-    const payload = await readProviderJson(response);
-    if (payload._tag === "err") {
-      return payload;
-    }
-    const parsed = parseParallelResults(payload.value);
-    if (parsed._tag === "err") {
-      return err({ _tag: "ProviderProtocolInvalid", reason: parsed.error });
-    }
-    return ok(parsed.value.slice(0, input.maxResults));
   }
+}
+
+function limitedResults(
+  parsed: Result.Result<readonly NormalizedSearchResult[], string>,
+  maxResults: number,
+): Effect.Effect<readonly NormalizedSearchResult[], ProviderProtocolInvalid> {
+  return Result.isSuccess(parsed)
+    ? Effect.succeed(parsed.success.slice(0, maxResults))
+    : Effect.fail(new ProviderProtocolInvalid({ reason: parsed.failure }));
 }
 
 /** Fetch a page through Parallel's hosted MCP web_fetch tool (the fetch rescue path). */
@@ -173,35 +155,34 @@ export class ParallelMcpFetchProvider implements FetchProvider {
     private readonly sessionId: string,
   ) {}
 
-  /** Read one URL as full markdown through Parallel's fetch infrastructure. */
-  async fetchMarkdown(
-    url: PublicHttpUrl,
-    options: { readonly signal?: AbortSignal | undefined } = {},
-  ): Promise<string | undefined> {
-    const call = await this.mcp.callTool(
-      "web_fetch",
-      { urls: [url], full_content: true, session_id: this.sessionId },
-      { signal: options.signal },
-    );
-    if (call._tag === "err") {
-      return undefined;
-    }
-
-    const fromStructured = extractParallelFetchText(call.value.structuredContent);
-    if (fromStructured !== undefined && fromStructured !== "") {
-      return fromStructured;
-    }
-
-    const text = call.value.text.join("\n\n").trim();
-    if (!text) {
-      return undefined;
-    }
-    // Some deployments return the results payload as JSON text instead of structuredContent.
-    const payload = parseJsonBody(text);
-    const fromJson = payload._tag === "ok" ? extractParallelFetchText(payload.value) : undefined;
-    // Not a results payload: treat the text as the page content itself.
-    return fromJson ?? text;
+  /** Read one URL as full markdown through Parallel's fetch infrastructure; undefined on any failure. */
+  fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
+    return this.mcp
+      .callTool("web_fetch", { urls: [url], full_content: true, session_id: this.sessionId })
+      .pipe(
+        Effect.map(readParallelFetchResult),
+        Effect.orElseSucceed(() => undefined),
+      );
   }
+}
+
+function readParallelFetchResult(call: McpToolCallResult): string | undefined {
+  const fromStructured = extractParallelFetchText(call.structuredContent);
+  if (fromStructured !== undefined && fromStructured !== "") {
+    return fromStructured;
+  }
+
+  const text = call.text.join("\n\n").trim();
+  if (!text) {
+    return undefined;
+  }
+  // Some deployments return the results payload as JSON text instead of structuredContent.
+  const payload = parseJsonBody(text);
+  const fromJson = Result.isSuccess(payload)
+    ? extractParallelFetchText(payload.success)
+    : undefined;
+  // Not a results payload: treat the text as the page content itself.
+  return fromJson ?? text;
 }
 
 function extractParallelFetchText(payload: unknown): string | undefined {

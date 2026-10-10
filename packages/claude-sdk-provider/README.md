@@ -35,7 +35,9 @@ This provider is experimental. For cache-sensitive or API-billed work, select Pi
 
 Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`, and to show each model's advertised ID next to the canonical model it actually resolves to. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
 
-Failed turns include a stable category such as `usage-limit`, `network`, `timeout`, `protocol`, or `tool-contract`. The provider also writes one `[claude-sdk-error]` JSON record to stderr. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause.
+Failed turns include a stable category: `authentication`, `cancelled`, `defect` (a provider bug), `host-sleep`, `network`, `protocol`, `provider`, `timeout`, `tool-contract`, or `usage-limit`. The provider also writes one `[claude-sdk-error]` JSON record to stderr with `schemaVersion`, `kind`, `errorTag`, and, when present, `operation` (`start` or `iterate`) and `terminalReason`. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause.
+
+Error messages never echo raw SDK error text. Query failures are classified from the structured fields the Agent SDK attaches to its own errors (`errorClass`, `exitCode`, `signal`), and authentication failures from the typed `error` on assistant messages, so a missing executable, a crashed subprocess, or an expired login each produce a specific, actionable message.
 
 The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routing variables from the Agent SDK subprocess. This keeps the provider on Claude's first-party subscription authentication instead of silently falling back to separately billed API or cloud-provider usage.
 

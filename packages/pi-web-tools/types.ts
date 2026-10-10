@@ -1,7 +1,4 @@
-import { Redacted } from "./redacted";
-import type { Redacted as RedactedValue } from "./redacted";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import { Redacted, Result } from "effect";
 
 /** Extension name used for temp files and status surfaces. */
 export const WEB_TOOLS_EXTENSION_NAME = "pi-web-tools";
@@ -25,8 +22,8 @@ export type ContentKind = "html" | "text" | "raster-image" | "svg" | "binary";
 export type ParsePublicHttpUrlError =
   | { readonly _tag: "EmptyUrl" }
   | { readonly _tag: "UnsupportedUrlProtocol"; readonly protocol?: string }
-  | { readonly _tag: "InvalidUrl"; readonly input: RedactedValue<string> }
-  | { readonly _tag: "UrlCredentialsUnsupported"; readonly url: RedactedValue<string> };
+  | { readonly _tag: "InvalidUrl"; readonly input: Redacted.Redacted }
+  | { readonly _tag: "UrlCredentialsUnsupported"; readonly url: Redacted.Redacted };
 
 /** Failures parsing boundary input into a search query. */
 export type ParseSearchQueryError = { readonly _tag: "EmptySearchQuery" };
@@ -75,10 +72,12 @@ export type WebSearchDetails = {
 };
 
 /** Parse and normalize a public HTTP(S) URL from boundary input. */
-export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePublicHttpUrlError> {
+export function parsePublicHttpUrl(
+  input: string,
+): Result.Result<PublicHttpUrl, ParsePublicHttpUrlError> {
   const trimmed = input.trim();
   if (!trimmed) {
-    return err({ _tag: "EmptyUrl" });
+    return Result.fail({ _tag: "EmptyUrl" });
   }
 
   const schemeMatch = /^(?<scheme>[a-z][a-z0-9+.-]*):/iu.exec(trimmed);
@@ -86,31 +85,31 @@ export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePu
   const normalized = trimmed.toLowerCase();
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
     if (protocol !== undefined) {
-      return err({ _tag: "UnsupportedUrlProtocol", protocol: `${protocol}:` });
+      return Result.fail({ _tag: "UnsupportedUrlProtocol", protocol: `${protocol}:` });
     }
-    return err({ _tag: "UnsupportedUrlProtocol" });
+    return Result.fail({ _tag: "UnsupportedUrlProtocol" });
   }
 
   let url: URL;
   try {
     url = new URL(trimmed);
   } catch {
-    return err({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
+    return Result.fail({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return err({ _tag: "UnsupportedUrlProtocol", protocol: url.protocol });
+    return Result.fail({ _tag: "UnsupportedUrlProtocol", protocol: url.protocol });
   }
 
   if (url.username || url.password) {
-    return err({ _tag: "UrlCredentialsUnsupported", url: Redacted.make(url.toString()) });
+    return Result.fail({ _tag: "UrlCredentialsUnsupported", url: Redacted.make(url.toString()) });
   }
 
   // A parsed URL serializes to a string that parses back to itself, so this check always passes.
   const href = url.toString();
   return isPublicHttpUrl(href)
-    ? ok(href)
-    : err({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
+    ? Result.succeed(href)
+    : Result.fail({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
 }
 
 /**
@@ -133,14 +132,17 @@ export function isPublicHttpUrl(value: string): value is PublicHttpUrl {
 }
 
 /** Parse and trim a non-empty search query from boundary input. */
-export function parseSearchQuery(input: string): Result<SearchQuery, ParseSearchQueryError> {
+export function parseSearchQuery(input: string): Result.Result<SearchQuery, ParseSearchQueryError> {
   const query = input.trim();
-  return isSearchQuery(query) ? ok(query) : err({ _tag: "EmptySearchQuery" });
+  return isSearchQuery(query) ? Result.succeed(query) : Result.fail({ _tag: "EmptySearchQuery" });
 }
 
 function isSearchQuery(value: string): value is SearchQuery {
   return value !== "" && value.trim() === value;
 }
+
+/** Placeholder shown instead of a URL that carries credentials (matches Redacted's projection). */
+const REDACTED_DISPLAY = "<redacted>";
 
 /** Format URL-like UI text without exposing URL userinfo credentials. */
 export function redactUrlCredentialsForDisplay(input: unknown): string {
@@ -153,11 +155,11 @@ export function redactUrlCredentialsForDisplay(input: unknown): string {
   try {
     const url = new URL(trimmed);
     if (url.username || url.password) {
-      return String(Redacted.make(trimmed));
+      return REDACTED_DISPLAY;
     }
     return url.toString();
   } catch {
-    return looksLikeCredentialedAbsoluteUrl(trimmed) ? String(Redacted.make(trimmed)) : raw;
+    return looksLikeCredentialedAbsoluteUrl(trimmed) ? REDACTED_DISPLAY : raw;
   }
 }
 

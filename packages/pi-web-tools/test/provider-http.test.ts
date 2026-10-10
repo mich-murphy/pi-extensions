@@ -1,3 +1,4 @@
+import { Cause, Effect, Exit, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { FetchProviderHttpClient } from "../provider-http";
 
@@ -29,6 +30,13 @@ function jsonResponse(body: string, status = 200): Response {
   });
 }
 
+/** A response that never arrives; only an abort of the request ends the wait. */
+async function neverResponds(): Promise<Response> {
+  return new Promise<Response>(() => {
+    // Never settles.
+  });
+}
+
 describe("fetchProviderHttpClient", () => {
   const request = {
     url: "https://api.example/search",
@@ -41,8 +49,10 @@ describe("fetchProviderHttpClient", () => {
     const { fetchImpl, seen } = recordingFetch(() => jsonResponse('{"ok":true}'));
     const client = new FetchProviderHttpClient(fetchImpl);
 
-    const result = await client.postJson({ ...request, body: { query: "x" } });
-    expect(result).toStrictEqual({ _tag: "ok", value: { bodyText: '{"ok":true}' } });
+    const result = await Effect.runPromise(
+      Effect.result(client.postJson({ ...request, body: { query: "x" } })),
+    );
+    expect(result).toStrictEqual(Result.succeed({ bodyText: '{"ok":true}' }));
     expect(seen[0]?.method).toBe("POST");
     expect(seen[0]?.contentType).toBe("application/json");
     expect(seen[0]?.body).toBe('{"query":"x"}');
@@ -52,7 +62,7 @@ describe("fetchProviderHttpClient", () => {
     const { fetchImpl, seen } = recordingFetch(() => jsonResponse("{}"));
     const client = new FetchProviderHttpClient(fetchImpl);
 
-    await client.getJson(request);
+    await Effect.runPromise(Effect.result(client.getJson(request)));
     expect(seen[0]?.method).toBe("GET");
     expect(seen[0]?.body).toBeNull();
     expect(seen[0]?.contentType).toBeNull();
@@ -60,27 +70,48 @@ describe("fetchProviderHttpClient", () => {
 
   test("maps failures to tagged errors", async () => {
     const rejected = new FetchProviderHttpClient(async () => jsonResponse("no", 503));
-    const rejectedResult = await rejected.postJson({ ...request, body: {} });
-    assert(rejectedResult._tag === "err");
-    expect(rejectedResult.error).toStrictEqual({ _tag: "ProviderStatusRejected", status: 503 });
+    const rejectedResult = await Effect.runPromise(
+      Effect.result(rejected.postJson({ ...request, body: {} })),
+    );
+    assert(Result.isFailure(rejectedResult));
+    expect(rejectedResult.failure._tag).toBe("ProviderStatusRejected");
+    expect(rejectedResult.failure.message).toBe("rejected (HTTP 503)");
 
     const failed = new FetchProviderHttpClient(async () => {
       throw new Error("dns");
     });
-    const failedResult = await failed.getJson(request);
-    assert(failedResult._tag === "err");
-    expect(failedResult.error).toStrictEqual({ _tag: "ProviderRequestFailed" });
+    const failedResult = await Effect.runPromise(Effect.result(failed.getJson(request)));
+    assert(Result.isFailure(failedResult));
+    expect(failedResult.failure._tag).toBe("ProviderRequestFailed");
+    expect(failedResult.failure.message).toBe("request to api.example failed");
 
     const tooLarge = new FetchProviderHttpClient(async () => jsonResponse("x".repeat(4096)));
-    const tooLargeResult = await tooLarge.getJson(request);
-    assert(tooLargeResult._tag === "err");
-    expect(tooLargeResult.error).toStrictEqual({ _tag: "ProviderResponseTooLarge" });
+    const tooLargeResult = await Effect.runPromise(Effect.result(tooLarge.getJson(request)));
+    assert(Result.isFailure(tooLargeResult));
+    expect(tooLargeResult.failure._tag).toBe("ProviderResponseTooLarge");
+  });
 
+  test("a caller abort interrupts the request", async () => {
     const aborted = new AbortController();
     aborted.abort();
-    const cancelled = new FetchProviderHttpClient(async () => jsonResponse("{}"));
-    const cancelledResult = await cancelled.getJson(request, { signal: aborted.signal });
-    assert(cancelledResult._tag === "err");
-    expect(cancelledResult.error).toStrictEqual({ _tag: "ProviderCancelled" });
+    const client = new FetchProviderHttpClient(async () => jsonResponse("{}"));
+    const exit = await Effect.runPromiseExit(client.getJson(request), { signal: aborted.signal });
+    assert(Exit.isFailure(exit));
+    expect(Cause.hasInterrupts(exit.cause)).toBe(true);
+  });
+
+  test("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const client = new FetchProviderHttpClient(async (_input, init) => {
+      inits.push(init);
+      return neverResponds();
+    });
+    const result = await Effect.runPromise(
+      Effect.result(client.getJson({ ...request, timeoutMs: 20 })),
+    );
+    assert(Result.isFailure(result));
+    expect(result.failure._tag).toBe("ProviderTimedOut");
+    expect(result.failure.message).toBe("timed out after 1s");
+    expect(inits[0]?.signal?.aborted).toBe(true);
   });
 });

@@ -2,23 +2,26 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { formatSize } from "@earendil-works/pi-coding-agent";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { Cause, Data, Effect, Exit, Result } from "effect";
+import { absurd } from "effect/Function";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { checkDomainPolicy } from "./domain-policy";
-import type { DomainPolicyError } from "./domain-policy";
 import type { FetchPage, FetchPageError, FetchPageResult } from "./fetch-page";
-import { createOperationSignal, isOperationTimeoutError } from "./network";
 import type { FetchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
-import { err, ok } from "./result";
-import type { Result } from "./result";
 import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS } from "./settings";
 import type { WebToolsSettings } from "./settings";
 import { projectFetchResult, projectProviderFetchedPage } from "./tool-output";
-import type { ProviderFetchedPage, ToolOutputStore } from "./tool-output";
+import type { ProviderFetchedPage, ToolOutputStore, ToolOutputStoreError } from "./tool-output";
 import { parsePublicHttpUrl, redactUrlCredentialsForDisplay } from "./types";
-import type { PublicHttpUrl, WebFetchDetails, WebFetchFormat } from "./types";
+import type {
+  ParsePublicHttpUrlError,
+  PublicHttpUrl,
+  WebFetchDetails,
+  WebFetchFormat,
+} from "./types";
 
 /** Composition injected into the webfetch tool. */
 export type WebFetchToolComposition = {
@@ -36,8 +39,31 @@ export type WebFetchParams = {
   readonly timeoutSeconds: number;
 };
 
+/** The webfetch url parameter is not a usable public http(s) URL. */
+export class InvalidFetchUrlInput extends Data.TaggedError("InvalidToolInput")<{
+  /** Why the URL was rejected. */
+  readonly reason: ParsePublicHttpUrlError;
+}> {
+  /** Safe user-facing description; never echoes the URL itself. */
+  override get message(): string {
+    return renderUrlParseError(this.reason);
+  }
+}
+
 /** Expected failures parsing webfetch tool input. */
-export type WebFetchInputError = { readonly _tag: "InvalidToolInput"; readonly message: string };
+export type WebFetchInputError = InvalidFetchUrlInput;
+
+/** The whole fetch, rescue included, ran past the tool's deadline. */
+class WebFetchTimedOut extends Data.TaggedError("WebFetchTimedOut")<{
+  readonly timeoutSeconds: number;
+}> {
+  override get message(): string {
+    return `Web fetch timed out after ${this.timeoutSeconds}s`;
+  }
+}
+
+/** Every expected failure of one webfetch run, after input parsing and domain policy. */
+type WebFetchRunError = FetchPageError | ToolOutputStoreError | WebFetchTimedOut;
 
 /** Statuses that indicate an anti-bot wall worth retrying through a provider's fetch infrastructure. */
 const RESCUE_STATUSES = new Set([401, 403, 429]);
@@ -72,14 +98,14 @@ const WEB_FETCH_PARAMETERS = Type.Object(
 export function parseWebFetchParams(
   params: Static<typeof WEB_FETCH_PARAMETERS>,
   settings: WebToolsSettings,
-): Result<WebFetchParams, WebFetchInputError> {
+): Result.Result<WebFetchParams, WebFetchInputError> {
   const url = parsePublicHttpUrl(params.url);
-  if (url._tag === "err") {
-    return err({ _tag: "InvalidToolInput", message: renderUrlParseError(url.error) });
+  if (Result.isFailure(url)) {
+    return Result.fail(new InvalidFetchUrlInput({ reason: url.failure }));
   }
 
-  return ok({
-    url: url.value,
+  return Result.succeed({
+    url: url.success,
     format: params.format ?? settings.fetch.defaultFormat,
     timeoutSeconds: clampInteger(
       params.timeout ?? settings.fetch.timeoutSeconds,
@@ -89,11 +115,13 @@ export function parseWebFetchParams(
 }
 
 /** Returns true when a fetch outcome justifies the provider-side rescue path. */
-export function isRescueEligible(result: Result<FetchPageResult, FetchPageError>): boolean {
-  if (result._tag === "err") {
-    return result.error._tag === "HttpStatusRejected" && RESCUE_STATUSES.has(result.error.status);
+export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPageError>): boolean {
+  if (Result.isFailure(result)) {
+    return (
+      result.failure._tag === "HttpStatusRejected" && RESCUE_STATUSES.has(result.failure.status)
+    );
   }
-  const { body } = result.value;
+  const { body } = result.success;
   return (
     body._tag === "Text" && body.kind === "html" && body.text.trim().length < MIN_USABLE_TEXT_LENGTH
   );
@@ -120,72 +148,63 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       onUpdate?: AgentToolUpdateCallback<WebFetchDetails>,
     ) {
       const parsed = parseWebFetchParams(params, composition.settings);
-      if (parsed._tag === "err") {
-        throw new Error(parsed.error.message);
+      if (Result.isFailure(parsed)) {
+        throw new Error(parsed.failure.message);
       }
 
-      const policy = checkDomainPolicy(parsed.value.url, {
+      const policy = checkDomainPolicy(parsed.success.url, {
         allow: composition.settings.fetch.allowDomains,
         deny: composition.settings.fetch.denyDomains,
       });
-      if (policy._tag === "err") {
-        throw new Error(renderDomainPolicyError(policy.error));
+      if (Result.isFailure(policy)) {
+        throw new Error(policy.failure.message);
       }
 
-      const composed = createOperationSignal(parsed.value.timeoutSeconds * 1000, signal);
+      const { url, format, timeoutSeconds } = parsed.success;
       onUpdate?.({
-        content: [{ type: "text", text: `Fetching ${parsed.value.url}...` }],
-        details: { requestedUrl: parsed.value.url, format: parsed.value.format, bytes: 0 },
+        content: [{ type: "text", text: `Fetching ${url}...` }],
+        details: { requestedUrl: url, format, bytes: 0 },
       });
 
-      try {
-        const result = await composition.fetchPage.fetch(
-          { url: parsed.value.url, format: parsed.value.format },
-          {
-            signal: composed.signal,
-            maxRedirects: composition.settings.fetch.maxRedirects,
-            maxResponseBytes: composition.settings.fetch.maxResponseBytes,
-            blockPrivateHosts: true,
-          },
+      const output = { store: composition.outputStore, secrets: composition.secrets };
+      const program = Effect.gen(function* () {
+        const result = yield* Effect.result(
+          composition.fetchPage.fetch(
+            { url, format },
+            {
+              maxRedirects: composition.settings.fetch.maxRedirects,
+              maxResponseBytes: composition.settings.fetch.maxResponseBytes,
+              blockPrivateHosts: true,
+            },
+          ),
         );
-
         const rescued =
-          composition.settings.fetch.rescue &&
-          parsed.value.format === "markdown" &&
-          isRescueEligible(result)
-            ? await tryProviderRescue(parsed.value.url, composition, composed.signal)
+          composition.settings.fetch.rescue && format === "markdown" && isRescueEligible(result)
+            ? yield* tryProviderRescue(url, composition.fetchProviders)
             : undefined;
-
         if (rescued !== undefined) {
-          const projected = await projectProviderFetchedPage(rescued, {
-            store: composition.outputStore,
-            secrets: composition.secrets,
-          });
-          if (projected._tag === "err") {
-            throw new Error("Failed to write full webfetch output");
-          }
-          return projected.value;
+          return yield* projectProviderFetchedPage(rescued, output);
         }
+        return yield* projectFetchResult(yield* Effect.fromResult(result), output);
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: timeoutSeconds * 1000,
+          orElse: () => Effect.fail(new WebFetchTimedOut({ timeoutSeconds })),
+        }),
+      );
 
-        if (result._tag === "err") {
-          throw toWebFetchError(result.error, {
-            timeoutSeconds: parsed.value.timeoutSeconds,
-            outerSignal: signal,
-            operationSignal: composed.signal,
-          });
-        }
-
-        const projected = await projectFetchResult(result.value, {
-          store: composition.outputStore,
-          secrets: composition.secrets,
-        });
-        if (projected._tag === "err") {
-          throw new Error("Failed to write full webfetch output");
-        }
-        return projected.value;
-      } finally {
-        composed.cleanup();
+      const exit = await Effect.runPromiseExit(program, { signal });
+      if (Exit.isSuccess(exit)) {
+        return exit.value;
       }
+      if (Cause.hasInterrupts(exit.cause)) {
+        throw new Error("Web fetch cancelled");
+      }
+      const failure = Cause.findError(exit.cause);
+      if (Result.isSuccess(failure)) {
+        throw new Error(renderWebFetchFailure(failure.success));
+      }
+      throw Cause.squash(exit.cause);
     },
 
     renderCall(
@@ -269,113 +288,38 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   return text;
 }
 
-async function tryProviderRescue(
+// Rescue providers are tried in order; a provider that fails just yields nothing.
+function tryProviderRescue(
   url: PublicHttpUrl,
-  composition: WebFetchToolComposition,
-  signal: AbortSignal,
-): Promise<ProviderFetchedPage | undefined> {
-  for (const provider of composition.fetchProviders) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- providers are tried in order until one returns the page
-    const markdown = await provider.fetchMarkdown(url, { signal });
-    if (markdown !== undefined) {
-      return { provider: provider.name, url, markdown };
+  providers: readonly FetchProvider[],
+): Effect.Effect<ProviderFetchedPage | undefined> {
+  return Effect.gen(function* () {
+    for (const provider of providers) {
+      const markdown = yield* provider.fetchMarkdown(url);
+      if (markdown !== undefined) {
+        return { provider: provider.name, url, markdown };
+      }
     }
-  }
-  return undefined;
+    return undefined;
+  });
 }
 
-function toWebFetchError(
-  error: FetchPageError,
-  context: {
-    readonly timeoutSeconds: number;
-    readonly outerSignal: AbortSignal | undefined;
-    readonly operationSignal: AbortSignal;
-  },
-): Error {
-  const { timeoutSeconds, outerSignal, operationSignal } = context;
-  if (outerSignal?.aborted === true) {
-    return new Error("Web fetch cancelled");
-  }
-  if (isOperationTimeoutError(operationSignal.reason)) {
-    return new Error(`Web fetch timed out after ${timeoutSeconds}s`);
-  }
-  return new Error(renderFetchPageError(error));
+// Only the store failure needs context (the tool name); every other failure's message stands alone.
+function renderWebFetchFailure(error: WebFetchRunError): string {
+  return error._tag === "OutputStoreError"
+    ? `Could not save full webfetch output to ${error.path}: ${error.reason}`
+    : error.message;
 }
 
-/** Render a fetch failure as a safe user-facing message (no URLs, no causes, no response bodies). */
-function renderFetchPageError(error: FetchPageError): string {
-  switch (error._tag) {
-    case "PublicWebRequestFailed": {
-      return "Request failed";
-    }
-    case "PublicWebCancelled": {
-      return "Web fetch cancelled";
-    }
-    case "PublicWebTimedOut": {
-      return `Web fetch timed out after ${error.timeoutSeconds}s`;
-    }
-    case "PrivateHostBlocked": {
-      return "Blocked private or local host";
-    }
-    case "PrivateIpBlocked": {
-      return "Blocked private or local IP address";
-    }
-    case "UrlCredentialsUnsupported": {
-      return "URL credentials are not supported";
-    }
-    case "RedirectLocationMissing": {
-      return "Redirect response was missing a Location header";
-    }
-    case "RedirectLocationInvalid": {
-      return "Redirect response had an invalid Location header";
-    }
-    case "RedirectLimitExceeded": {
-      return "Too many redirects while fetching URL";
-    }
-    case "RedirectProtocolUnsupported": {
-      return "Redirected to unsupported protocol";
-    }
-    case "HttpStatusRejected": {
-      return `Request failed (${error.status}${error.statusText ? ` ${error.statusText}` : ""})`;
-    }
-    case "ResponseTooLarge": {
-      return `Response too large (${Math.floor(error.maxBytes / (1024 * 1024))}MB limit)`;
-    }
-    case "UnsupportedBinaryContent": {
-      return `Unsupported binary content${error.mime === undefined || error.mime === "" ? "" : ` (${error.mime})`}. Try a more text-oriented URL.`;
-    }
-    case "HtmlConversionFailed": {
-      return "HTML conversion failed";
-    }
-    default: {
-      const _exhaustive: never = error;
-      return _exhaustive;
-    }
-  }
-}
-
-function renderDomainPolicyError(error: DomainPolicyError): string {
-  switch (error._tag) {
-    case "DomainDenied": {
-      return `Fetching from ${error.hostname} is denied by the webfetch domain policy`;
-    }
-    case "DomainNotAllowed": {
-      return `Fetching from ${error.hostname} is not in the webfetch allowed domains list`;
-    }
-    default: {
-      const _exhaustive: never = error;
-      return _exhaustive;
-    }
-  }
-}
-
-function renderUrlParseError(error: { readonly _tag: string }): string {
+function renderUrlParseError(error: ParsePublicHttpUrlError): string {
   switch (error._tag) {
     case "EmptyUrl": {
       return "URL cannot be empty";
     }
     case "UnsupportedUrlProtocol": {
-      return "URL must start with http:// or https://";
+      return error.protocol === undefined
+        ? "URL must start with http:// or https://"
+        : `Unsupported URL protocol ${error.protocol}; URL must start with http:// or https://`;
     }
     case "InvalidUrl": {
       return "Invalid URL";
@@ -384,7 +328,7 @@ function renderUrlParseError(error: { readonly _tag: string }): string {
       return "URL credentials are not supported";
     }
     default: {
-      return "Invalid URL";
+      return absurd(error);
     }
   }
 }

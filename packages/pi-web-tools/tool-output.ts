@@ -4,11 +4,10 @@ import {
   formatSize,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
+import { Effect } from "effect";
 import type { FetchPageResult } from "./fetch-page";
-import { redactSecrets } from "./redacted";
-import { err, ok } from "./result";
-import type { Result } from "./result";
 import { writeTempTextFile } from "./temp";
+import type { OutputStoreError } from "./temp";
 import type {
   NormalizedSearchResult,
   PublicHttpUrl,
@@ -22,23 +21,34 @@ export type ToolOutputStore = {
     prefix: string,
     fileName: string,
     content: string,
-  ) => Promise<Result<string, ToolOutputStoreError>>;
+  ) => Effect.Effect<string, ToolOutputStoreError>;
 };
 
 /** Expected failures of the tool output store. */
-export type ToolOutputStoreError = { readonly _tag: "TempFileWriteFailed" };
+export type ToolOutputStoreError = OutputStoreError;
 
 /** Temp-file backed tool output store with private permissions. */
 export const tempFileToolOutputStore: ToolOutputStore = {
   /** Write full tool output to a private temporary text file. */
-  async writeTextFile(prefix, fileName, content) {
-    try {
-      return ok(await writeTempTextFile(prefix, fileName, content));
-    } catch {
-      return err({ _tag: "TempFileWriteFailed" });
-    }
-  },
+  writeTextFile: writeTempTextFile,
 };
+
+/**
+ * Replace every occurrence of each secret in text with a fixed placeholder.
+ * Applied to all tool output and error messages as defense in depth: provider
+ * responses should never contain API keys, but a compromised or buggy endpoint
+ * must not be able to reflect credentials back into the session transcript.
+ */
+export function redactSecrets(input: string, secrets: readonly (string | undefined)[]): string {
+  let output = input;
+  for (const secret of secrets) {
+    if (secret === undefined || secret === "") {
+      continue;
+    }
+    output = output.split(secret).join("[redacted]");
+  }
+  return output;
+}
 
 /** Pi text content item. */
 export type PiTextContent = { readonly type: "text"; readonly text: string };
@@ -99,13 +109,13 @@ export type ProviderFetchedPage = {
 };
 
 /** Project a directly fetched page into a pi tool result, truncating and spilling large output. */
-export async function projectFetchResult(
+export function projectFetchResult(
   result: FetchPageResult,
   options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
-): Promise<Result<PiToolResult<WebFetchDetails>, ToolOutputStoreError>> {
+): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const { meta, body } = result;
   if (body._tag === "Image") {
-    return ok({
+    return Effect.succeed({
       content: [
         {
           type: "text",
@@ -129,10 +139,10 @@ export async function projectFetchResult(
  * Project provider-fetched markdown into a pi tool result, prefixed with a note that says where it
  * came from. Details carry only what the rescue knows: no final URL, HTTP status, or content type.
  */
-export async function projectProviderFetchedPage(
+export function projectProviderFetchedPage(
   page: ProviderFetchedPage,
   options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
-): Promise<Result<PiToolResult<WebFetchDetails>, ToolOutputStoreError>> {
+): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const note = `[Direct fetch was blocked or unusable; content retrieved via ${page.provider} — the URL was shared with that provider]`;
   return projectTextOutput<WebFetchDetails>({
     output: redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
@@ -148,14 +158,14 @@ export async function projectProviderFetchedPage(
 }
 
 /** Project search results into a pi tool result, truncating and spilling large output. */
-export async function projectSearchResults(
+export function projectSearchResults(
   search: {
     readonly query: string;
     readonly results: readonly NormalizedSearchResult[];
     readonly details: Omit<WebSearchDetails, "truncated" | "fullOutputPath">;
   },
   options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
-): Promise<Result<PiToolResult<WebSearchDetails>, ToolOutputStoreError>> {
+): Effect.Effect<PiToolResult<WebSearchDetails>, ToolOutputStoreError> {
   return projectTextOutput({
     output: redactSecrets(formatSearchResults(search.query, search.results), options.secrets),
     details: search.details,
@@ -165,7 +175,7 @@ export async function projectSearchResults(
 }
 
 /** Truncate text output for the model, spilling the full text to the store when it is too large. */
-async function projectTextOutput<Details>({
+function projectTextOutput<Details>({
   output,
   details,
   store,
@@ -175,34 +185,32 @@ async function projectTextOutput<Details>({
   readonly details: Details;
   readonly store: ToolOutputStore;
   readonly tempPrefix: string;
-}): Promise<Result<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError>> {
+}): Effect.Effect<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError> {
   const truncation = truncateHead(output, {
     maxBytes: DEFAULT_MAX_BYTES,
     maxLines: DEFAULT_MAX_LINES,
   });
 
   if (!truncation.truncated) {
-    return ok({
+    return Effect.succeed({
       content: [{ type: "text", text: truncation.content }],
       details: { ...details, truncated: false },
     });
   }
 
-  const fullOutputPath = await store.writeTextFile(tempPrefix, "output.txt", output);
-  if (fullOutputPath._tag === "err") {
-    return fullOutputPath;
-  }
-
-  const omittedLines = truncation.totalLines - truncation.outputLines;
-  const omittedBytes = truncation.totalBytes - truncation.outputBytes;
-  let text = truncation.content;
-  text += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
-  text += ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
-  text += ` ${omittedLines} lines (${formatSize(omittedBytes)}) omitted.`;
-  text += ` Full output saved to: ${fullOutputPath.value}]`;
-
-  return ok({
-    content: [{ type: "text", text }],
-    details: { ...details, truncated: true, fullOutputPath: fullOutputPath.value },
-  });
+  return store.writeTextFile(tempPrefix, "output.txt", output).pipe(
+    Effect.map((fullOutputPath) => {
+      const omittedLines = truncation.totalLines - truncation.outputLines;
+      const omittedBytes = truncation.totalBytes - truncation.outputBytes;
+      let text = truncation.content;
+      text += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
+      text += ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
+      text += ` ${omittedLines} lines (${formatSize(omittedBytes)}) omitted.`;
+      text += ` Full output saved to: ${fullOutputPath}]`;
+      return {
+        content: [{ type: "text", text }],
+        details: { ...details, truncated: true, fullOutputPath },
+      };
+    }),
+  );
 }

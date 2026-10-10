@@ -458,8 +458,35 @@ describe("turn failures", () => {
 
     const error = failureOf(events);
 
-    expect(error).toMatchObject({ _tag: "SdkQueryError", operation: "iterate" });
-    expect(error.message).toContain("transport disconnected");
+    expect(error).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "iterate",
+      reason: { _tag: "Unclassified" },
+    });
+    expect(error.message).not.toContain("transport disconnected");
+  });
+
+  test("reports a typed authentication failure from an assistant message", async () => {
+    const assistant = {
+      type: "assistant",
+      message: { model: "claude-sonnet", usage: { input_tokens: 1, output_tokens: 0 } },
+      error: "authentication_failed",
+    };
+    const failedResult = resultMessage({
+      is_error: true,
+      stop_reason: null,
+      result: "Invalid API key · Please run /login",
+    });
+
+    const events = await runTurn(queryWith([], assistant, failedResult));
+    const error = events.at(-1);
+
+    assert(error?.type === "failed");
+    expect(error.error).toMatchObject({
+      _tag: "SdkResultError",
+      apiError: "authentication_failed",
+    });
+    expect(error.error.message).toBe("Claude Code authentication failed; run `claude` to sign in");
   });
 
   test("reports a query that cannot start", async () => {
@@ -469,7 +496,11 @@ describe("turn failures", () => {
       }),
     );
 
-    expect(error).toMatchObject({ _tag: "SdkQueryError", operation: "start" });
+    expect(error).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "start",
+      reason: { _tag: "Unclassified" },
+    });
   });
 
   test("fails on a malformed SDK message and stops the query", async () => {
@@ -494,10 +525,7 @@ describe("turn failures", () => {
     const events = await runTurn(runSdkQuery);
 
     expect(events[0]).toStrictEqual({ type: "text_delta", text: "Truncated" });
-    expect(failureOf(events.slice(1))).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "terminal-result",
-    });
+    expect(failureOf(events.slice(1))._tag).toBe("SdkMissingResultError");
   });
 });
 
@@ -517,7 +545,11 @@ describe("SDK query cancellation", () => {
     );
 
     expect(queryStarted).toBe(false);
-    expect(failureOf(events)).toMatchObject({ _tag: "SdkQueryError", operation: "start" });
+    expect(failureOf(events)).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "start",
+      reason: { _tag: "Cancelled" },
+    });
   });
 
   test("forwards cancellation during iteration and ends Pi with one aborted event", async () => {

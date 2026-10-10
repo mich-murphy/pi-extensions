@@ -69,7 +69,7 @@ class SkillToggle {
 
   filterPrompt(event: PromptFilterEvent, ctx: UiContext): { systemPrompt: string } | undefined {
     const options = event.systemPromptOptions;
-    const overrides = this.overridesFrom(this.store.load(), ctx);
+    const overrides = this.overridesFrom("load", this.store.load(), ctx);
     if (!overrides) {
       return undefined;
     }
@@ -111,7 +111,7 @@ class SkillToggle {
       ctx.ui.notify("No user-managed instructions or skills are loaded", "info");
       return;
     }
-    const loaded = this.overridesFrom(this.store.load(), ctx);
+    const loaded = this.overridesFrom("load", this.store.load(), ctx);
     if (!loaded) {
       return;
     }
@@ -149,6 +149,7 @@ class SkillToggle {
             return;
           }
           const saved = this.overridesFrom(
+            "update",
             this.store.set(resource.id, value === defaultToggleValue(resource) ? "default" : value),
             ctx,
           );
@@ -182,14 +183,20 @@ class SkillToggle {
     });
   }
 
-  /** Unwrap a state result, surfacing a failure to the user once. */
-  private overridesFrom(result: ToggleStateResult, ctx: UiContext): ToggleOverrides | undefined {
+  /** Unwrap a state result, surfacing a failure and its consequence to the user once. */
+  private overridesFrom(
+    operation: keyof typeof STATE_FAILURE_CONSEQUENCE,
+    result: ToggleStateResult,
+    ctx: UiContext,
+  ): ToggleOverrides | undefined {
     if (result._tag === "ok") {
       this.reportStateFailure(ctx, undefined);
       return result.value;
     }
-    const consequence = STATE_FAILURE_CONSEQUENCE[result.error.operation];
-    this.reportStateFailure(ctx, `${result.error.message}\n${consequence}`);
+    this.reportStateFailure(
+      ctx,
+      `${result.error.message}\n${STATE_FAILURE_CONSEQUENCE[operation]}`,
+    );
     return undefined;
   }
 }

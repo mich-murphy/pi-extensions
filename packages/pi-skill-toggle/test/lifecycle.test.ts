@@ -17,8 +17,9 @@ import { afterEach, describe, expect, test } from "vitest";
 import skillToggle, { registerSkillToggle } from "../index";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
-import { ToggleStateError } from "../state";
-import type { ToggleStateStore } from "../state";
+import { err, ok } from "../result";
+import { ToggleStateUnavailable } from "../state";
+import type { ToggleStateResult, ToggleStateStore } from "../state";
 
 const cwd = "/work/project";
 const skillPath = join(getAgentDir(), "skills/research/SKILL.md");
@@ -75,16 +76,23 @@ function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleS
   const writes: (readonly [string, ToggleValue | "default"])[] = [];
   return {
     writes,
-    load: () => ({ _tag: "ok", value: overrides(entries) }),
+    load: () => ok(overrides(entries)),
     set: (id, value) => {
       writes.push([id, value]);
-      return { _tag: "ok", value: overrides(entries) };
+      return ok(overrides(entries));
     },
   };
 }
 
-function failure(operation: "load" | "update"): { _tag: "err"; error: ToggleStateError } {
-  return { _tag: "err", error: new ToggleStateError(operation, "/state.json", new Error("boom")) };
+function failure(operation: "load" | "update"): ToggleStateResult {
+  return err(
+    new ToggleStateUnavailable(
+      operation,
+      "/state.json",
+      "EACCES",
+      new Error("EACCES: permission denied"),
+    ),
+  );
 }
 
 function harness(store: ToggleStateStore, projectDirectory = cwd) {
@@ -220,7 +228,7 @@ describe("extension lifecycle", () => {
 
     expect(opened).toBe(false);
     expect(testHarness.notifications).toStrictEqual([
-      "Could not load Pi skill-toggle state at /state.json: boom\nThe prompt was left unchanged.",
+      "Could not load Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged.",
     ]);
   });
 
@@ -249,7 +257,7 @@ describe("extension lifecycle", () => {
   test("restores the row and reports once when persistence fails", async () => {
     let rendered: string[] = [];
     const testHarness = harness({
-      load: () => ({ _tag: "ok", value: overrides({ [skillPath]: "disabled" }) }),
+      load: () => ok(overrides({ [skillPath]: "disabled" })),
       set: () => failure("update"),
     });
 
@@ -262,7 +270,7 @@ describe("extension lifecycle", () => {
     expect(rendered.join("\n")).toContain("disabled");
     expect(rendered.join("\n")).not.toContain("enabled");
     expect(testHarness.notifications).toStrictEqual([
-      "Could not update Pi skill-toggle state at /state.json: boom\nThe toggle was not saved.",
+      "Could not update Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe toggle was not saved.",
     ]);
   });
 
@@ -379,6 +387,22 @@ describe("extension lifecycle", () => {
     ]);
   });
 
+  test("propagates a store defect instead of reporting it as a state failure", async () => {
+    const testHarness = harness({
+      load: () => {
+        throw new TypeError("store bug");
+      },
+      set: () => failure("update"),
+    });
+    const event = {
+      systemPrompt: `base${formatSkillsForPrompt([research])}`,
+      systemPromptOptions: options,
+    };
+
+    await expect(testHarness.emit("before_agent_start", event)).rejects.toThrow(TypeError);
+    expect(testHarness.notifications).toStrictEqual([]);
+  });
+
   test("leaves the prompt unchanged, reports a state failure once, and again after it recovers", async () => {
     let result: ReturnType<ToggleStateStore["load"]> = failure("load");
     const testHarness = harness({ load: () => result, set: () => failure("update") });
@@ -391,7 +415,7 @@ describe("extension lifecycle", () => {
     await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
     expect(testHarness.notifications).toHaveLength(1);
 
-    result = { _tag: "ok", value: overrides() };
+    result = ok(overrides());
     await testHarness.emit("before_agent_start", event);
     result = failure("load");
     await testHarness.emit("before_agent_start", event);

@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import type { McpClient, McpToolCallResult } from "../mcp";
 import type {
   PublicWebClient,
@@ -11,8 +12,6 @@ import type {
   ProviderHttpResponse,
 } from "../provider-http";
 import type { ProviderError } from "../provider-types";
-import type { Result } from "../result";
-import { ok } from "../result";
 import { parseSettings } from "../settings";
 import type { WebToolsSettings } from "../settings";
 import { parsePublicHttpUrl, parseSearchQuery } from "../types";
@@ -24,10 +23,10 @@ export const UTF8 = "utf-8";
 /** Parse a test URL through the real parser; an invalid one is a broken test. */
 export function publicUrl(input: string): PublicHttpUrl {
   const parsed = parsePublicHttpUrl(input);
-  if (parsed._tag === "err") {
+  if (Result.isFailure(parsed)) {
     throw new Error(`Invalid test URL: ${input}`);
   }
-  return parsed.value;
+  return parsed.success;
 }
 
 /** Parse test settings from an environment through the real parser; invalid ones are a broken test. */
@@ -35,19 +34,19 @@ export function settingsFrom(
   environment: Readonly<Record<string, string | undefined>> = {},
 ): WebToolsSettings {
   const parsed = parseSettings(environment);
-  if (parsed._tag === "err") {
-    throw new Error(`Invalid test settings: ${parsed.error.message}`);
+  if (Result.isFailure(parsed)) {
+    throw new Error(`Invalid test settings: ${parsed.failure.message}`);
   }
-  return parsed.value;
+  return parsed.success;
 }
 
 /** Parse a test query through the real parser; an invalid one is a broken test. */
 export function searchQuery(input: string): SearchQuery {
   const parsed = parseSearchQuery(input);
-  if (parsed._tag === "err") {
+  if (Result.isFailure(parsed)) {
     throw new Error(`Invalid test query: ${input}`);
   }
-  return parsed.value;
+  return parsed.success;
 }
 
 /** Recorded MCP call for assertions. */
@@ -57,45 +56,50 @@ type RecordedMcpCall = {
 };
 
 /** Fake MCP client returning programmed results in order. */
-export function fakeMcpClient(results: readonly Result<McpToolCallResult, ProviderError>[]) {
+export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult, ProviderError>[]) {
   const calls: RecordedMcpCall[] = [];
   let index = 0;
   const client: McpClient = {
-    callTool: async (name, args) => {
-      calls.push({ name, args });
-      const result = results[Math.min(index, results.length - 1)];
-      index += 1;
-      return result ?? ok({ text: [] });
-    },
+    callTool: (name, args) =>
+      Effect.suspend(() => {
+        calls.push({ name, args });
+        const result = results[Math.min(index, results.length - 1)];
+        index += 1;
+        return Effect.fromResult(result ?? Result.succeed({ text: [] }));
+      }),
   };
   return { client, calls };
 }
 
 /** Fake provider HTTP client returning programmed results in order. */
-export function fakeProviderHttp(results: readonly Result<ProviderHttpResponse, ProviderError>[]) {
+export function fakeProviderHttp(
+  results: readonly Result.Result<ProviderHttpResponse, ProviderError>[],
+) {
   const requests: ProviderHttpRequest[] = [];
   let index = 0;
-  const respond = (request: ProviderHttpRequest) => {
-    requests.push(request);
-    const result = results[Math.min(index, results.length - 1)];
-    index += 1;
-    return result ?? ok({ bodyText: "{}" });
-  };
+  const respond = (request: ProviderHttpRequest) =>
+    Effect.suspend(() => {
+      requests.push(request);
+      const result = results[Math.min(index, results.length - 1)];
+      index += 1;
+      return Effect.fromResult(result ?? Result.succeed({ bodyText: "{}" }));
+    });
   const client: ProviderHttpClient = {
-    postJson: async (request) => respond(request),
-    getJson: async (request) => respond(request),
+    postJson: respond,
+    getJson: respond,
   };
   return { client, requests };
 }
 
 /** Fake public web client returning a programmed result. */
-export function fakePublicWeb(result: Result<PublicWebResponse, PublicWebError>) {
+export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWebError>) {
   const requests: PublicWebRequest[] = [];
   const client: PublicWebClient = {
-    get: async (request) => {
-      requests.push(request);
-      return result;
-    },
+    get: (request) =>
+      Effect.suspend(() => {
+        requests.push(request);
+        return Effect.fromResult(result);
+      }),
   };
   return { client, requests };
 }

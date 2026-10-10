@@ -3,8 +3,16 @@ import type { ChildProcess } from "node:child_process";
 import { CaffeinateProcessError } from "./no-sleep-lifecycle";
 import type { CaffeinateEnd, CaffeinateProcess } from "./no-sleep-lifecycle";
 
-function failed(cause: unknown): CaffeinateEnd {
-  return { _tag: "failed", error: new CaffeinateProcessError(cause) };
+/**
+ * Classify a Node system error (one with `syscall` and `code`) as a caffeinate failure.
+ * Anything else, such as an argument `TypeError`, is a defect and is rethrown.
+ */
+function failed(operation: CaffeinateProcessError["operation"], cause: unknown): CaffeinateEnd {
+  if (cause instanceof Error && "syscall" in cause && "code" in cause) {
+    const error = new CaffeinateProcessError(operation, String(cause.code), cause);
+    return { _tag: "failed", error };
+  }
+  throw cause;
 }
 
 /**
@@ -24,10 +32,11 @@ export function caffeinateSpawner(
       child = spawn(command, [...args], { stdio: "ignore" });
     } catch (error) {
       // Node throws some spawn failures and emits others; callers see one asynchronous channel.
+      const end = failed("start", error);
       return {
         onEnd: (listener) => {
           queueMicrotask(() => {
-            listener(failed(error));
+            listener(end);
           });
         },
         stop: () => {
@@ -42,7 +51,8 @@ export function caffeinateSpawner(
       onEnd: (listener) => {
         // Permanent, not once(): an "error" event without a listener would crash Pi.
         child.on("error", (cause) => {
-          listener(failed(cause));
+          // A child without a PID never started; otherwise signalling it failed.
+          listener(failed(child.pid === undefined ? "start" : "stop", cause));
         });
         child.once("exit", (code, signal) => {
           listener({ _tag: "exited", code, signal });

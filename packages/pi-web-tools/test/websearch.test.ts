@@ -1,10 +1,13 @@
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import type { JsonObject } from "@earendil-works/pi-ai";
+import { Effect, Result } from "effect";
 import { describe, expect, test } from "vitest";
+import { withProviderDeadline } from "../provider-http";
+import { ProviderRequestFailed } from "../provider-types";
 import type { SearchProvider } from "../provider-types";
-import { err, ok } from "../result";
+import { AllProvidersFailed, UnknownProvider } from "../search";
 import { tempFileToolOutputStore } from "../tool-output";
-import { createWebSearchTool, parseWebSearchParams, renderSearchChainError } from "../websearch";
+import { createWebSearchTool, EmptySearchQueryInput, parseWebSearchParams } from "../websearch";
 import { publicUrl, renderText, settingsFrom, textOf } from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
@@ -13,8 +16,8 @@ function answeringProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
   return {
     name,
     transport: "mcp",
-    search: async () =>
-      ok([
+    search: () =>
+      Effect.succeed([
         { title: `${name} result`, url: publicUrl("https://example.com/"), snippet: "a snippet" },
       ]),
   };
@@ -24,7 +27,13 @@ function failingProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
   return {
     name,
     transport: "mcp",
-    search: async () => err({ _tag: "ProviderRequestFailed" }),
+    search: () =>
+      Effect.fail(
+        new ProviderRequestFailed({
+          hostname: "search.example",
+          cause: new TypeError("fetch failed", { cause: { code: "ECONNRESET" } }),
+        }),
+      ),
   };
 }
 
@@ -67,20 +76,20 @@ describe("parseWebSearchParams", () => {
 
   test("parses a minimal query with settings defaults", () => {
     expect(parseWebSearchParams({ query: " pi agent " }, settings)).toStrictEqual(
-      ok({ query: "pi agent", maxResults: 8 }),
+      Result.succeed({ query: "pi agent", maxResults: 8 }),
     );
   });
 
   test("rejects empty queries", () => {
     expect(parseWebSearchParams({ query: "   " }, settings)).toStrictEqual(
-      err({ _tag: "InvalidToolInput", message: "query cannot be empty" }),
+      Result.fail(new EmptySearchQueryInput()),
     );
   });
 
   test("clamps maxResults and keeps the provider override", () => {
     expect(
       parseWebSearchParams({ query: "x", maxResults: 100, provider: "parallel" }, settings),
-    ).toStrictEqual(ok({ query: "x", maxResults: 20, provider: "parallel" }));
+    ).toStrictEqual(Result.succeed({ query: "x", maxResults: 20, provider: "parallel" }));
   });
 });
 
@@ -128,8 +137,8 @@ describe("websearch tool", () => {
     const leaky: SearchProvider = {
       name: "exa",
       transport: "mcp",
-      search: async () =>
-        ok([{ title: "leak sekrit-key", url: publicUrl("https://example.com/") }]),
+      search: () =>
+        Effect.succeed([{ title: "leak sekrit-key", url: publicUrl("https://example.com/") }]),
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
@@ -196,13 +205,64 @@ describe("websearch rendering", () => {
   });
 });
 
-describe("renderSearchChainError", () => {
-  test("renders unknown providers and aggregate failures", () => {
-    expect(
-      renderSearchChainError({ _tag: "UnknownProvider", provider: "brave", available: ["exa"] }),
-    ).toContain("brave");
-    expect(
-      renderSearchChainError({ _tag: "AllProvidersFailed", attempts: ["exa: unavailable"] }),
-    ).toContain("exa: unavailable");
+describe("search chain error messages", () => {
+  test("render unknown providers and aggregate failures", () => {
+    expect(new UnknownProvider({ provider: "brave", available: ["exa"] }).message).toBe(
+      'Provider "brave" is not enabled. Available: exa',
+    );
+    expect(new AllProvidersFailed({ attempts: ["exa: unavailable"] }).message).toBe(
+      "All search providers failed (exa: unavailable)",
+    );
+  });
+});
+
+/** A websearch tool over a single provider. */
+function toolWith(provider: SearchProvider) {
+  return createWebSearchTool({
+    settings: DEFAULT_SETTINGS,
+    providers: [provider],
+    outputStore: tempFileToolOutputStore,
+    secrets: [],
+  });
+}
+
+describe("websearch deadline and cancellation", () => {
+  test("a provider deadline reports the timeout, not a cancellation", async () => {
+    // The provider applies its own deadline, as the real HTTP and MCP clients do.
+    const slow: SearchProvider = {
+      name: "exa",
+      transport: "api",
+      search: () => Effect.never.pipe(withProviderDeadline(20)),
+    };
+    const outcome = toolWith(slow).execute("t1", { query: "slow" });
+    await expect(outcome).rejects.toThrow("All search providers failed (exa: timed out after 1s)");
+    await expect(outcome).rejects.not.toThrow("cancelled");
+  });
+
+  test("a caller abort reports a cancellation and stops the chain", async () => {
+    const controller = new AbortController();
+    let fallbackCalls = 0;
+    const hanging: SearchProvider = { name: "exa", transport: "api", search: () => Effect.never };
+    const fallback: SearchProvider = {
+      name: "parallel",
+      transport: "api",
+      search: () =>
+        Effect.sync(() => {
+          fallbackCalls += 1;
+          return [];
+        }),
+    };
+    const tool = createWebSearchTool({
+      settings: DEFAULT_SETTINGS,
+      providers: [hanging, fallback],
+      outputStore: tempFileToolOutputStore,
+      secrets: [],
+    });
+    const outcome = tool.execute("t1", { query: "q" }, controller.signal);
+    setTimeout(() => {
+      controller.abort();
+    }, 10);
+    await expect(outcome).rejects.toThrow("Web search cancelled");
+    expect(fallbackCalls).toBe(0);
   });
 });

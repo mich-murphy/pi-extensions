@@ -1,6 +1,7 @@
+import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { BraveApiSearchProvider } from "../provider-brave";
-import { err, ok } from "../result";
+import { ProviderProtocolInvalid, ProviderStatusRejected } from "../provider-types";
 import { fakeProviderHttp, searchQuery } from "./fakes";
 
 const QUERY = searchQuery("brave search api");
@@ -8,7 +9,7 @@ const QUERY = searchQuery("brave search api");
 describe("braveApiSearchProvider", () => {
   test("sends the official contract with the subscription token header", async () => {
     const { client, requests } = fakeProviderHttp([
-      ok({
+      Result.succeed({
         bodyText: JSON.stringify({
           web: {
             results: [
@@ -24,12 +25,14 @@ describe("braveApiSearchProvider", () => {
       }),
     ]);
     const provider = new BraveApiSearchProvider("BSA_test", client);
-    const result = await provider.search({ query: QUERY, maxResults: 10 });
+    const result = await Effect.runPromise(
+      Effect.result(provider.search({ query: QUERY, maxResults: 10 })),
+    );
 
-    assert(result._tag === "ok");
-    expect(result.value[0]?.title).toBe("Brave Search API");
-    expect(result.value[0]?.snippet).toBe("Independent search index.");
-    expect(result.value[0]?.publishedAt).toBe("2026-01-15");
+    assert(Result.isSuccess(result));
+    expect(result.success[0]?.title).toBe("Brave Search API");
+    expect(result.success[0]?.snippet).toBe("Independent search index.");
+    expect(result.success[0]?.publishedAt).toBe("2026-01-15");
 
     const [request] = requests;
     assert(request !== undefined);
@@ -42,27 +45,34 @@ describe("braveApiSearchProvider", () => {
   });
 
   test("maps HTTP failures and missing web results", async () => {
-    const { client } = fakeProviderHttp([err({ _tag: "ProviderStatusRejected", status: 422 })]);
-    const result = await new BraveApiSearchProvider("k", client).search({
-      query: QUERY,
-      maxResults: 5,
-    });
-    expect(result).toStrictEqual({
-      _tag: "err",
-      error: { _tag: "ProviderStatusRejected", status: 422 },
-    });
+    const { client } = fakeProviderHttp([Result.fail(new ProviderStatusRejected({ status: 422 }))]);
+    const result = await Effect.runPromise(
+      Effect.result(
+        new BraveApiSearchProvider("k", client).search({
+          query: QUERY,
+          maxResults: 5,
+        }),
+      ),
+    );
+    expect(result).toStrictEqual(Result.fail(new ProviderStatusRejected({ status: 422 })));
 
-    const { client: emptyClient } = fakeProviderHttp([ok({ bodyText: JSON.stringify({}) })]);
-    const empty = await new BraveApiSearchProvider("k", emptyClient).search({
-      query: QUERY,
-      maxResults: 5,
-    });
-    expect(empty._tag).toBe("err");
+    const { client: emptyClient } = fakeProviderHttp([
+      Result.succeed({ bodyText: JSON.stringify({}) }),
+    ]);
+    const empty = await Effect.runPromise(
+      Effect.result(
+        new BraveApiSearchProvider("k", emptyClient).search({
+          query: QUERY,
+          maxResults: 5,
+        }),
+      ),
+    );
+    expect(empty._tag).toBe("Failure");
   });
 
   test("skips invalid items and falls back when a field has the wrong type", async () => {
     const { client } = fakeProviderHttp([
-      ok({
+      Result.succeed({
         bodyText: JSON.stringify({
           web: {
             results: [
@@ -85,13 +95,17 @@ describe("braveApiSearchProvider", () => {
         }),
       }),
     ]);
-    const result = await new BraveApiSearchProvider("k", client).search({
-      query: QUERY,
-      maxResults: 10,
-    });
+    const result = await Effect.runPromise(
+      Effect.result(
+        new BraveApiSearchProvider("k", client).search({
+          query: QUERY,
+          maxResults: 10,
+        }),
+      ),
+    );
 
     expect(result).toStrictEqual(
-      ok([
+      Result.succeed([
         {
           title: "https://a.example/",
           url: "https://a.example/",
@@ -112,31 +126,38 @@ describe("braveApiSearchProvider", () => {
 
   test("reports protocol failures with their reasons", async () => {
     const { client } = fakeProviderHttp([
-      ok({ bodyText: "not json" }),
-      ok({ bodyText: JSON.stringify({ web: { results: "nope" } }) }),
-      ok({ bodyText: JSON.stringify({ web: [] }) }),
+      Result.succeed({ bodyText: "not json" }),
+      Result.succeed({ bodyText: JSON.stringify({ web: { results: "nope" } }) }),
+      Result.succeed({ bodyText: JSON.stringify({ web: [] }) }),
     ]);
     const provider = new BraveApiSearchProvider("k", client);
-    const search = async () => provider.search({ query: QUERY, maxResults: 5 });
+    const search = async () =>
+      Effect.runPromise(Effect.result(provider.search({ query: QUERY, maxResults: 5 })));
 
     await expect(search()).resolves.toStrictEqual(
-      err({ _tag: "ProviderProtocolInvalid", reason: "Invalid JSON response" }),
+      Result.fail(new ProviderProtocolInvalid({ reason: "Invalid JSON response" })),
     );
-    const missing = err({ _tag: "ProviderProtocolInvalid", reason: "Missing web results" });
+    const missing = Result.fail(new ProviderProtocolInvalid({ reason: "Missing web results" }));
     await expect(search()).resolves.toStrictEqual(missing);
     await expect(search()).resolves.toStrictEqual(missing);
   });
 
   test("caps results at maxResults", async () => {
     const results = ["a", "b", "c"].map((host) => ({ url: `https://${host}.example` }));
-    const { client } = fakeProviderHttp([ok({ bodyText: JSON.stringify({ web: { results } }) })]);
-    const result = await new BraveApiSearchProvider("k", client).search({
-      query: QUERY,
-      maxResults: 2,
-    });
+    const { client } = fakeProviderHttp([
+      Result.succeed({ bodyText: JSON.stringify({ web: { results } }) }),
+    ]);
+    const result = await Effect.runPromise(
+      Effect.result(
+        new BraveApiSearchProvider("k", client).search({
+          query: QUERY,
+          maxResults: 2,
+        }),
+      ),
+    );
 
-    assert(result._tag === "ok");
-    expect(result.value.map((item) => item.url)).toStrictEqual([
+    assert(Result.isSuccess(result));
+    expect(result.success.map((item) => item.url)).toStrictEqual([
       "https://a.example/",
       "https://b.example/",
     ]);

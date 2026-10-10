@@ -1,8 +1,9 @@
+import { Data, Effect, Result } from "effect";
+import { absurd } from "effect/Function";
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
+import type { HtmlConversionError } from "./html-conversion";
 import { decodeTextBuffer, parseContentType } from "./network";
-import type { PublicWebClient, PublicWebError } from "./network";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import type { PublicWebClient, PublicWebError, PublicWebResponse } from "./network";
 import type { PublicHttpUrl, WebFetchFormat } from "./types";
 
 /** Browser-like default user agent for direct fetches. */
@@ -43,28 +44,35 @@ export type FetchPageResult = {
     | { readonly _tag: "Image"; readonly data: Readonly<Buffer> };
 };
 
-/** Expected failures of the fetch-page service. */
-export type FetchPageError =
-  | PublicWebError
-  | { readonly _tag: "UnsupportedBinaryContent"; readonly mime?: string }
-  | { readonly _tag: "HtmlConversionFailed" };
+/** The response is binary content webfetch cannot represent as text or an image. */
+export class UnsupportedBinaryContent extends Data.TaggedError("UnsupportedBinaryContent")<{
+  /** The declared mime type; empty when the response declared none. */
+  readonly mime: string;
+}> {
+  /** Safe user-facing description with the mime type when known. */
+  override get message(): string {
+    return `Unsupported binary content${this.mime === "" ? "" : ` (${this.mime})`}. Try a more text-oriented URL.`;
+  }
+}
+
+/** Expected failures of the fetch-page service; every member has a safe `message`. */
+export type FetchPageError = PublicWebError | UnsupportedBinaryContent | HtmlConversionError;
 
 /** Application service: fetch one public page and project it to the requested representation. */
 export class FetchPage {
   constructor(private readonly publicWeb: PublicWebClient) {}
 
   /** Fetch a public web resource and convert it to the requested content representation. */
-  async fetch(
+  fetch(
     input: FetchPageInput,
     options: {
-      readonly signal?: AbortSignal | undefined;
       readonly maxRedirects: number;
       readonly maxResponseBytes: number;
       readonly blockPrivateHosts: boolean;
     },
-  ): Promise<Result<FetchPageResult, FetchPageError>> {
-    const response = await this.publicWeb.get(
-      {
+  ): Effect.Effect<FetchPageResult, FetchPageError> {
+    return this.publicWeb
+      .get({
         url: input.url,
         accept: getAcceptHeader(input.format),
         userAgent: WEBFETCH_DEFAULT_USER_AGENT,
@@ -72,57 +80,56 @@ export class FetchPage {
         maxRedirects: options.maxRedirects,
         maxResponseBytes: options.maxResponseBytes,
         blockPrivateHosts: options.blockPrivateHosts,
-      },
-      { signal: options.signal },
-    );
-    if (response._tag === "err") {
-      return response;
-    }
-
-    const parsedContentType = parseContentType(response.value.headers.get("content-type"));
-    if (parsedContentType.kind === "binary") {
-      return err(
-        parsedContentType.mime === ""
-          ? { _tag: "UnsupportedBinaryContent" }
-          : { _tag: "UnsupportedBinaryContent", mime: parsedContentType.mime },
+      })
+      .pipe(
+        Effect.flatMap((response) => Effect.fromResult(projectResponse(response, input.format))),
       );
-    }
-
-    const meta: FetchPageMeta = {
-      requestedUrl: response.value.requestedUrl,
-      finalUrl: response.value.finalUrl,
-      format: input.format,
-      status: response.value.status,
-      mime: parsedContentType.mime,
-      contentType: parsedContentType.contentType,
-      charset: parsedContentType.charset,
-      bytes: response.value.body.byteLength,
-    };
-    if (parsedContentType.kind === "raster-image") {
-      return ok({ meta, body: { _tag: "Image", data: response.value.body } });
-    }
-
-    const decoded = decodeTextBuffer(response.value.body, parsedContentType.charset);
-    const converted = convertText({
-      text: decoded.text,
-      baseUrl: response.value.finalUrl,
-      kind: parsedContentType.kind,
-      format: input.format,
-    });
-    if (converted._tag === "err") {
-      return converted;
-    }
-
-    return ok({
-      meta,
-      body: {
-        _tag: "Text",
-        kind: parsedContentType.kind,
-        text: converted.value,
-        decoder: decoded.decoder,
-      },
-    });
   }
+}
+
+// The pure half of a fetch: classify the content type, then decode and convert the body.
+function projectResponse(
+  response: PublicWebResponse,
+  format: WebFetchFormat,
+): Result.Result<FetchPageResult, UnsupportedBinaryContent | HtmlConversionError> {
+  const parsedContentType = parseContentType(response.headers.get("content-type"));
+  if (parsedContentType.kind === "binary") {
+    return Result.fail(new UnsupportedBinaryContent({ mime: parsedContentType.mime }));
+  }
+
+  const meta: FetchPageMeta = {
+    requestedUrl: response.requestedUrl,
+    finalUrl: response.finalUrl,
+    format,
+    status: response.status,
+    mime: parsedContentType.mime,
+    contentType: parsedContentType.contentType,
+    charset: parsedContentType.charset,
+    bytes: response.body.byteLength,
+  };
+  if (parsedContentType.kind === "raster-image") {
+    return Result.succeed({ meta, body: { _tag: "Image", data: response.body } });
+  }
+
+  const decoded = decodeTextBuffer(response.body, parsedContentType.charset);
+  const converted = convertText({
+    text: decoded.text,
+    baseUrl: response.finalUrl,
+    kind: parsedContentType.kind,
+    format,
+  });
+  if (Result.isFailure(converted)) {
+    return Result.fail(converted.failure);
+  }
+  return Result.succeed({
+    meta,
+    body: {
+      _tag: "Text",
+      kind: parsedContentType.kind,
+      text: converted.success,
+      decoder: decoded.decoder,
+    },
+  });
 }
 
 /** Return the Accept header value for a webfetch format. */
@@ -138,8 +145,7 @@ export function getAcceptHeader(format: WebFetchFormat): string {
       return "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1";
     }
     default: {
-      const _exhaustive: never = format;
-      return _exhaustive;
+      return absurd(format);
     }
   }
 }
@@ -154,16 +160,12 @@ function convertText({
   readonly baseUrl: PublicHttpUrl;
   readonly kind: "html" | "text" | "svg";
   readonly format: WebFetchFormat;
-}): Result<string, FetchPageError> {
-  try {
-    if (kind === "html" && format === "markdown") {
-      return ok(htmlToMarkdownWithTextFallback(text, baseUrl));
-    }
-    if (kind === "html" && format === "text") {
-      return ok(htmlToText(text, baseUrl));
-    }
-    return ok(text);
-  } catch {
-    return err({ _tag: "HtmlConversionFailed" });
+}): Result.Result<string, HtmlConversionError> {
+  if (kind === "html" && format === "markdown") {
+    return htmlToMarkdownWithTextFallback(text, baseUrl);
   }
+  if (kind === "html" && format === "text") {
+    return htmlToText(text, baseUrl);
+  }
+  return Result.succeed(text);
 }

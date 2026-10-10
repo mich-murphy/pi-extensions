@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { McpHttpClient } from "../mcp";
 import { ExaMcpFetchProvider, ExaMcpSearchProvider } from "../provider-exa";
@@ -23,13 +24,17 @@ function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpHttpClient {
 describe("live keyless endpoints", () => {
   test("exa MCP search returns results", async () => {
     const provider = new ExaMcpSearchProvider(makeMcp(EXA_MCP_DEFAULT_ENDPOINT));
-    const result = await provider.search({
-      query: searchQuery("pi coding agent github"),
-      maxResults: 3,
-    });
-    assert(result._tag === "ok");
-    expect(result.value.length).toBeGreaterThan(0);
-    expect(result.value[0]?.url).toMatch(/^https?:\/\//u);
+    const result = await Effect.runPromise(
+      Effect.result(
+        provider.search({
+          query: searchQuery("pi coding agent github"),
+          maxResults: 3,
+        }),
+      ),
+    );
+    assert(Result.isSuccess(result));
+    expect(result.success.length).toBeGreaterThan(0);
+    expect(result.success[0]?.url).toMatch(/^https?:\/\//u);
   }, 30_000);
 
   test("parallel MCP search returns results", async () => {
@@ -37,17 +42,23 @@ describe("live keyless endpoints", () => {
       makeMcp(PARALLEL_MCP_DEFAULT_ENDPOINT),
       crypto.randomUUID(),
     );
-    const result = await provider.search({
-      query: searchQuery("pi coding agent github"),
-      maxResults: 3,
-    });
-    assert(result._tag === "ok");
-    expect(result.value.length).toBeGreaterThan(0);
+    const result = await Effect.runPromise(
+      Effect.result(
+        provider.search({
+          query: searchQuery("pi coding agent github"),
+          maxResults: 3,
+        }),
+      ),
+    );
+    assert(Result.isSuccess(result));
+    expect(result.success.length).toBeGreaterThan(0);
   }, 30_000);
 
   test("exa MCP fetch reads a page", async () => {
     const provider = new ExaMcpFetchProvider(makeMcp(EXA_MCP_DEFAULT_ENDPOINT));
-    const markdown = await provider.fetchMarkdown(publicUrl("https://example.com"));
+    const markdown = await Effect.runPromise(
+      provider.fetchMarkdown(publicUrl("https://example.com")),
+    );
     expect(markdown).toContain("Example Domain");
   }, 30_000);
 
@@ -56,7 +67,9 @@ describe("live keyless endpoints", () => {
       makeMcp(PARALLEL_MCP_DEFAULT_ENDPOINT),
       crypto.randomUUID(),
     );
-    const markdown = await provider.fetchMarkdown(publicUrl("https://example.com"));
+    const markdown = await Effect.runPromise(
+      provider.fetchMarkdown(publicUrl("https://example.com")),
+    );
     expect(markdown?.length).toBeGreaterThan(50);
   }, 30_000);
 });

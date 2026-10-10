@@ -12,6 +12,7 @@
  */
 // turndown's own HTML parser in Node; chunked conversion parses with it (see convertToMarkdown).
 import { createDocument } from "@mixmark-io/domino";
+import { Result } from "effect";
 import { compile as compileHtmlToText } from "html-to-text";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
@@ -19,6 +20,8 @@ import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { CollapsedTextLength, normalizedTextLength } from "./collapsed-text";
 import { compileSelector, compileSelectorSet } from "./element-selector";
+import { convertGuarded, EmptyHtmlDocument } from "./html-conversion";
+import type { HtmlConversionError } from "./html-conversion";
 
 const ELEMENT_NODE = 1;
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -222,33 +225,71 @@ const compiledHtmlToText = compileHtmlToText({
 });
 
 /** Strip boilerplate and unsafe URL attributes, returning sanitized HTML rooted at the readable content. */
-export function sanitizeHtml(rawHtml: string, baseUrl: string): string {
-  return `<div>${sanitizeToReadableRoot(rawHtml, baseUrl).innerHTML}</div>`;
+export function sanitizeHtml(
+  rawHtml: string,
+  baseUrl: string,
+): Result.Result<string, EmptyHtmlDocument> {
+  const root = sanitizeToReadableRoot(rawHtml, baseUrl);
+  return root === undefined
+    ? Result.fail(new EmptyHtmlDocument())
+    : Result.succeed(`<div>${root.innerHTML}</div>`);
 }
 
 /** Convert raw HTML to markdown, sanitized and with URLs resolved against baseUrl. */
-export function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
+export function htmlToMarkdown(
+  rawHtml: string,
+  baseUrl: string,
+): Result.Result<string, HtmlConversionError> {
   const root = sanitizeToReadableRoot(rawHtml, baseUrl);
-  return cleanupMarkdown(convertToMarkdown(root.innerHTML, root));
+  if (root === undefined) {
+    return Result.fail(new EmptyHtmlDocument());
+  }
+  return Result.map(
+    convertGuarded(() => convertToMarkdown(root.innerHTML, root)),
+    cleanupMarkdown,
+  );
 }
 
 /** Convert raw HTML to plain text, sanitized and with URLs resolved against baseUrl. */
-export function htmlToText(rawHtml: string, baseUrl: string): string {
-  return cleanupText(compiledHtmlToText(sanitizeHtml(rawHtml, baseUrl)));
+export function htmlToText(
+  rawHtml: string,
+  baseUrl: string,
+): Result.Result<string, HtmlConversionError> {
+  const sanitized = sanitizeHtml(rawHtml, baseUrl);
+  if (Result.isFailure(sanitized)) {
+    return Result.fail(sanitized.failure);
+  }
+  return Result.map(
+    convertGuarded(() => compiledHtmlToText(sanitized.success)),
+    cleanupText,
+  );
 }
 
 /**
  * Convert raw HTML to markdown, falling back to plain text when the markdown is dominated by raw
  * HTML blocks (JS-heavy pages). Sanitizes once and reuses the result for the fallback.
  */
-export function htmlToMarkdownWithTextFallback(rawHtml: string, baseUrl: string): string {
+export function htmlToMarkdownWithTextFallback(
+  rawHtml: string,
+  baseUrl: string,
+): Result.Result<string, HtmlConversionError> {
   const root = sanitizeToReadableRoot(rawHtml, baseUrl);
-  const html = root.innerHTML;
-  const markdown = cleanupMarkdown(convertToMarkdown(html, root));
-  if (!isPoorMarkdownConversion(markdown)) {
-    return markdown;
+  if (root === undefined) {
+    return Result.fail(new EmptyHtmlDocument());
   }
-  return cleanupText(compiledHtmlToText(`<div>${html}</div>`));
+  const html = root.innerHTML;
+  const markdown = convertGuarded(() => convertToMarkdown(html, root));
+  if (Result.isFailure(markdown)) {
+    return Result.fail(markdown.failure);
+  }
+  const cleaned = cleanupMarkdown(markdown.success);
+  if (!isPoorMarkdownConversion(cleaned)) {
+    return Result.succeed(cleaned);
+  }
+  return Result.map(
+    convertGuarded(() => compiledHtmlToText(`<div>${html}</div>`)),
+    cleanupText,
+  );
 }
 
 /** Returns true when a markdown conversion is dominated by raw HTML blocks (JS-heavy pages). */
@@ -289,9 +330,12 @@ function createTurndownService(): TurndownService {
  * Parse, pick the readable root, and strip boilerplate and unsafe URL attributes from it. The root
  * stays attached to its parsed document, which is local to this call, so it is mutated in place.
  */
-function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element {
+function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | undefined {
   const { document } = parseHTML(rawHtml);
   const root = extractReadableRoot(document);
+  if (root === undefined) {
+    return undefined;
+  }
   const { tables, links } = removeBoilerplate(root);
   flattenLayoutTables(tables, root);
   normalizeBlockLinks(links);
@@ -302,7 +346,8 @@ function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element {
 // Candidates come from querySelectorAll, which skips template contents, and are tried selector by
 // selector; the first selector with a scoring candidate decides. Without one, body (or the document
 // element) and its article, main, section, and div descendants compete.
-function extractReadableRoot(document: Document): Element {
+/** Pick the readable root, or undefined when the document has no elements at all. */
+function extractReadableRoot(document: Document): Element | undefined {
   const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
   for (const element of document.querySelectorAll("*")) {
@@ -323,8 +368,7 @@ function extractReadableRoot(document: Document): Element {
 
   const fallbackRoot: Element | null = body ?? document.documentElement;
   if (fallbackRoot === null) {
-    // An empty document: callers translate the throw into a conversion failure.
-    throw new Error("HTML document has no elements");
+    return undefined;
   }
   const { candidates, stats } = measureContent(
     fallbackRoot,

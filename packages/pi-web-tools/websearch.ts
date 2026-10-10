@@ -1,15 +1,13 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { Cause, Data, Effect, Exit, Result } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { SearchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
-import { err, ok } from "./result";
-import type { Result } from "./result";
 import { searchWithFallback } from "./search";
-import type { SearchChainError } from "./search";
 import { clampInteger, SEARCH_MAX_RESULTS, SEARCH_PROVIDERS } from "./settings";
 import type { WebToolsSettings } from "./settings";
 import { projectSearchResults } from "./tool-output";
@@ -32,8 +30,16 @@ export type WebSearchParams = {
   readonly provider?: SearchProviderName;
 };
 
+/** The websearch query was empty after trimming. */
+export class EmptySearchQueryInput extends Data.TaggedError("InvalidToolInput") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "query cannot be empty";
+  }
+}
+
 /** Expected failures parsing websearch tool input. */
-export type WebSearchInputError = { readonly _tag: "InvalidToolInput"; readonly message: string };
+export type WebSearchInputError = EmptySearchQueryInput;
 
 /**
  * Tool parameters. Pi validates and converts arguments against this schema before `execute` runs,
@@ -63,20 +69,20 @@ const WEB_SEARCH_PARAMETERS = Type.Object(
 export function parseWebSearchParams(
   params: Static<typeof WEB_SEARCH_PARAMETERS>,
   settings: WebToolsSettings,
-): Result<WebSearchParams, WebSearchInputError> {
+): Result.Result<WebSearchParams, WebSearchInputError> {
   const query = parseSearchQuery(params.query);
-  if (query._tag === "err") {
-    return err({ _tag: "InvalidToolInput", message: "query cannot be empty" });
+  if (Result.isFailure(query)) {
+    return Result.fail(new EmptySearchQueryInput());
   }
 
   const maxResults = clampInteger(
     params.maxResults ?? settings.search.defaultMaxResults,
     SEARCH_MAX_RESULTS,
   );
-  return ok(
+  return Result.succeed(
     params.provider === undefined
-      ? { query: query.value, maxResults }
-      : { query: query.value, maxResults, provider: params.provider },
+      ? { query: query.success, maxResults }
+      : { query: query.success, maxResults, provider: params.provider },
   );
 }
 
@@ -102,48 +108,62 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       onUpdate?: AgentToolUpdateCallback<WebSearchDetails>,
     ) {
       const parsed = parseWebSearchParams(params, composition.settings);
-      if (parsed._tag === "err") {
-        throw new Error(parsed.error.message);
+      if (Result.isFailure(parsed)) {
+        throw new Error(parsed.failure.message);
       }
 
       onUpdate?.({
-        content: [{ type: "text", text: `Searching for ${parsed.value.query}...` }],
+        content: [{ type: "text", text: `Searching for ${parsed.success.query}...` }],
         details: {
-          query: parsed.value.query,
-          maxResults: parsed.value.maxResults,
+          query: parsed.success.query,
+          maxResults: parsed.success.maxResults,
           provider: composition.providers[0]?.name ?? "exa",
           attemptedProviders: [],
           resultCount: 0,
         },
       });
 
-      const outcome = await searchWithFallback(
+      const { query, maxResults, provider } = parsed.success;
+      const program = searchWithFallback(
         composition.providers,
-        { query: parsed.value.query, maxResults: parsed.value.maxResults },
-        { signal, providerOverride: parsed.value.provider },
+        { query, maxResults },
+        { providerOverride: provider },
+      ).pipe(
+        Effect.flatMap((outcome) =>
+          projectSearchResults(
+            {
+              query,
+              results: outcome.results,
+              details: {
+                query,
+                maxResults,
+                provider: outcome.provider,
+                attemptedProviders: outcome.attemptedProviders,
+                resultCount: outcome.results.length,
+              },
+            },
+            { store: composition.outputStore, secrets: composition.secrets },
+          ),
+        ),
       );
-      if (outcome._tag === "err") {
-        throw new Error(renderSearchChainError(outcome.error));
-      }
 
-      const projected = await projectSearchResults(
-        {
-          query: parsed.value.query,
-          results: outcome.value.results,
-          details: {
-            query: parsed.value.query,
-            maxResults: parsed.value.maxResults,
-            provider: outcome.value.provider,
-            attemptedProviders: outcome.value.attemptedProviders,
-            resultCount: outcome.value.results.length,
-          },
-        },
-        { store: composition.outputStore, secrets: composition.secrets },
-      );
-      if (projected._tag === "err") {
-        throw new Error("Failed to write full websearch output");
+      const exit = await Effect.runPromiseExit(program, { signal });
+      if (Exit.isSuccess(exit)) {
+        return exit.value;
       }
-      return projected.value;
+      if (Cause.hasInterrupts(exit.cause)) {
+        throw new Error("Web search cancelled");
+      }
+      const failure = Cause.findError(exit.cause);
+      if (Result.isSuccess(failure)) {
+        const error = failure.success;
+        throw new Error(
+          error._tag === "OutputStoreError"
+            ? `Could not save full websearch output to ${error.path}: ${error.reason}`
+            : error.message,
+        );
+      }
+      throw Cause.squash(exit.cause);
     },
 
     renderCall(
@@ -204,20 +224,4 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       return new Text(text, 0, 0);
     },
   };
-}
-
-/** Render a search chain failure as a safe user-facing message. */
-export function renderSearchChainError(error: SearchChainError): string {
-  switch (error._tag) {
-    case "UnknownProvider": {
-      return `Provider "${error.provider}" is not enabled. Available: ${error.available.join(", ")}`;
-    }
-    case "AllProvidersFailed": {
-      return `All search providers failed (${error.attempts.join("; ")})`;
-    }
-    default: {
-      const _exhaustive: never = error;
-      return _exhaustive;
-    }
-  }
 }

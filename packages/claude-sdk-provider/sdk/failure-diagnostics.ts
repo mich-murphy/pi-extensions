@@ -1,14 +1,11 @@
-import {
-  InvalidDeferredCallLimitError,
-  SdkProtocolError,
-  SdkQueryError,
-  SdkResultError,
-} from "./errors";
-import type { SdkRunError } from "./errors";
+import { absurd } from "effect/Function";
+import type { SdkQueryError, SdkTurnFailure } from "./errors";
 
 /** Stable operational categories for Claude Agent SDK failures. */
 export type SdkFailureKind =
+  | "authentication"
   | "cancelled"
+  | "defect"
   | "host-sleep"
   | "network"
   | "protocol"
@@ -24,7 +21,7 @@ export type SdkFailureDiagnostic = {
   /** Failure category used for routing and support. */
   readonly kind: SdkFailureKind;
   /** Tagged extension error type. */
-  readonly errorTag: SdkRunError["_tag"];
+  readonly errorTag: SdkTurnFailure["_tag"];
   /** Query operation when the SDK transport failed. */
   readonly operation?: SdkQueryError["operation"];
   /** SDK terminal reason when a result supplied one. */
@@ -46,45 +43,65 @@ const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] 
   ["cancelled", /(?:abort|cancelled|canceled|interrupted)/iu],
 ];
 
-function safeFailureText(error: SdkRunError): string {
-  if (error instanceof SdkQueryError) {
-    return error.cause instanceof Error ? error.cause.message : String(error.cause);
-  }
-  return error.message;
-}
-
-function failureKind(error: SdkRunError): SdkFailureKind {
-  if (error instanceof SdkProtocolError) {
-    return "protocol";
-  }
-  if (error instanceof InvalidDeferredCallLimitError) {
-    return "tool-contract";
-  }
-  const text = safeFailureText(error);
+function textKind(text: string): SdkFailureKind {
   return TEXT_KINDS.find(([, pattern]) => pattern.test(text))?.[0] ?? "provider";
 }
 
+function failureKind(error: SdkTurnFailure): SdkFailureKind {
+  switch (error._tag) {
+    case "SdkProviderDefect": {
+      return "defect";
+    }
+    case "SdkProtocolError": {
+      return "protocol";
+    }
+    case "InvalidDeferredCallLimitError": {
+      return "tool-contract";
+    }
+    case "SdkQueryError": {
+      // The raw cause is matched here only; it never reaches the diagnostic or the user.
+      const { cause, reason } = error;
+      return reason._tag === "Cancelled"
+        ? "cancelled"
+        : textKind(cause instanceof Error ? cause.message : String(cause));
+    }
+    case "SdkResultError": {
+      return error.apiError === "authentication_failed"
+        ? "authentication"
+        : textKind(error.message);
+    }
+    case "SdkMissingResultError": {
+      return textKind(error.message);
+    }
+    default: {
+      return absurd(error);
+    }
+  }
+}
+
 /** Classify a typed SDK failure without exposing its message or cause. */
-export function diagnoseSdkRunError(error: SdkRunError): SdkFailureDiagnostic {
+export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic {
   return {
     schemaVersion: 1,
     kind: failureKind(error),
     errorTag: error._tag,
-    ...(error instanceof SdkQueryError ? { operation: error.operation } : {}),
-    ...(error instanceof SdkResultError && error.terminalReason !== undefined
+    ...(error._tag === "SdkQueryError" ? { operation: error.operation } : {}),
+    ...(error._tag === "SdkResultError" && error.terminalReason !== undefined
       ? { terminalReason: error.terminalReason }
       : {}),
   };
 }
 
-/** Format a failed turn with a stable category and its safe existing summary. */
-export function formatSdkRunError(error: SdkRunError): string {
-  return `Claude SDK [${diagnoseSdkRunError(error).kind}]: ${error.message}`;
+/** Format a failed turn's safe summary for Pi's error message. */
+export function formatSdkRunError(error: SdkTurnFailure): string {
+  return error._tag === "SdkProviderDefect"
+    ? `Claude SDK provider bug: ${error.message}`
+    : `Claude Agent SDK: ${error.message}`;
 }
 
 /** Emit one message-free JSON diagnostic for operational routing. */
 export function writeSdkFailureDiagnostic(
-  error: SdkRunError,
+  error: SdkTurnFailure,
   write: (line: string) => void = (line) => process.stderr.write(line),
 ): void {
   write(`[claude-sdk-error] ${JSON.stringify(diagnoseSdkRunError(error))}\n`);

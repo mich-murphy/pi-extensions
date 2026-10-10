@@ -1,5 +1,21 @@
-import { describe, expect, test } from "vitest";
-import { htmlToMarkdown, htmlToText, isPoorMarkdownConversion, sanitizeHtml } from "../html";
+import { Result } from "effect";
+import { assert, describe, expect, test } from "vitest";
+import * as Html from "../html";
+import { isPoorMarkdownConversion } from "../html";
+import { convertGuarded, EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
+
+/** Unwrap a successful conversion; these fixtures all have elements and shallow nesting. */
+function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
+  return Result.getOrThrow(Html.htmlToMarkdown(rawHtml, baseUrl));
+}
+
+function htmlToText(rawHtml: string, baseUrl: string): string {
+  return Result.getOrThrow(Html.htmlToText(rawHtml, baseUrl));
+}
+
+function sanitizeHtml(rawHtml: string, baseUrl: string): string {
+  return Result.getOrThrow(Html.sanitizeHtml(rawHtml, baseUrl));
+}
 
 describe("htmlToMarkdown", () => {
   test("converts headings, links, and lists", () => {
@@ -351,3 +367,57 @@ function edgeCaseBlock(
   }
   return { html: `<p>${text}&nbsp;</p>`, markdown: `${text}\u00A0` };
 }
+
+describe("conversion failures", () => {
+  test.each(["", "   \n", "<!-- only a comment -->", "just text"])(
+    "a document without elements (%j) is EmptyHtmlDocument",
+    (input) => {
+      for (const converted of [
+        Html.htmlToMarkdown(input, "https://example.com"),
+        Html.htmlToText(input, "https://example.com"),
+        Html.htmlToMarkdownWithTextFallback(input, "https://example.com"),
+      ]) {
+        assert(Result.isFailure(converted));
+        expect(converted.failure).toBeInstanceOf(EmptyHtmlDocument);
+        expect(converted.failure.message).toBe("The page has no HTML content");
+      }
+    },
+  );
+
+  test("a library stack overflow on deep nesting is HtmlConversionFailed", () => {
+    const deep = `${"<div>".repeat(5000)}x${"</div>".repeat(5000)}`;
+    for (const converted of [
+      Html.htmlToMarkdown(deep, "https://example.com"),
+      Html.htmlToText(deep, "https://example.com"),
+    ]) {
+      assert(Result.isFailure(converted));
+      assert(converted.failure instanceof HtmlConversionFailed);
+      expect(converted.failure.cause).toBeInstanceOf(RangeError);
+    }
+  });
+
+  test("other exceptions propagate as defects", () => {
+    // SAFETY: deliberately violates the string contract to provoke a non-RangeError defect.
+    const notHtml = Symbol("not html") as unknown as string;
+    expect(() => Html.htmlToText(notHtml, "https://example.com")).toThrow(TypeError);
+  });
+
+  test("the conversion guard rethrows anything but a RangeError unchanged", () => {
+    const bug = new TypeError("converter bug");
+    expect(() =>
+      convertGuarded(() => {
+        throw bug;
+      }),
+    ).toThrow(bug);
+  });
+
+  test("the conversion guard classifies a RangeError and passes a success through", () => {
+    const overflow = new RangeError("Maximum call stack size exceeded");
+    const failed = convertGuarded(() => {
+      throw overflow;
+    });
+    assert(Result.isFailure(failed));
+    expect(failed.failure.cause).toBe(overflow);
+    expect(convertGuarded(() => "converted")).toStrictEqual(Result.succeed("converted"));
+  });
+});

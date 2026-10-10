@@ -1,17 +1,15 @@
+import { Effect, Result } from "effect";
 import { z } from "zod";
 import type { McpClient } from "./mcp";
 import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
-import { lenientArray, optionalTextSchema, publicHttpUrlSchema } from "./provider-types";
-import type {
-  FetchProvider,
-  ProviderCallOptions,
-  ProviderError,
-  SearchInput,
-  SearchProvider,
+import {
+  lenientArray,
+  optionalTextSchema,
+  ProviderProtocolInvalid,
+  publicHttpUrlSchema,
 } from "./provider-types";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import type { FetchProvider, ProviderError, SearchInput, SearchProvider } from "./provider-types";
 import {
   EXA_API_CONTENTS_URL,
   EXA_API_SEARCH_URL,
@@ -117,7 +115,7 @@ function parseSearchSection(section: string): NormalizedSearchResult | undefined
     return undefined;
   }
   const parsedUrl = parsePublicHttpUrl(url);
-  if (parsedUrl._tag === "err") {
+  if (Result.isFailure(parsedUrl)) {
     return undefined;
   }
 
@@ -129,8 +127,8 @@ function parseSearchSection(section: string): NormalizedSearchResult | undefined
   const title = headers.get("title") ?? "";
   const score = headers.get("score");
   return {
-    title: title || parsedUrl.value,
-    url: parsedUrl.value,
+    title: title || parsedUrl.success,
+    url: parsedUrl.success,
     snippet: summarizeSnippet(snippetText, title),
     publishedAt: headers.get("publishedAt"),
     // Source beats Author; Author only names the source when no usable Source line exists.
@@ -235,26 +233,19 @@ export class ExaMcpSearchProvider implements SearchProvider {
   constructor(private readonly mcp: McpClient) {}
 
   /** Run one Exa MCP web_search_exa call and parse its text results. */
-  async search(
-    input: SearchInput,
-    options: ProviderCallOptions = {},
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
-    const call = await this.mcp.callTool(
-      "web_search_exa",
-      {
+  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+    return this.mcp
+      .callTool("web_search_exa", {
         query: input.query,
         // The hosted endpoint requires an objective; the query is the objective we have.
         objective: input.query,
         numResults: input.maxResults,
-      },
-      { signal: options.signal },
-    );
-    if (call._tag === "err") {
-      return call;
-    }
-
-    const parsed = parseExaSearchText(call.value.text.join("\n\n"));
-    return ok(parsed.results.slice(0, input.maxResults));
+      })
+      .pipe(
+        Effect.map((call) =>
+          parseExaSearchText(call.text.join("\n\n")).results.slice(0, input.maxResults),
+        ),
+      );
   }
 }
 
@@ -295,12 +286,9 @@ export class ExaApiSearchProvider implements SearchProvider {
   ) {}
 
   /** Run one Exa REST /search call and normalize its structured results. */
-  async search(
-    input: SearchInput,
-    options: ProviderCallOptions = {},
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
-    const response = this.http.postJson(
-      {
+  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+    return readProviderJson(
+      this.http.postJson({
         url: EXA_API_SEARCH_URL,
         headers: { "x-api-key": this.apiKey },
         body: {
@@ -312,18 +300,15 @@ export class ExaApiSearchProvider implements SearchProvider {
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
         timeoutMs: EXA_SEARCH_TIMEOUT_MS,
-      },
-      { signal: options.signal },
+      }),
+    ).pipe(
+      Effect.flatMap((payload) => {
+        const parsed = exaApiSearchPayloadSchema.safeParse(payload);
+        return parsed.success
+          ? Effect.succeed(parsed.data.results.slice(0, input.maxResults))
+          : Effect.fail(new ProviderProtocolInvalid({ reason: "Missing results array" }));
+      }),
     );
-    const payload = await readProviderJson(response);
-    if (payload._tag === "err") {
-      return payload;
-    }
-    const parsed = exaApiSearchPayloadSchema.safeParse(payload.value);
-    if (!parsed.success) {
-      return err({ _tag: "ProviderProtocolInvalid", reason: "Missing results array" });
-    }
-    return ok(parsed.data.results.slice(0, input.maxResults));
   }
 }
 
@@ -333,20 +318,14 @@ export class ExaMcpFetchProvider implements FetchProvider {
 
   constructor(private readonly mcp: McpClient) {}
 
-  /** Read one URL as markdown through Exa's crawl infrastructure. */
-  async fetchMarkdown(
-    url: PublicHttpUrl,
-    options: ProviderCallOptions = {},
-  ): Promise<string | undefined> {
-    const call = await this.mcp.callTool(
-      "web_fetch_exa",
-      { urls: [url], maxCharacters: EXA_FETCH_MAX_CHARACTERS },
-      { signal: options.signal },
-    );
-    if (call._tag === "err") {
-      return undefined;
-    }
-    return call.value.text.join("\n\n").trim() || undefined;
+  /** Read one URL as markdown through Exa's crawl infrastructure; undefined on any failure. */
+  fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
+    return this.mcp
+      .callTool("web_fetch_exa", { urls: [url], maxCharacters: EXA_FETCH_MAX_CHARACTERS })
+      .pipe(
+        Effect.map((call) => call.text.join("\n\n").trim() || undefined),
+        Effect.orElseSucceed(() => undefined),
+      );
   }
 }
 
@@ -359,13 +338,10 @@ export class ExaApiFetchProvider implements FetchProvider {
     private readonly http: ProviderHttpClient,
   ) {}
 
-  /** Read one URL as text through Exa's REST contents API. */
-  async fetchMarkdown(
-    url: PublicHttpUrl,
-    options: ProviderCallOptions = {},
-  ): Promise<string | undefined> {
-    const response = this.http.postJson(
-      {
+  /** Read one URL as text through Exa's REST contents API; undefined on any failure. */
+  fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
+    return readProviderJson(
+      this.http.postJson({
         url: EXA_API_CONTENTS_URL,
         headers: { "x-api-key": this.apiKey },
         body: {
@@ -375,13 +351,10 @@ export class ExaApiFetchProvider implements FetchProvider {
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
         timeoutMs: EXA_SEARCH_TIMEOUT_MS,
-      },
-      { signal: options.signal },
+      }),
+    ).pipe(
+      Effect.map((payload) => exaApiContentsPayloadSchema.safeParse(payload).data?.results[0].text),
+      Effect.orElseSucceed(() => undefined),
     );
-    const payload = await readProviderJson(response);
-    if (payload._tag === "err") {
-      return undefined;
-    }
-    return exaApiContentsPayloadSchema.safeParse(payload.value).data?.results[0].text;
   }
 }

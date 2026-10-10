@@ -1,8 +1,13 @@
-import { createOperationSignal, isAbortError, readResponseBodyWithLimit } from "./network";
-import { classifyProviderAbort, parseJsonBody } from "./provider-types";
+import { Effect } from "effect";
+import { readResponseBodyWithLimit, ResponseBodyTooLarge } from "./network";
+import {
+  parseJsonBody,
+  ProviderRequestFailed,
+  ProviderResponseTooLarge,
+  ProviderStatusRejected,
+  ProviderTimedOut,
+} from "./provider-types";
 import type { ProviderError } from "./provider-types";
-import { err, ok } from "./result";
-import type { Result } from "./result";
 
 /** A bounded, successful (2xx) provider REST response. */
 export type ProviderHttpResponse = {
@@ -18,32 +23,83 @@ export type ProviderHttpRequest = {
   readonly timeoutMs: number;
 };
 
-/** Outbound port for provider REST calls. */
+/** Outbound port for provider REST calls. Interrupting a call aborts its request. */
 export type ProviderHttpClient = {
+  /** POST a JSON body and read a bounded 2xx response. */
   readonly postJson: (
     request: ProviderHttpRequest,
-    options?: { readonly signal?: AbortSignal | undefined },
-  ) => Promise<Result<ProviderHttpResponse, ProviderError>>;
+  ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
+  /** GET and read a bounded 2xx response. */
   readonly getJson: (
     request: ProviderHttpRequest,
-    options?: { readonly signal?: AbortSignal | undefined },
-  ) => Promise<Result<ProviderHttpResponse, ProviderError>>;
+  ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
 };
 
 /**
- * Await a provider REST call and parse its body as untrusted JSON.
+ * Run a provider REST call and parse its body as untrusted JSON.
  *
- * @param response - The pending provider call.
+ * @param response - The provider call.
  * @returns The parsed body, or the call's or the parse's failure.
  */
-export async function readProviderJson(
-  response: Promise<Result<ProviderHttpResponse, ProviderError>>,
-): Promise<Result<unknown, ProviderError>> {
-  const settled = await response;
-  if (settled._tag === "err") {
-    return settled;
-  }
-  return parseJsonBody(settled.value.bodyText);
+export function readProviderJson(
+  response: Effect.Effect<ProviderHttpResponse, ProviderError>,
+): Effect.Effect<unknown, ProviderError> {
+  return Effect.flatMap(response, (settled) => Effect.fromResult(parseJsonBody(settled.bodyText)));
+}
+
+/** A provider response whose body was read in full, any status. */
+export type ProviderRawResponse = {
+  readonly response: Response;
+  readonly bodyText: string;
+};
+
+/**
+ * Send one provider request and read its body under a byte cap. Network and stream failures are
+ * classified by host; interrupting the effect aborts the request. Status is left to the caller.
+ *
+ * @param fetchImpl - The fetch implementation.
+ * @param url - The provider endpoint.
+ * @param init - Request init without a signal; the effect supplies one.
+ * @param maxResponseBytes - The body byte cap.
+ * @returns The response and its UTF-8 body text.
+ */
+export function sendProviderRequest(
+  fetchImpl: typeof fetch,
+  url: string | URL,
+  init: Omit<RequestInit, "signal">,
+  maxResponseBytes: number,
+): Effect.Effect<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
+  const { hostname } = new URL(url);
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: async (signal) => fetchImpl(url, { ...init, signal }),
+      catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
+    });
+    const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
+      Effect.mapError((error) =>
+        error instanceof ResponseBodyTooLarge
+          ? new ProviderResponseTooLarge()
+          : new ProviderRequestFailed({ hostname, cause: error.cause }),
+      ),
+    );
+    return { response, bodyText: body.toString("utf8") };
+  });
+}
+
+/**
+ * Fail with ProviderTimedOut when an effect outlives its deadline; the effect is interrupted.
+ *
+ * @param timeoutMs - The deadline in milliseconds.
+ * @returns A combinator applying the deadline.
+ */
+export function withProviderDeadline(
+  timeoutMs: number,
+): <A, E>(self: Effect.Effect<A, E>) => Effect.Effect<A, E | ProviderTimedOut> {
+  return Effect.timeoutOrElse({
+    duration: timeoutMs,
+    orElse: () =>
+      Effect.fail(new ProviderTimedOut({ timeoutSeconds: Math.ceil(timeoutMs / 1000) })),
+  });
 }
 
 /** Provider REST client with hard timeouts and response byte caps. */
@@ -51,69 +107,38 @@ export class FetchProviderHttpClient implements ProviderHttpClient {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
   /** POST a JSON body and read a bounded response. */
-  async postJson(
-    request: ProviderHttpRequest,
-    options: { readonly signal?: AbortSignal | undefined } = {},
-  ): Promise<Result<ProviderHttpResponse, ProviderError>> {
-    return this.request("POST", request, options);
+  postJson(request: ProviderHttpRequest): Effect.Effect<ProviderHttpResponse, ProviderError> {
+    return this.request("POST", request);
   }
 
   /** GET and read a bounded response. */
-  async getJson(
-    request: ProviderHttpRequest,
-    options: { readonly signal?: AbortSignal | undefined } = {},
-  ): Promise<Result<ProviderHttpResponse, ProviderError>> {
-    return this.request("GET", request, options);
+  getJson(request: ProviderHttpRequest): Effect.Effect<ProviderHttpResponse, ProviderError> {
+    return this.request("GET", request);
   }
 
-  private async request(
+  private request(
     method: "GET" | "POST",
     request: ProviderHttpRequest,
-    options: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<ProviderHttpResponse, ProviderError>> {
-    const composed = createOperationSignal(request.timeoutMs, options.signal);
-    try {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(request.url, {
-          method,
-          headers:
-            method === "POST"
-              ? { "content-type": "application/json", ...request.headers }
-              : request.headers,
-          body:
-            method === "POST" && request.body !== undefined ? JSON.stringify(request.body) : null,
-          signal: composed.signal,
-        });
-      } catch (error: unknown) {
-        if (composed.signal.aborted || isAbortError(error)) {
-          return err(classifyProviderAbort(composed.signal));
-        }
-        return err({ _tag: "ProviderRequestFailed" });
-      }
-
-      const body = await readResponseBodyWithLimit(
-        response,
-        request.maxResponseBytes,
-        composed.signal,
-      );
-      if (body._tag === "err") {
-        if (composed.signal.aborted) {
-          return err(classifyProviderAbort(composed.signal));
-        }
-        if (body.error._tag === "BodyTooLarge") {
-          return err({ _tag: "ProviderResponseTooLarge" });
-        }
-        return err({ _tag: "ProviderRequestFailed" });
-      }
-
+  ): Effect.Effect<ProviderHttpResponse, ProviderError> {
+    const sent = sendProviderRequest(
+      this.fetchImpl,
+      request.url,
+      {
+        method,
+        headers:
+          method === "POST"
+            ? { "content-type": "application/json", ...request.headers }
+            : request.headers,
+        body: method === "POST" && request.body !== undefined ? JSON.stringify(request.body) : null,
+      },
+      request.maxResponseBytes,
+    );
+    return Effect.gen(function* () {
+      const { response, bodyText } = yield* sent;
       if (response.status < 200 || response.status >= 300) {
-        return err({ _tag: "ProviderStatusRejected", status: response.status });
+        return yield* new ProviderStatusRejected({ status: response.status });
       }
-
-      return ok({ bodyText: body.value.toString("utf8") });
-    } finally {
-      composed.cleanup();
-    }
+      return { bodyText };
+    }).pipe(withProviderDeadline(request.timeoutMs));
   }
 }
