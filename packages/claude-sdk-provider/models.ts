@@ -3,6 +3,12 @@ import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DATE_SUFFIX = /-\d{8}$/u;
 
+/**
+ * The chat-model variant of Pi's provider model union. Pi does not export it by name, and this
+ * provider registers only chat models.
+ */
+type ChatModelConfig = Extract<ProviderModelConfig, { readonly type?: "chat" }>;
+
 /** Provider model registration plus the Claude Code routing it advertises. */
 export type SdkModelConfig = {
   /**
@@ -16,7 +22,7 @@ export type SdkModelConfig = {
    * SDK names it in `message_start`. The live upgrade gate asserts this.
    */
   readonly canonicalModel: string;
-} & ProviderModelConfig;
+} & ChatModelConfig;
 
 /** Models exposed by the official Claude Agent SDK provider. */
 export const models: readonly SdkModelConfig[] = [
@@ -88,7 +94,7 @@ export function providerModel({
   sdkModel: _sdkModel,
   canonicalModel: _canonicalModel,
   ...model
-}: SdkModelConfig): ProviderModelConfig {
+}: SdkModelConfig): ChatModelConfig {
   return model;
 }
 
