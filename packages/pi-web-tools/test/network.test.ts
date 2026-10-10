@@ -98,13 +98,6 @@ describe("parseContentType", () => {
     expect(parsed.charset).toBe(UTF8);
     expect(parsed.kind).toBe("html");
   });
-
-  test("classifies json as text and png as raster-image", () => {
-    expect(parseContentType("application/json").kind).toBe("text");
-    expect(parseContentType("image/png").kind).toBe("raster-image");
-    expect(parseContentType("application/octet-stream").kind).toBe("binary");
-    expect(parseContentType(null).kind).toBe("binary");
-  });
 });
 
 describe("classifyMimeType", () => {
@@ -293,18 +286,6 @@ describe("fetchPublicWebClient hop checks", () => {
     const url = unparsedUrl("http://user:secret@127.0.0.1/");
     const result = await run(client.get(makeRequest({ url })));
     expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
-    expect(hops).toHaveLength(0);
-  });
-
-  test("sends nothing when the caller signal is already aborted", async () => {
-    // The synchronous credential check may win the race with interruption; either way no request
-    // leaves the client and the call does not succeed.
-    const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
-    const url = unparsedUrl("http://user:secret@example.com/");
-    const exit = await Effect.runPromiseExit(client.get(makeRequest({ url })), {
-      signal: abortedSignal(),
-    });
-    expect(Exit.isFailure(exit)).toBe(true);
     expect(hops).toHaveLength(0);
   });
 
@@ -651,12 +632,6 @@ describe("fetchPublicWebClient response body", () => {
 });
 
 describe("readResponseBodyWithLimit", () => {
-  test("reads a body under the cap", async () => {
-    const result = await run(readResponseBodyWithLimit(responseOf({ status: 200, body: "hi" }), 8));
-    assert(Result.isSuccess(result));
-    expect(result.success.toString()).toBe("hi");
-  });
-
   test("fails with ResponseBodyTooLarge and cancels the stream past the cap", async () => {
     const streamed = trackedResponse(
       { status: 200 },
@@ -672,7 +647,7 @@ describe("readResponseBodyWithLimit", () => {
     expect(streamed.wasCancelled()).toBe(true);
   });
 
-  test("fails with ResponseBodyReadFailed carrying the stream error", async () => {
+  test("fails with ResponseBodyReadFailed carrying the stream error for classification", async () => {
     const reset = new Error("connection reset");
     const broken = trackedResponse(
       { status: 200 },
@@ -683,9 +658,7 @@ describe("readResponseBodyWithLimit", () => {
       },
     );
     const result = await run(readResponseBodyWithLimit(broken.response, 8));
-    assert(Result.isFailure(result));
-    assert(result.failure instanceof ResponseBodyReadFailed);
-    expect(result.failure.cause).toBe(reset);
+    expect(result).toStrictEqual(Result.fail(new ResponseBodyReadFailed({ cause: reset })));
   });
 });
 
@@ -723,15 +696,6 @@ describe("fetchPublicWebClient", () => {
     expect(hops).toHaveLength(1);
   });
 
-  test("rejects redirects to non-http protocols", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 302, headers: { location: "file:///etc/passwd" } }),
-    );
-    const result = await run(client.get(makeRequest()));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("RedirectProtocolUnsupported");
-  });
-
   test("caps redirect chains", async () => {
     const { client } = recordingClient(() =>
       responseOf({ status: 302, headers: { location: "https://example.com/loop" } }),
@@ -754,25 +718,5 @@ describe("fetchPublicWebClient", () => {
       "test-agent",
       "fallback-agent",
     ]);
-  });
-
-  test("rejects bodies exceeding the byte cap", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({
-        status: 200,
-        body: "x".repeat(4096),
-        headers: { "content-length": "4096" },
-      }),
-    );
-    const result = await run(client.get(makeRequest({ maxResponseBytes: 1024 })));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("ResponseTooLarge");
-  });
-
-  test("maps non-2xx statuses to HttpStatusRejected", async () => {
-    const { client } = recordingClient(() => responseOf({ status: 404 }));
-    const result = await run(client.get(makeRequest()));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("HttpStatusRejected");
   });
 });

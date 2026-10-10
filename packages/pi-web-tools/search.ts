@@ -168,21 +168,19 @@ export function searchWithFallback(
   return runChain(selected, input);
 }
 
-function runChain(
+const runChain = Effect.fnUntraced(function* (
   providers: readonly SearchProvider[],
   input: { readonly query: SearchQuery; readonly maxResults: number },
-): Effect.Effect<SearchChainSuccess, AllProvidersFailed> {
-  return Effect.gen(function* () {
-    const failures: string[] = [];
-    const attempted: SearchProviderName[] = [];
-    for (const provider of providers) {
-      attempted.push(provider.name);
-      const result = yield* Effect.result(provider.search(input));
-      if (Result.isSuccess(result)) {
-        return { provider: provider.name, attemptedProviders: attempted, results: result.success };
-      }
-      failures.push(`${provider.name}: ${result.failure.message}`);
+): Effect.fn.Return<SearchChainSuccess, AllProvidersFailed> {
+  const failures: string[] = [];
+  const attempted: SearchProviderName[] = [];
+  for (const provider of providers) {
+    attempted.push(provider.name);
+    const result = yield* Effect.result(provider.search(input));
+    if (Result.isSuccess(result)) {
+      return { provider: provider.name, attemptedProviders: attempted, results: result.success };
     }
-    return yield* new AllProvidersFailed({ attempts: failures });
-  });
-}
+    failures.push(`${provider.name}: ${result.failure.message}`);
+  }
+  return yield* new AllProvidersFailed({ attempts: failures });
+});

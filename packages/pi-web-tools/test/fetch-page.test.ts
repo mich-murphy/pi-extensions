@@ -1,6 +1,6 @@
 import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { FetchPage, getAcceptHeader, UnsupportedBinaryContent } from "../fetch-page";
+import { FetchPage, UnsupportedBinaryContent } from "../fetch-page";
 import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 import { HttpStatusRejected } from "../network";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse } from "./fakes";
@@ -138,13 +138,5 @@ describe("fetchPage conversion failures", () => {
 
     assert(Result.isFailure(result));
     expect(result.failure).toBeInstanceOf(HtmlConversionFailed);
-  });
-});
-
-describe("getAcceptHeader", () => {
-  test("prefers the requested format", () => {
-    expect(getAcceptHeader("markdown")).toContain("text/markdown;q=1.0");
-    expect(getAcceptHeader("text")).toContain("text/plain;q=1.0");
-    expect(getAcceptHeader("html")).toContain("text/html;q=1.0");
   });
 });

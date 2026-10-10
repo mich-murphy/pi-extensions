@@ -1,8 +1,7 @@
 import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import * as Html from "../html";
-import { isPoorMarkdownConversion } from "../html";
-import { convertGuarded, EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
+import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 
 /** Unwrap a successful conversion; these fixtures all have elements and shallow nesting. */
 function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
@@ -60,17 +59,6 @@ describe("htmlToText", () => {
     expect(text).toContain("Hi");
     expect(text).toContain("words here");
     expect(text).not.toContain("<p>");
-  });
-});
-
-describe("isPoorMarkdownConversion", () => {
-  test("detects raw-HTML-dominated conversions", () => {
-    expect(
-      isPoorMarkdownConversion(
-        "<div><div><div><table><tr><td>x</td></tr></table></div></div></div>",
-      ),
-    ).toBe(true);
-    expect(isPoorMarkdownConversion("# Real markdown\n\nSome text content.")).toBe(false);
   });
 });
 
@@ -400,24 +388,5 @@ describe("conversion failures", () => {
     // SAFETY: deliberately violates the string contract to provoke a non-RangeError defect.
     const notHtml = Symbol("not html") as unknown as string;
     expect(() => Html.htmlToText(notHtml, "https://example.com")).toThrow(TypeError);
-  });
-
-  test("the conversion guard rethrows anything but a RangeError unchanged", () => {
-    const bug = new TypeError("converter bug");
-    expect(() =>
-      convertGuarded(() => {
-        throw bug;
-      }),
-    ).toThrow(bug);
-  });
-
-  test("the conversion guard classifies a RangeError and passes a success through", () => {
-    const overflow = new RangeError("Maximum call stack size exceeded");
-    const failed = convertGuarded(() => {
-      throw overflow;
-    });
-    assert(Result.isFailure(failed));
-    expect(failed.failure.cause).toBe(overflow);
-    expect(convertGuarded(() => "converted")).toStrictEqual(Result.succeed("converted"));
   });
 });

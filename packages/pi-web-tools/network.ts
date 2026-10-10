@@ -439,11 +439,12 @@ export class FetchPublicWebClient implements PublicWebClient {
 
       const { hostname } = new URL(finalUrl);
       const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
-        Effect.mapError((error) =>
-          error._tag === "ResponseBodyTooLarge"
-            ? new ResponseTooLarge({ maxBytes: request.maxResponseBytes })
-            : new PublicWebRequestFailed({ hostname, cause: error.cause }),
-        ),
+        Effect.catchTags({
+          ResponseBodyTooLarge: () =>
+            Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes })),
+          ResponseBodyReadFailed: (error) =>
+            Effect.fail(new PublicWebRequestFailed({ hostname, cause: error.cause })),
+        }),
       );
       return {
         requestedUrl: request.url,

@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { z } from "zod";
-import { McpHttpClient, parseMcpMessage, parseMcpToolResult, parseSseDataLines } from "../mcp";
+import { McpHttpClient, parseMcpMessage, parseMcpToolResult } from "../mcp";
 import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
 import { publicUrl } from "./fakes";
 
@@ -11,35 +11,18 @@ function protocolInvalid(reason: string) {
   return Result.fail(new ProviderProtocolInvalid({ reason }));
 }
 
-describe("parseSseDataLines", () => {
-  test("collects multi-line data chunks separated by blank lines", () => {
-    const input = 'data: {"a":1}\n\ndata: {"b":\ndata: 2}\n\nevent: ignored\ndata: {"c":3}\n';
-    expect(parseSseDataLines(input)).toStrictEqual(['{"a":1}', '{"b":\n2}', '{"c":3}']);
-  });
-});
-
 describe("parseMcpMessage", () => {
   test("parses plain JSON responses", () => {
-    const result = parseMcpMessage('{"jsonrpc":"2.0","id":2,"result":{}}', "application/json");
-    expect(result._tag).toBe("Success");
+    expect(
+      parseMcpMessage('{"jsonrpc":"2.0","id":2,"result":{}}', "application/json"),
+    ).toStrictEqual(Result.succeed({ jsonrpc: "2.0", id: 2, result: {} }));
   });
 
-  test("takes the last JSON-RPC response from an SSE stream", () => {
-    const body = 'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n';
-    const result = parseMcpMessage(body, "text/event-stream");
-    expect(result._tag).toBe("Success");
-  });
-
-  test("skips malformed SSE chunks without failing the batch", () => {
-    const body = 'data: not-json\n\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n';
-    const result = parseMcpMessage(body, "text/event-stream");
-    expect(result._tag).toBe("Success");
-  });
-
-  test("fails when the stream has no JSON-RPC response", () => {
-    expect(parseMcpMessage("data: not-json\n\n", "text/event-stream")._tag).toBe("Failure");
-    expect(parseMcpMessage("", "application/json")._tag).toBe("Failure");
-    expect(parseMcpMessage("{broken", "application/json")._tag).toBe("Failure");
+  test("joins an SSE event's multi-line data and ignores non-data fields", () => {
+    const body = 'event: message\ndata: {"jsonrpc":"2.0",\ndata: "id":2,"result":{}}\n\n';
+    expect(parseMcpMessage(body, "text/event-stream")).toStrictEqual(
+      Result.succeed({ jsonrpc: "2.0", id: 2, result: {} }),
+    );
   });
 
   test("picks the last event carrying a result or error among notifications and noise", () => {
@@ -95,29 +78,11 @@ describe("parseMcpToolResult", () => {
     expect(result.success.structuredContent).toStrictEqual({ results: [] });
   });
 
-  test("maps JSON-RPC errors and isError results to ProviderToolError", () => {
-    const rpcError = parseMcpToolResult({
-      jsonrpc: "2.0",
-      id: 2,
-      error: { code: -1, message: "x" },
-    });
-    assert(Result.isFailure(rpcError));
-    expect(rpcError.failure._tag).toBe("ProviderToolError");
-
-    const toolError = parseMcpToolResult({
-      jsonrpc: "2.0",
-      id: 2,
-      result: { isError: true, content: [] },
-    });
-    expect(toolError._tag).toBe("Failure");
-  });
-
-  test("rejects malformed payloads", () => {
-    expect(parseMcpToolResult(null)._tag).toBe("Failure");
-    expect(parseMcpToolResult({ jsonrpc: "2.0", id: 2 })._tag).toBe("Failure");
-  });
-
   test("names why a payload is malformed", () => {
+    expect(parseMcpToolResult(null)).toStrictEqual(protocolInvalid("Expected an object payload"));
+    expect(parseMcpToolResult({ jsonrpc: "2.0", id: 2 })).toStrictEqual(
+      protocolInvalid("Missing result object"),
+    );
     expect(parseMcpToolResult([{ result: {} }])).toStrictEqual(
       protocolInvalid("Expected an object payload"),
     );

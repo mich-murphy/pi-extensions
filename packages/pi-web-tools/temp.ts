@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Data, Effect } from "effect";
+import { Data, Effect, Predicate } from "effect";
 
 /** Plain-English descriptions of the filesystem error codes a temp-file write realistically hits. */
 const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -46,22 +46,20 @@ export class OutputStoreError extends Data.TaggedError("OutputStoreError")<{
  * Node system errors (with `code` and `syscall`) become OutputStoreError; anything else is a
  * defect.
  */
-export function writeTempTextFile(
+export const writeTempTextFile = Effect.fnUntraced(function* (
   prefix: string,
   fileName: string,
   content: string,
-): Effect.Effect<string, OutputStoreError> {
+): Effect.fn.Return<string, OutputStoreError> {
   const template = join(tmpdir(), prefix);
-  return Effect.gen(function* () {
-    const dir = yield* attempt("mkdtemp", template, async () => mkdtemp(template));
-    yield* attempt("chmod", dir, async () => chmod(dir, 0o700));
-    const outputPath = join(dir, fileName);
-    yield* attempt("write", outputPath, async () =>
-      writeFile(outputPath, content, { encoding: "utf8", mode: 0o600 }),
-    );
-    return outputPath;
-  });
-}
+  const dir = yield* attempt("mkdtemp", template, async () => mkdtemp(template));
+  yield* attempt("chmod", dir, async () => chmod(dir, 0o700));
+  const outputPath = join(dir, fileName);
+  yield* attempt("write", outputPath, async () =>
+    writeFile(outputPath, content, { encoding: "utf8", mode: 0o600 }),
+  );
+  return outputPath;
+});
 
 function attempt<A>(
   operation: OutputStoreError["operation"],
@@ -83,9 +81,9 @@ function isNodeSystemError(
 ): value is Error & { readonly code: string; readonly syscall: string } {
   return (
     value instanceof Error &&
-    "code" in value &&
-    typeof value.code === "string" &&
-    "syscall" in value &&
-    typeof value.syscall === "string"
+    Predicate.hasProperty(value, "code") &&
+    Predicate.isString(value.code) &&
+    Predicate.hasProperty(value, "syscall") &&
+    Predicate.isString(value.syscall)
   );
 }

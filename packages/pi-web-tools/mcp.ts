@@ -255,8 +255,8 @@ function toolErrorDetail(text: string, secrets: readonly (string | undefined)[])
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;
 }
 
-/** Extract data payloads from an SSE event stream. */
-export function parseSseDataLines(input: string): string[] {
+// Data payloads of an SSE event stream; multi-line data joins with newlines.
+function parseSseDataLines(input: string): string[] {
   const lines = input.replaceAll("\r\n", "\n").split("\n");
   const chunks: string[] = [];
   let current: string[] = [];

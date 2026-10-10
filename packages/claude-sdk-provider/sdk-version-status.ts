@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { Data, Effect } from "effect";
+import { Data, Effect, Predicate } from "effect";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
@@ -115,10 +115,10 @@ async function defaultReadInstalledClaudeVersion(): Promise<string> {
 
 // execFile reports a missing binary as code ENOENT and its own timeout as a SIGTERM kill.
 function classifyInstalledVersionFailure(cause: unknown): InstalledVersionFailure {
-  if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
+  if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
     return "not-installed";
   }
-  if (cause instanceof Error && "killed" in cause && cause.killed === true) {
+  if (cause instanceof Error && Predicate.hasProperty(cause, "killed") && cause.killed === true) {
     return "timed-out";
   }
   return "failed";

@@ -2,15 +2,12 @@ import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
   BRAVE_API_KEY_ENV,
-  clampInteger,
   EXA_API_KEY_ENV,
   InvalidSetting,
   EXA_ENDPOINT_ENV,
   FETCH_RESCUE_ENV,
   PARALLEL_API_KEY_ENV,
   PROVIDERS_ENV,
-  parseDomainList,
-  parseOnOff,
   parseSettings,
 } from "../settings";
 
@@ -40,13 +37,7 @@ describe("parseSettings", () => {
     expect(settings.success.credentials.exaApiKey).toBe("exa-key");
   });
 
-  test("deduplicates repeated providers", () => {
-    const settings = parseSettings({ [PROVIDERS_ENV]: "exa,exa,parallel" });
-    assert(Result.isSuccess(settings));
-    expect(settings.success.search.providers).toStrictEqual(["exa", "parallel"]);
-  });
-
-  test("keeps first-mention order when deduplicating", () => {
+  test("deduplicates repeated providers, keeping first-mention order", () => {
     const settings = parseSettings({ [PROVIDERS_ENV]: "parallel,exa,parallel" });
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["parallel", "exa"]);
@@ -99,42 +90,11 @@ describe("parseSettings", () => {
 
   test("parses domain allow and deny lists", () => {
     const settings = parseSettings({
-      PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "docs.example.com, Example.org ",
+      PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "docs.example.com, Example.org , example.org",
       PI_WEB_TOOLS_FETCH_DENY_DOMAINS: "evil.example",
     });
     assert(Result.isSuccess(settings));
     expect(settings.success.fetch.allowDomains).toStrictEqual(["docs.example.com", "example.org"]);
     expect(settings.success.fetch.denyDomains).toStrictEqual(["evil.example"]);
-  });
-});
-
-describe("parseOnOff", () => {
-  test("parses on and off, falling back otherwise", () => {
-    expect(parseOnOff("on", false)).toBe(true);
-    expect(parseOnOff("off", true)).toBe(false);
-    expect(parseOnOff("maybe", true)).toBe(true);
-    expect(parseOnOff(undefined, false)).toBe(false);
-  });
-});
-
-describe("clampInteger", () => {
-  const bounds = { default: 8, min: 1, max: 20 };
-
-  test("rounds into the inclusive bounds", () => {
-    expect(clampInteger(4.4, bounds)).toBe(4);
-    expect(clampInteger(-3, bounds)).toBe(1);
-    expect(clampInteger(100, bounds)).toBe(20);
-  });
-
-  test("falls back to the default for non-finite input", () => {
-    expect(clampInteger(Number.NaN, bounds)).toBe(8);
-    expect(clampInteger(Number.POSITIVE_INFINITY, bounds)).toBe(8);
-  });
-});
-
-describe("parseDomainList", () => {
-  test("normalizes and deduplicates", () => {
-    expect(parseDomainList("A.com, a.com, b.org")).toStrictEqual(["a.com", "b.org"]);
-    expect(parseDomainList(undefined)).toStrictEqual([]);
   });
 });

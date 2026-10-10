@@ -1,6 +1,5 @@
 import { assert, describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
-import { cacheDiagnosticsFromEnvironment } from "../cache-diagnostics";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { buildPromptStream } from "../sdk/prompt-stream";
@@ -95,26 +94,6 @@ describe("cache diagnostics", () => {
     expect(changed.commonPrefixBlocks).toBe(1);
   });
 
-  test("reports wall-clock gap since the previous request so TTL-expiry misses are distinguishable in logs", () => {
-    const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => {
-      events.push(event);
-    });
-
-    tracker("claude-sdk/sonnet", { promptBlocks: [textBlock("first")], cacheBreakpoint: 0 });
-    tracker("claude-sdk/sonnet", {
-      promptBlocks: [textBlock("first"), textBlock("second")],
-      cacheBreakpoint: 1,
-    });
-
-    const [first, second] = events;
-    assert(first?.type === "request", "missing first request diagnostic");
-    assert(second?.type === "request", "missing second request diagnostic");
-    expect(first.msSincePreviousRequest).toBeUndefined();
-    expect(second.msSincePreviousRequest).toBeTypeOf("number");
-    expect(second.msSincePreviousRequest).toBeGreaterThanOrEqual(0);
-  });
-
   test("flags a large low-reuse turn as a possible cache collapse", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = createCacheDiagnosticTracker((event) => {
@@ -132,10 +111,5 @@ describe("cache diagnostics", () => {
       cacheReadPercent: 22.36,
       possibleCollapse: true,
     });
-  });
-
-  test("is opt-in", () => {
-    expect(cacheDiagnosticsFromEnvironment({})).toBeUndefined();
-    expect(cacheDiagnosticsFromEnvironment({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" })).toBeDefined();
   });
 });

@@ -12,10 +12,12 @@ import {
 } from "../provider-types";
 import type { ProviderError, SearchProvider } from "../provider-types";
 import {
+  AllProvidersFailed,
   buildFetchProviders,
   buildSearchProviders,
   defaultMcpFor,
   searchWithFallback,
+  UnknownProvider,
 } from "../search";
 import type { PublicHttpUrl } from "../types";
 import { fakeProviderHttp, publicUrl, searchQuery, settingsFrom } from "./fakes";
@@ -60,19 +62,6 @@ function recordingMcpFor() {
 }
 
 describe("searchWithFallback", () => {
-  test("returns the first successful provider in priority order", async () => {
-    const providers = [
-      failingProvider(UNAVAILABLE, "exa"),
-      answeringProvider("parallel"),
-      answeringProvider("brave"),
-    ];
-    const result = await run(providers, { query: QUERY, maxResults: 8 });
-
-    assert(Result.isSuccess(result));
-    expect(result.success.provider).toBe("parallel");
-    expect(result.success.attemptedProviders).toStrictEqual(["exa", "parallel"]);
-  });
-
   test("aggregates failures with safe reasons when all providers fail", async () => {
     const providers = [
       failingProvider(UNAVAILABLE, "exa"),
@@ -81,11 +70,14 @@ describe("searchWithFallback", () => {
     const result = await run(providers, { query: QUERY, maxResults: 8 });
 
     assert(Result.isFailure(result));
-    assert(result.failure._tag === "AllProvidersFailed");
-    expect(result.failure.attempts).toStrictEqual([
-      "exa: could not resolve host mcp.example",
-      "parallel: could not resolve host mcp.example",
-    ]);
+    expect(result.failure).toStrictEqual(
+      new AllProvidersFailed({
+        attempts: [
+          "exa: could not resolve host mcp.example",
+          "parallel: could not resolve host mcp.example",
+        ],
+      }),
+    );
     expect(result.failure.message).toBe(
       "All search providers failed (exa: could not resolve host mcp.example; parallel: could not resolve host mcp.example)",
     );
@@ -136,9 +128,11 @@ describe("searchWithFallback", () => {
       tracked(failingProvider(new ProviderStatusRejected({ status: 500 }), "brave")),
       tracked(failingProvider(new ProviderTimedOut({ timeoutSeconds: 3 }), "exa")),
       tracked(answeringProvider("parallel")),
+      tracked(answeringProvider("brave")),
     ];
     const result = await run(providers, { query: QUERY, maxResults: 8 });
     assert(Result.isSuccess(result));
+    expect(result.success.provider).toBe("parallel");
     expect(order).toStrictEqual(["brave", "exa", "parallel"]);
     expect(result.success.attemptedProviders).toStrictEqual(["brave", "exa", "parallel"]);
   });
@@ -158,8 +152,13 @@ describe("searchWithFallback", () => {
       { query: QUERY, maxResults: 8 },
       { providerOverride: "brave" },
     );
+    expect(unknown).toStrictEqual(
+      Result.fail(new UnknownProvider({ provider: "brave", available: ["exa", "parallel"] })),
+    );
     assert(Result.isFailure(unknown));
-    expect(unknown.failure._tag).toBe("UnknownProvider");
+    expect(unknown.failure.message).toBe(
+      'Provider "brave" is not enabled. Available: exa, parallel',
+    );
   });
 });
 

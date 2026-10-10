@@ -40,7 +40,7 @@ export type WebFetchParams = {
 };
 
 /** The webfetch url parameter is not a usable public http(s) URL. */
-export class InvalidFetchUrlInput extends Data.TaggedError("InvalidToolInput")<{
+export class InvalidFetchUrlInput extends Data.TaggedError("InvalidFetchUrlInput")<{
   /** Why the URL was rejected. */
   readonly reason: ParsePublicHttpUrlError;
 }> {
@@ -289,20 +289,18 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
 }
 
 // Rescue providers are tried in order; a provider that fails just yields nothing.
-function tryProviderRescue(
+const tryProviderRescue = Effect.fnUntraced(function* (
   url: PublicHttpUrl,
   providers: readonly FetchProvider[],
-): Effect.Effect<ProviderFetchedPage | undefined> {
-  return Effect.gen(function* () {
-    for (const provider of providers) {
-      const markdown = yield* provider.fetchMarkdown(url);
-      if (markdown !== undefined) {
-        return { provider: provider.name, url, markdown };
-      }
+): Effect.fn.Return<ProviderFetchedPage | undefined> {
+  for (const provider of providers) {
+    const markdown = yield* provider.fetchMarkdown(url);
+    if (markdown !== undefined) {
+      return { provider: provider.name, url, markdown };
     }
-    return undefined;
-  });
-}
+  }
+  return undefined;
+});
 
 // Only the store failure needs context (the tool name); every other failure's message stands alone.
 function renderWebFetchFailure(error: WebFetchRunError): string {

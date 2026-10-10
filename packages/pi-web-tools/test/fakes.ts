@@ -117,11 +117,14 @@ export function textOf(result: {
     .join("\n");
 }
 
-/** Render a pi-tui Text component to a string for assertions. */
+/** Render a pi-tui Text component to its visible text, without the padding to full width. */
 export function renderText(component: {
   readonly render: (width: number) => readonly string[];
 }): string {
-  return component.render(200).join("\n");
+  return component
+    .render(200)
+    .map((line) => line.trimEnd())
+    .join("\n");
 }
 
 /** Build a text public-web response. */

@@ -132,8 +132,8 @@ function projectResponse(
   });
 }
 
-/** Return the Accept header value for a webfetch format. */
-export function getAcceptHeader(format: WebFetchFormat): string {
+// The Accept header for a webfetch format: the requested representation first, HTML as fallback.
+function getAcceptHeader(format: WebFetchFormat): string {
   switch (format) {
     case "markdown": {
       return "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, application/xhtml+xml;q=0.6, */*;q=0.1";

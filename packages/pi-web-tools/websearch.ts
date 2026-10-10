@@ -31,7 +31,7 @@ export type WebSearchParams = {
 };
 
 /** The websearch query was empty after trimming. */
-export class EmptySearchQueryInput extends Data.TaggedError("InvalidToolInput") {
+export class EmptySearchQueryInput extends Data.TaggedError("EmptySearchQueryInput") {
   /** Safe user-facing description. */
   override get message(): string {
     return "query cannot be empty";

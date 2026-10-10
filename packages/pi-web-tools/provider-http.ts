@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { readResponseBodyWithLimit, ResponseBodyTooLarge } from "./network";
+import { readResponseBodyWithLimit } from "./network";
 import {
   parseJsonBody,
   ProviderRequestFailed,
@@ -63,28 +63,26 @@ export type ProviderRawResponse = {
  * @param maxResponseBytes - The body byte cap.
  * @returns The response and its UTF-8 body text.
  */
-export function sendProviderRequest(
+export const sendProviderRequest = Effect.fnUntraced(function* (
   fetchImpl: typeof fetch,
   url: string | URL,
   init: Omit<RequestInit, "signal">,
   maxResponseBytes: number,
-): Effect.Effect<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
+): Effect.fn.Return<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
   const { hostname } = new URL(url);
-  return Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: async (signal) => fetchImpl(url, { ...init, signal }),
-      catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
-    });
-    const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
-      Effect.mapError((error) =>
-        error instanceof ResponseBodyTooLarge
-          ? new ProviderResponseTooLarge()
-          : new ProviderRequestFailed({ hostname, cause: error.cause }),
-      ),
-    );
-    return { response, bodyText: body.toString("utf8") };
+  const response = yield* Effect.tryPromise({
+    try: async (signal) => fetchImpl(url, { ...init, signal }),
+    catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
   });
-}
+  const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
+    Effect.catchTags({
+      ResponseBodyTooLarge: () => Effect.fail(new ProviderResponseTooLarge()),
+      ResponseBodyReadFailed: (error) =>
+        Effect.fail(new ProviderRequestFailed({ hostname, cause: error.cause })),
+    }),
+  );
+  return { response, bodyText: body.toString("utf8") };
+});
 
 /**
  * Fail with ProviderTimedOut when an effect outlives its deadline; the effect is interrupted.

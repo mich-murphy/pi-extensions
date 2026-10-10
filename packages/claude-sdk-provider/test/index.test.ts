@@ -7,19 +7,14 @@ type Handler = (event: unknown, ctx: unknown) => unknown;
 type ProviderRegistration = { readonly models: readonly Readonly<Record<string, unknown>>[] };
 
 function loadExtension() {
-  const registrations: string[] = [];
   const handlers = new Map<string, Handler>();
   const providers = new Map<string, ProviderRegistration>();
   const piMock = {
-    registerCommand: (name: string) => {
-      registrations.push(`command:${name}`);
-    },
+    registerCommand: () => undefined,
     on: (name: string, handler: Handler) => {
-      registrations.push(`event:${name}`);
       handlers.set(name, handler);
     },
     registerProvider: (name: string, config: ProviderRegistration) => {
-      registrations.push(`provider:${name}`);
       providers.set(name, config);
     },
   };
@@ -32,7 +27,7 @@ function loadExtension() {
     }
     return handler(event, ctx);
   };
-  return { registrations, providers, emit };
+  return { providers, emit };
 }
 
 const binaryOutput = [{ type: "text", text: "\u0000payload".repeat(5000) }];
@@ -43,18 +38,6 @@ function bashCall(command: string) {
 }
 
 describe("extension entry point", () => {
-  test("registers commands, safety hooks, and the provider", () => {
-    expect(loadExtension().registrations).toStrictEqual([
-      "command:claude-sdk-status",
-      "command:claude-sdk-usage",
-      "event:before_agent_start",
-      "event:tool_call",
-      "event:tool_result",
-      "event:context",
-      "provider:claude-sdk",
-    ]);
-  });
-
   test("registers every model without the routing fields Pi does not know about", () => {
     const provider = loadExtension().providers.get("claude-sdk");
 

@@ -1,5 +1,5 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
-import { Data } from "effect";
+import { Data, Predicate } from "effect";
 import { absurd } from "effect/Function";
 import { z } from "zod";
 
@@ -84,7 +84,7 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
     return { _tag: "Cancelled" };
   }
   // A spawn of a missing binary rejects with Node's ENOENT before the SDK can tag it.
-  if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
+  if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
     return { _tag: "ExecutableNotFound" };
   }
   const tagged = sdkRejectionSchema.safeParse(cause).data;

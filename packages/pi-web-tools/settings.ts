@@ -115,7 +115,7 @@ function isSearchProviderName(value: string): value is SearchProviderName {
 }
 
 /** Parse an on/off environment toggle, falling back when unset or unrecognized. */
-export function parseOnOff(value: string | undefined, fallback: boolean): boolean {
+function parseOnOff(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
   }
@@ -200,7 +200,7 @@ function parseEndpointOverride(
 }
 
 /** Parse a comma-separated domain list into normalized lowercase hostnames. */
-export function parseDomainList(value: string | undefined): readonly string[] {
+function parseDomainList(value: string | undefined): readonly string[] {
   if (value === undefined) {
     return [];
   }

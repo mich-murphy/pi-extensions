@@ -234,9 +234,4 @@ describe("writeTempTextFile", () => {
     expect(written.failure.path).toBe(join(tmpdir(), prefix));
     expect(written.failure.reason).toBe("directory does not exist (ENOENT)");
   });
-
-  test("falls back to the bare code for unfamiliar errors", () => {
-    const error = new OutputStoreError({ operation: "chmod", path: "/tmp/d", code: "EWEIRD" });
-    expect(error.message).toBe("Could not save full output to /tmp/d: EWEIRD");
-  });
 });

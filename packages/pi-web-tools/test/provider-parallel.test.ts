@@ -87,18 +87,10 @@ describe("parseParallelResults", () => {
 });
 
 describe("parseParallelMcpPayload", () => {
-  test("prefers structuredContent and falls back to JSON text", () => {
-    const fromStructured = parseParallelMcpPayload({
-      text: [],
-      structuredContent: RESULTS_PAYLOAD,
-    });
-    expect(fromStructured._tag).toBe("Success");
-
-    const fromText = parseParallelMcpPayload({ text: [JSON.stringify(RESULTS_PAYLOAD)] });
-    expect(fromText._tag).toBe("Success");
-
-    expect(parseParallelMcpPayload({ text: [] })._tag).toBe("Failure");
-    expect(parseParallelMcpPayload({ text: ["not json"] })._tag).toBe("Failure");
+  test("falls back to JSON text when there is no structuredContent", () => {
+    expect(parseParallelMcpPayload({ text: [JSON.stringify(RESULTS_PAYLOAD)] })).toStrictEqual(
+      parseParallelResults(RESULTS_PAYLOAD),
+    );
   });
 
   test("keeps a distinct reason for each missing or malformed payload", () => {
