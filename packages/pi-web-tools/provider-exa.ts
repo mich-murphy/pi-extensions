@@ -1,11 +1,11 @@
-import { Effect, Result } from "effect";
-import { z } from "zod";
+import { Duration, Effect, Option, Redacted, Result, Schema } from "effect";
 import type { McpClient } from "./mcp";
 import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
 import {
   lenientArray,
   optionalTextSchema,
+  orFallback,
   ProviderProtocolInvalid,
   publicHttpUrlSchema,
 } from "./provider-types";
@@ -19,7 +19,7 @@ import {
 import { parsePublicHttpUrl } from "./types";
 import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 
-const EXA_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
+const EXA_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 const EXA_FETCH_MAX_CHARACTERS = 60_000;
 
 /** Parse Exa MCP's untrusted text search-result format into normalized results. */
@@ -249,31 +249,39 @@ export class ExaMcpSearchProvider implements SearchProvider {
   }
 }
 
-const exaApiResultSchema = z
-  .object({
-    url: publicHttpUrlSchema,
-    title: optionalTextSchema,
-    highlights: lenientArray(z.string()).catch([]),
-    // Exa's metadata passes through as sent, untrimmed.
-    publishedDate: z.string().optional().catch(undefined),
-    author: z.string().optional().catch(undefined),
-    score: z.number().optional().catch(undefined),
-  })
-  .transform((item): NormalizedSearchResult => ({
+const ExaApiResult = Schema.Struct({
+  url: publicHttpUrlSchema,
+  title: optionalTextSchema,
+  highlights: orFallback(lenientArray(Schema.String), []),
+  // Exa's metadata passes through as sent, untrimmed.
+  publishedDate: orFallback(Schema.UndefinedOr(Schema.String), undefined),
+  author: orFallback(Schema.UndefinedOr(Schema.String), undefined),
+  score: orFallback(Schema.UndefinedOr(Schema.Finite), undefined),
+});
+
+function normalizeExaApiResult(item: typeof ExaApiResult.Type): NormalizedSearchResult {
+  return {
     title: item.title ?? item.url,
     url: item.url,
     snippet: summarizeSnippet(item.highlights.join("\n"), item.title ?? ""),
     publishedAt: item.publishedDate,
     source: item.author,
     score: item.score,
-  }));
+  };
+}
 
-const exaApiSearchPayloadSchema = z.object({ results: lenientArray(exaApiResultSchema) });
+const decodeExaApiSearchPayload = Schema.decodeUnknownResult(
+  Schema.Struct({ results: lenientArray(ExaApiResult) }),
+);
 
 // Only the first result is read: it answers the single URL each request asks for.
-const exaApiContentsPayloadSchema = z.object({
-  results: z.tuple([z.object({ text: optionalTextSchema })], z.unknown()),
-});
+const decodeExaApiContentsPayload = Schema.decodeUnknownOption(
+  Schema.Struct({
+    results: Schema.TupleWithRest(Schema.Tuple([Schema.Struct({ text: optionalTextSchema })]), [
+      Schema.Unknown,
+    ]),
+  }),
+);
 
 /** Search Exa through its official REST API when an API key is configured. */
 export class ExaApiSearchProvider implements SearchProvider {
@@ -281,8 +289,8 @@ export class ExaApiSearchProvider implements SearchProvider {
   readonly transport = "api" as const;
 
   constructor(
-    private readonly apiKey: string,
-    private readonly http: ProviderHttpClient,
+    private readonly apiKey: Redacted.Redacted,
+    private readonly http: ProviderHttpClient["Service"],
   ) {}
 
   /** Run one Exa REST /search call and normalize its structured results. */
@@ -290,7 +298,7 @@ export class ExaApiSearchProvider implements SearchProvider {
     return readProviderJson(
       this.http.postJson({
         url: EXA_API_SEARCH_URL,
-        headers: { "x-api-key": this.apiKey },
+        headers: { "x-api-key": Redacted.value(this.apiKey) },
         body: {
           query: input.query,
           type: "auto",
@@ -299,13 +307,17 @@ export class ExaApiSearchProvider implements SearchProvider {
           contents: { highlights: true },
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-        timeoutMs: EXA_SEARCH_TIMEOUT_MS,
+        timeout: EXA_SEARCH_TIMEOUT,
       }),
     ).pipe(
       Effect.flatMap((payload) => {
-        const parsed = exaApiSearchPayloadSchema.safeParse(payload);
-        return parsed.success
-          ? Effect.succeed(parsed.data.results.slice(0, input.maxResults))
+        const parsed = decodeExaApiSearchPayload(payload);
+        return Result.isSuccess(parsed)
+          ? Effect.succeed(
+              parsed.success.results
+                .slice(0, input.maxResults)
+                .map((item) => normalizeExaApiResult(item)),
+            )
           : Effect.fail(new ProviderProtocolInvalid({ reason: "Missing results array" }));
       }),
     );
@@ -334,8 +346,8 @@ export class ExaApiFetchProvider implements FetchProvider {
   readonly name = "exa" as const;
 
   constructor(
-    private readonly apiKey: string,
-    private readonly http: ProviderHttpClient,
+    private readonly apiKey: Redacted.Redacted,
+    private readonly http: ProviderHttpClient["Service"],
   ) {}
 
   /** Read one URL as text through Exa's REST contents API; undefined on any failure. */
@@ -343,17 +355,21 @@ export class ExaApiFetchProvider implements FetchProvider {
     return readProviderJson(
       this.http.postJson({
         url: EXA_API_CONTENTS_URL,
-        headers: { "x-api-key": this.apiKey },
+        headers: { "x-api-key": Redacted.value(this.apiKey) },
         body: {
           urls: [url],
           text: { maxCharacters: EXA_FETCH_MAX_CHARACTERS },
           livecrawl: "preferred",
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-        timeoutMs: EXA_SEARCH_TIMEOUT_MS,
+        timeout: EXA_SEARCH_TIMEOUT,
       }),
     ).pipe(
-      Effect.map((payload) => exaApiContentsPayloadSchema.safeParse(payload).data?.results[0].text),
+      Effect.map((payload) =>
+        Option.getOrUndefined(
+          Option.map(decodeExaApiContentsPayload(payload), (parsed) => parsed.results[0].text),
+        ),
+      ),
       Effect.orElseSucceed(() => undefined),
     );
   }

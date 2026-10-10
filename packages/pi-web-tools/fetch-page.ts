@@ -1,9 +1,9 @@
-import { Data, Effect, Result } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
 import type { HtmlConversionError } from "./html-conversion";
-import { decodeTextBuffer, parseContentType } from "./network";
-import type { PublicWebClient, PublicWebError, PublicWebResponse } from "./network";
+import { decodeTextBuffer, parseContentType, PublicWebClient } from "./network";
+import type { PublicWebError, PublicWebResponse } from "./network";
 import type { PublicHttpUrl, WebFetchFormat } from "./types";
 
 /** Browser-like default user agent for direct fetches. */
@@ -13,7 +13,7 @@ const WEBFETCH_DEFAULT_USER_AGENT =
 const WEBFETCH_FALLBACK_USER_AGENT = "pi-web-tools";
 
 /** Input to the fetch-page service. */
-export type FetchPageInput = {
+type FetchPageInput = {
   readonly url: PublicHttpUrl;
   readonly format: WebFetchFormat;
 };
@@ -45,10 +45,13 @@ export type FetchPageResult = {
 };
 
 /** The response is binary content webfetch cannot represent as text or an image. */
-export class UnsupportedBinaryContent extends Data.TaggedError("UnsupportedBinaryContent")<{
-  /** The declared mime type; empty when the response declared none. */
-  readonly mime: string;
-}> {
+export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBinaryContent>()(
+  "UnsupportedBinaryContent",
+  {
+    /** The declared mime type; empty when the response declared none. */
+    mime: Schema.String,
+  },
+) {
   /** Safe user-facing description with the mime type when known. */
   override get message(): string {
     return `Unsupported binary content${this.mime === "" ? "" : ` (${this.mime})`}. Try a more text-oriented URL.`;
@@ -58,33 +61,51 @@ export class UnsupportedBinaryContent extends Data.TaggedError("UnsupportedBinar
 /** Expected failures of the fetch-page service; every member has a safe `message`. */
 export type FetchPageError = PublicWebError | UnsupportedBinaryContent | HtmlConversionError;
 
-/** Application service: fetch one public page and project it to the requested representation. */
-export class FetchPage {
-  constructor(private readonly publicWeb: PublicWebClient) {}
+/** Options bounding one page fetch. */
+type FetchPageOptions = {
+  readonly maxRedirects: number;
+  readonly maxResponseBytes: number;
+  readonly blockPrivateHosts: boolean;
+};
 
-  /** Fetch a public web resource and convert it to the requested content representation. */
-  fetch(
-    input: FetchPageInput,
-    options: {
-      readonly maxRedirects: number;
-      readonly maxResponseBytes: number;
-      readonly blockPrivateHosts: boolean;
-    },
-  ): Effect.Effect<FetchPageResult, FetchPageError> {
-    return this.publicWeb
-      .get({
-        url: input.url,
-        accept: getAcceptHeader(input.format),
-        userAgent: WEBFETCH_DEFAULT_USER_AGENT,
-        fallbackUserAgent: WEBFETCH_FALLBACK_USER_AGENT,
-        maxRedirects: options.maxRedirects,
-        maxResponseBytes: options.maxResponseBytes,
-        blockPrivateHosts: options.blockPrivateHosts,
-      })
-      .pipe(
-        Effect.flatMap((response) => Effect.fromResult(projectResponse(response, input.format))),
-      );
+/** Application service: fetch one public page and project it to the requested representation. */
+export class FetchPage extends Context.Service<
+  FetchPage,
+  {
+    /** Fetch a public web resource and convert it to the requested content representation. */
+    readonly fetch: (
+      input: { readonly url: PublicHttpUrl; readonly format: WebFetchFormat },
+      options: {
+        readonly maxRedirects: number;
+        readonly maxResponseBytes: number;
+        readonly blockPrivateHosts: boolean;
+      },
+    ) => Effect.Effect<FetchPageResult, FetchPageError>;
   }
+>()("pi-web-tools/fetch-page/FetchPage") {
+  /** The live service over PublicWebClient. */
+  static readonly layer = Layer.effect(
+    FetchPage,
+    Effect.gen(function* () {
+      const publicWeb = yield* PublicWebClient;
+      const fetch = Effect.fn("FetchPage.fetch")(function* (
+        input: FetchPageInput,
+        options: FetchPageOptions,
+      ): Effect.fn.Return<FetchPageResult, FetchPageError> {
+        const response = yield* publicWeb.get({
+          url: input.url,
+          accept: getAcceptHeader(input.format),
+          userAgent: WEBFETCH_DEFAULT_USER_AGENT,
+          fallbackUserAgent: WEBFETCH_FALLBACK_USER_AGENT,
+          maxRedirects: options.maxRedirects,
+          maxResponseBytes: options.maxResponseBytes,
+          blockPrivateHosts: options.blockPrivateHosts,
+        });
+        return yield* Effect.fromResult(projectResponse(response, input.format));
+      });
+      return FetchPage.of({ fetch });
+    }),
+  );
 }
 
 // The pure half of a fetch: classify the content type, then decode and convert the body.

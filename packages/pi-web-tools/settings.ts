@@ -1,5 +1,5 @@
 import process from "node:process";
-import { Data, Result } from "effect";
+import { Context, Duration, Layer, Redacted, Result, Schema } from "effect";
 import { isPublicHttpUrl, parsePublicHttpUrl } from "./types";
 import type { PublicHttpUrl, SearchProviderName, WebFetchFormat } from "./types";
 
@@ -53,11 +53,14 @@ export const FETCH_RESCUE_ENV = "PI_WEB_TOOLS_FETCH_RESCUE";
 const FETCH_ALLOW_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS";
 const FETCH_DENY_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_DENY_DOMAINS";
 
-/** API credentials resolved from the process environment. */
+/**
+ * API credentials resolved from the process environment, wrapped in Redacted at ingress so they
+ * never print. Only the adapter that sends a key, and output scrubbing, unwrap them.
+ */
 export type WebToolsCredentials = {
-  readonly exaApiKey?: string | undefined;
-  readonly parallelApiKey?: string | undefined;
-  readonly braveApiKey?: string | undefined;
+  readonly exaApiKey?: Redacted.Redacted | undefined;
+  readonly parallelApiKey?: Redacted.Redacted | undefined;
+  readonly braveApiKey?: Redacted.Redacted | undefined;
 };
 
 /** MCP endpoint overrides for self-hosted or proxied providers. Keys are never sent to overridden endpoints. */
@@ -70,7 +73,8 @@ export type WebToolsEndpoints = {
 export type WebToolsSettings = {
   readonly fetch: {
     readonly defaultFormat: WebFetchFormat;
-    readonly timeoutSeconds: number;
+    /** The default deadline for one whole webfetch run. */
+    readonly timeout: Duration.Duration;
     readonly maxResponseBytes: number;
     readonly maxRedirects: number;
     readonly rescue: boolean;
@@ -79,7 +83,8 @@ export type WebToolsSettings = {
   };
   readonly search: {
     readonly providers: readonly SearchProviderName[];
-    readonly timeoutSeconds: number;
+    /** The deadline for one provider search call. */
+    readonly timeout: Duration.Duration;
     readonly defaultMaxResults: number;
   };
   readonly credentials: WebToolsCredentials;
@@ -87,10 +92,10 @@ export type WebToolsSettings = {
 };
 
 /** A settings parse failure. The message is safe to show the user: it never contains env values. */
-export class InvalidSetting extends Data.TaggedError("InvalidSetting")<{
+export class InvalidSetting extends Schema.TaggedError<InvalidSetting>()("InvalidSetting", {
   /** Safe description naming the environment variable, never its value. */
-  readonly message: string;
-}> {}
+  message: Schema.String,
+}) {}
 
 /** Expected failures parsing web-tools settings. */
 export type SettingsError = InvalidSetting;
@@ -132,7 +137,7 @@ function parseOnOff(value: string | undefined, fallback: boolean): boolean {
 function parseApiKey(
   value: string | undefined,
   envName: string,
-): Result.Result<string | undefined, SettingsError> {
+): Result.Result<Redacted.Redacted | undefined, SettingsError> {
   if (value === undefined) {
     return Result.succeed(undefined);
   }
@@ -146,7 +151,7 @@ function parseApiKey(
   if (/[\0-\u001F\u007F]/u.test(trimmed)) {
     return invalid(`${envName} contains control characters and was rejected`);
   }
-  return Result.succeed(trimmed);
+  return Result.succeed(Redacted.make(trimmed));
 }
 
 function parseProviderList(
@@ -254,7 +259,7 @@ export function parseSettings(
   return Result.succeed({
     fetch: {
       defaultFormat: "markdown",
-      timeoutSeconds: FETCH_TIMEOUT_SECONDS.default,
+      timeout: Duration.seconds(FETCH_TIMEOUT_SECONDS.default),
       maxResponseBytes: FETCH_MAX_RESPONSE_BYTES,
       maxRedirects: FETCH_MAX_REDIRECTS,
       rescue: parseOnOff(environment[FETCH_RESCUE_ENV], true),
@@ -263,7 +268,7 @@ export function parseSettings(
     },
     search: {
       providers: providers.success,
-      timeoutSeconds: SEARCH_TIMEOUT_SECONDS.default,
+      timeout: Duration.seconds(SEARCH_TIMEOUT_SECONDS.default),
       defaultMaxResults: SEARCH_MAX_RESULTS.default,
     },
     credentials: {
@@ -273,4 +278,29 @@ export function parseSettings(
     },
     endpoints: { exa: exaEndpoint.success, parallel: parallelEndpoint.success },
   });
+}
+
+/** The parsed web-tools configuration, provided at the composition root. */
+export class WebToolsConfig extends Context.Service<WebToolsConfig, WebToolsSettings>()(
+  "pi-web-tools/settings/WebToolsConfig",
+) {
+  /**
+   * Provide parsed settings as the WebToolsConfig service.
+   *
+   * @param settings - Settings from parseSettings.
+   * @returns A layer providing the configuration.
+   */
+  static layer(settings: WebToolsSettings): Layer.Layer<WebToolsConfig> {
+    return Layer.succeed(WebToolsConfig, WebToolsConfig.of(settings));
+  }
+}
+
+/** The raw configured key values, for scrubbing them from tool output with redactSecrets. */
+export function secretsForRedaction(
+  credentials: WebToolsCredentials,
+): readonly (string | undefined)[] {
+  // Deliberate unwrap: output scrubbing has to match the raw key text.
+  return [credentials.exaApiKey, credentials.parallelApiKey, credentials.braveApiKey].map((key) =>
+    key === undefined ? undefined : Redacted.value(key),
+  );
 }

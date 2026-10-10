@@ -32,6 +32,7 @@
     "@earendil-works/pi-ai": "0.99.2",
     "@earendil-works/pi-coding-agent": "0.99.2",
     "@earendil-works/pi-tui": "0.99.2",
+    "@effect/vitest": "4.0.2",
     "@types/node": "24.19.1",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.3",

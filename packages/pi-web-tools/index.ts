@@ -1,12 +1,14 @@
-import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Result } from "effect";
+import { Layer, Result } from "effect";
 import { FetchPage } from "./fetch-page";
-import { FetchPublicWebClient } from "./network";
-import { FetchProviderHttpClient } from "./provider-http";
-import { buildFetchProviders, buildSearchProviders, defaultMcpFor } from "./search";
-import { parseSettings } from "./settings";
-import { tempFileToolOutputStore } from "./tool-output";
+import { McpClients } from "./mcp";
+import { DnsLookup, HttpFetch, PublicWebClient } from "./network";
+import { ProviderHttpClient } from "./provider-http";
+import { FetchRescueProviders, SearchProviders } from "./search";
+import { parseSettings, WebToolsConfig } from "./settings";
+import type { WebToolsSettings } from "./settings";
+import { ToolOutputStore } from "./tool-output";
+import { createToolRuntime } from "./tool-runtime";
 import { WEB_TOOLS_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
 import { createWebSearchTool } from "./websearch";
@@ -26,36 +28,31 @@ export default function webToolsExtension(pi: ExtensionAPI): void {
   }
 
   const settings = parsed.success;
-  const composition = {
-    settings,
-    http: new FetchProviderHttpClient(),
-    sessionId: randomUUID(),
-    mcpFor: defaultMcpFor,
-  };
-  const secrets = [
-    settings.credentials.exaApiKey,
-    settings.credentials.parallelApiKey,
-    settings.credentials.braveApiKey,
-  ];
+  // One runtime for both tools; it is built on the first tool call and disposed at shutdown.
+  const runtime = createToolRuntime(appLayer(settings));
+  pi.on("session_shutdown", async () => {
+    await runtime.dispose();
+  });
+  // The tools get only the non-secret settings; API keys reach the adapters via WebToolsConfig.
+  pi.registerTool(createWebSearchTool({ settings: { search: settings.search }, runtime }));
+  pi.registerTool(createWebFetchTool({ settings: { fetch: settings.fetch }, runtime }));
+}
 
-  pi.registerTool(
-    createWebSearchTool({
-      settings,
-      providers: buildSearchProviders(composition),
-      outputStore: tempFileToolOutputStore,
-      secrets,
-    }),
+// The live layer graph both tools run against.
+function appLayer(settings: WebToolsSettings) {
+  const outbound = Layer.mergeAll(HttpFetch.layer, DnsLookup.layer);
+  const config = WebToolsConfig.layer(settings);
+  const providerDeps = Layer.mergeAll(ProviderHttpClient.layer, McpClients.layer, config);
+  // One build of both chains shares their internal provider pairs (Parallel session id, MCP clients).
+  const providers = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
+    Layer.provide(providerDeps),
   );
-  const fetchPage = new FetchPage(new FetchPublicWebClient());
-  pi.registerTool(
-    createWebFetchTool({
-      settings,
-      fetchPage,
-      fetchProviders: buildFetchProviders(composition),
-      outputStore: tempFileToolOutputStore,
-      secrets,
-    }),
-  );
+  return Layer.mergeAll(
+    providers,
+    config,
+    FetchPage.layer.pipe(Layer.provide(PublicWebClient.layer)),
+    ToolOutputStore.layer,
+  ).pipe(Layer.provide(outbound));
 }
 
 function createFailingTool(name: string, label: string, message: string) {

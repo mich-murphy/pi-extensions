@@ -1,5 +1,5 @@
-import { Effect } from "effect";
-import { readResponseBodyWithLimit } from "./network";
+import { Context, Duration, Effect, Layer } from "effect";
+import { HttpFetch, readResponseBodyWithLimit } from "./network";
 import {
   parseJsonBody,
   ProviderRequestFailed,
@@ -20,19 +20,8 @@ export type ProviderHttpRequest = {
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: unknown;
   readonly maxResponseBytes: number;
-  readonly timeoutMs: number;
-};
-
-/** Outbound port for provider REST calls. Interrupting a call aborts its request. */
-export type ProviderHttpClient = {
-  /** POST a JSON body and read a bounded 2xx response. */
-  readonly postJson: (
-    request: ProviderHttpRequest,
-  ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
-  /** GET and read a bounded 2xx response. */
-  readonly getJson: (
-    request: ProviderHttpRequest,
-  ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
+  /** Deadline for the whole call; its whole-second ceiling names it in ProviderTimedOut. */
+  readonly timeout: Duration.Duration;
 };
 
 /**
@@ -57,21 +46,21 @@ export type ProviderRawResponse = {
  * Send one provider request and read its body under a byte cap. Network and stream failures are
  * classified by host; interrupting the effect aborts the request. Status is left to the caller.
  *
- * @param fetchImpl - The fetch implementation.
+ * @param http - The fetch port.
  * @param url - The provider endpoint.
  * @param init - Request init without a signal; the effect supplies one.
  * @param maxResponseBytes - The body byte cap.
  * @returns The response and its UTF-8 body text.
  */
 export const sendProviderRequest = Effect.fnUntraced(function* (
-  fetchImpl: typeof fetch,
+  http: HttpFetch["Service"],
   url: string | URL,
   init: Omit<RequestInit, "signal">,
   maxResponseBytes: number,
 ): Effect.fn.Return<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
   const { hostname } = new URL(url);
   const response = yield* Effect.tryPromise({
-    try: async (signal) => fetchImpl(url, { ...init, signal }),
+    try: async (signal) => http.fetch(url, { ...init, signal }),
     catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
   });
   const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
@@ -87,56 +76,81 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
 /**
  * Fail with ProviderTimedOut when an effect outlives its deadline; the effect is interrupted.
  *
- * @param timeoutMs - The deadline in milliseconds.
+ * @param timeout - The deadline; ProviderTimedOut names it in whole seconds, rounded up.
  * @returns A combinator applying the deadline.
  */
 export function withProviderDeadline(
-  timeoutMs: number,
+  timeout: Duration.Duration,
 ): <A, E>(self: Effect.Effect<A, E>) => Effect.Effect<A, E | ProviderTimedOut> {
   return Effect.timeoutOrElse({
-    duration: timeoutMs,
+    duration: timeout,
     orElse: () =>
-      Effect.fail(new ProviderTimedOut({ timeoutSeconds: Math.ceil(timeoutMs / 1000) })),
+      Effect.fail(
+        new ProviderTimedOut({ timeoutSeconds: Math.ceil(Duration.toMillis(timeout) / 1000) }),
+      ),
   });
 }
 
-/** Provider REST client with hard timeouts and response byte caps. */
-export class FetchProviderHttpClient implements ProviderHttpClient {
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
-
-  /** POST a JSON body and read a bounded response. */
-  postJson(request: ProviderHttpRequest): Effect.Effect<ProviderHttpResponse, ProviderError> {
-    return this.request("POST", request);
+/** Outbound port for provider REST calls, with hard timeouts and response byte caps. */
+export class ProviderHttpClient extends Context.Service<
+  ProviderHttpClient,
+  {
+    /** POST a JSON body and read a bounded 2xx response; interrupting the call aborts it. */
+    readonly postJson: (
+      request: ProviderHttpRequest,
+    ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
+    /** GET and read a bounded 2xx response; interrupting the call aborts it. */
+    readonly getJson: (
+      request: ProviderHttpRequest,
+    ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
   }
+>()("pi-web-tools/provider-http/ProviderHttpClient") {
+  /** The live client over HttpFetch. */
+  static readonly layer = Layer.effect(
+    ProviderHttpClient,
+    Effect.gen(function* () {
+      const http = yield* HttpFetch;
 
-  /** GET and read a bounded response. */
-  getJson(request: ProviderHttpRequest): Effect.Effect<ProviderHttpResponse, ProviderError> {
-    return this.request("GET", request);
-  }
+      const send = Effect.fnUntraced(
+        function* (
+          method: "GET" | "POST",
+          request: ProviderHttpRequest,
+        ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
+          const { response, bodyText } = yield* sendProviderRequest(
+            http,
+            request.url,
+            {
+              method,
+              headers:
+                method === "POST"
+                  ? { "content-type": "application/json", ...request.headers }
+                  : request.headers,
+              body:
+                method === "POST" && request.body !== undefined
+                  ? JSON.stringify(request.body)
+                  : null,
+            },
+            request.maxResponseBytes,
+          );
+          if (response.status < 200 || response.status >= 300) {
+            return yield* new ProviderStatusRejected({ status: response.status });
+          }
+          return { bodyText };
+        },
+        (effect, _method, request) => withProviderDeadline(request.timeout)(effect),
+      );
 
-  private request(
-    method: "GET" | "POST",
-    request: ProviderHttpRequest,
-  ): Effect.Effect<ProviderHttpResponse, ProviderError> {
-    const sent = sendProviderRequest(
-      this.fetchImpl,
-      request.url,
-      {
-        method,
-        headers:
-          method === "POST"
-            ? { "content-type": "application/json", ...request.headers }
-            : request.headers,
-        body: method === "POST" && request.body !== undefined ? JSON.stringify(request.body) : null,
-      },
-      request.maxResponseBytes,
-    );
-    return Effect.gen(function* () {
-      const { response, bodyText } = yield* sent;
-      if (response.status < 200 || response.status >= 300) {
-        return yield* new ProviderStatusRejected({ status: response.status });
-      }
-      return { bodyText };
-    }).pipe(withProviderDeadline(request.timeoutMs));
-  }
+      const postJson = Effect.fn("ProviderHttpClient.postJson")(function* (
+        request: ProviderHttpRequest,
+      ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
+        return yield* send("POST", request);
+      });
+      const getJson = Effect.fn("ProviderHttpClient.getJson")(function* (
+        request: ProviderHttpRequest,
+      ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
+        return yield* send("GET", request);
+      });
+      return ProviderHttpClient.of({ postJson, getJson });
+    }),
+  );
 }

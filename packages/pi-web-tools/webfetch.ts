@@ -2,34 +2,43 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { formatSize } from "@earendil-works/pi-coding-agent";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Cause, Data, Effect, Exit, Result } from "effect";
+import { Cause, Duration, Effect, Exit, Result, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { checkDomainPolicy } from "./domain-policy";
-import type { FetchPage, FetchPageError, FetchPageResult } from "./fetch-page";
+import { FetchPage } from "./fetch-page";
+import type { FetchPageError, FetchPageResult } from "./fetch-page";
 import type { FetchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
-import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS } from "./settings";
+import { FetchRescueProviders } from "./search";
+import {
+  clampInteger,
+  FETCH_TIMEOUT_SECONDS,
+  secretsForRedaction,
+  WEB_FETCH_FORMATS,
+  WebToolsConfig,
+} from "./settings";
 import type { WebToolsSettings } from "./settings";
-import { projectFetchResult, projectProviderFetchedPage } from "./tool-output";
-import type { ProviderFetchedPage, ToolOutputStore, ToolOutputStoreError } from "./tool-output";
-import { parsePublicHttpUrl, redactUrlCredentialsForDisplay } from "./types";
-import type {
+import { projectFetchResult, projectProviderFetchedPage, ToolOutputStore } from "./tool-output";
+import type { ProviderFetchedPage, ToolOutputStoreError } from "./tool-output";
+import type { ToolRuntime } from "./tool-runtime";
+import {
   ParsePublicHttpUrlError,
-  PublicHttpUrl,
-  WebFetchDetails,
-  WebFetchFormat,
+  parsePublicHttpUrl,
+  redactUrlCredentialsForDisplay,
 } from "./types";
+import type { PublicHttpUrl, WebFetchDetails, WebFetchFormat } from "./types";
 
 /** Composition injected into the webfetch tool. */
 export type WebFetchToolComposition = {
-  readonly settings: WebToolsSettings;
-  readonly fetchPage: FetchPage;
-  readonly fetchProviders: readonly FetchProvider[];
-  readonly outputStore: ToolOutputStore;
-  readonly secrets: readonly (string | undefined)[];
+  /** Non-secret settings, for input defaults and domain policy; keys stay in WebToolsConfig. */
+  readonly settings: Pick<WebToolsSettings, "fetch">;
+  /** The runtime every fetch runs on. */
+  readonly runtime: ToolRuntime<
+    FetchPage | FetchRescueProviders | ToolOutputStore | WebToolsConfig
+  >;
 };
 
 /** Parsed webfetch tool parameters. */
@@ -40,10 +49,13 @@ export type WebFetchParams = {
 };
 
 /** The webfetch url parameter is not a usable public http(s) URL. */
-export class InvalidFetchUrlInput extends Data.TaggedError("InvalidFetchUrlInput")<{
-  /** Why the URL was rejected. */
-  readonly reason: ParsePublicHttpUrlError;
-}> {
+export class InvalidFetchUrlInput extends Schema.TaggedError<InvalidFetchUrlInput>()(
+  "InvalidFetchUrlInput",
+  {
+    /** Why the URL was rejected. */
+    reason: ParsePublicHttpUrlError,
+  },
+) {
   /** Safe user-facing description; never echoes the URL itself. */
   override get message(): string {
     return renderUrlParseError(this.reason);
@@ -54,9 +66,11 @@ export class InvalidFetchUrlInput extends Data.TaggedError("InvalidFetchUrlInput
 export type WebFetchInputError = InvalidFetchUrlInput;
 
 /** The whole fetch, rescue included, ran past the tool's deadline. */
-class WebFetchTimedOut extends Data.TaggedError("WebFetchTimedOut")<{
-  readonly timeoutSeconds: number;
-}> {
+class WebFetchTimedOut extends Schema.TaggedError<WebFetchTimedOut>()("WebFetchTimedOut", {
+  /** The tool's deadline in whole seconds. */
+  timeoutSeconds: Schema.Number,
+}) {
+  /** Safe user-facing description naming the deadline. */
   override get message(): string {
     return `Web fetch timed out after ${this.timeoutSeconds}s`;
   }
@@ -97,7 +111,7 @@ const WEB_FETCH_PARAMETERS = Type.Object(
  */
 export function parseWebFetchParams(
   params: Static<typeof WEB_FETCH_PARAMETERS>,
-  settings: WebToolsSettings,
+  settings: Pick<WebToolsSettings, "fetch">,
 ): Result.Result<WebFetchParams, WebFetchInputError> {
   const url = parsePublicHttpUrl(params.url);
   if (Result.isFailure(url)) {
@@ -108,7 +122,7 @@ export function parseWebFetchParams(
     url: url.success,
     format: params.format ?? settings.fetch.defaultFormat,
     timeoutSeconds: clampInteger(
-      params.timeout ?? settings.fetch.timeoutSeconds,
+      params.timeout ?? Duration.toSeconds(settings.fetch.timeout),
       FETCH_TIMEOUT_SECONDS,
     ),
   });
@@ -160,40 +174,13 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         throw new Error(policy.failure.message);
       }
 
-      const { url, format, timeoutSeconds } = parsed.success;
+      const { url, format } = parsed.success;
       onUpdate?.({
         content: [{ type: "text", text: `Fetching ${url}...` }],
         details: { requestedUrl: url, format, bytes: 0 },
       });
 
-      const output = { store: composition.outputStore, secrets: composition.secrets };
-      const program = Effect.gen(function* () {
-        const result = yield* Effect.result(
-          composition.fetchPage.fetch(
-            { url, format },
-            {
-              maxRedirects: composition.settings.fetch.maxRedirects,
-              maxResponseBytes: composition.settings.fetch.maxResponseBytes,
-              blockPrivateHosts: true,
-            },
-          ),
-        );
-        const rescued =
-          composition.settings.fetch.rescue && format === "markdown" && isRescueEligible(result)
-            ? yield* tryProviderRescue(url, composition.fetchProviders)
-            : undefined;
-        if (rescued !== undefined) {
-          return yield* projectProviderFetchedPage(rescued, output);
-        }
-        return yield* projectFetchResult(yield* Effect.fromResult(result), output);
-      }).pipe(
-        Effect.timeoutOrElse({
-          duration: timeoutSeconds * 1000,
-          orElse: () => Effect.fail(new WebFetchTimedOut({ timeoutSeconds })),
-        }),
-      );
-
-      const exit = await Effect.runPromiseExit(program, { signal });
+      const exit = await composition.runtime.runExit(runWebFetch(parsed.success), signal);
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
@@ -287,6 +274,44 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   }
   return text;
 }
+
+// One fetch under the tool deadline: fetch directly, rescue through a provider when eligible, then
+// project the page for Pi.
+const runWebFetch = Effect.fnUntraced(
+  function* (input: WebFetchParams) {
+    const { url, format } = input;
+    const fetchPage = yield* FetchPage;
+    const config = yield* WebToolsConfig;
+    const limits = config.fetch;
+    const output = {
+      store: yield* ToolOutputStore,
+      secrets: secretsForRedaction(config.credentials),
+    };
+    const result = yield* Effect.result(
+      fetchPage.fetch(
+        { url, format },
+        {
+          maxRedirects: limits.maxRedirects,
+          maxResponseBytes: limits.maxResponseBytes,
+          blockPrivateHosts: true,
+        },
+      ),
+    );
+    const rescued =
+      limits.rescue && format === "markdown" && isRescueEligible(result)
+        ? yield* tryProviderRescue(url, yield* FetchRescueProviders)
+        : undefined;
+    if (rescued !== undefined) {
+      return yield* projectProviderFetchedPage(rescued, output);
+    }
+    return yield* projectFetchResult(yield* Effect.fromResult(result), output);
+  },
+  (effect, input) =>
+    Effect.timeoutOrElse(effect, {
+      duration: Duration.seconds(input.timeoutSeconds),
+      orElse: () => Effect.fail(new WebFetchTimedOut({ timeoutSeconds: input.timeoutSeconds })),
+    }),
+);
 
 // Rescue providers are tried in order; a provider that fails just yields nothing.
 const tryProviderRescue = Effect.fnUntraced(function* (

@@ -1,4 +1,6 @@
-import { assert, describe, expect, test } from "vitest";
+import { assert, describe, expect, it, test } from "@effect/vitest";
+import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { buildAgentRequest } from "../agent-request";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import type { CacheDiagnostic } from "../cache-tracker";
@@ -40,9 +42,11 @@ describe("cache diagnostics", () => {
     const first = buildAgentRequest(base);
     const second = buildAgentRequest(grown);
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => {
-      events.push(event);
-    });
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
 
     tracker("claude-sdk/sonnet", first);
     tracker("claude-sdk/sonnet", second);
@@ -71,9 +75,11 @@ describe("cache diagnostics", () => {
 
   test("fingerprints equal prompts equally and a changed block differently", () => {
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => {
-      events.push(event);
-    });
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
     const prompt = { promptBlocks: [textBlock("stable"), textBlock("first")], cacheBreakpoint: 0 };
 
     tracker("claude-sdk/sonnet", prompt);
@@ -96,9 +102,11 @@ describe("cache diagnostics", () => {
 
   test("flags a large low-reuse turn as a possible cache collapse", () => {
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => {
-      events.push(event);
-    });
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
     const recordUsage = tracker("claude-sdk/sonnet", {
       promptBlocks: [textBlock("x".repeat(100_000))],
       cacheBreakpoint: 0,
@@ -112,4 +120,21 @@ describe("cache diagnostics", () => {
       possibleCollapse: true,
     });
   });
+
+  it.effect("measures the gap between requests with the Clock in scope", () =>
+    Effect.gen(function* () {
+      const events: CacheDiagnostic[] = [];
+      const prompt = { promptBlocks: [textBlock("stable")], cacheBreakpoint: 0 };
+
+      const tracker = yield* createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      });
+      tracker("claude-sdk/sonnet", prompt);
+      yield* TestClock.adjust("5 seconds");
+      tracker("claude-sdk/sonnet", prompt);
+
+      expect(events[0]).not.toHaveProperty("msSincePreviousRequest");
+      expect(events[1]).toMatchObject({ type: "request", turn: 2, msSincePreviousRequest: 5000 });
+    }),
+  );
 });

@@ -1,14 +1,16 @@
-import { Effect, Result } from "effect";
-import { z } from "zod";
+import { Context, Duration, Effect, Layer, Result, Schema } from "effect";
+import { HttpFetch } from "./network";
 import { sendProviderRequest, withProviderDeadline } from "./provider-http";
 import {
   lenientArray,
+  orFallback,
   parseJsonBody,
   ProviderProtocolInvalid,
   ProviderStatusRejected,
   ProviderToolError,
 } from "./provider-types";
 import type { ProviderError } from "./provider-types";
+import { SEARCH_MAX_RESPONSE_BYTES, SEARCH_TIMEOUT_SECONDS } from "./settings";
 import { redactSecrets } from "./tool-output";
 import type { PublicHttpUrl } from "./types";
 import { WEB_TOOLS_VERSION } from "./types";
@@ -39,38 +41,117 @@ type McpPostOutcome = {
 /** How long the best-effort session DELETE may take. */
 const CLOSE_SESSION_TIMEOUT_MS = 5000;
 
+/** Bounds applied to every MCP tool call. */
+type McpClientOptions = {
+  readonly maxResponseBytes: number;
+  /** Deadline for a whole session; ProviderTimedOut names it in whole seconds, rounded up. */
+  readonly timeout: Duration.Duration;
+};
+
 /**
- * Minimal MCP Streamable HTTP client.
+ * MCP clients keyed by endpoint. Endpoints come from settings at runtime, so clients are built on
+ * demand and cached: every caller asking for one endpoint shares one client, which is safe because
+ * each tool call opens a fresh session. Clients are keyless; keys never reach MCP endpoints.
+ */
+export class McpClients extends Context.Service<
+  McpClients,
+  {
+    /** The shared client for an MCP Streamable HTTP endpoint. */
+    readonly forEndpoint: (endpoint: PublicHttpUrl) => McpClient;
+  }
+>()("pi-web-tools/mcp/McpClients") {
+  /**
+   * A live layer over HttpFetch with the given bounds.
+   *
+   * @param options - The response byte cap and session deadline for every client.
+   * @returns The McpClients layer.
+   */
+  static layerWith(options: {
+    readonly maxResponseBytes: number;
+    readonly timeout: Duration.Duration;
+  }): Layer.Layer<McpClients, never, HttpFetch> {
+    return Layer.effect(
+      McpClients,
+      Effect.gen(function* () {
+        const http = yield* HttpFetch;
+        const cache = new Map<PublicHttpUrl, McpClient>();
+        const forEndpoint = (endpoint: PublicHttpUrl): McpClient => {
+          const cached = cache.get(endpoint);
+          if (cached !== undefined) {
+            return cached;
+          }
+          const client = makeMcpHttpClient(http, endpoint, options);
+          cache.set(endpoint, client);
+          return client;
+        };
+        return McpClients.of({ forEndpoint });
+      }),
+    );
+  }
+
+  /** The live layer with the search response cap and the default search deadline. */
+  static readonly layer = McpClients.layerWith({
+    maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
+    timeout: Duration.seconds(SEARCH_TIMEOUT_SECONDS.default),
+  });
+}
+
+/**
+ * Minimal MCP Streamable HTTP client for one endpoint.
  *
  * Speaks the official handshake — initialize, notifications/initialized,
  * tools/call — honoring the Mcp-Session-Id header and both JSON and SSE
  * response framings, then closes the session with DELETE. One session per
  * tool call keeps the client stateless between calls.
  */
-export class McpHttpClient implements McpClient {
-  constructor(
-    private readonly endpoint: PublicHttpUrl,
-    private readonly options: {
-      readonly headers?: Readonly<Record<string, string>>;
-      readonly maxResponseBytes: number;
-      readonly timeoutMs: number;
-      readonly fetchImpl?: typeof fetch;
-      /** Secrets scrubbed from provider error text before it reaches an error message. */
-      readonly secrets?: readonly (string | undefined)[];
-    },
-  ) {}
+function makeMcpHttpClient(
+  http: HttpFetch["Service"],
+  endpoint: PublicHttpUrl,
+  options: McpClientOptions,
+): McpClient {
+  const post = Effect.fnUntraced(function* (
+    payload: Readonly<Record<string, unknown>>,
+    sessionId: string | null,
+  ): Effect.fn.Return<McpPostOutcome, ProviderError> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    };
+    if (sessionId !== null && sessionId !== "") {
+      headers["mcp-session-id"] = sessionId;
+    }
+    const { response, bodyText } = yield* sendProviderRequest(
+      http,
+      endpoint,
+      { method: "POST", headers, body: JSON.stringify(payload) },
+      options.maxResponseBytes,
+    );
+    if (response.status < 200 || response.status >= 300) {
+      return yield* new ProviderStatusRejected({ status: response.status });
+    }
+    return {
+      sessionId: response.headers.get("mcp-session-id"),
+      bodyText,
+      contentType: response.headers.get("content-type") ?? "",
+    };
+  });
 
-  /** Run a full MCP session for a single tool call; the session closes however the call ends. */
-  callTool(
+  // Best-effort: servers expire sessions on their own, so a failed DELETE is ignored.
+  const closeSession = (sessionId: string): Effect.Effect<void> =>
+    Effect.tryPromise(async () =>
+      http.fetch(endpoint, {
+        method: "DELETE",
+        headers: { "mcp-session-id": sessionId },
+        signal: AbortSignal.timeout(CLOSE_SESSION_TIMEOUT_MS),
+      }),
+    ).pipe(Effect.ignore);
+
+  // Run a full MCP session for a single tool call; the session closes however the call ends.
+  const callTool = Effect.fn("McpClient.callTool")(function* (
     name: string,
     args: Readonly<Record<string, unknown>>,
-  ): Effect.Effect<McpToolCallResult, ProviderError> {
-    const post = (payload: Readonly<Record<string, unknown>>, sessionId: string | null) =>
-      this.post(payload, sessionId);
-    const closeSession = (sessionId: string) => this.closeSession(sessionId);
-    const secrets = this.options.secrets ?? [];
+  ): Effect.fn.Return<McpToolCallResult, ProviderError> {
     let sessionId: string | null = null;
-
     const session = Effect.gen(function* () {
       const init = yield* post(
         {
@@ -97,69 +178,29 @@ export class McpHttpClient implements McpClient {
         sessionId,
       );
       const message = yield* Effect.fromResult(parseMcpMessage(call.bodyText, call.contentType));
-      return yield* Effect.fromResult(parseMcpToolResult(message, secrets));
+      return yield* Effect.fromResult(parseMcpToolResult(message));
     });
 
-    return session.pipe(
+    return yield* session.pipe(
       Effect.ensuring(
         Effect.suspend(() =>
           sessionId === null || sessionId === "" ? Effect.void : closeSession(sessionId),
         ),
       ),
-      withProviderDeadline(this.options.timeoutMs),
+      withProviderDeadline(options.timeout),
     );
-  }
+  });
 
-  private post(
-    payload: Readonly<Record<string, unknown>>,
-    sessionId: string | null,
-  ): Effect.Effect<McpPostOutcome, ProviderError> {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-      ...this.options.headers,
-    };
-    if (sessionId !== null && sessionId !== "") {
-      headers["mcp-session-id"] = sessionId;
-    }
-    const sent = sendProviderRequest(
-      this.options.fetchImpl ?? fetch,
-      this.endpoint,
-      { method: "POST", headers, body: JSON.stringify(payload) },
-      this.options.maxResponseBytes,
-    );
-    return Effect.gen(function* () {
-      const { response, bodyText } = yield* sent;
-      if (response.status < 200 || response.status >= 300) {
-        return yield* new ProviderStatusRejected({ status: response.status });
-      }
-      return {
-        sessionId: response.headers.get("mcp-session-id"),
-        bodyText,
-        contentType: response.headers.get("content-type") ?? "",
-      };
-    });
-  }
-
-  // Best-effort: servers expire sessions on their own, so a failed DELETE is ignored.
-  private closeSession(sessionId: string): Effect.Effect<void> {
-    const fetchImpl = this.options.fetchImpl ?? fetch;
-    const { endpoint } = this;
-    const headers = { "mcp-session-id": sessionId, ...this.options.headers };
-    return Effect.tryPromise(async () =>
-      fetchImpl(endpoint, {
-        method: "DELETE",
-        headers,
-        signal: AbortSignal.timeout(CLOSE_SESSION_TIMEOUT_MS),
-      }),
-    ).pipe(Effect.ignore);
-  }
+  return { callTool };
 }
 
 // A JSON-RPC response carries result or error; requests and notifications carry neither.
-const jsonRpcResponseSchema = z
-  .looseObject({})
-  .refine((message) => "result" in message || "error" in message);
+const isJsonRpcResponse = Schema.is(
+  Schema.Union([
+    Schema.Struct({ result: Schema.Unknown }),
+    Schema.Struct({ error: Schema.Unknown }),
+  ]),
+);
 
 /** Parse an MCP HTTP response body (JSON or SSE framing) into a single JSON-RPC message. */
 export function parseMcpMessage(
@@ -179,7 +220,7 @@ export function parseMcpMessage(
 function parseSseResponse(body: string): Result.Result<unknown, ProviderError> {
   const events = parseSseDataLines(body).map((chunk) => parseJsonBody(chunk));
   const responses = events.filter(
-    (event) => Result.isSuccess(event) && jsonRpcResponseSchema.safeParse(event.success).success,
+    (event) => Result.isSuccess(event) && isJsonRpcResponse(event.success),
   );
   const last = responses.at(-1);
   if (last !== undefined) {
@@ -193,26 +234,28 @@ function parseSseResponse(body: string): Result.Result<unknown, ProviderError> {
   );
 }
 
-// Only text content is extracted; images, resources, and blank text are dropped.
-const textContentSchema = z
-  .object({ type: z.literal("text"), text: z.string() })
-  .transform((item) => item.text.trim() || undefined);
+// Only text content is extracted; images and resources are dropped (blank text is dropped later).
+const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
 
-const toolCallResponseSchema = z.object({
-  // Only an error object marks a JSON-RPC failure; any other error value is ignored.
-  error: z
-    .object({ message: z.string().catch("") })
-    .optional()
-    .catch(undefined),
-  result: z
-    .object({
-      isError: z.boolean().catch(false),
-      content: lenientArray(textContentSchema).catch([]),
-      structuredContent: z.unknown().optional(),
-    })
-    .optional()
-    .catch(undefined),
-});
+const decodeToolCallResponse = Schema.decodeUnknownResult(
+  Schema.Struct({
+    // Only an error object marks a JSON-RPC failure; any other error value is ignored.
+    error: orFallback(
+      Schema.UndefinedOr(Schema.Struct({ message: orFallback(Schema.String, "") })),
+      undefined,
+    ),
+    result: orFallback(
+      Schema.UndefinedOr(
+        Schema.Struct({
+          isError: orFallback(Schema.Boolean, false),
+          content: orFallback(lenientArray(TextContent), []),
+          structuredContent: Schema.optionalKey(Schema.Unknown),
+        }),
+      ),
+      undefined,
+    ),
+  }),
+);
 
 /** Longest provider error excerpt carried into a user-facing message. */
 const MAX_TOOL_ERROR_DETAIL = 200;
@@ -228,23 +271,22 @@ export function parseMcpToolResult(
   payload: unknown,
   secrets: readonly (string | undefined)[] = [],
 ): Result.Result<McpToolCallResult, ProviderError> {
-  const parsed = toolCallResponseSchema.safeParse(payload);
-  if (!parsed.success) {
+  const parsed = decodeToolCallResponse(payload);
+  if (Result.isFailure(parsed)) {
     return Result.fail(new ProviderProtocolInvalid({ reason: "Expected an object payload" }));
   }
-  const { error, result } = parsed.data;
+  const { error, result } = parsed.success;
   if (error !== undefined) {
     return Result.fail(new ProviderToolError({ detail: toolErrorDetail(error.message, secrets) }));
   }
   if (result === undefined) {
     return Result.fail(new ProviderProtocolInvalid({ reason: "Missing result object" }));
   }
+  const text = result.content.map((item) => item.text.trim()).filter((item) => item !== "");
   if (result.isError) {
-    return Result.fail(
-      new ProviderToolError({ detail: toolErrorDetail(result.content.join(" "), secrets) }),
-    );
+    return Result.fail(new ProviderToolError({ detail: toolErrorDetail(text.join(" "), secrets) }));
   }
-  return Result.succeed({ text: result.content, structuredContent: result.structuredContent });
+  return Result.succeed({ text, structuredContent: result.structuredContent });
 }
 
 // Collapse, scrub, then cut: scrubbing first means truncation can never leave half a secret.

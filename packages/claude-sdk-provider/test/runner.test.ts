@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { Effect } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
@@ -133,9 +134,11 @@ async function runAllowing(
 async function diagnose(...messages: readonly unknown[]): Promise<CacheDiagnostic[]> {
   const diagnostics: CacheDiagnostic[] = [];
   await runTurn(queryWith([], ...messages), requestFixture({ cacheBreakpoint: 0 }), {
-    cacheDiagnostics: createCacheDiagnosticTracker((diagnostic) => {
-      diagnostics.push(diagnostic);
-    }),
+    cacheDiagnostics: Effect.runSync(
+      createCacheDiagnosticTracker((diagnostic) => {
+        diagnostics.push(diagnostic);
+      }),
+    ),
   });
   return diagnostics;
 }
@@ -464,6 +467,22 @@ describe("turn failures", () => {
       reason: { _tag: "Unclassified" },
     });
     expect(error.message).not.toContain("transport disconnected");
+  });
+
+  test("classifies an SDK stream that cannot be opened as an iteration failure", async () => {
+    const unopenable: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]: () => {
+        throw new Error("stream unavailable");
+      },
+    };
+
+    const error = failureOf(await runTurn(() => unopenable));
+
+    expect(error).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "iterate",
+      reason: { _tag: "Unclassified" },
+    });
   });
 
   test("reports a typed authentication failure from an assistant message", async () => {

@@ -1,4 +1,4 @@
-import { Result } from "effect";
+import { Redacted, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
   BRAVE_API_KEY_ENV,
@@ -34,7 +34,10 @@ describe("parseSettings", () => {
     });
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["parallel", "exa"]);
-    expect(settings.success.credentials.exaApiKey).toBe("exa-key");
+    const { exaApiKey } = settings.success.credentials;
+    assert(exaApiKey !== undefined);
+    expect(Redacted.value(exaApiKey)).toBe("exa-key");
+    expect(JSON.stringify(settings.success)).not.toContain("exa-key");
   });
 
   test("deduplicates repeated providers, keeping first-mention order", () => {

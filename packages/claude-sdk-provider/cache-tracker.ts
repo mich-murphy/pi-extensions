@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Clock, Effect } from "effect";
 import type { AgentRequest, PromptBlock } from "./agent-request";
 import type { TokenUsage } from "./bridge";
 
@@ -79,13 +80,22 @@ function usageDiagnostic(turn: number, usage: TokenUsage): CacheUsageDiagnostic 
 /**
  * Create a tracker that compares consecutive prompt prefixes without logging content.
  *
+ * The tracker stays a synchronous closure because the runner calling it is not yet an Effect;
+ * it reads time from the `Clock` in scope when it is created, so a test clock controls it.
+ *
  * @param sink - Destination for safe cache diagnostic records.
- * @param now - Clock used to measure the gap between requests.
  * @returns The stateful tracker.
  */
-export function createCacheDiagnosticTracker(
+export const createCacheDiagnosticTracker = Effect.fnUntraced(function* (
   sink: (diagnostic: CacheDiagnostic) => void,
-  now: () => number = Date.now,
+): Effect.fn.Return<CacheDiagnosticTracker> {
+  const clock = yield* Clock.Clock;
+  return trackWith(sink, () => clock.currentTimeMillisUnsafe());
+});
+
+function trackWith(
+  sink: (diagnostic: CacheDiagnostic) => void,
+  now: () => number,
 ): CacheDiagnosticTracker {
   let turn = 0;
   let previous: { readonly blocks: readonly BlockStats[]; readonly at: number } | undefined;

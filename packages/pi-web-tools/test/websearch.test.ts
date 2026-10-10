@@ -1,11 +1,17 @@
-import { Effect, Result } from "effect";
+import { Effect, Result, Duration } from "effect";
 import { describe, expect, test } from "vitest";
 import { withProviderDeadline } from "../provider-http";
 import { ProviderRequestFailed } from "../provider-types";
 import type { SearchProvider } from "../provider-types";
-import { tempFileToolOutputStore } from "../tool-output";
 import { createWebSearchTool, EmptySearchQueryInput, parseWebSearchParams } from "../websearch";
-import { publicUrl, renderText, settingsFrom, textOf } from "./fakes";
+import {
+  publicUrl,
+  renderText,
+  settingsFrom,
+  settleOnTestClock,
+  textOf,
+  toolRuntimeWith,
+} from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
 
@@ -60,9 +66,10 @@ describe("websearch tool", () => {
   test("returns results from the first healthy provider", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [failingProvider("exa"), answeringProvider("parallel")],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [failingProvider("exa"), answeringProvider("parallel")],
+      }),
     });
     const result = await tool.execute("t1", { query: "pi agent" });
 
@@ -75,9 +82,15 @@ describe("websearch tool", () => {
   test("provider override skips the rest of the chain", async () => {
     const tool = createWebSearchTool({
       settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
-      providers: [failingProvider("exa"), failingProvider("parallel"), answeringProvider("brave")],
-      outputStore: tempFileToolOutputStore,
-      secrets: ["BSA_test"],
+      runtime: toolRuntimeWith({
+        settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
+        secret: "BSA_test",
+        searchProviders: [
+          failingProvider("exa"),
+          failingProvider("parallel"),
+          answeringProvider("brave"),
+        ],
+      }),
     });
     const result = await tool.execute("t1", { query: "pi agent", provider: "brave" });
     expect(result.details.provider).toBe("brave");
@@ -87,9 +100,10 @@ describe("websearch tool", () => {
   test("throws a safe message when every provider fails", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [failingProvider("exa"), failingProvider("parallel")],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [failingProvider("exa"), failingProvider("parallel")],
+      }),
     });
     await expect(tool.execute("t1", { query: "pi agent" })).rejects.toThrow(
       "All search providers failed",
@@ -105,9 +119,11 @@ describe("websearch tool", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [leaky],
-      outputStore: tempFileToolOutputStore,
-      secrets: ["sekrit-key"],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        secret: "sekrit-key",
+        searchProviders: [leaky],
+      }),
     });
     const result = await tool.execute("t1", { query: "x" });
     expect(textOf(result)).not.toContain("sekrit-key");
@@ -119,9 +135,10 @@ describe("websearch tool", () => {
 function toolWith(provider: SearchProvider) {
   return createWebSearchTool({
     settings: DEFAULT_SETTINGS,
-    providers: [provider],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      searchProviders: [provider],
+    }),
   });
 }
 
@@ -131,9 +148,16 @@ describe("websearch deadline and cancellation", () => {
     const slow: SearchProvider = {
       name: "exa",
       transport: "api",
-      search: () => Effect.never.pipe(withProviderDeadline(20)),
+      search: () => Effect.never.pipe(withProviderDeadline(Duration.millis(20))),
     };
-    const outcome = toolWith(slow).execute("t1", { query: "slow" });
+    const runtime = toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      searchProviders: [slow],
+      testClock: true,
+    });
+    const tool = createWebSearchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const outcome = tool.execute("t1", { query: "slow" });
+    await settleOnTestClock(runtime, Duration.millis(20), outcome);
     await expect(outcome).rejects.toThrow("All search providers failed (exa: timed out after 1s)");
     await expect(outcome).rejects.not.toThrow("cancelled");
   });
@@ -153,9 +177,10 @@ describe("websearch deadline and cancellation", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [hanging, fallback],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [hanging, fallback],
+      }),
     });
     const outcome = tool.execute("t1", { query: "q" }, controller.signal);
     setTimeout(() => {

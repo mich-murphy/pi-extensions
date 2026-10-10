@@ -1,11 +1,27 @@
-import { Effect } from "effect";
-import { describe, expect, test, vi } from "vitest";
-import { formatClaudeUsageStatus, inspectClaudeUsage } from "../sdk-usage";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect, Fiber } from "effect";
+import type { Duration } from "effect";
+import { TestClock } from "effect/testing";
+import { ClaudeUsageQueries, formatClaudeUsageStatus, inspectClaudeUsage } from "../sdk-usage";
 import type { ClaudeUsageQuery, StartClaudeUsageQuery } from "../sdk-usage";
 import { unsettled } from "./fixtures";
 
-const failureOf = async (start: StartClaudeUsageQuery, timeout?: number) =>
-  Effect.runPromise(Effect.flip(inspectClaudeUsage(start, timeout)));
+const withStart = (start: StartClaudeUsageQuery, timeout?: number) =>
+  inspectClaudeUsage(timeout).pipe(Effect.provide(ClaudeUsageQueries.fromStart(start)));
+const failureOf = (start: StartClaudeUsageQuery, timeout?: number) =>
+  Effect.flip(withStart(start, timeout));
+
+/** Run `effect` in the background, advance virtual time by each step, then join it. */
+const afterAdvancing = Effect.fnUntraced(function* <A, E>(
+  effect: Effect.Effect<A, E>,
+  steps: readonly Duration.Input[],
+) {
+  const fiber = yield* Effect.forkChild(effect);
+  for (const step of steps) {
+    yield* TestClock.adjust(step);
+  }
+  return yield* Fiber.join(fiber);
+});
 
 function usageQuery(response: unknown): ClaudeUsageQuery {
   return {
@@ -32,139 +48,156 @@ const usageResponse = {
 };
 
 describe("claude SDK usage", () => {
-  test("reports remaining general and model-specific plan usage", async () => {
-    const status = await Effect.runPromise(inspectClaudeUsage(() => usageQuery(usageResponse)));
+  it.effect("reports remaining general and model-specific plan usage", () =>
+    Effect.gen(function* () {
+      const status = yield* withStart(() => usageQuery(usageResponse));
 
-    expect(status).toStrictEqual({
-      subscriptionType: "team",
-      rateLimitsAvailable: true,
-      windows: [
-        { name: "Current session", usedPercent: 12, resetsAt: "2026-08-31T14:50:00.000Z" },
-        { name: "Weekly", usedPercent: 29, resetsAt: "2026-09-02T09:00:00.000Z" },
-        { name: "Fable weekly", usedPercent: 49, resetsAt: null },
-      ],
-      extraUsageEnabled: false,
-    });
-    const formatted = formatClaudeUsageStatus(status);
-    expect(formatted).toContain("Current session: 88% remaining");
-    expect(formatted).toContain("Weekly: 71% remaining");
-    expect(formatted).toContain("Fable weekly: 51% remaining");
-    expect(formatted).toContain("Extra usage: disabled");
-  });
+      expect(status).toStrictEqual({
+        subscriptionType: "team",
+        rateLimitsAvailable: true,
+        windows: [
+          { name: "Current session", usedPercent: 12, resetsAt: "2026-08-31T14:50:00.000Z" },
+          { name: "Weekly", usedPercent: 29, resetsAt: "2026-09-02T09:00:00.000Z" },
+          { name: "Fable weekly", usedPercent: 49, resetsAt: null },
+        ],
+        extraUsageEnabled: false,
+      });
+      const formatted = formatClaudeUsageStatus(status);
+      expect(formatted).toContain("Current session: 88% remaining");
+      expect(formatted).toContain("Weekly: 71% remaining");
+      expect(formatted).toContain("Fable weekly: 51% remaining");
+      expect(formatted).toContain("Extra usage: disabled");
+    }),
+  );
 
-  test("reports unavailable plan limits without inventing usage", async () => {
-    const status = await Effect.runPromise(
-      inspectClaudeUsage(() =>
+  it.effect("reports unavailable plan limits without inventing usage", () =>
+    Effect.gen(function* () {
+      const status = yield* withStart(() =>
         usageQuery({ subscription_type: null, rate_limits_available: false, rate_limits: null }),
-      ),
-    );
+      );
 
-    expect(formatClaudeUsageStatus(status)).toBe(
-      "Claude plan usage is unavailable for the current authentication method.",
-    );
-  });
+      expect(formatClaudeUsageStatus(status)).toBe(
+        "Claude plan usage is unavailable for the current authentication method.",
+      );
+    }),
+  );
 
-  test("rejects malformed experimental SDK responses", async () => {
-    const error = await failureOf(() =>
-      usageQuery({
-        subscription_type: "team",
-        rate_limits_available: true,
-        rate_limits: { five_hour: {} },
-      }),
-    );
+  it.effect("rejects malformed experimental SDK responses", () =>
+    Effect.gen(function* () {
+      const error = yield* failureOf(() =>
+        usageQuery({
+          subscription_type: "team",
+          rate_limits_available: true,
+          rate_limits: { five_hour: {} },
+        }),
+      );
 
-    expect(error).toMatchObject({ _tag: "ClaudeUsageInspectionError", operation: "parse" });
-    expect(error.message).toBe("Claude returned usage data in an unexpected format");
-  });
+      expect(error).toMatchObject({ _tag: "ClaudeUsageInspectionError", operation: "parse" });
+      expect(error.message).toBe("Claude returned usage data in an unexpected format");
+    }),
+  );
 
-  test("classifies startup, read, and cleanup failures with specific messages", async () => {
-    const startup = await failureOf(() => {
-      throw new Error("spawn failed");
-    });
-    const read = await failureOf(() => ({
-      readUsage: async () => {
-        throw new Error("request failed");
-      },
-      close: async () => undefined,
-    }));
-    const close = await failureOf(() => ({
-      readUsage: async () => usageResponse,
-      close: async () => {
-        throw new Error("close failed");
-      },
-    }));
-
-    expect(startup).toMatchObject({ operation: "start" });
-    expect(startup.message).toBe("Could not start a Claude session to read usage");
-    expect(read).toMatchObject({ operation: "read" });
-    expect(read.message).toBe("Claude did not return usage data");
-    expect(close).toMatchObject({ operation: "close" });
-    expect(close.message).toBe("Could not close the Claude usage session");
-  });
-
-  test("reports a read failure rather than a cleanup failure when both fail", async () => {
-    const error = await failureOf(() => ({
-      readUsage: async () => {
-        throw new Error("request failed");
-      },
-      close: async () => {
-        throw new Error("close failed");
-      },
-    }));
-
-    expect(error).toMatchObject({ operation: "read" });
-  });
-
-  test("times out a usage request that never responds", async () => {
-    const error = await failureOf(
-      () => ({
-        readUsage: async () => unsettled(),
+  it.effect("classifies startup, read, and cleanup failures with specific messages", () =>
+    Effect.gen(function* () {
+      const startup = yield* failureOf(() => {
+        throw new Error("spawn failed");
+      });
+      const read = yield* failureOf(() => ({
+        readUsage: async () => {
+          throw new Error("request failed");
+        },
         close: async () => undefined,
-      }),
-      1,
-    );
+      }));
+      const close = yield* failureOf(() => ({
+        readUsage: async () => usageResponse,
+        close: async () => {
+          throw new Error("close failed");
+        },
+      }));
 
-    expect(error._tag).toBe("ClaudeUsageTimeoutError");
-    expect(error.message).toBe("Timed out after 1ms waiting for Claude usage");
-  });
+      expect(startup).toMatchObject({ operation: "start" });
+      expect(startup.message).toBe("Could not start a Claude session to read usage");
+      expect(read).toMatchObject({ operation: "read" });
+      expect(read.message).toBe("Claude did not return usage data");
+      expect(close).toMatchObject({ operation: "close" });
+      expect(close.message).toBe("Could not close the Claude usage session");
+    }),
+  );
 
-  test("bounds cleanup after both a successful read and a read timeout", async () => {
-    vi.useFakeTimers();
-    try {
-      const successfulRead = failureOf(
-        () => ({
-          readUsage: async () => usageResponse,
-          close: async () => unsettled(),
-        }),
-        10,
+  it.effect("reports a read failure rather than a cleanup failure when both fail", () =>
+    Effect.gen(function* () {
+      const error = yield* failureOf(() => ({
+        readUsage: async () => {
+          throw new Error("request failed");
+        },
+        close: async () => {
+          throw new Error("close failed");
+        },
+      }));
+
+      expect(error).toMatchObject({ operation: "read" });
+    }),
+  );
+
+  it.effect("times out a usage request that never responds", () =>
+    Effect.gen(function* () {
+      const error = yield* afterAdvancing(
+        failureOf(
+          () => ({
+            readUsage: async () => unsettled(),
+            close: async () => undefined,
+          }),
+          1,
+        ),
+        [1],
       );
-      const timedOutRead = failureOf(
-        () => ({
-          readUsage: async () => unsettled(),
-          close: async () => unsettled(),
-        }),
-        10,
-      );
 
-      await vi.runAllTimersAsync();
-      const [cleanupError, readError] = await Promise.all([successfulRead, timedOutRead]);
+      expect(error._tag).toBe("ClaudeUsageTimeoutError");
+      expect(error.message).toBe("Timed out after 1ms waiting for Claude usage");
+    }),
+  );
+
+  it.effect("bounds cleanup after both a successful read and a read timeout", () =>
+    Effect.gen(function* () {
+      const [cleanupError, readError] = yield* afterAdvancing(
+        Effect.all(
+          [
+            failureOf(
+              () => ({
+                readUsage: async () => usageResponse,
+                close: async () => unsettled(),
+              }),
+              10,
+            ),
+            failureOf(
+              () => ({
+                readUsage: async () => unsettled(),
+                close: async () => unsettled(),
+              }),
+              10,
+            ),
+          ],
+          { concurrency: "unbounded" },
+        ),
+        [10, 10],
+      );
 
       expect(cleanupError).toMatchObject({ operation: "close" });
       expect(readError._tag).toBe("ClaudeUsageTimeoutError");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    }),
+  );
 
-  test("aborts the idle SDK query after reading usage", async () => {
-    let observedSignal: AbortSignal | undefined;
-    const start: StartClaudeUsageQuery = (abortController) => {
-      observedSignal = abortController.signal;
-      return usageQuery(usageResponse);
-    };
+  it.effect("aborts the idle SDK query after reading usage", () =>
+    Effect.gen(function* () {
+      let observedSignal: AbortSignal | undefined;
+      const start: StartClaudeUsageQuery = (abortController) => {
+        observedSignal = abortController.signal;
+        return usageQuery(usageResponse);
+      };
 
-    await Effect.runPromise(inspectClaudeUsage(start));
+      yield* withStart(start);
 
-    expect(observedSignal?.aborted).toBe(true);
-  });
+      expect(observedSignal?.aborted).toBe(true);
+    }),
+  );
 });

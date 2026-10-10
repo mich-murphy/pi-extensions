@@ -4,7 +4,7 @@ import {
   formatSize,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type { FetchPageResult } from "./fetch-page";
 import { writeTempTextFile } from "./temp";
 import type { OutputStoreError } from "./temp";
@@ -15,23 +15,32 @@ import type {
   WebSearchDetails,
 } from "./types";
 
-/** Persistence port for oversized tool output. */
-export type ToolOutputStore = {
-  readonly writeTextFile: (
-    prefix: string,
-    fileName: string,
-    content: string,
-  ) => Effect.Effect<string, ToolOutputStoreError>;
-};
-
 /** Expected failures of the tool output store. */
 export type ToolOutputStoreError = OutputStoreError;
 
-/** Temp-file backed tool output store with private permissions. */
-export const tempFileToolOutputStore: ToolOutputStore = {
-  /** Write full tool output to a private temporary text file. */
-  writeTextFile: writeTempTextFile,
-};
+/** Persistence port for oversized tool output. */
+export class ToolOutputStore extends Context.Service<
+  ToolOutputStore,
+  {
+    /** Write full tool output to a new private file and return its path. */
+    readonly writeTextFile: (
+      prefix: string,
+      fileName: string,
+      content: string,
+    ) => Effect.Effect<string, ToolOutputStoreError>;
+  }
+>()("pi-web-tools/tool-output/ToolOutputStore") {
+  /** The live store: private temporary text files. */
+  static readonly layer = Layer.succeed(
+    ToolOutputStore,
+    ToolOutputStore.of({
+      writeTextFile: (prefix, fileName, content) =>
+        writeTempTextFile(prefix, fileName, content).pipe(
+          Effect.withSpan("ToolOutputStore.writeTextFile"),
+        ),
+    }),
+  );
+}
 
 /**
  * Replace every occurrence of each secret in text with a fixed placeholder.
@@ -111,7 +120,10 @@ export type ProviderFetchedPage = {
 /** Project a directly fetched page into a pi tool result, truncating and spilling large output. */
 export function projectFetchResult(
   result: FetchPageResult,
-  options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
+  options: {
+    readonly store: ToolOutputStore["Service"];
+    readonly secrets: readonly (string | undefined)[];
+  },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const { meta, body } = result;
   if (body._tag === "Image") {
@@ -141,7 +153,10 @@ export function projectFetchResult(
  */
 export function projectProviderFetchedPage(
   page: ProviderFetchedPage,
-  options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
+  options: {
+    readonly store: ToolOutputStore["Service"];
+    readonly secrets: readonly (string | undefined)[];
+  },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const note = `[Direct fetch was blocked or unusable; content retrieved via ${page.provider} — the URL was shared with that provider]`;
   return projectTextOutput<WebFetchDetails>({
@@ -164,7 +179,10 @@ export function projectSearchResults(
     readonly results: readonly NormalizedSearchResult[];
     readonly details: Omit<WebSearchDetails, "truncated" | "fullOutputPath">;
   },
-  options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
+  options: {
+    readonly store: ToolOutputStore["Service"];
+    readonly secrets: readonly (string | undefined)[];
+  },
 ): Effect.Effect<PiToolResult<WebSearchDetails>, ToolOutputStoreError> {
   return projectTextOutput({
     output: redactSecrets(formatSearchResults(search.query, search.results), options.secrets),
@@ -183,7 +201,7 @@ function projectTextOutput<Details>({
 }: {
   readonly output: string;
   readonly details: Details;
-  readonly store: ToolOutputStore;
+  readonly store: ToolOutputStore["Service"];
   readonly tempPrefix: string;
 }): Effect.Effect<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError> {
   const truncation = truncateHead(output, {

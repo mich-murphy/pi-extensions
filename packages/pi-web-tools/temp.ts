@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Data, Effect, Predicate } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 /** Plain-English descriptions of the filesystem error codes a temp-file write realistically hits. */
 const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -17,16 +17,16 @@ const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
 };
 
 /** A filesystem operation failed while saving full tool output to a private temp file. */
-export class OutputStoreError extends Data.TaggedError("OutputStoreError")<{
+export class OutputStoreError extends Schema.TaggedError<OutputStoreError>()("OutputStoreError", {
   /** The step that failed. */
-  readonly operation: "mkdtemp" | "chmod" | "write";
+  operation: Schema.Literals(["mkdtemp", "chmod", "write"]),
   /** The directory template or file path the step was working on. */
-  readonly path: string;
+  path: Schema.String,
   /** The Node system error code, for example ENOSPC. */
-  readonly code: string;
+  code: Schema.String,
   /** The original Node error, kept for local diagnosis only. */
-  readonly cause?: unknown;
-}> {
+  cause: Schema.optional(Schema.Defect()),
+}) {
   /** Plain-English reason with the error code, for example "no space left on device (ENOSPC)". */
   get reason(): string {
     const description = FS_ERROR_DESCRIPTIONS[this.code];

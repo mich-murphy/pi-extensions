@@ -1,8 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { z } from "zod";
 import type { AgentRequest } from "../agent-request";
 import type { BridgeEvent } from "../bridge";
 import { models, undatedModelId } from "../models";
@@ -10,11 +10,11 @@ import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 import {
+  decodeReleaseContract,
   formatReleaseContract,
   LIVE_CONTRACTS,
   RELEASE_CONTRACT_URL,
   readInstalledSdk,
-  releaseContractSchema,
 } from "./release-contract";
 import type { DeferredResult, LiveContract } from "./release-contract";
 
@@ -56,22 +56,30 @@ function request(prompt: string, toolNames: readonly string[] = []): AgentReques
 }
 
 // A result message that reports the defer, named by the field that carried it.
-const deferredResultSchema = z.union([
-  z
-    .object({ type: z.literal("result"), stop_reason: z.literal("tool_deferred") })
-    .transform((): DeferredResult => "stop_reason:tool_deferred"),
-  z
-    .object({ type: z.literal("result"), terminal_reason: z.literal("tool_deferred") })
-    .transform((): DeferredResult => "terminal_reason:tool_deferred"),
-]);
+const isStopReasonDeferred = Schema.is(
+  Schema.Struct({ type: Schema.Literal("result"), stop_reason: Schema.Literal("tool_deferred") }),
+);
+const isTerminalReasonDeferred = Schema.is(
+  Schema.Struct({
+    type: Schema.Literal("result"),
+    terminal_reason: Schema.Literal("tool_deferred"),
+  }),
+);
+
+function deferredResultOf(message: unknown): DeferredResult | undefined {
+  if (isStopReasonDeferred(message)) {
+    return "stop_reason:tool_deferred";
+  }
+  return isTerminalReasonDeferred(message) ? "terminal_reason:tool_deferred" : undefined;
+}
 
 /** Run the real SDK query, reporting how its result message signalled a deferred tool call. */
 function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery {
   return async function* observedQuery(params) {
     for await (const message of query(params)) {
-      const deferred = deferredResultSchema.safeParse(message);
-      if (deferred.success) {
-        observe(deferred.data);
+      const deferred = deferredResultOf(message);
+      if (deferred !== undefined) {
+        observe(deferred);
       }
       yield message;
     }
@@ -160,7 +168,7 @@ describe("installed Claude Agent SDK live contract", () => {
       "contracts that did not pass in this run",
     ).toStrictEqual([]);
     const installed = await readInstalledSdk();
-    const attestation = releaseContractSchema.parse({
+    const attestation = decodeReleaseContract({
       schemaVersion: 1,
       agentSdkVersion: installed.version,
       bundledClaudeCodeVersion: installed.claudeCodeVersion,

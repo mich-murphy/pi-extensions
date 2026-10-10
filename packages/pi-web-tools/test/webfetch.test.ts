@@ -1,6 +1,6 @@
-import { Effect, Result } from "effect";
+import { Duration, Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { FetchPage } from "../fetch-page";
+import type { FetchPage } from "../fetch-page";
 import {
   HttpStatusRejected,
   PrivateHostBlocked,
@@ -17,7 +17,6 @@ import type { PublicWebClient, PublicWebError } from "../network";
 import { ExaMcpFetchProvider } from "../provider-exa";
 import { ProviderStatusRejected } from "../provider-types";
 import type { FetchProvider } from "../provider-types";
-import { tempFileToolOutputStore } from "../tool-output";
 import {
   createWebFetchTool,
   InvalidFetchUrlInput,
@@ -30,8 +29,11 @@ import {
   publicUrl,
   renderText,
   settingsFrom,
+  settleOnTestClock,
   textOf,
   textWebResponse,
+  fetchPageWith,
+  toolRuntimeWith,
 } from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
@@ -53,8 +55,8 @@ function fakeFetchProvider(
   };
 }
 
-function fetchPageFor(outcome: Parameters<typeof fakePublicWeb>[0]): FetchPage {
-  return new FetchPage(fakePublicWeb(outcome).client);
+function fetchPageFor(outcome: Parameters<typeof fakePublicWeb>[0]): FetchPage["Service"] {
+  return fetchPageWith(fakePublicWeb(outcome).client);
 }
 
 function articleResponse(paragraph: string) {
@@ -66,12 +68,15 @@ function makeTool(
   fetchOutcome: Parameters<typeof fakePublicWeb>[0],
   providers: readonly FetchProvider[],
 ) {
+  const settings = settingsFrom(env);
   return createWebFetchTool({
-    settings: settingsFrom(env),
-    fetchPage: fetchPageFor(fetchOutcome),
-    fetchProviders: providers,
-    outputStore: tempFileToolOutputStore,
-    secrets: ["sekrit-key"],
+    settings,
+    runtime: toolRuntimeWith({
+      settings,
+      secret: "sekrit-key",
+      fetchPage: fetchPageFor(fetchOutcome),
+      fetchProviders: providers,
+    }),
   });
 }
 
@@ -98,7 +103,7 @@ async function fetchShort(contentType: string) {
 }
 
 /** A public web client whose request never settles until it is interrupted. */
-const hangingWeb: PublicWebClient = { get: () => Effect.never };
+const hangingWeb: PublicWebClient["Service"] = { get: () => Effect.never };
 
 describe("parseWebFetchParams", () => {
   test("parses a minimal url with settings defaults", () => {
@@ -177,10 +182,7 @@ describe("webfetch call rendering", () => {
   const fetchPage = fetchPageFor(Result.succeed(textWebResponse("x")));
   const tool = createWebFetchTool({
     settings: DEFAULT_SETTINGS,
-    fetchPage,
-    fetchProviders: [],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({ settings: DEFAULT_SETTINGS, fetchPage }),
   });
 
   test("never shows URL credentials", () => {
@@ -429,16 +431,24 @@ describe("webfetch error messages", () => {
 function hangingTool(providers: readonly FetchProvider[] = []) {
   return createWebFetchTool({
     settings: DEFAULT_SETTINGS,
-    fetchPage: new FetchPage(hangingWeb),
-    fetchProviders: providers,
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      fetchPage: fetchPageWith(hangingWeb),
+      fetchProviders: providers,
+    }),
   });
 }
 
 describe("webfetch deadline and cancellation", () => {
   test("a fetch outliving the timeout reports the timeout, not a cancellation", async () => {
-    const outcome = hangingTool().execute("t1", { url: "https://slow.example", timeout: 1 });
+    const runtime = toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      fetchPage: fetchPageWith(hangingWeb),
+      testClock: true,
+    });
+    const tool = createWebFetchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const outcome = tool.execute("t1", { url: "https://slow.example", timeout: 1 });
+    await settleOnTestClock(runtime, Duration.seconds(1), outcome);
     await expect(outcome).rejects.toThrow("Web fetch timed out after 1s");
     await expect(outcome).rejects.not.toThrow("cancelled");
   });

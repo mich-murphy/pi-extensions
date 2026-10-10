@@ -1,11 +1,10 @@
+import { assert, describe, expect, it, test } from "@effect/vitest";
 import { Cause, Effect, Exit, Result } from "effect";
-import { assert, describe, expect, test } from "vitest";
 import type { PublicWebError, PublicWebRequest } from "../network";
 import {
   classifyMimeType,
   decodeTextBuffer,
   describeNetworkFailure,
-  FetchPublicWebClient,
   HttpStatusRejected,
   isPrivateOrLocalIp,
   parseContentType,
@@ -21,7 +20,7 @@ import {
   UrlCredentialsUnsupported,
 } from "../network";
 import type { PublicHttpUrl } from "../types";
-import { UTF8, publicUrl } from "./fakes";
+import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
   const blocked = [
@@ -206,7 +205,7 @@ function recordingClient(
     await Promise.resolve();
     return respond(String(input));
   };
-  return { client: new FetchPublicWebClient({ fetchImpl, lookup }), hops };
+  return { client: publicWebClientWith({ fetchImpl, lookup }), hops };
 }
 
 /** Replies to successive fetches in order, repeating the last reply. */
@@ -281,22 +280,26 @@ describe("fetchPublicWebClient hop checks", () => {
     expect(hops).toHaveLength(1);
   });
 
-  test("rejects URL credentials before the private-host check", async () => {
-    const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
-    const url = unparsedUrl("http://user:secret@127.0.0.1/");
-    const result = await run(client.get(makeRequest({ url })));
-    expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
-    expect(hops).toHaveLength(0);
-  });
+  it.effect("rejects URL credentials before the private-host check", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
+      const url = unparsedUrl("http://user:secret@127.0.0.1/");
+      const result = yield* Effect.result(client.get(makeRequest({ url })));
+      expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
+      expect(hops).toHaveLength(0);
+    }),
+  );
 
-  test("rejects a redirect to a URL with credentials", async () => {
-    const { client, hops } = recordingClient(() =>
-      responseOf({ status: 302, headers: { location: "https://user@example.com/" } }),
-    );
-    const result = await run(client.get(makeRequest({ blockPrivateHosts: false })));
-    expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
-    expect(hops).toHaveLength(1);
-  });
+  it.effect("rejects a redirect to a URL with credentials", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(() =>
+        responseOf({ status: 302, headers: { location: "https://user@example.com/" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest({ blockPrivateHosts: false })));
+      expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
+      expect(hops).toHaveLength(1);
+    }),
+  );
 
   test.each(["http://localhost:8080/", "http://api.LOCALHOST/"])(
     "blocks the localhost name in %s",
@@ -308,33 +311,39 @@ describe("fetchPublicWebClient hop checks", () => {
     },
   );
 
-  test("skips host checks when blockPrivateHosts is false", async () => {
-    let lookups = 0;
-    const { client, hops } = recordingClient(
-      () => responseOf({ status: 200, body: "local" }),
-      async () => {
-        lookups += 1;
-        return [{ address: "10.0.0.1" }];
-      },
-    );
-    const url = publicUrl("http://127.0.0.1/");
-    const result = await run(client.get(makeRequest({ url, blockPrivateHosts: false })));
-    expect(result._tag).toBe("Success");
-    expect(hops).toHaveLength(1);
-    expect(lookups).toBe(0);
-  });
+  it.effect("skips host checks when blockPrivateHosts is false", () =>
+    Effect.gen(function* () {
+      let lookups = 0;
+      const { client, hops } = recordingClient(
+        () => responseOf({ status: 200, body: "local" }),
+        async () => {
+          lookups += 1;
+          return [{ address: "10.0.0.1" }];
+        },
+      );
+      const url = publicUrl("http://127.0.0.1/");
+      const result = yield* Effect.result(
+        client.get(makeRequest({ url, blockPrivateHosts: false })),
+      );
+      expect(result._tag).toBe("Success");
+      expect(hops).toHaveLength(1);
+      expect(lookups).toBe(0);
+    }),
+  );
 
-  test("leaves a failed DNS lookup for the fetch to report", async () => {
-    const { client, hops } = recordingClient(
-      () => responseOf({ status: 200 }),
-      async () => {
-        throw new Error("ENOTFOUND");
-      },
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result._tag).toBe("Success");
-    expect(hops).toHaveLength(1);
-  });
+  it.effect("leaves a failed DNS lookup for the fetch to report", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(
+        () => responseOf({ status: 200 }),
+        async () => {
+          throw new Error("ENOTFOUND");
+        },
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result._tag).toBe("Success");
+      expect(hops).toHaveLength(1);
+    }),
+  );
 });
 
 describe("fetchPublicWebClient fetch failures", () => {
@@ -376,7 +385,7 @@ describe("fetchPublicWebClient fetch failures", () => {
 
   test("a caller deadline interrupts a hanging fetch and aborts its signal", async () => {
     const inits: (RequestInit | undefined)[] = [];
-    const client = new FetchPublicWebClient({
+    const client = publicWebClientWith({
       lookup: async () => [],
       fetchImpl: async (_input, init) => {
         inits.push(init);
@@ -468,157 +477,183 @@ describe("fetchPublicWebClient redirects", () => {
     },
   );
 
-  test("does not follow other 3xx statuses", async () => {
-    const { client, hops } = recordingClient(() =>
-      responseOf({ status: 300, headers: { location: "/elsewhere" } }),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result).toStrictEqual(
-      Result.fail(new HttpStatusRejected({ status: 300, statusText: "" })),
-    );
-    expect(hops).toHaveLength(1);
-  });
+  it.effect("does not follow other 3xx statuses", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(() =>
+        responseOf({ status: 300, headers: { location: "/elsewhere" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result).toStrictEqual(
+        Result.fail(new HttpStatusRejected({ status: 300, statusText: "" })),
+      );
+      expect(hops).toHaveLength(1);
+    }),
+  );
 
-  test("reports a missing Location before the redirect limit, cancelling the body", async () => {
-    const redirect = trackedResponse({ status: 302 });
-    const { client } = recordingClient(() => redirect.response);
-    const result = await run(client.get(makeRequest({ maxRedirects: 0 })));
-    expect(result).toStrictEqual(Result.fail(new RedirectLocationMissing()));
-    expect(redirect.wasCancelled()).toBe(true);
-  });
+  it.effect("reports a missing Location before the redirect limit, cancelling the body", () =>
+    Effect.gen(function* () {
+      const redirect = trackedResponse({ status: 302 });
+      const { client } = recordingClient(() => redirect.response);
+      const result = yield* Effect.result(client.get(makeRequest({ maxRedirects: 0 })));
+      expect(result).toStrictEqual(Result.fail(new RedirectLocationMissing()));
+      expect(redirect.wasCancelled()).toBe(true);
+    }),
+  );
 
-  test("applies the redirect limit before parsing Location", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 302, headers: { location: "http://[" } }),
-    );
-    const result = await run(client.get(makeRequest({ maxRedirects: 0 })));
-    expect(result).toStrictEqual(Result.fail(new RedirectLimitExceeded({ maxRedirects: 0 })));
-  });
+  it.effect("applies the redirect limit before parsing Location", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({ status: 302, headers: { location: "http://[" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest({ maxRedirects: 0 })));
+      expect(result).toStrictEqual(Result.fail(new RedirectLimitExceeded({ maxRedirects: 0 })));
+    }),
+  );
 
-  test("rejects an unparseable Location", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 302, headers: { location: "http://[" } }),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result).toStrictEqual(Result.fail(new RedirectLocationInvalid()));
-  });
+  it.effect("rejects an unparseable Location", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({ status: 302, headers: { location: "http://[" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result).toStrictEqual(Result.fail(new RedirectLocationInvalid()));
+    }),
+  );
 
-  test("reports the unsupported redirect protocol", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 307, headers: { location: "ftp://example.com/file" } }),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result).toStrictEqual(
-      Result.fail(new RedirectProtocolUnsupported({ protocol: "ftp:" })),
-    );
-  });
+  it.effect("reports the unsupported redirect protocol", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({ status: 307, headers: { location: "ftp://example.com/file" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result).toStrictEqual(
+        Result.fail(new RedirectProtocolUnsupported({ protocol: "ftp:" })),
+      );
+    }),
+  );
 });
 
 describe("fetchPublicWebClient challenge retry", () => {
   const challenge = { status: 403, headers: { "cf-mitigated": "challenge" } };
 
-  test("cancels the challenge body and retries only once", async () => {
-    const first = trackedResponse(challenge);
-    const { client, hops } = recordingClient(
-      inOrder(
-        () => first.response,
-        () => responseOf(challenge),
-      ),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result).toStrictEqual(
-      Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
-    );
-    expect(first.wasCancelled()).toBe(true);
-    expect(hops.map((hop) => new Headers(hop.init?.headers).get("user-agent"))).toStrictEqual([
-      "test-agent",
-      "fallback-agent",
-    ]);
-  });
+  it.effect("cancels the challenge body and retries only once", () =>
+    Effect.gen(function* () {
+      const first = trackedResponse(challenge);
+      const { client, hops } = recordingClient(
+        inOrder(
+          () => first.response,
+          () => responseOf(challenge),
+        ),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result).toStrictEqual(
+        Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
+      );
+      expect(first.wasCancelled()).toBe(true);
+      expect(hops.map((hop) => new Headers(hop.init?.headers).get("user-agent"))).toStrictEqual([
+        "test-agent",
+        "fallback-agent",
+      ]);
+    }),
+  );
 
-  test("returns the retry's failure", async () => {
-    const { client, hops } = recordingClient(
-      inOrder(
-        () => responseOf(challenge),
-        () => {
-          throw new TypeError("fetch failed");
-        },
-      ),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(failureOf(result)).toStrictEqual({
-      tag: "PublicWebRequestFailed",
-      message: "Request to example.com failed",
-    });
-    expect(hops).toHaveLength(2);
-  });
+  it.effect("returns the retry's failure", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(
+        inOrder(
+          () => responseOf(challenge),
+          () => {
+            throw new TypeError("fetch failed");
+          },
+        ),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(failureOf(result)).toStrictEqual({
+        tag: "PublicWebRequestFailed",
+        message: "Request to example.com failed",
+      });
+      expect(hops).toHaveLength(2);
+    }),
+  );
 
-  test("does not retry a 403 without the challenge header", async () => {
-    const { client, hops } = recordingClient(() =>
-      responseOf({ status: 403, headers: { "cf-mitigated": "block" } }),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result._tag).toBe("Failure");
-    expect(hops).toHaveLength(1);
-  });
+  it.effect("does not retry a 403 without the challenge header", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(() =>
+        responseOf({ status: 403, headers: { "cf-mitigated": "block" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result._tag).toBe("Failure");
+      expect(hops).toHaveLength(1);
+    }),
+  );
 });
 
 describe("fetchPublicWebClient response body", () => {
-  test("cancels the body of a rejected status", async () => {
-    const rejected = trackedResponse({ status: 503 });
-    const { client } = recordingClient(() => rejected.response);
-    const result = await run(client.get(makeRequest()));
-    expect(result._tag).toBe("Failure");
-    expect(rejected.wasCancelled()).toBe(true);
-  });
+  it.effect("cancels the body of a rejected status", () =>
+    Effect.gen(function* () {
+      const rejected = trackedResponse({ status: 503 });
+      const { client } = recordingClient(() => rejected.response);
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result._tag).toBe("Failure");
+      expect(rejected.wasCancelled()).toBe(true);
+    }),
+  );
 
-  test("cancels the body when Content-Length declares more than the cap", async () => {
-    const oversized = trackedResponse({ status: 200, headers: { "content-length": "2048" } });
-    const { client } = recordingClient(() => oversized.response);
-    const result = await run(client.get(makeRequest({ maxResponseBytes: 1024 })));
-    expect(result).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
-    expect(oversized.wasCancelled()).toBe(true);
-  });
+  it.effect("cancels the body when Content-Length declares more than the cap", () =>
+    Effect.gen(function* () {
+      const oversized = trackedResponse({ status: 200, headers: { "content-length": "2048" } });
+      const { client } = recordingClient(() => oversized.response);
+      const result = yield* Effect.result(client.get(makeRequest({ maxResponseBytes: 1024 })));
+      expect(result).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
+      expect(oversized.wasCancelled()).toBe(true);
+    }),
+  );
 
-  test("reads the body when Content-Length is not a number", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 200, body: "hello", headers: { "content-length": "many" } }),
-    );
-    const result = await run(client.get(makeRequest({ maxResponseBytes: 1024 })));
-    assert(Result.isSuccess(result));
-    expect(result.success.body.toString()).toBe("hello");
-  });
+  it.effect("reads the body when Content-Length is not a number", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({ status: 200, body: "hello", headers: { "content-length": "many" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest({ maxResponseBytes: 1024 })));
+      assert(Result.isSuccess(result));
+      expect(result.success.body.toString()).toBe("hello");
+    }),
+  );
 
-  test("maps a streamed body over the cap to ResponseTooLarge", async () => {
-    const streamed = trackedResponse(
-      { status: 200 },
-      {
-        pull: (controller) => {
-          controller.enqueue(new Uint8Array(2048));
+  it.effect("maps a streamed body over the cap to ResponseTooLarge", () =>
+    Effect.gen(function* () {
+      const streamed = trackedResponse(
+        { status: 200 },
+        {
+          pull: (controller) => {
+            controller.enqueue(new Uint8Array(2048));
+          },
         },
-      },
-    );
-    const { client } = recordingClient(() => streamed.response);
-    const result = await run(client.get(makeRequest({ maxResponseBytes: 1024 })));
-    expect(result).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
-  });
+      );
+      const { client } = recordingClient(() => streamed.response);
+      const result = yield* Effect.result(client.get(makeRequest({ maxResponseBytes: 1024 })));
+      expect(result).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
+    }),
+  );
 
-  test("maps a failed body stream to PublicWebRequestFailed", async () => {
-    const broken = trackedResponse(
-      { status: 200 },
-      {
-        pull: (controller) => {
-          controller.error(new Error("connection reset"));
+  it.effect("maps a failed body stream to PublicWebRequestFailed", () =>
+    Effect.gen(function* () {
+      const broken = trackedResponse(
+        { status: 200 },
+        {
+          pull: (controller) => {
+            controller.error(new Error("connection reset"));
+          },
         },
-      },
-    );
-    const { client } = recordingClient(() => broken.response);
-    const result = await run(client.get(makeRequest()));
-    expect(failureOf(result)).toStrictEqual({
-      tag: "PublicWebRequestFailed",
-      message: "Request to example.com failed",
-    });
-  });
+      );
+      const { client } = recordingClient(() => broken.response);
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(failureOf(result)).toStrictEqual({
+        tag: "PublicWebRequestFailed",
+        message: "Request to example.com failed",
+      });
+    }),
+  );
 
   test("a caller deadline during the body read cancels the body", async () => {
     // Without a pull source the body read never settles.
@@ -632,91 +667,110 @@ describe("fetchPublicWebClient response body", () => {
 });
 
 describe("readResponseBodyWithLimit", () => {
-  test("fails with ResponseBodyTooLarge and cancels the stream past the cap", async () => {
-    const streamed = trackedResponse(
-      { status: 200 },
-      {
-        pull: (controller) => {
-          controller.enqueue(new Uint8Array(16));
+  it.effect("fails with ResponseBodyTooLarge and cancels the stream past the cap", () =>
+    Effect.gen(function* () {
+      const streamed = trackedResponse(
+        { status: 200 },
+        {
+          pull: (controller) => {
+            controller.enqueue(new Uint8Array(16));
+          },
         },
-      },
-    );
-    const result = await run(readResponseBodyWithLimit(streamed.response, 8));
-    assert(Result.isFailure(result));
-    expect(result.failure).toBeInstanceOf(ResponseBodyTooLarge);
-    expect(streamed.wasCancelled()).toBe(true);
-  });
+      );
+      const result = yield* Effect.result(readResponseBodyWithLimit(streamed.response, 8));
+      assert(Result.isFailure(result));
+      expect(result.failure).toBeInstanceOf(ResponseBodyTooLarge);
+      expect(streamed.wasCancelled()).toBe(true);
+    }),
+  );
 
-  test("fails with ResponseBodyReadFailed carrying the stream error for classification", async () => {
-    const reset = new Error("connection reset");
-    const broken = trackedResponse(
-      { status: 200 },
-      {
-        pull: (controller) => {
-          controller.error(reset);
+  it.effect("fails with ResponseBodyReadFailed carrying the stream error for classification", () =>
+    Effect.gen(function* () {
+      const reset = new Error("connection reset");
+      const broken = trackedResponse(
+        { status: 200 },
+        {
+          pull: (controller) => {
+            controller.error(reset);
+          },
         },
-      },
-    );
-    const result = await run(readResponseBodyWithLimit(broken.response, 8));
-    expect(result).toStrictEqual(Result.fail(new ResponseBodyReadFailed({ cause: reset })));
-  });
+      );
+      const result = yield* Effect.result(readResponseBodyWithLimit(broken.response, 8));
+      expect(result).toStrictEqual(Result.fail(new ResponseBodyReadFailed({ cause: reset })));
+    }),
+  );
 });
 
 describe("fetchPublicWebClient", () => {
-  test("blocks private hostnames before any fetch", async () => {
-    const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
-    const result = await run(client.get(makeRequest({ url: publicUrl("http://127.0.0.1/") })));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("PrivateIpBlocked");
-    expect(hops).toHaveLength(0);
-  });
+  it.effect("blocks private hostnames before any fetch", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
+      const result = yield* Effect.result(
+        client.get(makeRequest({ url: publicUrl("http://127.0.0.1/") })),
+      );
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("PrivateIpBlocked");
+      expect(hops).toHaveLength(0);
+    }),
+  );
 
-  test("blocks hostnames resolving to private addresses", async () => {
-    const { client } = recordingClient(
-      () => responseOf({ status: 200 }),
-      async () => [{ address: "93.184.216.34" }, { address: "10.4.4.4" }],
-    );
-    const result = await run(
-      client.get(makeRequest({ url: publicUrl("https://sneaky.example/") })),
-    );
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("PrivateIpBlocked");
-  });
+  it.effect("blocks hostnames resolving to private addresses", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(
+        () => responseOf({ status: 200 }),
+        async () => [{ address: "93.184.216.34" }, { address: "10.4.4.4" }],
+      );
+      const result = yield* Effect.result(
+        client.get(makeRequest({ url: publicUrl("https://sneaky.example/") })),
+      );
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("PrivateIpBlocked");
+    }),
+  );
 
-  test("re-validates every redirect hop", async () => {
-    const { client, hops } = recordingClient(
-      inOrder(
-        () => responseOf({ status: 302, headers: { location: "http://169.254.169.254/latest" } }),
-        () => responseOf({ status: 200, body: "ok" }),
-      ),
-    );
-    const result = await run(client.get(makeRequest({ url: publicUrl("https://start.example/") })));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("PrivateIpBlocked");
-    expect(hops).toHaveLength(1);
-  });
+  it.effect("re-validates every redirect hop", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(
+        inOrder(
+          () => responseOf({ status: 302, headers: { location: "http://169.254.169.254/latest" } }),
+          () => responseOf({ status: 200, body: "ok" }),
+        ),
+      );
+      const result = yield* Effect.result(
+        client.get(makeRequest({ url: publicUrl("https://start.example/") })),
+      );
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("PrivateIpBlocked");
+      expect(hops).toHaveLength(1);
+    }),
+  );
 
-  test("caps redirect chains", async () => {
-    const { client } = recordingClient(() =>
-      responseOf({ status: 302, headers: { location: "https://example.com/loop" } }),
-    );
-    const result = await run(client.get(makeRequest({ maxRedirects: 2 })));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("RedirectLimitExceeded");
-  });
+  it.effect("caps redirect chains", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({ status: 302, headers: { location: "https://example.com/loop" } }),
+      );
+      const result = yield* Effect.result(client.get(makeRequest({ maxRedirects: 2 })));
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("RedirectLimitExceeded");
+    }),
+  );
 
-  test("retries cloudflare challenges with the fallback user agent", async () => {
-    const { client, hops } = recordingClient(
-      inOrder(
-        () => responseOf({ status: 403, headers: { "cf-mitigated": "challenge" } }),
-        () => responseOf({ status: 200, body: "hello", headers: { "content-type": "text/plain" } }),
-      ),
-    );
-    const result = await run(client.get(makeRequest()));
-    expect(result._tag).toBe("Success");
-    expect(hops.map((hop) => new Headers(hop.init?.headers).get("user-agent"))).toStrictEqual([
-      "test-agent",
-      "fallback-agent",
-    ]);
-  });
+  it.effect("retries cloudflare challenges with the fallback user agent", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(
+        inOrder(
+          () => responseOf({ status: 403, headers: { "cf-mitigated": "challenge" } }),
+          () =>
+            responseOf({ status: 200, body: "hello", headers: { "content-type": "text/plain" } }),
+        ),
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(result._tag).toBe("Success");
+      expect(hops.map((hop) => new Headers(hop.init?.headers).get("user-agent"))).toStrictEqual([
+        "test-agent",
+        "fallback-agent",
+      ]);
+    }),
+  );
 });

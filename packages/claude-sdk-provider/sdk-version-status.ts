@@ -1,16 +1,16 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { Data, Effect, Predicate } from "effect";
-import { z } from "zod";
+import { Context, Effect, Layer, Predicate, Schema } from "effect";
 
 const execFileAsync = promisify(execFile);
 
 const SEMANTIC_VERSION = /(?:^|\D)(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\D|$)/u;
-const sdkPackageMetadataSchema = z.object({
-  version: z.string(),
-  claudeCodeVersion: z.string(),
-});
+const decodeSdkPackageMetadata = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({ version: Schema.String, claudeCodeVersion: Schema.String }),
+  ),
+);
 
 type SemanticVersion = readonly [major: number, minor: number, patch: number];
 
@@ -26,8 +26,10 @@ export type ClaudeSdkVersionStatus = {
   readonly updateSuggested: boolean;
 };
 
+const InstalledVersionFailure = Schema.Literals(["not-installed", "timed-out", "failed"]);
+
 /** Why `claude --version` could not be read. */
-type InstalledVersionFailure = "not-installed" | "timed-out" | "failed";
+type InstalledVersionFailure = typeof InstalledVersionFailure.Type;
 
 /** How long `claude --version` may run before it counts as unresponsive. */
 const INSTALLED_VERSION_TIMEOUT_MS = 3000;
@@ -39,10 +41,13 @@ const INSTALLED_VERSION_MESSAGES: Readonly<Record<InstalledVersionFailure, strin
 };
 
 /** Expected failure while reading the Agent SDK's package metadata. */
-class ClaudeSdkMetadataError extends Data.TaggedError("ClaudeSdkMetadataError")<{
-  /** Unclassified underlying failure, retained for local debugging only. */
-  readonly cause?: unknown;
-}> {
+class ClaudeSdkMetadataError extends Schema.TaggedError<ClaudeSdkMetadataError>()(
+  "ClaudeSdkMetadataError",
+  {
+    /** Unclassified underlying failure, retained for local debugging only. */
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
   /** Plain-English summary. */
   override get message(): string {
     return "Could not read the installed Claude Agent SDK package metadata";
@@ -50,12 +55,15 @@ class ClaudeSdkMetadataError extends Data.TaggedError("ClaudeSdkMetadataError")<
 }
 
 /** Expected failure while running `claude --version`. */
-class ClaudeInstalledVersionError extends Data.TaggedError("ClaudeInstalledVersionError")<{
-  /** Classified failure. */
-  readonly reason: InstalledVersionFailure;
-  /** Unclassified underlying failure, retained for local debugging only. */
-  readonly cause?: unknown;
-}> {
+class ClaudeInstalledVersionError extends Schema.TaggedError<ClaudeInstalledVersionError>()(
+  "ClaudeInstalledVersionError",
+  {
+    /** Classified failure. */
+    reason: InstalledVersionFailure,
+    /** Unclassified underlying failure, retained for local debugging only. */
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
   /** Plain-English summary of the classified failure. */
   override get message(): string {
     return INSTALLED_VERSION_MESSAGES[this.reason];
@@ -63,12 +71,15 @@ class ClaudeInstalledVersionError extends Data.TaggedError("ClaudeInstalledVersi
 }
 
 /** Expected failure when a version string is not a semantic version. */
-class ClaudeVersionParseError extends Data.TaggedError("ClaudeVersionParseError")<{
-  /** Which version could not be parsed. */
-  readonly source: "bundled" | "installed";
-  /** The unexpected text; only its bounded first line is rendered. */
-  readonly output: string;
-}> {
+class ClaudeVersionParseError extends Schema.TaggedError<ClaudeVersionParseError>()(
+  "ClaudeVersionParseError",
+  {
+    /** Which version could not be parsed. */
+    source: Schema.Literals(["bundled", "installed"]),
+    /** The unexpected text; only its bounded first line is rendered. */
+    output: Schema.String,
+  },
+) {
   /** Plain-English summary quoting the bounded first line of the unexpected text. */
   override get message(): string {
     const firstLine = (this.output.split("\n", 1)[0] ?? "").trim().slice(0, 80);
@@ -78,8 +89,8 @@ class ClaudeVersionParseError extends Data.TaggedError("ClaudeVersionParseError"
   }
 }
 
-/** Dependencies used to inspect SDK and installed CLI versions. */
-export type ClaudeSdkVersionSources = {
+/** Raw process and filesystem reads behind {@link ClaudeSdkVersionSources}. */
+export type ClaudeSdkVersionReads = {
   /** Read the Agent SDK package metadata as JSON text. */
   readonly readSdkPackageMetadata: () => Promise<string>;
   /** Read `claude --version` output; rejections are classified by their Node error shape. */
@@ -124,10 +135,56 @@ function classifyInstalledVersionFailure(cause: unknown): InstalledVersionFailur
   return "failed";
 }
 
-const defaultSources: ClaudeSdkVersionSources = {
-  readSdkPackageMetadata: defaultReadSdkPackageMetadata,
-  readInstalledClaudeVersion: defaultReadInstalledClaudeVersion,
-};
+/** Reads the Agent SDK metadata and installed Claude Code version as classified, typed failures. */
+export class ClaudeSdkVersionSources extends Context.Service<
+  ClaudeSdkVersionSources,
+  {
+    /** Read the Agent SDK package metadata as JSON text. */
+    readonly readSdkPackageMetadata: () => Effect.Effect<string, ClaudeSdkMetadataError>;
+    /** Read `claude --version` output. */
+    readonly readInstalledClaudeVersion: () => Effect.Effect<string, ClaudeInstalledVersionError>;
+  }
+>()("pi-claude-sdk-provider/sdk-version-status/ClaudeSdkVersionSources") {
+  /**
+   * Build the service from raw reads, translating their rejections into typed errors.
+   *
+   * @param reads - Raw filesystem and process reads.
+   * @returns A layer providing the sources.
+   */
+  static fromReads(reads: ClaudeSdkVersionReads): Layer.Layer<ClaudeSdkVersionSources> {
+    return Layer.succeed(
+      ClaudeSdkVersionSources,
+      ClaudeSdkVersionSources.of({
+        readSdkPackageMetadata: Effect.fn("ClaudeSdkVersionSources.readSdkPackageMetadata")(
+          function* () {
+            return yield* Effect.tryPromise({
+              try: async () => reads.readSdkPackageMetadata(),
+              catch: (cause) => new ClaudeSdkMetadataError({ cause }),
+            });
+          },
+        ),
+        readInstalledClaudeVersion: Effect.fn("ClaudeSdkVersionSources.readInstalledClaudeVersion")(
+          function* () {
+            return yield* Effect.tryPromise({
+              try: async () => reads.readInstalledClaudeVersion(),
+              catch: (cause) =>
+                new ClaudeInstalledVersionError({
+                  reason: classifyInstalledVersionFailure(cause),
+                  cause,
+                }),
+            });
+          },
+        ),
+      }),
+    );
+  }
+
+  /** Live sources: the installed SDK's package.json and `claude --version` from PATH. */
+  static readonly layer: Layer.Layer<ClaudeSdkVersionSources> = ClaudeSdkVersionSources.fromReads({
+    readSdkPackageMetadata: defaultReadSdkPackageMetadata,
+    readInstalledClaudeVersion: defaultReadInstalledClaudeVersion,
+  });
+}
 
 function parseVersion(
   source: ClaudeVersionParseError["source"],
@@ -142,25 +199,15 @@ function parseVersion(
 /**
  * Inspect Agent SDK, bundled Claude Code, and installed Claude Code versions.
  *
- * @param sources - Injectable process and filesystem boundary.
  * @returns Parsed status, failing with a typed metadata, CLI, or parse error.
  */
-export const inspectClaudeSdkVersions = Effect.fn("inspectClaudeSdkVersions")(function* (
-  sources: ClaudeSdkVersionSources = defaultSources,
-) {
-  const metadataText = yield* Effect.tryPromise({
-    try: async () => sources.readSdkPackageMetadata(),
-    catch: (cause) => new ClaudeSdkMetadataError({ cause }),
-  });
-  const metadata = yield* Effect.try({
-    try: () => sdkPackageMetadataSchema.parse(JSON.parse(metadataText)),
-    catch: (cause) => new ClaudeSdkMetadataError({ cause }),
-  });
-  const installedOutput = yield* Effect.tryPromise({
-    try: async () => sources.readInstalledClaudeVersion(),
-    catch: (cause) =>
-      new ClaudeInstalledVersionError({ reason: classifyInstalledVersionFailure(cause), cause }),
-  });
+export const inspectClaudeSdkVersions = Effect.fn("inspectClaudeSdkVersions")(function* () {
+  const sources = yield* ClaudeSdkVersionSources;
+  const metadataText = yield* sources.readSdkPackageMetadata();
+  const metadata = yield* decodeSdkPackageMetadata(metadataText).pipe(
+    Effect.mapError((cause) => new ClaudeSdkMetadataError({ cause })),
+  );
+  const installedOutput = yield* sources.readInstalledClaudeVersion();
   const bundled = yield* parseVersion("bundled", metadata.claudeCodeVersion);
   const installed = yield* parseVersion("installed", installedOutput);
   return {
