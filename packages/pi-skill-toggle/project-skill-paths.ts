@@ -17,11 +17,15 @@ const PROJECT_SKILL_DIRECTORIES = [
  * name-collision diagnostics. Earlier roots win, while uniquely named skills
  * from later roots remain available.
  */
-export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
+export function discoverProjectSkillPaths(cwd: string): readonly string[] {
   const roots = directoriesThroughGitRoot(cwd).flatMap((directory) =>
-    PROJECT_SKILL_DIRECTORIES.map((skills) => join(directory, skills)).filter(existsSync),
+    PROJECT_SKILL_DIRECTORIES.map((skills) => join(directory, skills)).filter((path) =>
+      existsSync(path),
+    ),
   );
-  if (roots.length === 0) return [];
+  if (roots.length === 0) {
+    return [];
+  }
 
   const result = loadSkills({
     cwd,
@@ -31,7 +35,9 @@ export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
   });
   const invalidPaths = new Set(
     result.diagnostics.flatMap((diagnostic) =>
-      diagnostic.type !== "collision" && diagnostic.path ? [diagnostic.path] : [],
+      diagnostic.type !== "collision" && diagnostic.path !== undefined && diagnostic.path !== ""
+        ? [diagnostic.path]
+        : [],
     ),
   );
   return result.skills
@@ -40,11 +46,15 @@ export function discoverProjectSkillPaths(cwd: string): ReadonlyArray<string> {
 }
 
 /** Outside a Git worktree only `cwd` counts, so a parent user's skills are not claimed. */
-function directoriesThroughGitRoot(cwd: string): ReadonlyArray<string> {
+function directoriesThroughGitRoot(cwd: string): readonly string[] {
   const directories: string[] = [];
   for (let directory = cwd; ; directory = dirname(directory)) {
     directories.push(directory);
-    if (existsSync(join(directory, ".git"))) return directories;
-    if (dirname(directory) === directory) return [cwd];
+    if (existsSync(join(directory, ".git"))) {
+      return directories;
+    }
+    if (dirname(directory) === directory) {
+      return [cwd];
+    }
   }
 }

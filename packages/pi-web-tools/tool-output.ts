@@ -6,7 +6,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { FetchPageResult } from "./fetch-page";
 import { redactSecrets } from "./redacted";
-import { err, ok, type Result } from "./result";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import { writeTempTextFile } from "./temp";
 import type {
   NormalizedSearchResult,
@@ -16,32 +17,28 @@ import type {
 } from "./types";
 
 /** Persistence port for oversized tool output. */
-export interface ToolOutputStore {
-  writeTextFile(
+export type ToolOutputStore = {
+  readonly writeTextFile: (
     prefix: string,
     fileName: string,
     content: string,
-  ): Promise<Result<string, ToolOutputStoreError>>;
-}
+  ) => Promise<Result<string, ToolOutputStoreError>>;
+};
 
 /** Expected failures of the tool output store. */
 export type ToolOutputStoreError = { readonly _tag: "TempFileWriteFailed" };
 
 /** Temp-file backed tool output store with private permissions. */
-export class TempFileToolOutputStore implements ToolOutputStore {
+export const tempFileToolOutputStore: ToolOutputStore = {
   /** Write full tool output to a private temporary text file. */
-  async writeTextFile(
-    prefix: string,
-    fileName: string,
-    content: string,
-  ): Promise<Result<string, ToolOutputStoreError>> {
+  async writeTextFile(prefix, fileName, content) {
     try {
       return ok(await writeTempTextFile(prefix, fileName, content));
     } catch {
       return err({ _tag: "TempFileWriteFailed" });
     }
-  }
-}
+  },
+};
 
 /** Pi text content item. */
 export type PiTextContent = { readonly type: "text"; readonly text: string };
@@ -53,10 +50,10 @@ export type PiImageContent = {
 };
 
 /** Minimal shape of a pi tool result. */
-export interface PiToolResult<Details> {
-  readonly content: Array<PiTextContent | PiImageContent>;
+export type PiToolResult<Details> = {
+  readonly content: (PiTextContent | PiImageContent)[];
   readonly details: Details;
-}
+};
 
 /** Format normalized search results as URL-forward text for LLM consumption. */
 export function formatSearchResults(
@@ -69,18 +66,17 @@ export function formatSearchResults(
 
   const lines = [`Search results for: ${query}`, ""];
   for (const [index, result] of results.entries()) {
-    lines.push(`${index + 1}. ${result.title}`);
-    lines.push(`   URL: ${result.url}`);
-    if (result.publishedAt) {
+    lines.push(`${index + 1}. ${result.title}`, `   URL: ${result.url}`);
+    if (result.publishedAt !== undefined && result.publishedAt !== "") {
       lines.push(`   Published: ${result.publishedAt}`);
     }
-    if (result.source) {
+    if (result.source !== undefined && result.source !== "") {
       lines.push(`   Source: ${result.source}`);
     }
     if (typeof result.score === "number") {
       lines.push(`   Score: ${result.score}`);
     }
-    if (result.snippet) {
+    if (result.snippet !== undefined && result.snippet !== "") {
       lines.push(`   Snippet: ${result.snippet}`);
     }
     lines.push("");
@@ -89,18 +85,18 @@ export function formatSearchResults(
 }
 
 /** Truncation state recorded in the details of every text tool result. */
-interface TruncationDetails {
+type TruncationDetails = {
   readonly truncated: boolean;
   readonly fullOutputPath?: string | undefined;
-}
+};
 
 /** Markdown a fetch provider retrieved after the direct fetch was blocked or unusable. */
-export interface ProviderFetchedPage {
+export type ProviderFetchedPage = {
   /** The fetch provider that retrieved the page; the URL was shared with it. */
   readonly provider: string;
   readonly url: PublicHttpUrl;
   readonly markdown: string;
-}
+};
 
 /** Project a directly fetched page into a pi tool result, truncating and spilling large output. */
 export async function projectFetchResult(
@@ -121,12 +117,12 @@ export async function projectFetchResult(
     });
   }
 
-  return projectTextOutput<WebFetchDetails>(
-    redactSecrets(body.text, options.secrets),
-    { ...meta, decoder: body.decoder },
-    options.store,
-    "pi-webfetch-",
-  );
+  return projectTextOutput<WebFetchDetails>({
+    output: redactSecrets(body.text, options.secrets),
+    details: { ...meta, decoder: body.decoder },
+    store: options.store,
+    tempPrefix: "pi-webfetch-",
+  });
 }
 
 /**
@@ -138,41 +134,48 @@ export async function projectProviderFetchedPage(
   options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
 ): Promise<Result<PiToolResult<WebFetchDetails>, ToolOutputStoreError>> {
   const note = `[Direct fetch was blocked or unusable; content retrieved via ${page.provider} — the URL was shared with that provider]`;
-  return projectTextOutput<WebFetchDetails>(
-    redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
-    {
+  return projectTextOutput<WebFetchDetails>({
+    output: redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
+    details: {
       requestedUrl: page.url,
       format: "markdown",
       bytes: Buffer.byteLength(page.markdown, "utf8"),
       via: page.provider,
     },
-    options.store,
-    "pi-webfetch-",
-  );
+    store: options.store,
+    tempPrefix: "pi-webfetch-",
+  });
 }
 
 /** Project search results into a pi tool result, truncating and spilling large output. */
 export async function projectSearchResults(
-  query: string,
-  results: readonly NormalizedSearchResult[],
-  details: Omit<WebSearchDetails, "truncated" | "fullOutputPath">,
+  search: {
+    readonly query: string;
+    readonly results: readonly NormalizedSearchResult[];
+    readonly details: Omit<WebSearchDetails, "truncated" | "fullOutputPath">;
+  },
   options: { readonly store: ToolOutputStore; readonly secrets: readonly (string | undefined)[] },
 ): Promise<Result<PiToolResult<WebSearchDetails>, ToolOutputStoreError>> {
-  return projectTextOutput(
-    redactSecrets(formatSearchResults(query, results), options.secrets),
-    details,
-    options.store,
-    "pi-websearch-",
-  );
+  return projectTextOutput({
+    output: redactSecrets(formatSearchResults(search.query, search.results), options.secrets),
+    details: search.details,
+    store: options.store,
+    tempPrefix: "pi-websearch-",
+  });
 }
 
 /** Truncate text output for the model, spilling the full text to the store when it is too large. */
-async function projectTextOutput<Details>(
-  output: string,
-  details: Details,
-  store: ToolOutputStore,
-  tempPrefix: string,
-): Promise<Result<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError>> {
+async function projectTextOutput<Details>({
+  output,
+  details,
+  store,
+  tempPrefix,
+}: {
+  readonly output: string;
+  readonly details: Details;
+  readonly store: ToolOutputStore;
+  readonly tempPrefix: string;
+}): Promise<Result<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError>> {
   const truncation = truncateHead(output, {
     maxBytes: DEFAULT_MAX_BYTES,
     maxLines: DEFAULT_MAX_LINES,

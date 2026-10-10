@@ -1,11 +1,12 @@
-import { err, ok, type Result } from "./result";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import type { PublicHttpUrl } from "./types";
 
 /** Hostname allow/deny policy for webfetch. */
-export interface DomainPolicy {
+export type DomainPolicy = {
   readonly allow: readonly string[];
   readonly deny: readonly string[];
-}
+};
 
 /** Expected failures of the domain policy check. */
 export type DomainPolicyError =

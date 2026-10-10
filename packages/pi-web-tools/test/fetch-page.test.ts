@@ -1,19 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { FetchPage, getAcceptHeader } from "../fetch-page";
 import { err } from "../result";
-import { parsePublicHttpUrl } from "../types";
-import { fakePublicWeb, textWebResponse } from "./fakes";
+import { UTF8, fakePublicWeb, publicUrl, textWebResponse } from "./fakes";
 
 const URL = "https://example.com/page";
 const OPTIONS = { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHosts: true };
 
-function publicUrl(input: string) {
-  const parsed = parsePublicHttpUrl(input);
-  if (parsed._tag !== "ok") throw new Error("bad test url");
-  return parsed.value;
-}
-
-describe("FetchPage", () => {
+describe("fetchPage", () => {
   test("converts HTML to markdown by default", async () => {
     const { client } = fakePublicWeb({
       _tag: "ok",
@@ -24,18 +17,18 @@ describe("FetchPage", () => {
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok" || result.value.body._tag !== "Text") return;
+    assert(result._tag === "ok");
+    assert(result.value.body._tag === "Text");
     expect(result.value.body.text).toContain("# Hello");
     expect(result.value.body.kind).toBe("html");
-    expect(result.value.meta).toEqual({
+    expect(result.value.meta).toStrictEqual({
       requestedUrl: "https://example.com/page",
       finalUrl: "https://example.com/page",
       format: "markdown",
       status: 200,
       mime: "text/html",
       contentType: "text/html; charset=utf-8",
-      charset: "utf-8",
+      charset: UTF8,
       bytes: 71,
     });
   });
@@ -55,21 +48,22 @@ describe("FetchPage", () => {
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
-    expect(result.value.body).toEqual({ _tag: "Image", data: png });
+    assert(result._tag === "ok");
+    expect(result.value.body).toStrictEqual({ _tag: "Image", data: png });
     expect(result.value.meta.bytes).toBe(png.byteLength);
   });
 
   test("rejects unsupported binary content", async () => {
     const { client } = fakePublicWeb({
       _tag: "ok",
-      value: textWebResponse("PK\\u0003\\u0004", "application/zip"),
+      value: textWebResponse(String.raw`PK\u0003\u0004`, "application/zip"),
     });
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
 
-    expect(result).toEqual(err({ _tag: "UnsupportedBinaryContent", mime: "application/zip" }));
+    expect(result).toStrictEqual(
+      err({ _tag: "UnsupportedBinaryContent", mime: "application/zip" }),
+    );
   });
 
   test("leaves the mime off binary errors when the response has no content type", async () => {
@@ -77,7 +71,7 @@ describe("FetchPage", () => {
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
 
-    expect(result).toEqual(err({ _tag: "UnsupportedBinaryContent" }));
+    expect(result).toStrictEqual(err({ _tag: "UnsupportedBinaryContent" }));
   });
 
   test("passes through plain text for text format", async () => {
@@ -88,13 +82,12 @@ describe("FetchPage", () => {
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS);
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok" || result.value.body._tag !== "Text") return;
-    expect(result.value.body).toEqual({
+    assert(result._tag === "ok");
+    expect(result.value.body).toStrictEqual({
       _tag: "Text",
       kind: "text",
       text: "plain words",
-      decoder: "utf-8",
+      decoder: UTF8,
     });
   });
 
@@ -105,8 +98,7 @@ describe("FetchPage", () => {
     const page = new FetchPage(client);
     const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
 
-    expect(result._tag).toBe("err");
-    if (result._tag !== "err") return;
+    assert(result._tag === "err");
     expect(result.error._tag).toBe("HttpStatusRejected");
   });
 });

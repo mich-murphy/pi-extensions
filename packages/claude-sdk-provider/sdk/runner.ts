@@ -1,47 +1,41 @@
 import process from "node:process";
-import { createSdkMcpServer, type HookCallback, query } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
 import { sdkModelSelectorFor } from "../models";
-import {
-  createDeferredCallCapture,
-  createDeferredPiCallTool,
-  type DeferredCallCapture,
-} from "./deferred-tools";
-import { SdkProtocolError, SdkQueryError, type SdkRunError } from "./errors";
-import {
-  applyUsage,
-  contextWindowFor,
-  parseSdkMessage,
-  type SdkMessage,
-  type TurnResult,
-} from "./messages";
+import { createDeferredCallCapture, createDeferredPiCallTool } from "./deferred-tools";
+import type { DeferredCallCapture } from "./deferred-tools";
+import { SdkProtocolError, SdkQueryError } from "./errors";
+import type { SdkRunError } from "./errors";
+import { applyUsage, contextWindowFor, parseSdkMessage } from "./messages";
+import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream } from "./prompt-stream";
 import { subscriptionEnvironment } from "./subscription-environment";
 
 /** Injectable Claude Agent SDK query function used by the runner and its tests. */
-export type RunSdkQuery = (params: Parameters<typeof query>[0]) => AsyncIterable<unknown>;
+export type RunSdkQuery = (params: Readonly<Parameters<typeof query>[0]>) => AsyncIterable<unknown>;
 
 /** A model resolution observed from a real turn. */
-export interface ModelObservation {
+export type ModelObservation = {
   /** Claude Code model selector the request used. */
   readonly selector: string;
   /** Concrete main-loop model id that served the turn, e.g. "claude-fable-5-1". */
   readonly canonicalModel: string;
   /** Context window the request actually ran with, when reported. */
   readonly contextWindow: number | undefined;
-}
+};
 
 /** Runner collaborators. Each falls back to production behaviour. */
-export interface RunnerOptions {
+export type RunnerOptions = {
   readonly runSdkQuery?: RunSdkQuery;
   readonly sdkEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
   /** Receives the model usage observed on a terminal SDK result. */
   readonly modelObserver?: (observation: ModelObservation) => void;
-}
+};
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 type Collaborators = RunnerOptions &
@@ -51,16 +45,25 @@ function failed(error: SdkRunError): BridgeEvent {
   return { type: "failed", error };
 }
 
+/** One provider turn as Pi requested it. */
+type Turn = {
+  readonly request: AgentRequest;
+  readonly model: Model<Api>;
+  readonly options: SimpleStreamOptions | undefined;
+};
+
+/** Per-turn SDK wiring the runner creates before starting the query. */
+type QueryWiring = {
+  readonly abortController: AbortController;
+  readonly hook: HookCallback;
+  readonly env: Readonly<Record<string, string | undefined>>;
+};
+
 function queryParameters(
-  request: AgentRequest,
-  model: Model<Api>,
-  reasoning: SimpleStreamOptions["reasoning"],
-  collaborators: {
-    readonly abortController: AbortController;
-    readonly hook: HookCallback;
-    readonly env: Readonly<Record<string, string | undefined>>;
-  },
+  { request, model, options }: Turn,
+  { abortController, hook, env }: QueryWiring,
 ): SdkQueryParameters {
+  const reasoning = options?.reasoning;
   const server = createSdkMcpServer({
     name: "pi",
     version: "0.1.0",
@@ -70,10 +73,10 @@ function queryParameters(
   return {
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoint),
     options: {
-      abortController: collaborators.abortController,
+      abortController,
       cwd: process.cwd(),
       model: sdkModelSelectorFor(model.id),
-      // Models without reasoning support, such as Haiku, reject the effort option.
+      // Models without reasoning support, such as Haiku 4.5, reject the effort option.
       ...(model.reasoning && reasoning
         ? { effort: reasoning === "minimal" ? ("low" as const) : reasoning }
         : {}),
@@ -83,8 +86,8 @@ function queryParameters(
       settingSources: [],
       tools: [],
       mcpServers: { pi: server },
-      env: { ...collaborators.env },
-      hooks: { PreToolUse: [{ hooks: [collaborators.hook] }] },
+      env: { ...env },
+      hooks: { PreToolUse: [{ hooks: [hook] }] },
     },
   };
 }
@@ -93,12 +96,14 @@ function queryParameters(
 // and a confirmed defer must have captured the calls it deferred.
 function terminalEvent(
   result: TurnResult | undefined,
-  calls: ReadonlyArray<DeferredCall>,
+  calls: readonly DeferredCall[],
 ): BridgeEvent {
   if (!result) {
     return failed(new SdkQueryError("terminal-result", "query ended without a result message"));
   }
-  if (result._tag === "failed") return failed(result.error);
+  if (result._tag === "failed") {
+    return failed(result.error);
+  }
   const deferred = result.terminalReason === "tool_deferred";
   if (deferred && calls.length === 0) {
     const detail = "terminal_reason was tool_deferred but the PreToolUse hook captured no calls";
@@ -112,28 +117,43 @@ function terminalEvent(
 }
 
 /** What one SDK query has reported so far. */
-interface QueryProgress {
-  usage: TokenUsage | undefined;
+type QueryProgress = {
+  readonly usage: TokenUsage | undefined;
   /** The first main-loop model of the turn; later model calls may be auxiliary. */
-  observedModel: string | undefined;
-  result: Extract<SdkMessage, { type: "result" }> | undefined;
-}
+  readonly observedModel: string | undefined;
+  readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
+};
+
+/** How one SDK query ended. */
+type QueryOutcome =
+  | { readonly _tag: "ended"; readonly progress: QueryProgress }
+  | { readonly _tag: "failed"; readonly error: SdkRunError };
 
 // Folds one SDK message into the progress and returns the bridge event it produces, if any.
-function advance(progress: QueryProgress, message: SdkMessage): BridgeEvent | undefined {
+function advance(
+  progress: QueryProgress,
+  message: SdkMessage,
+): { readonly progress: QueryProgress; readonly event: BridgeEvent | undefined } {
   switch (message.type) {
     case "text_delta":
-    case "thinking_delta":
-      return message;
-    case "usage":
-      progress.observedModel ??= message.model;
-      progress.usage = applyUsage(progress.usage, message.usage);
-      return { type: "usage", usage: progress.usage };
-    case "result":
-      progress.result = message;
-      return undefined;
-    case "ignored":
-      return undefined;
+    case "thinking_delta": {
+      return { progress, event: message };
+    }
+    case "usage": {
+      const usage = applyUsage(progress.usage, message.usage);
+      const observedModel = progress.observedModel ?? message.model;
+      return { progress: { ...progress, usage, observedModel }, event: { type: "usage", usage } };
+    }
+    case "result": {
+      return { progress: { ...progress, result: message }, event: undefined };
+    }
+    case "ignored": {
+      return { progress, event: undefined };
+    }
+    default: {
+      const _exhaustive: never = message;
+      throw new Error("Unhandled SDK message", { cause: _exhaustive });
+    }
   }
 }
 
@@ -141,66 +161,76 @@ function advance(progress: QueryProgress, message: SdkMessage): BridgeEvent | un
 async function* streamQuery(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
-): AsyncGenerator<BridgeEvent, Readonly<QueryProgress> | SdkRunError> {
-  const progress: QueryProgress = { usage: undefined, observedModel: undefined, result: undefined };
+): AsyncGenerator<BridgeEvent, QueryOutcome> {
+  let progress: QueryProgress = { usage: undefined, observedModel: undefined, result: undefined };
   try {
     for await (const raw of messages) {
-      if (capture.limitError) break;
+      if (capture.limitError) {
+        break;
+      }
       const parsed = parseSdkMessage(raw);
-      if (parsed._tag === "err") return parsed.error;
-      const event = advance(progress, parsed.value);
-      if (event) yield event;
+      if (parsed._tag === "err") {
+        return { _tag: "failed", error: parsed.error };
+      }
+      const { progress: next, event } = advance(progress, parsed.value);
+      progress = next;
+      if (event) {
+        yield event;
+      }
       // The prompt is a single message, so its result ends the turn. Stopping
       // here keeps the turn from depending on the SDK closing its stream.
-      if (progress.result) break;
+      if (progress.result) {
+        break;
+      }
     }
-  } catch (cause) {
+  } catch (error) {
     // A result already in hand outlives a failure while closing the finished query.
-    if (!progress.result) return capture.limitError ?? new SdkQueryError("iterate", cause);
+    if (!progress.result) {
+      return { _tag: "failed", error: capture.limitError ?? new SdkQueryError("iterate", error) };
+    }
   }
-  return capture.limitError ?? progress;
+  return capture.limitError
+    ? { _tag: "failed", error: capture.limitError }
+    : { _tag: "ended", progress };
 }
 
 async function* runTurn(
   { runSdkQuery, sdkEnvironment, cacheDiagnostics, modelObserver }: Collaborators,
-  request: AgentRequest,
-  model: Model<Api>,
-  options: SimpleStreamOptions | undefined,
+  turn: Turn,
 ): AsyncGenerator<BridgeEvent> {
+  const { request, model, options } = turn;
   const signal = options?.signal;
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     yield failed(new SdkQueryError("start", signal.reason));
     return;
   }
   const abortController = new AbortController();
-  const forwardAbort = (): void => abortController.abort(signal?.reason);
+  const forwardAbort = (): void => {
+    abortController.abort(signal?.reason);
+  };
   signal?.addEventListener("abort", forwardAbort, { once: true });
   try {
-    const capture = createDeferredCallCapture(request.toolNames, (limitError) =>
-      abortController.abort(limitError),
-    );
+    const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
+      abortController.abort(limitError);
+    });
     const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request);
     let messages: AsyncIterable<unknown>;
     try {
       messages = runSdkQuery(
-        queryParameters(request, model, options?.reasoning, {
-          abortController,
-          hook: capture.hook,
-          env: sdkEnvironment,
-        }),
+        queryParameters(turn, { abortController, hook: capture.hook, env: sdkEnvironment }),
       );
-    } catch (cause) {
-      yield failed(new SdkQueryError("start", cause));
+    } catch (error) {
+      yield failed(new SdkQueryError("start", error));
       return;
     }
 
     const ended = yield* streamQuery(messages, capture);
-    if (ended instanceof Error) {
-      yield failed(ended);
+    if (ended._tag === "failed") {
+      yield failed(ended.error);
       return;
     }
-    const { usage, observedModel, result } = ended;
-    if (result && observedModel) {
+    const { usage, observedModel, result } = ended.progress;
+    if (result !== undefined && observedModel !== undefined) {
       modelObserver?.({
         selector: sdkModelSelectorFor(model.id),
         canonicalModel: observedModel,
@@ -208,7 +238,9 @@ async function* runTurn(
       });
     }
     const terminal = terminalEvent(result?.result, capture.calls);
-    if (terminal.type !== "failed" && usage) recordUsage?.(usage);
+    if (terminal.type !== "failed" && usage) {
+      recordUsage?.(usage);
+    }
     yield terminal;
   } finally {
     signal?.removeEventListener("abort", forwardAbort);
@@ -224,5 +256,6 @@ export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSd
     sdkEnvironment: subscriptionEnvironment(),
     ...options,
   };
-  return (request, model, streamOptions) => runTurn(collaborators, request, model, streamOptions);
+  return (request, model, streamOptions) =>
+    runTurn(collaborators, { request, model, options: streamOptions });
 }

@@ -4,7 +4,9 @@ import { parsePublicHttpUrl } from "../types";
 
 function publicUrl(input: string) {
   const parsed = parsePublicHttpUrl(input);
-  if (parsed._tag !== "ok") throw new Error("bad test url");
+  if (parsed._tag !== "ok") {
+    throw new Error("bad test url");
+  }
   return parsed.value;
 }
 

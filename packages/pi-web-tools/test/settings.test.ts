@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import {
   BRAVE_API_KEY_ENV,
   clampInteger,
@@ -15,19 +15,17 @@ import {
 describe("parseSettings", () => {
   test("defaults to exa then parallel with keyless MCP", () => {
     const settings = parseSettings({});
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.search.providers).toEqual(["exa", "parallel"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.search.providers).toStrictEqual(["exa", "parallel"]);
     expect(settings.value.credentials.exaApiKey).toBeUndefined();
     expect(settings.value.fetch.rescue).toBe(true);
-    expect(settings.value.fetch.allowDomains).toEqual([]);
+    expect(settings.value.fetch.allowDomains).toStrictEqual([]);
   });
 
   test("appends brave to the default chain when keyed", () => {
     const settings = parseSettings({ [BRAVE_API_KEY_ENV]: "BSA_test" });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.search.providers).toEqual(["exa", "parallel", "brave"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.search.providers).toStrictEqual(["exa", "parallel", "brave"]);
   });
 
   test("honors explicit provider ordering and filtering", () => {
@@ -35,30 +33,26 @@ describe("parseSettings", () => {
       [PROVIDERS_ENV]: "parallel, exa",
       [EXA_API_KEY_ENV]: "exa-key",
     });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.search.providers).toEqual(["parallel", "exa"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.search.providers).toStrictEqual(["parallel", "exa"]);
     expect(settings.value.credentials.exaApiKey).toBe("exa-key");
   });
 
   test("deduplicates repeated providers", () => {
     const settings = parseSettings({ [PROVIDERS_ENV]: "exa,exa,parallel" });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.search.providers).toEqual(["exa", "parallel"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.search.providers).toStrictEqual(["exa", "parallel"]);
   });
 
   test("keeps first-mention order when deduplicating", () => {
     const settings = parseSettings({ [PROVIDERS_ENV]: "parallel,exa,parallel" });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.search.providers).toEqual(["parallel", "exa"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.search.providers).toStrictEqual(["parallel", "exa"]);
   });
 
   test("rejects unknown providers fail-closed", () => {
     const settings = parseSettings({ [PROVIDERS_ENV]: "exa,google" });
-    expect(settings._tag).toBe("err");
-    if (settings._tag !== "err") return;
+    assert(settings._tag === "err");
     expect(settings.error.message).toContain("unknown provider");
   });
 
@@ -69,29 +63,25 @@ describe("parseSettings", () => {
 
   test("rejects brave without a key when explicitly listed", () => {
     const settings = parseSettings({ [PROVIDERS_ENV]: "exa,brave" });
-    expect(settings._tag).toBe("err");
-    if (settings._tag !== "err") return;
+    assert(settings._tag === "err");
     expect(settings.error.message).toContain(BRAVE_API_KEY_ENV);
   });
 
   test("rejects API keys containing control characters", () => {
     const settings = parseSettings({ [EXA_API_KEY_ENV]: "exa-\nkey" });
-    expect(settings._tag).toBe("err");
-    if (settings._tag !== "err") return;
+    assert(settings._tag === "err");
     expect(settings.error.message).toContain("control characters");
   });
 
   test("treats empty API keys as unset", () => {
     const settings = parseSettings({ [PARALLEL_API_KEY_ENV]: "   " });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
+    assert(settings._tag === "ok");
     expect(settings.value.credentials.parallelApiKey).toBeUndefined();
   });
 
   test("parses the fetch rescue toggle", () => {
     const off = parseSettings({ [FETCH_RESCUE_ENV]: "off" });
-    expect(off._tag).toBe("ok");
-    if (off._tag !== "ok") return;
+    assert(off._tag === "ok");
     expect(off.value.fetch.rescue).toBe(false);
   });
 
@@ -100,8 +90,7 @@ describe("parseSettings", () => {
     expect(bad._tag).toBe("err");
 
     const good = parseSettings({ [EXA_ENDPOINT_ENV]: "https://search.internal.example/mcp" });
-    expect(good._tag).toBe("ok");
-    if (good._tag !== "ok") return;
+    assert(good._tag === "ok");
     expect(good.value.endpoints.exa).toBe("https://search.internal.example/mcp");
   });
 
@@ -110,10 +99,9 @@ describe("parseSettings", () => {
       PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "docs.example.com, Example.org ",
       PI_WEB_TOOLS_FETCH_DENY_DOMAINS: "evil.example",
     });
-    expect(settings._tag).toBe("ok");
-    if (settings._tag !== "ok") return;
-    expect(settings.value.fetch.allowDomains).toEqual(["docs.example.com", "example.org"]);
-    expect(settings.value.fetch.denyDomains).toEqual(["evil.example"]);
+    assert(settings._tag === "ok");
+    expect(settings.value.fetch.allowDomains).toStrictEqual(["docs.example.com", "example.org"]);
+    expect(settings.value.fetch.denyDomains).toStrictEqual(["evil.example"]);
   });
 });
 
@@ -143,7 +131,7 @@ describe("clampInteger", () => {
 
 describe("parseDomainList", () => {
   test("normalizes and deduplicates", () => {
-    expect(parseDomainList("A.com, a.com, b.org")).toEqual(["a.com", "b.org"]);
-    expect(parseDomainList(undefined)).toEqual([]);
+    expect(parseDomainList("A.com, a.com, b.org")).toStrictEqual(["a.com", "b.org"]);
+    expect(parseDomainList(undefined)).toStrictEqual([]);
   });
 });

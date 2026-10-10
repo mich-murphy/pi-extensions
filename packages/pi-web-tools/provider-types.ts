@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { isOperationTimeoutError } from "./network";
-import { err, ok, type Result } from "./result";
-import {
-  type NormalizedSearchResult,
-  type PublicHttpUrl,
-  parsePublicHttpUrl,
-  type SearchProviderName,
-  type SearchQuery,
+import { err, ok } from "./result";
+import type { Result } from "./result";
+import { parsePublicHttpUrl } from "./types";
+import type {
+  NormalizedSearchResult,
+  PublicHttpUrl,
+  SearchProviderName,
+  SearchQuery,
 } from "./types";
 
 /** Expected failures of a provider call over either transport (hosted MCP or REST API). */
@@ -52,7 +53,9 @@ export const optionalTextSchema = z
 /** Untrusted provider URL, accepted only when it parses as a public HTTP(S) URL. */
 export const publicHttpUrlSchema = z.string().transform((value, ctx) => {
   const parsed = parsePublicHttpUrl(value);
-  if (parsed._tag === "ok") return parsed.value;
+  if (parsed._tag === "ok") {
+    return parsed.value;
+  }
   ctx.issues.push({ code: "custom", message: parsed.error._tag, input: value });
   return z.NEVER;
 });
@@ -66,14 +69,14 @@ export function classifyProviderAbort(signal: AbortSignal): ProviderError {
 }
 
 /** Outbound port for one search provider. */
-export interface SearchProvider {
+export type SearchProvider = {
   readonly name: SearchProviderName;
   readonly transport: "mcp" | "api";
-  search(
+  readonly search: (
     input: { readonly query: SearchQuery; readonly maxResults: number },
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>>;
-}
+  ) => Promise<Result<readonly NormalizedSearchResult[], ProviderError>>;
+};
 
 /**
  * Outbound port for provider-side page fetching (the fetch rescue path).
@@ -81,11 +84,11 @@ export interface SearchProvider {
  * The only caller falls through to the next provider on any failure, so the
  * port reports content or nothing rather than a failure union.
  */
-export interface FetchProvider {
+export type FetchProvider = {
   readonly name: "exa" | "parallel";
   /** Read one URL as markdown; undefined when the provider produced no usable content, for any reason. */
-  fetchMarkdown(
+  readonly fetchMarkdown: (
     url: PublicHttpUrl,
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<string | undefined>;
-}
+  ) => Promise<string | undefined>;
+};

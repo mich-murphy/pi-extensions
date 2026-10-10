@@ -1,39 +1,50 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import registerClaudeSdkProvider from "../index";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
+type ProviderRegistration = { readonly models: readonly Readonly<Record<string, unknown>>[] };
+
 function loadExtension() {
   const registrations: string[] = [];
   const handlers = new Map<string, Handler>();
-  const providers = new Map<string, { models: ReadonlyArray<Record<string, unknown>> }>();
+  const providers = new Map<string, ProviderRegistration>();
   const piMock = {
-    registerCommand: (name: string) => registrations.push(`command:${name}`),
+    registerCommand: (name: string) => {
+      registrations.push(`command:${name}`);
+    },
     on: (name: string, handler: Handler) => {
       registrations.push(`event:${name}`);
       handlers.set(name, handler);
     },
-    registerProvider: (name: string, config: { models: [] }) => {
+    registerProvider: (name: string, config: ProviderRegistration) => {
       registrations.push(`provider:${name}`);
       providers.set(name, config);
     },
   };
-  // SAFETY: The extension only calls the three registration methods the mock implements.
   registerClaudeSdkProvider(piMock as unknown as ExtensionAPI);
-  const emit = (name: string, event: unknown, ctx: unknown = { hasUI: false }) => {
+  const noUI = { hasUI: false };
+  const emit = (name: string, event: unknown, ctx: unknown = noUI) => {
     const handler = handlers.get(name);
-    if (!handler) throw new Error(`test setup: no ${name} handler registered`);
+    if (!handler) {
+      throw new Error(`test setup: no ${name} handler registered`);
+    }
     return handler(event, ctx);
   };
   return { registrations, providers, emit };
 }
 
-const binaryOutput = [{ type: "text", text: "\u0000payload".repeat(5_000) }];
+const binaryOutput = [{ type: "text", text: "\u0000payload".repeat(5000) }];
+const quarantineNotice: unknown = expect.stringContaining("Binary-like bash output");
+
+function bashCall(command: string) {
+  return { type: "tool_call", toolName: "bash", input: { command } };
+}
 
 describe("extension entry point", () => {
   test("registers commands, safety hooks, and the provider", () => {
-    expect(loadExtension().registrations).toEqual([
+    expect(loadExtension().registrations).toStrictEqual([
       "command:claude-sdk-status",
       "command:claude-sdk-usage",
       "event:before_agent_start",
@@ -47,13 +58,15 @@ describe("extension entry point", () => {
   test("registers every model without the routing fields Pi does not know about", () => {
     const provider = loadExtension().providers.get("claude-sdk");
 
-    expect(provider?.models.map((model) => model.id)).toEqual([
+    expect(provider?.models.map((model) => model.id)).toStrictEqual([
       "claude-5.5-sonnet",
       "claude-5.5-opus",
       "claude-5.1-fable",
+      "claude-5.5-haiku",
       "claude-4.5-haiku",
     ]);
-    for (const model of provider?.models ?? []) {
+    assert(provider !== undefined, "test setup: provider not registered");
+    for (const model of provider.models) {
       expect(model).not.toHaveProperty("sdkModel");
       expect(model).not.toHaveProperty("canonicalModel");
     }
@@ -64,20 +77,23 @@ describe("bash output safety hooks", () => {
   test("appends the bash output rule to the system prompt", () => {
     const result = loadExtension().emit("before_agent_start", { systemPrompt: "Base prompt." });
 
-    expect(result).toEqual({
-      systemPrompt: expect.stringMatching(/^Base prompt\.\n\nBash output safety: never cat/),
-    });
+    const extendedPrompt: unknown = expect.stringMatching(
+      /^Base prompt\.\n\nBash output safety: never cat/u,
+    );
+    expect(result).toStrictEqual({ systemPrompt: extendedPrompt });
   });
 
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {
     const { emit } = loadExtension();
-    const bash = (command: string) => ({ type: "tool_call", toolName: "bash", input: { command } });
+    const refusal: unknown = expect.stringContaining(
+      "Refusing to pipe a discovered executable through cat",
+    );
 
-    expect(emit("tool_call", bash("cat $(which node)"))).toMatchObject({
+    expect(emit("tool_call", bashCall("cat $(which node)"))).toMatchObject({
       block: true,
-      reason: expect.stringContaining("Refusing to pipe a discovered executable through cat"),
+      reason: refusal,
     });
-    expect(emit("tool_call", bash("cat package.json"))).toBeUndefined();
+    expect(emit("tool_call", bashCall("cat package.json"))).toBeUndefined();
     expect(
       emit("tool_call", { type: "tool_call", toolName: "read", input: { path: "$(which cat)" } }),
     ).toBeUndefined();
@@ -85,18 +101,22 @@ describe("bash output safety hooks", () => {
 
   test("quarantines suspicious bash results and warns when a UI is attached", () => {
     const { emit } = loadExtension();
-    const notifications: unknown[][] = [];
-    const ui = { hasUI: true, ui: { notify: (...args: unknown[]) => notifications.push(args) } };
+    const notifications: (readonly unknown[])[] = [];
+    const ui = {
+      hasUI: true,
+      ui: {
+        notify: (...args: readonly unknown[]) => {
+          notifications.push(args);
+        },
+      },
+    };
 
     const result = emit("tool_result", { toolName: "bash", content: binaryOutput }, ui);
 
-    expect(result).toEqual({
-      content: [{ type: "text", text: expect.stringContaining("Binary-like bash output") }],
-    });
-    expect(notifications).toEqual([
-      [expect.stringContaining("Quarantined binary-like"), "warning"],
-    ]);
-    expect(emit("tool_result", { toolName: "bash", content: binaryOutput })).toEqual(result);
+    expect(result).toStrictEqual({ content: [{ type: "text", text: quarantineNotice }] });
+    const warning: unknown = expect.stringContaining("Quarantined binary-like");
+    expect(notifications).toStrictEqual([[warning, "warning"]]);
+    expect(emit("tool_result", { toolName: "bash", content: binaryOutput })).toStrictEqual(result);
   });
 
   test("leaves clean bash results and other tools' results untouched", () => {
@@ -119,14 +139,8 @@ describe("bash output safety hooks", () => {
 
     const result = loadExtension().emit("context", { messages: [user, recorded] });
 
-    expect(result).toEqual({
-      messages: [
-        user,
-        {
-          ...recorded,
-          content: [{ type: "text", text: expect.stringContaining("Binary-like bash output") }],
-        },
-      ],
+    expect(result).toStrictEqual({
+      messages: [user, { ...recorded, content: [{ type: "text", text: quarantineNotice }] }],
     });
   });
 });

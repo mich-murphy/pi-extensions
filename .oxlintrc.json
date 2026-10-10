@@ -1,0 +1,281 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Clippy's model, which Oxlint's categories copy: the bug-finding categories are on, and
+  // pedantic, style and restriction rules are opted into one at a time, never as whole
+  // categories. The opt-ins follow typescript-eslint's strict-type-checked and
+  // stylistic-type-checked presets plus the typescript skill, grouped by what each group buys.
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "env": { "builtin": true, "node": true },
+  "rules": {
+    // perf: its fix mutates in place, but the typescript skill prefers immutable values, and
+    // the flagged maps copy a handful of small objects
+    "oxc/no-map-spread": "off",
+
+    // Type safety: typescript-eslint recommended-type-checked and strict-type-checked
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/return-await": "error",
+    "typescript/no-confusing-void-expression": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-dynamic-delete": "error",
+    "typescript/no-invalid-void-type": "error",
+    "typescript/no-mixed-enums": "error",
+    "typescript/no-non-null-asserted-nullish-coalescing": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/related-getter-setter-pairs": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/prefer-literal-enum-member": "error",
+    // Exhaustive unions are how the typescript skill models state
+    "typescript/switch-exhaustiveness-check": "error",
+    // Nullable strings and numbers must be compared explicitly, so "" and 0 are never "missing"
+    "typescript/strict-boolean-expressions": "error",
+    // A promise-returning function must reject rather than throw synchronously. This makes
+    // some functions async without an await, so require-await stays off.
+    "typescript/promise-function-async": "error",
+    // Property-style signatures are checked contravariantly under strictFunctionTypes
+    "typescript/method-signature-style": "error",
+    "eslint/eqeqeq": "error",
+    "eslint/no-throw-literal": "error",
+    "eslint/no-promise-executor-return": "error",
+    "eslint/array-callback-return": "error",
+    "eslint/no-self-compare": "error",
+    "eslint/no-fallthrough": "error",
+    "eslint/no-case-declarations": "error",
+    "eslint/no-prototype-builtins": "error",
+    "eslint/no-new-wrappers": "error",
+    "eslint/no-array-constructor": "error",
+    "eslint/radix": "error",
+    "eslint/default-param-last": "error",
+    "eslint/no-shadow": "error",
+    "eslint/no-param-reassign": "error",
+    // Unicode-aware regexes match by code point, not UTF-16 unit
+    "eslint/require-unicode-regexp": "error",
+    "unicorn/no-array-callback-reference": "error",
+    "unicorn/no-instanceof-array": "error",
+    "unicorn/no-new-buffer": "error",
+    "unicorn/new-for-builtins": "error",
+    "unicorn/prefer-type-error": "error",
+    "unicorn/throw-new-error": "error",
+    "unicorn/error-message": "error",
+    "unicorn/no-object-as-default-parameter": "error",
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "unicorn/no-useless-switch-case": "error",
+    "oxc/bad-bitwise-operator": "error",
+    "promise/no-nesting": "error",
+    "promise/no-return-wrap": "error",
+    "promise/param-names": "error",
+
+    // Readability: one idiom per construct, and no shapes that hide control flow
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/consistent-type-assertions": "error",
+    "typescript/consistent-indexed-object-style": "error",
+    "typescript/consistent-generic-constructors": "error",
+    "typescript/array-type": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/non-nullable-type-assertion-style": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/prefer-function-type": "error",
+    "typescript/prefer-for-of": "error",
+    "typescript/prefer-readonly": "error",
+    "typescript/dot-notation": "error",
+    "typescript/adjacent-overload-signatures": "error",
+    "typescript/unified-signatures": "error",
+    "typescript/class-literal-property-style": "error",
+    "typescript/ban-tslint-comment": "error",
+    // Tagged errors use readonly parameter properties, as the typescript skill shows
+    "typescript/parameter-properties": ["error", { "allow": ["readonly", "private readonly"] }],
+    // `_tag` is the skill's discriminant and `const _exhaustive: never` its exhaustiveness check
+    "eslint/no-underscore-dangle": ["error", { "allow": ["_tag", "_exhaustive"] }],
+    "eslint/func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "eslint/curly": "error",
+    "eslint/prefer-const": "error",
+    "eslint/no-var": "error",
+    "eslint/object-shorthand": "error",
+    "eslint/prefer-template": "error",
+    "eslint/prefer-object-has-own": "error",
+    "eslint/prefer-object-spread": "error",
+    "eslint/prefer-rest-params": "error",
+    "eslint/prefer-spread": "error",
+    "eslint/prefer-exponentiation-operator": "error",
+    "eslint/prefer-numeric-literals": "error",
+    "eslint/prefer-named-capture-group": "error",
+    "eslint/logical-assignment-operators": "error",
+    "eslint/operator-assignment": "error",
+    "eslint/no-useless-computed-key": "error",
+    "eslint/no-useless-return": "error",
+    "eslint/no-else-return": "error",
+    "eslint/no-lonely-if": "error",
+    "eslint/no-negated-condition": "error",
+    "eslint/no-nested-ternary": "error",
+    "eslint/no-implicit-coercion": "error",
+    "eslint/no-multi-assign": "error",
+    "eslint/no-return-assign": "error",
+    "eslint/no-lone-blocks": "error",
+    "eslint/no-new-func": "error",
+    "eslint/no-empty": "error",
+    "eslint/no-empty-function": "error",
+    "eslint/no-sequences": "error",
+    "eslint/default-case-last": "error",
+    "unicorn/no-array-for-each": "error",
+    "unicorn/no-array-reduce": "error",
+    "unicorn/no-await-expression-member": "error",
+    "unicorn/no-lonely-if": "error",
+    "unicorn/no-negated-condition": "error",
+    "unicorn/no-nested-ternary": "error",
+    "unicorn/no-typeof-undefined": "error",
+    "unicorn/no-unreadable-iife": "error",
+    "unicorn/no-unreadable-array-destructuring": "error",
+    "unicorn/no-magic-array-flat-depth": "error",
+    "unicorn/prefer-logical-operator-over-ternary": "error",
+    "unicorn/prefer-optional-catch-binding": "error",
+    "unicorn/prefer-default-parameters": "error",
+    "unicorn/prefer-string-raw": "error",
+    "unicorn/numeric-separators-style": "error",
+    "unicorn/switch-case-braces": "error",
+
+    // Data structures and efficient built-ins
+    "typescript/prefer-find": "error",
+    "typescript/prefer-includes": "error",
+    "typescript/prefer-string-starts-ends-with": "error",
+    "typescript/prefer-regexp-exec": "error",
+    "typescript/prefer-reduce-type-parameter": "error",
+    "unicorn/prefer-array-some": "error",
+    "unicorn/prefer-array-flat": "error",
+    "unicorn/prefer-array-index-of": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-includes": "error",
+    "unicorn/prefer-negative-index": "error",
+    "unicorn/prefer-object-from-entries": "error",
+    "unicorn/prefer-structured-clone": "error",
+    "unicorn/prefer-spread": "error",
+    "unicorn/prefer-regexp-test": "error",
+    "unicorn/prefer-string-slice": "error",
+    "unicorn/prefer-string-replace-all": "error",
+    "unicorn/prefer-string-trim-start-end": "error",
+    "unicorn/prefer-code-point": "error",
+    "unicorn/prefer-date-now": "error",
+    "unicorn/prefer-math-min-max": "error",
+    "unicorn/prefer-math-trunc": "error",
+    "unicorn/prefer-modern-math-apis": "error",
+    "unicorn/prefer-number-properties": "error",
+    "unicorn/prefer-single-call": "error",
+    "unicorn/no-unnecessary-array-flat-depth": "error",
+    "unicorn/no-unnecessary-array-splice-count": "error",
+    "unicorn/no-unnecessary-slice-end": "error",
+    "unicorn/no-length-as-slice-end": "error",
+    "unicorn/no-useless-collection-argument": "error",
+    "eslint/no-useless-call": "error",
+
+    // Modules: named exports, explicit node: built-ins, type-only imports, no barrels or cycles
+    "import/no-default-export": "error",
+    "import/no-duplicates": "error",
+    "import/first": "error",
+    "import/newline-after-import": "error",
+    "import/no-mutable-exports": "error",
+    "import/no-cycle": "error",
+    "import/consistent-type-specifier-style": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/consistent-type-exports": "error",
+    "oxc/no-barrel-file": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-module": "error",
+    "unicorn/no-abusive-eslint-disable": "error",
+
+    // Pi extensions share the TUI process: console output corrupts the screen, and exiting kills Pi
+    "eslint/no-console": "error",
+    "unicorn/no-process-exit": "error",
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "readline",
+            "message": "readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \\n only."
+          },
+          {
+            "name": "node:readline",
+            "message": "readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \\n only."
+          },
+          {
+            "name": "readline/promises",
+            "message": "readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \\n only."
+          },
+          {
+            "name": "node:readline/promises",
+            "message": "readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \\n only."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      // Pi loads each extension's default export; Vitest loads its config's
+      "files": ["packages/*/index.ts", "vitest*.config.ts"],
+      "rules": { "import/no-default-export": "off" }
+    },
+    {
+      "files": ["packages/*/test/**"],
+      "plugins": ["vitest"],
+      "rules": {
+        // Test doubles implement only the slice of a framework type the code under test reads
+        "typescript/no-unsafe-type-assertion": "off",
+        // Tests sequence awaits to pin down ordering; their speed is not the product
+        "eslint/no-await-in-loop": "off",
+        // The typescript skill bans module mocks: inject a fake through a real seam instead
+        "vitest/no-restricted-vi-methods": [
+          "error",
+          {
+            "mock": "Inject a fake through a real seam instead of mocking a module.",
+            "doMock": "Inject a fake through a real seam instead of mocking a module."
+          }
+        ],
+        "vitest/consistent-test-it": ["error", { "fn": "test", "withinDescribe": "test" }],
+        "vitest/require-top-level-describe": "error",
+        "vitest/no-conditional-in-test": "error",
+        "vitest/prefer-strict-equal": "error",
+        "vitest/prefer-each": "error",
+        "vitest/prefer-expect-resolves": "error",
+        "vitest/prefer-to-be": "error",
+        "vitest/prefer-to-contain": "error",
+        "vitest/prefer-to-have-length": "error",
+        "vitest/prefer-comparison-matcher": "error",
+        "vitest/prefer-equality-matcher": "error",
+        "vitest/prefer-hooks-on-top": "error",
+        "vitest/prefer-hooks-in-order": "error",
+        "vitest/no-duplicate-hooks": "error",
+        "vitest/no-alias-methods": "error",
+        "vitest/no-test-return-statement": "error",
+        // Helpers named expect* or assert* wrap expect
+        "vitest/expect-expect": [
+          "error",
+          { "assertFunctionNames": ["expect", "expect*", "assert", "assert*"] }
+        ]
+      }
+    }
+  ]
+}

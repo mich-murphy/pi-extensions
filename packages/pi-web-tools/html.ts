@@ -21,6 +21,7 @@ import { CollapsedTextLength, normalizedTextLength } from "./collapsed-text";
 import { compileSelector, compileSelectorSet } from "./element-selector";
 
 const ELEMENT_NODE = 1;
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 const TEXT_NODE = 3;
 const CDATA_SECTION_NODE = 4;
 const COMMENT_NODE = 8;
@@ -88,13 +89,13 @@ const TABLE_CELL_TAGS: ReadonlySet<string> = new Set(["td", "th"]);
 
 // Readable-root selectors in the order extractReadableRoot tries them. A candidate's score also gains
 // the bonus of every group it matches, which ranks candidates that one selector returns.
-const CONTENT_SELECTOR_GROUPS: ReadonlyArray<{
+const CONTENT_SELECTOR_GROUPS: readonly {
   readonly bonus: number;
-  readonly selectors: ReadonlyArray<string>;
-}> = [
+  readonly selectors: readonly string[];
+}[] = [
   // Repository READMEs.
   {
-    bonus: 1_500,
+    bonus: 1500,
     selectors: [
       "#readme",
       "[data-testid='repository-readme-content']",
@@ -103,7 +104,7 @@ const CONTENT_SELECTOR_GROUPS: ReadonlyArray<{
     ],
   },
   // Hacker News.
-  { bonus: 1_000, selectors: ["#bigbox"] },
+  { bonus: 1000, selectors: ["#bigbox"] },
   // Semantic and conventional main-content containers.
   {
     bonus: 500,
@@ -123,7 +124,7 @@ const CONTENT_SELECTOR_GROUPS: ReadonlyArray<{
   },
 ];
 
-const PREFERRED_CONTENT_SELECTORS: ReadonlyArray<string> = CONTENT_SELECTOR_GROUPS.flatMap(
+const PREFERRED_CONTENT_SELECTORS: readonly string[] = CONTENT_SELECTOR_GROUPS.flatMap(
   (group) => group.selectors,
 );
 // All preferred selectors tested together; a match reports the selector's index.
@@ -139,7 +140,7 @@ type UrlAttributeResolver = (value: string, baseUrl: string) => string | undefin
 
 // URL-bearing attributes that sanitizeHtml rewrites, in rewrite order. Links may not carry data:
 // URLs; media may.
-const URL_ATTRIBUTE_RESOLVERS: ReadonlyArray<readonly [string, UrlAttributeResolver]> = [
+const URL_ATTRIBUTE_RESOLVERS: readonly (readonly [string, UrlAttributeResolver])[] = [
   ["href", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "reject")],
   ["src", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "allow")],
   ["poster", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "allow")],
@@ -147,10 +148,10 @@ const URL_ATTRIBUTE_RESOLVERS: ReadonlyArray<readonly [string, UrlAttributeResol
 ];
 
 const BOILERPLATE_TOKEN_RE =
-  /(^|[-_\s])(nav(?:igation)?|header|footer|sidebar|aside|menu|dialog|modal|cookie|consent|promo|advert|social|share|breadcrumb|pagination|pager|toolbar|search|newsletter|subscribe|signup|login|banner|related|recommendation)s?($|[-_\s])/i;
+  /(?:^|[-_\s])(?:nav(?:igation)?|header|footer|sidebar|aside|menu|dialog|modal|cookie|consent|promo|advert|social|share|breadcrumb|pagination|pager|toolbar|search|newsletter|subscribe|signup|login|banner|related|recommendation)s?(?:$|[-_\s])/iu;
 
 const RAW_HTML_BLOCK_TAG_RE =
-  /<(table|tbody|thead|tfoot|tr|td|th|div|section|article|main|header|footer|nav|aside)\b/gi;
+  /<(?:table|tbody|thead|tfoot|tr|td|th|div|section|article|main|header|footer|nav|aside)\b/giu;
 
 // turndown joins each node's replacement onto the accumulated output, flattening it every time, so
 // converting a large flat document is quadratic in its size. Past this input size the sanitized
@@ -253,9 +254,12 @@ export function htmlToMarkdownWithTextFallback(rawHtml: string, baseUrl: string)
 /** Returns true when a markdown conversion is dominated by raw HTML blocks (JS-heavy pages). */
 export function isPoorMarkdownConversion(markdown: string): boolean {
   const rawBlockTags = markdown.match(RAW_HTML_BLOCK_TAG_RE)?.length ?? 0;
-  if (rawBlockTags >= 6) return true;
-  if (/^\s*<(table|tbody|thead|tfoot|tr|td|th|div|section|article|main)\b/i.test(markdown))
+  if (rawBlockTags >= 6) {
     return true;
+  }
+  if (/^\s*<(?:table|tbody|thead|tfoot|tr|td|th|div|section|article|main)\b/iu.test(markdown)) {
+    return true;
+  }
   return false;
 }
 
@@ -267,7 +271,7 @@ function createTurndownService(): TurndownService {
     codeBlockStyle: "fenced",
     emDelimiter: "*",
   });
-  service.use(gfm as never);
+  service.use(gfm);
   // turndown-plugin-gfm reads every table's first row without checking that one exists, and turndown
   // never treats a table as blank, so a table without rows throws. Such tables reach turndown because
   // role and heading markup exempt a rowless table from flattening, and because turndown re-parses
@@ -275,10 +279,7 @@ function createTurndownService(): TurndownService {
   // later is tried first, so this one takes those tables before the plugin's rules and keeps their
   // content as plain blocks. Tables with rows never match it and convert as before.
   service.addRule("tableWithoutRows", {
-    filter: (node) =>
-      // SAFETY: turndown's parser gives TABLE elements the HTMLTableElement interface; the plugin
-      // reads the same rows property.
-      node.nodeName === "TABLE" && (node as HTMLTableElement).rows.length === 0,
+    filter: (node) => isTableElement(node) && node.rows.length === 0,
     replacement: (content) => `\n\n${content}\n\n`,
   });
   return service;
@@ -305,13 +306,19 @@ function extractReadableRoot(document: Document): Element {
   const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
   for (const element of document.querySelectorAll("*")) {
-    if (body === undefined && element.localName === "body") body = element;
-    matchPreferredContent(element, (index) => buckets[index]?.push(element));
+    if (body === undefined && element.localName === "body") {
+      body = element;
+    }
+    matchPreferredContent(element, (index) => {
+      buckets[index]?.push(element);
+    });
   }
 
   for (const candidates of buckets) {
     const match = pickPreferredCandidate(candidates);
-    if (match) return match;
+    if (match) {
+      return match;
+    }
   }
 
   const fallbackRoot: Element | null = body ?? document.documentElement;
@@ -328,12 +335,14 @@ function extractReadableRoot(document: Document): Element {
   return pickBestCandidate(candidates, stats) ?? fallbackRoot;
 }
 
-function pickPreferredCandidate(candidates: ReadonlyArray<Element>): Element | undefined {
+function pickPreferredCandidate(candidates: readonly Element[]): Element | undefined {
   const [only] = candidates;
-  if (only === undefined) return undefined;
+  if (only === undefined) {
+    return undefined;
+  }
   if (candidates.length === 1) {
     // A lone candidate wins whenever it scores at all: it is not raw text and has visible text.
-    return !RAW_TEXT_TAGS.has(only.localName) && /\S/.test(only.textContent ?? "")
+    return !RAW_TEXT_TAGS.has(only.localName) && /\S/u.test(only.textContent ?? "")
       ? only
       : undefined;
   }
@@ -343,7 +352,9 @@ function pickPreferredCandidate(candidates: ReadonlyArray<Element>): Element | u
   const stats = new Map<Element, ContentStats>();
   let outermost: Element | undefined;
   for (const candidate of candidates) {
-    if (outermost?.contains(candidate)) continue;
+    if (outermost?.contains(candidate) === true) {
+      continue;
+    }
     outermost = candidate;
     const measured = measureContent(candidate, (element) => wanted.has(element));
     for (const [element, elementStats] of measured.stats) {
@@ -354,7 +365,7 @@ function pickPreferredCandidate(candidates: ReadonlyArray<Element>): Element | u
 }
 
 function pickBestCandidate(
-  candidates: ReadonlyArray<Element>,
+  candidates: readonly Element[],
   stats: ReadonlyMap<Element, ContentStats>,
 ): Element | undefined {
   let best: Element | undefined;
@@ -362,7 +373,9 @@ function pickBestCandidate(
 
   for (const candidate of candidates) {
     const candidateStats = stats.get(candidate);
-    if (!candidateStats) continue;
+    if (!candidateStats) {
+      continue;
+    }
     const score = scoreContentCandidate(candidate, candidateStats);
     if (score > bestScore) {
       best = candidate;
@@ -373,10 +386,14 @@ function pickBestCandidate(
   return best;
 }
 
-function scoreContentCandidate(element: Element, stats: ContentStats): number {
-  if (RAW_TEXT_TAGS.has(element.localName)) return Number.NEGATIVE_INFINITY;
+function scoreContentCandidate(element: Element, stats: Readonly<ContentStats>): number {
+  if (RAW_TEXT_TAGS.has(element.localName)) {
+    return Number.NEGATIVE_INFINITY;
+  }
   const textLength = stats.text.trimmedLength();
-  if (textLength === 0) return Number.NEGATIVE_INFINITY;
+  if (textLength === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
 
   const ownPenalty = isBoilerplateElement(element) ? 800 : 0;
   const linkDensity = textLength > 0 ? stats.linkTextLength / textLength : 1;
@@ -403,37 +420,51 @@ function scoreContentCandidate(element: Element, stats: ContentStats): number {
  * includes template contents. The link text and counts are over the descendants querySelectorAll
  * would return from the element, which skips the contents of descendant templates.
  */
-interface ContentStats {
-  readonly element: Element;
-  readonly text: CollapsedTextLength;
-  /** The element is a template below the measured root, so its contents stay out of its ancestors' counts. */
-  readonly hidesContent: boolean;
-  /** The element is inside a descendant template's contents. */
-  readonly inTemplateContent: boolean;
+class ContentStats {
+  readonly text = new CollapsedTextLength();
   /** Sum of the normalized text lengths of descendant links. */
-  linkTextLength: number;
-  paragraphs: number;
-  listItems: number;
-  headings: number;
-  tables: number;
-}
+  linkTextLength = 0;
+  paragraphs = 0;
+  listItems = 0;
+  headings = 0;
+  tables = 0;
 
-function createContentStats(
-  element: Element,
-  hidesContent: boolean,
-  inTemplateContent: boolean,
-): ContentStats {
-  return {
-    element,
-    text: new CollapsedTextLength(),
-    hidesContent,
-    inTemplateContent,
-    linkTextLength: 0,
-    paragraphs: 0,
-    listItems: 0,
-    headings: 0,
-    tables: 0,
-  };
+  /**
+   * @param element - The measured element.
+   * @param hidesContent - The element is a template below the measured root, so its contents stay
+   *   out of its ancestors' counts.
+   * @param inTemplateContent - The element is inside a descendant template's contents.
+   */
+  constructor(
+    readonly element: Element,
+    readonly hidesContent: boolean,
+    readonly inTemplateContent: boolean,
+  ) {}
+
+  /** Add a finished child's stats to this element's. */
+  addChild(child: Readonly<ContentStats>): void {
+    this.text.append(child.text);
+    const name = child.element.localName;
+    if (name === "a") {
+      this.linkTextLength += child.text.trimmedLength();
+    } else if (name === "p") {
+      this.paragraphs += 1;
+    } else if (name === "li") {
+      this.listItems += 1;
+    } else if (name === "table") {
+      this.tables += 1;
+    } else if (HEADING_TAGS.has(name)) {
+      this.headings += 1;
+    }
+    if (child.hidesContent) {
+      return;
+    }
+    this.linkTextLength += child.linkTextLength;
+    this.paragraphs += child.paragraphs;
+    this.listItems += child.listItems;
+    this.headings += child.headings;
+    this.tables += child.tables;
+  }
 }
 
 /**
@@ -441,20 +472,50 @@ function createContentStats(
  * descendant `isCandidate` selects, plus those descendants in document order.
  */
 function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredContent {
-  const rootStats = createContentStats(root, false, false);
-  const measured: MeasuredContent = { candidates: [], stats: new Map([[root, rootStats]]) };
-
-  // Iterative, since documents can nest deeper than the call stack allows. `undefined` ends the
-  // walk; `null` means the element on top of the stack has no more children.
+  const rootStats = new ContentStats(root, false, false);
+  const candidates: Element[] = [];
+  const stats = new Map([[root, rootStats]]);
+  // Iterative, since documents can nest deeper than the call stack allows.
   const stack: ContentStats[] = [rootStats];
+
+  // Start measuring an element, recording it when it is a candidate.
+  const openElement = (element: Element, parent: Readonly<ContentStats>): ContentStats => {
+    const inTemplateContent = parent.inTemplateContent || parent.hidesContent;
+    const elementStats = new ContentStats(
+      element,
+      element.localName === "template",
+      inTemplateContent,
+    );
+    if (isCandidate(element, inTemplateContent)) {
+      candidates.push(element);
+      stats.set(element, elementStats);
+    }
+    return elementStats;
+  };
+
+  // Finish the element on top of the stack, adding its stats to its parent's. Returns the node
+  // after it, or undefined once the measured root is finished.
+  const closeElement = (): ChildNode | null | undefined => {
+    const finished = stack.pop();
+    const parent = stack.at(-1);
+    if (finished === undefined || parent === undefined) {
+      return undefined;
+    }
+    parent.addChild(finished);
+    return finished.element.nextSibling;
+  };
+
+  // `undefined` ends the walk; `null` means the element on top of the stack has no more children.
   let node: ChildNode | null | undefined = root.firstChild;
   while (node !== undefined) {
     const current = stack.at(-1);
-    if (current === undefined) break;
+    if (current === undefined) {
+      break;
+    }
     if (node === null) {
-      node = closeElement(stack);
+      node = closeElement();
     } else if (isElementNode(node)) {
-      stack.push(openElement(node, current, isCandidate, measured));
+      stack.push(openElement(node, current));
       node = node.firstChild;
     } else {
       if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
@@ -464,61 +525,17 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
     }
   }
 
-  return measured;
+  return { candidates, stats };
 }
 
 /** The candidates measureContent found, in document order, and the stats it recorded. */
-interface MeasuredContent {
+type MeasuredContent = {
   readonly candidates: Element[];
   readonly stats: Map<Element, ContentStats>;
-}
+};
 
 /** Selects the descendants measureContent reports, given whether they are in template contents. */
 type CandidateFilter = (element: Element, inTemplateContent: boolean) => boolean;
-
-/** Start measuring an element, recording it when it is a candidate. */
-function openElement(
-  element: Element,
-  parent: ContentStats,
-  isCandidate: CandidateFilter,
-  measured: MeasuredContent,
-): ContentStats {
-  const inTemplateContent = parent.inTemplateContent || parent.hidesContent;
-  const stats = createContentStats(element, element.localName === "template", inTemplateContent);
-  if (isCandidate(element, inTemplateContent)) {
-    measured.candidates.push(element);
-    measured.stats.set(element, stats);
-  }
-  return stats;
-}
-
-/**
- * Finish the element on top of the stack, adding its stats to its parent's. Returns the node after
- * it, or undefined once the measured root is finished.
- */
-function closeElement(stack: ContentStats[]): ChildNode | null | undefined {
-  const finished = stack.pop();
-  const parent = stack.at(-1);
-  if (finished === undefined || parent === undefined) return undefined;
-  addChildStats(parent, finished);
-  return finished.element.nextSibling;
-}
-
-function addChildStats(parent: ContentStats, child: ContentStats): void {
-  parent.text.append(child.text);
-  const name = child.element.localName;
-  if (name === "a") parent.linkTextLength += child.text.trimmedLength();
-  else if (name === "p") parent.paragraphs += 1;
-  else if (name === "li") parent.listItems += 1;
-  else if (name === "table") parent.tables += 1;
-  else if (HEADING_TAGS.has(name)) parent.headings += 1;
-  if (child.hidesContent) return;
-  parent.linkTextLength += child.linkTextLength;
-  parent.paragraphs += child.paragraphs;
-  parent.listItems += child.listItems;
-  parent.headings += child.headings;
-  parent.tables += child.tables;
-}
 
 /**
  * Remove removal-selector and boilerplate subtrees from root's descendants, returning the tables and
@@ -554,24 +571,32 @@ function nextElementAfterSubtree(element: Element, root: Element): Element | nul
   let current: Element | null = element;
   while (current !== null && current !== root) {
     const sibling: Element | null = current.nextElementSibling;
-    if (sibling !== null) return sibling;
+    if (sibling !== null) {
+      return sibling;
+    }
     current = current.parentElement;
   }
   return null;
 }
 
 // Innermost tables first, each inspected in the tree as earlier flattening left it.
-function flattenLayoutTables(tables: ReadonlyArray<Element>, root: Element): void {
+function flattenLayoutTables(tables: readonly Element[], root: Element): void {
   for (let index = tables.length - 1; index >= 0; index -= 1) {
     const table = tables[index];
-    if (table === undefined) continue;
+    if (table === undefined) {
+      continue;
+    }
     const shape = inspectTable(table, root);
-    if (!isLikelyLayoutTable(shape)) continue;
+    if (!isLikelyLayoutTable(shape)) {
+      continue;
+    }
     // Only this table's own parts: flattening a nested data table's rows would leave it an empty
     // table shell once turndown's parser moves the resulting divs out of it.
     for (let partIndex = shape.ownParts.length - 1; partIndex >= 0; partIndex -= 1) {
       const part = shape.ownParts[partIndex];
-      if (part !== undefined) replaceTag(part, "div");
+      if (part !== undefined) {
+        replaceTag(part, "div");
+      }
     }
     replaceTag(table, "div");
   }
@@ -580,7 +605,9 @@ function flattenLayoutTables(tables: ReadonlyArray<Element>, root: Element): voi
 function isLikelyLayoutTable(shape: TableShape): boolean {
   for (const rule of LAYOUT_TABLE_RULES) {
     const verdict = rule(shape);
-    if (verdict !== undefined) return verdict === "layout";
+    if (verdict !== undefined) {
+      return verdict === "layout";
+    }
   }
   return false;
 }
@@ -597,18 +624,18 @@ type TableShape = {
   readonly hasHeadingMarkup: boolean;
   readonly hasNestedTable: boolean;
   /** Own rows, each as its td/th children; rows without cells are left out. */
-  readonly rows: ReadonlyArray<ReadonlyArray<Element>>;
+  readonly rows: readonly (readonly Element[])[];
   /** Own links, with or without an href. */
   readonly ownLinkCount: number;
   /** Own thead, tbody, tfoot, tr, td, and th elements in document order. */
-  readonly ownParts: ReadonlyArray<Element>;
+  readonly ownParts: readonly Element[];
 };
 
 /** A layout-table rule's verdict; undefined leaves the decision to the next rule. */
 type TableVerdict = "layout" | "data" | undefined;
 
 // Tried in order; the first verdict decides, and a table no rule decides is a data table.
-const LAYOUT_TABLE_RULES: ReadonlyArray<(shape: TableShape) => TableVerdict> = [
+const LAYOUT_TABLE_RULES: readonly ((shape: TableShape) => TableVerdict)[] = [
   headingMarkupRule,
   tableRoleRule,
   hackerNewsRule,
@@ -636,6 +663,24 @@ function inspectTable(table: Element, root: Element): TableShape {
     rows: [],
     ownParts: [],
   };
+  const recordOwnElement = (element: Element): void => {
+    const name = element.localName;
+    if (TABLE_HEADING_MARKUP_TAGS.has(name)) {
+      draft.hasHeadingMarkup = true;
+    }
+    if (TABLE_PART_TAGS.has(name)) {
+      draft.ownParts.push(element);
+    }
+    if (name === "tr") {
+      const cells = childCells(element);
+      if (cells.length > 0) {
+        draft.rows.push(cells);
+      }
+    } else if (name === "a") {
+      draft.ownLinkCount += 1;
+    }
+  };
+
   let element = table.firstElementChild;
   while (element !== null) {
     if (element.localName === "table") {
@@ -646,7 +691,7 @@ function inspectTable(table: Element, root: Element): TableShape {
       );
       element = nextElementAfterSubtree(element, table);
     } else {
-      recordOwnTableElement(draft, element);
+      recordOwnElement(element);
       element = element.firstElementChild ?? nextElementAfterSubtree(element, table);
     }
   }
@@ -654,30 +699,20 @@ function inspectTable(table: Element, root: Element): TableShape {
 }
 
 /** The parts of a TableShape gathered while walking the table. */
-interface TableShapeDraft {
+type TableShapeDraft = {
   hasHeadingMarkup: boolean;
   hasNestedTable: boolean;
   ownLinkCount: number;
   readonly rows: Element[][];
   readonly ownParts: Element[];
-}
-
-function recordOwnTableElement(draft: TableShapeDraft, element: Element): void {
-  const name = element.localName;
-  if (TABLE_HEADING_MARKUP_TAGS.has(name)) draft.hasHeadingMarkup = true;
-  if (TABLE_PART_TAGS.has(name)) draft.ownParts.push(element);
-  if (name === "tr") {
-    const cells = childCells(element);
-    if (cells.length > 0) draft.rows.push(cells);
-  } else if (name === "a") {
-    draft.ownLinkCount += 1;
-  }
-}
+};
 
 function hasDescendant(root: Element, predicate: (element: Element) => boolean): boolean {
   let element = root.firstElementChild;
   while (element !== null) {
-    if (predicate(element)) return true;
+    if (predicate(element)) {
+      return true;
+    }
     element = element.firstElementChild ?? nextElementAfterSubtree(element, root);
   }
   return false;
@@ -686,7 +721,9 @@ function hasDescendant(root: Element, predicate: (element: Element) => boolean):
 function childCells(row: Element): Element[] {
   const cells: Element[] = [];
   for (let child = row.firstElementChild; child !== null; child = child.nextElementSibling) {
-    if (TABLE_CELL_TAGS.has(child.localName)) cells.push(child);
+    if (TABLE_CELL_TAGS.has(child.localName)) {
+      cells.push(child);
+    }
   }
   return cells;
 }
@@ -705,8 +742,12 @@ function tableRoleRule({ table }: TableShape): TableVerdict {
 function hackerNewsRule({ table, root }: TableShape): TableVerdict {
   for (let current: Element | null = table; current !== null; current = current.parentElement) {
     const id = current.getAttribute("id");
-    if (id === "hnmain" || id === "bigbox") return "layout";
-    if (current === root) break;
+    if (id === "hnmain" || id === "bigbox") {
+      return "layout";
+    }
+    if (current === root) {
+      break;
+    }
   }
   return undefined;
 }
@@ -730,7 +771,9 @@ function irregularGridRule({ rows }: TableShape): TableVerdict {
 // Short cells that are mostly links make a navigation list, not data.
 function linkListRule({ rows, ownLinkCount }: TableShape): TableVerdict {
   const cells = rows.flat();
-  if (ownLinkCount <= cells.length * 0.6) return undefined;
+  if (ownLinkCount <= cells.length * 0.6) {
+    return undefined;
+  }
   const averageCellTextLength =
     cells.reduce((total, cell) => total + normalizedTextLength(cell.textContent ?? ""), 0) /
     Math.max(1, cells.length);
@@ -738,21 +781,27 @@ function linkListRule({ rows, ownLinkCount }: TableShape): TableVerdict {
 }
 
 // Links whose only element child is a heading become headings that contain the link.
-function normalizeBlockLinks(links: ReadonlyArray<Element>): void {
+function normalizeBlockLinks(links: readonly Element[]): void {
   for (const link of links) {
     const onlyChild = link.firstElementChild;
-    if (onlyChild === null || onlyChild.nextElementSibling !== null) continue;
-    if (!HEADING_TAGS.has(onlyChild.localName)) continue;
+    if (onlyChild === null || onlyChild.nextElementSibling !== null) {
+      continue;
+    }
+    if (!HEADING_TAGS.has(onlyChild.localName)) {
+      continue;
+    }
 
     const replacementLink = link.ownerDocument.createElement("a");
     for (const attribute of ["href", "title"] as const) {
       const value = link.getAttribute(attribute);
-      if (value) replacementLink.setAttribute(attribute, value);
+      if (value !== null && value !== "") {
+        replacementLink.setAttribute(attribute, value);
+      }
     }
     while (onlyChild.firstChild) {
-      replacementLink.appendChild(onlyChild.firstChild);
+      replacementLink.append(onlyChild.firstChild);
     }
-    onlyChild.appendChild(replacementLink);
+    onlyChild.append(replacementLink);
     link.replaceWith(onlyChild);
   }
 }
@@ -764,11 +813,13 @@ function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): vo
   const elements = root.querySelectorAll("*");
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index];
-    if (element === undefined) continue;
+    if (element === undefined) {
+      continue;
+    }
     if (
       EMPTY_CONTAINER_TAGS.has(element.localName) &&
       element.firstElementChild === null &&
-      !/\S/.test(element.textContent ?? "")
+      !/\S/u.test(element.textContent ?? "")
     ) {
       element.remove();
       continue;
@@ -782,9 +833,11 @@ function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): vo
 function resolveUrlAttributes(element: Element, baseUrl: string): void {
   for (const [attribute, resolve] of URL_ATTRIBUTE_RESOLVERS) {
     const value = element.getAttribute(attribute);
-    if (!value) continue;
+    if (value === null || value === "") {
+      continue;
+    }
     const resolved = resolve(value, baseUrl);
-    if (resolved) {
+    if (resolved !== undefined && resolved !== "") {
       element.setAttribute(attribute, resolved);
     } else {
       element.removeAttribute(attribute);
@@ -795,7 +848,9 @@ function resolveUrlAttributes(element: Element, baseUrl: string): void {
 // The class attribute is read raw rather than through classList (which builds a token set): the
 // token regex treats any whitespace run as a boundary, so the raw value tests the same.
 function isBoilerplateElement(element: Element): boolean {
-  if (!element.hasAttributes()) return false;
+  if (!element.hasAttributes()) {
+    return false;
+  }
   let tokens = "";
   for (const value of [
     element.getAttribute("id"),
@@ -803,13 +858,31 @@ function isBoilerplateElement(element: Element): boolean {
     element.getAttribute("role"),
     element.getAttribute("aria-label"),
   ]) {
-    if (value) tokens = tokens ? `${tokens} ${value}` : value;
+    if (value !== null && value !== undefined && value !== "") {
+      tokens = tokens ? `${tokens} ${value}` : value;
+    }
   }
   return BOILERPLATE_TOKEN_RE.test(tokens);
 }
 
 function isElementNode(node: Node): node is Element {
   return node.nodeType === ELEMENT_NODE;
+}
+
+// Per the DOM, every element in the HTML namespace implements HTMLElement.
+function isHtmlElement(element: Element): element is HTMLElement {
+  return element.namespaceURI === HTML_NAMESPACE;
+}
+
+// turndown's parser gives HTML TABLE elements the HTMLTableElement interface; the gfm plugin reads
+// the same rows property.
+function isTableElement(node: Element): node is HTMLTableElement {
+  return node.nodeName === "TABLE";
+}
+
+// domino elements, which turndown's parse produces, implement appendChild but not append.
+function appendDominoChild(parent: Element, child: Node): void {
+  parent.appendChild(child);
 }
 
 /**
@@ -847,38 +920,47 @@ function shouldTryChunking(html: string, sanitizedRoot: Element): boolean {
 /** Convert the input in chunks, or return undefined when it must be converted in one pass. */
 function convertInChunks(input: string): string | undefined {
   // turndown's own string parsing (turndown.cjs.js RootNode) when no DOMParser is global.
-  const root = createDocument(
-    `<x-turndown id="turndown-root">${input}</x-turndown>`,
-  ).getElementById("turndown-root");
-  if (root === null) return undefined;
+  const root = createDocument(`<x-turndown id="turndown-root">${input}</x-turndown>`).querySelector(
+    "#turndown-root",
+  );
+  if (root === null) {
+    return undefined;
+  }
   const { levels, container } = wrapperChain(root);
   // turndown converts an element whose text is all whitespace as blank, dropping its content, but a
   // chunk shell holds a sentinel and is never blank. Such documents convert in one pass.
-  if (!/\S/.test(container.textContent ?? "")) return undefined;
+  if (!/\S/u.test(container.textContent ?? "")) {
+    return undefined;
+  }
 
   const chunks = splitIntoChunks(container);
-  if (chunks.length < 2) return undefined;
+  if (chunks.length < 2) {
+    return undefined;
+  }
   detachChildren(container);
 
   let markdown = "";
   for (const [index, chunk] of chunks.entries()) {
     const edges = { sentinelBefore: index > 0, sentinelAfter: index < chunks.length - 1 };
-    const piece = stripChunkSentinels(
-      turndown.turndown(buildChunkShell(levels, chunk, edges)),
-      edges,
-    );
-    if (piece === undefined) return undefined;
+    const shell = buildChunkShell(levels, chunk, edges);
+    if (shell === undefined) {
+      return undefined;
+    }
+    const piece = stripChunkSentinels(turndown.turndown(shell), edges);
+    if (piece === undefined) {
+      return undefined;
+    }
     markdown += piece;
   }
   // turndown's own postProcess trim, applied to the joined output.
-  return markdown.replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
+  return markdown.replace(/^[\t\r\n]+/u, "").replace(/[\t\r\n\s]+$/u, "");
 }
 
 /** Which edges of a chunk carry a sentinel block. */
-interface ChunkEdges {
+type ChunkEdges = {
   readonly sentinelBefore: boolean;
   readonly sentinelAfter: boolean;
-}
+};
 
 /**
  * Remove a converted chunk's sentinels, and the newlines before a trailing one. Defensive: the
@@ -887,11 +969,15 @@ interface ChunkEdges {
 function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefined {
   let text = piece;
   if (edges.sentinelBefore) {
-    if (!text.startsWith(CHUNK_SENTINEL)) return undefined;
+    if (!text.startsWith(CHUNK_SENTINEL)) {
+      return undefined;
+    }
     text = text.slice(CHUNK_SENTINEL.length);
   }
   if (edges.sentinelAfter) {
-    if (!text.endsWith(CHUNK_SENTINEL)) return undefined;
+    if (!text.endsWith(CHUNK_SENTINEL)) {
+      return undefined;
+    }
     text = trimTrailingNewlines(text.slice(0, -CHUNK_SENTINEL.length));
   }
   return text;
@@ -899,12 +985,12 @@ function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefin
 
 /** The root and its chain of lone wrappers (see loneWrapperChild), outermost first. */
 function wrapperChain(root: Element): {
-  readonly levels: ReadonlyArray<Element>;
+  readonly levels: readonly Element[];
   readonly container: Element;
 } {
   const levels: Element[] = [root];
   let container = root;
-  for (let wrapper = loneWrapperChild(root); wrapper !== undefined; ) {
+  for (let wrapper = loneWrapperChild(root); wrapper !== undefined;) {
     levels.push(wrapper);
     container = wrapper;
     wrapper = loneWrapperChild(wrapper);
@@ -922,7 +1008,9 @@ function hasManyChunkableChildren(root: Element): boolean {
   let count = 0;
   for (let child = container.firstElementChild; child !== null; child = child.nextElementSibling) {
     count += 1;
-    if (count >= TURNDOWN_CHUNK_MIN_CHILDREN) return true;
+    if (count >= TURNDOWN_CHUNK_MIN_CHILDREN) {
+      return true;
+    }
   }
   return false;
 }
@@ -930,8 +1018,8 @@ function hasManyChunkableChildren(root: Element): boolean {
 // turndown converts these with its default block rule, "\n\n" + content + "\n\n", whatever their
 // parent. gfm's highlighted-code rule takes some divs, so divs with its class are not wrappers.
 const WRAPPER_TAGS: ReadonlySet<string> = new Set(["div", "section", "article", "main"]);
-const GFM_HIGHLIGHT_CLASS_RE = /highlight-(?:text|source)-/;
-const COLLAPSIBLE_WHITESPACE_RE = /^[ \t\r\n]*$/;
+const GFM_HIGHLIGHT_CLASS_RE = /highlight-(?:text|source)-/u;
+const COLLAPSIBLE_WHITESPACE_RE = /^[ \t\r\n]*$/u;
 
 /**
  * The container's only element child when it is a wrapper whose siblings turndown drops: comments,
@@ -941,7 +1029,9 @@ const COLLAPSIBLE_WHITESPACE_RE = /^[ \t\r\n]*$/;
  */
 function loneWrapperChild(container: Element): Element | undefined {
   const wrapper = soleElementChild(container);
-  if (wrapper === undefined || !WRAPPER_TAGS.has(wrapper.localName)) return undefined;
+  if (wrapper === undefined || !WRAPPER_TAGS.has(wrapper.localName)) {
+    return undefined;
+  }
   const classes = wrapper.getAttribute("class");
   return classes !== null && GFM_HIGHLIGHT_CLASS_RE.test(classes) ? undefined : wrapper;
 }
@@ -951,7 +1041,9 @@ function soleElementChild(container: Element): Element | undefined {
   let sole: Element | undefined;
   for (let node = container.firstChild; node !== null; node = node.nextSibling) {
     if (isElementNode(node)) {
-      if (sole !== undefined) return undefined;
+      if (sole !== undefined) {
+        return undefined;
+      }
       sole = node;
     } else if (!isDroppedByTurndown(node)) {
       return undefined;
@@ -962,12 +1054,14 @@ function soleElementChild(container: Element): Element | undefined {
 
 // Comments, and text of only the whitespace turndown collapses away next to a block.
 function isDroppedByTurndown(node: ChildNode): boolean {
-  if (node.nodeType === COMMENT_NODE) return true;
+  if (node.nodeType === COMMENT_NODE) {
+    return true;
+  }
   return node.nodeType === TEXT_NODE && COLLAPSIBLE_WHITESPACE_RE.test(node.nodeValue ?? "");
 }
 
 /** Split the container's children into runs of about TURNDOWN_CHUNK_TARGET_CHARS of text. */
-function splitIntoChunks(container: Element): ReadonlyArray<ReadonlyArray<ChildNode>> {
+function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] {
   const chunks: ChildNode[][] = [];
   let current: ChildNode[] = [];
   let size = 0;
@@ -997,22 +1091,30 @@ function splitIntoChunks(container: Element): ReadonlyArray<ReadonlyArray<ChildN
  */
 function detachChildren(container: Element): void {
   for (let child = container.lastChild; child !== null; child = container.lastChild) {
-    container.removeChild(child);
+    child.remove();
   }
 }
 
-/** Move a chunk into shallow clones of the levels, outermost first, returning the outermost clone. */
+/**
+ * Move a chunk into shallow clones of the levels, outermost first, returning the outermost clone.
+ * Defensive: the outermost level is the x-turndown root, an HTML element, but a clone that is not
+ * an HTML element returns undefined rather than convert.
+ */
 function buildChunkShell(
-  levels: ReadonlyArray<Element>,
-  chunk: ReadonlyArray<ChildNode>,
+  levels: readonly Element[],
+  chunk: readonly ChildNode[],
   sentinels: { readonly sentinelBefore: boolean; readonly sentinelAfter: boolean },
-): HTMLElement {
+): HTMLElement | undefined {
   let top: Element | undefined;
   let parent: Element | undefined;
   for (const level of levels) {
-    // SAFETY: a shallow clone of an element is an element of the same kind.
-    const clone = level.cloneNode(false) as Element;
-    parent?.appendChild(clone);
+    const clone = level.cloneNode(false);
+    if (!isElementNode(clone)) {
+      return undefined;
+    }
+    if (parent !== undefined) {
+      appendDominoChild(parent, clone);
+    }
     top ??= clone;
     parent = clone;
   }
@@ -1025,24 +1127,30 @@ function buildChunkShell(
     paragraph.textContent = CHUNK_SENTINEL;
     return paragraph;
   };
-  if (sentinels.sentinelBefore) parent.appendChild(sentinel());
-  for (const node of chunk) parent.appendChild(node);
-  if (sentinels.sentinelAfter) parent.appendChild(sentinel());
-  // SAFETY: domino gives HTML elements the HTMLElement interface; the outermost level is the
-  // x-turndown root element.
-  return top as HTMLElement;
+  if (sentinels.sentinelBefore) {
+    appendDominoChild(parent, sentinel());
+  }
+  for (const node of chunk) {
+    appendDominoChild(parent, node);
+  }
+  if (sentinels.sentinelAfter) {
+    appendDominoChild(parent, sentinel());
+  }
+  return isHtmlElement(top) ? top : undefined;
 }
 
 function trimTrailingNewlines(text: string): string {
   let end = text.length;
-  while (end > 0 && text.charCodeAt(end - 1) === 10) end -= 1;
+  while (end > 0 && text.codePointAt(end - 1) === 10) {
+    end -= 1;
+  }
   return text.slice(0, end);
 }
 
 function replaceTag(element: Element, tagName: string): Element {
   const replacement = element.ownerDocument.createElement(tagName);
   while (element.firstChild) {
-    replacement.appendChild(element.firstChild);
+    replacement.append(element.firstChild);
   }
   element.replaceWith(replacement);
   return replacement;
@@ -1054,7 +1162,9 @@ function resolveAttributeUrl(
   dataUrls: "allow" | "reject",
 ): string | undefined {
   const trimmed = value?.trim() ?? "";
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   try {
     const resolved = new URL(trimmed, baseUrl);
     if (resolved.protocol === "javascript:" || resolved.protocol === "vbscript:") {
@@ -1075,10 +1185,12 @@ function resolveSrcSet(srcset: string, baseUrl: string): string | undefined {
     .map((entry) => entry.trim())
     .filter(Boolean)
     .map((entry) => {
-      const [urlPart, descriptor] = entry.split(/\s+/, 2);
+      const [urlPart, descriptor] = entry.split(/\s+/u, 2);
       const resolved = resolveAttributeUrl(urlPart, baseUrl, "allow");
-      if (!resolved) return undefined;
-      return descriptor ? `${resolved} ${descriptor}` : resolved;
+      if (resolved === undefined) {
+        return undefined;
+      }
+      return descriptor === undefined ? resolved : `${resolved} ${descriptor}`;
     })
     .filter((entry): entry is string => Boolean(entry));
   return candidates.length > 0 ? candidates.join(", ") : undefined;
@@ -1086,24 +1198,22 @@ function resolveSrcSet(srcset: string, baseUrl: string): string | undefined {
 
 function cleanupMarkdown(markdown: string): string {
   return markdown
-    .replace(/\r\n/g, "\n")
-    .replace(
-      /\[\s*\n+(#{1,6})\s+([^\n]+?)\s*\n+\s*\]\(([^)]+)\)/g,
-      (_match, hashes: string, text: string, url: string) => {
-        return `${hashes} [${text.trim()}](${url})`;
-      },
+    .replaceAll("\r\n", "\n")
+    .replaceAll(
+      /\[\s*\n+(?<hashes>#{1,6})\s+(?<text>[^\n]+?)\s*\n+\s*\]\((?<url>[^)]+)\)/gu,
+      (_match, hashes: string, text: string, url: string) => `${hashes} [${text.trim()}](${url})`,
     )
-    .replace(/^\[\]\([^)]+\)\n?/gm, "")
-    .replace(/(\]\([^)]+\))(?=\[)/g, "$1 ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replaceAll(/^\[\]\([^)]+\)\n?/gmu, "")
+    .replaceAll(/(?<link>\]\([^)]+\))(?=\[)/gu, "$<link> ")
+    .replaceAll(/[ \t]+\n/gu, "\n")
+    .replaceAll(/\n{3,}/gu, "\n\n")
     .trim();
 }
 
 function cleanupText(text: string): string {
   return text
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replaceAll("\r\n", "\n")
+    .replaceAll(/[ \t]+\n/gu, "\n")
+    .replaceAll(/\n{3,}/gu, "\n\n")
     .trim();
 }

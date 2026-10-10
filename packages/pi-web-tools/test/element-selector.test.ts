@@ -50,14 +50,15 @@ const SELECTORS = [
   "#readme, [data-testid='repository-readme-content'], article.markdown-body, .markdown-body",
 ];
 
-const elements = () => Array.from(parseHTML(DOCUMENT).document.querySelectorAll("*"));
+const elements = () => [...parseHTML(DOCUMENT).document.querySelectorAll("*")];
 
 describe("compileSelector", () => {
   test.each(SELECTORS)("matches %s exactly as linkedom does", (selector) => {
     const matches = compileSelector(selector);
-    for (const element of elements()) {
-      expect(matches(element), element.outerHTML).toBe(element.matches(selector));
-    }
+    // Each verdict is paired with its element's markup, so a mismatch names the element.
+    expect(elements().map((element) => [element.outerHTML, matches(element)])).toStrictEqual(
+      elements().map((element) => [element.outerHTML, element.matches(selector)]),
+    );
   });
 
   test.each(["div > p", "*", ":not(p)", "[class='x']", "[href^='x']", "DIV", ""])(
@@ -71,16 +72,21 @@ describe("compileSelector", () => {
 describe("compileSelectorSet", () => {
   test("reports every matching list once, as linkedom's matches would", () => {
     const match = compileSelectorSet(SELECTORS);
-    for (const element of elements()) {
+    const reportedFor = (element: Element) => {
       const reported: number[] = [];
-      match(element, (index) => reported.push(index));
-      const expected = SELECTORS.flatMap((selector, index) =>
-        element.matches(selector) ? [index] : [],
-      );
-      expect(
-        reported.sort((a, b) => a - b),
+      match(element, (index) => {
+        reported.push(index);
+      });
+      return [element.outerHTML, reported.toSorted((a, b) => a - b)];
+    };
+    // Each list of indexes is paired with its element's markup, so a mismatch names the element.
+    expect(elements().map((element) => reportedFor(element))).toStrictEqual(
+      elements().map((element) => [
         element.outerHTML,
-      ).toEqual(expected);
-    }
+        SELECTORS.map((selector, index) => ({ selector, index }))
+          .filter(({ selector }) => element.matches(selector))
+          .map(({ index }) => index),
+      ]),
+    );
   });
 });

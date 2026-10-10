@@ -1,41 +1,35 @@
-import {
-  getCurrentSystemPrompt,
-  getCurrentTools,
-  type ImageContent,
-  type Message,
-  type TextContent,
-  type TranscriptContext,
-} from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
+import type { ImageContent, Message, TextContent, TranscriptContext } from "@earendil-works/pi-ai";
 
 /** Image bytes extracted from a stable JSONL transcript entry. */
-export interface ImageAttachment {
+export type ImageAttachment = {
   /** Base64-encoded image bytes. */
   readonly data: string;
   /** Image media type supplied by Pi. */
   readonly mediaType: string;
-}
+};
 
 /** One stable prompt block sent through the SDK streaming-input API. */
-export interface PromptBlock {
+export type PromptBlock = {
   /** Text sent in this SDK content block. */
   readonly text: string;
   /** Image blocks expanded immediately after the text block. */
-  readonly images: ReadonlyArray<ImageAttachment>;
-}
+  readonly images: readonly ImageAttachment[];
+};
 
 /** Parsed request passed from the Pi adapter to the SDK runner. */
-export interface AgentRequest {
+export type AgentRequest = {
   /** Complete system prompt for the turn. */
   readonly systemPrompt: string;
   /** Stable prompt blocks in wire order. */
-  readonly promptBlocks: ReadonlyArray<PromptBlock>;
+  readonly promptBlocks: readonly PromptBlock[];
   /** Index of the prompt block that ends the cacheable prefix. */
   readonly cacheBreakpoint: number | undefined;
   /** Per-turn deferred Pi tool catalog. */
   readonly toolDescription: string;
   /** Pi tool names allowed during this turn. */
   readonly toolNames: ReadonlySet<string>;
-}
+};
 
 const BRIDGE_INSTRUCTIONS = [
   "You are the model inside Pi Coding Agent. Pi, not the Claude Agent SDK, owns conversation lifecycle and tool execution.",
@@ -50,37 +44,43 @@ const BRIDGE_INSTRUCTIONS = [
 // Image bytes travel as separate SDK blocks; the JSONL text only references them.
 function transcriptEntry(
   fields: object,
-  content: string | ReadonlyArray<TextContent | ImageContent>,
+  content: string | readonly (TextContent | ImageContent)[],
 ): PromptBlock {
   const blocks = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
   const images: ImageAttachment[] = [];
   const serialized = blocks.map((block) => {
-    if (block.type === "text") return { type: "text", text: block.text };
+    if (block.type === "text") {
+      return { type: "text", text: block.text };
+    }
     images.push({ data: block.data, mediaType: block.mimeType });
     return { type: "image", mediaType: block.mimeType, imageRef: images.length - 1 };
   });
   return { text: JSON.stringify({ ...fields, content: serialized }), images };
 }
 
-// Thinking is ephemeral, so an assistant message with nothing else has no entry.
-function assistantEntry(message: Extract<Message, { role: "assistant" }>): PromptBlock | undefined {
-  const content = message.content.flatMap((block): object[] => {
-    if (block.type === "text") return [{ type: "text", text: block.text }];
-    if (block.type !== "toolCall") return [];
-    return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
-  });
-  if (content.length === 0) return undefined;
-  return { text: JSON.stringify({ role: "assistant", content }), images: [] };
-}
-
-function transcriptEntries(messages: ReadonlyArray<Message>): PromptBlock[] {
+function transcriptEntries(messages: readonly Message[]): PromptBlock[] {
   return messages.flatMap((message) => {
     switch (message.role) {
-      case "user":
+      case "user": {
         return [transcriptEntry({ role: "user" }, message.content)];
-      case "assistant":
-        return assistantEntry(message) ?? [];
-      case "toolResult":
+      }
+      case "assistant": {
+        const content = message.content.flatMap((block): object[] => {
+          if (block.type === "text") {
+            return [{ type: "text", text: block.text }];
+          }
+          if (block.type !== "toolCall") {
+            return [];
+          }
+          return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
+        });
+        // Thinking is ephemeral, so an assistant message with nothing else has no entry.
+        if (content.length === 0) {
+          return [];
+        }
+        return [{ text: JSON.stringify({ role: "assistant", content }), images: [] }];
+      }
+      case "toolResult": {
         return [
           transcriptEntry(
             {
@@ -92,12 +92,15 @@ function transcriptEntries(messages: ReadonlyArray<Message>): PromptBlock[] {
             message.content,
           ),
         ];
+      }
       // System messages carry the prompt and tool declarations. The preamble and
       // the gateway catalog replay both in full, so an entry would duplicate them.
-      case "system":
+      case "system": {
         return [];
-      default:
+      }
+      default: {
         return [];
+      }
     }
   });
 }

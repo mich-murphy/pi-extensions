@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import { err, ok, type Result } from "./result";
+import { err, ok } from "./result";
+import type { Result } from "./result";
+import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
 
 // Exact mime types, checked before the suffix rules in classifyMimeType. Types those rules already
@@ -20,18 +22,21 @@ const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind
   ["application/ecmascript", "text"],
 ]);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+// The WHATWG name of UTF-8: TextDecoder reports it, and webfetch details show it as the decoder.
+const UTF8_LABEL = "utf-8";
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
+const LEADING_DIGITS_RE = /^\d+/u;
 
 /** A parsed Content-Type header. */
-export interface ParsedContentType {
+export type ParsedContentType = {
   readonly contentType: string;
   readonly mime: string;
   readonly charset?: string | undefined;
   readonly kind: ContentKind;
-}
+};
 
 /** A single outbound public web request. */
-export interface PublicWebRequest {
+export type PublicWebRequest = {
   readonly url: PublicHttpUrl;
   readonly accept: string;
   readonly userAgent: string;
@@ -39,16 +44,16 @@ export interface PublicWebRequest {
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
   readonly blockPrivateHosts: boolean;
-}
+};
 
 /** A bounded public web response. */
-export interface PublicWebResponse {
+export type PublicWebResponse = {
   readonly requestedUrl: PublicHttpUrl;
   readonly finalUrl: PublicHttpUrl;
   readonly status: number;
   readonly headers: Headers;
-  readonly body: Buffer;
-}
+  readonly body: Readonly<Buffer>;
+};
 
 /** Expected failures of the public web client. Messages derived from these never contain URLs or causes. */
 export type PublicWebError =
@@ -66,18 +71,21 @@ export type PublicWebError =
   | { readonly _tag: "ResponseTooLarge"; readonly maxBytes: number };
 
 /** Outbound port for fetching public web resources. */
-export interface PublicWebClient {
-  get(
+export type PublicWebClient = {
+  readonly get: (
     request: PublicWebRequest,
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<PublicWebResponse, PublicWebError>>;
-}
+  ) => Promise<Result<PublicWebResponse, PublicWebError>>;
+};
 
 /** DNS resolver seam, injectable for tests. */
 export type DnsLookup = (hostname: string) => Promise<readonly { address: string }[]>;
 
+/** The shape of an operation-deadline abort reason. */
+type OperationTimeout = { readonly _tag: "OperationTimeout"; readonly timeoutSeconds: number };
+
 /** Error aborting an operation after its deadline. */
-class OperationTimeoutError extends Error {
+class OperationTimeoutError extends Error implements OperationTimeout {
   readonly _tag = "OperationTimeout" as const;
 
   constructor(readonly timeoutSeconds: number) {
@@ -87,10 +95,10 @@ class OperationTimeoutError extends Error {
 }
 
 /** A composed abort signal plus its cleanup callback. */
-export interface ComposedSignal {
+export type ComposedSignal = {
   readonly signal: AbortSignal;
   readonly cleanup: () => void;
-}
+};
 
 /** Compose an operation deadline with an optional outer (agent) abort signal. */
 export function createOperationSignal(
@@ -107,18 +115,22 @@ export function createOperationSignal(
     : controller.signal;
   return {
     signal,
-    cleanup: () => clearTimeout(timeoutId),
+    cleanup: () => {
+      clearTimeout(timeoutId);
+    },
   };
 }
 
 /** Returns true when a value is an operation-deadline abort reason. */
-export function isOperationTimeoutError(value: unknown): boolean {
+export function isOperationTimeoutError(value: unknown): value is OperationTimeout {
   return (
     value instanceof OperationTimeoutError ||
     (typeof value === "object" &&
       value !== null &&
       "_tag" in value &&
-      value._tag === "OperationTimeout")
+      value._tag === "OperationTimeout" &&
+      "timeoutSeconds" in value &&
+      typeof value.timeoutSeconds === "number")
   );
 }
 
@@ -132,8 +144,8 @@ export function parseContentType(contentTypeHeader: string | null | undefined): 
   const contentType = contentTypeHeader?.trim() ?? "";
   const [mimePart = ""] = contentType.split(";");
   const mime = mimePart.trim().toLowerCase();
-  const charsetMatch = contentType.match(/charset\s*=\s*['"]?([^;'"]+)/i);
-  const charset = charsetMatch?.[1]?.trim().toLowerCase();
+  const charsetMatch = /charset\s*=\s*['"]?(?<charset>[^;'"]+)/iu.exec(contentType);
+  const charset = charsetMatch?.groups?.charset?.trim().toLowerCase();
   return { contentType, mime, charset, kind: classifyMimeType(mime) };
 }
 
@@ -141,7 +153,9 @@ export function parseContentType(contentTypeHeader: string | null | undefined): 
 export function classifyMimeType(mime: string): ContentKind {
   const normalized = mime.trim().toLowerCase();
   const exactKind = MIME_KINDS.get(normalized);
-  if (exactKind !== undefined) return exactKind;
+  if (exactKind !== undefined) {
+    return exactKind;
+  }
   if (
     normalized.startsWith("text/") ||
     normalized.endsWith("+xml") ||
@@ -154,11 +168,11 @@ export function classifyMimeType(mime: string): ContentKind {
 
 /** Decode a body buffer using the declared charset, falling back to UTF-8. */
 export function decodeTextBuffer(
-  buffer: Buffer,
+  buffer: Readonly<Buffer>,
   charset?: string,
 ): { text: string; decoder: string } {
   const normalizedCharset = normalizeCharset(charset);
-  if (normalizedCharset) {
+  if (normalizedCharset !== undefined) {
     try {
       return {
         text: new TextDecoder(normalizedCharset).decode(buffer),
@@ -169,16 +183,22 @@ export function decodeTextBuffer(
     }
   }
   return {
-    text: new TextDecoder("utf-8").decode(buffer),
-    decoder: "utf-8",
+    text: new TextDecoder(UTF8_LABEL).decode(buffer),
+    decoder: UTF8_LABEL,
   };
 }
 
 function normalizeCharset(charset: string | undefined): string | undefined {
-  if (!charset) return undefined;
+  if (charset === undefined) {
+    return undefined;
+  }
   const normalized = charset.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (normalized === "utf8") return "utf-8";
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "utf8") {
+    return UTF8_LABEL;
+  }
   return normalized;
 }
 
@@ -200,17 +220,21 @@ export async function readResponseBodyWithLimit(
 
   try {
     while (true) {
-      if (signal?.aborted) {
+      if (signal?.aborted === true) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- cancelling ends the read loop
         await reader.cancel(signal.reason).catch(() => undefined);
         return err({ _tag: "BodyReadFailed" });
       }
 
+      // oxlint-disable-next-line eslint/no-await-in-loop -- a stream yields its chunks one read at a time
       const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
+      if (done) {
+        break;
+      }
 
       bytes += value.byteLength;
       if (bytes > maxBytes) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- cancelling ends the read loop
         await reader.cancel().catch(() => undefined);
         return err({ _tag: "BodyTooLarge" });
       }
@@ -229,9 +253,11 @@ export async function readResponseBodyWithLimit(
 // Non-public ranges blocked for outbound fetches. IPv4-mapped IPv6 (::ffff:a.b.c.d) needs no row,
 // since BlockList checks mapped addresses against the IPv4 rows. The IPv4-compatible row is ::/96,
 // not ::/8: ::/8 contains ::ffff:0:0/96 and would block every mapped address, public ones too.
-const NON_PUBLIC_RANGES: ReadonlyArray<
-  readonly [network: string, prefixLength: number, family: "ipv4" | "ipv6"]
-> = [
+const NON_PUBLIC_RANGES: readonly (readonly [
+  network: string,
+  prefixLength: number,
+  family: "ipv4" | "ipv6",
+])[] = [
   ["0.0.0.0", 8, "ipv4"], // "This network"
   ["10.0.0.0", 8, "ipv4"], // Private
   ["100.64.0.0", 10, "ipv4"], // Carrier-grade NAT shared space
@@ -261,22 +287,22 @@ export function isPrivateOrLocalIp(input: string): boolean {
 }
 
 function stripIpv6Brackets(hostname: string): string {
-  return hostname.replace(/^\[/, "").replace(/\]$/, "");
+  return hostname.replace(/^\[/u, "").replace(/\]$/u, "");
 }
 
 /** A response that ended a redirect chain, with the URL it came from. */
-interface FetchedResponse {
+type FetchedResponse = {
   readonly response: Response;
   readonly finalUrl: PublicHttpUrl;
-}
+};
 
 /** What stays fixed across the hops of one redirect chain. */
-interface FetchAttempt {
+type FetchAttempt = {
   readonly fetchImpl: typeof fetch;
   readonly request: PublicWebRequest;
   readonly userAgent: string;
   readonly signal: AbortSignal | undefined;
-}
+};
 
 /** Public web client with SSRF defenses, redirect re-validation, and a challenge-aware UA retry. */
 export class FetchPublicWebClient implements PublicWebClient {
@@ -346,6 +372,7 @@ export class FetchPublicWebClient implements PublicWebClient {
     let currentUrl = new URL(request.url);
 
     for (let redirects = 0; ; redirects += 1) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each hop requests the previous hop's redirect target
       const hop = await this.fetchHop(currentUrl, attempt);
       if (hop._tag === "err") {
         return hop;
@@ -353,12 +380,21 @@ export class FetchPublicWebClient implements PublicWebClient {
 
       const response = hop.value;
       if (!REDIRECT_STATUSES.has(response.status)) {
-        // SAFETY: fetchHop rejects credentials and resolveRedirect admits only http(s) targets.
-        return ok({ response, finalUrl: currentUrl.toString() as PublicHttpUrl });
+        // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
+        // final URL is always public; the check keeps the brand honest.
+        const finalUrl = currentUrl.toString();
+        return isPublicHttpUrl(finalUrl)
+          ? ok({ response, finalUrl })
+          : err({ _tag: "RedirectLocationInvalid" });
       }
 
+      // oxlint-disable-next-line eslint/no-await-in-loop -- the body is released before the next hop
       await cancelBody(response);
-      const next = resolveRedirect(response, currentUrl, redirects, request.maxRedirects);
+      const next = resolveRedirect(response, {
+        currentUrl,
+        redirects,
+        maxRedirects: request.maxRedirects,
+      });
       if (next._tag === "err") {
         return next;
       }
@@ -373,7 +409,7 @@ export class FetchPublicWebClient implements PublicWebClient {
     attempt: FetchAttempt,
   ): Promise<Result<Response, PublicWebError>> {
     const { fetchImpl, request, userAgent, signal } = attempt;
-    if (signal?.aborted) {
+    if (signal?.aborted === true) {
       return err(classifySignalAbort(signal));
     }
     if (url.username || url.password) {
@@ -399,8 +435,8 @@ export class FetchPublicWebClient implements PublicWebClient {
           redirect: "manual",
         }),
       );
-    } catch (cause: unknown) {
-      return err(classifyFetchFailure(cause, signal));
+    } catch (error: unknown) {
+      return err(classifyFetchFailure(error, signal));
     }
   }
 
@@ -416,7 +452,7 @@ export class FetchPublicWebClient implements PublicWebClient {
     const lookupImpl =
       this.dependencies.lookup ??
       (async (name: string) => {
-        const records = await lookup(name, { all: true, verbatim: true });
+        const records = await lookup(name, { all: true, order: "verbatim" });
         return records.map((record) => ({ address: record.address }));
       });
 
@@ -445,7 +481,7 @@ function classifySignalAbort(signal: AbortSignal): PublicWebError {
 // An abort surfaces as the signal's reason when there is a signal; any other rejection is a
 // request failure whose cause is not carried.
 function classifyFetchFailure(cause: unknown, signal: AbortSignal | undefined): PublicWebError {
-  if (signal?.aborted || isAbortError(cause)) {
+  if (signal?.aborted === true || isAbortError(cause)) {
     return signal ? classifySignalAbort(signal) : { _tag: "PublicWebCancelled" };
   }
   return { _tag: "PublicWebRequestFailed" };
@@ -454,12 +490,11 @@ function classifyFetchFailure(cause: unknown, signal: AbortSignal | undefined): 
 // The redirect checks after the body is cancelled: Location present, limit, parseable, http(s).
 function resolveRedirect(
   response: Response,
-  currentUrl: URL,
-  redirects: number,
-  maxRedirects: number,
+  hop: { readonly currentUrl: URL; readonly redirects: number; readonly maxRedirects: number },
 ): Result<URL, PublicWebError> {
+  const { currentUrl, redirects, maxRedirects } = hop;
   const location = response.headers.get("location");
-  if (!location) {
+  if (location === null || location === "") {
     return err({ _tag: "RedirectLocationMissing" });
   }
   if (redirects >= maxRedirects) {
@@ -493,11 +528,18 @@ function checkResponseHead(response: Response, maxBytes: number): Result<void, P
     });
   }
   // A missing or non-numeric Content-Length parses to NaN and leaves the cap to the body read.
-  const declaredBytes = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+  const declaredBytes = parseContentLength(response.headers.get("content-length"));
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
     return err({ _tag: "ResponseTooLarge", maxBytes });
   }
   return ok(undefined);
+}
+
+// The header's leading decimal digits, as parseInt reads them, so a repeated header ("5, 5") still
+// counts; a header without leading digits reads as NaN.
+function parseContentLength(header: string | null): number {
+  const digits = LEADING_DIGITS_RE.exec(header ?? "")?.[0];
+  return digits === undefined ? Number.NaN : Number(digits);
 }
 
 // An aborted signal explains any body failure, so it wins over the reader's own tag.
@@ -506,7 +548,7 @@ function classifyBodyReadFailure(
   maxBytes: number,
   signal: AbortSignal | undefined,
 ): PublicWebError {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     return classifySignalAbort(signal);
   }
   if (error._tag === "BodyTooLarge") {

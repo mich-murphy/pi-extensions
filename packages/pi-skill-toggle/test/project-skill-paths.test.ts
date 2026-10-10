@@ -6,11 +6,6 @@ import { afterEach, describe, expect, test } from "vitest";
 import { discoverProjectSkillPaths } from "../project-skill-paths";
 
 const temporaryDirectories: string[] = [];
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "pi-project-skills-"));
@@ -26,6 +21,12 @@ function writeSkill(root: string, directory: string, name: string): string {
 }
 
 describe("discoverProjectSkillPaths", () => {
+  afterEach(() => {
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("finds individual skills from cwd through the Git root", () => {
     const root = temporaryDirectory();
     const cwd = join(root, "apps", "web");
@@ -35,7 +36,7 @@ describe("discoverProjectSkillPaths", () => {
     const claude = writeSkill(join(root, ".claude", "skills"), "claude", "claude");
     const codex = writeSkill(join(root, ".codex", "skills"), "codex", "codex");
 
-    expect(discoverProjectSkillPaths(cwd)).toEqual([local, shared, claude, codex]);
+    expect(discoverProjectSkillPaths(cwd)).toStrictEqual([local, shared, claude, codex]);
   });
 
   test("keeps one mirrored name and all uniquely named skills", () => {
@@ -53,9 +54,11 @@ describe("discoverProjectSkillPaths", () => {
       includeDefaults: false,
     });
 
-    expect(paths).toEqual([claudeShared, codexOnly]);
-    expect(loaded.skills.map((skill) => skill.filePath)).toEqual([claudeShared, codexOnly]);
-    expect(loaded.diagnostics.filter((diagnostic) => diagnostic.type === "collision")).toEqual([]);
+    expect(paths).toStrictEqual([claudeShared, codexOnly]);
+    expect(loaded.skills.map((skill) => skill.filePath)).toStrictEqual([claudeShared, codexOnly]);
+    expect(
+      loaded.diagnostics.filter((diagnostic) => diagnostic.type === "collision"),
+    ).toStrictEqual([]);
   });
 
   test("does not report a malformed mirror when another harness has a valid copy", () => {
@@ -74,9 +77,9 @@ describe("discoverProjectSkillPaths", () => {
       includeDefaults: false,
     });
 
-    expect(paths).toEqual([codexPath]);
-    expect(loaded.skills.map((skill) => skill.filePath)).toEqual([codexPath]);
-    expect(loaded.diagnostics).toEqual([]);
+    expect(paths).toStrictEqual([codexPath]);
+    expect(loaded.skills.map((skill) => skill.filePath)).toStrictEqual([codexPath]);
+    expect(loaded.diagnostics).toStrictEqual([]);
   });
 
   test("ignores invalid skill metadata instead of attributing its diagnostics to the extension", () => {
@@ -86,7 +89,7 @@ describe("discoverProjectSkillPaths", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `---\nname: invalid\ndescription: ${"x".repeat(1025)}\n---\n`);
 
-    expect(discoverProjectSkillPaths(root)).toEqual([]);
+    expect(discoverProjectSkillPaths(root)).toStrictEqual([]);
   });
 
   test("ignores malformed skills instead of attributing their diagnostics to the extension", () => {
@@ -99,7 +102,7 @@ describe("discoverProjectSkillPaths", () => {
       writeFileSync(path, "---\nname: [\n---\n");
     }
 
-    expect(discoverProjectSkillPaths(root)).toEqual([]);
+    expect(discoverProjectSkillPaths(root)).toStrictEqual([]);
   });
 
   test("does not search ancestors when cwd is outside a Git worktree", () => {
@@ -108,6 +111,6 @@ describe("discoverProjectSkillPaths", () => {
     writeSkill(join(parent, ".claude", "skills"), "parent", "parent");
     const local = writeSkill(join(cwd, ".codex", "skills"), "local", "local");
 
-    expect(discoverProjectSkillPaths(cwd)).toEqual([local]);
+    expect(discoverProjectSkillPaths(cwd)).toStrictEqual([local]);
   });
 });

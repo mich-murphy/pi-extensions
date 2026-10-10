@@ -1,42 +1,38 @@
-import { type JsonObject, validateToolArguments } from "@earendil-works/pi-ai";
+import { validateToolArguments } from "@earendil-works/pi-ai";
+import type { JsonObject } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import type { SearchProvider } from "../provider-types";
 import { err, ok } from "../result";
-import { parseSettings } from "../settings";
-import { TempFileToolOutputStore } from "../tool-output";
+import { tempFileToolOutputStore } from "../tool-output";
 import { createWebSearchTool, parseWebSearchParams, renderSearchChainError } from "../websearch";
-import { renderText, textOf } from "./fakes";
+import { publicUrl, renderText, settingsFrom, textOf } from "./fakes";
 
-function settingsWith(env: Record<string, string>) {
-  const parsed = parseSettings(env);
-  if (parsed._tag !== "ok") throw new Error("settings parse failed");
-  return parsed.value;
-}
+const DEFAULT_SETTINGS = settingsFrom();
 
-function fakeProvider(name: "exa" | "parallel" | "brave", outcome: "ok" | "fail"): SearchProvider {
+function answeringProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
   return {
     name,
     transport: "mcp",
-    search: () =>
-      Promise.resolve(
-        outcome === "ok"
-          ? ok([
-              {
-                title: `${name} result`,
-                url: "https://example.com/" as never,
-                snippet: "a snippet",
-              },
-            ])
-          : err({ _tag: "ProviderRequestFailed" } as const),
-      ),
+    search: async () =>
+      ok([
+        { title: `${name} result`, url: publicUrl("https://example.com/"), snippet: "a snippet" },
+      ]),
+  };
+}
+
+function failingProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
+  return {
+    name,
+    transport: "mcp",
+    search: async () => err({ _tag: "ProviderRequestFailed" }),
   };
 }
 
 describe("websearch parameter schema", () => {
   const tool = createWebSearchTool({
-    settings: settingsWith({}),
+    settings: DEFAULT_SETTINGS,
     providers: [],
-    outputStore: new TempFileToolOutputStore(),
+    outputStore: tempFileToolOutputStore,
     secrets: [],
   });
 
@@ -45,7 +41,6 @@ describe("websearch parameter schema", () => {
       type: "toolCall",
       id: "t",
       name: tool.name,
-      // SAFETY: these tests feed deliberately malformed arguments through Pi's validator.
       arguments: args as JsonObject,
     });
   }
@@ -59,7 +54,7 @@ describe("websearch parameter schema", () => {
   });
 
   test("accepts a provider override from the enum", () => {
-    expect(validate({ query: "x", provider: "brave", maxResults: "3" })).toEqual({
+    expect(validate({ query: "x", provider: "brave", maxResults: "3" })).toStrictEqual({
       query: "x",
       provider: "brave",
       maxResults: 3,
@@ -68,16 +63,16 @@ describe("websearch parameter schema", () => {
 });
 
 describe("parseWebSearchParams", () => {
-  const settings = settingsWith({});
+  const settings = DEFAULT_SETTINGS;
 
   test("parses a minimal query with settings defaults", () => {
-    expect(parseWebSearchParams({ query: " pi agent " }, settings)).toEqual(
+    expect(parseWebSearchParams({ query: " pi agent " }, settings)).toStrictEqual(
       ok({ query: "pi agent", maxResults: 8 }),
     );
   });
 
   test("rejects empty queries", () => {
-    expect(parseWebSearchParams({ query: "   " }, settings)).toEqual(
+    expect(parseWebSearchParams({ query: "   " }, settings)).toStrictEqual(
       err({ _tag: "InvalidToolInput", message: "query cannot be empty" }),
     );
   });
@@ -85,47 +80,43 @@ describe("parseWebSearchParams", () => {
   test("clamps maxResults and keeps the provider override", () => {
     expect(
       parseWebSearchParams({ query: "x", maxResults: 100, provider: "parallel" }, settings),
-    ).toEqual(ok({ query: "x", maxResults: 20, provider: "parallel" }));
+    ).toStrictEqual(ok({ query: "x", maxResults: 20, provider: "parallel" }));
   });
 });
 
 describe("websearch tool", () => {
   test("returns results from the first healthy provider", async () => {
     const tool = createWebSearchTool({
-      settings: settingsWith({}),
-      providers: [fakeProvider("exa", "fail"), fakeProvider("parallel", "ok")],
-      outputStore: new TempFileToolOutputStore(),
+      settings: DEFAULT_SETTINGS,
+      providers: [failingProvider("exa"), answeringProvider("parallel")],
+      outputStore: tempFileToolOutputStore,
       secrets: [],
     });
     const result = await tool.execute("t1", { query: "pi agent" });
 
     expect(result.details.provider).toBe("parallel");
-    expect(result.details.attemptedProviders).toEqual(["exa", "parallel"]);
+    expect(result.details.attemptedProviders).toStrictEqual(["exa", "parallel"]);
     expect(result.details.resultCount).toBe(1);
     expect(textOf(result)).toContain("parallel result");
   });
 
   test("provider override skips the rest of the chain", async () => {
     const tool = createWebSearchTool({
-      settings: settingsWith({ BRAVE_API_KEY: "BSA_test" }),
-      providers: [
-        fakeProvider("exa", "fail"),
-        fakeProvider("parallel", "fail"),
-        fakeProvider("brave", "ok"),
-      ],
-      outputStore: new TempFileToolOutputStore(),
+      settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
+      providers: [failingProvider("exa"), failingProvider("parallel"), answeringProvider("brave")],
+      outputStore: tempFileToolOutputStore,
       secrets: ["BSA_test"],
     });
     const result = await tool.execute("t1", { query: "pi agent", provider: "brave" });
     expect(result.details.provider).toBe("brave");
-    expect(result.details.attemptedProviders).toEqual(["brave"]);
+    expect(result.details.attemptedProviders).toStrictEqual(["brave"]);
   });
 
   test("throws a safe message when every provider fails", async () => {
     const tool = createWebSearchTool({
-      settings: settingsWith({}),
-      providers: [fakeProvider("exa", "fail"), fakeProvider("parallel", "fail")],
-      outputStore: new TempFileToolOutputStore(),
+      settings: DEFAULT_SETTINGS,
+      providers: [failingProvider("exa"), failingProvider("parallel")],
+      outputStore: tempFileToolOutputStore,
       secrets: [],
     });
     await expect(tool.execute("t1", { query: "pi agent" })).rejects.toThrow(
@@ -137,13 +128,13 @@ describe("websearch tool", () => {
     const leaky: SearchProvider = {
       name: "exa",
       transport: "mcp",
-      search: () =>
-        Promise.resolve(ok([{ title: "leak sekrit-key", url: "https://example.com/" as never }])),
+      search: async () =>
+        ok([{ title: "leak sekrit-key", url: publicUrl("https://example.com/") }]),
     };
     const tool = createWebSearchTool({
-      settings: settingsWith({}),
+      settings: DEFAULT_SETTINGS,
       providers: [leaky],
-      outputStore: new TempFileToolOutputStore(),
+      outputStore: tempFileToolOutputStore,
       secrets: ["sekrit-key"],
     });
     const result = await tool.execute("t1", { query: "x" });
@@ -155,9 +146,9 @@ describe("websearch tool", () => {
 describe("websearch rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
   const tool = createWebSearchTool({
-    settings: settingsWith({}),
-    providers: [fakeProvider("exa", "ok")],
-    outputStore: new TempFileToolOutputStore(),
+    settings: DEFAULT_SETTINGS,
+    providers: [answeringProvider("exa")],
+    outputStore: tempFileToolOutputStore,
     secrets: [],
   });
 

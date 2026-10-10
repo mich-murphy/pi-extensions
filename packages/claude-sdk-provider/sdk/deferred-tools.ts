@@ -41,10 +41,10 @@ function parseDeferredCall(
   let reason: string;
   if (requested.name === "pi_call") {
     reason = `"pi_call" is this gateway's own name, not a Pi tool; do not pass it as the "name" field. Pass the target Pi tool's name instead, e.g. ${tools}.`;
-  } else if (!requested.arguments) {
-    reason = `"arguments" must be an object matching "${name}"'s input schema.`;
-  } else {
+  } else if (requested.arguments) {
     reason = `"${name}" is not a recognized Pi tool. Available tools: ${tools}.`;
+  } else {
+    reason = `"arguments" must be an object matching "${name}"'s input schema.`;
   }
   return new InvalidDeferredCallError(requested.name, `Invalid Pi tool call: ${reason}`);
 }
@@ -80,14 +80,14 @@ export function createDeferredPiCallTool(description: string) {
 }
 
 /** One turn's record of the Pi tool calls the model requested through the gateway. */
-export interface DeferredCallCapture {
+export type DeferredCallCapture = {
   /** SDK `PreToolUse` callback that defers valid gateway calls and denies everything else. */
   readonly hook: HookCallback;
   /** Set once the model exceeded the invalid-call limit; the turn must fail with it. */
-  readonly limitError: InvalidDeferredCallLimitError | undefined;
+  readonly limitError: Readonly<InvalidDeferredCallLimitError> | undefined;
   /** Valid calls in arrival order, deduplicated by tool-use id. */
-  readonly calls: ReadonlyArray<DeferredCall>;
-}
+  readonly calls: readonly DeferredCall[];
+};
 
 /**
  * Create the per-turn capture behind the `pi_call` gateway.
@@ -102,14 +102,16 @@ export interface DeferredCallCapture {
  */
 export function createDeferredCallCapture(
   availableTools: ReadonlySet<string>,
-  onLimitExceeded: (error: InvalidDeferredCallLimitError) => void,
+  onLimitExceeded: (error: Readonly<InvalidDeferredCallLimitError>) => void,
 ): DeferredCallCapture {
   const calls = new Map<string, DeferredCall>();
   let invalidCalls = 0;
   let limitError: InvalidDeferredCallLimitError | undefined;
 
   const hook: HookCallback = async (input) => {
-    if (input.hook_event_name !== "PreToolUse") return {};
+    if (input.hook_event_name !== "PreToolUse") {
+      return {};
+    }
     if (input.tool_name !== "mcp__pi__pi_call") {
       return deny(`Only the Pi deferred-tool gateway is available, not ${input.tool_name}.`);
     }
@@ -122,8 +124,9 @@ export function createDeferredCallCapture(
       }
       return deny(parsed.message);
     }
-    if (!calls.has(input.tool_use_id))
+    if (!calls.has(input.tool_use_id)) {
       calls.set(input.tool_use_id, { id: input.tool_use_id, ...parsed });
+    }
     return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" } };
   };
 

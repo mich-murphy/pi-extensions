@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { createOperationSignal, isAbortError, readResponseBodyWithLimit } from "./network";
-import {
-  classifyProviderAbort,
-  lenientArray,
-  type ProviderError,
-  parseJsonBody,
-} from "./provider-types";
-import { err, ok, type Result } from "./result";
+import { classifyProviderAbort, lenientArray, parseJsonBody } from "./provider-types";
+import type { ProviderError } from "./provider-types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import type { PublicHttpUrl } from "./types";
 import { WEB_TOOLS_VERSION } from "./types";
 
@@ -14,25 +11,25 @@ import { WEB_TOOLS_VERSION } from "./types";
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 
 /** Extracted payload of a successful MCP tools/call. */
-export interface McpToolCallResult {
+export type McpToolCallResult = {
   readonly text: readonly string[];
   readonly structuredContent?: unknown;
-}
+};
 
 /** Outbound port for MCP tool calls. */
-export interface McpClient {
-  callTool(
+export type McpClient = {
+  readonly callTool: (
     name: string,
-    args: Record<string, unknown>,
+    args: Readonly<Record<string, unknown>>,
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<McpToolCallResult, ProviderError>>;
-}
+  ) => Promise<Result<McpToolCallResult, ProviderError>>;
+};
 
-interface McpPostOutcome {
+type McpPostOutcome = {
   readonly sessionId: string | null;
   readonly bodyText: string;
   readonly contentType: string;
-}
+};
 
 /**
  * Minimal MCP Streamable HTTP client.
@@ -46,7 +43,7 @@ export class McpHttpClient implements McpClient {
   constructor(
     private readonly endpoint: PublicHttpUrl,
     private readonly options: {
-      readonly headers?: Record<string, string>;
+      readonly headers?: Readonly<Record<string, string>>;
       readonly maxResponseBytes: number;
       readonly timeoutMs: number;
       readonly fetchImpl?: typeof fetch;
@@ -56,7 +53,7 @@ export class McpHttpClient implements McpClient {
   /** Run a full MCP session for a single tool call. */
   async callTool(
     name: string,
-    args: Record<string, unknown>,
+    args: Readonly<Record<string, unknown>>,
     options: { readonly signal?: AbortSignal | undefined } = {},
   ): Promise<Result<McpToolCallResult, ProviderError>> {
     const composed = createOperationSignal(this.options.timeoutMs, options.signal);
@@ -76,17 +73,19 @@ export class McpHttpClient implements McpClient {
         sessionId,
         composed.signal,
       );
-      if (init._tag === "err") return init;
-      sessionId = init.value.sessionId;
+      if (init._tag === "err") {
+        return init;
+      }
+      ({ sessionId } = init.value);
 
       const initialized = await this.post(
         { jsonrpc: "2.0", method: "notifications/initialized" },
         sessionId,
         composed.signal,
       );
-      if (initialized._tag === "err") {
-        // A rejected notification does not invalidate the session on all servers; proceed.
-        if (initialized.error._tag !== "ProviderStatusRejected") return initialized;
+      // A rejected notification does not invalidate the session on all servers; proceed.
+      if (initialized._tag === "err" && initialized.error._tag !== "ProviderStatusRejected") {
+        return initialized;
       }
 
       const call = await this.post(
@@ -94,21 +93,25 @@ export class McpHttpClient implements McpClient {
         sessionId,
         composed.signal,
       );
-      if (call._tag === "err") return call;
+      if (call._tag === "err") {
+        return call;
+      }
 
       const message = parseMcpMessage(call.value.bodyText, call.value.contentType);
-      if (message._tag === "err") return message;
+      if (message._tag === "err") {
+        return message;
+      }
       return parseMcpToolResult(message.value);
     } finally {
       composed.cleanup();
-      if (sessionId) {
+      if (sessionId !== null && sessionId !== "") {
         await this.closeSession(sessionId);
       }
     }
   }
 
   private async post(
-    payload: Record<string, unknown>,
+    payload: Readonly<Record<string, unknown>>,
     sessionId: string | null,
     signal: AbortSignal,
   ): Promise<Result<McpPostOutcome, ProviderError>> {
@@ -118,7 +121,7 @@ export class McpHttpClient implements McpClient {
       accept: "application/json, text/event-stream",
       ...this.options.headers,
     };
-    if (sessionId) {
+    if (sessionId !== null && sessionId !== "") {
       headers["mcp-session-id"] = sessionId;
     }
 
@@ -130,8 +133,8 @@ export class McpHttpClient implements McpClient {
         body: JSON.stringify(payload),
         signal,
       });
-    } catch (cause: unknown) {
-      if (signal.aborted || isAbortError(cause)) {
+    } catch (error: unknown) {
+      if (signal.aborted || isAbortError(error)) {
         return err(classifyProviderAbort(signal));
       }
       return err({ _tag: "ProviderRequestFailed" });
@@ -166,7 +169,7 @@ export class McpHttpClient implements McpClient {
       await fetchImpl(this.endpoint, {
         method: "DELETE",
         headers: { "mcp-session-id": sessionId, ...this.options.headers },
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(5000),
       });
     } catch {
       // Session close is best-effort; servers expire sessions on their own.
@@ -181,7 +184,7 @@ const jsonRpcResponseSchema = z
 
 /** Parse an MCP HTTP response body (JSON or SSE framing) into a single JSON-RPC message. */
 export function parseMcpMessage(body: string, contentType: string): Result<unknown, ProviderError> {
-  if (contentType.toLowerCase().includes("text/event-stream") || /^data:/m.test(body)) {
+  if (contentType.toLowerCase().includes("text/event-stream") || /^data:/mu.test(body)) {
     return parseSseResponse(body);
   }
   if (!body.trim()) {
@@ -246,7 +249,7 @@ export function parseMcpToolResult(payload: unknown): Result<McpToolCallResult, 
 
 /** Extract data payloads from an SSE event stream. */
 export function parseSseDataLines(input: string): string[] {
-  const lines = input.replace(/\r\n/g, "\n").split("\n");
+  const lines = input.replaceAll("\r\n", "\n").split("\n");
   const chunks: string[] = [];
   let current: string[] = [];
 

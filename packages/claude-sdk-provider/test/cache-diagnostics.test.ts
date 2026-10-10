@@ -1,13 +1,19 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import { cacheDiagnosticsFromEnvironment } from "../cache-diagnostics";
-import { type CacheDiagnostic, createCacheDiagnosticTracker } from "../cache-tracker";
+import { createCacheDiagnosticTracker } from "../cache-tracker";
+import type { CacheDiagnostic } from "../cache-tracker";
 import { buildPromptStream } from "../sdk/prompt-stream";
 import { contextFixture, drain, sdkContentRecords, textBlock } from "./fixtures";
 
+function withoutCacheMetadata(block: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const { cache_control: _cacheControl, ...content } = block;
+  return content;
+}
+
 describe("cache diagnostics", () => {
   test("reports a byte-identical common prefix for long transcripts containing images without logging content", async () => {
-    const longOutput = "stable build output\n".repeat(5_000);
+    const longOutput = "stable build output\n".repeat(5000);
     const base = contextFixture({
       systemPrompt: "stable system",
       tools: [],
@@ -16,7 +22,7 @@ describe("cache diagnostics", () => {
           role: "user",
           content: [
             { type: "text", text: "inspect screenshot" },
-            { type: "image", data: "cGl4ZWxz".repeat(2_000), mimeType: "image/png" },
+            { type: "image", data: "cGl4ZWxz".repeat(2000), mimeType: "image/png" },
           ],
         },
         {
@@ -35,14 +41,16 @@ describe("cache diagnostics", () => {
     const first = buildAgentRequest(base);
     const second = buildAgentRequest(grown);
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => events.push(event));
+    const tracker = createCacheDiagnosticTracker((event) => {
+      events.push(event);
+    });
 
     tracker("claude-sdk/sonnet", first);
     tracker("claude-sdk/sonnet", second);
 
-    const secondDiagnostic = events[1];
+    const [, secondDiagnostic] = events;
     expect(secondDiagnostic?.type).toBe("request");
-    if (secondDiagnostic?.type !== "request") throw new Error("missing request diagnostic");
+    assert(secondDiagnostic?.type === "request", "missing request diagnostic");
     expect(secondDiagnostic.commonPrefixBlocks).toBe(first.promptBlocks.length - 1);
     expect(secondDiagnostic.breakpointBlock).toBe(second.cacheBreakpoint);
     expect(secondDiagnostic.commonPrefixCharacters).toBeGreaterThan(100_000);
@@ -54,18 +62,19 @@ describe("cache diagnostics", () => {
     const secondWire = await drain(buildPromptStream(second.promptBlocks, second.cacheBreakpoint));
     const firstContent = sdkContentRecords(firstWire[0]);
     const secondContent = sdkContentRecords(secondWire[0]);
-    const withoutCacheMetadata = (block: Record<string, unknown>) => {
-      const { cache_control: _cacheControl, ...content } = block;
-      return content;
-    };
-    expect(secondContent.slice(0, firstContent.length - 1).map(withoutCacheMetadata)).toEqual(
-      firstContent.slice(0, -1).map(withoutCacheMetadata),
+    const sharedPrefix = secondContent
+      .slice(0, firstContent.length - 1)
+      .map((block) => withoutCacheMetadata(block));
+    expect(sharedPrefix).toStrictEqual(
+      firstContent.slice(0, -1).map((block) => withoutCacheMetadata(block)),
     );
   });
 
   test("fingerprints equal prompts equally and a changed block differently", () => {
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => events.push(event));
+    const tracker = createCacheDiagnosticTracker((event) => {
+      events.push(event);
+    });
     const prompt = { promptBlocks: [textBlock("stable"), textBlock("first")], cacheBreakpoint: 0 };
 
     tracker("claude-sdk/sonnet", prompt);
@@ -76,8 +85,9 @@ describe("cache diagnostics", () => {
     });
 
     const [first, repeated, changed] = events;
-    if (first?.type !== "request" || repeated?.type !== "request" || changed?.type !== "request")
-      throw new Error("missing request diagnostics");
+    assert(first?.type === "request", "missing first request diagnostic");
+    assert(repeated?.type === "request", "missing repeated request diagnostic");
+    assert(changed?.type === "request", "missing changed request diagnostic");
     expect(repeated.contentFingerprint).toBe(first.contentFingerprint);
     expect(repeated.commonPrefixBlocks).toBe(2);
     expect(changed.contentFingerprint).not.toBe(first.contentFingerprint);
@@ -87,7 +97,9 @@ describe("cache diagnostics", () => {
 
   test("reports wall-clock gap since the previous request so TTL-expiry misses are distinguishable in logs", () => {
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => events.push(event));
+    const tracker = createCacheDiagnosticTracker((event) => {
+      events.push(event);
+    });
 
     tracker("claude-sdk/sonnet", { promptBlocks: [textBlock("first")], cacheBreakpoint: 0 });
     tracker("claude-sdk/sonnet", {
@@ -96,16 +108,18 @@ describe("cache diagnostics", () => {
     });
 
     const [first, second] = events;
-    if (first?.type !== "request" || second?.type !== "request")
-      throw new Error("missing request diagnostics");
+    assert(first?.type === "request", "missing first request diagnostic");
+    assert(second?.type === "request", "missing second request diagnostic");
     expect(first.msSincePreviousRequest).toBeUndefined();
-    expect(typeof second.msSincePreviousRequest).toBe("number");
+    expect(second.msSincePreviousRequest).toBeTypeOf("number");
     expect(second.msSincePreviousRequest).toBeGreaterThanOrEqual(0);
   });
 
   test("flags a large low-reuse turn as a possible cache collapse", () => {
     const events: CacheDiagnostic[] = [];
-    const tracker = createCacheDiagnosticTracker((event) => events.push(event));
+    const tracker = createCacheDiagnosticTracker((event) => {
+      events.push(event);
+    });
     const recordUsage = tracker("claude-sdk/sonnet", {
       promptBlocks: [textBlock("x".repeat(100_000))],
       cacheBreakpoint: 0,

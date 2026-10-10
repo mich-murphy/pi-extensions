@@ -1,10 +1,8 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { promisify } from "node:util";
 import { z } from "zod";
 
-const execFileAsync = promisify(execFile);
-const SEMANTIC_VERSION = /(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/;
+const SEMANTIC_VERSION = /(?:^|\D)(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\D|$)/u;
 const sdkPackageMetadataSchema = z.object({
   version: z.string(),
   claudeCodeVersion: z.string(),
@@ -13,7 +11,7 @@ const sdkPackageMetadataSchema = z.object({
 type SemanticVersion = readonly [major: number, minor: number, patch: number];
 
 /** Safe version information for the Agent SDK and Claude Code installations. */
-export interface ClaudeSdkVersionStatus {
+export type ClaudeSdkVersionStatus = {
   /** Installed Agent SDK package version. */
   readonly agentSdk: string;
   /** Claude Code version bundled with the Agent SDK. */
@@ -22,7 +20,7 @@ export interface ClaudeSdkVersionStatus {
   readonly installedClaudeCode: string;
   /** Whether the installed Claude Code is newer than the SDK bundle. */
   readonly updateSuggested: boolean;
-}
+};
 
 /** Expected failure while inspecting local Claude versions. */
 class ClaudeSdkVersionInspectionError extends Error {
@@ -51,18 +49,20 @@ export type ClaudeSdkVersionStatusResult =
   | { readonly _tag: "err"; readonly error: ClaudeSdkVersionInspectionError };
 
 /** Dependencies used to inspect SDK and installed CLI versions. */
-export interface ClaudeSdkVersionSources {
+export type ClaudeSdkVersionSources = {
   /** Read the Agent SDK package metadata as JSON text. */
   readonly readSdkPackageMetadata: () => Promise<string>;
   /** Read `claude --version` output. */
   readonly readInstalledClaudeVersion: () => Promise<string>;
-}
+};
 
 function parseSemanticVersion(input: string): SemanticVersion | undefined {
-  const match = SEMANTIC_VERSION.exec(input);
-  if (!match) return undefined;
-  const version = [Number(match[1]), Number(match[2]), Number(match[3])] as const;
-  return version.every(Number.isSafeInteger) ? version : undefined;
+  const parts = SEMANTIC_VERSION.exec(input)?.groups;
+  if (parts === undefined) {
+    return undefined;
+  }
+  const version = [Number(parts.major), Number(parts.minor), Number(parts.patch)] as const;
+  return version.every((part) => Number.isSafeInteger(part)) ? version : undefined;
 }
 
 function isNewer(candidate: SemanticVersion, baseline: SemanticVersion): boolean {
@@ -70,9 +70,9 @@ function isNewer(candidate: SemanticVersion, baseline: SemanticVersion): boolean
   return (difference.find((part) => part !== 0) ?? 0) > 0;
 }
 
-function defaultReadSdkPackageMetadata(): Promise<string> {
+async function defaultReadSdkPackageMetadata(): Promise<string> {
   const sdkEntryUrl = import.meta.resolve("@anthropic-ai/claude-agent-sdk");
-  return readFile(new URL("./package.json", sdkEntryUrl), "utf8");
+  return readFile(new URL("package.json", sdkEntryUrl), "utf8");
 }
 
 function parseJson(input: string): unknown {
@@ -84,11 +84,15 @@ function parseJson(input: string): unknown {
 }
 
 async function defaultReadInstalledClaudeVersion(): Promise<string> {
-  const result = await execFileAsync("claude", ["--version"], {
-    encoding: "utf8",
-    timeout: 3_000,
+  return new Promise((resolve, reject) => {
+    execFile("claude", ["--version"], { encoding: "utf8", timeout: 3000 }, (error, stdout) => {
+      if (error instanceof Error) {
+        reject(error);
+        return;
+      }
+      resolve(stdout.trim());
+    });
   });
-  return String(result.stdout).trim();
 }
 
 const defaultSources: ClaudeSdkVersionSources = {
@@ -108,8 +112,8 @@ export async function inspectClaudeSdkVersions(
   let metadataText: string;
   try {
     metadataText = await sources.readSdkPackageMetadata();
-  } catch (cause) {
-    return { _tag: "err", error: new ClaudeSdkVersionInspectionError("read-sdk-metadata", cause) };
+  } catch (error) {
+    return { _tag: "err", error: new ClaudeSdkVersionInspectionError("read-sdk-metadata", error) };
   }
 
   const metadata = sdkPackageMetadataSchema.safeParse(parseJson(metadataText));
@@ -120,10 +124,10 @@ export async function inspectClaudeSdkVersions(
   let installedOutput: string;
   try {
     installedOutput = await sources.readInstalledClaudeVersion();
-  } catch (cause) {
+  } catch (error) {
     return {
       _tag: "err",
-      error: new ClaudeSdkVersionInspectionError("read-installed-version", cause),
+      error: new ClaudeSdkVersionInspectionError("read-installed-version", error),
     };
   }
 

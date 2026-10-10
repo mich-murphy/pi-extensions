@@ -15,7 +15,7 @@ const pngBlock = {
 };
 const bmp = { data: "dW5zdXBwb3J0ZWQ=", mediaType: "image/bmp" };
 
-async function contentOf(blocks: ReadonlyArray<PromptBlock>, cacheBreakpoint?: number) {
+async function contentOf(blocks: readonly PromptBlock[], cacheBreakpoint?: number) {
   const messages = await drain(buildPromptStream(blocks, cacheBreakpoint));
   expect(messages).toHaveLength(1);
   expect(messages[0]).toMatchObject({ type: "user", parent_tool_use_id: null });
@@ -26,7 +26,7 @@ describe("buildPromptStream", () => {
   test("sends the whole transcript as one SDK user message with one content block per prompt block", async () => {
     const blocks = ["intro", "entry-0", "entry-1", "outro"].map((text) => textBlock(text));
 
-    expect(await contentOf(blocks, 2)).toEqual([
+    await expect(contentOf(blocks, 2)).resolves.toStrictEqual([
       { type: "text", text: "intro" },
       { type: "text", text: "entry-0" },
       { type: "text", text: "entry-1", cache_control: CACHE_CONTROL },
@@ -35,24 +35,22 @@ describe("buildPromptStream", () => {
   });
 
   test("sends no cache breakpoint when the request has none", async () => {
-    expect(await contentOf([textBlock("intro"), textBlock("outro")])).toEqual([
+    await expect(contentOf([textBlock("intro"), textBlock("outro")])).resolves.toStrictEqual([
       { type: "text", text: "intro" },
       { type: "text", text: "outro" },
     ]);
   });
 
   test("expands a block's images into real Anthropic base64 image blocks right after its text block", async () => {
-    expect(await contentOf([textBlock("intro"), textBlock("entry", [png])])).toEqual([
-      { type: "text", text: "intro" },
-      { type: "text", text: "entry" },
-      pngBlock,
-    ]);
+    await expect(contentOf([textBlock("intro"), textBlock("entry", [png])])).resolves.toStrictEqual(
+      [{ type: "text", text: "intro" }, { type: "text", text: "entry" }, pngBlock],
+    );
   });
 
   test("puts the cache breakpoint on the last image, not the text block, when a cached entry carries images", async () => {
     const jpeg = { data: "c2Vjb25k", mediaType: "image/jpeg" };
 
-    expect(await contentOf([textBlock("entry", [png, jpeg])], 0)).toEqual([
+    await expect(contentOf([textBlock("entry", [png, jpeg])], 0)).resolves.toStrictEqual([
       { type: "text", text: "entry" },
       pngBlock,
       {
@@ -64,7 +62,7 @@ describe("buildPromptStream", () => {
   });
 
   test("degrades an unsupported image mime type to a text note alongside supported images", async () => {
-    expect(await contentOf([textBlock("t", [png, bmp])])).toEqual([
+    await expect(contentOf([textBlock("t", [png, bmp])])).resolves.toStrictEqual([
       { type: "text", text: "t" },
       pngBlock,
       UNSUPPORTED_NOTE,
@@ -72,7 +70,7 @@ describe("buildPromptStream", () => {
   });
 
   test("puts the cache breakpoint on the degraded text note when the last image of a cached entry is unsupported", async () => {
-    expect(await contentOf([textBlock("entry", [png, bmp])], 0)).toEqual([
+    await expect(contentOf([textBlock("entry", [png, bmp])], 0)).resolves.toStrictEqual([
       { type: "text", text: "entry" },
       pngBlock,
       { ...UNSUPPORTED_NOTE, cache_control: CACHE_CONTROL },
@@ -84,8 +82,8 @@ describe("buildPromptStream", () => {
 
     const firstTurn = await contentOf(blocks);
 
-    expect(await contentOf(blocks)).toEqual(firstTurn);
-    expect(firstTurn).toEqual([
+    await expect(contentOf(blocks)).resolves.toStrictEqual(firstTurn);
+    expect(firstTurn).toStrictEqual([
       { type: "text", text: "intro" },
       { type: "text", text: "entry" },
       UNSUPPORTED_NOTE,

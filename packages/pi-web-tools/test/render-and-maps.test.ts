@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { Redacted, redactSecrets } from "../redacted";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "../render";
 
-describe("Redacted", () => {
+describe("redacted", () => {
   test("hides values from string, JSON, and inspect projections", () => {
     const secret = Redacted.make("super-secret");
     expect(String(secret)).toBe("<redacted>");
@@ -35,7 +35,7 @@ describe("render helpers", () => {
 
   test("appendExpandedPreview caps lines and columns", () => {
     const text = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
-    const output = appendExpandedPreview("base", text, theme, { maxLines: 3, maxColumns: 5 });
+    const output = appendExpandedPreview("base", { text, theme, maxLines: 3, maxColumns: 5 });
     expect(output).toContain("line ");
     expect(output.split("\n")).toHaveLength(5); // base + 3 preview lines + ellipsis
   });

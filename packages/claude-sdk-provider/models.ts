@@ -1,14 +1,14 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-const DATE_SUFFIX = /-\d{8}$/;
+const DATE_SUFFIX = /-\d{8}$/u;
 
 /** Provider model registration plus the Claude Code routing it advertises. */
-export interface SdkModelConfig extends ProviderModelConfig {
+export type SdkModelConfig = {
   /**
-   * Claude Code model selector sent to the Agent SDK. Registered models use the
+   * Claude Code model selector sent to the Agent SDK. Current models use the
    * documented moving aliases so the underlying model tracks the bundled
-   * Claude Code.
+   * Claude Code; superseded models use their full model ID.
    */
   readonly sdkModel: string;
   /**
@@ -16,10 +16,10 @@ export interface SdkModelConfig extends ProviderModelConfig {
    * SDK names it in `message_start`. The live upgrade gate asserts this.
    */
   readonly canonicalModel: string;
-}
+} & ProviderModelConfig;
 
 /** Models exposed by the official Claude Agent SDK provider. */
-export const models: ReadonlyArray<SdkModelConfig> = [
+export const models: readonly SdkModelConfig[] = [
   {
     id: "claude-5.5-sonnet",
     name: "Claude Sonnet 5.5 (official Agent SDK)",
@@ -54,9 +54,21 @@ export const models: ReadonlyArray<SdkModelConfig> = [
     maxTokens: 128_000,
   },
   {
+    id: "claude-5.5-haiku",
+    name: "Claude Haiku 5.5 (official Agent SDK)",
+    sdkModel: "haiku",
+    canonicalModel: "claude-haiku-5-5",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: subscriptionCost,
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+  },
+  {
+    // The `haiku` alias moved to Haiku 5.5, so this entry pins the full model ID.
     id: "claude-4.5-haiku",
     name: "Claude Haiku 4.5 (official Agent SDK)",
-    sdkModel: "haiku",
+    sdkModel: "claude-haiku-4-5",
     canonicalModel: "claude-haiku-4-5",
     reasoning: false,
     input: ["text", "image"],

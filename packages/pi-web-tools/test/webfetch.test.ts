@@ -1,54 +1,78 @@
-import { type JsonObject, validateToolArguments } from "@earendil-works/pi-ai";
-import { describe, expect, test } from "vitest";
+import { validateToolArguments } from "@earendil-works/pi-ai";
+import type { JsonObject } from "@earendil-works/pi-ai";
+import { assert, describe, expect, test } from "vitest";
 import { FetchPage } from "../fetch-page";
 import type { PublicWebError } from "../network";
 import type { FetchProvider } from "../provider-types";
 import { err, ok } from "../result";
-import { parseSettings } from "../settings";
-import { TempFileToolOutputStore } from "../tool-output";
-import { parsePublicHttpUrl } from "../types";
+import { tempFileToolOutputStore } from "../tool-output";
 import { createWebFetchTool, isRescueEligible, parseWebFetchParams } from "../webfetch";
-import { fakePublicWeb, renderText, textOf, textWebResponse } from "./fakes";
+import {
+  fakePublicWeb,
+  publicUrl,
+  renderText,
+  settingsFrom,
+  textOf,
+  textWebResponse,
+} from "./fakes";
 
-function settingsWith(env: Record<string, string>) {
-  const parsed = parseSettings(env);
-  if (parsed._tag !== "ok") throw new Error("settings parse failed");
-  return parsed.value;
-}
-
-function publicUrl(input: string) {
-  const parsed = parsePublicHttpUrl(input);
-  if (parsed._tag !== "ok") throw new Error("bad test url");
-  return parsed.value;
-}
+const DEFAULT_SETTINGS = settingsFrom();
+const FETCH_OPTIONS = { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHosts: true };
 
 function fakeFetchProvider(
   name: "exa" | "parallel",
-  outcome: string | null,
-): FetchProvider & { calls: string[] } {
+  markdown: string | undefined,
+): FetchProvider & { readonly calls: readonly string[] } {
   const calls: string[] = [];
   return {
     name,
     calls,
-    fetchMarkdown: (url) => {
+    fetchMarkdown: async (url) => {
       calls.push(url);
-      return Promise.resolve(outcome ?? undefined);
+      return markdown;
     },
   };
 }
 
+function fetchPageFor(outcome: Parameters<typeof fakePublicWeb>[0]): FetchPage {
+  return new FetchPage(fakePublicWeb(outcome).client);
+}
+
+function articleResponse(paragraph: string) {
+  return textWebResponse(`<html><body><article><p>${paragraph}</p></article></body></html>`);
+}
+
 function makeTool(
-  env: Record<string, string>,
+  env: Readonly<Record<string, string>>,
   fetchOutcome: Parameters<typeof fakePublicWeb>[0],
-  providers: FetchProvider[],
+  providers: readonly FetchProvider[],
 ) {
   return createWebFetchTool({
-    settings: settingsWith(env),
-    fetchPage: new FetchPage(fakePublicWeb(fetchOutcome).client),
+    settings: settingsFrom(env),
+    fetchPage: fetchPageFor(fetchOutcome),
     fetchProviders: providers,
-    outputStore: new TempFileToolOutputStore(),
+    outputStore: tempFileToolOutputStore,
     secrets: ["sekrit-key"],
   });
+}
+
+function inputErrorFor(url: string): string {
+  const parsed = parseWebFetchParams({ url }, DEFAULT_SETTINGS);
+  assert(parsed._tag === "err");
+  return parsed.error.message;
+}
+
+function timeoutFor(timeout: number): number {
+  const parsed = parseWebFetchParams({ url: "https://example.com", timeout }, DEFAULT_SETTINGS);
+  assert(parsed._tag === "ok");
+  return parsed.value.timeoutSeconds;
+}
+
+async function fetchShort(contentType: string) {
+  return fetchPageFor(ok(textWebResponse("<p>hi</p>", contentType))).fetch(
+    { url: publicUrl("https://short.example"), format: "markdown" },
+    FETCH_OPTIONS,
+  );
 }
 
 describe("webfetch parameter schema", () => {
@@ -59,7 +83,6 @@ describe("webfetch parameter schema", () => {
       type: "toolCall",
       id: "t",
       name: tool.name,
-      // SAFETY: these tests feed deliberately malformed arguments through Pi's validator.
       arguments: args as JsonObject,
     });
   }
@@ -73,7 +96,7 @@ describe("webfetch parameter schema", () => {
   });
 
   test("converts numeric strings, so a string timeout reaches execute as a number", () => {
-    expect(validate({ url: "https://example.com", timeout: "30" })).toEqual({
+    expect(validate({ url: "https://example.com", timeout: "30" })).toStrictEqual({
       url: "https://example.com",
       timeout: 30,
     });
@@ -81,29 +104,21 @@ describe("webfetch parameter schema", () => {
 });
 
 describe("parseWebFetchParams", () => {
-  const settings = settingsWith({});
-
   test("parses a minimal url with settings defaults", () => {
-    expect(parseWebFetchParams({ url: " https://example.com " }, settings)).toEqual(
+    expect(parseWebFetchParams({ url: " https://example.com " }, DEFAULT_SETTINGS)).toStrictEqual(
       ok({ url: "https://example.com/", format: "markdown", timeoutSeconds: 30 }),
     );
   });
 
   test("rejects empty, non-http, and credentialed URLs", () => {
-    const messageFor = (url: string) => {
-      const parsed = parseWebFetchParams({ url }, settings);
-      return parsed._tag === "err" ? parsed.error.message : undefined;
-    };
-    expect(messageFor("   ")).toBe("URL cannot be empty");
-    expect(messageFor("ftp://example.com")).toBe("URL must start with http:// or https://");
-    expect(messageFor("https://user:pass@example.com")).toBe("URL credentials are not supported");
+    expect(inputErrorFor("   ")).toBe("URL cannot be empty");
+    expect(inputErrorFor("ftp://example.com")).toBe("URL must start with http:// or https://");
+    expect(inputErrorFor("https://user:pass@example.com")).toBe(
+      "URL credentials are not supported",
+    );
   });
 
   test("clamps and rounds the timeout", () => {
-    const timeoutFor = (timeout: number) => {
-      const parsed = parseWebFetchParams({ url: "https://example.com", timeout }, settings);
-      return parsed._tag === "ok" ? parsed.value.timeoutSeconds : undefined;
-    };
     expect(timeoutFor(9999)).toBe(120);
     expect(timeoutFor(0)).toBe(1);
     expect(timeoutFor(4.6)).toBe(5);
@@ -124,44 +139,25 @@ describe("isRescueEligible", () => {
   });
 
   test("flags unusable HTML shells but not real content", async () => {
-    const thinShell = new FetchPage(
-      fakePublicWeb({
-        _tag: "ok",
-        value: textWebResponse('<html><body><div id="app"></div></body></html>'),
-      }).client,
+    const thinShell = fetchPageFor(
+      ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
     );
-    const THIN_OPTIONS = {
-      maxRedirects: 5,
-      maxResponseBytes: 1024 * 1024,
-      blockPrivateHosts: true,
-    };
     const thin = await thinShell.fetch(
       { url: publicUrl("https://spa.example"), format: "markdown" },
-      THIN_OPTIONS,
+      FETCH_OPTIONS,
     );
     expect(isRescueEligible(thin)).toBe(true);
 
-    const realPage = new FetchPage(
-      fakePublicWeb({
-        _tag: "ok",
-        value: textWebResponse(
-          `<html><body><article><p>${"substantial content ".repeat(40)}</p></article></body></html>`,
-        ),
-      }).client,
-    );
+    const substantial = "substantial content ".repeat(40);
+    const realPage = fetchPageFor(ok(articleResponse(substantial)));
     const real = await realPage.fetch(
       { url: publicUrl("https://blog.example"), format: "markdown" },
-      THIN_OPTIONS,
+      FETCH_OPTIONS,
     );
     expect(isRescueEligible(real)).toBe(false);
   });
 
   test("judges short bodies by content kind, so only HTML shells qualify", async () => {
-    const fetchShort = (contentType: string) =>
-      new FetchPage(fakePublicWeb(ok(textWebResponse("<p>hi</p>", contentType))).client).fetch(
-        { url: publicUrl("https://short.example"), format: "markdown" },
-        { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHosts: true },
-      );
     expect(isRescueEligible(await fetchShort("application/xhtml+xml"))).toBe(true);
     expect(isRescueEligible(await fetchShort("text/plain"))).toBe(false);
     expect(isRescueEligible(await fetchShort("image/png"))).toBe(false);
@@ -170,11 +166,12 @@ describe("isRescueEligible", () => {
 
 describe("webfetch rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+  const fetchPage = fetchPageFor(ok(textWebResponse("x")));
   const tool = createWebFetchTool({
-    settings: settingsWith({}),
-    fetchPage: new FetchPage(fakePublicWeb(ok(textWebResponse("x"))).client),
+    settings: DEFAULT_SETTINGS,
+    fetchPage,
     fetchProviders: [],
-    outputStore: new TempFileToolOutputStore(),
+    outputStore: tempFileToolOutputStore,
     secrets: [],
   });
 
@@ -231,15 +228,8 @@ describe("webfetch rendering", () => {
 
 describe("webfetch tool", () => {
   test("fetches and converts directly without rescue", async () => {
-    const tool = makeTool(
-      {},
-      ok(
-        textWebResponse(
-          `<html><body><article><p>${"real content ".repeat(40)}</p></article></body></html>`,
-        ),
-      ),
-      [],
-    );
+    const realContent = "real content ".repeat(40);
+    const tool = makeTool({}, ok(articleResponse(realContent)), []);
     const result = await tool.execute("t1", { url: "https://example.com" });
     expect(result.details.via).toBeUndefined();
     expect(textOf(result)).toContain("real content");
@@ -271,7 +261,7 @@ describe("webfetch tool", () => {
     const tool = makeTool(
       {},
       ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
-      [fakeFetchProvider("exa", null), provider],
+      [fakeFetchProvider("exa", undefined), provider],
     );
 
     const result = await tool.execute("t1", { url: "https://spa.example" });
@@ -283,7 +273,7 @@ describe("webfetch tool", () => {
     const tool = makeTool(
       {},
       ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
-      [fakeFetchProvider("exa", null)],
+      [fakeFetchProvider("exa", undefined)],
     );
 
     const result = await tool.execute("t1", { url: "https://spa.example" });
@@ -350,13 +340,10 @@ describe("webfetch tool", () => {
   });
 
   test("enforces the domain allow policy", async () => {
+    const allowedContent = "allowed content ".repeat(40);
     const tool = makeTool(
       { PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "docs.example.com" },
-      ok(
-        textWebResponse(
-          `<html><body><article><p>${"allowed content ".repeat(40)}</p></article></body></html>`,
-        ),
-      ),
+      ok(articleResponse(allowedContent)),
       [],
     );
     await expect(tool.execute("t1", { url: "https://other.example" })).rejects.toThrow(

@@ -2,29 +2,24 @@ import { z } from "zod";
 import type { McpClient } from "./mcp";
 import type { ProviderHttpClient } from "./provider-http";
 import {
-  type FetchProvider,
   lenientArray,
   optionalTextSchema,
-  type ProviderError,
   parseJsonBody,
   publicHttpUrlSchema,
-  type SearchProvider,
 } from "./provider-types";
-import { err, ok, type Result } from "./result";
+import type { FetchProvider, ProviderError, SearchProvider } from "./provider-types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import {
   EXA_API_CONTENTS_URL,
   EXA_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
   SEARCH_TIMEOUT_SECONDS,
 } from "./settings";
-import {
-  type NormalizedSearchResult,
-  type PublicHttpUrl,
-  parsePublicHttpUrl,
-  type SearchQuery,
-} from "./types";
+import { parsePublicHttpUrl } from "./types";
+import type { NormalizedSearchResult, PublicHttpUrl, SearchQuery } from "./types";
 
-const EXA_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1_000;
+const EXA_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
 const EXA_FETCH_MAX_CHARACTERS = 60_000;
 
 /** Parse Exa MCP's untrusted text search-result format into normalized results. */
@@ -32,7 +27,7 @@ export function parseExaSearchText(input: string): {
   readonly results: readonly NormalizedSearchResult[];
   readonly discardedSections: number;
 } {
-  const trimmed = input.replace(/\r\n/g, "\n").trim();
+  const trimmed = input.replaceAll("\r\n", "\n").trim();
   if (!trimmed || isExplicitNoResultsText(trimmed)) {
     return { results: [], discardedSections: 0 };
   }
@@ -83,11 +78,11 @@ function splitSearchSections(input: string): string[] {
 type ExaHeaderField = "title" | "url" | "publishedAt" | "source" | "author" | "score";
 
 /** One header line prefix, the field it fills, and how its raw value becomes usable. */
-interface ExaHeaderRule {
+type ExaHeaderRule = {
   readonly prefix: string;
   readonly field: ExaHeaderField;
   readonly normalize: (raw: string) => string | undefined;
-}
+};
 
 /**
  * Header prefixes of an Exa MCP search section. For every field the last line
@@ -138,7 +133,8 @@ function parseSearchSection(section: string): NormalizedSearchResult | undefined
     publishedAt: headers.get("publishedAt"),
     // Source beats Author; Author only names the source when no usable Source line exists.
     source: headers.get("source") ?? headers.get("author"),
-    score: score === undefined ? undefined : Number.parseFloat(score),
+    // normalizeScore stored the score as parseFloat's canonical output.
+    score: score === undefined ? undefined : Number(score),
   };
 }
 
@@ -146,7 +142,9 @@ function readSectionHeaders(lines: readonly string[]): ReadonlyMap<ExaHeaderFiel
   const headers = new Map<ExaHeaderField, string>();
   for (const line of lines) {
     const rule = EXA_HEADER_RULES.find((candidate) => line.startsWith(candidate.prefix));
-    if (rule === undefined) continue;
+    if (rule === undefined) {
+      continue;
+    }
     const value = rule.normalize(line.slice(rule.prefix.length));
     if (value !== undefined) {
       headers.set(rule.field, value);
@@ -159,27 +157,34 @@ function normalizeNonEmpty(value: string): string | undefined {
   return value.trim() || undefined;
 }
 
+// A score is the number at the start of the value, as parseFloat reads it, stored in canonical form.
 function normalizeScore(value: string): string | undefined {
-  const trimmed = value.trim();
-  return Number.isFinite(Number.parseFloat(trimmed)) ? trimmed : undefined;
+  const score = Number.parseFloat(value);
+  return Number.isFinite(score) ? String(score) : undefined;
 }
 
 function summarizeSnippet(text: string, title: string): string | undefined {
   const collapsed = text
-    .replace(/\r\n/g, "\n")
-    .replace(/^\s*---+\s*$/gm, "")
-    .replace(/^#+\s+/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]+/g, " ")
+    .replaceAll("\r\n", "\n")
+    .replaceAll(/^\s*---+\s*$/gmu, "")
+    .replaceAll(/^#+\s+/gmu, "")
+    .replaceAll(/\n{3,}/gu, "\n\n")
+    .replaceAll(/[ \t]+/gu, " ")
     .trim();
-  if (!collapsed) return undefined;
+  if (!collapsed) {
+    return undefined;
+  }
 
   let snippet = collapsed;
   if (title) {
     snippet = stripRepeatedLeadingTitle(snippet, title);
   }
-  if (!snippet) snippet = collapsed;
-  if (snippet.length <= 280) return snippet;
+  if (!snippet) {
+    snippet = collapsed;
+  }
+  if (snippet.length <= 280) {
+    return snippet;
+  }
   return `${snippet.slice(0, 277).trimEnd()}...`;
 }
 
@@ -214,7 +219,9 @@ function normalizeMetadataValue(value: string): string | undefined {
 
 function isExplicitNoResultsText(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  if (!normalized) return true;
+  if (!normalized) {
+    return true;
+  }
   return normalized.startsWith("no results found") || normalized.includes("no relevant results");
 }
 
@@ -259,16 +266,14 @@ const exaApiResultSchema = z
     author: z.string().optional().catch(undefined),
     score: z.number().optional().catch(undefined),
   })
-  .transform(
-    (item): NormalizedSearchResult => ({
-      title: item.title ?? item.url,
-      url: item.url,
-      snippet: summarizeSnippet(item.highlights.join("\n"), item.title ?? ""),
-      publishedAt: item.publishedDate,
-      source: item.author,
-      score: item.score,
-    }),
-  );
+  .transform((item): NormalizedSearchResult => ({
+    title: item.title ?? item.url,
+    url: item.url,
+    snippet: summarizeSnippet(item.highlights.join("\n"), item.title ?? ""),
+    publishedAt: item.publishedDate,
+    source: item.author,
+    score: item.score,
+  }));
 
 const exaApiSearchPayloadSchema = z.object({ results: lenientArray(exaApiResultSchema) });
 

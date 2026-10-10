@@ -1,37 +1,49 @@
-import {
-  type Api,
-  type AssistantMessage,
-  type AssistantMessageEventStream,
-  calculateCost,
-  createAssistantMessageEventStream,
-  type JsonObject,
-  type Model,
-  type SimpleStreamOptions,
-  type TextContent,
-  type ThinkingContent,
-  type TranscriptContext,
+import { calculateCost, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import type {
+  Api,
+  AssistantMessage,
+  AssistantMessageEventStream,
+  Model,
+  SimpleStreamOptions,
+  TextContent,
+  ThinkingContent,
+  TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { type AgentRequest, buildAgentRequest } from "./agent-request";
-import { SdkQueryError, type SdkRunError } from "./sdk/errors";
+import { buildAgentRequest } from "./agent-request";
+import type { AgentRequest } from "./agent-request";
+import { SdkQueryError } from "./sdk/errors";
+import type { SdkRunError } from "./sdk/errors";
 import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
 
 /** Complete token counts for the latest model call of a turn. */
-export interface TokenUsage {
+export type TokenUsage = {
   readonly input: number;
   readonly output: number;
   readonly cacheRead: number;
   readonly cacheWrite: number;
-}
+};
+
+/** A JSON value its holder cannot mutate. */
+export type ReadonlyJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly ReadonlyJsonValue[]
+  | ReadonlyJsonObject;
+
+/** A JSON object its holder cannot mutate. */
+export type ReadonlyJsonObject = { readonly [key: string]: ReadonlyJsonValue };
 
 /** A Pi tool request captured by the SDK hook and deferred to Pi for execution. */
-export interface DeferredCall {
+export type DeferredCall = {
   /** SDK tool-use identifier. */
   readonly id: string;
   /** Exact Pi tool name. */
   readonly name: string;
   /** Parsed JSON arguments supplied for the Pi tool. */
-  readonly arguments: Readonly<JsonObject>;
-}
+  readonly arguments: ReadonlyJsonObject;
+};
 
 /**
  * Events exchanged between the SDK adapter and Pi stream adapter. A turn is any
@@ -42,7 +54,7 @@ export type BridgeEvent =
   | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
   | { readonly type: "usage"; readonly usage: TokenUsage }
   | { readonly type: "done"; readonly reason: "stop" | "length" }
-  | { readonly type: "tool_calls"; readonly calls: ReadonlyArray<DeferredCall> }
+  | { readonly type: "tool_calls"; readonly calls: readonly DeferredCall[] }
   | { readonly type: "failed"; readonly error: SdkRunError };
 
 /** Stateless SDK operation used by the Pi stream adapter. */
@@ -90,12 +102,14 @@ class AssistantMessageWriter {
   /** Apply one bridge event and report whether it ended the turn. */
   write(event: BridgeEvent): boolean {
     switch (event.type) {
-      case "text_delta":
+      case "text_delta": {
         this.append("text", event.text);
         return false;
-      case "thinking_delta":
+      }
+      case "thinking_delta": {
         this.append("thinking", event.text);
         return false;
+      }
       case "usage": {
         const { input, output, cacheRead, cacheWrite } = event.usage;
         const totalTokens = input + output + cacheRead + cacheWrite;
@@ -103,22 +117,47 @@ class AssistantMessageWriter {
         calculateCost(this.model, this.output.usage);
         return false;
       }
-      case "done":
+      case "done": {
         this.finish(event.reason);
         return true;
-      case "tool_calls":
-        for (const call of event.calls) this.appendToolCall(call);
+      }
+      case "tool_calls": {
+        for (const call of event.calls) {
+          this.appendToolCall(call);
+        }
         this.finish("toolUse");
         return true;
-      case "failed":
+      }
+      case "failed": {
         this.fail(event.error);
         return true;
+      }
+      default: {
+        const _exhaustive: never = event;
+        throw new Error("Unhandled bridge event", { cause: _exhaustive });
+      }
     }
   }
 
-  fail(error: SdkRunError): void {
+  /** Write every event of one run, ending the turn with a failure if the run cannot finish it. */
+  async pump(events: () => AsyncIterable<BridgeEvent>): Promise<void> {
+    try {
+      for await (const event of events()) {
+        if (this.write(event)) {
+          return;
+        }
+      }
+      this.fail(
+        new SdkQueryError("terminal-result", "bridge stream ended without a terminal event"),
+      );
+    } catch (error) {
+      this.fail(new SdkQueryError("iterate", error));
+    }
+  }
+
+  private fail(error: SdkRunError): void {
     this.closeOpenBlock();
-    this.output.stopReason = this.signal?.aborted ? "aborted" : "error";
+    this.output.stopReason = this.signal?.aborted === true ? "aborted" : "error";
     this.output.errorMessage = formatSdkRunError(error);
     writeSdkFailureDiagnostic(error);
     this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
@@ -140,8 +179,11 @@ class AssistantMessageWriter {
         partial: this.output,
       });
     }
-    if (this.open.type === "text") this.open.text += delta;
-    else this.open.thinking += delta;
+    if (this.open.type === "text") {
+      this.open.text += delta;
+    } else {
+      this.open.thinking += delta;
+    }
     this.stream.push({
       type: `${kind}_delta`,
       contentIndex: this.lastIndex,
@@ -152,7 +194,9 @@ class AssistantMessageWriter {
 
   private closeOpenBlock(): void {
     const block = this.open;
-    if (!block) return;
+    if (!block) {
+      return;
+    }
     this.open = undefined;
     this.stream.push({
       type: `${block.type}_end`,
@@ -179,25 +223,26 @@ class AssistantMessageWriter {
   }
 }
 
-async function pump(writer: AssistantMessageWriter, events: () => AsyncIterable<BridgeEvent>) {
-  try {
-    for await (const event of events()) if (writer.write(event)) return;
-    writer.fail(
-      new SdkQueryError("terminal-result", "bridge stream ended without a terminal event"),
-    );
-  } catch (cause) {
-    writer.fail(new SdkQueryError("iterate", cause));
-  }
-}
+/** One Pi provider turn and the SDK operation that serves it. */
+export type AgentSdkStreamInput = {
+  /** Model Pi selected for the turn. */
+  readonly model: Model<Api>;
+  /** Normalized transcript for the turn. */
+  readonly context: TranscriptContext;
+  /** Pi stream options, including the cancellation signal. */
+  readonly options: SimpleStreamOptions | undefined;
+  /** SDK operation that produces the turn's bridge events. */
+  readonly run: AgentSdkRun;
+};
 
 /** Adapt SDK bridge events to Pi's assistant-message event stream. */
-export function createAgentSdkStream(
-  model: Model<Api>,
-  context: TranscriptContext,
-  options: SimpleStreamOptions | undefined,
-  run: AgentSdkRun,
-): AssistantMessageEventStream {
+export function createAgentSdkStream({
+  model,
+  context,
+  options,
+  run,
+}: AgentSdkStreamInput): AssistantMessageEventStream {
   const writer = new AssistantMessageWriter(model, options?.signal);
-  void pump(writer, () => run(buildAgentRequest(context), model, options));
+  void writer.pump(() => run(buildAgentRequest(context), model, options));
   return writer.stream;
 }

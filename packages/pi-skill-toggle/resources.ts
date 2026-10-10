@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { type BuildSystemPromptOptions, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { pathIsInsideOrEqual, type ResourcePath, resourcePathId } from "./resource-path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, SourceInfo } from "@earendil-works/pi-coding-agent";
+import { pathIsInsideOrEqual, resourcePathId } from "./resource-path";
+import type { ResourcePath } from "./resource-path";
 
 /** Whether Pi advertises a resource to the model. */
 export type ToggleValue = "enabled" | "disabled";
@@ -10,7 +12,7 @@ export type ToggleValue = "enabled" | "disabled";
 export type ToggleOverrides = ReadonlyMap<ResourcePath, ToggleValue>;
 
 /** A user-managed instruction file or skill that appears in the toggle menu. */
-export interface ToggleResource {
+export type ToggleResource = {
   readonly id: ResourcePath;
   readonly kind: "instruction" | "skill";
   /** Menu group. Global resources are listed before project resources. */
@@ -19,7 +21,7 @@ export interface ToggleResource {
   readonly description: string;
   /** Skills that declare `disable-model-invocation` are shown but never toggled. */
   readonly editability: "editable" | "manual-only";
-}
+};
 
 /** Narrow an untrusted value to a toggle value. */
 export function isToggleValue(value: unknown): value is ToggleValue {
@@ -36,8 +38,6 @@ export function toggleValue(overrides: ToggleOverrides, resource: ToggleResource
   return overrides.get(resource.id) ?? defaultToggleValue(resource);
 }
 
-type PromptSkill = NonNullable<BuildSystemPromptOptions["skills"]>[number];
-
 /**
  * Extract user-managed resources from Pi's prompt options in menu order.
  *
@@ -49,21 +49,17 @@ type PromptSkill = NonNullable<BuildSystemPromptOptions["skills"]>[number];
 export function toggleResources(
   options: BuildSystemPromptOptions,
   contributedSkills: ReadonlySet<ResourcePath>,
-): ReadonlyArray<ToggleResource> {
+): readonly ToggleResource[] {
   const cwd = resourcePathId(options.cwd, options.cwd);
   const agentDirectory = resourcePathId(getAgentDir(), cwd);
   const globalSkillRoots = [join(agentDirectory, "skills"), join(homedir(), ".agents", "skills")];
 
   const instructions = (options.contextFiles ?? []).flatMap<ToggleResource>((file) => {
     const id = resourcePathId(file.path, cwd);
-    const parent = dirname(id);
-    const origin =
-      parent === agentDirectory
-        ? "global"
-        : pathIsInsideOrEqual(cwd, parent)
-          ? "project"
-          : undefined;
-    if (!origin) return [];
+    const origin = instructionOrigin({ parent: dirname(id), agentDirectory, cwd });
+    if (!origin) {
+      return [];
+    }
     const description = `${origin} instruction\n${id}`;
     return [
       {
@@ -79,8 +75,15 @@ export function toggleResources(
   const skills = (options.skills ?? [])
     .flatMap<ToggleResource>((skill) => {
       const id = resourcePathId(skill.filePath, cwd);
-      const origin = skillOrigin(skill, id, globalSkillRoots, contributedSkills);
-      if (!origin) return [];
+      const origin = skillOrigin({
+        sourceInfo: skill.sourceInfo,
+        id,
+        globalSkillRoots,
+        contributedSkills,
+      });
+      if (!origin) {
+        return [];
+      }
       return [
         {
           id,
@@ -92,14 +95,16 @@ export function toggleResources(
         },
       ];
     })
-    .sort(
+    .toSorted(
       (left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id),
     );
 
   // Instructions keep Pi's discovery order and precede skills, so grouping by origin is enough.
   const unique = new Map<ResourcePath, ToggleResource>();
   for (const resource of [...instructions, ...skills]) {
-    if (!unique.has(resource.id)) unique.set(resource.id, resource);
+    if (!unique.has(resource.id)) {
+      unique.set(resource.id, resource);
+    }
   }
   const resources = [...unique.values()];
   return (["global", "project"] as const).flatMap((origin) =>
@@ -107,20 +112,52 @@ export function toggleResources(
   );
 }
 
+/** An instruction in the agent directory is global, one in `cwd` or an ancestor is project. */
+function instructionOrigin({
+  parent,
+  agentDirectory,
+  cwd,
+}: {
+  readonly parent: string;
+  readonly agentDirectory: string;
+  readonly cwd: string;
+}): ToggleResource["origin"] | undefined {
+  if (parent === agentDirectory) {
+    return "global";
+  }
+  return pathIsInsideOrEqual(cwd, parent) ? "project" : undefined;
+}
+
 /** Package, extension-owned, and CLI skills are not user-managed and have no origin. */
-function skillOrigin(
-  skill: PromptSkill,
-  id: ResourcePath,
-  globalSkillRoots: ReadonlyArray<string>,
-  contributedSkills: ReadonlySet<ResourcePath>,
-): ToggleResource["origin"] | undefined {
-  if (skill.sourceInfo.origin !== "top-level") return undefined;
-  switch (skill.sourceInfo.scope) {
-    case "user":
+function skillOrigin({
+  sourceInfo,
+  id,
+  globalSkillRoots,
+  contributedSkills,
+}: {
+  readonly sourceInfo: Readonly<SourceInfo>;
+  readonly id: ResourcePath;
+  readonly globalSkillRoots: readonly string[];
+  readonly contributedSkills: ReadonlySet<ResourcePath>;
+}): ToggleResource["origin"] | undefined {
+  if (sourceInfo.origin !== "top-level") {
+    return undefined;
+  }
+  switch (sourceInfo.scope) {
+    case "user": {
       return globalSkillRoots.some((root) => pathIsInsideOrEqual(id, root)) ? "global" : undefined;
-    case "project":
+    }
+    case "project": {
       return "project";
-    case "temporary":
+    }
+    case "temporary": {
       return contributedSkills.has(id) ? "project" : undefined;
+    }
+    default: {
+      // A scope added by a later Pi release is not user-managed.
+      const _exhaustive: never = sourceInfo.scope;
+      void _exhaustive;
+      return undefined;
+    }
   }
 }

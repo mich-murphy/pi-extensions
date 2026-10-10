@@ -1,5 +1,7 @@
-import { Redacted, type Redacted as RedactedValue } from "./redacted";
-import { err, ok, type Result } from "./result";
+import { Redacted } from "./redacted";
+import type { Redacted as RedactedValue } from "./redacted";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 
 /** Extension name used for temp files and status surfaces. */
 export const WEB_TOOLS_EXTENSION_NAME = "pi-web-tools";
@@ -30,21 +32,21 @@ export type ParsePublicHttpUrlError =
 export type ParseSearchQueryError = { readonly _tag: "EmptySearchQuery" };
 
 /** A provider-agnostic search result. */
-export interface NormalizedSearchResult {
+export type NormalizedSearchResult = {
   readonly title: string;
   readonly url: PublicHttpUrl;
   readonly snippet?: string | undefined;
   readonly publishedAt?: string | undefined;
   readonly source?: string | undefined;
   readonly score?: number | undefined;
-}
+};
 
 /**
  * Structured details attached to a webfetch tool result. Response fields a provider-side rescue
  * cannot observe (final URL, status, mime, content type, charset, decoder) are absent when `via`
  * is set.
  */
-export interface WebFetchDetails {
+export type WebFetchDetails = {
   readonly requestedUrl: string;
   readonly finalUrl?: string | undefined;
   readonly format: WebFetchFormat;
@@ -59,10 +61,10 @@ export interface WebFetchDetails {
   readonly fullOutputPath?: string | undefined;
   /** Set when content came from a provider-side fetch instead of a direct request. */
   readonly via?: string | undefined;
-}
+};
 
 /** Structured details attached to a websearch tool result. */
-export interface WebSearchDetails {
+export type WebSearchDetails = {
   readonly query: string;
   readonly maxResults: number;
   readonly provider: SearchProviderName;
@@ -70,7 +72,7 @@ export interface WebSearchDetails {
   readonly resultCount: number;
   readonly truncated?: boolean | undefined;
   readonly fullOutputPath?: string | undefined;
-}
+};
 
 /** Parse and normalize a public HTTP(S) URL from boundary input. */
 export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePublicHttpUrlError> {
@@ -79,11 +81,11 @@ export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePu
     return err({ _tag: "EmptyUrl" });
   }
 
-  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
-  const protocol = schemeMatch?.[1]?.toLowerCase();
+  const schemeMatch = /^(?<scheme>[a-z][a-z0-9+.-]*):/iu.exec(trimmed);
+  const protocol = schemeMatch?.groups?.scheme?.toLowerCase();
   const normalized = trimmed.toLowerCase();
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-    if (protocol) {
+    if (protocol !== undefined) {
       return err({ _tag: "UnsupportedUrlProtocol", protocol: `${protocol}:` });
     }
     return err({ _tag: "UnsupportedUrlProtocol" });
@@ -104,19 +106,40 @@ export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePu
     return err({ _tag: "UrlCredentialsUnsupported", url: Redacted.make(url.toString()) });
   }
 
-  // SAFETY: URL parsing succeeded, credentials are absent, and the protocol is restricted to public HTTP(S).
-  return ok(url.toString() as PublicHttpUrl);
+  // A parsed URL serializes to a string that parses back to itself, so this check always passes.
+  const href = url.toString();
+  return isPublicHttpUrl(href)
+    ? ok(href)
+    : err({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
+}
+
+/**
+ * Returns true when a string is a URL in the form parsePublicHttpUrl produces: it parses, uses
+ * http or https, carries no credentials, and is already serialized.
+ */
+export function isPublicHttpUrl(value: string): value is PublicHttpUrl {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.username === "" &&
+    url.password === "" &&
+    url.toString() === value
+  );
 }
 
 /** Parse and trim a non-empty search query from boundary input. */
 export function parseSearchQuery(input: string): Result<SearchQuery, ParseSearchQueryError> {
   const query = input.trim();
-  if (!query) {
-    return err({ _tag: "EmptySearchQuery" });
-  }
+  return isSearchQuery(query) ? ok(query) : err({ _tag: "EmptySearchQuery" });
+}
 
-  // SAFETY: query is trimmed and non-empty.
-  return ok(query as SearchQuery);
+function isSearchQuery(value: string): value is SearchQuery {
+  return value !== "" && value.trim() === value;
 }
 
 /** Format URL-like UI text without exposing URL userinfo credentials. */
@@ -139,5 +162,5 @@ export function redactUrlCredentialsForDisplay(input: unknown): string {
 }
 
 function looksLikeCredentialedAbsoluteUrl(input: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:\/\/[^/?#\s]*@/i.test(input);
+  return /^[a-z][a-z0-9+.-]*:\/\/[^/?#\s]*@/iu.test(input);
 }

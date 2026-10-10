@@ -11,7 +11,7 @@ describe("htmlToMarkdown", () => {
     const markdown = htmlToMarkdown(html, "https://example.com/docs/");
     expect(markdown).toContain("# Title");
     expect(markdown).toContain("[link](https://example.com/relative)");
-    expect(markdown).toMatch(/-\s+one/);
+    expect(markdown).toMatch(/-\s+one/u);
   });
 
   test("strips scripts, styles, and boilerplate chrome", () => {
@@ -31,7 +31,7 @@ describe("htmlToMarkdown", () => {
       '<html><body><article><p><a href="javascript:alert(1)">x</a></p></article></body></html>',
       "https://example.com",
     );
-    expect(sanitized).not.toContain("javascript:");
+    expect(sanitized).not.toMatch(/javascript:/u);
   });
 });
 
@@ -80,11 +80,27 @@ describe("readable root extraction", () => {
     [".story", "div", 'class="story"'],
   ] as const;
 
-  for (const [index, [earlier, earlierTag, earlierAttributes]] of preferredRoots.entries()) {
-    const next = preferredRoots[index + 1];
-    if (!next) continue;
-    const [later, laterTag, laterAttributes] = next;
-    test(`prefers ${earlier} over ${later}, whatever the order and length`, () => {
+  // Each selector paired with the next one, the selector names first for the test titles.
+  const adjacentRoots = preferredRoots
+    .slice(1)
+    .flatMap(([laterName, laterTag, laterAttributes], index) => {
+      const earlier = preferredRoots[index];
+      if (earlier === undefined) {
+        return [];
+      }
+      const [earlierName, earlierTag, earlierAttributes] = earlier;
+      return [
+        [
+          earlierName,
+          laterName,
+          { earlierTag, earlierAttributes, laterTag, laterAttributes },
+        ] as const,
+      ];
+    });
+
+  test.each(adjacentRoots)(
+    "prefers %s over %s, whatever the order and length",
+    (_earlierName, _laterName, { earlierTag, earlierAttributes, laterTag, laterAttributes }) => {
       const html = `<html><body>
         <${laterTag} ${laterAttributes}><p>later root ${"filler ".repeat(200)}</p></${laterTag}>
         <${earlierTag} ${earlierAttributes}><p>earlier root</p></${earlierTag}>
@@ -92,17 +108,19 @@ describe("readable root extraction", () => {
       const text = htmlToText(html, "https://example.com");
       expect(text).toContain("earlier root");
       expect(text).not.toContain("later root");
-    });
-  }
+    },
+  );
 
   // Both candidates match .markdown-body (+1500). The shorter one wins only if its bonus from a
   // second group is added on top: the filler outweighs half that bonus.
   const bonusCases = [
     ["main-content", 'class="markdown-body main-content"', 500],
-    ["#bigbox", 'class="markdown-body" id="bigbox"', 1_000],
+    ["#bigbox", 'class="markdown-body" id="bigbox"', 1000],
   ] as const;
-  for (const [label, attributes, bonus] of bonusCases) {
-    test(`adds the ${label} bonus to a .markdown-body candidate`, () => {
+
+  test.each(bonusCases)(
+    "adds the %s bonus to a .markdown-body candidate",
+    (_label, attributes, bonus) => {
       const filler = "x".repeat(bonus / 2);
       const html = `<html><body>
         <div class="markdown-body"><p>plain candidate ${filler}</p></div>
@@ -111,8 +129,8 @@ describe("readable root extraction", () => {
       const text = htmlToText(html, "https://example.com");
       expect(text).toContain("bonus candidate");
       expect(text).not.toContain("plain candidate");
-    });
-  }
+    },
+  );
 });
 
 describe("htmlToMarkdown block links", () => {
@@ -146,7 +164,7 @@ describe("htmlToMarkdown block links", () => {
 describe("htmlToMarkdown on large documents", () => {
   // Large enough, with enough children in one container, that the conversion runs in chunks.
   const paragraphs = Array.from(
-    { length: 3_000 },
+    { length: 3000 },
     (_, index) => `Paragraph ${index} with some words to fill the line out.`,
   );
 
@@ -159,30 +177,21 @@ describe("htmlToMarkdown on large documents", () => {
   });
 
   test("keeps edge whitespace, preformatted text, and misnested lists across chunk edges", () => {
-    const blocks = paragraphs.map((text, index) => {
-      if (index % 500 === 499) return `<pre>\tcode ${index}</pre>`;
-      if (index % 700 === 699) return `<ol><li><div><li>nested ${index}</li></div></li></ol>`;
-      return `<p>${text}&nbsp;</p>`;
-    });
-    // What a single pass produces for each block: a bare pre keeps its leading tab unfenced, the
-    // HTML parser closes the outer list item before the misnested one, and the trailing
-    // no-break space survives.
-    const expected = paragraphs.map((text, index) => {
-      if (index % 500 === 499) return `\tcode ${index}`;
-      if (index % 700 === 699) return `2.  nested ${index}`;
-      return `${text} `;
-    });
+    const blocks = paragraphs.map((text, index) => edgeCaseBlock(text, index));
     const markdown = htmlToMarkdown(
-      `<html><body><article>${blocks.join("")}</article></body></html>`,
+      `<html><body><article>${blocks.map((block) => block.html).join("")}</article></body></html>`,
       "https://example.com",
     );
-    expect(markdown).toBe(expected.join("\n\n").trim());
+    expect(markdown).toBe(
+      blocks
+        .map((block) => block.markdown)
+        .join("\n\n")
+        .trim(),
+    );
   });
 });
 
 describe("htmlToMarkdown tables", () => {
-  const inArticle = (content: string) => `<html><body><article>${content}</article></body></html>`;
-
   test("converts a table with a heading row to a GFM table", () => {
     const markdown = htmlToMarkdown(
       inArticle(`<table>
@@ -230,7 +239,7 @@ describe("htmlToMarkdown tables", () => {
       const html = `<html><body><p>visible</p>
         <${tag} id="content"><table><tr><td><a href="javascript:alert(1)">run</a></td></tr></table></${tag}>
       </body></html>`;
-      expect(sanitizeHtml(html, "https://example.com")).not.toContain("javascript:");
+      expect(sanitizeHtml(html, "https://example.com")).not.toMatch(/javascript:/u);
       expect(htmlToMarkdown(html, "https://example.com")).toBe("visible");
     },
   );
@@ -240,8 +249,7 @@ describe("layout table detection", () => {
   // sanitizeHtml keeps a data table and flattens a layout table to divs. Each case is decided by
   // the named rule; where a later rule would decide otherwise, the case proves the rule order.
   const grid = "<tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr>";
-  const longLink = (href: string) => `<a href="${href}">${"words ".repeat(25)}</a>`;
-  const cases: ReadonlyArray<readonly [string, "data" | "layout", string]> = [
+  const cases: readonly (readonly [string, "data" | "layout", string])[] = [
     ["a caption", "data", `<table border="1"><caption>c</caption>${grid}</table>`],
     ["a thead", "data", `<table border="1"><thead></thead>${grid}</table>`],
     ["a th", "data", `<table border="1"><tr><th>h</th><th>i</th></tr>${grid}</table>`],
@@ -292,7 +300,7 @@ describe("layout table detection", () => {
       `<html><body><article><table><tr><td><table>${grid}</table></td><td>side</td></tr></table></article></body></html>`,
       "https://example.com",
     );
-    expect(sanitized.match(/<table/g)).toHaveLength(1);
+    expect(sanitized.match(/<table/gu)).toHaveLength(1);
     expect(sanitized).toContain(`<table>${grid}</table>`);
   });
 });
@@ -312,6 +320,34 @@ describe("sanitizeHtml URL attributes", () => {
     expect(sanitized).toContain('href="https://example.com/docs"');
     expect(sanitized).toContain('src="data:image/png;base64,AAAA"');
     expect(sanitized).toContain('srcset="https://example.com/a.png 1x"');
-    expect(sanitized).not.toContain("javascript:");
+    expect(sanitized).not.toMatch(/javascript:/u);
   });
 });
+
+function inArticle(content: string): string {
+  return `<html><body><article>${content}</article></body></html>`;
+}
+
+function longLink(href: string): string {
+  return `<a href="${href}">${"words ".repeat(25)}</a>`;
+}
+
+// A block for the chunk-edge test and what a single pass converts it to. Every 500th block is a
+// bare pre, which keeps its leading tab unfenced; every 700th a misnested list, whose outer item
+// the HTML parser closes before the inner one; the rest are paragraphs whose trailing no-break
+// space survives.
+function edgeCaseBlock(
+  text: string,
+  index: number,
+): { readonly html: string; readonly markdown: string } {
+  if (index % 500 === 499) {
+    return { html: `<pre>\tcode ${index}</pre>`, markdown: `\tcode ${index}` };
+  }
+  if (index % 700 === 699) {
+    return {
+      html: `<ol><li><div><li>nested ${index}</li></div></li></ol>`,
+      markdown: `2.  nested ${index}`,
+    };
+  }
+  return { html: `<p>${text}&nbsp;</p>`, markdown: `${text}\u00A0` };
+}

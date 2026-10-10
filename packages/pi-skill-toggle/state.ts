@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { parseResourcePath, type ResourcePath } from "./resource-path";
-import { isToggleValue, type ToggleOverrides, type ToggleValue } from "./resources";
+import { parseResourcePath } from "./resource-path";
+import type { ResourcePath } from "./resource-path";
+import { isToggleValue } from "./resources";
+import type { ToggleOverrides, ToggleValue } from "./resources";
 
 const STATE_VERSION = 6;
 
@@ -33,16 +35,16 @@ export class ToggleStateError extends Error {
 /** Overrides after a state operation, or the reason it failed. */
 export type ToggleStateResult =
   | { readonly _tag: "ok"; readonly value: ToggleOverrides }
-  | { readonly _tag: "err"; readonly error: ToggleStateError };
+  | { readonly _tag: "err"; readonly error: Readonly<ToggleStateError> };
 
 /** State operations required by the extension command and prompt handler. */
-export interface ToggleStateStore {
+export type ToggleStateStore = {
   /** Read every persisted override without modifying the store. */
-  load(): ToggleStateResult;
+  readonly load: () => ToggleStateResult;
 
   /** Persist one resource's override, or clear it with `"default"`. */
-  set(id: ResourcePath, value: ToggleValue | "default"): ToggleStateResult;
-}
+  readonly set: (id: ResourcePath, value: ToggleValue | "default") => ToggleStateResult;
+};
 
 /**
  * Overrides persisted as one JSON file shared by every Pi session.
@@ -65,8 +67,11 @@ export class ToggleStateFile implements ToggleStateStore {
       const overrides = new Map(
         [...this.read()].filter(([path]) => statSync(path, { throwIfNoEntry: false })),
       );
-      if (value === "default") overrides.delete(id);
-      else overrides.set(id, value);
+      if (value === "default") {
+        overrides.delete(id);
+      } else {
+        overrides.set(id, value);
+      }
       this.write(overrides);
       return overrides;
     });
@@ -78,8 +83,8 @@ export class ToggleStateFile implements ToggleStateStore {
   ): ToggleStateResult {
     try {
       return { _tag: "ok", value: effect() };
-    } catch (cause) {
-      return { _tag: "err", error: new ToggleStateError(operation, this.path, cause) };
+    } catch (error) {
+      return { _tag: "err", error: new ToggleStateError(operation, this.path, error) };
     }
   }
 
@@ -87,17 +92,21 @@ export class ToggleStateFile implements ToggleStateStore {
     let content: string;
     try {
       content = readFileSync(this.path, "utf8");
-    } catch (cause) {
-      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return new Map();
-      throw cause;
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return new Map();
+      }
+      throw error;
     }
     const overrides = parseState(content);
-    if (!overrides) throw new Error("The file is malformed or unsupported. Fix or remove it.");
+    if (!overrides) {
+      throw new Error("The file is malformed or unsupported. Fix or remove it.");
+    }
     return overrides;
   }
 
   private write(overrides: ToggleOverrides): void {
-    const entries = [...overrides].sort(([left], [right]) => left.localeCompare(right));
+    const entries = [...overrides].toSorted(([left], [right]) => left.localeCompare(right));
     const state = { version: STATE_VERSION, overrides: Object.fromEntries(entries) };
     mkdirSync(dirname(this.path), { recursive: true });
     const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
@@ -117,12 +126,18 @@ function parseState(content: string): ToggleOverrides | undefined {
   } catch {
     return undefined;
   }
-  if (!isRecord(state) || typeof state.version !== "number") return undefined;
-  if (state.version === STATE_VERSION) return parseOverrides(state.overrides, (entry) => entry);
+  if (!isRecord(state) || typeof state.version !== "number") {
+    return undefined;
+  }
+  if (state.version === STATE_VERSION) {
+    return parseOverrides(state.overrides, (entry) => entry);
+  }
   // Versions 4 and 5 stored `{ enabled }` beside metadata that is now derived from the path.
   if (state.version === 4 || state.version === 5) {
     return parseOverrides(state.resources, (entry) => {
-      if (!isRecord(entry) || typeof entry.enabled !== "boolean") return undefined;
+      if (!isRecord(entry) || typeof entry.enabled !== "boolean") {
+        return undefined;
+      }
       return entry.enabled ? "enabled" : "disabled";
     });
   }
@@ -134,12 +149,16 @@ function parseOverrides(
   entries: unknown,
   toValue: (entry: unknown) => unknown,
 ): ToggleOverrides | undefined {
-  if (!isRecord(entries)) return undefined;
+  if (!isRecord(entries)) {
+    return undefined;
+  }
   const overrides = new Map<ResourcePath, ToggleValue>();
   for (const [path, entry] of Object.entries(entries)) {
     const id = parseResourcePath(path);
     const value = toValue(entry);
-    if (!(id && isToggleValue(value))) return undefined;
+    if (!(id && isToggleValue(value))) {
+      return undefined;
+    }
     overrides.set(id, value);
   }
   return overrides;

@@ -1,9 +1,7 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import {
-  type CaffeinateEnd,
-  type CaffeinateProcess,
-  CaffeinateProcessError,
-} from "./no-sleep-lifecycle";
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { CaffeinateProcessError } from "./no-sleep-lifecycle";
+import type { CaffeinateEnd, CaffeinateProcess } from "./no-sleep-lifecycle";
 
 function failed(cause: unknown): CaffeinateEnd {
   return { _tag: "failed", error: new CaffeinateProcessError(cause) };
@@ -19,16 +17,22 @@ function failed(cause: unknown): CaffeinateEnd {
 export function caffeinateSpawner(
   command: string,
   killGraceMs: number,
-): (args: ReadonlyArray<string>) => CaffeinateProcess {
+): (args: readonly string[]) => CaffeinateProcess {
   return (args) => {
     let child: ChildProcess;
     try {
       child = spawn(command, [...args], { stdio: "ignore" });
-    } catch (cause) {
+    } catch (error) {
       // Node throws some spawn failures and emits others; callers see one asynchronous channel.
       return {
-        onEnd: (listener) => queueMicrotask(() => listener(failed(cause))),
-        stop: () => {},
+        onEnd: (listener) => {
+          queueMicrotask(() => {
+            listener(failed(error));
+          });
+        },
+        stop: () => {
+          // Nothing was spawned, so there is nothing to stop.
+        },
       };
     }
     // The child must never keep Pi's event loop alive.
@@ -37,13 +41,19 @@ export function caffeinateSpawner(
     return {
       onEnd: (listener) => {
         // Permanent, not once(): an "error" event without a listener would crash Pi.
-        child.on("error", (cause) => listener(failed(cause)));
-        child.once("exit", (code, signal) => listener({ _tag: "exited", code, signal }));
+        child.on("error", (cause) => {
+          listener(failed(cause));
+        });
+        child.once("exit", (code, signal) => {
+          listener({ _tag: "exited", code, signal });
+        });
       },
       stop: () => {
         // kill() is a no-op once the child has exited, so neither signal can hit a reused PID.
         child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), killGraceMs).unref();
+        setTimeout(() => {
+          child.kill("SIGKILL");
+        }, killGraceMs).unref();
       },
     };
   };

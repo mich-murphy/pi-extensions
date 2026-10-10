@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
 import noSleep from "../index";
 import type { CaffeinateEnd, CaffeinateProcess } from "../no-sleep-lifecycle";
@@ -13,15 +13,21 @@ const KILL_GRACE_MS = 50;
 const spawnNode = caffeinateSpawner(process.execPath, KILL_GRACE_MS);
 const IDLE_FOREVER = "setInterval(() => {}, 1000)";
 
-function ended(child: CaffeinateProcess): Promise<CaffeinateEnd> {
-  return new Promise((resolve) => child.onEnd(resolve));
+async function ended(child: CaffeinateProcess): Promise<CaffeinateEnd> {
+  return new Promise((resolve) => {
+    child.onEnd(resolve);
+  });
+}
+
+function caffeinateIsRunning(): boolean {
+  return spawnSync("pgrep", ["-f", `caffeinate -d -i -s -w ${process.pid}`]).status === 0;
 }
 
 describe("caffeinate process adapter", () => {
   test("reports the exit of a child that stops by itself", async () => {
     const end = await ended(spawnNode(["-e", "process.exit(3)"]));
 
-    expect(end).toEqual({ _tag: "exited", code: 3, signal: null });
+    expect(end).toStrictEqual({ _tag: "exited", code: 3, signal: null });
   });
 
   test("stops a running child with SIGTERM", async () => {
@@ -30,7 +36,7 @@ describe("caffeinate process adapter", () => {
 
     child.stop();
 
-    expect(await end).toEqual({ _tag: "exited", code: null, signal: "SIGTERM" });
+    await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGTERM" });
     child.stop();
   });
 
@@ -44,11 +50,16 @@ describe("caffeinate process adapter", () => {
         ready,
       ]);
       const end = ended(child);
-      await vi.waitFor(() => expect(existsSync(ready)).toBe(true), { timeout: 5_000 });
+      await vi.waitFor(
+        () => {
+          expect(existsSync(ready)).toBe(true);
+        },
+        { timeout: 5000 },
+      );
 
       child.stop();
 
-      expect(await end).toEqual({ _tag: "exited", code: null, signal: "SIGKILL" });
+      await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGKILL" });
     } finally {
       rmSync(directory, { recursive: true });
     }
@@ -60,7 +71,8 @@ describe("caffeinate process adapter", () => {
     const end = await ended(child);
 
     expect(end).toMatchObject({ _tag: "failed", error: { _tag: "CaffeinateProcessError" } });
-    expect(end._tag === "failed" && end.error.cause).toMatchObject({ code: "ENOENT" });
+    assert(end._tag === "failed");
+    expect(end.error.cause).toMatchObject({ code: "ENOENT" });
     child.stop();
   });
 
@@ -75,9 +87,6 @@ describe("caffeinate process adapter", () => {
 });
 
 describe("no-sleep entry point", () => {
-  const caffeinateIsRunning = (): boolean =>
-    spawnSync("pgrep", ["-f", `caffeinate -d -i -s -w ${process.pid}`]).status === 0;
-
   test.runIf(process.platform === "darwin")(
     "holds a real caffeinate assertion while the agent works",
     async () => {
@@ -85,11 +94,15 @@ describe("no-sleep entry point", () => {
       noSleep(pi.pi);
 
       await pi.emit("agent_start");
-      await vi.waitFor(() => expect(caffeinateIsRunning()).toBe(true));
+      await vi.waitFor(() => {
+        expect(caffeinateIsRunning()).toBe(true);
+      });
 
       await pi.emit("agent_settled");
-      await vi.waitFor(() => expect(caffeinateIsRunning()).toBe(false));
-      expect(pi.notifications).toEqual([]);
+      await vi.waitFor(() => {
+        expect(caffeinateIsRunning()).toBe(false);
+      });
+      expect(pi.notifications).toStrictEqual([]);
     },
   );
 
@@ -97,6 +110,6 @@ describe("no-sleep entry point", () => {
     const pi = fakePi();
     noSleep(pi.pi);
 
-    expect(pi.registeredEvents()).toEqual([]);
+    expect(pi.registeredEvents()).toStrictEqual([]);
   });
 });

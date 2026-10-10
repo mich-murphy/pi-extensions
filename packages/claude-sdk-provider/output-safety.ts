@@ -4,34 +4,43 @@ import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 /** Suspicious shell-output category recognized by the quarantine guard. */
 export type SuspiciousOutputKind = "binary" | "base64";
 
-const MIN_SUSPICIOUS_CHARACTERS = 4_096;
-const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/;
+const MIN_SUSPICIOUS_CHARACTERS = 4096;
+const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/u;
 const DISCOVERED_EXECUTABLE_CAT =
-  /\bcat\b[\s\S]*(?:\$\(\s*(?:which|command\s+-v)\b|`\s*(?:which|command\s+-v)\b)/i;
+  /\bcat\b[\s\S]*(?:\$\(\s*(?:which|command\s+-v)\b|`\s*(?:which|command\s+-v)\b)/iu;
 
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
-  if (text.length < MIN_SUSPICIOUS_CHARACTERS) return undefined;
+  if (text.length < MIN_SUSPICIOUS_CHARACTERS) {
+    return undefined;
+  }
 
   let controlCharacters = 0;
   for (const character of text) {
-    const codePoint = character.charCodeAt(0);
+    const codePoint = character.codePointAt(0);
     if (
-      character === "\ufffd" ||
+      character === "\uFFFD" ||
       codePoint === 0 ||
-      (codePoint < 32 && character !== "\n" && character !== "\r" && character !== "\t")
+      (codePoint !== undefined &&
+        codePoint < 32 &&
+        character !== "\n" &&
+        character !== "\r" &&
+        character !== "\t")
     ) {
       controlCharacters += 1;
     }
   }
-  if (controlCharacters >= 8 && controlCharacters / text.length >= 0.002) return "binary";
+  if (controlCharacters >= 8 && controlCharacters / text.length >= 0.002) {
+    return "binary";
+  }
 
-  const compact = text.replace(/\s/g, "");
+  const compact = text.replaceAll(/\s/gu, "");
   if (
-    compact.length >= 8_192 &&
+    compact.length >= 8192 &&
     compact.length / text.length >= 0.95 &&
     BASE64_ALPHABET.test(compact)
-  )
+  ) {
     return "base64";
+  }
   return undefined;
 }
 
@@ -45,12 +54,12 @@ function quarantineNotice(kind: SuspiciousOutputKind, characters: number): strin
 }
 
 /** Result of inspecting shell tool content. */
-export interface SanitizedBashContent {
+export type SanitizedBashContent = {
   /** Original content or a short quarantine notice. */
-  readonly content: Array<TextContent | ImageContent>;
+  readonly content: (TextContent | ImageContent)[];
   /** Detected category, or `undefined` when the content is safe. */
   readonly detected: SuspiciousOutputKind | undefined;
-}
+};
 
 /**
  * Replace suspicious shell output with a bounded quarantine notice.
@@ -59,7 +68,7 @@ export interface SanitizedBashContent {
  * @returns The original readonly content or replacement notice.
  */
 export function sanitizeBashContent(
-  content: ReadonlyArray<TextContent | ImageContent>,
+  content: readonly (TextContent | ImageContent)[],
 ): SanitizedBashContent {
   const combinedText = content
     .filter((block): block is TextContent => block.type === "text")
@@ -82,7 +91,9 @@ export function sanitizeBashContent(
  * @returns A blocking explanation when the unsafe pattern is present.
  */
 export function inspectBashCommand(command: string): string | undefined {
-  if (!DISCOVERED_EXECUTABLE_CAT.test(command)) return undefined;
+  if (!DISCOVERED_EXECUTABLE_CAT.test(command)) {
+    return undefined;
+  }
   return 'Refusing to pipe a discovered executable through cat. Inspect it with file "$(which COMMAND)", otool, or strings "$(which COMMAND)" | head instead.';
 }
 
@@ -96,9 +107,13 @@ export function sanitizeContextMessages(
   messages: Readonly<ContextEvent["messages"]>,
 ): ContextEvent["messages"] {
   return messages.map((message) => {
-    if (message.role !== "toolResult" || message.toolName !== "bash") return message;
+    if (message.role !== "toolResult" || message.toolName !== "bash") {
+      return message;
+    }
     // Sessions persist across versions, so recorded content is not trusted to match its type.
-    if (!Array.isArray(message.content)) return message;
+    if (!Array.isArray(message.content)) {
+      return message;
+    }
     const sanitized = sanitizeBashContent(message.content);
     return sanitized.detected ? { ...message, content: sanitized.content } : message;
   });

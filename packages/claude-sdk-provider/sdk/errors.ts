@@ -71,7 +71,7 @@ export class InvalidDeferredCallLimitError extends Error {
    */
   constructor(
     readonly attempts: number,
-    readonly lastError: InvalidDeferredCallError,
+    readonly lastError: Readonly<InvalidDeferredCallError>,
   ) {
     super(
       `Claude exceeded the invalid Pi tool-call limit after ${attempts} attempts: ${lastError.message}`,
@@ -82,7 +82,7 @@ export class InvalidDeferredCallLimitError extends Error {
 
 function safeCauseSummary(cause: unknown): string {
   const summary = cause instanceof Error ? cause.message : String(cause);
-  return summary.slice(0, 1_000);
+  return summary.slice(0, 1000);
 }
 
 /** Error produced when the SDK query rejects or ends without a terminal result. */
@@ -108,8 +108,6 @@ export class SdkQueryError extends Error {
 }
 
 /** Expected failures that can terminate one provider turn. */
-export type SdkRunError =
-  | InvalidDeferredCallLimitError
-  | SdkProtocolError
-  | SdkQueryError
-  | SdkResultError;
+export type SdkRunError = Readonly<
+  InvalidDeferredCallLimitError | SdkProtocolError | SdkQueryError | SdkResultError
+>;

@@ -11,16 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { type ResourcePath, resourcePathId } from "../resource-path";
+import { resourcePathId } from "../resource-path";
+import type { ResourcePath } from "../resource-path";
 import type { ToggleOverrides } from "../resources";
-import { ToggleStateFile, type ToggleStateResult } from "../state";
+import { ToggleStateFile } from "../state";
+import type { ToggleStateResult } from "../state";
 
 const temporaryDirectories: string[] = [];
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 function testContext() {
   const directory = mkdtempSync(join(tmpdir(), "pi-skill-toggle-"));
@@ -40,20 +37,29 @@ function testContext() {
 }
 
 function overrides(result: ToggleStateResult): ToggleOverrides {
-  if (result._tag === "err") throw result.error;
+  if (result._tag === "err") {
+    throw new Error(result.error.message, { cause: result.error });
+  }
   return result.value;
 }
 
-function expectFailure(result: ToggleStateResult, operation: "load" | "update"): void {
-  expect(result).toMatchObject({ _tag: "err", error: { _tag: "ToggleStateError", operation } });
+/** The shape of a state result that failed during `operation`. */
+function stateFailure(operation: "load" | "update") {
+  return { _tag: "err", error: { _tag: "ToggleStateError", operation } };
 }
 
-describe("ToggleStateFile", () => {
+describe("toggleStateFile", () => {
+  afterEach(() => {
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("a missing file is an empty state and loading never creates it", () => {
     const context = testContext();
 
-    expect(overrides(context.store.load())).toEqual(new Map());
-    expect(readdirSync(context.directory)).toEqual([]);
+    expect(overrides(context.store.load())).toStrictEqual(new Map());
+    expect(readdirSync(context.directory)).toStrictEqual([]);
   });
 
   test("persists overrides by path, sorted, in a private file", () => {
@@ -64,11 +70,11 @@ describe("ToggleStateFile", () => {
     overrides(context.store.set(second, "enabled"));
     const saved = overrides(context.store.set(first, "disabled"));
 
-    expect([...saved]).toEqual([
+    expect([...saved]).toStrictEqual([
       [second, "enabled"],
       [first, "disabled"],
     ]);
-    expect(overrides(new ToggleStateFile(context.statePath).load())).toEqual(saved);
+    expect(overrides(new ToggleStateFile(context.statePath).load())).toStrictEqual(saved);
     expect(readFileSync(context.statePath, "utf8")).toBe(
       `${JSON.stringify({ version: 6, overrides: { [first]: "disabled", [second]: "enabled" } }, null, 2)}\n`,
     );
@@ -82,7 +88,9 @@ describe("ToggleStateFile", () => {
     overrides(context.store.set(kept, "enabled"));
     overrides(context.store.set(cleared, "enabled"));
 
-    expect([...overrides(context.store.set(cleared, "default"))]).toEqual([[kept, "enabled"]]);
+    expect([...overrides(context.store.set(cleared, "default"))]).toStrictEqual([
+      [kept, "enabled"],
+    ]);
   });
 
   test("keeps toggles written by another session between two updates", () => {
@@ -94,7 +102,7 @@ describe("ToggleStateFile", () => {
 
     const saved = overrides(context.store.set(mine, "default"));
 
-    expect([...saved]).toEqual([[theirs, "enabled"]]);
+    expect([...saved]).toStrictEqual([[theirs, "enabled"]]);
   });
 
   test("updates drop entries whose file no longer exists, loads do not", () => {
@@ -107,44 +115,66 @@ describe("ToggleStateFile", () => {
     rmSync(removed);
 
     expect(overrides(context.store.load()).has(removed)).toBe(true);
-    expect([...overrides(context.store.set(other, "disabled")).keys()]).toEqual([retained, other]);
+    expect([...overrides(context.store.set(other, "disabled")).keys()]).toStrictEqual([
+      retained,
+      other,
+    ]);
   });
 
-  test("reads version 4 and 5 state and rewrites it as version 6 on the next update", () => {
-    for (const version of [4, 5]) {
+  test.each([4, 5])(
+    "reads version %i state and rewrites it as version 6 on the next update",
+    (version) => {
       const context = testContext();
       const disabled = context.resourceFile("disabled");
       const enabled = context.resourceFile("enabled");
       const entry = { kind: "skill", origin: "global", owner: context.directory };
-      context.writeState({
-        version,
-        resources: {
-          [disabled]: { ...entry, enabled: false },
-          ...(version === 5 ? { [enabled]: { ...entry, origin: "project", enabled: true } } : {}),
-        },
-      });
+      context.writeState({ version, resources: { [disabled]: { ...entry, enabled: false } } });
 
       const loaded = overrides(context.store.load());
       expect(loaded.get(disabled)).toBe("disabled");
-      expect(loaded.get(enabled)).toBe(version === 5 ? "enabled" : undefined);
+      expect(loaded.get(enabled)).toBeUndefined();
 
       overrides(context.store.set(disabled, "default"));
-      expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toEqual({
+      expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
         version: 6,
-        overrides: version === 5 ? { [enabled]: "enabled" } : {},
+        overrides: {},
       });
-    }
+    },
+  );
+
+  test("keeps enabled version 5 entries when rewriting them as version 6", () => {
+    const context = testContext();
+    const disabled = context.resourceFile("disabled");
+    const enabled = context.resourceFile("enabled");
+    const entry = { kind: "skill", origin: "global", owner: context.directory };
+    context.writeState({
+      version: 5,
+      resources: {
+        [disabled]: { ...entry, enabled: false },
+        [enabled]: { ...entry, origin: "project", enabled: true },
+      },
+    });
+
+    const loaded = overrides(context.store.load());
+    expect(loaded.get(disabled)).toBe("disabled");
+    expect(loaded.get(enabled)).toBe("enabled");
+
+    overrides(context.store.set(disabled, "default"));
+    expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
+      version: 6,
+      overrides: { [enabled]: "enabled" },
+    });
   });
 
   test("discards name-keyed state from before version 4", () => {
     const context = testContext();
     context.writeState({ version: 3, globalSkillPolicy: { research: "manual-only" } });
 
-    expect(overrides(context.store.load())).toEqual(new Map());
+    expect(overrides(context.store.load())).toStrictEqual(new Map());
   });
 
   test("returns malformed and unsupported state as a typed failure without replacing it", () => {
-    const malformedStates: ReadonlyArray<unknown> = [
+    const malformedStates: readonly unknown[] = [
       "{broken",
       "",
       null,
@@ -166,8 +196,10 @@ describe("ToggleStateFile", () => {
       context.writeState(malformed);
       const before = readFileSync(context.statePath, "utf8");
 
-      expectFailure(context.store.load(), "load");
-      expectFailure(context.store.set(context.resourceFile("skill"), "disabled"), "update");
+      expect(context.store.load()).toMatchObject(stateFailure("load"));
+      expect(context.store.set(context.resourceFile("skill"), "disabled")).toMatchObject(
+        stateFailure("update"),
+      );
       expect(readFileSync(context.statePath, "utf8")).toBe(before);
     }
   });
@@ -176,8 +208,10 @@ describe("ToggleStateFile", () => {
     const context = testContext();
     mkdirSync(context.statePath, { recursive: true });
 
-    expectFailure(context.store.load(), "load");
-    expectFailure(context.store.set(context.resourceFile("skill"), "disabled"), "update");
+    expect(context.store.load()).toMatchObject(stateFailure("load"));
+    expect(context.store.set(context.resourceFile("skill"), "disabled")).toMatchObject(
+      stateFailure("update"),
+    );
   });
 
   test("reports write failures and leaves no temporary files", () => {
@@ -187,8 +221,10 @@ describe("ToggleStateFile", () => {
     chmodSync(stateDirectory, 0o500);
 
     try {
-      expectFailure(context.store.set(context.resourceFile("skill"), "disabled"), "update");
-      expect(readdirSync(stateDirectory)).toEqual([]);
+      expect(context.store.set(context.resourceFile("skill"), "disabled")).toMatchObject(
+        stateFailure("update"),
+      );
+      expect(readdirSync(stateDirectory)).toStrictEqual([]);
     } finally {
       chmodSync(stateDirectory, 0o700);
     }

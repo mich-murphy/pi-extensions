@@ -3,12 +3,12 @@ import type { ProviderHttpClient } from "./provider-http";
 import {
   lenientArray,
   optionalTextSchema,
-  type ProviderError,
   parseJsonBody,
   publicHttpUrlSchema,
-  type SearchProvider,
 } from "./provider-types";
-import { err, ok, type Result } from "./result";
+import type { ProviderError, SearchProvider } from "./provider-types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import {
   BRAVE_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
@@ -16,7 +16,7 @@ import {
 } from "./settings";
 import type { NormalizedSearchResult, SearchQuery } from "./types";
 
-const BRAVE_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1_000;
+const BRAVE_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
 
 const braveResultSchema = z
   .object({
@@ -27,15 +27,16 @@ const braveResultSchema = z
     page_age: z.string().optional().catch(undefined),
     age: z.string().optional().catch(undefined),
   })
-  .transform(
-    (item): NormalizedSearchResult => ({
+  .transform((item): NormalizedSearchResult => {
+    const publishedAt = item.page_age ?? item.age;
+    return {
       title: item.title ?? item.url,
       url: item.url,
       snippet: item.description,
-      publishedAt: (item.page_age ?? item.age) || undefined,
+      publishedAt: publishedAt === "" ? undefined : publishedAt,
       source: "Brave",
-    }),
-  );
+    };
+  });
 
 const braveSearchPayloadSchema = z.object({
   web: z.object({ results: lenientArray(braveResultSchema) }),

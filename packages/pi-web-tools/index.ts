@@ -5,7 +5,7 @@ import { FetchPublicWebClient } from "./network";
 import { FetchProviderHttpClient } from "./provider-http";
 import { buildFetchProviders, buildSearchProviders, defaultMcpFor } from "./search";
 import { parseSettings } from "./settings";
-import { TempFileToolOutputStore } from "./tool-output";
+import { tempFileToolOutputStore } from "./tool-output";
 import { WEB_TOOLS_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
 import { createWebSearchTool } from "./websearch";
@@ -14,7 +14,7 @@ import { createWebSearchTool } from "./websearch";
 export default function webToolsExtension(pi: ExtensionAPI): void {
   const parsed = parseSettings();
   if (parsed._tag === "err") {
-    const message = parsed.error.message;
+    const { message } = parsed.error;
     pi.on("session_start", (_event, ctx) => {
       ctx.ui.notify(`${WEB_TOOLS_EXTENSION_NAME}: ${message}`, "error");
     });
@@ -31,7 +31,6 @@ export default function webToolsExtension(pi: ExtensionAPI): void {
     sessionId: randomUUID(),
     mcpFor: defaultMcpFor,
   };
-  const outputStore = new TempFileToolOutputStore();
   const secrets = [
     settings.credentials.exaApiKey,
     settings.credentials.parallelApiKey,
@@ -42,16 +41,17 @@ export default function webToolsExtension(pi: ExtensionAPI): void {
     createWebSearchTool({
       settings,
       providers: buildSearchProviders(composition),
-      outputStore,
+      outputStore: tempFileToolOutputStore,
       secrets,
     }),
   );
+  const fetchPage = new FetchPage(new FetchPublicWebClient());
   pi.registerTool(
     createWebFetchTool({
       settings,
-      fetchPage: new FetchPage(new FetchPublicWebClient()),
+      fetchPage,
       fetchProviders: buildFetchProviders(composition),
-      outputStore,
+      outputStore: tempFileToolOutputStore,
       secrets,
     }),
   );

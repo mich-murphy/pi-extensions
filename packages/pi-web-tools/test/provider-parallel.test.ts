@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
+import type { McpToolCallResult } from "../mcp";
 import {
   ParallelApiSearchProvider,
   ParallelMcpFetchProvider,
@@ -7,10 +8,15 @@ import {
   parseParallelResults,
 } from "../provider-parallel";
 import { err, ok } from "../result";
-import type { SearchQuery } from "../types";
-import { fakeMcpClient, fakeProviderHttp } from "./fakes";
+import { fakeMcpClient, fakeProviderHttp, publicUrl, searchQuery } from "./fakes";
 
-const QUERY = "web search apis" as SearchQuery;
+const QUERY = searchQuery("web search apis");
+const PAGE = publicUrl("https://example.com/");
+
+async function fetchWith(result: McpToolCallResult) {
+  const { client } = fakeMcpClient([ok(result)]);
+  return new ParallelMcpFetchProvider(client, "s").fetchMarkdown(PAGE);
+}
 
 const RESULTS_PAYLOAD = {
   results: [
@@ -27,8 +33,7 @@ const RESULTS_PAYLOAD = {
 describe("parseParallelResults", () => {
   test("normalizes structured results and skips invalid URLs", () => {
     const parsed = parseParallelResults(RESULTS_PAYLOAD);
-    expect(parsed._tag).toBe("ok");
-    if (parsed._tag !== "ok") return;
+    assert(parsed._tag === "ok");
     expect(parsed.value).toHaveLength(1);
     expect(parsed.value[0]?.title).toBe("Parallel Search");
     expect(parsed.value[0]?.snippet).toContain("Web search for agents");
@@ -38,7 +43,7 @@ describe("parseParallelResults", () => {
   test("rejects payloads without a results array", () => {
     expect(parseParallelResults({})._tag).toBe("err");
     expect(parseParallelResults(null)._tag).toBe("err");
-    expect(parseParallelResults({ results: "nope" })).toEqual(err("Missing results array"));
+    expect(parseParallelResults({ results: "nope" })).toStrictEqual(err("Missing results array"));
   });
 
   test("skips invalid items and falls back when a field has the wrong type", () => {
@@ -57,7 +62,7 @@ describe("parseParallelResults", () => {
       ],
     });
 
-    expect(parsed).toEqual(
+    expect(parsed).toStrictEqual(
       ok([
         {
           title: "https://a.example/",
@@ -94,28 +99,29 @@ describe("parseParallelMcpPayload", () => {
   });
 
   test("keeps a distinct reason for each missing or malformed payload", () => {
-    expect(parseParallelMcpPayload({ text: [] })).toEqual(err("Missing structured search results"));
-    expect(parseParallelMcpPayload({ text: ["not json"] })).toEqual(
+    expect(parseParallelMcpPayload({ text: [] })).toStrictEqual(
+      err("Missing structured search results"),
+    );
+    expect(parseParallelMcpPayload({ text: ["not json"] })).toStrictEqual(
       err("Invalid structured search results"),
     );
     // A present structuredContent wins over text, even when it is not a results payload.
     expect(
       parseParallelMcpPayload({ text: [JSON.stringify(RESULTS_PAYLOAD)], structuredContent: null }),
-    ).toEqual(err("Missing results array"));
+    ).toStrictEqual(err("Missing results array"));
   });
 });
 
-describe("ParallelMcpSearchProvider", () => {
+describe("parallelMcpSearchProvider", () => {
   test("sends the official web_search contract including session_id", async () => {
     const { client, calls } = fakeMcpClient([ok({ text: [], structuredContent: RESULTS_PAYLOAD })]);
     const provider = new ParallelMcpSearchProvider(client, "session-abc");
     const result = await provider.search({ query: QUERY, maxResults: 5 });
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
+    assert(result._tag === "ok");
     expect(result.value).toHaveLength(1);
     expect(calls[0]?.name).toBe("web_search");
-    expect(calls[0]?.args).toEqual({
+    expect(calls[0]?.args).toStrictEqual({
       objective: QUERY,
       search_queries: [QUERY],
       session_id: "session-abc",
@@ -132,15 +138,16 @@ describe("ParallelMcpSearchProvider", () => {
     ]);
     const provider = new ParallelMcpSearchProvider(client, "s");
 
-    expect(await provider.search({ query: QUERY, maxResults: 5 })).toEqual(
+    await expect(provider.search({ query: QUERY, maxResults: 5 })).resolves.toStrictEqual(
       err({ _tag: "ProviderProtocolInvalid", reason: "Invalid structured search results" }),
     );
     const capped = await provider.search({ query: QUERY, maxResults: 1 });
-    expect(capped._tag === "ok" && capped.value).toHaveLength(1);
+    assert(capped._tag === "ok");
+    expect(capped.value).toHaveLength(1);
   });
 });
 
-describe("ParallelApiSearchProvider", () => {
+describe("parallelApiSearchProvider", () => {
   test("posts the official /v1/search contract", async () => {
     const { client, requests } = fakeProviderHttp([
       ok({ bodyText: JSON.stringify(RESULTS_PAYLOAD) }),
@@ -149,10 +156,11 @@ describe("ParallelApiSearchProvider", () => {
     const result = await provider.search({ query: QUERY, maxResults: 6 });
 
     expect(result._tag).toBe("ok");
-    const request = requests[0];
-    expect(request?.url).toBe("https://api.parallel.ai/v1/search");
-    expect(request?.headers["x-api-key"]).toBe("test-key");
-    expect(request?.body).toMatchObject({
+    const [request] = requests;
+    assert(request !== undefined);
+    expect(request.url).toBe("https://api.parallel.ai/v1/search");
+    expect(request.headers["x-api-key"]).toBe("test-key");
+    expect(request.body).toMatchObject({
       objective: QUERY,
       search_queries: [QUERY],
       max_results: 6,
@@ -166,7 +174,7 @@ describe("ParallelApiSearchProvider", () => {
       query: QUERY,
       maxResults: 5,
     });
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "err",
       error: { _tag: "ProviderTimedOut", timeoutSeconds: 25 },
     });
@@ -179,16 +187,16 @@ describe("ParallelApiSearchProvider", () => {
     ]);
     const provider = new ParallelApiSearchProvider("k", client);
 
-    expect(await provider.search({ query: QUERY, maxResults: 5 })).toEqual(
+    await expect(provider.search({ query: QUERY, maxResults: 5 })).resolves.toStrictEqual(
       err({ _tag: "ProviderProtocolInvalid", reason: "Invalid JSON response" }),
     );
-    expect(await provider.search({ query: QUERY, maxResults: 5 })).toEqual(
+    await expect(provider.search({ query: QUERY, maxResults: 5 })).resolves.toStrictEqual(
       err({ _tag: "ProviderProtocolInvalid", reason: "Missing results array" }),
     );
   });
 });
 
-describe("ParallelMcpFetchProvider", () => {
+describe("parallelMcpFetchProvider", () => {
   test("calls web_fetch with full_content and extracts structured content", async () => {
     const { client, calls } = fakeMcpClient([
       ok({
@@ -197,11 +205,11 @@ describe("ParallelMcpFetchProvider", () => {
       }),
     ]);
     const provider = new ParallelMcpFetchProvider(client, "session-abc");
-    const result = await provider.fetchMarkdown("https://example.com" as never);
+    const result = await provider.fetchMarkdown(PAGE);
 
     expect(result).toBe("# Full page");
     expect(calls[0]?.args).toMatchObject({
-      urls: ["https://example.com"],
+      urls: [PAGE],
       full_content: true,
       session_id: "session-abc",
     });
@@ -216,50 +224,37 @@ describe("ParallelMcpFetchProvider", () => {
         },
       }),
     ]);
-    const excerpts = await new ParallelMcpFetchProvider(excerptsClient, "s").fetchMarkdown(
-      "https://example.com" as never,
-    );
+    const excerpts = await new ParallelMcpFetchProvider(excerptsClient, "s").fetchMarkdown(PAGE);
     expect(excerpts).toBe("part one\n\npart two");
 
     const { client: textClient } = fakeMcpClient([ok({ text: ["raw page text"] })]);
-    const text = await new ParallelMcpFetchProvider(textClient, "s").fetchMarkdown(
-      "https://example.com" as never,
-    );
+    const text = await new ParallelMcpFetchProvider(textClient, "s").fetchMarkdown(PAGE);
     expect(text).toBe("raw page text");
 
     const { client: emptyClient } = fakeMcpClient([ok({ text: [] })]);
-    const empty = await new ParallelMcpFetchProvider(emptyClient, "s").fetchMarkdown(
-      "https://example.com" as never,
-    );
+    const empty = await new ParallelMcpFetchProvider(emptyClient, "s").fetchMarkdown(PAGE);
     expect(empty).toBeUndefined();
   });
 
   test("reads the first result from structured content or JSON text, else the raw text", async () => {
-    const fetchWith = (result: { text: string[]; structuredContent?: unknown }) => {
-      const { client } = fakeMcpClient([ok(result)]);
-      return new ParallelMcpFetchProvider(client, "s").fetchMarkdown(
-        "https://example.com" as never,
-      );
-    };
-
     // Blank content falls back to the excerpts.
-    expect(
-      await fetchWith({
+    await expect(
+      fetchWith({
         text: [],
         structuredContent: { results: [{ content: "   ", excerpts: ["kept", 3] }] },
       }),
-    ).toBe("kept");
-    expect(
-      await fetchWith({ text: [JSON.stringify({ results: [{ content: " # From JSON text " }] })] }),
-    ).toBe("# From JSON text");
+    ).resolves.toBe("kept");
+    await expect(
+      fetchWith({ text: [JSON.stringify({ results: [{ content: " # From JSON text " }] })] }),
+    ).resolves.toBe("# From JSON text");
     // Only the first result counts; a malformed first result leaves the raw text.
-    expect(
-      await fetchWith({
+    await expect(
+      fetchWith({
         text: ["fallback text"],
         structuredContent: { results: [null, { content: "second" }] },
       }),
-    ).toBe("fallback text");
+    ).resolves.toBe("fallback text");
     const emptyResults = JSON.stringify({ results: [] });
-    expect(await fetchWith({ text: [emptyResults] })).toBe(emptyResults);
+    await expect(fetchWith({ text: [emptyResults] })).resolves.toBe(emptyResults);
   });
 });
