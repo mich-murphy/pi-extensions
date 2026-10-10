@@ -1,0 +1,90 @@
+{
+  "label": "baseline",
+  "commit": "a0a132d",
+  "repo": {
+    "metrics": {
+      "Fallow health score": [78.4, 1],
+      "hotspot penalty (churn-based)": [10.0, -1],
+      "unit-size penalty": [10.0, -1],
+      "avg maintainability index": [91.6, 1],
+      "avg cyclomatic": [1.7, -1],
+      "p90 cyclomatic": [3, -1],
+      "duplication %": [1.1, -1],
+      "functions over 60 LOC per 1k": [32.0, -1],
+      "tests passed": [777, 0],
+      "statement coverage %": [94.81, 1],
+      "branch coverage %": [89.7, 1]
+    },
+    "grade": "B"
+  },
+  "packages": {
+    "claude-sdk-provider": {
+      "metrics": {
+        "production LOC": [2480, -1],
+        "test LOC": [3163, 0],
+        "tests passed": [181, 0],
+        "statement coverage %": [92.0, 1],
+        "branch coverage %": [88.77, 1],
+        "avg maintainability index": [92.3, 1],
+        "min maintainability index": [85.1, 1],
+        "avg cyclomatic per function": [2.43, -1],
+        "avg cognitive per function": [1.16, -1],
+        "max CRAP": [20.0, -1],
+        "functions over 60 LOC": [0, -1],
+        "zod imports": [5, -1],
+        "Data.TaggedError classes": [12, -1],
+        "Schema.TaggedError classes": [0, 1],
+        "Effect.gen calls": [0, 0],
+        "Effect.fn / fnUntraced": [2, 0],
+        "run* boundaries": [1, -1],
+        "Context.Service definitions": [0, 1],
+        "Layer usages": [0, 1],
+        "async generators": [4, -1],
+        "try blocks": [4, -1],
+        "throw statements": [1, -1],
+        "type casts (excl. as const)": [4, -1],
+        "oxlint-disable comments": [1, -1],
+        "hand-written 'x in' guards": [0, -1]
+      },
+      "worst file": "sdk/runner.ts",
+      "large functions": []
+    },
+    "pi-web-tools": {
+      "metrics": {
+        "production LOC": [5411, -1],
+        "test LOC": [4438, 0],
+        "tests passed": [390, 0],
+        "statement coverage %": [94.88, 1],
+        "branch coverage %": [88.63, 1],
+        "avg maintainability index": [90.8, 1],
+        "min maintainability index": [86.1, 1],
+        "avg cyclomatic per function": [2.69, -1],
+        "avg cognitive per function": [1.83, -1],
+        "max CRAP": [18.0, -1],
+        "functions over 60 LOC": [5, -1],
+        "zod imports": [5, -1],
+        "Data.TaggedError classes": [30, -1],
+        "Schema.TaggedError classes": [0, 1],
+        "Effect.gen calls": [9, 0],
+        "Effect.fn / fnUntraced": [4, 0],
+        "run* boundaries": [2, -1],
+        "Context.Service definitions": [0, 1],
+        "Layer usages": [0, 1],
+        "async generators": [0, -1],
+        "try blocks": [8, -1],
+        "throw statements": [15, -1],
+        "type casts (excl. as const)": [7, -1],
+        "oxlint-disable comments": [1, -1],
+        "hand-written 'x in' guards": [4, -1]
+      },
+      "worst file": "search.ts",
+      "large functions": [
+        "websearch.ts:createWebSearchTool (138 LOC)",
+        "webfetch.ts:createWebFetchTool (135 LOC)",
+        "element-selector.ts:compileSelectorSet (67 LOC)",
+        "webfetch.ts:execute (65 LOC)",
+        "websearch.ts:execute (64 LOC)"
+      ]
+    }
+  }
+}
