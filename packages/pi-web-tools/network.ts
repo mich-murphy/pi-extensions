@@ -82,7 +82,10 @@ export type PublicWebClient = {
 export type DnsLookup = (hostname: string) => Promise<readonly { address: string }[]>;
 
 /** The shape of an operation-deadline abort reason. */
-type OperationTimeout = { readonly _tag: "OperationTimeout"; readonly timeoutSeconds: number };
+export type OperationTimeout = {
+  readonly _tag: "OperationTimeout";
+  readonly timeoutSeconds: number;
+};
 
 /** Error aborting an operation after its deadline. */
 class OperationTimeoutError extends Error implements OperationTimeout {

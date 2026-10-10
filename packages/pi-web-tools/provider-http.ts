@@ -1,5 +1,5 @@
 import { createOperationSignal, isAbortError, readResponseBodyWithLimit } from "./network";
-import { classifyProviderAbort } from "./provider-types";
+import { classifyProviderAbort, parseJsonBody } from "./provider-types";
 import type { ProviderError } from "./provider-types";
 import { err, ok } from "./result";
 import type { Result } from "./result";
@@ -29,6 +29,22 @@ export type ProviderHttpClient = {
     options?: { readonly signal?: AbortSignal | undefined },
   ) => Promise<Result<ProviderHttpResponse, ProviderError>>;
 };
+
+/**
+ * Await a provider REST call and parse its body as untrusted JSON.
+ *
+ * @param response - The pending provider call.
+ * @returns The parsed body, or the call's or the parse's failure.
+ */
+export async function readProviderJson(
+  response: Promise<Result<ProviderHttpResponse, ProviderError>>,
+): Promise<Result<unknown, ProviderError>> {
+  const settled = await response;
+  if (settled._tag === "err") {
+    return settled;
+  }
+  return parseJsonBody(settled.value.bodyText);
+}
 
 /** Provider REST client with hard timeouts and response byte caps. */
 export class FetchProviderHttpClient implements ProviderHttpClient {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpClient, McpToolCallResult } from "./mcp";
+import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
 import {
   lenientArray,
@@ -7,7 +8,13 @@ import {
   parseJsonBody,
   publicHttpUrlSchema,
 } from "./provider-types";
-import type { FetchProvider, ProviderError, SearchProvider } from "./provider-types";
+import type {
+  FetchProvider,
+  ProviderCallOptions,
+  ProviderError,
+  SearchInput,
+  SearchProvider,
+} from "./provider-types";
 import { err, ok } from "./result";
 import type { Result } from "./result";
 import {
@@ -15,7 +22,7 @@ import {
   SEARCH_MAX_RESPONSE_BYTES,
   SEARCH_TIMEOUT_SECONDS,
 } from "./settings";
-import type { NormalizedSearchResult, PublicHttpUrl, SearchQuery } from "./types";
+import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 
 const PARALLEL_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
 
@@ -91,8 +98,8 @@ export class ParallelMcpSearchProvider implements SearchProvider {
 
   /** Run one Parallel MCP web_search call and normalize its structured results. */
   async search(
-    input: { readonly query: SearchQuery; readonly maxResults: number },
-    options: { readonly signal?: AbortSignal | undefined } = {},
+    input: SearchInput,
+    options: ProviderCallOptions = {},
   ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
     const call = await this.mcp.callTool(
       "web_search",
@@ -127,10 +134,10 @@ export class ParallelApiSearchProvider implements SearchProvider {
 
   /** Run one Parallel REST search call and normalize its structured results. */
   async search(
-    input: { readonly query: SearchQuery; readonly maxResults: number },
-    options: { readonly signal?: AbortSignal | undefined } = {},
+    input: SearchInput,
+    options: ProviderCallOptions = {},
   ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
-    const response = await this.http.postJson(
+    const response = this.http.postJson(
       {
         url: PARALLEL_API_SEARCH_URL,
         headers: { "x-api-key": this.apiKey },
@@ -145,11 +152,7 @@ export class ParallelApiSearchProvider implements SearchProvider {
       },
       { signal: options.signal },
     );
-    if (response._tag === "err") {
-      return response;
-    }
-
-    const payload = parseJsonBody(response.value.bodyText);
+    const payload = await readProviderJson(response);
     if (payload._tag === "err") {
       return payload;
     }

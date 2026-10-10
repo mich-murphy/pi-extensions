@@ -1,10 +1,11 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { AgentToolUpdateCallback, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { SearchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
+import type { RenderTheme } from "./render";
 import { err, ok } from "./result";
 import type { Result } from "./result";
 import { searchWithFallback } from "./search";
@@ -33,11 +34,6 @@ export type WebSearchParams = {
 
 /** Expected failures parsing websearch tool input. */
 export type WebSearchInputError = { readonly _tag: "InvalidToolInput"; readonly message: string };
-
-type RenderTheme = {
-  readonly fg: (name: ThemeColor, value: string) => string;
-  readonly bold: (value: string) => string;
-};
 
 /**
  * Tool parameters. Pi validates and converts arguments against this schema before `execute` runs,

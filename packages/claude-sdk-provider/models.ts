@@ -7,7 +7,7 @@ const DATE_SUFFIX = /-\d{8}$/u;
  * The chat-model variant of Pi's provider model union. Pi does not export it by name, and this
  * provider registers only chat models.
  */
-type ChatModelConfig = Extract<ProviderModelConfig, { readonly type?: "chat" }>;
+export type ChatModelConfig = Extract<ProviderModelConfig, { readonly type?: "chat" }>;
 
 /** Provider model registration plus the Claude Code routing it advertises. */
 export type SdkModelConfig = {

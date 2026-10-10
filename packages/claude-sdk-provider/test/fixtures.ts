@@ -51,7 +51,7 @@ export function transcriptFixture(messages: readonly unknown[]): TranscriptConte
 }
 
 /** Fields a test varies on an otherwise complete Claude SDK model. */
-type ModelFixtureFields = {
+export type ModelFixtureFields = {
   /** Pi-facing model ID. */
   readonly id: string;
   /** Whether the model accepts effort-based reasoning. */

@@ -68,13 +68,19 @@ export function classifyProviderAbort(signal: AbortSignal): ProviderError {
   return { _tag: "ProviderCancelled" };
 }
 
+/** One search request, as every provider receives it. */
+export type SearchInput = { readonly query: SearchQuery; readonly maxResults: number };
+
+/** Per-call options for a provider request. */
+export type ProviderCallOptions = { readonly signal?: AbortSignal | undefined };
+
 /** Outbound port for one search provider. */
 export type SearchProvider = {
   readonly name: SearchProviderName;
   readonly transport: "mcp" | "api";
   readonly search: (
-    input: { readonly query: SearchQuery; readonly maxResults: number },
-    options?: { readonly signal?: AbortSignal | undefined },
+    input: SearchInput,
+    options?: ProviderCallOptions,
   ) => Promise<Result<readonly NormalizedSearchResult[], ProviderError>>;
 };
 

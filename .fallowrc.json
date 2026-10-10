@@ -1,40 +1,28 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "entry": [
-    "packages/*/index.ts",
-    "packages/*/test/**/*.test.ts",
-    "packages/*/test/**/*.live.ts",
-    "vitest.config.ts",
-    "vitest.live.config.ts"
-  ],
+  // includeEntryExports, failOnParseError and dupes --fail-on-issues need this release or later
+  "minimumVersion": "3.32.0",
+  // Only the settings that differ from Fallow's defaults. Entry points need no list: Fallow finds
+  // each package's index.ts, the Vitest tests and the live configs on its own.
   "rules": {
-    "unused-files": "error",
-    "unused-exports": "error",
-    "unused-types": "error",
-    "private-type-leaks": "warn",
-    "unused-dependencies": "error",
+    // Dependency hygiene and suppression discipline gate CI, matching Oxlint's denyWarnings
     "unused-dev-dependencies": "error",
     "unused-optional-dependencies": "error",
-    "unused-enum-members": "error",
-    "unused-class-members": "error",
-    "unresolved-imports": "error",
-    "unlisted-dependencies": "error",
-    "duplicate-exports": "error",
     "type-only-dependencies": "error",
     "test-only-dependencies": "error",
     "dev-dependencies-in-production": "error",
-    "circular-dependencies": "error",
     "re-export-cycle": "error",
-    "coverage-gaps": "off",
     "stale-suppressions": "error",
-    "require-suppression-reason": "error"
+    "require-suppression-reason": "error",
+    // An exported signature must not depend on a type its module keeps private
+    "private-type-leaks": "error"
   },
-  "usedClassMembers": [
-    {
-      "extends": "Error",
-      "members": ["_tag"]
-    }
-  ],
+  // A stray export from a package entry is dead too: Pi reads only the default export
+  "includeEntryExports": true,
+  // A file Fallow cannot parse would silently drop out of every check
+  "failOnParseError": true,
+  // Tagged errors carry a `_tag` discriminant that callers read structurally, never by name
+  "usedClassMembers": [{ "extends": "Error", "members": ["_tag"] }],
   "typeAware": {
     "enabled": true,
     "projects": ["tsconfig.json"],
@@ -44,18 +32,9 @@
     "coverage": "coverage/coverage-final.json"
   },
   "duplicates": {
-    "enabled": true,
+    // Fallow's default clone size (50 tokens, 5 lines) with exact-token matching. Three
+    // occurrences skips pair-only noise, as `fallow init` seeds it.
     "mode": "strict",
-    "near": false,
-    "minTokens": 100,
-    "minLines": 10,
-    "minOccurrences": 3,
-    "threshold": 0,
-    "ignoreImports": true,
-    "ignoreDefaults": true
-  },
-  "production": false,
-  "audit": {
-    "gate": "new-only"
+    "minOccurrences": 3
   }
 }
