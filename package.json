@@ -35,7 +35,7 @@
     "@types/node": "24.19.1",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.3",
-    "fallow": "3.30.0",
+    "fallow": "3.31.0",
     "markdownlint-cli2": "0.23.3",
     "oxfmt": "0.68.0",
     "oxlint": "1.86.0",
