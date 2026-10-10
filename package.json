@@ -23,7 +23,7 @@
     "fallow:dead-code": "fallow dead-code",
     "fallow:production": "fallow dead-code --production",
     "fallow:health": "fallow health --coverage coverage/coverage-final.json",
-    "fallow:dupes": "fallow dupes && fallow dupes --format json --quiet | node -e \"const {stats} = JSON.parse(require('fs').readFileSync(0, 'utf8')); if (stats.clone_groups > 0) { console.error('fallow dupes: ' + stats.clone_groups + ' clone group(s) found'); process.exit(1); }\"",
+    "fallow:dupes": "fallow dupes --fail-on-issues",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
     "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
     "check": "oxfmt --check && oxlint && npm run typecheck && npm run test:coverage && npm run fallow && npm run markdownlint"
@@ -35,7 +35,7 @@
     "@types/node": "24.19.1",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.3",
-    "fallow": "3.31.0",
+    "fallow": "3.32.0",
     "markdownlint-cli2": "0.23.3",
     "oxfmt": "0.68.0",
     "oxlint": "1.86.0",

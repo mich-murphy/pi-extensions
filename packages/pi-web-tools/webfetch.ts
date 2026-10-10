@@ -1,6 +1,6 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { formatSize } from "@earendil-works/pi-coding-agent";
-import type { AgentToolUpdateCallback, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -10,6 +10,7 @@ import type { FetchPage, FetchPageError, FetchPageResult } from "./fetch-page";
 import { createOperationSignal, isOperationTimeoutError } from "./network";
 import type { FetchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
+import type { RenderTheme } from "./render";
 import { err, ok } from "./result";
 import type { Result } from "./result";
 import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS } from "./settings";
@@ -37,11 +38,6 @@ export type WebFetchParams = {
 
 /** Expected failures parsing webfetch tool input. */
 export type WebFetchInputError = { readonly _tag: "InvalidToolInput"; readonly message: string };
-
-type RenderTheme = {
-  readonly fg: (name: ThemeColor, value: string) => string;
-  readonly bold: (value: string) => string;
-};
 
 /** Statuses that indicate an anti-bot wall worth retrying through a provider's fetch infrastructure. */
 const RESCUE_STATUSES = new Set([401, 403, 429]);

@@ -9,8 +9,6 @@ import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
 import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
 
-export { models } from "./models";
-
 function registerStatusCommands(
   pi: ExtensionAPI,
   observedModels: ReadonlyMap<string, string>,

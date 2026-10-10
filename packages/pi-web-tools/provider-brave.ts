@@ -1,12 +1,13 @@
 import { z } from "zod";
+import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
-import {
-  lenientArray,
-  optionalTextSchema,
-  parseJsonBody,
-  publicHttpUrlSchema,
+import { lenientArray, optionalTextSchema, publicHttpUrlSchema } from "./provider-types";
+import type {
+  ProviderCallOptions,
+  ProviderError,
+  SearchInput,
+  SearchProvider,
 } from "./provider-types";
-import type { ProviderError, SearchProvider } from "./provider-types";
 import { err, ok } from "./result";
 import type { Result } from "./result";
 import {
@@ -14,7 +15,7 @@ import {
   SEARCH_MAX_RESPONSE_BYTES,
   SEARCH_TIMEOUT_SECONDS,
 } from "./settings";
-import type { NormalizedSearchResult, SearchQuery } from "./types";
+import type { NormalizedSearchResult } from "./types";
 
 const BRAVE_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
 
@@ -54,8 +55,8 @@ export class BraveApiSearchProvider implements SearchProvider {
 
   /** Run one Brave web search call and normalize its results. */
   async search(
-    input: { readonly query: SearchQuery; readonly maxResults: number },
-    options: { readonly signal?: AbortSignal | undefined } = {},
+    input: SearchInput,
+    options: ProviderCallOptions = {},
   ): Promise<Result<readonly NormalizedSearchResult[], ProviderError>> {
     const url = new URL(BRAVE_API_SEARCH_URL);
     url.searchParams.set("q", input.query);
@@ -63,7 +64,7 @@ export class BraveApiSearchProvider implements SearchProvider {
     url.searchParams.set("safesearch", "moderate");
     url.searchParams.set("text_decorations", "false");
 
-    const response = await this.http.getJson(
+    const response = this.http.getJson(
       {
         url: url.toString(),
         headers: {
@@ -76,11 +77,7 @@ export class BraveApiSearchProvider implements SearchProvider {
       },
       { signal: options.signal },
     );
-    if (response._tag === "err") {
-      return response;
-    }
-
-    const payload = parseJsonBody(response.value.bodyText);
+    const payload = await readProviderJson(response);
     if (payload._tag === "err") {
       return payload;
     }

@@ -1,6 +1,12 @@
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 
+/** The slice of Pi's theme that the web tools render with. */
+export type RenderTheme = {
+  readonly fg: (name: ThemeColor, value: string) => string;
+  readonly bold: (value: string) => string;
+};
+
 /** Extract joined text from pi tool result content items. */
 export function getTextContent(
   content: readonly { readonly type: string; readonly text?: string }[] | undefined,
@@ -22,7 +28,7 @@ export function appendExpandedPreview(
   base: string,
   preview: {
     readonly text: string;
-    readonly theme: { readonly fg: (name: ThemeColor, value: string) => string };
+    readonly theme: Pick<RenderTheme, "fg">;
     readonly maxLines?: number;
     readonly maxColumns?: number;
   },

@@ -38,7 +38,7 @@ Pi supplies its core packages to extensions at runtime. Keep those packages in `
 Every extension must pass the whole-repo Fallow gate, `npm run fallow`, whether or not a change touches it. A finding from any of its three checks fails `npm run check`:
 
 - `fallow:dead-code` fails on any error-level dead-code or dependency finding.
-- `fallow:dupes` fails on any clone group at the configured minimum size. `fallow dupes` alone exits 0 when clones exist, because `threshold: 0` in `.fallowrc.json` means no percentage limit, so the script also counts the clone groups in the JSON report.
+- `fallow:dupes` fails on any clone group of at least 50 tokens and 5 lines that appears three or more times (`fallow dupes --fail-on-issues`).
 - `fallow:health` fails on any function over the cyclomatic, cognitive, or CRAP limit. It reads the coverage that `test:coverage` writes, so `check` runs the tests first.
 
 Fix findings instead of silencing them: no `fallow-ignore` comments, raised thresholds, or excluded files. For review, `npm run fallow:audit` lists only the findings a branch introduces, marked new or inherited, and `npm run fallow:review` prints a brief that always exits 0. Neither replaces the gate.
