@@ -31,7 +31,9 @@ function toContentBlocks(block: PromptBlock, cacheBreakpoint: boolean) {
     { type: "text" as const, text: block.text },
     ...block.images.map(toAnthropicContentBlock),
   ];
-  if (!cacheBreakpoint) return blocks;
+  if (!cacheBreakpoint) {
+    return blocks;
+  }
   const cacheControl = { type: "ephemeral" as const, ttl: "1h" as const };
   return blocks.map((contentBlock, index) =>
     index === blocks.length - 1 ? { ...contentBlock, cache_control: cacheControl } : contentBlock,
@@ -46,7 +48,7 @@ function toContentBlocks(block: PromptBlock, cacheBreakpoint: boolean) {
  * @returns An async stream containing one SDK user message.
  */
 export async function* buildPromptStream(
-  promptBlocks: ReadonlyArray<PromptBlock>,
+  promptBlocks: readonly PromptBlock[],
   cacheBreakpoint: number | undefined,
 ): AsyncGenerator<SDKUserMessage> {
   yield {

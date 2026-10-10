@@ -1,23 +1,21 @@
 import type {
-  BeforeAgentStartEvent,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
+  ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { Container, type SettingItem, SettingsList, Text } from "@earendil-works/pi-tui";
+import { Container, SettingsList, Text } from "@earendil-works/pi-tui";
+import type { SettingItem } from "@earendil-works/pi-tui";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { hideResources } from "./prompt-filter";
-import { type ResourcePath, resourcePathId } from "./resource-path";
-import {
-  defaultToggleValue,
-  isToggleValue,
-  type ToggleOverrides,
-  type ToggleResource,
-  toggleResources,
-  toggleValue,
-} from "./resources";
-import { ToggleStateFile, type ToggleStateResult, type ToggleStateStore } from "./state";
+import type { PromptFilterEvent } from "./prompt-filter";
+import { resourcePathId } from "./resource-path";
+import type { ResourcePath } from "./resource-path";
+import { defaultToggleValue, isToggleValue, toggleResources, toggleValue } from "./resources";
+import type { ToggleOverrides, ToggleResource } from "./resources";
+import { ToggleStateFile } from "./state";
+import type { ToggleStateResult, ToggleStateStore } from "./state";
 
 /** Register the skill-toggle extension with its default persistent store. */
 export default function skillToggle(pi: ExtensionAPI): void {
@@ -29,13 +27,13 @@ export function registerSkillToggle(pi: ExtensionAPI, store: ToggleStateStore): 
   const extension = new SkillToggle(store);
   pi.registerCommand("skill-toggle", {
     description: "Enable or disable user-managed instructions and skills",
-    handler: (args, ctx) => extension.openMenu(args, ctx),
+    handler: async (args, ctx) => extension.openMenu(args, ctx),
   });
   pi.on("resources_discover", (_event, ctx) => extension.contributeProjectSkills(ctx));
   pi.on("before_agent_start", (event, ctx) => extension.filterPrompt(event, ctx));
 }
 
-type UiContext = Pick<ExtensionContext, "ui">;
+type UiContext = { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> };
 
 const STATE_FAILURE_CONSEQUENCE = {
   load: "The prompt was left unchanged.",
@@ -46,7 +44,9 @@ const STATE_FAILURE_CONSEQUENCE = {
 function createFailureReporter(): (ctx: UiContext, failure: string | undefined) => void {
   let lastFailure: string | undefined;
   return (ctx, failure) => {
-    if (failure !== undefined && failure !== lastFailure) ctx.ui.notify(failure, "error");
+    if (failure !== undefined && failure !== lastFailure) {
+      ctx.ui.notify(failure, "error");
+    }
     lastFailure = failure;
   };
 }
@@ -67,22 +67,25 @@ class SkillToggle {
     return skillPaths.length > 0 ? { skillPaths } : undefined;
   }
 
-  filterPrompt(
-    event: Pick<BeforeAgentStartEvent, "systemPrompt" | "systemPromptOptions">,
-    ctx: UiContext,
-  ): { systemPrompt: string } | undefined {
+  filterPrompt(event: PromptFilterEvent, ctx: UiContext): { systemPrompt: string } | undefined {
     const options = event.systemPromptOptions;
     const overrides = this.overridesFrom(this.store.load(), ctx);
-    if (!overrides) return;
+    if (!overrides) {
+      return undefined;
+    }
     const hidden = new Set<ResourcePath>(
       toggleResources(options, this.contributedSkills)
         .filter((resource) => toggleValue(overrides, resource) === "disabled")
         .map((resource) => resource.id),
     );
-    if (hidden.size === 0) return;
+    if (hidden.size === 0) {
+      return undefined;
+    }
 
     const result = hideResources(event, (path) => hidden.has(resourcePathId(path, options.cwd)));
-    if (result._tag === "options-filtered") return;
+    if (result._tag === "options-filtered") {
+      return undefined;
+    }
     this.reportPromptFailure(
       ctx,
       result.unmatched.length > 0
@@ -109,7 +112,9 @@ class SkillToggle {
       return;
     }
     const loaded = this.overridesFrom(this.store.load(), ctx);
-    if (!loaded) return;
+    if (!loaded) {
+      return;
+    }
     let overrides = loaded;
 
     const resourcesById = new Map<string, ToggleResource>(
@@ -140,15 +145,22 @@ class SkillToggle {
         getSettingsListTheme(),
         (id, value) => {
           const resource = resourcesById.get(id);
-          if (!(resource && isToggleValue(value))) return;
+          if (!(resource && isToggleValue(value))) {
+            return;
+          }
           const saved = this.overridesFrom(
             this.store.set(resource.id, value === defaultToggleValue(resource) ? "default" : value),
             ctx,
           );
-          if (saved) overrides = saved;
-          else list.updateValue(id, toggleValue(overrides, resource));
+          if (saved) {
+            overrides = saved;
+          } else {
+            list.updateValue(id, toggleValue(overrides, resource));
+          }
         },
-        () => done(undefined),
+        () => {
+          done(undefined);
+        },
         { enableSearch: true },
       );
       const container = new Container();

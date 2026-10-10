@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { type CaffeinateEnd, CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
+import { CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
+import type { CaffeinateEnd } from "../no-sleep-lifecycle";
 import { fakePi } from "./fake-pi";
 
 class FakeCaffeinate {
@@ -24,9 +25,9 @@ class FakeCaffeinate {
   }
 }
 
-function harness(platform: NodeJS.Platform = "darwin", hasUI: boolean = true) {
+function harness(platform: NodeJS.Platform = "darwin", hasUI = true) {
   const pi = fakePi(hasUI);
-  const spawned: Array<{ args: ReadonlyArray<string>; child: FakeCaffeinate }> = [];
+  const spawned: { args: readonly string[]; child: FakeCaffeinate }[] = [];
   registerNoSleep(pi.pi, {
     platform,
     processId: 9876,
@@ -45,7 +46,7 @@ describe("no-sleep lifecycle", () => {
 
     await pi.emit("agent_start");
 
-    expect(pi.registeredEvents()).toEqual([]);
+    expect(pi.registeredEvents()).toStrictEqual([]);
     expect(pi.spawned).toHaveLength(0);
   });
 
@@ -55,7 +56,7 @@ describe("no-sleep lifecycle", () => {
     await pi.emit("agent_start");
     await pi.emit("agent_start");
     expect(pi.spawned).toHaveLength(1);
-    expect(pi.spawned[0]?.args).toEqual(["-d", "-i", "-s", "-w", "9876"]);
+    expect(pi.spawned[0]?.args).toStrictEqual(["-d", "-i", "-s", "-w", "9876"]);
 
     await pi.emit("agent_end");
     expect(pi.spawned[0]?.child.stops).toBe(0);
@@ -63,7 +64,7 @@ describe("no-sleep lifecycle", () => {
     await pi.emit("agent_settled");
     await pi.emit("agent_settled");
     expect(pi.spawned[0]?.child.stops).toBe(1);
-    expect(pi.notifications).toEqual([]);
+    expect(pi.notifications).toStrictEqual([]);
   });
 
   test("keeps caffeinate when another run started before settlement", async () => {
@@ -117,7 +118,7 @@ describe("no-sleep lifecycle", () => {
     pi.spawned[1]?.child.exit(null, "SIGKILL");
 
     expect(pi.spawned).toHaveLength(2);
-    expect(pi.notifications).toEqual([
+    expect(pi.notifications).toStrictEqual([
       { message: "No Sleep lost caffeinate unexpectedly (exit code 0)", level: "warning" },
       { message: "No Sleep lost caffeinate unexpectedly (signal SIGKILL)", level: "warning" },
     ]);
@@ -134,7 +135,7 @@ describe("no-sleep lifecycle", () => {
     pi.spawned[0]?.child.fail("not an Error");
 
     expect(pi.spawned).toHaveLength(1);
-    expect(pi.notifications).toEqual([
+    expect(pi.notifications).toStrictEqual([
       { message: "No Sleep caffeinate failed: spawn /usr/bin/caffeinate ENOENT", level: "error" },
     ]);
   });
@@ -151,7 +152,7 @@ describe("no-sleep lifecycle", () => {
 
     expect(pi.spawned).toHaveLength(2);
     expect(pi.spawned[1]?.child.stops).toBe(0);
-    expect(pi.notifications).toEqual([]);
+    expect(pi.notifications).toStrictEqual([]);
   });
 
   test("stays silent without a UI", async () => {
@@ -160,6 +161,6 @@ describe("no-sleep lifecycle", () => {
 
     pi.spawned[0]?.child.fail(new Error("not executable"));
 
-    expect(pi.notifications).toEqual([]);
+    expect(pi.notifications).toStrictEqual([]);
   });
 });

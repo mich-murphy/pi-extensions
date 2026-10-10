@@ -12,7 +12,7 @@ import {
   writeSdkFailureDiagnostic,
 } from "../sdk/failure-diagnostics";
 
-describe("Claude SDK failure diagnostics", () => {
+describe("claude SDK failure diagnostics", () => {
   test.each([
     [new SdkProtocolError("result", "unsupported stop_reason future"), "protocol"],
     [
@@ -39,7 +39,9 @@ describe("Claude SDK failure diagnostics", () => {
     );
     const lines: string[] = [];
 
-    writeSdkFailureDiagnostic(error, (line) => lines.push(line));
+    writeSdkFailureDiagnostic(error, (line) => {
+      lines.push(line);
+    });
 
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('"kind":"network","errorTag":"SdkQueryError","operation":"iterate"');

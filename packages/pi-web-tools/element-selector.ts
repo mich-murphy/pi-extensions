@@ -66,18 +66,19 @@ const CASE_INSENSITIVE_ATTRIBUTES: ReadonlySet<string> = new Set([
 
 // Lowercase tag and attribute names only, which sidesteps css-what's name case folding.
 const COMPOUND_RE =
-  /^([a-z][a-z0-9-]*)?((?:#[\w-]+|\.[\w-]+|\[[a-z][a-z0-9-]*(?:=(?:'[^']*'|"[^"]*"|[\w-]+))?\])*)$/;
-const PART_RE = /#([\w-]+)|\.([\w-]+)|\[([a-z][a-z0-9-]*)(?:=(?:'([^']*)'|"([^"]*)"|([\w-]+)))?\]/g;
+  /^(?<tag>[a-z][a-z0-9-]*)?(?<parts>(?:#[\w-]+|\.[\w-]+|\[[a-z][a-z0-9-]*(?:=(?:'[^']*'|"[^"]*"|[\w-]+))?\])*)$/u;
+const PART_RE =
+  /#(?<id>[\w-]+)|\.(?<className>[\w-]+)|\[(?<attribute>[a-z][a-z0-9-]*)(?:=(?:'(?<singleQuoted>[^']*)'|"(?<doubleQuoted>[^"]*)"|(?<bare>[\w-]+)))?\]/gu;
 
 /** A parsed compound selector: an optional tag name plus attribute conditions, all required. */
-interface Compound {
+type Compound = {
   readonly tag: string | undefined;
   /** The id the compound requires, if any. */
   readonly id: string | undefined;
   /** The first class token the compound requires, if any. */
   readonly className: string | undefined;
-  readonly conditions: ReadonlyArray<ElementPredicate>;
-}
+  readonly conditions: readonly ElementPredicate[];
+};
 
 /**
  * A compiled set of selector lists, tested together: calls `onMatch` once with the index of every
@@ -85,7 +86,7 @@ interface Compound {
  */
 export type SelectorSetMatcher = (element: Element, onMatch: (index: number) => void) => void;
 
-const CLASS_TOKEN_SEPARATOR_RE = /\s+/;
+const CLASS_TOKEN_SEPARATOR_RE = /\s+/u;
 
 /**
  * Compile selector lists (see compileSelector) into one matcher. Each compound is indexed under the
@@ -97,7 +98,7 @@ const CLASS_TOKEN_SEPARATOR_RE = /\s+/;
  * @returns A matcher reporting each matching list's index once.
  * @throws Error for unsupported syntax. Selectors are module constants, so this is a defect.
  */
-export function compileSelectorSet(selectorLists: ReadonlyArray<string>): SelectorSetMatcher {
+export function compileSelectorSet(selectorLists: readonly string[]): SelectorSetMatcher {
   type Entry = { readonly index: number; readonly matches: ElementPredicate };
   const byId = new Map<string, Entry[]>();
   const byClass = new Map<string, Entry[]>();
@@ -105,26 +106,36 @@ export function compileSelectorSet(selectorLists: ReadonlyArray<string>): Select
   const unindexed: Entry[] = [];
   const add = (map: Map<string, Entry[]>, key: string, entry: Entry) => {
     const entries = map.get(key);
-    if (entries) entries.push(entry);
-    else map.set(key, [entry]);
+    if (entries) {
+      entries.push(entry);
+    } else {
+      map.set(key, [entry]);
+    }
   };
 
   for (const [index, selectorList] of selectorLists.entries()) {
     for (const source of selectorList.split(",")) {
       const compound = parseCompound(source.trim(), selectorList);
       const entry = { index, matches: compoundPredicate(compound) };
-      if (compound.id !== undefined) add(byId, compound.id, entry);
-      else if (compound.className !== undefined) add(byClass, compound.className, entry);
-      else if (compound.tag !== undefined) add(byTag, compound.tag, entry);
-      else unindexed.push(entry);
+      if (compound.id !== undefined) {
+        add(byId, compound.id, entry);
+      } else if (compound.className !== undefined) {
+        add(byClass, compound.className, entry);
+      } else if (compound.tag === undefined) {
+        unindexed.push(entry);
+      } else {
+        add(byTag, compound.tag, entry);
+      }
     }
   }
 
   return (element, onMatch) => {
     // A list can match through several compounds or repeated class tokens; report it once.
     const reported: number[] = [];
-    const test = (entries: ReadonlyArray<Entry> | undefined) => {
-      if (entries === undefined) return;
+    const test = (entries: readonly Entry[] | undefined) => {
+      if (entries === undefined) {
+        return;
+      }
       for (const { index, matches } of entries) {
         if (!reported.includes(index) && matches(element)) {
           reported.push(index);
@@ -135,14 +146,20 @@ export function compileSelectorSet(selectorLists: ReadonlyArray<string>): Select
 
     test(byTag.get(element.localName));
     // Every other compound requires an attribute.
-    if (!element.hasAttributes()) return;
+    if (!element.hasAttributes()) {
+      return;
+    }
     const id = element.getAttribute("id");
-    if (id !== null) test(byId.get(id));
+    if (id !== null) {
+      test(byId.get(id));
+    }
     const classes = element.getAttributeNode("class")?.value;
     if (classes !== undefined && byClass.size > 0) {
       // classList's tokens: the attribute split on whitespace runs, without empty tokens.
       for (const token of classes.split(CLASS_TOKEN_SEPARATOR_RE)) {
-        if (token) test(byClass.get(token));
+        if (token) {
+          test(byClass.get(token));
+        }
       }
     }
     test(unindexed);
@@ -176,10 +193,16 @@ export function compileSelector(selectorList: string): ElementPredicate {
   // Every compound left has an attribute condition, so an element without attributes can match
   // only by tag name.
   return (element) => {
-    if (tags.has(element.localName)) return true;
-    if (!element.hasAttributes()) return false;
+    if (tags.has(element.localName)) {
+      return true;
+    }
+    if (!element.hasAttributes()) {
+      return false;
+    }
     for (const matches of compounds) {
-      if (matches(element)) return true;
+      if (matches(element)) {
+        return true;
+      }
     }
     return false;
   };
@@ -187,17 +210,17 @@ export function compileSelector(selectorList: string): ElementPredicate {
 
 function parseCompound(source: string, selectorList: string): Compound {
   const match = COMPOUND_RE.exec(source);
-  const tag = match?.[1];
-  const parts = match?.[2] ?? "";
-  if (!match || (tag === undefined && parts === "")) {
+  const tag = match?.groups?.tag;
+  const parts = match?.groups?.parts ?? "";
+  if (match === null || (tag === undefined && parts === "")) {
     throw new Error(`Unsupported selector: ${JSON.stringify(selectorList)}`);
   }
 
   const conditions: ElementPredicate[] = [];
   let requiredId: string | undefined;
   let requiredClass: string | undefined;
-  for (const part of parts.matchAll(PART_RE)) {
-    const [, id, className, attribute, singleQuoted, doubleQuoted, bare] = part;
+  for (const { groups = {} } of parts.matchAll(PART_RE)) {
+    const { id, className, attribute, singleQuoted, doubleQuoted, bare } = groups;
     const value = singleQuoted ?? doubleQuoted ?? bare;
     if (id !== undefined) {
       requiredId ??= id;
@@ -216,9 +239,13 @@ function parseCompound(source: string, selectorList: string): Compound {
 
 function compoundPredicate({ tag, conditions }: Compound): ElementPredicate {
   return (element) => {
-    if (tag !== undefined && element.localName !== tag) return false;
+    if (tag !== undefined && element.localName !== tag) {
+      return false;
+    }
     for (const condition of conditions) {
-      if (!condition(element)) return false;
+      if (!condition(element)) {
+        return false;
+      }
     }
     return true;
   };
@@ -228,7 +255,7 @@ function compoundPredicate({ tag, conditions }: Compound): ElementPredicate {
 // regex. Testing the raw attribute value is equivalent: its tokens are separated by whitespace
 // runs, and duplicate or surrounding whitespace changes no token boundary.
 function classTokenPredicate(token: string): ElementPredicate {
-  const tokenRe = new RegExp(`(?:^|\\s)${escapeRegExp(token)}(?:$|\\s)`);
+  const tokenRe = new RegExp(`(?:^|\\s)${escapeRegExp(token)}(?:$|\\s)`, "u");
   return (element) => {
     const classes = element.getAttributeNode("class")?.value;
     return classes !== undefined && tokenRe.test(classes);
@@ -256,6 +283,8 @@ function attributeEqualsPredicate(
   };
 }
 
+// Escapes the characters that are special outside a character class. A unicode-mode pattern
+// rejects escapes of any other character, such as the hyphen.
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }

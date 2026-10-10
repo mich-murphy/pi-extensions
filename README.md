@@ -30,7 +30,8 @@ Pi supplies its core packages to extensions at runtime. Keep those packages in `
 
 - Vitest runs the behavioral tests, enforces at least 80% statement, branch, and line coverage, and writes V8 coverage in Istanbul format.
 - TypeScript checks every workspace with strict compiler options and Node 22 types.
-- Biome formats and lints TypeScript, JSON, and configuration files.
+- Oxfmt formats TypeScript, JSON, and configuration files; markdownlint owns Markdown.
+- Oxlint lints with type-aware rules, following Clippy's category model: `correctness`, `suspicious`, and `perf` are errors, and `pedantic`, `style`, and `restriction` rules are opted into one at a time, never as whole categories. The opt-ins follow typescript-eslint's `strict-type-checked` and `stylistic-type-checked` presets plus the TypeScript skill, grouped in `.oxlintrc.json` by type safety, readability, data structures, modules, and Pi-specific hazards. Warnings fail the run. Suppress a rule only on the offending line, with `-- <reason>`.
 - Fallow checks the whole repository for dead code, duplication, complexity, and dependency problems.
 - markdownlint-cli2 checks package documentation.
 

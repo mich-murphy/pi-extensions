@@ -1,11 +1,13 @@
-import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { type AgentSdkRun, createAgentSdkStream } from "./bridge";
+import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createAgentSdkStream } from "./bridge";
+import type { AgentSdkRun } from "./bridge";
 import { cacheDiagnosticsFromEnvironment } from "./cache-diagnostics";
 import { formatModelStatus, models, providerModel } from "./models";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "./output-safety";
-import { createClaudeAgentSdkRunner } from "./sdk/runner";
 import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
 import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
+import { createClaudeAgentSdkRunner } from "./sdk/runner";
 
 export { models } from "./models";
 
@@ -16,7 +18,9 @@ function registerStatusCommands(
   pi.registerCommand("claude-sdk-status", {
     description: "Show Agent SDK versions and observed model mappings",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
+      if (!ctx.hasUI) {
+        return;
+      }
       const result = await inspectClaudeSdkVersions();
       if (result._tag === "err") {
         ctx.ui.notify(result.error.message, "error");
@@ -31,7 +35,9 @@ function registerStatusCommands(
   pi.registerCommand("claude-sdk-usage", {
     description: "Show remaining Claude subscription usage",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
+      if (!ctx.hasUI) {
+        return;
+      }
       const result = await inspectClaudeUsage();
       if (result._tag === "err") {
         ctx.ui.notify(result.error.message, "error");
@@ -47,14 +53,20 @@ function registerSafetyHooks(pi: ExtensionAPI): void {
     systemPrompt: `${event.systemPrompt}\n\nBash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.`,
   }));
   pi.on("tool_call", (event) => {
-    if (!isToolCallEventType("bash", event)) return;
+    if (!isToolCallEventType("bash", event)) {
+      return undefined;
+    }
     const reason = inspectBashCommand(event.input.command);
-    if (reason) return { block: true, reason };
+    return reason === undefined ? undefined : { block: true, reason };
   });
   pi.on("tool_result", (event, ctx) => {
-    if (event.toolName !== "bash") return;
+    if (event.toolName !== "bash") {
+      return undefined;
+    }
     const sanitized = sanitizeBashContent(event.content);
-    if (!sanitized.detected) return;
+    if (!sanitized.detected) {
+      return undefined;
+    }
     if (ctx.hasUI) {
       ctx.ui.notify(
         `Quarantined ${sanitized.detected}-like bash output before it entered context. Compact or start a new session if similar output was recorded earlier.`,
@@ -72,9 +84,9 @@ function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): voi
     baseUrl: "agent-sdk://local-claude-code",
     apiKey: "claude-sdk-managed-auth",
     api: "claude-sdk",
-    models: models.map(providerModel),
+    models: models.map((model) => providerModel(model)),
     streamSimple: (model, context, options) =>
-      createAgentSdkStream(model, context, options, runClaudeAgentSdk),
+      createAgentSdkStream({ model, context, options, run: runClaudeAgentSdk }),
   });
 }
 

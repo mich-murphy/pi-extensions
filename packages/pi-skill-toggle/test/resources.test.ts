@@ -1,28 +1,25 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  type BuildSystemPromptOptions,
-  getAgentDir,
-  type Skill,
-} from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
-import { type ResourcePath, resourcePathId } from "../resource-path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, Skill } from "@earendil-works/pi-coding-agent";
+import { assert, describe, expect, test } from "vitest";
+import { resourcePathId } from "../resource-path";
+import type { ResourcePath } from "../resource-path";
 import { defaultToggleValue, toggleResources, toggleValue } from "../resources";
 
-function skill(
-  name: string,
-  filePath: string,
-  sourceInfo: Skill["sourceInfo"],
-  disableModelInvocation = false,
-): Skill {
+function skill(name: string, filePath: string, sourceInfo: Readonly<Skill["sourceInfo"]>): Skill {
   return {
     name,
     description: `${name} description`,
     filePath,
     baseDir: join(filePath, ".."),
     sourceInfo,
-    disableModelInvocation,
+    disableModelInvocation: false,
   };
+}
+
+function temporarySkill(name: string, path: string): Skill {
+  return skill(name, path, { path, source: "cli", scope: "temporary", origin: "top-level" });
 }
 
 const noContributedSkills: ReadonlySet<ResourcePath> = new Set();
@@ -66,7 +63,7 @@ describe("toggleResources", () => {
       toggleResourcesFromPrompt(options).map(
         ({ origin, kind, label }) => `${origin}:${kind}:${label}`,
       ),
-    ).toEqual([
+    ).toStrictEqual([
       "global:instruction:AGENTS.md",
       "global:skill:alpha",
       "global:skill:zeta",
@@ -105,11 +102,11 @@ describe("toggleResources", () => {
     const cwd = "/Users/mm/businesscraft/businesscraft/web";
     const contributedPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/design/SKILL.md";
     const cliPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/review/SKILL.md";
-    const temporary = (name: string, path: string): Skill =>
-      skill(name, path, { path, source: "cli", scope: "temporary", origin: "top-level" });
-
     const resources = toggleResources(
-      { cwd, skills: [temporary("design", contributedPath), temporary("review", cliPath)] },
+      {
+        cwd,
+        skills: [temporarySkill("design", contributedPath), temporarySkill("review", cliPath)],
+      },
       new Set([resourcePathId(contributedPath, cwd)]),
     );
 
@@ -165,7 +162,7 @@ describe("toggleResources", () => {
       ],
     };
 
-    expect(toggleResourcesFromPrompt(options)).toEqual([]);
+    expect(toggleResourcesFromPrompt(options)).toStrictEqual([]);
   });
 
   test("marks source-authored manual-only skills as read-only", () => {
@@ -173,17 +170,15 @@ describe("toggleResources", () => {
     const resources = toggleResourcesFromPrompt({
       cwd: "/work/project",
       skills: [
-        skill(
-          "manual",
-          path,
-          {
+        {
+          ...skill("manual", path, {
             path,
             source: "local",
             scope: "user",
             origin: "top-level",
-          },
-          true,
-        ),
+          }),
+          disableModelInvocation: true,
+        },
       ],
     });
 
@@ -197,7 +192,7 @@ describe("toggleResources", () => {
       cwd: "/work/project",
       contextFiles: [{ path, content: "rules" }],
     });
-    if (!instruction) throw new Error("expected the global instruction");
+    assert(instruction !== undefined, "expected the global instruction");
 
     expect(defaultToggleValue(projectSkill)).toBe("disabled");
     expect(defaultToggleValue({ kind: "skill", origin: "global" })).toBe("enabled");

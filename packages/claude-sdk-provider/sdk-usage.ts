@@ -1,5 +1,7 @@
+import { once } from "node:events";
 import process from "node:process";
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
@@ -8,42 +10,43 @@ const usageWindowSchema = z.object({
   resets_at: z.iso.datetime({ offset: true }).nullable(),
 });
 
+const modelScopedWindowSchema = usageWindowSchema.extend({ display_name: z.string().min(1) });
+const extraUsageSchema = z.object({ is_enabled: z.boolean() });
+
+const rateLimitsSchema = z.object({
+  five_hour: usageWindowSchema.nullish(),
+  seven_day: usageWindowSchema.nullish(),
+  model_scoped: z.array(modelScopedWindowSchema).optional(),
+  extra_usage: extraUsageSchema.nullish(),
+});
+
 const usageResponseSchema = z.object({
   subscription_type: z.string().nullable(),
   rate_limits_available: z.boolean(),
-  rate_limits: z
-    .object({
-      five_hour: usageWindowSchema.nullish(),
-      seven_day: usageWindowSchema.nullish(),
-      model_scoped: z
-        .array(usageWindowSchema.extend({ display_name: z.string().min(1) }))
-        .optional(),
-      extra_usage: z.object({ is_enabled: z.boolean() }).nullish(),
-    })
-    .nullable(),
+  rate_limits: rateLimitsSchema.nullable(),
 });
 
 /** One Claude subscription rate-limit window. */
-export interface ClaudeUsageWindow {
+export type ClaudeUsageWindow = {
   /** Human-readable window name supplied by this adapter or by Claude. */
   readonly name: string;
   /** Percentage of the allowance consumed, when Claude reports it. */
   readonly usedPercent: number | null;
   /** ISO timestamp at which the allowance resets, when Claude reports it. */
   readonly resetsAt: string | null;
-}
+};
 
 /** Parsed Claude subscription usage suitable for display. */
-export interface ClaudeUsageStatus {
+export type ClaudeUsageStatus = {
   /** Claude subscription type, or null outside subscription authentication. */
   readonly subscriptionType: string | null;
   /** Whether Claude returned plan rate limits for this account. */
   readonly rateLimitsAvailable: boolean;
   /** General and model-specific plan windows. */
-  readonly windows: ReadonlyArray<ClaudeUsageWindow>;
+  readonly windows: readonly ClaudeUsageWindow[];
   /** Whether paid extra usage is enabled. */
   readonly extraUsageEnabled: boolean | null;
-}
+};
 
 /** Expected failure while reading Claude subscription usage. */
 class ClaudeUsageInspectionError extends Error {
@@ -72,21 +75,22 @@ export type ClaudeUsageStatusResult =
   | { readonly _tag: "err"; readonly error: ClaudeUsageInspectionError };
 
 /** Minimal live SDK query used by usage inspection. */
-export interface ClaudeUsageQuery {
+export type ClaudeUsageQuery = {
   /** Request the SDK's experimental structured `/usage` response. */
   readonly readUsage: () => Promise<unknown>;
   /** Close the idle SDK session and its subprocess. */
   readonly close: () => Promise<void>;
-}
+};
 
 /** Starts an idle, subscription-authenticated SDK query that ends when the controller aborts. */
 export type StartClaudeUsageQuery = (abortController: AbortController) => ClaudeUsageQuery;
 
+// oxlint-disable-next-line eslint/require-yield -- The idle prompt sends no message; it only holds SDK input open until abort.
 async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> {
-  if (signal.aborted) return;
-  await new Promise<void>((resolve) =>
-    signal.addEventListener("abort", () => resolve(), { once: true }),
-  );
+  if (signal.aborted) {
+    return;
+  }
+  await once(signal, "abort");
 }
 
 function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeUsageQuery {
@@ -102,7 +106,7 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
     },
   });
   return {
-    readUsage: () => sdkQuery.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+    readUsage: async () => sdkQuery.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
     close: async () => {
       await sdkQuery.return();
     },
@@ -111,7 +115,9 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
 
 function parseUsageResponse(input: unknown): ClaudeUsageStatusResult {
   const parsed = usageResponseSchema.safeParse(input);
-  if (!parsed.success) return { _tag: "err", error: new ClaudeUsageInspectionError("parse") };
+  if (!parsed.success) {
+    return { _tag: "err", error: new ClaudeUsageInspectionError("parse") };
+  }
 
   const limits = parsed.data.rate_limits;
   const windows = [
@@ -143,11 +149,13 @@ type Settled<T> =
 async function settleWithin<T>(promise: Promise<T>, milliseconds: number): Promise<Settled<T>> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<Settled<T>>((resolve) => {
-    timer = setTimeout(() => resolve({ _tag: "timeout" }), milliseconds);
+    timer = setTimeout(() => {
+      resolve({ _tag: "timeout" });
+    }, milliseconds);
   });
   const settled = promise.then(
     (value): Settled<T> => ({ _tag: "ok", value }),
-    (cause: unknown): Settled<T> => ({ _tag: "err", cause }),
+    (error: unknown): Settled<T> => ({ _tag: "err", cause: error }),
   );
   try {
     return await Promise.race([settled, timeout]);
@@ -171,28 +179,33 @@ export async function inspectClaudeUsage(
   let usageQuery: ClaudeUsageQuery;
   try {
     usageQuery = startQuery(abortController);
-  } catch (cause) {
-    return { _tag: "err", error: new ClaudeUsageInspectionError("start", cause) };
+  } catch (error) {
+    return { _tag: "err", error: new ClaudeUsageInspectionError("start", error) };
   }
 
   const read = await settleWithin(usageQuery.readUsage(), timeoutMilliseconds);
   abortController.abort();
   const closed = await settleWithin(usageQuery.close(), timeoutMilliseconds);
 
-  if (read._tag === "timeout")
+  if (read._tag === "timeout") {
     return { _tag: "err", error: new ClaudeUsageInspectionError("timeout") };
+  }
   if (read._tag === "err") {
     return { _tag: "err", error: new ClaudeUsageInspectionError("read", read.cause) };
   }
   const result = parseUsageResponse(read.value);
-  if (result._tag === "err" || closed._tag === "ok") return result;
+  if (result._tag === "err" || closed._tag === "ok") {
+    return result;
+  }
   const cause =
     closed._tag === "err" ? closed.cause : new Error("Claude usage query cleanup timed out");
   return { _tag: "err", error: new ClaudeUsageInspectionError("close", cause) };
 }
 
 function formatResetTime(resetsAt: string | null): string {
-  if (resetsAt === null) return "reset time unavailable";
+  if (resetsAt === null) {
+    return "reset time unavailable";
+  }
   const formatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -210,7 +223,9 @@ export function formatClaudeUsageStatus(status: ClaudeUsageStatus): string {
   if (!status.rateLimitsAvailable) {
     return "Claude plan usage is unavailable for the current authentication method.";
   }
-  if (status.windows.length === 0) return "Claude returned no plan usage windows.";
+  if (status.windows.length === 0) {
+    return "Claude returned no plan usage windows.";
+  }
 
   const lines = status.windows.map((window) => {
     const remaining =

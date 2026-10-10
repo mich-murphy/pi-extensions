@@ -3,7 +3,7 @@ import type { AgentRequest, PromptBlock } from "./agent-request";
 import type { TokenUsage } from "./bridge";
 
 /** Safe request metadata emitted by cache diagnostics. */
-export interface CacheRequestDiagnostic {
+export type CacheRequestDiagnostic = {
   readonly type: "request";
   readonly turn: number;
   readonly model: string;
@@ -16,16 +16,16 @@ export interface CacheRequestDiagnostic {
   readonly contentFingerprint: string;
   readonly reusablePrefixFingerprint?: string;
   readonly msSincePreviousRequest?: number;
-}
+};
 
 /** Safe usage metadata emitted by cache diagnostics. */
-export interface CacheUsageDiagnostic extends TokenUsage {
+export type CacheUsageDiagnostic = {
   readonly type: "usage";
   readonly turn: number;
   readonly promptTokens: number;
   readonly cacheReadPercent: number;
   readonly possibleCollapse: boolean;
-}
+} & TokenUsage;
 
 /** Safe cache diagnostic record. */
 export type CacheDiagnostic = CacheRequestDiagnostic | CacheUsageDiagnostic;
@@ -36,12 +36,12 @@ export type CacheDiagnosticTracker = (
   request: Pick<AgentRequest, "promptBlocks" | "cacheBreakpoint">,
 ) => (usage: TokenUsage) => void;
 
-interface BlockStats {
+type BlockStats = {
   /** Digest of the serialized block, so the previous turn is kept without its text or images. */
   readonly digest: string;
   readonly textCharacters: number;
   readonly imageCharacters: number;
-}
+};
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -55,11 +55,11 @@ function blockStats(block: PromptBlock): BlockStats {
   };
 }
 
-function fingerprint(blocks: ReadonlyArray<BlockStats>): string {
+function fingerprint(blocks: readonly BlockStats[]): string {
   return sha256(blocks.map((block) => block.digest).join("\n")).slice(0, 16);
 }
 
-function sum(values: ReadonlyArray<number>): number {
+function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
@@ -88,13 +88,13 @@ export function createCacheDiagnosticTracker(
   now: () => number = Date.now,
 ): CacheDiagnosticTracker {
   let turn = 0;
-  let previous: { readonly blocks: ReadonlyArray<BlockStats>; readonly at: number } | undefined;
+  let previous: { readonly blocks: readonly BlockStats[]; readonly at: number } | undefined;
 
   return (model, { promptBlocks, cacheBreakpoint }) => {
     turn += 1;
     const requestTurn = turn;
     const at = now();
-    const blocks = promptBlocks.map(blockStats);
+    const blocks = promptBlocks.map((block) => blockStats(block));
     const divergence = blocks.findIndex(
       (block, index) => block.digest !== previous?.blocks[index]?.digest,
     );
@@ -118,6 +118,8 @@ export function createCacheDiagnosticTracker(
       ...(previous ? { msSincePreviousRequest: at - previous.at } : {}),
     });
     previous = { blocks, at };
-    return (usage) => sink(usageDiagnostic(requestTurn, usage));
+    return (usage) => {
+      sink(usageDiagnostic(requestTurn, usage));
+    };
   };
 }

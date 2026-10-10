@@ -13,14 +13,15 @@ import {
   ParallelMcpSearchProvider,
 } from "./provider-parallel";
 import type { FetchProvider, ProviderError, SearchProvider } from "./provider-types";
-import { err, ok, type Result } from "./result";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import {
   EXA_MCP_DEFAULT_ENDPOINT,
   PARALLEL_MCP_DEFAULT_ENDPOINT,
   SEARCH_MAX_RESPONSE_BYTES,
   SEARCH_TIMEOUT_SECONDS,
-  type WebToolsSettings,
 } from "./settings";
+import type { WebToolsSettings } from "./settings";
 import type {
   NormalizedSearchResult,
   PublicHttpUrl,
@@ -29,26 +30,26 @@ import type {
 } from "./types";
 
 /** Dependencies the composition root injects into provider construction. */
-export interface ProviderComposition {
+export type ProviderComposition = {
   readonly settings: WebToolsSettings;
   readonly http: ProviderHttpClient;
   readonly sessionId: string;
   readonly mcpFor: (endpoint: PublicHttpUrl) => McpHttpClient;
-}
+};
 
 /** Create the default MCP client factory (keyless; keys are never attached to MCP endpoints). */
 export function defaultMcpFor(endpoint: PublicHttpUrl): McpHttpClient {
   return new McpHttpClient(endpoint, {
     maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-    timeoutMs: SEARCH_TIMEOUT_SECONDS.default * 1_000,
+    timeoutMs: SEARCH_TIMEOUT_SECONDS.default * 1000,
   });
 }
 
 /** The search provider for one configured name, plus its fetch-rescue provider when it has one. */
-interface ProviderPair {
+type ProviderPair = {
   readonly search: SearchProvider;
   readonly fetch?: FetchProvider;
-}
+};
 
 /**
  * How each configured provider name is built. Keyed providers use official
@@ -63,7 +64,7 @@ const PROVIDER_BUILDERS: Record<
 > = {
   exa: ({ settings, http, mcpFor }) => {
     const apiKey = settings.credentials.exaApiKey;
-    if (settings.endpoints.exa === undefined && apiKey) {
+    if (settings.endpoints.exa === undefined && apiKey !== undefined && apiKey !== "") {
       return {
         search: new ExaApiSearchProvider(apiKey, http),
         fetch: new ExaApiFetchProvider(apiKey, http),
@@ -77,7 +78,7 @@ const PROVIDER_BUILDERS: Record<
     const mcp = mcpFor(settings.endpoints.parallel ?? PARALLEL_MCP_DEFAULT_ENDPOINT);
     return {
       search:
-        settings.endpoints.parallel === undefined && apiKey
+        settings.endpoints.parallel === undefined && apiKey !== undefined && apiKey !== ""
           ? new ParallelApiSearchProvider(apiKey, http)
           : new ParallelMcpSearchProvider(mcp, sessionId),
       // Parallel has no REST fetch provider, so the rescue path always uses MCP.
@@ -87,7 +88,9 @@ const PROVIDER_BUILDERS: Record<
   brave: ({ settings, http }) => {
     // parseSettings guarantees the key when brave is in the provider list. Brave has no page fetch.
     const apiKey = settings.credentials.braveApiKey;
-    return apiKey ? { search: new BraveApiSearchProvider(apiKey, http) } : undefined;
+    return apiKey === undefined || apiKey === ""
+      ? undefined
+      : { search: new BraveApiSearchProvider(apiKey, http) };
   },
 };
 
@@ -108,11 +111,11 @@ export function buildFetchProviders(composition: ProviderComposition): FetchProv
 }
 
 /** A successful search: the provider that answered plus its results. */
-export interface SearchChainSuccess {
+export type SearchChainSuccess = {
   readonly provider: SearchProviderName;
   readonly attemptedProviders: readonly SearchProviderName[];
   readonly results: readonly NormalizedSearchResult[];
-}
+};
 
 /** Expected failures of the search chain. */
 export type SearchChainError =
@@ -156,6 +159,7 @@ async function runChain(
 
   for (const provider of providers) {
     attempted.push(provider.name);
+    // oxlint-disable-next-line eslint/no-await-in-loop -- providers are tried in priority order until one answers
     const result = await provider.search(input, { signal });
     if (result._tag === "ok") {
       return ok({ provider: provider.name, attemptedProviders: attempted, results: result.value });
@@ -168,19 +172,30 @@ async function runChain(
 
 function renderProviderError(error: ProviderError): string {
   switch (error._tag) {
-    case "ProviderRequestFailed":
+    case "ProviderRequestFailed": {
       return "unavailable";
-    case "ProviderTimedOut":
+    }
+    case "ProviderTimedOut": {
       return `timed out after ${error.timeoutSeconds}s`;
-    case "ProviderCancelled":
+    }
+    case "ProviderCancelled": {
       return "cancelled";
-    case "ProviderStatusRejected":
+    }
+    case "ProviderStatusRejected": {
       return `rejected (HTTP ${error.status})`;
-    case "ProviderProtocolInvalid":
+    }
+    case "ProviderProtocolInvalid": {
       return "returned an invalid response";
-    case "ProviderResponseTooLarge":
+    }
+    case "ProviderResponseTooLarge": {
       return "response too large";
-    case "ProviderToolError":
+    }
+    case "ProviderToolError": {
       return "reported an error";
+    }
+    default: {
+      const _exhaustive: never = error;
+      return _exhaustive;
+    }
   }
 }

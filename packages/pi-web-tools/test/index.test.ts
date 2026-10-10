@@ -1,16 +1,17 @@
-import { afterEach, describe, expect, test } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import webToolsExtension from "../index";
 
-interface RegisteredTool {
-  name: string;
-  execute: (...args: never[]) => Promise<unknown>;
-}
+type RegisteredTool = {
+  readonly name: string;
+  readonly execute: (...args: readonly never[]) => Promise<unknown>;
+};
 
 function fakePi() {
   const tools: RegisteredTool[] = [];
   const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
   const notifications: string[] = [];
-  const pi = {
+  const api = {
     registerTool: (tool: RegisteredTool) => {
       tools.push(tool);
     },
@@ -18,7 +19,20 @@ function fakePi() {
       handlers.set(event, handler);
     },
   };
-  return { pi, tools, handlers, notifications };
+  const ctx = {
+    ui: {
+      notify: (message: string) => {
+        notifications.push(message);
+      },
+    },
+  };
+  return {
+    pi: api as unknown as ExtensionAPI,
+    tools,
+    handlers,
+    ctx,
+    notifications,
+  };
 }
 
 const ENV_KEYS = [
@@ -34,31 +48,31 @@ const ENV_KEYS = [
 ];
 
 describe("webToolsExtension", () => {
-  afterEach(() => {
+  beforeEach(() => {
     for (const key of ENV_KEYS) {
-      delete process.env[key];
+      vi.stubEnv(key, undefined);
     }
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   test("registers websearch and webfetch with zero configuration", () => {
     const { pi, tools } = fakePi();
-    webToolsExtension(pi as never);
-    expect(tools.map((tool) => tool.name)).toEqual(["websearch", "webfetch"]);
+    webToolsExtension(pi);
+    expect(tools.map((tool) => tool.name)).toStrictEqual(["websearch", "webfetch"]);
   });
 
   test("registers failing tools that surface invalid configuration", async () => {
-    process.env.PI_WEB_TOOLS_PROVIDERS = "exa,google";
-    const { pi, tools, handlers, notifications } = fakePi();
-    webToolsExtension(pi as never);
+    vi.stubEnv("PI_WEB_TOOLS_PROVIDERS", "exa,google");
+    const { pi, tools, handlers, ctx, notifications } = fakePi();
+    webToolsExtension(pi);
 
-    expect(tools.map((tool) => tool.name)).toEqual(["websearch", "webfetch"]);
+    expect(tools.map((tool) => tool.name)).toStrictEqual(["websearch", "webfetch"]);
     await expect(tools[0]?.execute()).rejects.toThrow("configuration error");
 
-    handlers.get("session_start")?.({}, ctx_for(notifications));
+    handlers.get("session_start")?.({}, ctx);
     expect(notifications[0]).toContain("unknown provider");
   });
 });
-
-function ctx_for(notifications: string[]) {
-  return { ui: { notify: (message: string) => notifications.push(message) } };
-}

@@ -1,19 +1,18 @@
-import {
-  type KeybindingsManager as AppKeybindingsManager,
-  CustomEditor,
-  type ExtensionAPI,
-  type ExtensionContext,
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import type {
+  KeybindingsManager as AppKeybindingsManager,
+  ExtensionAPI,
+  ExtensionContext,
+  ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import {
-  type AutocompleteProvider,
-  type EditorTheme,
   getKeybindings,
   KeybindingsManager,
   setKeybindings,
   setKittyProtocolActive,
-  type TUI,
   TUI_KEYBINDINGS,
 } from "@earendil-works/pi-tui";
+import type { AutocompleteProvider, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import vimMode from "../index";
 
@@ -30,19 +29,22 @@ const theme: EditorTheme = {
 };
 
 type SessionStartHandler = (event: unknown, ctx: ExtensionContext) => unknown;
-type EditorFactory = (tui: TUI, theme: EditorTheme, keybindings: AppKeybindingsManager) => unknown;
+type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditorComponent"]>[0]>;
 
 /** Start a session in the given Pi mode and return the editor factory the extension installed. */
 function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory | undefined {
   let sessionStart: SessionStartHandler | undefined;
   const piDouble = {
     on(event: string, handler: SessionStartHandler): void {
-      if (event === "session_start") sessionStart = handler;
+      if (event === "session_start") {
+        sessionStart = handler;
+      }
     },
   };
-  // SAFETY: Registration calls only ExtensionAPI.on(). The double captures that handler.
   vimMode(piDouble as unknown as ExtensionAPI);
-  if (!sessionStart) throw new Error("Vim extension did not register session_start");
+  if (!sessionStart) {
+    throw new Error("Vim extension did not register session_start");
+  }
 
   let editorFactory: EditorFactory | undefined;
   const contextDouble = {
@@ -53,14 +55,15 @@ function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory |
       },
     },
   };
-  // SAFETY: The session_start handler reads only ctx.mode and ctx.ui.setEditorComponent.
   sessionStart({}, contextDouble as unknown as ExtensionContext);
   return editorFactory;
 }
 
 function createEditor(): CustomEditor {
   const editorFactory = installedEditorFactory("tui");
-  if (!editorFactory) throw new Error("Vim extension did not install an editor factory");
+  if (!editorFactory) {
+    throw new Error("Vim extension did not install an editor factory");
+  }
 
   const tuiDouble = {
     terminal: { rows: 40, columns: 120 },
@@ -71,14 +74,13 @@ function createEditor(): CustomEditor {
     "app.interrupt": { defaultKeys: "escape", description: "Interrupt" },
   });
   const editor = editorFactory(
-    // SAFETY: Editor input and rendering use only terminal rows/columns and requestRender.
     tuiDouble as unknown as TUI,
     theme,
-    // SAFETY: The TUI manager implements the complete shared keybinding contract. Absent app-level bindings resolve as unmatched.
     tuiKeybindings as unknown as AppKeybindingsManager,
   );
-  if (!(editor instanceof CustomEditor))
+  if (!(editor instanceof CustomEditor)) {
     throw new Error("Vim factory returned an unsupported editor");
+  }
   return editor;
 }
 
@@ -96,26 +98,38 @@ const SHIFTED_SYMBOL_BASE_KEYS: ReadonlyMap<string, string> = new Map([["$", "4"
 function kittyPress(key: string): string {
   const base = SHIFTED_SYMBOL_BASE_KEYS.get(key) ?? key.toLowerCase();
   const code = key.codePointAt(0);
-  return base === key ? `\x1b[${code}u` : `\x1b[${base.codePointAt(0)}:${code};2u`;
+  return base === key ? `\u001B[${code}u` : `\u001B[${base.codePointAt(0)}:${code};2u`;
 }
 
-const KEYBOARDS: ReadonlyArray<Keyboard> = [
-  { name: "legacy", kittyProtocol: false, escape: "\x1b", press: identity },
-  { name: "Kitty", kittyProtocol: true, escape: "\x1b[27u", press: kittyPress },
+const KEYBOARDS: readonly Keyboard[] = [
+  { name: "legacy", kittyProtocol: false, escape: "\u001B", press: identity },
+  { name: "Kitty", kittyProtocol: true, escape: "\u001B[27u", press: kittyPress },
 ];
 
 function expectLabel(editor: CustomEditor, label: string): void {
   expect(editor.render(60).at(-1)?.endsWith(` ${label} `)).toBe(true);
 }
 
-afterEach(() => {
+function resetKeyboard(): void {
   setKittyProtocolActive(false);
   setKeybindings(new KeybindingsManager(TUI_KEYBINDINGS));
-});
+}
 
-describe.each(KEYBOARDS)("VimEditor with a $name keyboard", (keyboard) => {
+/** An editor holding `text`, switched to Normal mode with a legacy escape. */
+function legacyNormalMode(text: string): CustomEditor {
+  const editor = createEditor();
+  editor.setText(text);
+  editor.handleInput("\u001B");
+  return editor;
+}
+
+describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
+  afterEach(resetKeyboard);
+
   function typeKeys(editor: CustomEditor, keys: string): void {
-    for (const key of keys) editor.handleInput(keyboard.press(key));
+    for (const key of keys) {
+      editor.handleInput(keyboard.press(key));
+    }
   }
 
   /** An editor holding `text`, switched to Normal mode, after typing `keys`. */
@@ -159,7 +173,7 @@ describe.each(KEYBOARDS)("VimEditor with a $name keyboard", (keyboard) => {
     editor.handleInput(keyboard.escape);
 
     expect(editor.getText()).toBe("abX");
-    expect(editor.getCursor()).toEqual({ line: 0, col: 2 });
+    expect(editor.getCursor()).toStrictEqual({ line: 0, col: 2 });
   });
 
   test.each([
@@ -178,7 +192,7 @@ describe.each(KEYBOARDS)("VimEditor with a $name keyboard", (keyboard) => {
     { text: "a😀b", keys: "0ll", cursor: { line: 0, col: 3 } },
     { text: "", keys: "hlwb0$", cursor: { line: 0, col: 0 } },
   ])("moves with $keys in $text", ({ text, keys, cursor }) => {
-    expect(normalMode(text, keys).getCursor()).toEqual(cursor);
+    expect(normalMode(text, keys).getCursor()).toStrictEqual(cursor);
   });
 
   test.each([
@@ -186,7 +200,7 @@ describe.each(KEYBOARDS)("VimEditor with a $name keyboard", (keyboard) => {
     { name: "l at a line end", text: "one\ntwo", keys: "k$l", cursor: { line: 0, col: 2 } },
     { name: "l on an empty line", text: "\nabc", keys: "kl", cursor: { line: 0, col: 0 } },
   ])("keeps $name within the line", ({ text, keys, cursor }) => {
-    expect(normalMode(text, keys).getCursor()).toEqual(cursor);
+    expect(normalMode(text, keys).getCursor()).toStrictEqual(cursor);
   });
 
   test.each([
@@ -263,57 +277,56 @@ describe.each(KEYBOARDS)("VimEditor with a $name keyboard", (keyboard) => {
   test("cancels a pending command on a control key without passing it to Pi", () => {
     const editor = normalMode("one", "d");
     const submissions: string[] = [];
-    editor.onSubmit = (text) => submissions.push(text);
+    editor.onSubmit = (text) => {
+      submissions.push(text);
+    };
 
     editor.handleInput("\r");
 
-    expect(submissions).toEqual([]);
+    expect(submissions).toStrictEqual([]);
     expectLabel(editor, "NORMAL");
   });
 });
 
-describe("VimEditor inside Pi", () => {
-  function normalMode(text: string): CustomEditor {
-    const editor = createEditor();
-    editor.setText(text);
-    editor.handleInput("\x1b");
-    return editor;
-  }
+describe("vimEditor inside Pi", () => {
+  afterEach(resetKeyboard);
 
   test("does not install an editor outside TUI mode", () => {
     expect(installedEditorFactory("rpc")).toBeUndefined();
   });
 
   test("returns to Insert mode after Pi accepts a submission", () => {
-    const editor = normalMode("submit me");
+    const editor = legacyNormalMode("submit me");
     const submissions: string[] = [];
-    editor.onSubmit = (text) => submissions.push(text);
+    editor.onSubmit = (text) => {
+      submissions.push(text);
+    };
 
     editor.handleInput("\r");
 
-    expect(submissions).toEqual(["submit me"]);
+    expect(submissions).toStrictEqual(["submit me"]);
     expectLabel(editor, "INSERT");
   });
 
   test("stays in Normal mode after submitting an empty editor", () => {
-    const editor = normalMode("");
+    const editor = legacyNormalMode("");
 
     editor.handleInput("\r");
 
-    expectLabel(editor, "NORMAL");
+    expect(editor.render(60).at(-1)?.endsWith(" NORMAL ")).toBe(true);
   });
 
   test("passes control keys to Pi and keeps the cursor on a character", () => {
-    const editor = normalMode("one\ntwo");
+    const editor = legacyNormalMode("one\ntwo");
 
-    editor.handleInput("\x1b[A");
-    expect(editor.getCursor()).toEqual({ line: 0, col: 2 });
-    editor.handleInput("\x05");
-    expect(editor.getCursor()).toEqual({ line: 0, col: 2 });
+    editor.handleInput("\u001B[A");
+    expect(editor.getCursor()).toStrictEqual({ line: 0, col: 2 });
+    editor.handleInput("\u0005");
+    expect(editor.getCursor()).toStrictEqual({ line: 0, col: 2 });
   });
 
   test("ignores pasted or multi-character printable input in Normal mode", () => {
-    const editor = normalMode("one");
+    const editor = legacyNormalMode("one");
 
     editor.handleInput("dd");
     editor.handleInput("constructor");
@@ -331,27 +344,33 @@ describe("VimEditor inside Pi", () => {
       "tui.editor.undo": "ctrl+z",
     });
     setKeybindings(configured);
-    const editor = normalMode("one two");
+    const editor = legacyNormalMode("one two");
 
-    for (const key of "0xD") editor.handleInput(key);
+    for (const key of "0xD") {
+      editor.handleInput(key);
+    }
     expect(editor.getText()).toBe("");
-    for (const key of "uu") editor.handleInput(key);
+    for (const key of "uu") {
+      editor.handleInput(key);
+    }
     expect(editor.getText()).toBe("one two");
     expect(getKeybindings()).toBe(configured);
   });
 
   test("performs commands without offering their input to app or extension shortcuts", () => {
-    const editor = normalMode("one two");
+    const editor = legacyNormalMode("one two");
     const claimed: string[] = [];
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
       return true;
     };
 
-    for (const key of "0dw") editor.handleInput(key);
+    for (const key of "0dw") {
+      editor.handleInput(key);
+    }
 
     expect(editor.getText()).toBe(" two");
-    expect(claimed).toEqual([]);
+    expect(claimed).toStrictEqual([]);
   });
 
   test("closes an open autocomplete list when escape leaves Insert mode", async () => {
@@ -368,11 +387,13 @@ describe("VimEditor inside Pi", () => {
     const editor = createEditor();
     editor.setAutocompleteProvider(provider);
     editor.handleInput("/");
-    await vi.waitFor(() => expect(editor.isShowingAutocomplete()).toBe(true));
+    await vi.waitFor(() => {
+      expect(editor.isShowingAutocomplete()).toBe(true);
+    });
     // The list renders below the border, so the label stays off its last item.
     expect(editor.render(60).at(-1)?.endsWith(" INSERT ")).toBe(false);
 
-    editor.handleInput("\x1b");
+    editor.handleInput("\u001B");
 
     expect(editor.isShowingAutocomplete()).toBe(false);
     expectLabel(editor, "NORMAL");

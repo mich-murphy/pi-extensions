@@ -1,11 +1,8 @@
 import process from "node:process";
-import { err, ok, type Result } from "./result";
-import {
-  type PublicHttpUrl,
-  parsePublicHttpUrl,
-  type SearchProviderName,
-  type WebFetchFormat,
-} from "./types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
+import { isPublicHttpUrl, parsePublicHttpUrl } from "./types";
+import type { PublicHttpUrl, SearchProviderName, WebFetchFormat } from "./types";
 
 export const WEB_FETCH_FORMATS = [
   "markdown",
@@ -26,14 +23,22 @@ const FETCH_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export const SEARCH_MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
 const FETCH_MAX_REDIRECTS = 5;
 
+/** Brand a built-in endpoint. An invalid one is a defect, so it fails at module load. */
+function builtInEndpoint(url: string): PublicHttpUrl {
+  if (!isPublicHttpUrl(url)) {
+    throw new Error(`Built-in endpoint is not a public HTTP(S) URL: ${url}`);
+  }
+  return url;
+}
+
 /** Official Exa MCP endpoint, usable without an API key. */
-export const EXA_MCP_DEFAULT_ENDPOINT = "https://mcp.exa.ai/mcp" as PublicHttpUrl;
+export const EXA_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://mcp.exa.ai/mcp");
 /** Official Exa REST search endpoint, used when EXA_API_KEY is present. */
 export const EXA_API_SEARCH_URL = "https://api.exa.ai/search";
 /** Official Exa REST contents endpoint, used for keyed fetch rescue. */
 export const EXA_API_CONTENTS_URL = "https://api.exa.ai/contents";
 /** Official Parallel MCP endpoint, usable without an API key. */
-export const PARALLEL_MCP_DEFAULT_ENDPOINT = "https://search.parallel.ai/mcp" as PublicHttpUrl;
+export const PARALLEL_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://search.parallel.ai/mcp");
 /** Official Parallel REST search endpoint (GA v1), used when PARALLEL_API_KEY is present. */
 export const PARALLEL_API_SEARCH_URL = "https://api.parallel.ai/v1/search";
 /** Official Brave REST web search endpoint, used when BRAVE_API_KEY is present. */
@@ -50,20 +55,20 @@ const FETCH_ALLOW_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS";
 const FETCH_DENY_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_DENY_DOMAINS";
 
 /** API credentials resolved from the process environment. */
-export interface WebToolsCredentials {
+export type WebToolsCredentials = {
   readonly exaApiKey?: string | undefined;
   readonly parallelApiKey?: string | undefined;
   readonly braveApiKey?: string | undefined;
-}
+};
 
 /** MCP endpoint overrides for self-hosted or proxied providers. Keys are never sent to overridden endpoints. */
-export interface WebToolsEndpoints {
+export type WebToolsEndpoints = {
   readonly exa?: PublicHttpUrl | undefined;
   readonly parallel?: PublicHttpUrl | undefined;
-}
+};
 
 /** Fully parsed web-tools configuration. */
-export interface WebToolsSettings {
+export type WebToolsSettings = {
   readonly fetch: {
     readonly defaultFormat: WebFetchFormat;
     readonly timeoutSeconds: number;
@@ -80,7 +85,7 @@ export interface WebToolsSettings {
   };
   readonly credentials: WebToolsCredentials;
   readonly endpoints: WebToolsEndpoints;
-}
+};
 
 /** A settings parse failure. The message is safe to show the user: it never contains env values. */
 export type SettingsError = { readonly _tag: "InvalidSetting"; readonly message: string };
@@ -106,10 +111,16 @@ function isSearchProviderName(value: string): value is SearchProviderName {
 
 /** Parse an on/off environment toggle, falling back when unset or unrecognized. */
 export function parseOnOff(value: string | undefined, fallback: boolean): boolean {
-  if (!value) return fallback;
+  if (value === undefined) {
+    return fallback;
+  }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "on") return true;
-  if (normalized === "off") return false;
+  if (normalized === "on") {
+    return true;
+  }
+  if (normalized === "off") {
+    return false;
+  }
   return fallback;
 }
 
@@ -117,13 +128,17 @@ function parseApiKey(
   value: string | undefined,
   envName: string,
 ): Result<string | undefined, SettingsError> {
-  if (value === undefined) return ok(undefined);
+  if (value === undefined) {
+    return ok(undefined);
+  }
   const trimmed = value.trim();
-  if (!trimmed) return ok(undefined);
+  if (!trimmed) {
+    return ok(undefined);
+  }
   // Control characters in a credential almost always mean a mangled paste or an
   // attempted header-injection; reject fail-closed with a safe message.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: detecting control characters is the point
-  if (/[\0-\x1f\x7f]/.test(trimmed)) {
+  // oxlint-disable-next-line eslint/no-control-regex -- detecting control characters is the point
+  if (/[\0-\u001F\u007F]/u.test(trimmed)) {
     return invalid(`${envName} contains control characters and was rejected`);
   }
   return ok(trimmed);
@@ -135,7 +150,9 @@ function parseProviderList(
 ): Result<readonly SearchProviderName[], SettingsError> {
   if (value === undefined || !value.trim()) {
     const defaults: SearchProviderName[] = ["exa", "parallel"];
-    if (braveKeyed) defaults.push("brave");
+    if (braveKeyed) {
+      defaults.push("brave");
+    }
     return ok(defaults);
   }
 
@@ -143,7 +160,9 @@ function parseProviderList(
   const providers = new Set<SearchProviderName>();
   for (const entry of value.split(",")) {
     const normalized = entry.trim().toLowerCase();
-    if (!normalized) continue;
+    if (!normalized) {
+      continue;
+    }
     if (!isSearchProviderName(normalized)) {
       return invalid(
         `${PROVIDERS_ENV} contains unknown provider "${normalized}"; expected a comma-separated subset of ${SEARCH_PROVIDERS.join(", ")}`,
@@ -165,7 +184,9 @@ function parseEndpointOverride(
   value: string | undefined,
   envName: string,
 ): Result<PublicHttpUrl | undefined, SettingsError> {
-  if (value === undefined || !value.trim()) return ok(undefined);
+  if (value === undefined || !value.trim()) {
+    return ok(undefined);
+  }
   const parsed = parsePublicHttpUrl(value);
   if (parsed._tag === "err") {
     return invalid(`${envName} must be a public http:// or https:// URL without credentials`);
@@ -175,11 +196,15 @@ function parseEndpointOverride(
 
 /** Parse a comma-separated domain list into normalized lowercase hostnames. */
 export function parseDomainList(value: string | undefined): readonly string[] {
-  if (!value) return [];
+  if (value === undefined) {
+    return [];
+  }
   const domains = new Set<string>();
   for (const entry of value.split(",")) {
     const normalized = entry.trim().toLowerCase();
-    if (normalized) domains.add(normalized);
+    if (normalized) {
+      domains.add(normalized);
+    }
   }
   return [...domains];
 }
@@ -189,22 +214,34 @@ export function parseSettings(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): Result<WebToolsSettings, SettingsError> {
   const exaApiKey = parseApiKey(environment[EXA_API_KEY_ENV], EXA_API_KEY_ENV);
-  if (exaApiKey._tag === "err") return exaApiKey;
+  if (exaApiKey._tag === "err") {
+    return exaApiKey;
+  }
   const parallelApiKey = parseApiKey(environment[PARALLEL_API_KEY_ENV], PARALLEL_API_KEY_ENV);
-  if (parallelApiKey._tag === "err") return parallelApiKey;
+  if (parallelApiKey._tag === "err") {
+    return parallelApiKey;
+  }
   const braveApiKey = parseApiKey(environment[BRAVE_API_KEY_ENV], BRAVE_API_KEY_ENV);
-  if (braveApiKey._tag === "err") return braveApiKey;
+  if (braveApiKey._tag === "err") {
+    return braveApiKey;
+  }
 
   const providers = parseProviderList(environment[PROVIDERS_ENV], braveApiKey.value !== undefined);
-  if (providers._tag === "err") return providers;
+  if (providers._tag === "err") {
+    return providers;
+  }
 
   const exaEndpoint = parseEndpointOverride(environment[EXA_ENDPOINT_ENV], EXA_ENDPOINT_ENV);
-  if (exaEndpoint._tag === "err") return exaEndpoint;
+  if (exaEndpoint._tag === "err") {
+    return exaEndpoint;
+  }
   const parallelEndpoint = parseEndpointOverride(
     environment[PARALLEL_ENDPOINT_ENV],
     PARALLEL_ENDPOINT_ENV,
   );
-  if (parallelEndpoint._tag === "err") return parallelEndpoint;
+  if (parallelEndpoint._tag === "err") {
+    return parallelEndpoint;
+  }
 
   return ok({
     fetch: {

@@ -2,19 +2,16 @@
   "name": "pi-extensions",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "keywords": [
     "pi-package"
   ],
   "workspaces": [
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
-    "format": "biome format --write .",
-    "lint": "biome lint .",
+    "format": "oxfmt",
+    "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -29,15 +26,9 @@
     "fallow:dupes": "fallow dupes && fallow dupes --format json --quiet | node -e \"const {stats} = JSON.parse(require('fs').readFileSync(0, 'utf8')); if (stats.clone_groups > 0) { console.error('fallow dupes: ' + stats.clone_groups + ' clone group(s) found'); process.exit(1); }\"",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
     "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
-    "check": "biome ci . --max-diagnostics=none && npm run typecheck && npm run test:coverage && npm run fallow && npm run markdownlint"
-  },
-  "pi": {
-    "extensions": [
-      "./packages/*/index.ts"
-    ]
+    "check": "oxfmt --check && oxlint && npm run typecheck && npm run test:coverage && npm run fallow && npm run markdownlint"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
     "@earendil-works/pi-ai": "0.87.1",
     "@earendil-works/pi-coding-agent": "0.87.1",
     "@earendil-works/pi-tui": "0.87.1",
@@ -46,12 +37,23 @@
     "@vitest/coverage-v8": "5.0.2",
     "fallow": "3.30.0",
     "markdownlint-cli2": "0.23.3",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2",
     "vitest": "5.0.2"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "allowScripts": {
     "@google/genai": false,
     "fsevents": false,
     "protobufjs": false
+  },
+  "pi": {
+    "extensions": [
+      "./packages/*/index.ts"
+    ]
   }
 }

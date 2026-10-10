@@ -1,26 +1,41 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
-import { applyUsage, contextWindowFor, parseSdkMessage, type SdkMessage } from "../sdk/messages";
+import { applyUsage, contextWindowFor, parseSdkMessage } from "../sdk/messages";
+import type { SdkMessage } from "../sdk/messages";
 import { resultMessage, streamEvent, textDelta } from "./fixtures";
 
 function parsed(input: unknown): SdkMessage {
   const result = parseSdkMessage(input);
-  if (result._tag === "err") throw result.error;
+  if (result._tag === "err") {
+    throw result.error;
+  }
   return result.value;
 }
 
 function protocolError(input: unknown): SdkProtocolError {
   const result = parseSdkMessage(input);
-  if (result._tag === "ok") throw new Error("test setup: expected a protocol error");
+  if (result._tag === "ok") {
+    throw new Error("test setup: expected a protocol error");
+  }
   expect(result.error).toBeInstanceOf(SdkProtocolError);
   expect(result.error._tag).toBe("SdkProtocolError");
   return result.error;
 }
 
-function turnResult(fields: Record<string, unknown>) {
+function turnResult(fields: Readonly<Record<string, unknown>>) {
   const message = parsed(resultMessage(fields));
-  if (message.type !== "result") throw new Error("test setup: expected a result message");
+  if (message.type !== "result") {
+    throw new Error("test setup: expected a result message");
+  }
   return message.result;
+}
+
+function failedResult(fields: Readonly<Record<string, unknown>>) {
+  const result = turnResult({ is_error: true, stop_reason: null, ...fields });
+  if (result._tag !== "failed") {
+    throw new Error("test setup: expected a failed result");
+  }
+  return result.error;
 }
 
 const usage = {
@@ -32,7 +47,7 @@ const usage = {
 
 describe("SDK stream messages", () => {
   test("translates official Agent SDK stream events without depending on private endpoints", () => {
-    expect(parsed(textDelta("Hi"))).toEqual({ type: "text_delta", text: "Hi" });
+    expect(parsed(textDelta("Hi"))).toStrictEqual({ type: "text_delta", text: "Hi" });
     expect(
       parsed(
         streamEvent({
@@ -40,21 +55,21 @@ describe("SDK stream messages", () => {
           delta: { type: "thinking_delta", thinking: "Hmm" },
         }),
       ),
-    ).toEqual({ type: "thinking_delta", text: "Hmm" });
+    ).toStrictEqual({ type: "thinking_delta", text: "Hmm" });
     expect(
       parsed(streamEvent({ type: "message_delta", delta: { stop_reason: null }, usage })),
-    ).toEqual({ type: "usage", usage });
+    ).toStrictEqual({ type: "usage", usage });
   });
 
   test("reads the main-loop model and usage from message_start and assistant messages", () => {
     const message = { model: "claude-fable-5-1", usage };
 
-    expect(parsed(streamEvent({ type: "message_start", message }))).toEqual({
+    expect(parsed(streamEvent({ type: "message_start", message }))).toStrictEqual({
       type: "usage",
       model: "claude-fable-5-1",
       usage,
     });
-    expect(parsed({ type: "assistant", message })).toEqual({
+    expect(parsed({ type: "assistant", message })).toStrictEqual({
       type: "usage",
       model: "claude-fable-5-1",
       usage,
@@ -62,12 +77,15 @@ describe("SDK stream messages", () => {
   });
 
   test("treats a missing or non-string model as unobserved without failing the turn", () => {
-    expect(parsed({ type: "assistant", message: { usage } })).toEqual({ type: "usage", usage });
-    expect(parsed({ type: "assistant", message: { model: 42, usage } })).toEqual({
+    expect(parsed({ type: "assistant", message: { usage } })).toStrictEqual({
       type: "usage",
       usage,
     });
-    expect(parsed({ type: "assistant", message: { model: "", usage } })).toEqual({
+    expect(parsed({ type: "assistant", message: { model: 42, usage } })).toStrictEqual({
+      type: "usage",
+      usage,
+    });
+    expect(parsed({ type: "assistant", message: { model: "", usage } })).toStrictEqual({
       type: "usage",
       usage,
     });
@@ -87,7 +105,7 @@ describe("SDK stream messages", () => {
     ["a stream event without a type", streamEvent({})],
     ["an Object.prototype key used as a type", { type: "constructor" }],
   ])("ignores %s this provider does not consume", (_case, input) => {
-    expect(parsed(input)).toEqual({ type: "ignored" });
+    expect(parsed(input)).toStrictEqual({ type: "ignored" });
   });
 
   test.each([
@@ -134,14 +152,14 @@ describe("SDK stream messages", () => {
 describe("usage accumulation", () => {
   test("replaces each reported count and keeps the rest, treating null like an omitted count", () => {
     const started = applyUsage(undefined, { input_tokens: 12, cache_read_input_tokens: 4 });
-    expect(started).toEqual({ input: 12, output: 0, cacheRead: 4, cacheWrite: 0 });
+    expect(started).toStrictEqual({ input: 12, output: 0, cacheRead: 4, cacheWrite: 0 });
 
     const finished = applyUsage(started, {
       input_tokens: null,
       output_tokens: 3,
       cache_creation_input_tokens: null,
     });
-    expect(finished).toEqual({ input: 12, output: 3, cacheRead: 4, cacheWrite: 0 });
+    expect(finished).toStrictEqual({ input: 12, output: 3, cacheRead: 4, cacheWrite: 0 });
   });
 
   test("accepts the null counts the API sends on message_delta", () => {
@@ -149,7 +167,10 @@ describe("usage accumulation", () => {
       streamEvent({ type: "message_delta", usage: { input_tokens: null, output_tokens: 9 } }),
     );
 
-    expect(message).toEqual({ type: "usage", usage: { input_tokens: null, output_tokens: 9 } });
+    expect(message).toStrictEqual({
+      type: "usage",
+      usage: { input_tokens: null, output_tokens: 9 },
+    });
   });
 });
 
@@ -164,7 +185,7 @@ describe("terminal SDK result", () => {
     ["model_context_window_exceeded", "length", undefined],
     ["tool_deferred", "stop", "tool_deferred"],
   ])("maps stop_reason %s to %s", (stopReason, expected, terminalReason) => {
-    expect(turnResult({ stop_reason: stopReason })).toEqual({
+    expect(turnResult({ stop_reason: stopReason })).toStrictEqual({
       _tag: "completed",
       stopReason: expected,
       terminalReason,
@@ -187,20 +208,14 @@ describe("terminal SDK result", () => {
   });
 
   test("surfaces the SDK's own error result instead of silently reporting an empty stop", () => {
-    const failure = (fields: Record<string, unknown>) => {
-      const result = turnResult({ is_error: true, stop_reason: null, ...fields });
-      if (result._tag !== "failed") throw new Error("test setup: expected a failed result");
-      return result.error;
-    };
-
-    expect(failure({ errors: ["context deadline exceeded", 7, "retry later"] }).message).toBe(
+    expect(failedResult({ errors: ["context deadline exceeded", 7, "retry later"] }).message).toBe(
       "context deadline exceeded; retry later",
     );
-    expect(failure({ result: "The model refused to respond." }).message).toBe(
+    expect(failedResult({ result: "The model refused to respond." }).message).toBe(
       "The model refused to respond.",
     );
-    expect(failure({}).message).toBe("Claude Agent SDK reported an error result");
-    expect(failure({ terminal_reason: "model_error" }).terminalReason).toBe("model_error");
+    expect(failedResult({}).message).toBe("Claude Agent SDK reported an error result");
+    expect(failedResult({ terminal_reason: "model_error" }).terminalReason).toBe("model_error");
   });
 
   test("reports an error result as the SDK's failure even when its stop reason is unknown", () => {
@@ -244,7 +259,9 @@ describe("contextWindowFor", () => {
       },
     }),
   );
-  if (message.type !== "result") throw new Error("test setup: expected a result message");
+  if (message.type !== "result") {
+    throw new Error("test setup: expected a result message");
+  }
   const { modelUsage } = message;
 
   test("matches an entry by key or canonical model", () => {
@@ -254,6 +271,20 @@ describe("contextWindowFor", () => {
 
   test("matches a dated entry through its canonical model", () => {
     expect(contextWindowFor(modelUsage, "claude-haiku-4-5")).toBe(200_000);
+  });
+
+  test("matches an undated entry when the served model carries a snapshot date", () => {
+    // A request pinned to the full id is keyed undated, but message_start reports the dated model.
+    const pinned = parsed(
+      resultMessage({
+        modelUsage: {
+          "claude-haiku-4-5": { canonicalModel: "claude-haiku-4-5", contextWindow: 200_000 },
+        },
+      }),
+    );
+    assert(pinned.type === "result", "test setup: expected a result message");
+
+    expect(contextWindowFor(pinned.modelUsage, "claude-haiku-4-5-20251001")).toBe(200_000);
   });
 
   test("returns undefined for unknown models", () => {
@@ -267,7 +298,7 @@ describe("contextWindowFor", () => {
     ["missing model usage", undefined],
   ])("reports no window for %s without failing the result", (_case, reported) => {
     const result = parsed(resultMessage({ modelUsage: reported }));
-    if (result.type !== "result") throw new Error("test setup: expected a result message");
+    assert(result.type === "result", "test setup: expected a result message");
 
     expect(result.result._tag).toBe("completed");
     expect(contextWindowFor(result.modelUsage, "claude-fable-5-1")).toBeUndefined();

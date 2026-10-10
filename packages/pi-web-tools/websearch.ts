@@ -1,46 +1,43 @@
 import { StringEnum } from "@earendil-works/pi-ai";
+import type { AgentToolUpdateCallback, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import type { SearchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
-import { err, ok, type Result } from "./result";
-import { type SearchChainError, searchWithFallback } from "./search";
-import {
-  clampInteger,
-  SEARCH_MAX_RESULTS,
-  SEARCH_PROVIDERS,
-  type WebToolsSettings,
-} from "./settings";
-import { type PiToolResult, projectSearchResults, type ToolOutputStore } from "./tool-output";
-import {
-  parseSearchQuery,
-  type SearchProviderName,
-  type SearchQuery,
-  type WebSearchDetails,
-} from "./types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
+import { searchWithFallback } from "./search";
+import type { SearchChainError } from "./search";
+import { clampInteger, SEARCH_MAX_RESULTS, SEARCH_PROVIDERS } from "./settings";
+import type { WebToolsSettings } from "./settings";
+import { projectSearchResults } from "./tool-output";
+import type { ToolOutputStore } from "./tool-output";
+import { parseSearchQuery } from "./types";
+import type { SearchProviderName, SearchQuery, WebSearchDetails } from "./types";
 
 /** Composition injected into the websearch tool. */
-export interface WebSearchToolComposition {
+export type WebSearchToolComposition = {
   readonly settings: WebToolsSettings;
   readonly providers: readonly SearchProvider[];
   readonly outputStore: ToolOutputStore;
   readonly secrets: readonly (string | undefined)[];
-}
+};
 
 /** Parsed websearch tool parameters. */
-export interface WebSearchParams {
+export type WebSearchParams = {
   readonly query: SearchQuery;
   readonly maxResults: number;
-  readonly provider?: SearchProviderName | undefined;
-}
+  readonly provider?: SearchProviderName;
+};
 
 /** Expected failures parsing websearch tool input. */
 export type WebSearchInputError = { readonly _tag: "InvalidToolInput"; readonly message: string };
 
-interface RenderTheme {
-  fg(name: string, value: string): string;
-  bold(value: string): string;
-}
+type RenderTheme = {
+  readonly fg: (name: ThemeColor, value: string) => string;
+  readonly bold: (value: string) => string;
+};
 
 /**
  * Tool parameters. Pi validates and converts arguments against this schema before `execute` runs,
@@ -76,14 +73,15 @@ export function parseWebSearchParams(
     return err({ _tag: "InvalidToolInput", message: "query cannot be empty" });
   }
 
-  return ok({
-    query: query.value,
-    maxResults: clampInteger(
-      params.maxResults ?? settings.search.defaultMaxResults,
-      SEARCH_MAX_RESULTS,
-    ),
-    provider: params.provider,
-  });
+  const maxResults = clampInteger(
+    params.maxResults ?? settings.search.defaultMaxResults,
+    SEARCH_MAX_RESULTS,
+  );
+  return ok(
+    params.provider === undefined
+      ? { query: query.value, maxResults }
+      : { query: query.value, maxResults, provider: params.provider },
+  );
 }
 
 /** Create the websearch pi tool. */
@@ -105,7 +103,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       _toolCallId: string,
       params: Static<typeof WEB_SEARCH_PARAMETERS>,
       signal?: AbortSignal,
-      onUpdate?: (update: PiToolResult<WebSearchDetails>) => void,
+      onUpdate?: AgentToolUpdateCallback<WebSearchDetails>,
     ) {
       const parsed = parseWebSearchParams(params, composition.settings);
       if (parsed._tag === "err") {
@@ -133,14 +131,16 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       }
 
       const projected = await projectSearchResults(
-        parsed.value.query,
-        outcome.value.results,
         {
           query: parsed.value.query,
-          maxResults: parsed.value.maxResults,
-          provider: outcome.value.provider,
-          attemptedProviders: outcome.value.attemptedProviders,
-          resultCount: outcome.value.results.length,
+          results: outcome.value.results,
+          details: {
+            query: parsed.value.query,
+            maxResults: parsed.value.maxResults,
+            provider: outcome.value.provider,
+            attemptedProviders: outcome.value.attemptedProviders,
+            resultCount: outcome.value.results.length,
+          },
         },
         { store: composition.outputStore, secrets: composition.secrets },
       );
@@ -150,7 +150,10 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       return projected.value;
     },
 
-    renderCall(args: { query: string; provider?: SearchProviderName }, theme: RenderTheme) {
+    renderCall(
+      args: { readonly query: string; readonly provider?: SearchProviderName },
+      theme: RenderTheme,
+    ) {
       let text = theme.fg("toolTitle", theme.bold("websearch "));
       text += theme.fg("accent", args.query);
       if (args.provider) {
@@ -161,17 +164,17 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
 
     renderResult(
       result: {
-        content: Array<{ type: string; text?: string }>;
-        details?: WebSearchDetails;
-        isError?: boolean;
+        readonly content: readonly { readonly type: string; readonly text?: string }[];
+        readonly details?: WebSearchDetails;
+        readonly isError?: boolean;
       },
-      options: { expanded: boolean; isPartial: boolean },
+      options: { readonly expanded: boolean; readonly isPartial: boolean },
       theme: RenderTheme,
     ) {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Searching..."), 0, 0);
       }
-      if (result.isError) {
+      if (result.isError === true) {
         return new Text(
           theme.fg("error", `✗ ${getTextContent(result.content) || "Search failed"}`),
           0,
@@ -179,7 +182,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
         );
       }
 
-      const details = result.details;
+      const { details } = result;
       const count = details?.resultCount ?? 0;
       let text = theme.fg("success", `✓ ${count} result${count === 1 ? "" : "s"}`);
       if (details?.provider) {
@@ -191,11 +194,13 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       text = appendExpandHint(text, options.expanded);
 
       if (options.expanded) {
-        text = appendExpandedPreview(text, getTextContent(result.content), theme, {
+        text = appendExpandedPreview(text, {
+          text: getTextContent(result.content),
+          theme,
           maxLines: 20,
           maxColumns: 220,
         });
-        if (details?.fullOutputPath) {
+        if (details?.fullOutputPath !== undefined && details.fullOutputPath !== "") {
           text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
         }
       }
@@ -208,9 +213,15 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
 /** Render a search chain failure as a safe user-facing message. */
 export function renderSearchChainError(error: SearchChainError): string {
   switch (error._tag) {
-    case "UnknownProvider":
+    case "UnknownProvider": {
       return `Provider "${error.provider}" is not enabled. Available: ${error.available.join(", ")}`;
-    case "AllProvidersFailed":
+    }
+    case "AllProvidersFailed": {
       return `All search providers failed (${error.attempts.join("; ")})`;
+    }
+    default: {
+      const _exhaustive: never = error;
+      return _exhaustive;
+    }
   }
 }

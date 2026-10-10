@@ -1,32 +1,34 @@
 import { createOperationSignal, isAbortError, readResponseBodyWithLimit } from "./network";
-import { classifyProviderAbort, type ProviderError } from "./provider-types";
-import { err, ok, type Result } from "./result";
+import { classifyProviderAbort } from "./provider-types";
+import type { ProviderError } from "./provider-types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 
 /** A bounded, successful (2xx) provider REST response. */
-export interface ProviderHttpResponse {
+export type ProviderHttpResponse = {
   readonly bodyText: string;
-}
+};
 
 /** A JSON request against a provider REST endpoint. */
-export interface ProviderHttpRequest {
+export type ProviderHttpRequest = {
   readonly url: string;
-  readonly headers: Record<string, string>;
+  readonly headers: Readonly<Record<string, string>>;
   readonly body?: unknown;
   readonly maxResponseBytes: number;
   readonly timeoutMs: number;
-}
+};
 
 /** Outbound port for provider REST calls. */
-export interface ProviderHttpClient {
-  postJson(
+export type ProviderHttpClient = {
+  readonly postJson: (
     request: ProviderHttpRequest,
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<ProviderHttpResponse, ProviderError>>;
-  getJson(
+  ) => Promise<Result<ProviderHttpResponse, ProviderError>>;
+  readonly getJson: (
     request: ProviderHttpRequest,
     options?: { readonly signal?: AbortSignal | undefined },
-  ): Promise<Result<ProviderHttpResponse, ProviderError>>;
-}
+  ) => Promise<Result<ProviderHttpResponse, ProviderError>>;
+};
 
 /** Provider REST client with hard timeouts and response byte caps. */
 export class FetchProviderHttpClient implements ProviderHttpClient {
@@ -67,8 +69,8 @@ export class FetchProviderHttpClient implements ProviderHttpClient {
             method === "POST" && request.body !== undefined ? JSON.stringify(request.body) : null,
           signal: composed.signal,
         });
-      } catch (cause: unknown) {
-        if (composed.signal.aborted || isAbortError(cause)) {
+      } catch (error: unknown) {
+        if (composed.signal.aborted || isAbortError(error)) {
           return err(classifyProviderAbort(composed.signal));
         }
         return err({ _tag: "ProviderRequestFailed" });

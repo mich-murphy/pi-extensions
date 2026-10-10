@@ -32,6 +32,11 @@
       "prBodyNotes": [
         ":warning: Run `npm run test:claude-sdk-upgrade` on a workstation with a Claude subscription, then update `sdk-release-contract.json` with the SDK version, the bundled Claude Code version, the UTC verification time, and the observed defer shape. CI checks that the attestation matches the pin but cannot produce it. See `packages/claude-sdk-provider/README.md`."
       ]
+    },
+    {
+      "description": "Oxlint declares a minimum oxlint-tsgolint version for its type-aware rules, and Oxfmt ships from the same Oxc releases. Raise them as one PR so the linter and its type checker never drift apart",
+      "matchPackageNames": ["oxlint", "oxlint-tsgolint", "oxfmt"],
+      "groupName": "oxc"
     }
   ]
 }

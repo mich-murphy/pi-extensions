@@ -7,7 +7,7 @@ export type ResourcePath = string & { readonly [resourcePathBrand]: true };
 
 /** Resolve a path against a working directory into an identity without dereferencing symlinks. */
 export function resourcePathId(path: string, cwd: string): ResourcePath {
-  // SAFETY: resolve() returns an absolute, lexically normalized path. Only this module brands.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- SAFETY: resolve() returns an absolute, lexically normalized path. Only this module brands.
   return resolve(cwd, path) as ResourcePath;
 }
 

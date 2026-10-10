@@ -12,6 +12,7 @@ export class CaffeinateProcessError extends Error {
    */
   constructor(override readonly cause: unknown) {
     super("caffeinate process failed");
+    this.name = "CaffeinateProcessError";
   }
 }
 
@@ -24,7 +25,7 @@ export type CaffeinateEnd =
       /** Terminating signal, or null when the child exited by itself. */
       readonly signal: NodeJS.Signals | null;
     }
-  | { readonly _tag: "failed"; readonly error: CaffeinateProcessError };
+  | { readonly _tag: "failed"; readonly error: Readonly<CaffeinateProcessError> };
 
 /** A spawned caffeinate child as the lifecycle sees it. */
 export type CaffeinateProcess = {
@@ -32,9 +33,9 @@ export type CaffeinateProcess = {
    * Subscribe to the child's end. Spawn failures arrive here too, never synchronously.
    * A child can report more than once (a failed signal, then its exit).
    */
-  onEnd(listener: (end: CaffeinateEnd) => void): void;
+  readonly onEnd: (listener: (end: CaffeinateEnd) => void) => void;
   /** Terminate the child. Harmless once the child has ended. */
-  stop(): void;
+  readonly stop: () => void;
 };
 
 /** Runtime and process dependencies used by the no-sleep lifecycle. */
@@ -44,14 +45,16 @@ export type NoSleepDependencies = {
   /** PID that caffeinate watches, so a crashed Pi never leaves the Mac awake. */
   readonly processId: number;
   /** Start caffeinate with the supplied command arguments. */
-  spawnCaffeinate(args: ReadonlyArray<string>): CaffeinateProcess;
+  readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
 };
 
 /** Restart attempts after caffeinate exits unexpectedly, bounded so failures cannot loop. */
 const UNEXPECTED_EXIT_RESTARTS = 1;
 
 function notify(ctx: ExtensionContext, message: string, level: "warning" | "error"): void {
-  if (ctx.hasUI) ctx.ui.notify(message, level);
+  if (ctx.hasUI) {
+    ctx.ui.notify(message, level);
+  }
 }
 
 /**
@@ -61,7 +64,9 @@ function notify(ctx: ExtensionContext, message: string, level: "warning" | "erro
  * @param dependencies - Platform and process operations owned by this extension runtime.
  */
 export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependencies): void {
-  if (dependencies.platform !== "darwin") return;
+  if (dependencies.platform !== "darwin") {
+    return;
+  }
 
   // The only state. A released child is forgotten at once: macOS counts sleep assertions per
   // process, so it may overlap its successor, and `-w` bounds its lifetime whatever happens.
@@ -79,7 +84,9 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
     child.onEnd((end) => {
       // Pi invalidates ctx only after session_shutdown, which releases the child, so ctx is
       // live past this guard.
-      if (held !== child) return;
+      if (held !== child) {
+        return;
+      }
       held = undefined;
       if (end._tag === "failed") {
         const detail = end.error.cause instanceof Error ? `: ${end.error.cause.message}` : "";
@@ -88,7 +95,9 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
       }
       const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;
       notify(ctx, `No Sleep lost caffeinate unexpectedly (${outcome})`, "warning");
-      if (restartsLeft > 0) hold(ctx, restartsLeft - 1);
+      if (restartsLeft > 0) {
+        hold(ctx, restartsLeft - 1);
+      }
     });
   };
 
@@ -100,11 +109,15 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
   };
 
   pi.on("agent_start", (_event, ctx) => {
-    if (held === undefined) hold(ctx, UNEXPECTED_EXIT_RESTARTS);
+    if (held === undefined) {
+      hold(ctx, UNEXPECTED_EXIT_RESTARTS);
+    }
   });
   pi.on("agent_settled", (_event, ctx) => {
     // Another extension may already have started the next run.
-    if (ctx.isIdle()) release();
+    if (ctx.isIdle()) {
+      release();
+    }
   });
   pi.on("session_shutdown", release);
 }

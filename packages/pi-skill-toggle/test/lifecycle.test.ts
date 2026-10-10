@@ -1,25 +1,24 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  type BuildSystemPromptOptions,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ExtensionUIContext,
-  formatSkillsForPrompt,
-  getAgentDir,
-  initTheme,
-  type KeybindingsManager,
-  type RegisteredCommand,
-  type Skill,
-  type Theme,
+import { formatSkillsForPrompt, getAgentDir, initTheme } from "@earendil-works/pi-coding-agent";
+import type {
+  BuildSystemPromptOptions,
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionUIContext,
+  KeybindingsManager,
+  RegisteredCommand,
+  Skill,
+  Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test } from "vitest";
 import skillToggle, { registerSkillToggle } from "../index";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
-import { ToggleStateError, type ToggleStateStore } from "../state";
+import { ToggleStateError } from "../state";
+import type { ToggleStateStore } from "../state";
 
 const cwd = "/work/project";
 const skillPath = join(getAgentDir(), "skills/research/SKILL.md");
@@ -42,13 +41,8 @@ const deploy: Skill = {
 const options: BuildSystemPromptOptions = { cwd, skills: [research] };
 
 const temporaryDirectories: string[] = [];
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
-type TestHandler = (event: unknown, context: unknown) => unknown | Promise<unknown>;
+type TestHandler = (event: unknown, context: unknown) => unknown;
 type CommandOptions = Omit<RegisteredCommand, "name" | "sourceInfo">;
 type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
 
@@ -58,7 +52,6 @@ async function selectFirstDialogItem(factory: DialogFactory): Promise<string[]> 
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
   };
-  // SAFETY: The dialog uses only requestRender() on TUI and fg()/bold() on Theme; keybindings are not read.
   const component = await factory(
     { requestRender: () => undefined } as unknown as TUI,
     fakeTheme as unknown as Theme,
@@ -70,16 +63,16 @@ async function selectFirstDialogItem(factory: DialogFactory): Promise<string[]> 
   return component.render(120);
 }
 
-function overrides(entries: Record<string, ToggleValue> = {}): ToggleOverrides {
+function overrides(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleOverrides {
   return new Map(
     Object.entries(entries).map(([path, value]) => [resourcePathId(path, cwd), value]),
   );
 }
 
-function storeWith(entries: Record<string, ToggleValue> = {}): ToggleStateStore & {
-  readonly writes: Array<readonly [string, ToggleValue | "default"]>;
+function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleStateStore & {
+  readonly writes: (readonly [string, ToggleValue | "default"])[];
 } {
-  const writes: Array<readonly [string, ToggleValue | "default"]> = [];
+  const writes: (readonly [string, ToggleValue | "default"])[] = [];
   return {
     writes,
     load: () => ({ _tag: "ok", value: overrides(entries) }),
@@ -114,13 +107,14 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
       notify: (message: string) => notifications.push(message),
     },
   };
-  // SAFETY: Registration uses only on() and registerCommand(). The test double captures both and supplies separate event and command contexts.
   registerSkillToggle(piMock as unknown as ExtensionAPI, store);
-  const emit = (name: string, event: unknown): Promise<unknown> =>
-    (handlers.get(name) ?? []).reduce<Promise<unknown>>(
-      (previous, handler) => previous.then(() => handler(event, ctx)),
-      Promise.resolve(undefined),
-    );
+  const emit = async (name: string, event: unknown): Promise<unknown> => {
+    let result: unknown;
+    for (const handler of handlers.get(name) ?? []) {
+      result = await handler(event, ctx);
+    }
+    return result;
+  };
   const runCommand = async (
     args: string,
     commandOptions: {
@@ -130,7 +124,9 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
     } = {},
   ): Promise<void> => {
     const command = commands.get("skill-toggle");
-    if (!command) throw new Error("skill-toggle command was not registered");
+    if (!command) {
+      throw new Error("skill-toggle command was not registered");
+    }
     const commandContext = {
       cwd: projectDirectory,
       mode: commandOptions.mode ?? "tui",
@@ -140,7 +136,6 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
         custom: commandOptions.custom ?? (async () => undefined),
       },
     };
-    // SAFETY: The command paths under test use only mode, getSystemPromptOptions(), ui.notify(), and ui.custom().
     await command.handler(args, commandContext as unknown as ExtensionCommandContext);
   };
   return {
@@ -171,15 +166,20 @@ function projectWithSkill(): { readonly directory: string; readonly skill: Skill
 }
 
 describe("extension lifecycle", () => {
+  afterEach(() => {
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("the package entry point registers its command and event handlers", () => {
     const registrations: string[] = [];
     const piMock = {
       registerCommand: (name: string) => registrations.push(`command:${name}`),
       on: (name: string) => registrations.push(`event:${name}`),
     };
-    // SAFETY: The entry point registers only commands and event handlers, which this test double captures.
     skillToggle(piMock as unknown as ExtensionAPI);
-    expect(registrations).toEqual([
+    expect(registrations).toStrictEqual([
       "command:skill-toggle",
       "event:resources_discover",
       "event:before_agent_start",
@@ -192,7 +192,7 @@ describe("extension lifecycle", () => {
     await testHarness.runCommand("unexpected");
     await testHarness.runCommand("", { mode: "rpc" });
 
-    expect(testHarness.notifications).toEqual([
+    expect(testHarness.notifications).toStrictEqual([
       "Usage: /skill-toggle",
       "/skill-toggle requires TUI mode",
     ]);
@@ -203,7 +203,7 @@ describe("extension lifecycle", () => {
 
     await testHarness.runCommand("", { promptOptions: { cwd, skills: [] } });
 
-    expect(testHarness.notifications).toEqual([
+    expect(testHarness.notifications).toStrictEqual([
       "No user-managed instructions or skills are loaded",
     ]);
   });
@@ -219,7 +219,7 @@ describe("extension lifecycle", () => {
     });
 
     expect(opened).toBe(false);
-    expect(testHarness.notifications).toEqual([
+    expect(testHarness.notifications).toStrictEqual([
       "Could not load Pi skill-toggle state at /state.json: boom\nThe prompt was left unchanged.",
     ]);
   });
@@ -234,8 +234,8 @@ describe("extension lifecycle", () => {
       custom: selectFirstDialogItem,
     });
 
-    expect(global.writes).toEqual([[skillPath, "disabled"]]);
-    expect(project.writes).toEqual([[projectPath, "enabled"]]);
+    expect(global.writes).toStrictEqual([[skillPath, "disabled"]]);
+    expect(project.writes).toStrictEqual([[projectPath, "enabled"]]);
   });
 
   test("clears the override when a toggle returns to the default", async () => {
@@ -243,7 +243,7 @@ describe("extension lifecycle", () => {
 
     await harness(store).runCommand("", { custom: selectFirstDialogItem });
 
-    expect(store.writes).toEqual([[skillPath, "default"]]);
+    expect(store.writes).toStrictEqual([[skillPath, "default"]]);
   });
 
   test("restores the row and reports once when persistence fails", async () => {
@@ -261,7 +261,7 @@ describe("extension lifecycle", () => {
 
     expect(rendered.join("\n")).toContain("disabled");
     expect(rendered.join("\n")).not.toContain("enabled");
-    expect(testHarness.notifications).toEqual([
+    expect(testHarness.notifications).toStrictEqual([
       "Could not update Pi skill-toggle state at /state.json: boom\nThe toggle was not saved.",
     ]);
   });
@@ -277,7 +277,7 @@ describe("extension lifecycle", () => {
       },
     });
 
-    expect(store.writes).toEqual([]);
+    expect(store.writes).toStrictEqual([]);
     expect(rendered.join("\n")).toContain("manual only");
   });
 
@@ -290,12 +290,14 @@ describe("extension lifecycle", () => {
     const hidden = harness(storeWith(), project.directory);
     const enabled = harness(storeWith({ [project.skill.filePath]: "enabled" }), project.directory);
 
-    expect(await hidden.emit("resources_discover", {})).toEqual({
+    await expect(hidden.emit("resources_discover", {})).resolves.toStrictEqual({
       skillPaths: [project.skill.filePath],
     });
-    expect(await hidden.emit("before_agent_start", event)).toEqual({ systemPrompt: "base" });
+    await expect(hidden.emit("before_agent_start", event)).resolves.toStrictEqual({
+      systemPrompt: "base",
+    });
     await enabled.emit("resources_discover", {});
-    expect(await enabled.emit("before_agent_start", event)).toBeUndefined();
+    await expect(enabled.emit("before_agent_start", event)).resolves.toBeUndefined();
   });
 
   test("contributes nothing from an untrusted project and leaves its temporary skills alone", async () => {
@@ -303,13 +305,13 @@ describe("extension lifecycle", () => {
     const testHarness = harness(storeWith(), project.directory);
     testHarness.distrustProject();
 
-    expect(await testHarness.emit("resources_discover", {})).toBeUndefined();
-    expect(
-      await testHarness.emit("before_agent_start", {
+    await expect(testHarness.emit("resources_discover", {})).resolves.toBeUndefined();
+    await expect(
+      testHarness.emit("before_agent_start", {
         systemPrompt: `base${formatSkillsForPrompt([project.skill])}`,
         systemPromptOptions: { cwd: project.directory, skills: [project.skill] },
       }),
-    ).toBeUndefined();
+    ).resolves.toBeUndefined();
   });
 
   test("applies persisted overrides before the model starts", async () => {
@@ -320,7 +322,7 @@ describe("extension lifecycle", () => {
       systemPromptOptions: options,
     });
 
-    expect(result).toEqual({ systemPrompt: "base" });
+    expect(result).toStrictEqual({ systemPrompt: "base" });
   });
 
   test("filters the mutable options of Pi 0.86 without forcing a replacement prompt", async () => {
@@ -333,7 +335,7 @@ describe("extension lifecycle", () => {
     });
 
     expect(result).toBeUndefined();
-    expect(systemPromptOptions.skills).toEqual([]);
+    expect(systemPromptOptions.skills).toStrictEqual([]);
   });
 
   test("leaves the prompt alone when nothing is hidden", async () => {
@@ -345,7 +347,7 @@ describe("extension lifecycle", () => {
     });
 
     expect(result).toBeUndefined();
-    expect(testHarness.notifications).toEqual([]);
+    expect(testHarness.notifications).toStrictEqual([]);
   });
 
   test("does not apply stale state to package or other excluded resources", async () => {
@@ -370,9 +372,9 @@ describe("extension lifecycle", () => {
     const testHarness = harness(storeWith({ [skillPath]: "disabled" }));
     const event = { systemPrompt: "base", systemPromptOptions: options };
 
-    expect(await testHarness.emit("before_agent_start", event)).toBeUndefined();
-    expect(await testHarness.emit("before_agent_start", event)).toBeUndefined();
-    expect(testHarness.notifications).toEqual([
+    await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
+    await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
+    expect(testHarness.notifications).toStrictEqual([
       "Skill toggle could not update the skills prompt section. Another extension may have rewritten it.",
     ]);
   });
@@ -385,8 +387,8 @@ describe("extension lifecycle", () => {
       systemPromptOptions: options,
     };
 
-    expect(await testHarness.emit("before_agent_start", event)).toBeUndefined();
-    expect(await testHarness.emit("before_agent_start", event)).toBeUndefined();
+    await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
+    await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
     expect(testHarness.notifications).toHaveLength(1);
 
     result = { _tag: "ok", value: overrides() };

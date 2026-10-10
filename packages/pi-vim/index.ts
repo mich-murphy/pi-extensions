@@ -1,4 +1,5 @@
-import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   decodeKittyPrintable,
   Editor,
@@ -37,24 +38,27 @@ const once = (input: string, when: Guard = always): Action => ({ input, when, re
 const repeatedly = (input: string, when: Guard): Action => ({ input, when, repeats: true });
 
 const ACTIONS = {
-  left: once("\x1b[D", (view) => view.col > 0),
-  right: once("\x1b[C", inLine),
-  up: once("\x1b[A"),
-  down: once("\x1b[B"),
-  lineStart: once("\x01"),
-  lineEnd: once("\x05"),
-  wordLeft: once("\x1b[1;3D"),
-  wordRight: once("\x1b[1;3C", (view) => !onBlank(view)),
-  skipBlanks: repeatedly("\x1b[C", (view) => onBlank(view) && (inLine(view) || !onLastLine(view))),
+  left: once("\u001B[D", (view) => view.col > 0),
+  right: once("\u001B[C", inLine),
+  up: once("\u001B[A"),
+  down: once("\u001B[B"),
+  lineStart: once("\u0001"),
+  lineEnd: once("\u0005"),
+  wordLeft: once("\u001B[1;3D"),
+  wordRight: once("\u001B[1;3C", (view) => !onBlank(view)),
+  skipBlanks: repeatedly(
+    "\u001B[C",
+    (view) => onBlank(view) && (inLine(view) || !onLastLine(view)),
+  ),
   newline: once("\n"),
-  deleteChar: once("\x1b[3~", inLine),
-  deleteWord: once("\x1b[3;3~", inLine),
-  deleteToLineEnd: once("\x0b", inLine),
-  joinNextLine: once("\x1b[3~", (view) => !inLine(view)),
-  joinPreviousLine: once("\x7f", (view) => view.col === 0),
-  undo: once("\x1f"),
+  deleteChar: once("\u001B[3~", inLine),
+  deleteWord: once("\u001B[3;3~", inLine),
+  deleteToLineEnd: once("\u000B", inLine),
+  joinNextLine: once("\u001B[3~", (view) => !inLine(view)),
+  joinPreviousLine: once("\u007F", (view) => view.col === 0),
+  undo: once("\u001F"),
   /** Normal mode keeps the cursor on a character, never after the last one. */
-  clamp: once("\x1b[D", (view) => view.col > 0 && !inLine(view)),
+  clamp: once("\u001B[D", (view) => view.col > 0 && !inLine(view)),
 } satisfies Record<string, Action>;
 type ActionName = keyof typeof ACTIONS;
 
@@ -64,14 +68,14 @@ const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
 /** A Normal-mode command: the actions to perform, then the mode to continue in. */
 type Command = {
   readonly mode: "insert" | "normal";
-  readonly steps: (view: View) => ReadonlyArray<ActionName>;
+  readonly steps: (view: View) => readonly ActionName[];
 };
 
-const insert = (...steps: ReadonlyArray<ActionName>): Command => ({
+const insert = (...steps: readonly ActionName[]): Command => ({
   mode: "insert",
   steps: () => steps,
 });
-const normal = (...steps: ReadonlyArray<ActionName>): Command => ({
+const normal = (...steps: readonly ActionName[]): Command => ({
   mode: "normal",
   steps: () => steps,
 });
@@ -128,16 +132,26 @@ const INSERT: VimState = { mode: "insert" };
 const NORMAL: VimState = { mode: "normal", pending: "" };
 
 function modeLabel(state: VimState): string {
-  if (state.mode === "insert") return " INSERT ";
+  if (state.mode === "insert") {
+    return " INSERT ";
+  }
   return state.pending === "" ? " NORMAL " : ` NORMAL ${state.pending} `;
 }
 
 /** The text this input types, or undefined for control and navigation keys. */
 function printableText(data: string): string | undefined {
   const decoded = decodeKittyPrintable(data);
-  if (decoded !== undefined) return decoded;
-  const code = data.charCodeAt(0);
-  return code >= 0x20 && code !== 0x7f ? data : undefined;
+  if (decoded !== undefined) {
+    return decoded;
+  }
+  const code = data.codePointAt(0);
+  return code !== undefined && code >= 0x20 && code !== 0x7f ? data : undefined;
+}
+
+/** Whether text is one code point: a single key press rather than unbracketed pasted text. */
+function isOneCodePoint(text: string): boolean {
+  const code = text.codePointAt(0);
+  return code !== undefined && String.fromCodePoint(code).length === text.length;
 }
 
 /** Pi's main prompt editor with a deliberately small set of Vim bindings. */
@@ -158,7 +172,7 @@ class VimEditor extends CustomEditor {
     // interrupts a pending command. One character is a key press. Longer text is a paste the
     // terminal did not bracket, which must not run as commands.
     const text = printableText(data);
-    if (text !== undefined && [...text].length === 1) {
+    if (text !== undefined && isOneCodePoint(text)) {
       this.handleSequence(this.vimState.pending + text);
     } else if (text !== undefined || this.vimState.pending !== "") {
       this.vimState = NORMAL;
@@ -172,8 +186,9 @@ class VimEditor extends CustomEditor {
     const lastLine = lines.at(-1);
     const label = modeLabel(this.vimState);
     // An open autocomplete list renders below the border, where a label would cover an item.
-    if (lastLine === undefined || this.isShowingAutocomplete() || width < label.length)
+    if (lastLine === undefined || this.isShowingAutocomplete() || width < label.length) {
       return lines;
+    }
 
     lines[lines.length - 1] =
       truncateToWidth(lastLine, width - label.length, "") + this.borderColor(label);
@@ -186,7 +201,9 @@ class VimEditor extends CustomEditor {
       return;
     }
     if (this.vimState.mode === "insert") {
-      if (this.isShowingAutocomplete()) super.handleInput(data);
+      if (this.isShowingAutocomplete()) {
+        super.handleInput(data);
+      }
       this.perform("left");
     }
     this.vimState = NORMAL;
@@ -199,7 +216,9 @@ class VimEditor extends CustomEditor {
       return;
     }
 
-    for (const step of command.steps(this.view())) this.perform(step);
+    for (const step of command.steps(this.view())) {
+      this.perform(step);
+    }
     if (command.mode === "insert") {
       this.vimState = INSERT;
       return;
@@ -212,17 +231,22 @@ class VimEditor extends CustomEditor {
     const hadText = this.getText().length > 0;
     super.handleInput(data);
     // Pi empties the editor when it accepts a submission. The next prompt starts in Insert mode.
-    if (hadText && this.getText().length === 0) this.vimState = INSERT;
-    else this.perform("clamp");
+    if (hadText && this.getText().length === 0) {
+      this.vimState = INSERT;
+    } else {
+      this.perform("clamp");
+    }
   }
 
   private perform(name: ActionName): void {
     const { input, when, repeats } = ACTIONS[name];
-    for (let view = this.view(); when(view); ) {
+    for (let view = this.view(); when(view);) {
       this.performInput(input);
       const next = this.view();
       // A repeating action ends when its guard fails or when the cursor stops moving.
-      if (!repeats || (next.line === view.line && next.col === view.col)) return;
+      if (!repeats || (next.line === view.line && next.col === view.col)) {
+        return;
+      }
       view = next;
     }
   }
@@ -251,7 +275,9 @@ class VimEditor extends CustomEditor {
 /** Register Vim-style modal editing for Pi's interactive prompt composer. */
 export default function vimMode(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
-    if (ctx.mode !== "tui") return;
+    if (ctx.mode !== "tui") {
+      return;
+    }
     ctx.ui.setEditorComponent((tui, theme, keybindings) => new VimEditor(tui, theme, keybindings));
   });
 }

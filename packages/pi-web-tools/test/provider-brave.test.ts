@@ -1,12 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { BraveApiSearchProvider } from "../provider-brave";
 import { err, ok } from "../result";
-import type { SearchQuery } from "../types";
-import { fakeProviderHttp } from "./fakes";
+import { fakeProviderHttp, searchQuery } from "./fakes";
 
-const QUERY = "brave search api" as SearchQuery;
+const QUERY = searchQuery("brave search api");
 
-describe("BraveApiSearchProvider", () => {
+describe("braveApiSearchProvider", () => {
   test("sends the official contract with the subscription token header", async () => {
     const { client, requests } = fakeProviderHttp([
       ok({
@@ -27,19 +26,19 @@ describe("BraveApiSearchProvider", () => {
     const provider = new BraveApiSearchProvider("BSA_test", client);
     const result = await provider.search({ query: QUERY, maxResults: 10 });
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
+    assert(result._tag === "ok");
     expect(result.value[0]?.title).toBe("Brave Search API");
     expect(result.value[0]?.snippet).toBe("Independent search index.");
     expect(result.value[0]?.publishedAt).toBe("2026-01-15");
 
-    const request = requests[0];
-    const url = new URL(request?.url ?? "");
+    const [request] = requests;
+    assert(request !== undefined);
+    const url = new URL(request.url);
     expect(url.origin + url.pathname).toBe("https://api.search.brave.com/res/v1/web/search");
     expect(url.searchParams.get("q")).toBe(QUERY);
     expect(url.searchParams.get("count")).toBe("10");
     expect(url.searchParams.get("safesearch")).toBe("moderate");
-    expect(request?.headers["x-subscription-token"]).toBe("BSA_test");
+    expect(request.headers["x-subscription-token"]).toBe("BSA_test");
   });
 
   test("maps HTTP failures and missing web results", async () => {
@@ -48,7 +47,7 @@ describe("BraveApiSearchProvider", () => {
       query: QUERY,
       maxResults: 5,
     });
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "err",
       error: { _tag: "ProviderStatusRejected", status: 422 },
     });
@@ -91,7 +90,7 @@ describe("BraveApiSearchProvider", () => {
       maxResults: 10,
     });
 
-    expect(result).toEqual(
+    expect(result).toStrictEqual(
       ok([
         {
           title: "https://a.example/",
@@ -118,14 +117,14 @@ describe("BraveApiSearchProvider", () => {
       ok({ bodyText: JSON.stringify({ web: [] }) }),
     ]);
     const provider = new BraveApiSearchProvider("k", client);
-    const search = () => provider.search({ query: QUERY, maxResults: 5 });
+    const search = async () => provider.search({ query: QUERY, maxResults: 5 });
 
-    expect(await search()).toEqual(
+    await expect(search()).resolves.toStrictEqual(
       err({ _tag: "ProviderProtocolInvalid", reason: "Invalid JSON response" }),
     );
     const missing = err({ _tag: "ProviderProtocolInvalid", reason: "Missing web results" });
-    expect(await search()).toEqual(missing);
-    expect(await search()).toEqual(missing);
+    await expect(search()).resolves.toStrictEqual(missing);
+    await expect(search()).resolves.toStrictEqual(missing);
   });
 
   test("caps results at maxResults", async () => {
@@ -136,7 +135,8 @@ describe("BraveApiSearchProvider", () => {
       maxResults: 2,
     });
 
-    expect(result._tag === "ok" && result.value.map((item) => item.url)).toEqual([
+    assert(result._tag === "ok");
+    expect(result.value.map((item) => item.url)).toStrictEqual([
       "https://a.example/",
       "https://b.example/",
     ]);

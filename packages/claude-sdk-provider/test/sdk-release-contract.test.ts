@@ -13,11 +13,10 @@ import {
 const packageSchema = z.object({
   dependencies: z.object({ [AGENT_SDK_PACKAGE]: z.string() }),
 });
-const lockSchema = z.object({
-  packages: z.record(z.string(), z.object({ version: z.string().optional() }).passthrough()),
-});
+const lockedPackageSchema = z.looseObject({ version: z.string().optional() });
+const lockSchema = z.object({ packages: z.record(z.string(), lockedPackageSchema) });
 
-describe("Claude SDK release contract", () => {
+describe("claude SDK release contract", () => {
   test("pins, locks, and live-attests the installed SDK version", async () => {
     const installed = await readInstalledSdk();
     const packageMetadata = packageSchema.parse(
@@ -40,7 +39,7 @@ describe("Claude SDK release contract", () => {
         bundledClaudeCodeVersion: attestation.bundledClaudeCodeVersion,
       },
       "sdk-release-contract.json must attest the installed SDK. Run `npm run test:claude-sdk-upgrade`; the live gate rewrites it once every contract passes.",
-    ).toEqual({
+    ).toStrictEqual({
       agentSdkVersion: installed.version,
       bundledClaudeCodeVersion: installed.claudeCodeVersion,
     });
@@ -49,6 +48,8 @@ describe("Claude SDK release contract", () => {
   test("keeps the attestation in the format the live gate writes", async () => {
     const attestation = releaseContractSchema.parse(await readJson(RELEASE_CONTRACT_URL));
 
-    expect(await readFile(RELEASE_CONTRACT_URL, "utf8")).toBe(formatReleaseContract(attestation));
+    await expect(readFile(RELEASE_CONTRACT_URL, "utf8")).resolves.toBe(
+      formatReleaseContract(attestation),
+    );
   });
 });

@@ -2,15 +2,14 @@ import { z } from "zod";
 import type { McpClient, McpToolCallResult } from "./mcp";
 import type { ProviderHttpClient } from "./provider-http";
 import {
-  type FetchProvider,
   lenientArray,
   optionalTextSchema,
-  type ProviderError,
   parseJsonBody,
   publicHttpUrlSchema,
-  type SearchProvider,
 } from "./provider-types";
-import { err, ok, type Result } from "./result";
+import type { FetchProvider, ProviderError, SearchProvider } from "./provider-types";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import {
   PARALLEL_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
@@ -18,7 +17,7 @@ import {
 } from "./settings";
 import type { NormalizedSearchResult, PublicHttpUrl, SearchQuery } from "./types";
 
-const PARALLEL_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1_000;
+const PARALLEL_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
 
 /** Excerpt strings joined into one block; undefined when none carry text. */
 const excerptsSchema = lenientArray(z.string())
@@ -32,15 +31,13 @@ const parallelResultSchema = z
     publish_date: optionalTextSchema,
     excerpts: excerptsSchema,
   })
-  .transform(
-    (item): NormalizedSearchResult => ({
-      title: item.title ?? item.url,
-      url: item.url,
-      snippet: item.excerpts,
-      publishedAt: item.publish_date,
-      source: "Parallel",
-    }),
-  );
+  .transform((item): NormalizedSearchResult => ({
+    title: item.title ?? item.url,
+    url: item.url,
+    snippet: item.excerpts,
+    publishedAt: item.publish_date,
+    source: "Parallel",
+  }));
 
 const parallelResultsPayloadSchema = z.object({ results: lenientArray(parallelResultSchema) });
 
@@ -188,7 +185,7 @@ export class ParallelMcpFetchProvider implements FetchProvider {
     }
 
     const fromStructured = extractParallelFetchText(call.value.structuredContent);
-    if (fromStructured) {
+    if (fromStructured !== undefined && fromStructured !== "") {
       return fromStructured;
     }
 

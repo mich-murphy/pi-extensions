@@ -1,11 +1,8 @@
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
-import {
-  decodeTextBuffer,
-  type PublicWebClient,
-  type PublicWebError,
-  parseContentType,
-} from "./network";
-import { err, ok, type Result } from "./result";
+import { decodeTextBuffer, parseContentType } from "./network";
+import type { PublicWebClient, PublicWebError } from "./network";
+import { err, ok } from "./result";
+import type { Result } from "./result";
 import type { PublicHttpUrl, WebFetchFormat } from "./types";
 
 /** Browser-like default user agent for direct fetches. */
@@ -15,13 +12,13 @@ const WEBFETCH_DEFAULT_USER_AGENT =
 const WEBFETCH_FALLBACK_USER_AGENT = "pi-web-tools";
 
 /** Input to the fetch-page service. */
-export interface FetchPageInput {
+export type FetchPageInput = {
   readonly url: PublicHttpUrl;
   readonly format: WebFetchFormat;
-}
+};
 
 /** Metadata shared by text and image results: the requested format plus what the response declared. */
-export interface FetchPageMeta {
+export type FetchPageMeta = {
   readonly requestedUrl: PublicHttpUrl;
   readonly finalUrl: PublicHttpUrl;
   readonly format: WebFetchFormat;
@@ -30,10 +27,10 @@ export interface FetchPageMeta {
   readonly contentType: string;
   readonly charset?: string | undefined;
   readonly bytes: number;
-}
+};
 
 /** A successfully fetched page: response metadata plus its converted text or raw raster image. */
-export interface FetchPageResult {
+export type FetchPageResult = {
   readonly meta: FetchPageMeta;
   readonly body:
     | {
@@ -43,13 +40,13 @@ export interface FetchPageResult {
         readonly text: string;
         readonly decoder: string;
       }
-    | { readonly _tag: "Image"; readonly data: Buffer };
-}
+    | { readonly _tag: "Image"; readonly data: Readonly<Buffer> };
+};
 
 /** Expected failures of the fetch-page service. */
 export type FetchPageError =
   | PublicWebError
-  | { readonly _tag: "UnsupportedBinaryContent"; readonly mime?: string | undefined }
+  | { readonly _tag: "UnsupportedBinaryContent"; readonly mime?: string }
   | { readonly _tag: "HtmlConversionFailed" };
 
 /** Application service: fetch one public page and project it to the requested representation. */
@@ -84,7 +81,11 @@ export class FetchPage {
 
     const parsedContentType = parseContentType(response.value.headers.get("content-type"));
     if (parsedContentType.kind === "binary") {
-      return err({ _tag: "UnsupportedBinaryContent", mime: parsedContentType.mime || undefined });
+      return err(
+        parsedContentType.mime === ""
+          ? { _tag: "UnsupportedBinaryContent" }
+          : { _tag: "UnsupportedBinaryContent", mime: parsedContentType.mime },
+      );
     }
 
     const meta: FetchPageMeta = {
@@ -102,12 +103,12 @@ export class FetchPage {
     }
 
     const decoded = decodeTextBuffer(response.value.body, parsedContentType.charset);
-    const converted = convertText(
-      decoded.text,
-      response.value.finalUrl,
-      parsedContentType.kind,
-      input.format,
-    );
+    const converted = convertText({
+      text: decoded.text,
+      baseUrl: response.value.finalUrl,
+      kind: parsedContentType.kind,
+      format: input.format,
+    });
     if (converted._tag === "err") {
       return converted;
     }
@@ -127,21 +128,33 @@ export class FetchPage {
 /** Return the Accept header value for a webfetch format. */
 export function getAcceptHeader(format: WebFetchFormat): string {
   switch (format) {
-    case "markdown":
+    case "markdown": {
       return "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, application/xhtml+xml;q=0.6, */*;q=0.1";
-    case "text":
+    }
+    case "text": {
       return "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, application/xhtml+xml;q=0.7, */*;q=0.1";
-    case "html":
+    }
+    case "html": {
       return "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1";
+    }
+    default: {
+      const _exhaustive: never = format;
+      return _exhaustive;
+    }
   }
 }
 
-function convertText(
-  text: string,
-  baseUrl: PublicHttpUrl,
-  kind: "html" | "text" | "svg",
-  format: WebFetchFormat,
-): Result<string, FetchPageError> {
+function convertText({
+  text,
+  baseUrl,
+  kind,
+  format,
+}: {
+  readonly text: string;
+  readonly baseUrl: PublicHttpUrl;
+  readonly kind: "html" | "text" | "svg";
+  readonly format: WebFetchFormat;
+}): Result<string, FetchPageError> {
   try {
     if (kind === "html" && format === "markdown") {
       return ok(htmlToMarkdownWithTextFallback(text, baseUrl));

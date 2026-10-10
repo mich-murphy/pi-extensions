@@ -20,19 +20,23 @@ export type DeferredResult = (typeof DEFERRED_RESULTS)[number];
 export const RELEASE_CONTRACT_URL = new URL("../sdk-release-contract.json", import.meta.url);
 
 /** Shape of `sdk-release-contract.json`. */
-export const releaseContractSchema = z.object({
-  schemaVersion: z.literal(1),
-  agentSdkVersion: z.string(),
-  bundledClaudeCodeVersion: z.string(),
-  verifiedAt: z.iso.datetime(),
-  model: z.literal("fable"),
-  contracts: z.tuple([
-    z.literal("text-response"),
-    z.literal("deferred-tool-call"),
-    z.literal("advertised-models"),
-  ]),
-  observedDeferredResult: z.enum(DEFERRED_RESULTS),
-});
+export const releaseContractSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    agentSdkVersion: z.string(),
+    bundledClaudeCodeVersion: z.string(),
+    verifiedAt: z.iso.datetime(),
+    model: z.literal("fable"),
+    contracts: z
+      .tuple([
+        z.literal("text-response"),
+        z.literal("deferred-tool-call"),
+        z.literal("advertised-models"),
+      ])
+      .readonly(),
+    observedDeferredResult: z.enum(DEFERRED_RESULTS),
+  })
+  .readonly();
 
 /** A validated release attestation. */
 export type ReleaseContract = z.output<typeof releaseContractSchema>;
@@ -56,11 +60,11 @@ export async function readJson(url: URL): Promise<unknown> {
  */
 export async function readInstalledSdk(): Promise<z.output<typeof sdkMetadataSchema>> {
   const sdkEntry = import.meta.resolve(AGENT_SDK_PACKAGE);
-  return sdkMetadataSchema.parse(await readJson(new URL("./package.json", sdkEntry)));
+  return sdkMetadataSchema.parse(await readJson(new URL("package.json", sdkEntry)));
 }
 
 /**
- * Serialize an attestation the way Biome formats it: one key per line, short arrays inline.
+ * Serialize an attestation the way Oxfmt formats it: one key per line, short arrays inline.
  *
  * @param contract - Validated attestation.
  * @returns File content ending in a newline.

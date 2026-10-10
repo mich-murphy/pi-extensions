@@ -1,10 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
-import {
-  type ClaudeUsageQuery,
-  formatClaudeUsageStatus,
-  inspectClaudeUsage,
-  type StartClaudeUsageQuery,
-} from "../sdk-usage";
+import { assert, describe, expect, test, vi } from "vitest";
+import { formatClaudeUsageStatus, inspectClaudeUsage } from "../sdk-usage";
+import type { ClaudeUsageQuery, StartClaudeUsageQuery } from "../sdk-usage";
+import { unsettled } from "./fixtures";
 
 function usageQuery(response: unknown): ClaudeUsageQuery {
   return {
@@ -30,11 +27,11 @@ const usageResponse = {
   },
 };
 
-describe("Claude SDK usage", () => {
+describe("claude SDK usage", () => {
   test("reports remaining general and model-specific plan usage", async () => {
     const result = await inspectClaudeUsage(() => usageQuery(usageResponse));
 
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "ok",
       value: {
         subscriptionType: "team",
@@ -51,7 +48,7 @@ describe("Claude SDK usage", () => {
         extraUsageEnabled: false,
       },
     });
-    if (result._tag !== "ok") throw new Error("test setup: expected parsed usage");
+    assert(result._tag === "ok", "test setup: expected parsed usage");
     const formatted = formatClaudeUsageStatus(result.value);
     expect(formatted).toContain("Current session: 88% remaining");
     expect(formatted).toContain("Weekly: 71% remaining");
@@ -64,8 +61,7 @@ describe("Claude SDK usage", () => {
       usageQuery({ subscription_type: null, rate_limits_available: false, rate_limits: null }),
     );
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") throw new Error("test setup: expected parsed usage");
+    assert(result._tag === "ok", "test setup: expected parsed usage");
     expect(formatClaudeUsageStatus(result.value)).toBe(
       "Claude plan usage is unavailable for the current authentication method.",
     );
@@ -80,8 +76,7 @@ describe("Claude SDK usage", () => {
       }),
     );
 
-    expect(result._tag).toBe("err");
-    if (result._tag === "err") expect(result.error.operation).toBe("parse");
+    expect(result).toMatchObject({ _tag: "err", error: { operation: "parse" } });
   });
 
   test("classifies startup, read, and cleanup failures", async () => {
@@ -101,21 +96,21 @@ describe("Claude SDK usage", () => {
       },
     }));
 
-    expect(startup._tag === "err" && startup.error.operation).toBe("start");
-    expect(read._tag === "err" && read.error.operation).toBe("read");
-    expect(close._tag === "err" && close.error.operation).toBe("close");
+    expect(startup).toMatchObject({ _tag: "err", error: { operation: "start" } });
+    expect(read).toMatchObject({ _tag: "err", error: { operation: "read" } });
+    expect(close).toMatchObject({ _tag: "err", error: { operation: "close" } });
   });
 
   test("times out a usage request that never responds", async () => {
     const result = await inspectClaudeUsage(
       () => ({
-        readUsage: () => new Promise<unknown>(() => undefined),
+        readUsage: async () => unsettled(),
         close: async () => undefined,
       }),
       1,
     );
 
-    expect(result._tag === "err" && result.error.operation).toBe("timeout");
+    expect(result).toMatchObject({ _tag: "err", error: { operation: "timeout" } });
   });
 
   test("bounds cleanup after both a successful read and a read timeout", async () => {
@@ -124,14 +119,14 @@ describe("Claude SDK usage", () => {
       const successfulRead = inspectClaudeUsage(
         () => ({
           readUsage: async () => usageResponse,
-          close: () => new Promise<void>(() => undefined),
+          close: async () => unsettled(),
         }),
         10,
       );
       const timedOutRead = inspectClaudeUsage(
         () => ({
-          readUsage: () => new Promise<unknown>(() => undefined),
-          close: () => new Promise<void>(() => undefined),
+          readUsage: async () => unsettled(),
+          close: async () => unsettled(),
         }),
         10,
       );
@@ -139,8 +134,8 @@ describe("Claude SDK usage", () => {
       await vi.runAllTimersAsync();
       const [cleanupResult, readResult] = await Promise.all([successfulRead, timedOutRead]);
 
-      expect(cleanupResult._tag === "err" && cleanupResult.error.operation).toBe("close");
-      expect(readResult._tag === "err" && readResult.error.operation).toBe("timeout");
+      expect(cleanupResult).toMatchObject({ _tag: "err", error: { operation: "close" } });
+      expect(readResult).toMatchObject({ _tag: "err", error: { operation: "timeout" } });
     } finally {
       vi.useRealTimers();
     }

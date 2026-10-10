@@ -1,19 +1,16 @@
-import {
-  type BuildSystemPromptOptions,
-  formatSkillsForPrompt,
-  type Skill,
-} from "@earendil-works/pi-coding-agent";
+import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, Skill } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import { hideResources } from "../prompt-filter";
 
-const skillFileSuffix = /\/SKILL\.md$/;
+const skillFileSuffix = /\/SKILL\.md$/u;
 
-function hiding(...paths: string[]): (path: string) => boolean {
+function hiding(...paths: readonly string[]): (path: string) => boolean {
   return (path) => paths.includes(path);
 }
 
 function renderProjectContext(
-  contextFiles: ReadonlyArray<{ path: string; content: string }>,
+  contextFiles: readonly { readonly path: string; readonly content: string }[],
 ): string {
   const instructions = contextFiles
     .map(
@@ -56,9 +53,9 @@ describe("hideResources on Pi 0.86 and newer", () => {
       hiding(first.filePath, "/work/client-a/AGENTS.md"),
     );
 
-    expect(result).toEqual({ _tag: "options-filtered" });
-    expect(options.contextFiles).toEqual([contextFiles[1]]);
-    expect(options.skills).toEqual([second]);
+    expect(result).toStrictEqual({ _tag: "options-filtered" });
+    expect(options.contextFiles).toStrictEqual([contextFiles[1]]);
+    expect(options.skills).toStrictEqual([second]);
   });
 });
 
@@ -77,13 +74,13 @@ describe("hideResources on Pi 0.85 and older", () => {
       hiding(first.filePath, "/work/client-a/AGENTS.md"),
     );
 
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "prompt-filtered",
       systemPrompt: `base${renderProjectContext(contextFiles.slice(1))}${formatSkillsForPrompt([second])}\ncwd`,
       unmatched: [],
     });
-    expect(options.contextFiles).toEqual(contextFiles);
-    expect(options.skills).toEqual([first, second]);
+    expect(options.contextFiles).toStrictEqual(contextFiles);
+    expect(options.skills).toStrictEqual([first, second]);
   });
 
   test("removes a whole section when every resource in it is hidden", () => {
@@ -101,7 +98,11 @@ describe("hideResources on Pi 0.85 and older", () => {
       hiding(first.filePath, "/work/client-a/AGENTS.md"),
     );
 
-    expect(result).toEqual({ _tag: "prompt-filtered", systemPrompt: "base\ncwd", unmatched: [] });
+    expect(result).toStrictEqual({
+      _tag: "prompt-filtered",
+      systemPrompt: "base\ncwd",
+      unmatched: [],
+    });
   });
 
   test("reports only the sections that needed a replacement and could not be matched", () => {
@@ -116,7 +117,7 @@ describe("hideResources on Pi 0.85 and older", () => {
         { systemPrompt: "rewritten prompt", systemPromptOptions: options },
         hiding(first.filePath, "/work/client-a/AGENTS.md"),
       ),
-    ).toEqual({
+    ).toStrictEqual({
       _tag: "prompt-filtered",
       systemPrompt: "rewritten prompt",
       unmatched: ["instructions", "skills"],
@@ -138,6 +139,6 @@ describe("hideResources on Pi 0.85 and older", () => {
 
     expect(
       hideResources({ systemPrompt: "base", systemPromptOptions: options }, hiding(first.filePath)),
-    ).toEqual({ _tag: "prompt-filtered", systemPrompt: "base", unmatched: [] });
+    ).toStrictEqual({ _tag: "prompt-filtered", systemPrompt: "base", unmatched: [] });
   });
 });

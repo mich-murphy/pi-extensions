@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import {
   ExaApiFetchProvider,
   ExaApiSearchProvider,
@@ -7,10 +7,20 @@ import {
   parseExaSearchText,
 } from "../provider-exa";
 import { err, ok } from "../result";
-import type { SearchQuery } from "../types";
-import { fakeMcpClient, fakeProviderHttp } from "./fakes";
+import { fakeMcpClient, fakeProviderHttp, publicUrl, searchQuery } from "./fakes";
 
-const QUERY = "pi coding agent" as SearchQuery;
+const QUERY = searchQuery("pi coding agent");
+const PAGE = publicUrl("https://example.com/");
+
+function sourceOf(headers: string) {
+  return parseExaSearchText(`Title: T\nURL: https://a.example\n${headers}\nText: x`).results[0]
+    ?.source;
+}
+
+async function fetchBody(body: unknown) {
+  const { client } = fakeProviderHttp([ok({ bodyText: JSON.stringify(body) })]);
+  return new ExaApiFetchProvider("k", client).fetchMarkdown(PAGE);
+}
 
 const EXA_TEXT = `Title: Pi Coding Agent
 URL: https://pi.dev
@@ -40,8 +50,8 @@ describe("parseExaSearchText", () => {
   });
 
   test("handles empty and no-results responses", () => {
-    expect(parseExaSearchText("").results).toEqual([]);
-    expect(parseExaSearchText("No results found").results).toEqual([]);
+    expect(parseExaSearchText("").results).toStrictEqual([]);
+    expect(parseExaSearchText("No results found").results).toStrictEqual([]);
   });
 
   test("discards sections without valid URLs", () => {
@@ -75,14 +85,11 @@ describe("parseExaSearchText", () => {
     expect(result?.score).toBe(0.5);
   });
 
-  test("Source beats Author, and Author fills in when Source is a placeholder", () => {
-    const source = (headers: string) =>
-      parseExaSearchText(`Title: T\nURL: https://a.example\n${headers}\nText: x`).results[0]
-        ?.source;
-    expect(source("Author: Ada\nSource: Docs")).toBe("Docs");
-    expect(source("Source: Docs\nAuthor: Ada")).toBe("Docs");
-    expect(source("Author: Ada\nSource: n/a")).toBe("Ada");
-    expect(source("Author: none\nSource: unknown")).toBeUndefined();
+  test("source beats Author, and Author fills in when Source is a placeholder", () => {
+    expect(sourceOf("Author: Ada\nSource: Docs")).toBe("Docs");
+    expect(sourceOf("Source: Docs\nAuthor: Ada")).toBe("Docs");
+    expect(sourceOf("Author: Ada\nSource: n/a")).toBe("Ada");
+    expect(sourceOf("Author: none\nSource: unknown")).toBeUndefined();
   });
 
   test("header prefixes after the first Text: line are snippet text, not metadata", () => {
@@ -108,31 +115,30 @@ describe("parseExaSearchText", () => {
   });
 });
 
-describe("ExaMcpSearchProvider", () => {
+describe("exaMcpSearchProvider", () => {
   test("sends the official web_search_exa contract and parses text results", async () => {
     const { client, calls } = fakeMcpClient([ok({ text: [EXA_TEXT] })]);
     const provider = new ExaMcpSearchProvider(client);
     const result = await provider.search({ query: QUERY, maxResults: 5 });
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
+    assert(result._tag === "ok");
     expect(result.value).toHaveLength(2);
     expect(calls[0]?.name).toBe("web_search_exa");
-    expect(calls[0]?.args).toEqual({ query: QUERY, objective: QUERY, numResults: 5 });
+    expect(calls[0]?.args).toStrictEqual({ query: QUERY, objective: QUERY, numResults: 5 });
   });
 
   test("passes MCP failures through", async () => {
     const { client } = fakeMcpClient([err({ _tag: "ProviderStatusRejected", status: 429 })]);
     const provider = new ExaMcpSearchProvider(client);
     const result = await provider.search({ query: QUERY, maxResults: 5 });
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "err",
       error: { _tag: "ProviderStatusRejected", status: 429 },
     });
   });
 });
 
-describe("ExaApiSearchProvider", () => {
+describe("exaApiSearchProvider", () => {
   test("posts the official /search contract with the key header", async () => {
     const { client, requests } = fakeProviderHttp([
       ok({
@@ -153,16 +159,16 @@ describe("ExaApiSearchProvider", () => {
     const provider = new ExaApiSearchProvider("test-key", client);
     const result = await provider.search({ query: QUERY, maxResults: 8 });
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
+    assert(result._tag === "ok");
     expect(result.value[0]?.title).toBe("Exa Docs");
     expect(result.value[0]?.snippet).toContain("search API");
     expect(result.value[0]?.publishedAt).toBe("2026-02-01");
 
-    const request = requests[0];
-    expect(request?.url).toBe("https://api.exa.ai/search");
-    expect(request?.headers["x-api-key"]).toBe("test-key");
-    expect(request?.body).toMatchObject({
+    const [request] = requests;
+    assert(request !== undefined);
+    expect(request.url).toBe("https://api.exa.ai/search");
+    expect(request.headers["x-api-key"]).toBe("test-key");
+    expect(request.body).toMatchObject({
       query: QUERY,
       type: "auto",
       numResults: 8,
@@ -175,7 +181,7 @@ describe("ExaApiSearchProvider", () => {
     const { client } = fakeProviderHttp([err({ _tag: "ProviderStatusRejected", status: 401 })]);
     const provider = new ExaApiSearchProvider("test-key", client);
     const result = await provider.search({ query: QUERY, maxResults: 8 });
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       _tag: "err",
       error: { _tag: "ProviderStatusRejected", status: 401 },
     });
@@ -185,7 +191,7 @@ describe("ExaApiSearchProvider", () => {
       query: QUERY,
       maxResults: 8,
     });
-    expect(badResult).toEqual(
+    expect(badResult).toStrictEqual(
       err({ _tag: "ProviderProtocolInvalid", reason: "Invalid JSON response" }),
     );
 
@@ -198,8 +204,12 @@ describe("ExaApiSearchProvider", () => {
       _tag: "ProviderProtocolInvalid",
       reason: "Missing results array",
     });
-    expect(await missingProvider.search({ query: QUERY, maxResults: 8 })).toEqual(missingResults);
-    expect(await missingProvider.search({ query: QUERY, maxResults: 8 })).toEqual(missingResults);
+    await expect(missingProvider.search({ query: QUERY, maxResults: 8 })).resolves.toStrictEqual(
+      missingResults,
+    );
+    await expect(missingProvider.search({ query: QUERY, maxResults: 8 })).resolves.toStrictEqual(
+      missingResults,
+    );
   });
 
   test("skips invalid items and falls back when a field has the wrong type", async () => {
@@ -214,7 +224,7 @@ describe("ExaApiSearchProvider", () => {
               url: "https://a.example",
               title: 5,
               highlights: "not an array",
-              publishedDate: 20260101,
+              publishedDate: 20_260_101,
               author: {},
               score: "0.9",
             },
@@ -235,7 +245,7 @@ describe("ExaApiSearchProvider", () => {
       maxResults: 8,
     });
 
-    expect(result).toEqual(
+    expect(result).toStrictEqual(
       ok([
         {
           title: "https://a.example/",
@@ -266,39 +276,34 @@ describe("ExaApiSearchProvider", () => {
       maxResults: 1,
     });
 
-    expect(result._tag === "ok" && result.value.map((item) => item.url)).toEqual([
-      "https://a.example/",
-    ]);
+    assert(result._tag === "ok");
+    expect(result.value.map((item) => item.url)).toStrictEqual(["https://a.example/"]);
   });
 });
 
-describe("ExaMcpFetchProvider", () => {
+describe("exaMcpFetchProvider", () => {
   test("calls web_fetch_exa with the urls contract", async () => {
     const { client, calls } = fakeMcpClient([ok({ text: ["# Page content"] })]);
     const provider = new ExaMcpFetchProvider(client);
-    const result = await provider.fetchMarkdown("https://example.com" as never);
+    const result = await provider.fetchMarkdown(PAGE);
 
     expect(result).toBe("# Page content");
     expect(calls[0]?.name).toBe("web_fetch_exa");
-    expect(calls[0]?.args.urls).toEqual(["https://example.com"]);
+    expect(calls[0]?.args.urls).toStrictEqual([PAGE]);
   });
 
   test("returns undefined for empty responses and MCP failures", async () => {
     const { client } = fakeMcpClient([ok({ text: [] })]);
-    const empty = await new ExaMcpFetchProvider(client).fetchMarkdown(
-      "https://example.com" as never,
-    );
+    const empty = await new ExaMcpFetchProvider(client).fetchMarkdown(PAGE);
     expect(empty).toBeUndefined();
 
     const { client: failing } = fakeMcpClient([err({ _tag: "ProviderToolError" })]);
-    const failed = await new ExaMcpFetchProvider(failing).fetchMarkdown(
-      "https://example.com" as never,
-    );
+    const failed = await new ExaMcpFetchProvider(failing).fetchMarkdown(PAGE);
     expect(failed).toBeUndefined();
   });
 });
 
-describe("ExaApiFetchProvider", () => {
+describe("exaApiFetchProvider", () => {
   test("posts to /contents and returns page text", async () => {
     const { client, requests } = fakeProviderHttp([
       ok({
@@ -306,12 +311,12 @@ describe("ExaApiFetchProvider", () => {
       }),
     ]);
     const provider = new ExaApiFetchProvider("test-key", client);
-    const result = await provider.fetchMarkdown("https://example.com" as never);
+    const result = await provider.fetchMarkdown(PAGE);
 
     expect(result).toBe("page body");
     expect(requests[0]?.url).toBe("https://api.exa.ai/contents");
     expect(requests[0]?.body).toMatchObject({
-      urls: ["https://example.com"],
+      urls: [PAGE],
       livecrawl: "preferred",
     });
   });
@@ -323,24 +328,18 @@ describe("ExaApiFetchProvider", () => {
       err({ _tag: "ProviderTimedOut", timeoutSeconds: 25 }),
     ]);
     const provider = new ExaApiFetchProvider("k", client);
-    const url = "https://example.com" as never;
-    expect(await provider.fetchMarkdown(url)).toBeUndefined();
-    expect(await provider.fetchMarkdown(url)).toBeUndefined();
-    expect(await provider.fetchMarkdown(url)).toBeUndefined();
+    await expect(provider.fetchMarkdown(PAGE)).resolves.toBeUndefined();
+    await expect(provider.fetchMarkdown(PAGE)).resolves.toBeUndefined();
+    await expect(provider.fetchMarkdown(PAGE)).resolves.toBeUndefined();
   });
 
   test("reads only the first result's trimmed text", async () => {
-    const fetchBody = (body: unknown) => {
-      const { client } = fakeProviderHttp([ok({ bodyText: JSON.stringify(body) })]);
-      return new ExaApiFetchProvider("k", client).fetchMarkdown("https://example.com" as never);
-    };
-
-    expect(await fetchBody({ results: [{ text: "  page body  " }, { text: "second" }] })).toBe(
-      "page body",
-    );
-    expect(await fetchBody({ results: [null, { text: "second" }] })).toBeUndefined();
-    expect(await fetchBody({ results: [{ text: 5 }] })).toBeUndefined();
-    expect(await fetchBody({ results: [{ text: "   " }] })).toBeUndefined();
-    expect(await fetchBody({ results: "not an array" })).toBeUndefined();
+    await expect(
+      fetchBody({ results: [{ text: "  page body  " }, { text: "second" }] }),
+    ).resolves.toBe("page body");
+    await expect(fetchBody({ results: [null, { text: "second" }] })).resolves.toBeUndefined();
+    await expect(fetchBody({ results: [{ text: 5 }] })).resolves.toBeUndefined();
+    await expect(fetchBody({ results: [{ text: "   " }] })).resolves.toBeUndefined();
+    await expect(fetchBody({ results: "not an array" })).resolves.toBeUndefined();
   });
 });

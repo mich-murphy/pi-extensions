@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
     ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
   }
 }

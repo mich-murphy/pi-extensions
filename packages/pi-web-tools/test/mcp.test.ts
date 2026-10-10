@@ -1,14 +1,19 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
+import { z } from "zod";
 import { McpHttpClient, parseMcpMessage, parseMcpToolResult, parseSseDataLines } from "../mcp";
 import { err, ok } from "../result";
-import type { PublicHttpUrl } from "../types";
+import { publicUrl } from "./fakes";
 
-const ENDPOINT = "https://mcp.example/mcp" as PublicHttpUrl;
+const ENDPOINT = publicUrl("https://mcp.example/mcp");
+
+function protocolInvalid(reason: string) {
+  return err({ _tag: "ProviderProtocolInvalid", reason });
+}
 
 describe("parseSseDataLines", () => {
   test("collects multi-line data chunks separated by blank lines", () => {
     const input = 'data: {"a":1}\n\ndata: {"b":\ndata: 2}\n\nevent: ignored\ndata: {"c":3}\n';
-    expect(parseSseDataLines(input)).toEqual(['{"a":1}', '{"b":\n2}', '{"c":3}']);
+    expect(parseSseDataLines(input)).toStrictEqual(['{"a":1}', '{"b":\n2}', '{"c":3}']);
   });
 });
 
@@ -47,24 +52,25 @@ describe("parseMcpMessage", () => {
     ];
     const body = events.map((event) => `event: message\ndata: ${event}\n\n`).join("");
 
-    expect(parseMcpMessage(body, "text/event-stream")).toEqual(
-      ok({ jsonrpc: "2.0", id: 2, error: { code: -32000, message: "late" } }),
+    expect(parseMcpMessage(body, "text/event-stream")).toStrictEqual(
+      ok({ jsonrpc: "2.0", id: 2, error: { code: -32_000, message: "late" } }),
     );
     // A data: line marks SSE framing even under a JSON content type.
     expect(parseMcpMessage(body, "application/json")._tag).toBe("ok");
   });
 
   test("keeps a distinct reason for each missing or malformed response", () => {
-    const invalid = (reason: string) => err({ _tag: "ProviderProtocolInvalid", reason });
-    expect(parseMcpMessage("data: not-json\n\n", "text/event-stream")).toEqual(
-      invalid("Invalid JSON in SSE stream"),
+    expect(parseMcpMessage("data: not-json\n\n", "text/event-stream")).toStrictEqual(
+      protocolInvalid("Invalid JSON in SSE stream"),
     );
     expect(
       parseMcpMessage('data: {"jsonrpc":"2.0","method":"ping"}\n\n', "text/event-stream"),
-    ).toEqual(invalid("No JSON-RPC response in SSE stream"));
-    expect(parseMcpMessage("   ", "application/json")).toEqual(invalid("Empty response body"));
-    expect(parseMcpMessage("{broken", "application/json")).toEqual(
-      invalid("Invalid JSON response"),
+    ).toStrictEqual(protocolInvalid("No JSON-RPC response in SSE stream"));
+    expect(parseMcpMessage("   ", "application/json")).toStrictEqual(
+      protocolInvalid("Empty response body"),
+    );
+    expect(parseMcpMessage("{broken", "application/json")).toStrictEqual(
+      protocolInvalid("Invalid JSON response"),
     );
   });
 });
@@ -83,10 +89,9 @@ describe("parseMcpToolResult", () => {
         structuredContent: { results: [] },
       },
     });
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
-    expect(result.value.text).toEqual(["hello"]);
-    expect(result.value.structuredContent).toEqual({ results: [] });
+    assert(result._tag === "ok");
+    expect(result.value.text).toStrictEqual(["hello"]);
+    expect(result.value.structuredContent).toStrictEqual({ results: [] });
   });
 
   test("maps JSON-RPC errors and isError results to ProviderToolError", () => {
@@ -95,8 +100,7 @@ describe("parseMcpToolResult", () => {
       id: 2,
       error: { code: -1, message: "x" },
     });
-    expect(rpcError._tag).toBe("err");
-    if (rpcError._tag !== "err") return;
+    assert(rpcError._tag === "err");
     expect(rpcError.error._tag).toBe("ProviderToolError");
 
     const toolError = parseMcpToolResult({
@@ -113,10 +117,15 @@ describe("parseMcpToolResult", () => {
   });
 
   test("names why a payload is malformed", () => {
-    const invalid = (reason: string) => err({ _tag: "ProviderProtocolInvalid", reason });
-    expect(parseMcpToolResult([{ result: {} }])).toEqual(invalid("Expected an object payload"));
-    expect(parseMcpToolResult({ result: [] })).toEqual(invalid("Missing result object"));
-    expect(parseMcpToolResult({ result: "done" })).toEqual(invalid("Missing result object"));
+    expect(parseMcpToolResult([{ result: {} }])).toStrictEqual(
+      protocolInvalid("Expected an object payload"),
+    );
+    expect(parseMcpToolResult({ result: [] })).toStrictEqual(
+      protocolInvalid("Missing result object"),
+    );
+    expect(parseMcpToolResult({ result: "done" })).toStrictEqual(
+      protocolInvalid("Missing result object"),
+    );
   });
 
   test("tolerates wrong-typed fields and drops unusable content items", () => {
@@ -135,12 +144,12 @@ describe("parseMcpToolResult", () => {
         ],
       },
     });
-    expect(result).toEqual(ok({ text: ["kept"], structuredContent: undefined }));
+    expect(result).toStrictEqual(ok({ text: ["kept"], structuredContent: undefined }));
 
-    expect(parseMcpToolResult({ result: { content: "not an array" } })).toEqual(
+    expect(parseMcpToolResult({ result: { content: "not an array" } })).toStrictEqual(
       ok({ text: [], structuredContent: undefined }),
     );
-    expect(parseMcpToolResult({ error: {}, result: { content: [] } })).toEqual(
+    expect(parseMcpToolResult({ error: {}, result: { content: [] } })).toStrictEqual(
       err({ _tag: "ProviderToolError" }),
     );
   });
@@ -148,28 +157,68 @@ describe("parseMcpToolResult", () => {
 
 function jsonResponse(
   body: unknown,
-  init: { status?: number; headers?: Record<string, string> } = {},
+  init: { readonly status?: number; readonly headers?: Readonly<Record<string, string>> } = {},
 ): Response {
-  return new Response(JSON.stringify(body), {
-    status: init.status ?? 200,
-    headers: new Headers({ "content-type": "application/json", ...init.headers }),
-  });
+  return Response.json(body, { status: init.status ?? 200, headers: init.headers ?? {} });
 }
 
-describe("McpHttpClient", () => {
+const rpcRequestSchema = z.object({ method: z.string() });
+
+/** One request the fake MCP endpoint received. */
+type RecordedRequest = {
+  readonly httpMethod: string;
+  readonly sessionId: string | null;
+  readonly rpcMethod: string | undefined;
+};
+
+/** The JSON-RPC method of a request body, when it is one. */
+function rpcMethodOf(body: unknown): string | undefined {
+  if (typeof body !== "string") {
+    return undefined;
+  }
+  const parsed = rpcRequestSchema.safeParse(JSON.parse(body));
+  return parsed.success ? parsed.data.method : undefined;
+}
+
+/**
+ * A fake MCP endpoint. It answers DELETE with 200 and a POST from the reply for its JSON-RPC
+ * method, or `otherwise`, and records every request.
+ */
+function fakeMcpEndpoint(
+  replies: Readonly<Record<string, () => Response>>,
+  otherwise: () => Response,
+) {
+  const requests: RecordedRequest[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const httpMethod = init?.method ?? "GET";
+    const rpcMethod = rpcMethodOf(init?.body);
+    requests.push({
+      httpMethod,
+      sessionId: new Headers(init?.headers).get("mcp-session-id"),
+      rpcMethod,
+    });
+    if (httpMethod === "DELETE") {
+      return new Response(null, { status: 200 });
+    }
+    return (replies[rpcMethod ?? ""] ?? otherwise)();
+  };
+  return { fetchImpl, requests };
+}
+
+const tooManyRequests: typeof fetch = async () => new Response("nope", { status: 429 });
+
+const connectionRefused: typeof fetch = async () => {
+  throw new Error("connection refused");
+};
+
+const toolCallReply = (text: string) => () =>
+  jsonResponse({ jsonrpc: "2.0", id: 2, result: { content: [{ type: "text", text }] } });
+
+describe("mcpHttpClient", () => {
   test("runs initialize, initialized, tools/call with the session header and closes the session", async () => {
-    const methods: string[] = [];
-    const sessionHeaders: (string | null)[] = [];
-    const fetchImpl = ((_input: unknown, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      methods.push(method);
-      sessionHeaders.push(new Headers(init?.headers).get("mcp-session-id"));
-      if (method === "DELETE") {
-        return Promise.resolve(new Response(null, { status: 200 }));
-      }
-      const payload = JSON.parse(String(init?.body)) as { method: string };
-      if (payload.method === "initialize") {
-        return Promise.resolve(
+    const { fetchImpl, requests } = fakeMcpEndpoint(
+      {
+        initialize: () =>
           jsonResponse(
             {
               jsonrpc: "2.0",
@@ -182,71 +231,54 @@ describe("McpHttpClient", () => {
             },
             { headers: { "mcp-session-id": "session-123" } },
           ),
-        );
-      }
-      if (payload.method === "notifications/initialized") {
-        return Promise.resolve(new Response(null, { status: 202 }));
-      }
-      return Promise.resolve(
-        jsonResponse({
-          jsonrpc: "2.0",
-          id: 2,
-          result: { content: [{ type: "text", text: "found it" }] },
-        }),
-      );
-    }) as typeof fetch;
+        "notifications/initialized": () => new Response(null, { status: 202 }),
+      },
+      toolCallReply("found it"),
+    );
 
     const client = new McpHttpClient(ENDPOINT, {
       maxResponseBytes: 1024 * 1024,
-      timeoutMs: 5_000,
+      timeoutMs: 5000,
       fetchImpl,
     });
     const result = await client.callTool("web_search", { objective: "test" });
 
-    expect(result._tag).toBe("ok");
-    if (result._tag !== "ok") return;
-    expect(result.value.text).toEqual(["found it"]);
-    expect(methods).toEqual(["POST", "POST", "POST", "DELETE"]);
+    assert(result._tag === "ok");
+    expect(result.value.text).toStrictEqual(["found it"]);
+    expect(requests.map((request) => request.httpMethod)).toStrictEqual([
+      "POST",
+      "POST",
+      "POST",
+      "DELETE",
+    ]);
     // The initialize POST has no session header; subsequent calls carry it.
-    expect(sessionHeaders[0]).toBeNull();
-    expect(sessionHeaders[1]).toBe("session-123");
-    expect(sessionHeaders[2]).toBe("session-123");
+    expect(requests[0]?.sessionId).toBeNull();
+    expect(requests[1]?.sessionId).toBe("session-123");
+    expect(requests[2]?.sessionId).toBe("session-123");
   });
 
   test("maps non-2xx initialize responses to ProviderStatusRejected", async () => {
-    const fetchImpl = (() =>
-      Promise.resolve(new Response("nope", { status: 429 }))) as typeof fetch;
     const client = new McpHttpClient(ENDPOINT, {
       maxResponseBytes: 1024,
-      timeoutMs: 5_000,
-      fetchImpl,
+      timeoutMs: 5000,
+      fetchImpl: tooManyRequests,
     });
     const result = await client.callTool("web_search", {});
-    expect(result._tag).toBe("err");
-    if (result._tag !== "err") return;
-    expect(result.error).toEqual({ _tag: "ProviderStatusRejected", status: 429 });
+    assert(result._tag === "err");
+    expect(result.error).toStrictEqual({ _tag: "ProviderStatusRejected", status: 429 });
   });
 
   test("continues when the initialized notification is rejected", async () => {
-    const fetchImpl = ((_input: unknown, init?: RequestInit) => {
-      const payload = JSON.parse(String(init?.body)) as { method: string };
-      if (payload.method === "initialize") {
-        return Promise.resolve(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }));
-      }
-      if (payload.method === "notifications/initialized") {
-        return Promise.resolve(new Response("bad", { status: 400 }));
-      }
-      return Promise.resolve(
-        jsonResponse({
-          jsonrpc: "2.0",
-          id: 2,
-          result: { content: [{ type: "text", text: "ok" }] },
-        }),
-      );
-    }) as typeof fetch;
+    const { fetchImpl } = fakeMcpEndpoint(
+      {
+        initialize: () => jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }),
+        "notifications/initialized": () => new Response("bad", { status: 400 }),
+      },
+      toolCallReply("ok"),
+    );
     const client = new McpHttpClient(ENDPOINT, {
       maxResponseBytes: 1024,
-      timeoutMs: 5_000,
+      timeoutMs: 5000,
       fetchImpl,
     });
     const result = await client.callTool("web_search", {});
@@ -254,13 +286,12 @@ describe("McpHttpClient", () => {
   });
 
   test("maps fetch failures to ProviderRequestFailed", async () => {
-    const fetchImpl = (() => Promise.reject(new Error("connection refused"))) as typeof fetch;
     const client = new McpHttpClient(ENDPOINT, {
       maxResponseBytes: 1024,
-      timeoutMs: 5_000,
-      fetchImpl,
+      timeoutMs: 5000,
+      fetchImpl: connectionRefused,
     });
     const result = await client.callTool("web_search", {});
-    expect(result).toEqual({ _tag: "err", error: { _tag: "ProviderRequestFailed" } });
+    expect(result).toStrictEqual({ _tag: "err", error: { _tag: "ProviderRequestFailed" } });
   });
 });

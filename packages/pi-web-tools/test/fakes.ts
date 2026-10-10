@@ -13,45 +13,77 @@ import type {
 import type { ProviderError } from "../provider-types";
 import type { Result } from "../result";
 import { ok } from "../result";
+import { parseSettings } from "../settings";
+import type { WebToolsSettings } from "../settings";
+import { parsePublicHttpUrl, parseSearchQuery } from "../types";
+import type { PublicHttpUrl, SearchQuery } from "../types";
 
-/** Recorded MCP call for assertions. */
-interface RecordedMcpCall {
-  readonly name: string;
-  readonly args: Record<string, unknown>;
+/** The WHATWG name of UTF-8, which parsed charsets and decoders report. */
+export const UTF8 = "utf-8";
+
+/** Parse a test URL through the real parser; an invalid one is a broken test. */
+export function publicUrl(input: string): PublicHttpUrl {
+  const parsed = parsePublicHttpUrl(input);
+  if (parsed._tag === "err") {
+    throw new Error(`Invalid test URL: ${input}`);
+  }
+  return parsed.value;
 }
 
+/** Parse test settings from an environment through the real parser; invalid ones are a broken test. */
+export function settingsFrom(
+  environment: Readonly<Record<string, string | undefined>> = {},
+): WebToolsSettings {
+  const parsed = parseSettings(environment);
+  if (parsed._tag === "err") {
+    throw new Error(`Invalid test settings: ${parsed.error.message}`);
+  }
+  return parsed.value;
+}
+
+/** Parse a test query through the real parser; an invalid one is a broken test. */
+export function searchQuery(input: string): SearchQuery {
+  const parsed = parseSearchQuery(input);
+  if (parsed._tag === "err") {
+    throw new Error(`Invalid test query: ${input}`);
+  }
+  return parsed.value;
+}
+
+/** Recorded MCP call for assertions. */
+type RecordedMcpCall = {
+  readonly name: string;
+  readonly args: Readonly<Record<string, unknown>>;
+};
+
 /** Fake MCP client returning programmed results in order. */
-export function fakeMcpClient(results: Array<Result<McpToolCallResult, ProviderError>>) {
+export function fakeMcpClient(results: readonly Result<McpToolCallResult, ProviderError>[]) {
   const calls: RecordedMcpCall[] = [];
   let index = 0;
   const client: McpClient = {
-    callTool: (name, args) => {
+    callTool: async (name, args) => {
       calls.push({ name, args });
       const result = results[Math.min(index, results.length - 1)];
       index += 1;
-      return Promise.resolve(result ?? ok({ text: [] }));
+      return result ?? ok({ text: [] });
     },
   };
   return { client, calls };
 }
 
 /** Fake provider HTTP client returning programmed results in order. */
-export function fakeProviderHttp(results: Array<Result<ProviderHttpResponse, ProviderError>>) {
+export function fakeProviderHttp(results: readonly Result<ProviderHttpResponse, ProviderError>[]) {
   const requests: ProviderHttpRequest[] = [];
   let index = 0;
+  const respond = (request: ProviderHttpRequest) => {
+    requests.push(request);
+    const result = results[Math.min(index, results.length - 1)];
+    index += 1;
+    return result ?? ok({ bodyText: "{}" });
+  };
   const client: ProviderHttpClient = {
-    postJson: (request) => {
-      requests.push(request);
-      const result = results[Math.min(index, results.length - 1)];
-      index += 1;
-      return Promise.resolve(result ?? ok({ bodyText: "{}" }));
-    },
-    getJson: (request) => {
-      requests.push(request);
-      const result = results[Math.min(index, results.length - 1)];
-      index += 1;
-      return Promise.resolve(result ?? ok({ bodyText: "{}" }));
-    },
+    postJson: async (request) => respond(request),
+    getJson: async (request) => respond(request),
   };
   return { client, requests };
 }
@@ -60,16 +92,18 @@ export function fakeProviderHttp(results: Array<Result<ProviderHttpResponse, Pro
 export function fakePublicWeb(result: Result<PublicWebResponse, PublicWebError>) {
   const requests: PublicWebRequest[] = [];
   const client: PublicWebClient = {
-    get: (request) => {
+    get: async (request) => {
       requests.push(request);
-      return Promise.resolve(result);
+      return result;
     },
   };
   return { client, requests };
 }
 
 /** Extract the joined text of a pi tool result for assertions. */
-export function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
+export function textOf(result: {
+  readonly content: readonly { readonly type: string; readonly text?: string }[];
+}): string {
   return result.content
     .filter(
       (item): item is { type: "text"; text: string } =>
@@ -80,12 +114,10 @@ export function textOf(result: { content: Array<{ type: string; text?: string }>
 }
 
 /** Render a pi-tui Text component to a string for assertions. */
-export function renderText(component: unknown): string {
-  if (typeof component === "object" && component !== null && "render" in component) {
-    const renderable = component as { render: (width: number) => string[] };
-    return renderable.render(200).join("\n");
-  }
-  return String(component);
+export function renderText(component: {
+  readonly render: (width: number) => readonly string[];
+}): string {
+  return component.render(200).join("\n");
 }
 
 /** Build a text public-web response. */
@@ -94,8 +126,8 @@ export function textWebResponse(
   contentType = "text/html; charset=utf-8",
 ): PublicWebResponse {
   return {
-    requestedUrl: "https://example.com/page" as PublicWebResponse["requestedUrl"],
-    finalUrl: "https://example.com/page" as PublicWebResponse["finalUrl"],
+    requestedUrl: publicUrl("https://example.com/page"),
+    finalUrl: publicUrl("https://example.com/page"),
     status: 200,
     headers: new Headers({ "content-type": contentType }),
     body: Buffer.from(text, "utf8"),

@@ -7,11 +7,11 @@
 declare const redactedBrand: unique symbol;
 
 /** A sensitive value wrapper with safe string, JSON, and inspect projections. */
-export interface Redacted<A> {
+export type Redacted<A> = {
   readonly [redactedBrand]?: A;
-  toString(): string;
-  toJSON(): string;
-}
+  readonly toString: () => string;
+  readonly toJSON: () => string;
+};
 
 const registry = new WeakMap<object, unknown>();
 
@@ -28,7 +28,8 @@ const proto = {
 };
 
 function makeRedacted<A>(value: A): Redacted<A> {
-  // SAFETY: the registry WeakMap holds the value; the wrapper never exposes it.
+  // The registry WeakMap holds the value; the wrapper never exposes it.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- SAFETY: Object.create returns any; proto supplies toString and toJSON, and the brand property is type-only
   const redacted: Redacted<A> = Object.create(proto) as Redacted<A>;
   registry.set(redacted, value);
   return redacted;
@@ -58,7 +59,9 @@ export const Redacted = {
 export function redactSecrets(input: string, secrets: readonly (string | undefined)[]): string {
   let output = input;
   for (const secret of secrets) {
-    if (!secret) continue;
+    if (secret === undefined || secret === "") {
+      continue;
+    }
     output = output.split(secret).join("[redacted]");
   }
   return output;

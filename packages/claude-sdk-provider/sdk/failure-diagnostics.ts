@@ -3,8 +3,8 @@ import {
   SdkProtocolError,
   SdkQueryError,
   SdkResultError,
-  type SdkRunError,
 } from "./errors";
+import type { SdkRunError } from "./errors";
 
 /** Stable operational categories for Claude Agent SDK failures. */
 export type SdkFailureKind =
@@ -32,18 +32,18 @@ export type SdkFailureDiagnostic = {
 };
 
 // Failure text matches in this order, so the first matching pattern names the kind.
-const TEXT_KINDS: ReadonlyArray<readonly [kind: SdkFailureKind, pattern: RegExp]> = [
+const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] = [
   [
     "usage-limit",
-    /(?:credits_required|extra usage|individual spend limit|out of (?:extra )?usage|usage limit)/i,
+    /(?:credits_required|extra usage|individual spend limit|out of (?:extra )?usage|usage limit)/iu,
   ],
-  ["host-sleep", /(?:computer|host|machine).{0,40}(?:went to sleep|slept|sleep mid-response)/i],
-  ["timeout", /(?:deadline exceeded|request timed out|timed out|timeout)/i],
+  ["host-sleep", /(?:computer|host|machine).{0,40}(?:went to sleep|slept|sleep mid-response)/iu],
+  ["timeout", /(?:deadline exceeded|request timed out|timed out|timeout)/iu],
   [
     "network",
-    /(?:can't reach the API server|dns|econnrefused|econnreset|enotfound|network|fetch failed|socket hang up)/i,
+    /(?:can't reach the API server|dns|econnrefused|econnreset|enotfound|network|fetch failed|socket hang up)/iu,
   ],
-  ["cancelled", /(?:abort|cancelled|canceled|interrupted)/i],
+  ["cancelled", /(?:abort|cancelled|canceled|interrupted)/iu],
 ];
 
 function safeFailureText(error: SdkRunError): string {
@@ -54,8 +54,12 @@ function safeFailureText(error: SdkRunError): string {
 }
 
 function failureKind(error: SdkRunError): SdkFailureKind {
-  if (error instanceof SdkProtocolError) return "protocol";
-  if (error instanceof InvalidDeferredCallLimitError) return "tool-contract";
+  if (error instanceof SdkProtocolError) {
+    return "protocol";
+  }
+  if (error instanceof InvalidDeferredCallLimitError) {
+    return "tool-contract";
+  }
   const text = safeFailureText(error);
   return TEXT_KINDS.find(([, pattern]) => pattern.test(text))?.[0] ?? "provider";
 }

@@ -1,27 +1,22 @@
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { z } from "zod";
 import type { AgentRequest } from "../agent-request";
 import type { BridgeEvent } from "../bridge";
 import { models, undatedModelId } from "../models";
-import {
-  createClaudeAgentSdkRunner,
-  type ModelObservation,
-  type RunnerOptions,
-  type RunSdkQuery,
-} from "../sdk/runner";
+import { createClaudeAgentSdkRunner } from "../sdk/runner";
+import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 import {
-  type DeferredResult,
   formatReleaseContract,
   LIVE_CONTRACTS,
-  type LiveContract,
   RELEASE_CONTRACT_URL,
   readInstalledSdk,
   releaseContractSchema,
 } from "./release-contract";
+import type { DeferredResult, LiveContract } from "./release-contract";
 
 const model: Model<Api> = {
   id: "claude-5.1-fable",
@@ -36,15 +31,19 @@ const model: Model<Api> = {
   maxTokens: 128_000,
 };
 
-function collect(
-  request: AgentRequest,
+async function collect(
+  agentRequest: AgentRequest,
   probeModel: Model<Api> = model,
   options: RunnerOptions = {},
-): Promise<ReadonlyArray<BridgeEvent>> {
-  return drain(createClaudeAgentSdkRunner(options)(request, probeModel));
+): Promise<readonly BridgeEvent[]> {
+  return drain(createClaudeAgentSdkRunner(options)(agentRequest, probeModel));
 }
 
-function request(prompt: string, toolNames: ReadonlyArray<string> = []): AgentRequest {
+function textOf(events: readonly BridgeEvent[]): string {
+  return events.flatMap((event) => (event.type === "text_delta" ? [event.text] : [])).join("");
+}
+
+function request(prompt: string, toolNames: readonly string[] = []): AgentRequest {
   return requestFixture({
     systemPrompt: "You are a live protocol contract probe. Follow the user request exactly.",
     promptBlocks: [textBlock(prompt)],
@@ -68,10 +67,12 @@ const deferredResultSchema = z.union([
 
 /** Run the real SDK query, reporting how its result message signalled a deferred tool call. */
 function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery {
-  return async function* (params) {
+  return async function* observedQuery(params) {
     for await (const message of query(params)) {
       const deferred = deferredResultSchema.safeParse(message);
-      if (deferred.success) observe(deferred.data);
+      if (deferred.success) {
+        observe(deferred.data);
+      }
       yield message;
     }
   };
@@ -84,12 +85,9 @@ describe("installed Claude Agent SDK live contract", () => {
 
   test("streams a normal text response", async () => {
     const events = await collect(request('Reply with exactly "CLAUDE_SDK_TEXT_OK".'));
-    const text = events
-      .flatMap((event) => (event.type === "text_delta" ? [event.text] : []))
-      .join("");
 
-    expect(text.trim()).toBe("CLAUDE_SDK_TEXT_OK");
-    expect(events.at(-1)).toEqual({ type: "done", reason: "stop" });
+    expect(textOf(events).trim()).toBe("CLAUDE_SDK_TEXT_OK");
+    expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
     verified.add("text-response");
   });
 
@@ -135,22 +133,21 @@ describe("installed Claude Agent SDK live contract", () => {
   test("serves the advertised model id and limits for every registered selector", async () => {
     for (const entry of models) {
       const observations: ModelObservation[] = [];
-      const probeModel = modelFixture({
-        ...entry,
-        api: "claude-sdk",
-        provider: "claude-sdk",
-      });
 
       const events = await collect(
         request('Reply with exactly "CLAUDE_SDK_MODEL_OK".'),
-        probeModel,
-        { modelObserver: (observation) => observations.push(observation) },
+        modelFixture(entry),
+        {
+          modelObserver: (observation) => {
+            observations.push(observation);
+          },
+        },
       );
 
-      expect(events.at(-1)).toEqual({ type: "done", reason: "stop" });
+      expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
       expect(observations).toHaveLength(1);
-      const observation = observations[0];
-      if (!observation) throw new Error("test setup: no model observation recorded");
+      const [observation] = observations;
+      assert(observation !== undefined, "test setup: no model observation recorded");
       expect(undatedModelId(observation.canonicalModel)).toBe(entry.canonicalModel);
       expect(observation.contextWindow).toBe(entry.contextWindow);
     }
@@ -161,13 +158,13 @@ describe("installed Claude Agent SDK live contract", () => {
     expect(
       LIVE_CONTRACTS.filter((contract) => !verified.has(contract)),
       "contracts that did not pass in this run",
-    ).toEqual([]);
+    ).toStrictEqual([]);
     const installed = await readInstalledSdk();
     const attestation = releaseContractSchema.parse({
       schemaVersion: 1,
       agentSdkVersion: installed.version,
       bundledClaudeCodeVersion: installed.claudeCodeVersion,
-      verifiedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+      verifiedAt: new Date().toISOString().replace(/\.\d+Z$/u, "Z"),
       model: "fable",
       contracts: LIVE_CONTRACTS,
       observedDeferredResult,
