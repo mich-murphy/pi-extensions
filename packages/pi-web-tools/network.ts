@@ -1,6 +1,6 @@
-import { lookup } from "node:dns/promises";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import { Data, Effect } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
@@ -56,12 +56,15 @@ export type PublicWebResponse = {
 };
 
 /** A request could not be completed at the network level (DNS, connection, TLS, or body stream). */
-export class PublicWebRequestFailed extends Data.TaggedError("PublicWebRequestFailed")<{
-  /** The host the failing request was sent to; messages name only this, never the URL. */
-  readonly hostname: string;
-  /** The underlying fetch or stream error, kept for local diagnosis only. */
-  readonly cause?: unknown;
-}> {
+export class PublicWebRequestFailed extends Schema.TaggedError<PublicWebRequestFailed>()(
+  "PublicWebRequestFailed",
+  {
+    /** The host the failing request was sent to; messages name only this, never the URL. */
+    hostname: Schema.String,
+    /** The underlying fetch or stream error, kept for local diagnosis only. */
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
   /** Safe description of the network failure, for example "Could not resolve host example.com". */
   override get message(): string {
     return describeNetworkFailure(this.cause, this.hostname);
@@ -69,7 +72,10 @@ export class PublicWebRequestFailed extends Data.TaggedError("PublicWebRequestFa
 }
 
 /** The URL resolved to localhost or a *.localhost name. */
-export class PrivateHostBlocked extends Data.TaggedError("PrivateHostBlocked") {
+export class PrivateHostBlocked extends Schema.TaggedError<PrivateHostBlocked>()(
+  "PrivateHostBlocked",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Blocked private or local host";
@@ -77,7 +83,10 @@ export class PrivateHostBlocked extends Data.TaggedError("PrivateHostBlocked") {
 }
 
 /** The URL is, or resolves to, a non-public IP address. */
-export class PrivateIpBlocked extends Data.TaggedError("PrivateIpBlocked") {
+export class PrivateIpBlocked extends Schema.TaggedError<PrivateIpBlocked>()(
+  "PrivateIpBlocked",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Blocked private or local IP address";
@@ -85,7 +94,10 @@ export class PrivateIpBlocked extends Data.TaggedError("PrivateIpBlocked") {
 }
 
 /** The requested URL or a redirect target carries user:password credentials. */
-export class UrlCredentialsUnsupported extends Data.TaggedError("UrlCredentialsUnsupported") {
+export class UrlCredentialsUnsupported extends Schema.TaggedError<UrlCredentialsUnsupported>()(
+  "UrlCredentialsUnsupported",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "URL credentials are not supported";
@@ -93,7 +105,10 @@ export class UrlCredentialsUnsupported extends Data.TaggedError("UrlCredentialsU
 }
 
 /** A redirect response had no Location header. */
-export class RedirectLocationMissing extends Data.TaggedError("RedirectLocationMissing") {
+export class RedirectLocationMissing extends Schema.TaggedError<RedirectLocationMissing>()(
+  "RedirectLocationMissing",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Redirect response was missing a Location header";
@@ -101,7 +116,10 @@ export class RedirectLocationMissing extends Data.TaggedError("RedirectLocationM
 }
 
 /** A redirect Location header did not parse as a public URL. */
-export class RedirectLocationInvalid extends Data.TaggedError("RedirectLocationInvalid") {
+export class RedirectLocationInvalid extends Schema.TaggedError<RedirectLocationInvalid>()(
+  "RedirectLocationInvalid",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Redirect response had an invalid Location header";
@@ -109,10 +127,13 @@ export class RedirectLocationInvalid extends Data.TaggedError("RedirectLocationI
 }
 
 /** The redirect chain exceeded the configured hop limit. */
-export class RedirectLimitExceeded extends Data.TaggedError("RedirectLimitExceeded")<{
-  /** The configured hop limit. */
-  readonly maxRedirects: number;
-}> {
+export class RedirectLimitExceeded extends Schema.TaggedError<RedirectLimitExceeded>()(
+  "RedirectLimitExceeded",
+  {
+    /** The configured hop limit. */
+    maxRedirects: Schema.Number,
+  },
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Too many redirects while fetching URL";
@@ -120,10 +141,13 @@ export class RedirectLimitExceeded extends Data.TaggedError("RedirectLimitExceed
 }
 
 /** A redirect pointed at a non-http(s) protocol. */
-export class RedirectProtocolUnsupported extends Data.TaggedError("RedirectProtocolUnsupported")<{
-  /** The rejected protocol, for example "ftp:". */
-  readonly protocol: string;
-}> {
+export class RedirectProtocolUnsupported extends Schema.TaggedError<RedirectProtocolUnsupported>()(
+  "RedirectProtocolUnsupported",
+  {
+    /** The rejected protocol, for example "ftp:". */
+    protocol: Schema.String,
+  },
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "Redirected to unsupported protocol";
@@ -131,12 +155,15 @@ export class RedirectProtocolUnsupported extends Data.TaggedError("RedirectProto
 }
 
 /** The final response had a non-2xx status. */
-export class HttpStatusRejected extends Data.TaggedError("HttpStatusRejected")<{
-  /** The HTTP status code. */
-  readonly status: number;
-  /** The HTTP status text, possibly empty. */
-  readonly statusText: string;
-}> {
+export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()(
+  "HttpStatusRejected",
+  {
+    /** The HTTP status code. */
+    status: Schema.Number,
+    /** The HTTP status text, possibly empty. */
+    statusText: Schema.String,
+  },
+) {
   /** Safe user-facing description with the status. */
   override get message(): string {
     return `Request failed (${this.status}${this.statusText ? ` ${this.statusText}` : ""})`;
@@ -144,10 +171,10 @@ export class HttpStatusRejected extends Data.TaggedError("HttpStatusRejected")<{
 }
 
 /** The response declared or streamed more bytes than the cap allows. */
-export class ResponseTooLarge extends Data.TaggedError("ResponseTooLarge")<{
+export class ResponseTooLarge extends Schema.TaggedError<ResponseTooLarge>()("ResponseTooLarge", {
   /** The byte cap that was exceeded. */
-  readonly maxBytes: number;
-}> {
+  maxBytes: Schema.Number,
+}) {
   /** Safe user-facing description with the cap in MB. */
   override get message(): string {
     return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit)`;
@@ -166,17 +193,6 @@ export type PublicWebError =
   | RedirectProtocolUnsupported
   | HttpStatusRejected
   | ResponseTooLarge;
-
-/**
- * Outbound port for fetching public web resources. Interrupting the returned effect aborts the
- * request; deadlines belong to the caller.
- */
-export type PublicWebClient = {
-  readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
-};
-
-/** DNS resolver seam, injectable for tests. */
-export type DnsLookup = (hostname: string) => Promise<readonly { address: string }[]>;
 
 /** Network error codes, as Node and undici report them, grouped by what they mean for the user. */
 const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "timeout" | "tls"> =
@@ -320,13 +336,19 @@ function normalizeCharset(charset: string | undefined): string | undefined {
 }
 
 /** A response body streamed past its byte cap. */
-export class ResponseBodyTooLarge extends Data.TaggedError("ResponseBodyTooLarge") {}
+export class ResponseBodyTooLarge extends Schema.TaggedError<ResponseBodyTooLarge>()(
+  "ResponseBodyTooLarge",
+  {},
+) {}
 
 /** A response body stream failed mid-read. */
-export class ResponseBodyReadFailed extends Data.TaggedError("ResponseBodyReadFailed")<{
-  /** The stream error; classify it with describeNetworkFailure. */
-  readonly cause: unknown;
-}> {}
+export class ResponseBodyReadFailed extends Schema.TaggedError<ResponseBodyReadFailed>()(
+  "ResponseBodyReadFailed",
+  {
+    /** The stream error; classify it with describeNetworkFailure. */
+    cause: Schema.Defect(),
+  },
+) {}
 
 /**
  * Read a response body with a hard byte cap. The reader is cancelled and released however the read
@@ -417,151 +439,189 @@ type FetchedResponse = {
   readonly finalUrl: PublicHttpUrl;
 };
 
-/** Public web client with SSRF defenses, redirect re-validation, and a challenge-aware UA retry. */
-export class FetchPublicWebClient implements PublicWebClient {
-  constructor(
-    private readonly dependencies: {
-      readonly fetchImpl?: typeof fetch;
-      readonly lookup?: DnsLookup;
-    } = {},
-  ) {}
+/** Outbound port wrapping the platform fetch, so tests can record and script requests. */
+export class HttpFetch extends Context.Service<
+  HttpFetch,
+  {
+    /**
+     * Send one HTTP request. Rejections are unclassified; every caller wraps the call and
+     * translates them into its own typed error.
+     */
+    readonly fetch: (input: string | URL, init: RequestInit) => Promise<Response>;
+  }
+>()("pi-web-tools/network/HttpFetch") {
+  /** The live layer, delegating to globalThis.fetch at call time. */
+  static readonly layer = Layer.succeed(
+    HttpFetch,
+    HttpFetch.of({ fetch: async (input, init) => globalThis.fetch(input, init) }),
+  );
+}
 
-  /** Fetch a bounded public web response, following safe redirects. */
-  get(request: PublicWebRequest): Effect.Effect<PublicWebResponse, PublicWebError> {
-    const fetched = this.fetchPastChallenge(request);
-    return Effect.gen(function* () {
-      const { response, finalUrl } = yield* fetched;
-      const rejection = checkResponseHead(response, request.maxResponseBytes);
-      if (rejection !== undefined) {
-        yield* cancelBody(response);
-        return yield* Effect.fail(rejection);
-      }
+/** Outbound port resolving host names, used by the private-host checks. */
+export class DnsLookup extends Context.Service<
+  DnsLookup,
+  {
+    /**
+     * Resolve every address of a host. A rejection means the host did not resolve; the public web
+     * client then lets the fetch itself report the connectivity error.
+     */
+    readonly lookup: (hostname: string) => Promise<readonly { readonly address: string }[]>;
+  }
+>()("pi-web-tools/network/DnsLookup") {
+  /** The live layer over the system resolver, in resolver order. */
+  static readonly layer = Layer.succeed(
+    DnsLookup,
+    DnsLookup.of({
+      lookup: async (hostname) => {
+        const records = await dnsLookup(hostname, { all: true, order: "verbatim" });
+        return records.map((record) => ({ address: record.address }));
+      },
+    }),
+  );
+}
 
-      const { hostname } = new URL(finalUrl);
-      const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
-        Effect.mapError((error) =>
-          error._tag === "ResponseBodyTooLarge"
-            ? new ResponseTooLarge({ maxBytes: request.maxResponseBytes })
-            : new PublicWebRequestFailed({ hostname, cause: error.cause }),
-        ),
-      );
-      return {
-        requestedUrl: request.url,
-        finalUrl,
-        status: response.status,
-        headers: response.headers,
-        body,
+/**
+ * Outbound port for fetching public web resources, with SSRF defenses, redirect re-validation, and
+ * a challenge-aware user-agent retry. Interrupting a request aborts it; deadlines belong to the
+ * caller.
+ */
+export class PublicWebClient extends Context.Service<
+  PublicWebClient,
+  {
+    /** Fetch a bounded public web response, following safe redirects. */
+    readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
+  }
+>()("pi-web-tools/network/PublicWebClient") {
+  /** The live client over HttpFetch and DnsLookup. */
+  static readonly layer = Layer.effect(
+    PublicWebClient,
+    Effect.gen(function* () {
+      const http = yield* HttpFetch;
+      const dns = yield* DnsLookup;
+
+      const checkPublicUrl = (
+        url: URL,
+      ): Effect.Effect<void, PrivateHostBlocked | PrivateIpBlocked> => {
+        const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
+        if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+          return Effect.fail(new PrivateHostBlocked());
+        }
+        if (isPrivateOrLocalIp(hostname)) {
+          return Effect.fail(new PrivateIpBlocked());
+        }
+        return Effect.tryPromise({
+          try: async () => dns.lookup(hostname),
+          catch: () => "unresolved",
+        }).pipe(
+          // DNS resolution failed: let the fetch itself surface the connectivity error.
+          Effect.orElseSucceed(() => []),
+          Effect.flatMap((records) =>
+            records.some((record) => isPrivateOrLocalIp(record.address))
+              ? Effect.fail(new PrivateIpBlocked())
+              : Effect.void,
+          ),
+        );
       };
-    });
-  }
 
-  // A Cloudflare challenge gets one retry with the fallback user agent; the retry's outcome,
-  // challenge or not, is final.
-  private fetchPastChallenge(
-    request: PublicWebRequest,
-  ): Effect.Effect<FetchedResponse, PublicWebError> {
-    const first = this.fetchWithUserAgent(request, request.userAgent);
-    const retry = this.fetchWithUserAgent(request, request.fallbackUserAgent);
-    return Effect.gen(function* () {
-      const fetched = yield* first;
-      if (!isCloudflareChallenge(fetched.response)) {
-        return fetched;
-      }
-      yield* cancelBody(fetched.response);
-      return yield* retry;
-    });
-  }
+      // One request in a redirect chain. The checks run in this order on every hop, so a redirect
+      // target is held to the same rules as the requested URL.
+      const fetchHop = Effect.fnUntraced(function* (
+        url: URL,
+        request: PublicWebRequest,
+        userAgent: string,
+      ): Effect.fn.Return<Response, PublicWebError> {
+        if (url.username || url.password) {
+          return yield* new UrlCredentialsUnsupported();
+        }
+        if (request.blockPrivateHosts) {
+          yield* checkPublicUrl(url);
+        }
+        return yield* Effect.tryPromise({
+          try: async (signal) =>
+            http.fetch(url, {
+              method: "GET",
+              headers: {
+                "User-Agent": userAgent,
+                Accept: request.accept,
+                "Accept-Language": "en-US,en;q=0.9",
+              },
+              signal,
+              redirect: "manual",
+            }),
+          catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+        });
+      });
 
-  private fetchWithUserAgent(
-    request: PublicWebRequest,
-    userAgent: string,
-  ): Effect.Effect<FetchedResponse, PublicWebError> {
-    const fetchHop = (url: URL) => this.fetchHop(url, request, userAgent);
-    return Effect.gen(function* () {
-      let currentUrl = new URL(request.url);
-      for (let redirects = 0; ; redirects += 1) {
-        const response = yield* fetchHop(currentUrl);
-        if (!REDIRECT_STATUSES.has(response.status)) {
-          // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
-          // final URL is always public; the check keeps the brand honest.
-          const finalUrl = currentUrl.toString();
-          if (isPublicHttpUrl(finalUrl)) {
-            return { response, finalUrl };
+      const fetchWithUserAgent = Effect.fnUntraced(function* (
+        request: PublicWebRequest,
+        userAgent: string,
+      ): Effect.fn.Return<FetchedResponse, PublicWebError> {
+        let currentUrl = new URL(request.url);
+        for (let redirects = 0; ; redirects += 1) {
+          const response = yield* fetchHop(currentUrl, request, userAgent);
+          if (!REDIRECT_STATUSES.has(response.status)) {
+            // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
+            // final URL is always public; the check keeps the brand honest.
+            const finalUrl = currentUrl.toString();
+            if (isPublicHttpUrl(finalUrl)) {
+              return { response, finalUrl };
+            }
+            return yield* new RedirectLocationInvalid();
           }
-          return yield* new RedirectLocationInvalid();
+
+          yield* cancelBody(response);
+          currentUrl = yield* resolveRedirect(response, {
+            currentUrl,
+            redirects,
+            maxRedirects: request.maxRedirects,
+          });
+        }
+      });
+
+      // A Cloudflare challenge gets one retry with the fallback user agent; the retry's outcome,
+      // challenge or not, is final.
+      const fetchPastChallenge = Effect.fnUntraced(function* (
+        request: PublicWebRequest,
+      ): Effect.fn.Return<FetchedResponse, PublicWebError> {
+        const fetched = yield* fetchWithUserAgent(request, request.userAgent);
+        if (!isCloudflareChallenge(fetched.response)) {
+          return fetched;
+        }
+        yield* cancelBody(fetched.response);
+        return yield* fetchWithUserAgent(request, request.fallbackUserAgent);
+      });
+
+      const get = Effect.fn("PublicWebClient.get")(function* (
+        request: PublicWebRequest,
+      ): Effect.fn.Return<PublicWebResponse, PublicWebError> {
+        const { response, finalUrl } = yield* fetchPastChallenge(request);
+        const rejection = checkResponseHead(response, request.maxResponseBytes);
+        if (rejection !== undefined) {
+          yield* cancelBody(response);
+          return yield* Effect.fail(rejection);
         }
 
-        yield* cancelBody(response);
-        currentUrl = yield* resolveRedirect(response, {
-          currentUrl,
-          redirects,
-          maxRedirects: request.maxRedirects,
-        });
-      }
-    });
-  }
-
-  // One request in a redirect chain. The checks run in this order on every hop, so a redirect
-  // target is held to the same rules as the requested URL.
-  private fetchHop(
-    url: URL,
-    request: PublicWebRequest,
-    userAgent: string,
-  ): Effect.Effect<Response, PublicWebError> {
-    const fetchImpl = this.dependencies.fetchImpl ?? fetch;
-    const checkPublicUrl = this.checkPublicUrl(url);
-    return Effect.gen(function* () {
-      if (url.username || url.password) {
-        return yield* new UrlCredentialsUnsupported();
-      }
-      if (request.blockPrivateHosts) {
-        yield* checkPublicUrl;
-      }
-      return yield* Effect.tryPromise({
-        try: async (signal) =>
-          fetchImpl(url, {
-            method: "GET",
-            headers: {
-              "User-Agent": userAgent,
-              Accept: request.accept,
-              "Accept-Language": "en-US,en;q=0.9",
-            },
-            signal,
-            redirect: "manual",
+        const { hostname } = new URL(finalUrl);
+        const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
+          Effect.catchTags({
+            ResponseBodyTooLarge: () =>
+              Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes })),
+            ResponseBodyReadFailed: (error) =>
+              Effect.fail(new PublicWebRequestFailed({ hostname, cause: error.cause })),
           }),
-        catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+        );
+        return {
+          requestedUrl: request.url,
+          finalUrl,
+          status: response.status,
+          headers: response.headers,
+          body,
+        };
       });
-    });
-  }
 
-  private checkPublicUrl(url: URL): Effect.Effect<void, PrivateHostBlocked | PrivateIpBlocked> {
-    const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return Effect.fail(new PrivateHostBlocked());
-    }
-    if (isPrivateOrLocalIp(hostname)) {
-      return Effect.fail(new PrivateIpBlocked());
-    }
-
-    const lookupImpl =
-      this.dependencies.lookup ??
-      (async (name: string) => {
-        const records = await lookup(name, { all: true, order: "verbatim" });
-        return records.map((record) => ({ address: record.address }));
-      });
-    return Effect.tryPromise({
-      try: async () => lookupImpl(hostname),
-      catch: () => "unresolved",
-    }).pipe(
-      // DNS resolution failed: let the fetch itself surface the connectivity error.
-      Effect.orElseSucceed(() => []),
-      Effect.flatMap((records) =>
-        records.some((record) => isPrivateOrLocalIp(record.address))
-          ? Effect.fail(new PrivateIpBlocked())
-          : Effect.void,
-      ),
-    );
-  }
+      return PublicWebClient.of({ get });
+    }),
+  );
 }
 
 // The redirect checks after the body is cancelled: Location present, limit, parseable, http(s).

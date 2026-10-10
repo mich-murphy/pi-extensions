@@ -13,7 +13,7 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import skillToggle, { registerSkillToggle } from "../index";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
@@ -175,23 +175,43 @@ function projectWithSkill(): { readonly directory: string; readonly skill: Skill
 
 describe("extension lifecycle", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
-  test("the package entry point registers its command and event handlers", () => {
-    const registrations: string[] = [];
+  test("the package entry point applies overrides persisted in the agent directory", async () => {
+    const agentDirectory = mkdtempSync(join(tmpdir(), "pi-skill-toggle-agent-"));
+    temporaryDirectories.push(agentDirectory);
+    vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+    const path = join(agentDirectory, "skills", "research", "SKILL.md");
+    const skill: Skill = {
+      ...research,
+      filePath: path,
+      baseDir: dirname(path),
+      sourceInfo: { ...research.sourceInfo, path },
+    };
+    writeFileSync(
+      join(agentDirectory, "pi-skill-toggle.json"),
+      JSON.stringify({ version: 6, overrides: { [path]: "disabled" } }),
+    );
+    const handlers = new Map<string, TestHandler>();
     const piMock = {
-      registerCommand: (name: string) => registrations.push(`command:${name}`),
-      on: (name: string) => registrations.push(`event:${name}`),
+      registerCommand: () => undefined,
+      on: (name: string, handler: TestHandler) => handlers.set(name, handler),
     };
     skillToggle(piMock as unknown as ExtensionAPI);
-    expect(registrations).toStrictEqual([
-      "command:skill-toggle",
-      "event:resources_discover",
-      "event:before_agent_start",
-    ]);
+
+    const result = await handlers.get("before_agent_start")?.(
+      {
+        systemPrompt: `base${formatSkillsForPrompt([skill])}`,
+        systemPromptOptions: { cwd, skills: [skill] },
+      },
+      { cwd, isProjectTrusted: () => true, ui: { notify: () => undefined } },
+    );
+
+    expect(result).toStrictEqual({ systemPrompt: "base" });
   });
 
   test("rejects command arguments and non-TUI sessions", async () => {

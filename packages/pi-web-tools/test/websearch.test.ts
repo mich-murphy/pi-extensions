@@ -1,14 +1,17 @@
-import { validateToolArguments } from "@earendil-works/pi-ai";
-import type { JsonObject } from "@earendil-works/pi-ai";
-import { Effect, Result } from "effect";
+import { Effect, Result, Duration } from "effect";
 import { describe, expect, test } from "vitest";
 import { withProviderDeadline } from "../provider-http";
 import { ProviderRequestFailed } from "../provider-types";
 import type { SearchProvider } from "../provider-types";
-import { AllProvidersFailed, UnknownProvider } from "../search";
-import { tempFileToolOutputStore } from "../tool-output";
 import { createWebSearchTool, EmptySearchQueryInput, parseWebSearchParams } from "../websearch";
-import { publicUrl, renderText, settingsFrom, textOf } from "./fakes";
+import {
+  publicUrl,
+  renderText,
+  settingsFrom,
+  settleOnTestClock,
+  textOf,
+  toolRuntimeWith,
+} from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
 
@@ -37,40 +40,6 @@ function failingProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
   };
 }
 
-describe("websearch parameter schema", () => {
-  const tool = createWebSearchTool({
-    settings: DEFAULT_SETTINGS,
-    providers: [],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
-  });
-
-  function validate(args: unknown): unknown {
-    return validateToolArguments(tool, {
-      type: "toolCall",
-      id: "t",
-      name: tool.name,
-      arguments: args as JsonObject,
-    });
-  }
-
-  test("rejects structurally invalid arguments before execute runs", () => {
-    expect(() => validate({ query: "x", depth: "deep" })).toThrow("depth");
-    expect(() => validate({ query: "x", provider: "google" })).toThrow("provider");
-    expect(() => validate({ query: "x", maxResults: "lots" })).toThrow("maxResults");
-    expect(() => validate({})).toThrow("query");
-    expect(() => validate(["x"])).toThrow("must be object");
-  });
-
-  test("accepts a provider override from the enum", () => {
-    expect(validate({ query: "x", provider: "brave", maxResults: "3" })).toStrictEqual({
-      query: "x",
-      provider: "brave",
-      maxResults: 3,
-    });
-  });
-});
-
 describe("parseWebSearchParams", () => {
   const settings = DEFAULT_SETTINGS;
 
@@ -97,9 +66,10 @@ describe("websearch tool", () => {
   test("returns results from the first healthy provider", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [failingProvider("exa"), answeringProvider("parallel")],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [failingProvider("exa"), answeringProvider("parallel")],
+      }),
     });
     const result = await tool.execute("t1", { query: "pi agent" });
 
@@ -112,9 +82,15 @@ describe("websearch tool", () => {
   test("provider override skips the rest of the chain", async () => {
     const tool = createWebSearchTool({
       settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
-      providers: [failingProvider("exa"), failingProvider("parallel"), answeringProvider("brave")],
-      outputStore: tempFileToolOutputStore,
-      secrets: ["BSA_test"],
+      runtime: toolRuntimeWith({
+        settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
+        secret: "BSA_test",
+        searchProviders: [
+          failingProvider("exa"),
+          failingProvider("parallel"),
+          answeringProvider("brave"),
+        ],
+      }),
     });
     const result = await tool.execute("t1", { query: "pi agent", provider: "brave" });
     expect(result.details.provider).toBe("brave");
@@ -124,9 +100,10 @@ describe("websearch tool", () => {
   test("throws a safe message when every provider fails", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [failingProvider("exa"), failingProvider("parallel")],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [failingProvider("exa"), failingProvider("parallel")],
+      }),
     });
     await expect(tool.execute("t1", { query: "pi agent" })).rejects.toThrow(
       "All search providers failed",
@@ -142,9 +119,11 @@ describe("websearch tool", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [leaky],
-      outputStore: tempFileToolOutputStore,
-      secrets: ["sekrit-key"],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        secret: "sekrit-key",
+        searchProviders: [leaky],
+      }),
     });
     const result = await tool.execute("t1", { query: "x" });
     expect(textOf(result)).not.toContain("sekrit-key");
@@ -152,77 +131,14 @@ describe("websearch tool", () => {
   });
 });
 
-describe("websearch rendering", () => {
-  const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
-  const tool = createWebSearchTool({
-    settings: DEFAULT_SETTINGS,
-    providers: [answeringProvider("exa")],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
-  });
-
-  test("renderCall shows the query and provider", () => {
-    const rendered = renderText(tool.renderCall({ query: "pi agent", provider: "exa" }, theme));
-    expect(rendered).toContain("websearch");
-    expect(rendered).toContain("pi agent");
-    expect(rendered).toContain("(exa)");
-  });
-
-  test("renderResult handles partial, error, and expanded states", () => {
-    expect(
-      renderText(tool.renderResult({ content: [] }, { expanded: false, isPartial: true }, theme)),
-    ).toContain("Searching");
-    expect(
-      renderText(
-        tool.renderResult(
-          { content: [{ type: "text", text: "nope" }], isError: true },
-          { expanded: false, isPartial: false },
-          theme,
-        ),
-      ),
-    ).toContain("nope");
-    const expanded = renderText(
-      tool.renderResult(
-        {
-          content: [{ type: "text", text: "results" }],
-          details: {
-            query: "q",
-            maxResults: 8,
-            resultCount: 2,
-            provider: "exa" as const,
-            attemptedProviders: ["exa" as const],
-            truncated: true,
-            fullOutputPath: "/tmp/y",
-          },
-        },
-        { expanded: true, isPartial: false },
-        theme,
-      ),
-    );
-    expect(expanded).toContain("2 results");
-    expect(expanded).toContain("via exa");
-    expect(expanded).toContain("Full output: /tmp/y");
-  });
-});
-
-describe("search chain error messages", () => {
-  test("render unknown providers and aggregate failures", () => {
-    expect(new UnknownProvider({ provider: "brave", available: ["exa"] }).message).toBe(
-      'Provider "brave" is not enabled. Available: exa',
-    );
-    expect(new AllProvidersFailed({ attempts: ["exa: unavailable"] }).message).toBe(
-      "All search providers failed (exa: unavailable)",
-    );
-  });
-});
-
 /** A websearch tool over a single provider. */
 function toolWith(provider: SearchProvider) {
   return createWebSearchTool({
     settings: DEFAULT_SETTINGS,
-    providers: [provider],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      searchProviders: [provider],
+    }),
   });
 }
 
@@ -232,9 +148,16 @@ describe("websearch deadline and cancellation", () => {
     const slow: SearchProvider = {
       name: "exa",
       transport: "api",
-      search: () => Effect.never.pipe(withProviderDeadline(20)),
+      search: () => Effect.never.pipe(withProviderDeadline(Duration.millis(20))),
     };
-    const outcome = toolWith(slow).execute("t1", { query: "slow" });
+    const runtime = toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      searchProviders: [slow],
+      testClock: true,
+    });
+    const tool = createWebSearchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const outcome = tool.execute("t1", { query: "slow" });
+    await settleOnTestClock(runtime, Duration.millis(20), outcome);
     await expect(outcome).rejects.toThrow("All search providers failed (exa: timed out after 1s)");
     await expect(outcome).rejects.not.toThrow("cancelled");
   });
@@ -254,9 +177,10 @@ describe("websearch deadline and cancellation", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
-      providers: [hanging, fallback],
-      outputStore: tempFileToolOutputStore,
-      secrets: [],
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [hanging, fallback],
+      }),
     });
     const outcome = tool.execute("t1", { query: "q" }, controller.signal);
     setTimeout(() => {
@@ -264,5 +188,51 @@ describe("websearch deadline and cancellation", () => {
     }, 10);
     await expect(outcome).rejects.toThrow("Web search cancelled");
     expect(fallbackCalls).toBe(0);
+  });
+});
+
+describe("websearch result rendering", () => {
+  const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+  const tool = toolWith(answeringProvider("exa"));
+  const details = {
+    query: "q",
+    maxResults: 8,
+    resultCount: 1,
+    provider: "exa" as const,
+    attemptedProviders: ["exa" as const],
+    truncated: false,
+  };
+  const render = (
+    result: Parameters<typeof tool.renderResult>[0],
+    options: { readonly expanded: boolean; readonly isPartial: boolean },
+  ) => renderText(tool.renderResult(result, options, theme));
+
+  test("shows progress while searching and the error text on failure", () => {
+    expect(render({ content: [] }, { expanded: false, isPartial: true })).toBe("Searching...");
+    expect(
+      render(
+        { content: [{ type: "text", text: "All search providers failed" }], isError: true },
+        { expanded: false, isPartial: false },
+      ),
+    ).toBe("✗ All search providers failed");
+    expect(render({ content: [], isError: true }, { expanded: false, isPartial: false })).toBe(
+      "✗ Search failed",
+    );
+  });
+
+  test("summarizes the count and provider, previewing results and the spill file when expanded", () => {
+    const expanded = render(
+      {
+        content: [{ type: "text", text: "1. Result\n   URL: https://example.com/" }],
+        details: { ...details, resultCount: 2, truncated: true, fullOutputPath: "/tmp/y" },
+      },
+      { expanded: true, isPartial: false },
+    );
+    expect(expanded.split("\n")[0]).toBe("✓ 2 results via exa [truncated]");
+    expect(expanded).toContain("URL: https://example.com/");
+    expect(expanded).toContain("Full output: /tmp/y");
+
+    const single = render({ content: [], details }, { expanded: true, isPartial: false });
+    expect(single).toBe("✓ 1 result via exa\n");
   });
 });

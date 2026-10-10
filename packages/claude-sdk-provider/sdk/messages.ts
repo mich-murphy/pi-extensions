@@ -1,49 +1,51 @@
-import { Result } from "effect";
-import { z } from "zod";
+import { Option, Result, Schema, SchemaIssue } from "effect";
 import type { TokenUsage } from "../bridge";
 import { undatedModelId } from "../models";
 import { SdkProtocolError, SdkResultError } from "./errors";
+import { lenientOptional, withFallback } from "./lenient-schema";
 
 // The API reports null or omits counts it has no value for, so both mean "unchanged".
-const tokenCountSchema = z.number().nonnegative().nullish();
-const usageSchema = z.object({
+const tokenCountSchema = Schema.optional(
+  Schema.NullOr(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+);
+const usageSchema = Schema.Struct({
   input_tokens: tokenCountSchema,
   output_tokens: tokenCountSchema,
   cache_read_input_tokens: tokenCountSchema,
   cache_creation_input_tokens: tokenCountSchema,
 });
 // A missing or malformed model leaves the call unobserved, so the key is omitted.
-const modelCallSchema = z
-  .object({
-    model: z.string().min(1).optional().catch(undefined),
-    usage: usageSchema,
-  })
-  .transform(({ model, usage }) => (model === undefined ? { usage } : { model, usage }));
+const modelCallSchema = Schema.Struct({
+  model: lenientOptional(Schema.NonEmptyString),
+  usage: usageSchema,
+});
 
 // Model usage only feeds /claude-sdk-status, so a malformed entry must never fail a turn.
-const modelUsageEntrySchema = z
-  .object({
-    canonicalModel: z.string().optional().catch(undefined),
-    contextWindow: z.number().int().positive().optional().catch(undefined),
-  })
-  .readonly()
-  .catch({});
-const modelUsageSchema = z.record(z.string(), modelUsageEntrySchema).readonly().catch({});
+const modelUsageEntrySchema = withFallback(
+  Schema.Struct({
+    canonicalModel: lenientOptional(Schema.String),
+    contextWindow: lenientOptional(Schema.Int.check(Schema.isGreaterThan(0))),
+  }),
+  {},
+);
+const modelUsageSchema = withFallback(Schema.Record(Schema.String, modelUsageEntrySchema), {});
 
-const resultSchema = z.object({
-  is_error: z.boolean(),
-  stop_reason: z.string().nullish(),
-  terminal_reason: z.string().optional(),
-  errors: z.array(z.unknown()).readonly().catch([]),
-  result: z.string().catch(""),
-  modelUsage: modelUsageSchema,
+// Lenient fields are optional because a fallback only replaces a present value;
+// turnResult and the result parser supply the defaults for missing keys.
+const resultSchema = Schema.Struct({
+  is_error: Schema.Boolean,
+  stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
+  terminal_reason: Schema.optional(Schema.String),
+  errors: Schema.optional(withFallback(Schema.Array(Schema.Unknown), [])),
+  result: Schema.optional(withFallback(Schema.String, "")),
+  modelUsage: Schema.optional(modelUsageSchema),
 });
 
 /** Token counts from one API usage object. Absent counts keep their previous value. */
-export type ReportedUsage = z.output<typeof usageSchema>;
+export type ReportedUsage = typeof usageSchema.Type;
 
 /** Per-model usage reported by a terminal SDK result, keyed by raw request model. */
-export type ModelUsage = z.output<typeof modelUsageSchema>;
+export type ModelUsage = typeof modelUsageSchema.Type;
 
 /** Outcome of the terminal SDK result. */
 export type TurnResult =
@@ -86,7 +88,7 @@ const FAILURE_MESSAGES = {
 } as const;
 
 // Returns undefined for a clean result whose stop reason this provider does not support.
-function turnResult(result: Readonly<z.output<typeof resultSchema>>): TurnResult | undefined {
+function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
   const stop = STOP_REASONS.get(result.stop_reason ?? "end_turn");
   const terminalReason =
     result.terminal_reason ??
@@ -102,8 +104,8 @@ function turnResult(result: Readonly<z.output<typeof resultSchema>>): TurnResult
 
   // A failed result wins over its stop reason, so an error never surfaces as a protocol fault.
   if (failure) {
-    const reported = result.errors.filter((entry) => typeof entry === "string").join("; ");
-    const detail = reported || result.result || FAILURE_MESSAGES[failure];
+    const reported = (result.errors ?? []).filter((entry) => typeof entry === "string").join("; ");
+    const detail = reported || (result.result ?? "") || FAILURE_MESSAGES[failure];
     return { _tag: "failed", error: new SdkResultError({ terminalReason, detail }) };
   }
   if (stop === "stop" || stop === "length") {
@@ -112,86 +114,117 @@ function turnResult(result: Readonly<z.output<typeof resultSchema>>): TurnResult
   return undefined;
 }
 
-const textDeltaSchema = z.object({ text: z.string() });
-const thinkingDeltaSchema = z.object({ thinking: z.string() });
+// Schema leaf messages include the rejected value only when decoding sets reportInput, which
+// this module never does, so a detail names the offending path without echoing its value.
+const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
+
+function describeIssue(issue: SchemaIssue.Issue): string {
+  return formatIssue(issue)
+    .issues.map(({ path, message }) =>
+      [(path ?? []).map(String).join("."), message].filter(Boolean).join(": "),
+    )
+    .join("; ");
+}
+
+/** Decodes one message kind, failing with a safe protocol detail. */
+type MessageParser = (input: unknown) => Result.Result<SdkMessage, string>;
+
+function messageParser<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  toMessage: (value: S["Type"]) => Result.Result<SdkMessage, string>,
+): MessageParser {
+  const decode = Schema.decodeUnknownResult(schema);
+  return (input) =>
+    Result.flatMap(
+      Result.mapError(decode(input), (error) => describeIssue(error.issue)),
+      toMessage,
+    );
+}
+
+function usageMessage(
+  { model, usage }: typeof modelCallSchema.Type,
+  apiError: string | undefined,
+): Result.Result<SdkMessage, string> {
+  return Result.succeed({
+    type: "usage",
+    usage,
+    ...(model === undefined ? {} : { model }),
+    ...(apiError === undefined ? {} : { apiError }),
+  });
+}
 
 // Every SDK message this provider consumes, keyed by its dotted discriminator path.
 // Any other kind is ignored, so new SDK message, event, and delta types stay harmless.
-const MESSAGE_SCHEMAS: ReadonlyMap<string, z.ZodType<SdkMessage>> = new Map<
-  string,
-  z.ZodType<SdkMessage>
->([
+const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
     "stream_event.content_block_delta.text_delta",
-    z
-      .object({ event: z.object({ delta: textDeltaSchema }) })
-      .transform(({ event }): SdkMessage => ({ type: "text_delta", text: event.delta.text })),
+    messageParser(
+      Schema.Struct({
+        event: Schema.Struct({ delta: Schema.Struct({ text: Schema.String }) }),
+      }),
+      ({ event }) => Result.succeed({ type: "text_delta", text: event.delta.text }),
+    ),
   ],
   [
     "stream_event.content_block_delta.thinking_delta",
-    z
-      .object({ event: z.object({ delta: thinkingDeltaSchema }) })
-      .transform(({ event }): SdkMessage => ({
-        type: "thinking_delta",
-        text: event.delta.thinking,
-      })),
+    messageParser(
+      Schema.Struct({
+        event: Schema.Struct({ delta: Schema.Struct({ thinking: Schema.String }) }),
+      }),
+      ({ event }) => Result.succeed({ type: "thinking_delta", text: event.delta.thinking }),
+    ),
   ],
   [
     "stream_event.message_start",
-    z
-      .object({ event: z.object({ message: modelCallSchema }) })
-      .transform(({ event }): SdkMessage => ({ type: "usage", ...event.message })),
+    messageParser(
+      Schema.Struct({ event: Schema.Struct({ message: modelCallSchema }) }),
+      ({ event }) => usageMessage(event.message, undefined),
+    ),
   ],
   [
     "stream_event.message_delta",
-    z
-      .object({ event: z.object({ usage: usageSchema }) })
-      .transform(({ event }): SdkMessage => ({ type: "usage", ...event })),
+    messageParser(Schema.Struct({ event: Schema.Struct({ usage: usageSchema }) }), ({ event }) =>
+      Result.succeed({ type: "usage", usage: event.usage }),
+    ),
   ],
   [
     "assistant",
-    z
-      .object({ message: modelCallSchema, error: z.string().optional().catch(undefined) })
-      .transform(({ message, error }): SdkMessage =>
-        error === undefined
-          ? { type: "usage", ...message }
-          : { type: "usage", ...message, apiError: error },
-      ),
+    messageParser(
+      Schema.Struct({ message: modelCallSchema, error: lenientOptional(Schema.String) }),
+      ({ message, error }) => usageMessage(message, error),
+    ),
   ],
   [
     "result",
-    resultSchema.transform((result, ctx): SdkMessage => {
+    messageParser(resultSchema, (result) => {
       const turn = turnResult(result);
-      if (turn === undefined) {
-        ctx.issues.push({
-          code: "custom",
-          message: `unsupported stop_reason ${result.stop_reason}`,
-          input: result.stop_reason,
-        });
-        return z.NEVER;
-      }
-      return { type: "result", result: turn, modelUsage: result.modelUsage };
+      return turn === undefined
+        ? Result.fail(`unsupported stop_reason ${result.stop_reason}`)
+        : Result.succeed({ type: "result", result: turn, modelUsage: result.modelUsage ?? {} });
     }),
   ],
 ]);
 
-const nodeSchema = z.looseObject({
-  type: z.string(),
-  event: z.unknown().optional(),
-  delta: z.unknown().optional(),
-});
+// Only the discriminators are read, so other keys may be stripped.
+const decodeNode = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.String,
+    event: Schema.optional(Schema.Unknown),
+    delta: Schema.optional(Schema.Unknown),
+  }),
+);
 
 // The message type, then its stream event type, then its content delta type.
 function kindOf(input: unknown): string | undefined {
-  const message = nodeSchema.safeParse(input).data;
+  const message = Option.getOrUndefined(decodeNode(input));
   if (message?.type !== "stream_event") {
     return message?.type;
   }
-  const event = nodeSchema.safeParse(message.event).data;
+  const event = Option.getOrUndefined(decodeNode(message.event));
   if (event?.type !== "content_block_delta") {
     return `stream_event.${event?.type}`;
   }
-  return `stream_event.content_block_delta.${nodeSchema.safeParse(event.delta).data?.type}`;
+  return `stream_event.content_block_delta.${Option.getOrUndefined(decodeNode(event.delta))?.type}`;
 }
 
 /**
@@ -207,17 +240,14 @@ export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkPr
       new SdkProtocolError({ messageType: "message", detail: "type must be a string" }),
     );
   }
-  const parsed = MESSAGE_SCHEMAS.get(kind)?.safeParse(input);
-  if (!parsed) {
+  const parse = MESSAGE_PARSERS.get(kind);
+  if (parse === undefined) {
     return Result.succeed({ type: "ignored" });
   }
-  if (parsed.success) {
-    return Result.succeed(parsed.data);
-  }
-  const summary = parsed.error.issues
-    .map((issue) => [issue.path.join("."), issue.message].filter(Boolean).join(": "))
-    .join("; ");
-  return Result.fail(new SdkProtocolError({ messageType: kind, detail: summary }));
+  return Result.mapError(
+    parse(input),
+    (detail) => new SdkProtocolError({ messageType: kind, detail }),
+  );
 }
 
 /**

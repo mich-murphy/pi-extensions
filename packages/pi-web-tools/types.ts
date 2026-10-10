@@ -1,4 +1,4 @@
-import { Redacted, Result } from "effect";
+import { Redacted, Result, Schema } from "effect";
 
 /** Extension name used for temp files and status surfaces. */
 export const WEB_TOOLS_EXTENSION_NAME = "pi-web-tools";
@@ -18,12 +18,18 @@ export type SearchProviderName = "exa" | "parallel" | "brave";
 /** Coarse classification of a fetched response body. */
 export type ContentKind = "html" | "text" | "raster-image" | "svg" | "binary";
 
-/** Failures parsing boundary input into a public HTTP(S) URL. */
-export type ParsePublicHttpUrlError =
-  | { readonly _tag: "EmptyUrl" }
-  | { readonly _tag: "UnsupportedUrlProtocol"; readonly protocol?: string }
-  | { readonly _tag: "InvalidUrl"; readonly input: Redacted.Redacted }
-  | { readonly _tag: "UrlCredentialsUnsupported"; readonly url: Redacted.Redacted };
+/**
+ * Failures parsing boundary input into a public HTTP(S) URL. The raw input stays wrapped in
+ * Redacted, so it never reaches messages, logs, or JSON.
+ */
+export const ParsePublicHttpUrlError = Schema.Union([
+  Schema.TaggedStruct("EmptyUrl", {}),
+  Schema.TaggedStruct("UnsupportedUrlProtocol", { protocol: Schema.optionalKey(Schema.String) }),
+  Schema.TaggedStruct("InvalidUrl", { input: Schema.Redacted(Schema.String) }),
+  Schema.TaggedStruct("UrlCredentialsUnsupported", { url: Schema.Redacted(Schema.String) }),
+]);
+/** The decoded type of {@link ParsePublicHttpUrlError}. */
+export type ParsePublicHttpUrlError = typeof ParsePublicHttpUrlError.Type;
 
 /** Failures parsing boundary input into a search query. */
 export type ParseSearchQueryError = { readonly _tag: "EmptySearchQuery" };

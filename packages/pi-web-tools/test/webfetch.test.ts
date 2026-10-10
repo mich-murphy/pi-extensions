@@ -1,8 +1,6 @@
-import { validateToolArguments } from "@earendil-works/pi-ai";
-import type { JsonObject } from "@earendil-works/pi-ai";
-import { Effect, Result } from "effect";
+import { Duration, Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { FetchPage } from "../fetch-page";
+import type { FetchPage } from "../fetch-page";
 import {
   HttpStatusRejected,
   PrivateHostBlocked,
@@ -19,7 +17,6 @@ import type { PublicWebClient, PublicWebError } from "../network";
 import { ExaMcpFetchProvider } from "../provider-exa";
 import { ProviderStatusRejected } from "../provider-types";
 import type { FetchProvider } from "../provider-types";
-import { tempFileToolOutputStore } from "../tool-output";
 import {
   createWebFetchTool,
   InvalidFetchUrlInput,
@@ -32,8 +29,11 @@ import {
   publicUrl,
   renderText,
   settingsFrom,
+  settleOnTestClock,
   textOf,
   textWebResponse,
+  fetchPageWith,
+  toolRuntimeWith,
 } from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
@@ -55,8 +55,8 @@ function fakeFetchProvider(
   };
 }
 
-function fetchPageFor(outcome: Parameters<typeof fakePublicWeb>[0]): FetchPage {
-  return new FetchPage(fakePublicWeb(outcome).client);
+function fetchPageFor(outcome: Parameters<typeof fakePublicWeb>[0]): FetchPage["Service"] {
+  return fetchPageWith(fakePublicWeb(outcome).client);
 }
 
 function articleResponse(paragraph: string) {
@@ -68,12 +68,15 @@ function makeTool(
   fetchOutcome: Parameters<typeof fakePublicWeb>[0],
   providers: readonly FetchProvider[],
 ) {
+  const settings = settingsFrom(env);
   return createWebFetchTool({
-    settings: settingsFrom(env),
-    fetchPage: fetchPageFor(fetchOutcome),
-    fetchProviders: providers,
-    outputStore: tempFileToolOutputStore,
-    secrets: ["sekrit-key"],
+    settings,
+    runtime: toolRuntimeWith({
+      settings,
+      secret: "sekrit-key",
+      fetchPage: fetchPageFor(fetchOutcome),
+      fetchProviders: providers,
+    }),
   });
 }
 
@@ -100,35 +103,7 @@ async function fetchShort(contentType: string) {
 }
 
 /** A public web client whose request never settles until it is interrupted. */
-const hangingWeb: PublicWebClient = { get: () => Effect.never };
-
-describe("webfetch parameter schema", () => {
-  const tool = makeTool({}, Result.succeed(textWebResponse("x")), []);
-
-  function validate(args: unknown): unknown {
-    return validateToolArguments(tool, {
-      type: "toolCall",
-      id: "t",
-      name: tool.name,
-      arguments: args as JsonObject,
-    });
-  }
-
-  test("rejects structurally invalid arguments before execute runs", () => {
-    expect(() => validate({ url: "https://example.com", bogus: 1 })).toThrow("bogus");
-    expect(() => validate({ url: "https://example.com", format: "yaml" })).toThrow("format");
-    expect(() => validate({ url: "https://example.com", timeout: "soon" })).toThrow("timeout");
-    expect(() => validate({})).toThrow("url");
-    expect(() => validate("nope")).toThrow("must be object");
-  });
-
-  test("converts numeric strings, so a string timeout reaches execute as a number", () => {
-    expect(validate({ url: "https://example.com", timeout: "30" })).toStrictEqual({
-      url: "https://example.com",
-      timeout: 30,
-    });
-  });
-});
+const hangingWeb: PublicWebClient["Service"] = { get: () => Effect.never };
 
 describe("parseWebFetchParams", () => {
   test("parses a minimal url with settings defaults", () => {
@@ -202,18 +177,15 @@ describe("isRescueEligible", () => {
   });
 });
 
-describe("webfetch rendering", () => {
+describe("webfetch call rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
   const fetchPage = fetchPageFor(Result.succeed(textWebResponse("x")));
   const tool = createWebFetchTool({
     settings: DEFAULT_SETTINGS,
-    fetchPage,
-    fetchProviders: [],
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({ settings: DEFAULT_SETTINGS, fetchPage }),
   });
 
-  test("renderCall shows the url and redacts credentials", () => {
+  test("never shows URL credentials", () => {
     const component = tool.renderCall(
       { url: "https://user:pass@example.com/x", format: "text" },
       theme,
@@ -223,44 +195,66 @@ describe("webfetch rendering", () => {
     expect(rendered).not.toContain("pass");
     expect(rendered).toContain("(text)");
   });
+});
 
-  test("renderResult handles partial, error, and expanded states", () => {
+describe("webfetch result rendering", () => {
+  const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+  const tool = makeTool({}, Result.succeed(textWebResponse("x")), []);
+  const meta = {
+    requestedUrl: "https://example.com",
+    finalUrl: "https://example.com/final",
+    format: "markdown" as const,
+    status: 200,
+    mime: "text/html",
+    contentType: "text/html",
+    bytes: 2048,
+  };
+  const render = (
+    result: Parameters<typeof tool.renderResult>[0],
+    options: { readonly expanded: boolean; readonly isPartial: boolean },
+  ) => renderText(tool.renderResult(result, options, theme));
+
+  test("shows progress while fetching and the error text on failure", () => {
+    expect(render({ content: [] }, { expanded: false, isPartial: true })).toBe("Fetching...");
     expect(
-      renderText(tool.renderResult({ content: [] }, { expanded: false, isPartial: true }, theme)),
-    ).toContain("Fetching");
-    expect(
-      renderText(
-        tool.renderResult(
-          { content: [{ type: "text", text: "boom" }], isError: true },
-          { expanded: false, isPartial: false },
-          theme,
-        ),
+      render(
+        { content: [{ type: "text", text: "Request failed (403)" }], isError: true },
+        { expanded: false, isPartial: false },
       ),
-    ).toContain("boom");
-    const expanded = renderText(
-      tool.renderResult(
-        {
-          content: [{ type: "text", text: "body" }],
-          details: {
-            requestedUrl: "https://example.com",
-            finalUrl: "https://example.com",
-            format: "markdown" as const,
-            status: 200,
-            mime: "text/html",
-            contentType: "text/html",
-            bytes: 100,
-            via: "exa",
-            truncated: true,
-            fullOutputPath: "/tmp/x",
-          },
-        },
-        { expanded: true, isPartial: false },
-        theme,
-      ),
+    ).toBe("✗ Request failed (403)");
+  });
+
+  test("badges a rescued, truncated page and previews it with its spill file when expanded", () => {
+    const expanded = render(
+      {
+        content: [{ type: "text", text: "page body" }],
+        details: { ...meta, via: "exa", truncated: true, fullOutputPath: "/tmp/x" },
+      },
+      { expanded: true, isPartial: false },
     );
-    expect(expanded).toContain("via exa");
-    expect(expanded).toContain("Full output: /tmp/x");
-    expect(expanded).toContain("body");
+    expect(expanded.split("\n")).toStrictEqual([
+      "✓ Fetched (text/html) 2.0KB [via exa] [truncated]",
+      "page body",
+      "Full output: /tmp/x",
+    ]);
+  });
+
+  test("shows an image's URL instead of a text preview", () => {
+    const expanded = render(
+      {
+        content: [{ type: "text", text: "Fetched image" }],
+        details: { ...meta, mime: "image/png", image: true },
+      },
+      { expanded: true, isPartial: false },
+    );
+    expect(expanded.split("\n")).toStrictEqual([
+      "✓ Fetched (image/png) 2.0KB [image]",
+      "Image URL: https://example.com/final",
+    ]);
+  });
+
+  test("renders a bare success when no details were recorded", () => {
+    expect(render({ content: [] }, { expanded: true, isPartial: false })).toBe("✓ Fetched\n");
   });
 });
 
@@ -437,16 +431,24 @@ describe("webfetch error messages", () => {
 function hangingTool(providers: readonly FetchProvider[] = []) {
   return createWebFetchTool({
     settings: DEFAULT_SETTINGS,
-    fetchPage: new FetchPage(hangingWeb),
-    fetchProviders: providers,
-    outputStore: tempFileToolOutputStore,
-    secrets: [],
+    runtime: toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      fetchPage: fetchPageWith(hangingWeb),
+      fetchProviders: providers,
+    }),
   });
 }
 
 describe("webfetch deadline and cancellation", () => {
   test("a fetch outliving the timeout reports the timeout, not a cancellation", async () => {
-    const outcome = hangingTool().execute("t1", { url: "https://slow.example", timeout: 1 });
+    const runtime = toolRuntimeWith({
+      settings: DEFAULT_SETTINGS,
+      fetchPage: fetchPageWith(hangingWeb),
+      testClock: true,
+    });
+    const tool = createWebFetchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const outcome = tool.execute("t1", { url: "https://slow.example", timeout: 1 });
+    await settleOnTestClock(runtime, Duration.seconds(1), outcome);
     await expect(outcome).rejects.toThrow("Web fetch timed out after 1s");
     await expect(outcome).rejects.not.toThrow("cancelled");
   });

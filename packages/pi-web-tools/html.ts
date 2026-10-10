@@ -292,8 +292,8 @@ export function htmlToMarkdownWithTextFallback(
   );
 }
 
-/** Returns true when a markdown conversion is dominated by raw HTML blocks (JS-heavy pages). */
-export function isPoorMarkdownConversion(markdown: string): boolean {
+// True when a markdown conversion is dominated by raw HTML blocks (JS-heavy pages).
+function isPoorMarkdownConversion(markdown: string): boolean {
   const rawBlockTags = markdown.match(RAW_HTML_BLOCK_TAG_RE)?.length ?? 0;
   if (rawBlockTags >= 6) {
     return true;

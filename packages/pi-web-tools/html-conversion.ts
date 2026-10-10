@@ -1,10 +1,13 @@
-import { Data, Result } from "effect";
+import { Result, Schema } from "effect";
 
 /**
  * The document has no elements to convert: the body was empty, whitespace, comments, or bare text,
  * so the parser produced no document element.
  */
-export class EmptyHtmlDocument extends Data.TaggedError("EmptyHtmlDocument") {
+export class EmptyHtmlDocument extends Schema.TaggedError<EmptyHtmlDocument>()(
+  "EmptyHtmlDocument",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "The page has no HTML content";
@@ -15,10 +18,16 @@ export class EmptyHtmlDocument extends Data.TaggedError("EmptyHtmlDocument") {
  * A conversion library (turndown or html-to-text) threw a RangeError, in practice a stack overflow
  * on very deeply nested markup. Other exceptions are defects and propagate.
  */
-export class HtmlConversionFailed extends Data.TaggedError("HtmlConversionFailed")<{
-  /** The RangeError, kept for local diagnosis only. */
-  readonly cause: RangeError;
-}> {
+export class HtmlConversionFailed extends Schema.TaggedError<HtmlConversionFailed>()(
+  "HtmlConversionFailed",
+  {
+    /**
+     * The RangeError, kept for local diagnosis only. Typed by instanceOf, not Defect: the cause is
+     * already classified (only RangeError reaches here), so the field keeps that precision.
+     */
+    cause: Schema.instanceOf(RangeError),
+  },
+) {
   /** Safe user-facing description; never includes the cause. */
   override get message(): string {
     return "Could not convert the page's HTML: it is too deeply nested";

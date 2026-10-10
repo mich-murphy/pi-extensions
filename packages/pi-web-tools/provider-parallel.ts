@@ -1,11 +1,11 @@
-import { Effect, Result } from "effect";
-import { z } from "zod";
+import { Duration, Effect, Option, Redacted, Result, Schema } from "effect";
 import type { McpClient, McpToolCallResult } from "./mcp";
 import { readProviderJson } from "./provider-http";
 import type { ProviderHttpClient } from "./provider-http";
 import {
   lenientArray,
   optionalTextSchema,
+  orFallback,
   parseJsonBody,
   ProviderProtocolInvalid,
   publicHttpUrlSchema,
@@ -18,49 +18,54 @@ import {
 } from "./settings";
 import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 
-const PARALLEL_SEARCH_TIMEOUT_MS = SEARCH_TIMEOUT_SECONDS.default * 1000;
+const PARALLEL_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 
-/** Excerpt strings joined into one block; undefined when none carry text. */
-const excerptsSchema = lenientArray(z.string())
-  .catch([])
-  .transform((excerpts) => excerpts.join("\n\n").trim() || undefined);
+/** Excerpt strings; a missing or non-array value reads as none. */
+const excerptsSchema = orFallback(lenientArray(Schema.String), []);
 
-const parallelResultSchema = z
-  .object({
-    url: publicHttpUrlSchema,
-    title: optionalTextSchema,
-    publish_date: optionalTextSchema,
-    excerpts: excerptsSchema,
-  })
-  .transform((item): NormalizedSearchResult => ({
+/** Excerpts joined into one block; undefined when none carry text. */
+function joinExcerpts(excerpts: readonly string[]): string | undefined {
+  return excerpts.join("\n\n").trim() || undefined;
+}
+
+const ParallelResult = Schema.Struct({
+  url: publicHttpUrlSchema,
+  title: optionalTextSchema,
+  publish_date: optionalTextSchema,
+  excerpts: excerptsSchema,
+});
+
+function normalizeParallelResult(item: typeof ParallelResult.Type): NormalizedSearchResult {
+  return {
     title: item.title ?? item.url,
     url: item.url,
-    snippet: item.excerpts,
+    snippet: joinExcerpts(item.excerpts),
     publishedAt: item.publish_date,
     source: "Parallel",
-  }));
+  };
+}
 
-const parallelResultsPayloadSchema = z.object({ results: lenientArray(parallelResultSchema) });
+const decodeParallelResultsPayload = Schema.decodeUnknownResult(
+  Schema.Struct({ results: lenientArray(ParallelResult) }),
+);
 
 // Only the first result is read: it answers the single URL each web_fetch call asks for.
-const parallelFetchPayloadSchema = z.object({
-  results: z.tuple(
-    [
-      z
-        .object({ content: optionalTextSchema, excerpts: excerptsSchema })
-        .transform((item) => item.content ?? item.excerpts),
-    ],
-    z.unknown(),
-  ),
-});
+const decodeParallelFetchPayload = Schema.decodeUnknownOption(
+  Schema.Struct({
+    results: Schema.TupleWithRest(
+      Schema.Tuple([Schema.Struct({ content: optionalTextSchema, excerpts: excerptsSchema })]),
+      [Schema.Unknown],
+    ),
+  }),
+);
 
 /** Parse Parallel's structured results payload (MCP structuredContent, JSON text, or REST body). */
 export function parseParallelResults(
   payload: unknown,
 ): Result.Result<readonly NormalizedSearchResult[], string> {
-  const parsed = parallelResultsPayloadSchema.safeParse(payload);
-  return parsed.success
-    ? Result.succeed(parsed.data.results)
+  const parsed = decodeParallelResultsPayload(payload);
+  return Result.isSuccess(parsed)
+    ? Result.succeed(parsed.success.results.map((item) => normalizeParallelResult(item)))
     : Result.fail("Missing results array");
 }
 
@@ -112,8 +117,8 @@ export class ParallelApiSearchProvider implements SearchProvider {
   readonly transport = "api" as const;
 
   constructor(
-    private readonly apiKey: string,
-    private readonly http: ProviderHttpClient,
+    private readonly apiKey: Redacted.Redacted,
+    private readonly http: ProviderHttpClient["Service"],
   ) {}
 
   /** Run one Parallel REST search call and normalize its structured results. */
@@ -121,7 +126,7 @@ export class ParallelApiSearchProvider implements SearchProvider {
     return readProviderJson(
       this.http.postJson({
         url: PARALLEL_API_SEARCH_URL,
-        headers: { "x-api-key": this.apiKey },
+        headers: { "x-api-key": Redacted.value(this.apiKey) },
         body: {
           objective: input.query,
           search_queries: [input.query],
@@ -129,7 +134,7 @@ export class ParallelApiSearchProvider implements SearchProvider {
           mode: "fast",
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-        timeoutMs: PARALLEL_SEARCH_TIMEOUT_MS,
+        timeout: PARALLEL_SEARCH_TIMEOUT,
       }),
     ).pipe(
       Effect.flatMap((payload) => limitedResults(parseParallelResults(payload), input.maxResults)),
@@ -186,5 +191,10 @@ function readParallelFetchResult(call: McpToolCallResult): string | undefined {
 }
 
 function extractParallelFetchText(payload: unknown): string | undefined {
-  return parallelFetchPayloadSchema.safeParse(payload).data?.results[0];
+  return Option.getOrUndefined(
+    Option.map(decodeParallelFetchPayload(payload), (parsed) => {
+      const [first] = parsed.results;
+      return first.content ?? joinExcerpts(first.excerpts);
+    }),
+  );
 }

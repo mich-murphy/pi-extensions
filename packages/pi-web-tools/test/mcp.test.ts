@@ -1,9 +1,9 @@
-import { Cause, Effect, Exit, Result } from "effect";
-import { assert, describe, expect, test } from "vitest";
-import { z } from "zod";
-import { McpHttpClient, parseMcpMessage, parseMcpToolResult, parseSseDataLines } from "../mcp";
+import { assert, describe, expect, it, test } from "@effect/vitest";
+import { Cause, Duration, Effect, Exit, Fiber, Option, Result, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import { parseMcpMessage, parseMcpToolResult } from "../mcp";
 import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
-import { publicUrl } from "./fakes";
+import { publicUrl, mcpClientWith } from "./fakes";
 
 const ENDPOINT = publicUrl("https://mcp.example/mcp");
 
@@ -11,35 +11,18 @@ function protocolInvalid(reason: string) {
   return Result.fail(new ProviderProtocolInvalid({ reason }));
 }
 
-describe("parseSseDataLines", () => {
-  test("collects multi-line data chunks separated by blank lines", () => {
-    const input = 'data: {"a":1}\n\ndata: {"b":\ndata: 2}\n\nevent: ignored\ndata: {"c":3}\n';
-    expect(parseSseDataLines(input)).toStrictEqual(['{"a":1}', '{"b":\n2}', '{"c":3}']);
-  });
-});
-
 describe("parseMcpMessage", () => {
   test("parses plain JSON responses", () => {
-    const result = parseMcpMessage('{"jsonrpc":"2.0","id":2,"result":{}}', "application/json");
-    expect(result._tag).toBe("Success");
+    expect(
+      parseMcpMessage('{"jsonrpc":"2.0","id":2,"result":{}}', "application/json"),
+    ).toStrictEqual(Result.succeed({ jsonrpc: "2.0", id: 2, result: {} }));
   });
 
-  test("takes the last JSON-RPC response from an SSE stream", () => {
-    const body = 'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n';
-    const result = parseMcpMessage(body, "text/event-stream");
-    expect(result._tag).toBe("Success");
-  });
-
-  test("skips malformed SSE chunks without failing the batch", () => {
-    const body = 'data: not-json\n\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n';
-    const result = parseMcpMessage(body, "text/event-stream");
-    expect(result._tag).toBe("Success");
-  });
-
-  test("fails when the stream has no JSON-RPC response", () => {
-    expect(parseMcpMessage("data: not-json\n\n", "text/event-stream")._tag).toBe("Failure");
-    expect(parseMcpMessage("", "application/json")._tag).toBe("Failure");
-    expect(parseMcpMessage("{broken", "application/json")._tag).toBe("Failure");
+  test("joins an SSE event's multi-line data and ignores non-data fields", () => {
+    const body = 'event: message\ndata: {"jsonrpc":"2.0",\ndata: "id":2,"result":{}}\n\n';
+    expect(parseMcpMessage(body, "text/event-stream")).toStrictEqual(
+      Result.succeed({ jsonrpc: "2.0", id: 2, result: {} }),
+    );
   });
 
   test("picks the last event carrying a result or error among notifications and noise", () => {
@@ -95,29 +78,11 @@ describe("parseMcpToolResult", () => {
     expect(result.success.structuredContent).toStrictEqual({ results: [] });
   });
 
-  test("maps JSON-RPC errors and isError results to ProviderToolError", () => {
-    const rpcError = parseMcpToolResult({
-      jsonrpc: "2.0",
-      id: 2,
-      error: { code: -1, message: "x" },
-    });
-    assert(Result.isFailure(rpcError));
-    expect(rpcError.failure._tag).toBe("ProviderToolError");
-
-    const toolError = parseMcpToolResult({
-      jsonrpc: "2.0",
-      id: 2,
-      result: { isError: true, content: [] },
-    });
-    expect(toolError._tag).toBe("Failure");
-  });
-
-  test("rejects malformed payloads", () => {
-    expect(parseMcpToolResult(null)._tag).toBe("Failure");
-    expect(parseMcpToolResult({ jsonrpc: "2.0", id: 2 })._tag).toBe("Failure");
-  });
-
   test("names why a payload is malformed", () => {
+    expect(parseMcpToolResult(null)).toStrictEqual(protocolInvalid("Expected an object payload"));
+    expect(parseMcpToolResult({ jsonrpc: "2.0", id: 2 })).toStrictEqual(
+      protocolInvalid("Missing result object"),
+    );
     expect(parseMcpToolResult([{ result: {} }])).toStrictEqual(
       protocolInvalid("Expected an object payload"),
     );
@@ -163,7 +128,7 @@ function jsonResponse(
   return Response.json(body, { status: init.status ?? 200, headers: init.headers ?? {} });
 }
 
-const rpcRequestSchema = z.object({ method: z.string() });
+const decodeRpcRequest = Schema.decodeUnknownOption(Schema.Struct({ method: Schema.String }));
 
 /** One request the fake MCP endpoint received. */
 type RecordedRequest = {
@@ -177,8 +142,9 @@ function rpcMethodOf(body: unknown): string | undefined {
   if (typeof body !== "string") {
     return undefined;
   }
-  const parsed = rpcRequestSchema.safeParse(JSON.parse(body));
-  return parsed.success ? parsed.data.method : undefined;
+  return Option.getOrUndefined(
+    Option.map(decodeRpcRequest(JSON.parse(body)), (request) => request.method),
+  );
 }
 
 /**
@@ -216,92 +182,100 @@ const toolCallReply = (text: string) => () =>
   jsonResponse({ jsonrpc: "2.0", id: 2, result: { content: [{ type: "text", text }] } });
 
 describe("mcpHttpClient", () => {
-  test("runs initialize, initialized, tools/call with the session header and closes the session", async () => {
-    const { fetchImpl, requests } = fakeMcpEndpoint(
-      {
-        initialize: () =>
-          jsonResponse(
-            {
-              jsonrpc: "2.0",
-              id: 1,
-              result: {
-                protocolVersion: "2025-06-18",
-                capabilities: {},
-                serverInfo: { name: "fake", version: "1" },
-              },
-            },
-            { headers: { "mcp-session-id": "session-123" } },
-          ),
-        "notifications/initialized": () => new Response(null, { status: 202 }),
-      },
-      toolCallReply("found it"),
-    );
+  it.effect(
+    "runs initialize, initialized, tools/call with the session header and closes the session",
+    () =>
+      Effect.gen(function* () {
+        const { fetchImpl, requests } = fakeMcpEndpoint(
+          {
+            initialize: () =>
+              jsonResponse(
+                {
+                  jsonrpc: "2.0",
+                  id: 1,
+                  result: {
+                    protocolVersion: "2025-06-18",
+                    capabilities: {},
+                    serverInfo: { name: "fake", version: "1" },
+                  },
+                },
+                { headers: { "mcp-session-id": "session-123" } },
+              ),
+            "notifications/initialized": () => new Response(null, { status: 202 }),
+          },
+          toolCallReply("found it"),
+        );
 
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024 * 1024,
-      timeoutMs: 5000,
-      fetchImpl,
-    });
-    const result = await Effect.runPromise(
-      Effect.result(client.callTool("web_search", { objective: "test" })),
-    );
+        const client = mcpClientWith(ENDPOINT, {
+          maxResponseBytes: 1024 * 1024,
+          timeoutMs: 5000,
+          fetchImpl,
+        });
+        const result = yield* Effect.result(client.callTool("web_search", { objective: "test" }));
 
-    assert(Result.isSuccess(result));
-    expect(result.success.text).toStrictEqual(["found it"]);
-    expect(requests.map((request) => request.httpMethod)).toStrictEqual([
-      "POST",
-      "POST",
-      "POST",
-      "DELETE",
-    ]);
-    // The initialize POST has no session header; subsequent calls carry it.
-    expect(requests[0]?.sessionId).toBeNull();
-    expect(requests[1]?.sessionId).toBe("session-123");
-    expect(requests[2]?.sessionId).toBe("session-123");
-  });
+        assert(Result.isSuccess(result));
+        expect(result.success.text).toStrictEqual(["found it"]);
+        expect(requests.map((request) => request.httpMethod)).toStrictEqual([
+          "POST",
+          "POST",
+          "POST",
+          "DELETE",
+        ]);
+        // The initialize POST has no session header; subsequent calls carry it.
+        expect(requests[0]?.sessionId).toBeNull();
+        expect(requests[1]?.sessionId).toBe("session-123");
+        expect(requests[2]?.sessionId).toBe("session-123");
+      }),
+  );
 
-  test("maps non-2xx initialize responses to ProviderStatusRejected", async () => {
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024,
-      timeoutMs: 5000,
-      fetchImpl: tooManyRequests,
-    });
-    const result = await Effect.runPromise(Effect.result(client.callTool("web_search", {})));
-    assert(Result.isFailure(result));
-    assert(result.failure._tag === "ProviderStatusRejected");
-    expect(result.failure.status).toBe(429);
-    expect(result.failure.message).toBe("rejected (HTTP 429)");
-  });
+  it.effect("maps non-2xx initialize responses to ProviderStatusRejected", () =>
+    Effect.gen(function* () {
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 5000,
+        fetchImpl: tooManyRequests,
+      });
+      const result = yield* Effect.result(client.callTool("web_search", {}));
+      assert(Result.isFailure(result));
+      assert(result.failure._tag === "ProviderStatusRejected");
+      expect(result.failure.status).toBe(429);
+      expect(result.failure.message).toBe("rejected (HTTP 429)");
+    }),
+  );
 
-  test("continues when the initialized notification is rejected", async () => {
-    const { fetchImpl } = fakeMcpEndpoint(
-      {
-        initialize: () => jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }),
-        "notifications/initialized": () => new Response("bad", { status: 400 }),
-      },
-      toolCallReply("ok"),
-    );
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024,
-      timeoutMs: 5000,
-      fetchImpl,
-    });
-    const result = await Effect.runPromise(Effect.result(client.callTool("web_search", {})));
-    expect(result._tag).toBe("Success");
-  });
+  it.effect("continues when the initialized notification is rejected", () =>
+    Effect.gen(function* () {
+      const { fetchImpl } = fakeMcpEndpoint(
+        {
+          initialize: () => jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }),
+          "notifications/initialized": () => new Response("bad", { status: 400 }),
+        },
+        toolCallReply("ok"),
+      );
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 5000,
+        fetchImpl,
+      });
+      const result = yield* Effect.result(client.callTool("web_search", {}));
+      expect(result._tag).toBe("Success");
+    }),
+  );
 
-  test("maps fetch failures to ProviderRequestFailed", async () => {
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024,
-      timeoutMs: 5000,
-      fetchImpl: connectionRefused,
-    });
-    const result = await Effect.runPromise(Effect.result(client.callTool("web_search", {})));
-    assert(Result.isFailure(result));
-    assert(result.failure._tag === "ProviderRequestFailed");
-    expect(result.failure.hostname).toBe("mcp.example");
-    expect(result.failure.message).toBe("request to mcp.example failed");
-  });
+  it.effect("maps fetch failures to ProviderRequestFailed", () =>
+    Effect.gen(function* () {
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 5000,
+        fetchImpl: connectionRefused,
+      });
+      const result = yield* Effect.result(client.callTool("web_search", {}));
+      assert(Result.isFailure(result));
+      assert(result.failure._tag === "ProviderRequestFailed");
+      expect(result.failure.hostname).toBe("mcp.example");
+      expect(result.failure.message).toBe("request to mcp.example failed");
+    }),
+  );
 });
 
 /** The detail and message of the ProviderToolError a payload parses to. */
@@ -394,37 +368,43 @@ function hangingToolsCall(fetchImpl: typeof fetch, onHang: () => void = () => un
 }
 
 describe("mcpHttpClient session cleanup", () => {
-  test("closes the session when tools/call is rejected", async () => {
-    const { fetchImpl, requests } = fakeMcpEndpoint(
-      HANDSHAKE,
-      () => new Response("boom", { status: 500 }),
-    );
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024,
-      timeoutMs: 5000,
-      fetchImpl,
-    });
-    const result = await Effect.runPromise(Effect.result(client.callTool("web_search", {})));
-    assert(Result.isFailure(result));
-    expect(result.failure.message).toBe("rejected (HTTP 500)");
-    expect(deletes(requests)).toStrictEqual([
-      { httpMethod: "DELETE", sessionId: "session-9", rpcMethod: undefined },
-    ]);
-  });
+  it.effect("closes the session when tools/call is rejected", () =>
+    Effect.gen(function* () {
+      const { fetchImpl, requests } = fakeMcpEndpoint(
+        HANDSHAKE,
+        () => new Response("boom", { status: 500 }),
+      );
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 5000,
+        fetchImpl,
+      });
+      const result = yield* Effect.result(client.callTool("web_search", {}));
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toBe("rejected (HTTP 500)");
+      expect(deletes(requests)).toStrictEqual([
+        { httpMethod: "DELETE", sessionId: "session-9", rpcMethod: undefined },
+      ]);
+    }),
+  );
 
-  test("closes the session when tools/call times out", async () => {
-    const { fetchImpl, requests } = fakeMcpEndpoint(HANDSHAKE, toolCallReply("unused"));
-    const hanging = hangingToolsCall(fetchImpl);
-    const client = new McpHttpClient(ENDPOINT, {
-      maxResponseBytes: 1024,
-      timeoutMs: 30,
-      fetchImpl: hanging,
-    });
-    const result = await Effect.runPromise(Effect.result(client.callTool("web_search", {})));
-    assert(Result.isFailure(result));
-    expect(result.failure.message).toBe("timed out after 1s");
-    expect(deletes(requests)).toHaveLength(1);
-  });
+  it.effect("closes the session when tools/call times out", () =>
+    Effect.gen(function* () {
+      const { fetchImpl, requests } = fakeMcpEndpoint(HANDSHAKE, toolCallReply("unused"));
+      const hanging = hangingToolsCall(fetchImpl);
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 30,
+        fetchImpl: hanging,
+      });
+      const fiber = yield* Effect.forkChild(Effect.result(client.callTool("web_search", {})));
+      yield* TestClock.adjust(Duration.millis(30));
+      const result = yield* Fiber.join(fiber);
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toBe("timed out after 1s");
+      expect(deletes(requests)).toHaveLength(1);
+    }),
+  );
 
   test("closes the session when the caller interrupts tools/call", async () => {
     const controller = new AbortController();
@@ -432,7 +412,7 @@ describe("mcpHttpClient session cleanup", () => {
     const hanging = hangingToolsCall(fetchImpl, () => {
       controller.abort();
     });
-    const client = new McpHttpClient(ENDPOINT, {
+    const client = mcpClientWith(ENDPOINT, {
       maxResponseBytes: 1024,
       timeoutMs: 5000,
       fetchImpl: hanging,

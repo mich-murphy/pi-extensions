@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { z } from "zod";
+import { Schema } from "effect";
 
 /** The Agent SDK package whose installed version the release contract tracks. */
 export const AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
@@ -19,29 +19,36 @@ export type DeferredResult = (typeof DEFERRED_RESULTS)[number];
 /** Location of the attestation the live gate writes and ordinary CI checks. */
 export const RELEASE_CONTRACT_URL = new URL("../sdk-release-contract.json", import.meta.url);
 
+// zod's z.iso.datetime() shape: UTC with required seconds. Unlike zod, this does not check
+// calendar validity, which the attestation writer (Date#toISOString) guarantees anyway.
+const UTC_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
+
 /** Shape of `sdk-release-contract.json`. */
-export const releaseContractSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    agentSdkVersion: z.string(),
-    bundledClaudeCodeVersion: z.string(),
-    verifiedAt: z.iso.datetime(),
-    model: z.literal("fable"),
-    contracts: z
-      .tuple([
-        z.literal("text-response"),
-        z.literal("deferred-tool-call"),
-        z.literal("advertised-models"),
-      ])
-      .readonly(),
-    observedDeferredResult: z.enum(DEFERRED_RESULTS),
-  })
-  .readonly();
+const releaseContractSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  agentSdkVersion: Schema.String,
+  bundledClaudeCodeVersion: Schema.String,
+  verifiedAt: Schema.String.check(Schema.isPattern(UTC_DATE_TIME)),
+  model: Schema.Literal("fable"),
+  contracts: Schema.Tuple([
+    Schema.Literal("text-response"),
+    Schema.Literal("deferred-tool-call"),
+    Schema.Literal("advertised-models"),
+  ]),
+  observedDeferredResult: Schema.Literals(DEFERRED_RESULTS),
+});
 
 /** A validated release attestation. */
-export type ReleaseContract = z.output<typeof releaseContractSchema>;
+export type ReleaseContract = typeof releaseContractSchema.Type;
 
-const sdkMetadataSchema = z.object({ version: z.string(), claudeCodeVersion: z.string() });
+/** Decode an untrusted attestation, throwing when it does not match the release contract shape. */
+export const decodeReleaseContract = Schema.decodeUnknownSync(releaseContractSchema);
+
+const sdkMetadataSchema = Schema.Struct({
+  version: Schema.String,
+  claudeCodeVersion: Schema.String,
+});
+const decodeSdkMetadata = Schema.decodeUnknownSync(sdkMetadataSchema);
 
 /**
  * Parse a JSON file.
@@ -58,9 +65,9 @@ export async function readJson(url: URL): Promise<unknown> {
  *
  * @returns The installed SDK version and the Claude Code version it bundles.
  */
-export async function readInstalledSdk(): Promise<z.output<typeof sdkMetadataSchema>> {
+export async function readInstalledSdk(): Promise<typeof sdkMetadataSchema.Type> {
   const sdkEntry = import.meta.resolve(AGENT_SDK_PACKAGE);
-  return sdkMetadataSchema.parse(await readJson(new URL("package.json", sdkEntry)));
+  return decodeSdkMetadata(await readJson(new URL("package.json", sdkEntry)));
 }
 
 /**

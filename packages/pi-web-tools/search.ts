@@ -1,5 +1,7 @@
-import { Data, Effect, Result } from "effect";
-import { McpHttpClient } from "./mcp";
+import { randomUUID } from "node:crypto";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import { McpClients } from "./mcp";
+import type { McpClient } from "./mcp";
 import { BraveApiSearchProvider } from "./provider-brave";
 import {
   ExaApiFetchProvider,
@@ -7,7 +9,7 @@ import {
   ExaMcpFetchProvider,
   ExaMcpSearchProvider,
 } from "./provider-exa";
-import type { ProviderHttpClient } from "./provider-http";
+import { ProviderHttpClient } from "./provider-http";
 import {
   ParallelApiSearchProvider,
   ParallelMcpFetchProvider,
@@ -17,8 +19,7 @@ import type { FetchProvider, SearchProvider } from "./provider-types";
 import {
   EXA_MCP_DEFAULT_ENDPOINT,
   PARALLEL_MCP_DEFAULT_ENDPOINT,
-  SEARCH_MAX_RESPONSE_BYTES,
-  SEARCH_TIMEOUT_SECONDS,
+  WebToolsConfig,
 } from "./settings";
 import type { WebToolsSettings } from "./settings";
 import type {
@@ -28,21 +29,14 @@ import type {
   SearchQuery,
 } from "./types";
 
-/** Dependencies the composition root injects into provider construction. */
-export type ProviderComposition = {
+/** Dependencies provider construction draws from. */
+type ProviderComposition = {
   readonly settings: WebToolsSettings;
-  readonly http: ProviderHttpClient;
+  readonly http: ProviderHttpClient["Service"];
   readonly sessionId: string;
-  readonly mcpFor: (endpoint: PublicHttpUrl) => McpHttpClient;
+  /** The shared MCP client for an endpoint (see McpClients.forEndpoint). */
+  readonly mcpFor: (endpoint: PublicHttpUrl) => McpClient;
 };
-
-/** Create the default MCP client factory (keyless; keys are never attached to MCP endpoints). */
-export function defaultMcpFor(endpoint: PublicHttpUrl): McpHttpClient {
-  return new McpHttpClient(endpoint, {
-    maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-    timeoutMs: SEARCH_TIMEOUT_SECONDS.default * 1000,
-  });
-}
 
 /** The search provider for one configured name, plus its fetch-rescue provider when it has one. */
 type ProviderPair = {
@@ -55,7 +49,7 @@ type ProviderPair = {
  * REST APIs; unkeyed Exa/Parallel use the official hosted MCP endpoints; an
  * endpoint override forces MCP to the override and never receives API keys.
  * A pair shares one MCP client between search and fetch, which is safe because
- * McpHttpClient opens a fresh session per tool call.
+ * every MCP client opens a fresh session per tool call.
  */
 const PROVIDER_BUILDERS: Record<
   SearchProviderName,
@@ -63,7 +57,7 @@ const PROVIDER_BUILDERS: Record<
 > = {
   exa: ({ settings, http, mcpFor }) => {
     const apiKey = settings.credentials.exaApiKey;
-    if (settings.endpoints.exa === undefined && apiKey !== undefined && apiKey !== "") {
+    if (settings.endpoints.exa === undefined && apiKey !== undefined) {
       return {
         search: new ExaApiSearchProvider(apiKey, http),
         fetch: new ExaApiFetchProvider(apiKey, http),
@@ -77,7 +71,7 @@ const PROVIDER_BUILDERS: Record<
     const mcp = mcpFor(settings.endpoints.parallel ?? PARALLEL_MCP_DEFAULT_ENDPOINT);
     return {
       search:
-        settings.endpoints.parallel === undefined && apiKey !== undefined && apiKey !== ""
+        settings.endpoints.parallel === undefined && apiKey !== undefined
           ? new ParallelApiSearchProvider(apiKey, http)
           : new ParallelMcpSearchProvider(mcp, sessionId),
       // Parallel has no REST fetch provider, so the rescue path always uses MCP.
@@ -87,9 +81,7 @@ const PROVIDER_BUILDERS: Record<
   brave: ({ settings, http }) => {
     // parseSettings guarantees the key when brave is in the provider list. Brave has no page fetch.
     const apiKey = settings.credentials.braveApiKey;
-    return apiKey === undefined || apiKey === ""
-      ? undefined
-      : { search: new BraveApiSearchProvider(apiKey, http) };
+    return apiKey === undefined ? undefined : { search: new BraveApiSearchProvider(apiKey, http) };
   },
 };
 
@@ -99,14 +91,66 @@ function buildProviderPairs(composition: ProviderComposition): ProviderPair[] {
   );
 }
 
-/** Build the ordered search provider chain from settings (see PROVIDER_BUILDERS for selection). */
-export function buildSearchProviders(composition: ProviderComposition): SearchProvider[] {
-  return buildProviderPairs(composition).map((pair) => pair.search);
+/**
+ * The configured provider pairs, built once per layer build. Both chains read this one service, so
+ * they share its Parallel session id and its MCP clients (McpClients also caches per endpoint).
+ */
+class ProviderPairs extends Context.Service<ProviderPairs, readonly ProviderPair[]>()(
+  "pi-web-tools/search/ProviderPairs",
+) {
+  static readonly layer = Layer.effect(
+    ProviderPairs,
+    Effect.gen(function* () {
+      const settings = yield* WebToolsConfig;
+      const http = yield* ProviderHttpClient;
+      const mcpClients = yield* McpClients;
+      return ProviderPairs.of(
+        buildProviderPairs({
+          settings,
+          http,
+          sessionId: randomUUID(),
+          mcpFor: mcpClients.forEndpoint,
+        }),
+      );
+    }),
+  );
 }
 
-/** Build the ordered fetch-rescue provider chain (search priority order, fetch-capable providers only). */
-export function buildFetchProviders(composition: ProviderComposition): FetchProvider[] {
-  return buildProviderPairs(composition).flatMap((pair) => pair.fetch ?? []);
+/** The ordered search provider chain from settings (see PROVIDER_BUILDERS for selection). */
+export class SearchProviders extends Context.Service<SearchProviders, readonly SearchProvider[]>()(
+  "pi-web-tools/search/SearchProviders",
+) {
+  /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with FetchRescueProviders. */
+  static readonly layer: Layer.Layer<
+    SearchProviders,
+    never,
+    WebToolsConfig | ProviderHttpClient | McpClients
+  > = Layer.effect(
+    SearchProviders,
+    Effect.gen(function* () {
+      const pairs = yield* ProviderPairs;
+      return SearchProviders.of(pairs.map((pair) => pair.search));
+    }),
+  ).pipe(Layer.provide(ProviderPairs.layer));
+}
+
+/** The ordered fetch-rescue provider chain (search priority order, fetch-capable providers only). */
+export class FetchRescueProviders extends Context.Service<
+  FetchRescueProviders,
+  readonly FetchProvider[]
+>()("pi-web-tools/search/FetchRescueProviders") {
+  /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with SearchProviders. */
+  static readonly layer: Layer.Layer<
+    FetchRescueProviders,
+    never,
+    WebToolsConfig | ProviderHttpClient | McpClients
+  > = Layer.effect(
+    FetchRescueProviders,
+    Effect.gen(function* () {
+      const pairs = yield* ProviderPairs;
+      return FetchRescueProviders.of(pairs.flatMap((pair) => pair.fetch ?? []));
+    }),
+  ).pipe(Layer.provide(ProviderPairs.layer));
 }
 
 /** A successful search: the provider that answered plus its results. */
@@ -117,12 +161,12 @@ export type SearchChainSuccess = {
 };
 
 /** The provider override names a provider that is not enabled. */
-export class UnknownProvider extends Data.TaggedError("UnknownProvider")<{
+export class UnknownProvider extends Schema.TaggedError<UnknownProvider>()("UnknownProvider", {
   /** The requested provider name. */
-  readonly provider: string;
+  provider: Schema.String,
   /** The enabled provider names. */
-  readonly available: readonly string[];
-}> {
+  available: Schema.Array(Schema.String),
+}) {
   /** Safe user-facing description listing the enabled providers. */
   override get message(): string {
     return `Provider "${this.provider}" is not enabled. Available: ${this.available.join(", ")}`;
@@ -130,10 +174,13 @@ export class UnknownProvider extends Data.TaggedError("UnknownProvider")<{
 }
 
 /** Every provider in the chain failed. */
-export class AllProvidersFailed extends Data.TaggedError("AllProvidersFailed")<{
-  /** One safe "<provider>: <reason>" line per attempted provider. */
-  readonly attempts: readonly string[];
-}> {
+export class AllProvidersFailed extends Schema.TaggedError<AllProvidersFailed>()(
+  "AllProvidersFailed",
+  {
+    /** One safe "<provider>: <reason>" line per attempted provider. */
+    attempts: Schema.Array(Schema.String),
+  },
+) {
   /** Safe user-facing description joining each provider's reason. */
   override get message(): string {
     return `All search providers failed (${this.attempts.join("; ")})`;
@@ -168,21 +215,19 @@ export function searchWithFallback(
   return runChain(selected, input);
 }
 
-function runChain(
+const runChain = Effect.fnUntraced(function* (
   providers: readonly SearchProvider[],
   input: { readonly query: SearchQuery; readonly maxResults: number },
-): Effect.Effect<SearchChainSuccess, AllProvidersFailed> {
-  return Effect.gen(function* () {
-    const failures: string[] = [];
-    const attempted: SearchProviderName[] = [];
-    for (const provider of providers) {
-      attempted.push(provider.name);
-      const result = yield* Effect.result(provider.search(input));
-      if (Result.isSuccess(result)) {
-        return { provider: provider.name, attemptedProviders: attempted, results: result.success };
-      }
-      failures.push(`${provider.name}: ${result.failure.message}`);
+): Effect.fn.Return<SearchChainSuccess, AllProvidersFailed> {
+  const failures: string[] = [];
+  const attempted: SearchProviderName[] = [];
+  for (const provider of providers) {
+    attempted.push(provider.name);
+    const result = yield* Effect.result(provider.search(input));
+    if (Result.isSuccess(result)) {
+      return { provider: provider.name, attemptedProviders: attempted, results: result.success };
     }
-    return yield* new AllProvidersFailed({ attempts: failures });
-  });
-}
+    failures.push(`${provider.name}: ${result.failure.message}`);
+  }
+  return yield* new AllProvidersFailed({ attempts: failures });
+});

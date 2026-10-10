@@ -2,30 +2,42 @@ import { once } from "node:events";
 import process from "node:process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { Data, Duration, Effect, Result } from "effect";
-import { z } from "zod";
+import { Context, Duration, Effect, Layer, Result, Schema } from "effect";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
-const usageWindowSchema = z.object({
-  utilization: z.number().min(0).max(100).nullable(),
-  resets_at: z.iso.datetime({ offset: true }).nullable(),
+// The pattern behind zod's z.iso.datetime({ offset: true }): an RFC 3339 calendar date (leap
+// years included), a time with required seconds and optional fraction, then Z or +hh:mm.
+const CALENDAR_DATE = String.raw`(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8])))`;
+const OFFSET_DATE_TIME = new RegExp(
+  String.raw`^${CALENDAR_DATE}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$`,
+  "u",
+);
+
+const usageWindowFields = {
+  utilization: Schema.NullOr(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100 }))),
+  resets_at: Schema.NullOr(Schema.String.check(Schema.isPattern(OFFSET_DATE_TIME))),
+};
+
+const usageWindowSchema = Schema.Struct(usageWindowFields);
+const modelScopedWindowSchema = Schema.Struct({
+  ...usageWindowFields,
+  display_name: Schema.NonEmptyString,
 });
 
-const modelScopedWindowSchema = usageWindowSchema.extend({ display_name: z.string().min(1) });
-const extraUsageSchema = z.object({ is_enabled: z.boolean() });
-
-const rateLimitsSchema = z.object({
-  five_hour: usageWindowSchema.nullish(),
-  seven_day: usageWindowSchema.nullish(),
-  model_scoped: z.array(modelScopedWindowSchema).optional(),
-  extra_usage: extraUsageSchema.nullish(),
+const rateLimitsSchema = Schema.Struct({
+  five_hour: Schema.optional(Schema.NullOr(usageWindowSchema)),
+  seven_day: Schema.optional(Schema.NullOr(usageWindowSchema)),
+  model_scoped: Schema.optional(Schema.Array(modelScopedWindowSchema)),
+  extra_usage: Schema.optional(Schema.NullOr(Schema.Struct({ is_enabled: Schema.Boolean }))),
 });
 
-const usageResponseSchema = z.object({
-  subscription_type: z.string().nullable(),
-  rate_limits_available: z.boolean(),
-  rate_limits: rateLimitsSchema.nullable(),
-});
+const decodeUsageResponse = Schema.decodeUnknownResult(
+  Schema.Struct({
+    subscription_type: Schema.NullOr(Schema.String),
+    rate_limits_available: Schema.Boolean,
+    rate_limits: Schema.NullOr(rateLimitsSchema),
+  }),
+);
 
 /** One Claude subscription rate-limit window. */
 export type ClaudeUsageWindow = {
@@ -49,20 +61,25 @@ export type ClaudeUsageStatus = {
   readonly extraUsageEnabled: boolean | null;
 };
 
-const USAGE_FAILURE_MESSAGES = {
+const UsageInspectionOperation = Schema.Literals(["start", "read", "parse", "close"]);
+
+const USAGE_FAILURE_MESSAGES: Readonly<Record<typeof UsageInspectionOperation.Type, string>> = {
   start: "Could not start a Claude session to read usage",
   read: "Claude did not return usage data",
   parse: "Claude returned usage data in an unexpected format",
   close: "Could not close the Claude usage session",
-} as const;
+};
 
 /** Expected failure while starting, reading, parsing, or closing a Claude usage session. */
-class ClaudeUsageInspectionError extends Data.TaggedError("ClaudeUsageInspectionError")<{
-  /** Inspection step that failed. */
-  readonly operation: keyof typeof USAGE_FAILURE_MESSAGES;
-  /** Unclassified local cause. Callers must not render it. */
-  readonly cause?: unknown;
-}> {
+class ClaudeUsageInspectionError extends Schema.TaggedError<ClaudeUsageInspectionError>()(
+  "ClaudeUsageInspectionError",
+  {
+    /** Inspection step that failed. */
+    operation: UsageInspectionOperation,
+    /** Unclassified local cause. Callers must not render it. */
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
   /** Plain-English summary of the failed step. */
   override get message(): string {
     return USAGE_FAILURE_MESSAGES[this.operation];
@@ -70,10 +87,13 @@ class ClaudeUsageInspectionError extends Data.TaggedError("ClaudeUsageInspection
 }
 
 /** Expected failure when Claude does not answer the usage request in time. */
-class ClaudeUsageTimeoutError extends Data.TaggedError("ClaudeUsageTimeoutError")<{
-  /** How long the inspection waited. */
-  readonly timeout: Duration.Duration;
-}> {
+class ClaudeUsageTimeoutError extends Schema.TaggedError<ClaudeUsageTimeoutError>()(
+  "ClaudeUsageTimeoutError",
+  {
+    /** How long the inspection waited. */
+    timeout: Schema.Duration,
+  },
+) {
   /** Plain-English summary naming the wait. */
   override get message(): string {
     return `Timed out after ${Duration.format(this.timeout)} waiting for Claude usage`;
@@ -119,15 +139,53 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
   };
 }
 
+/** Starts idle, subscription-authenticated SDK sessions used to read Claude usage. */
+export class ClaudeUsageQueries extends Context.Service<
+  ClaudeUsageQueries,
+  {
+    /** Start an idle SDK session that ends when the controller aborts. */
+    readonly start: (
+      abortController: AbortController,
+    ) => Effect.Effect<ClaudeUsageQuery, ClaudeUsageInspectionError>;
+  }
+>()("pi-claude-sdk-provider/sdk-usage/ClaudeUsageQueries") {
+  /**
+   * Build the service from a raw starter, translating a thrown startup failure into a typed error.
+   *
+   * @param startQuery - Raw SDK subprocess starter.
+   * @returns A layer providing the service.
+   */
+  static fromStart(startQuery: StartClaudeUsageQuery): Layer.Layer<ClaudeUsageQueries> {
+    return Layer.succeed(
+      ClaudeUsageQueries,
+      ClaudeUsageQueries.of({
+        start: Effect.fn("ClaudeUsageQueries.start")(function* (abortController: AbortController) {
+          return yield* Effect.try({
+            try: () => startQuery(abortController),
+            catch: (cause) => new ClaudeUsageInspectionError({ operation: "start", cause }),
+          });
+        }),
+      }),
+    );
+  }
+
+  /** Live service: an Agent SDK query in the current working directory. */
+  static readonly layer: Layer.Layer<ClaudeUsageQueries> = ClaudeUsageQueries.fromStart(
+    defaultStartClaudeUsageQuery,
+  );
+}
+
 function parseUsageResponse(
   input: unknown,
 ): Result.Result<ClaudeUsageStatus, ClaudeUsageInspectionError> {
-  const parsed = usageResponseSchema.safeParse(input);
-  if (!parsed.success) {
-    return Result.fail(new ClaudeUsageInspectionError({ operation: "parse", cause: parsed.error }));
+  const parsed = decodeUsageResponse(input);
+  if (Result.isFailure(parsed)) {
+    return Result.fail(
+      new ClaudeUsageInspectionError({ operation: "parse", cause: parsed.failure }),
+    );
   }
 
-  const limits = parsed.data.rate_limits;
+  const limits = parsed.success.rate_limits;
   const windows = [
     { name: "Current session", window: limits?.five_hour },
     { name: "Weekly", window: limits?.seven_day },
@@ -139,8 +197,8 @@ function parseUsageResponse(
     window ? [{ name, usedPercent: window.utilization, resetsAt: window.resets_at }] : [],
   );
   return Result.succeed({
-    subscriptionType: parsed.data.subscription_type,
-    rateLimitsAvailable: parsed.data.rate_limits_available,
+    subscriptionType: parsed.success.subscription_type,
+    rateLimitsAvailable: parsed.success.rate_limits_available,
     windows,
     extraUsageEnabled: limits?.extra_usage?.is_enabled ?? null,
   });
@@ -152,21 +210,19 @@ function parseUsageResponse(
  * The idle session is always aborted and closed, including after a failed read or an
  * interruption. A read, parse, or timeout failure wins over a cleanup failure.
  *
- * @param startQuery - Injectable SDK subprocess boundary.
  * @param timeout - Maximum wait for the SDK response, and again for cleanup.
  * @returns Parsed usage, failing with a typed startup, read, parse, timeout, or cleanup error.
  */
 export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
-  startQuery: StartClaudeUsageQuery = defaultStartClaudeUsageQuery,
   timeout: Duration.Input = "10 seconds",
 ) {
+  const queries = yield* ClaudeUsageQueries;
   return yield* Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const abortController = new AbortController();
-        return { abortController, usageQuery: startQuery(abortController) };
-      },
-      catch: (cause) => new ClaudeUsageInspectionError({ operation: "start", cause }),
+    Effect.suspend(() => {
+      const abortController = new AbortController();
+      return queries
+        .start(abortController)
+        .pipe(Effect.map((usageQuery) => ({ abortController, usageQuery })));
     }),
     ({ usageQuery }) =>
       Effect.tryPromise({

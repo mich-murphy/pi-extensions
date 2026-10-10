@@ -79,7 +79,10 @@
     "unicorn/no-new-buffer": "error",
     "unicorn/new-for-builtins": "error",
     "unicorn/prefer-type-error": "error",
-    "unicorn/throw-new-error": "error",
+    // Oxlint's version flags any call to a callee named *Error, so it fires on Effect's
+    // Schema.TaggedError<Self>()(...) class factory. new-for-builtins still catches `Error(...)`,
+    // and TypeScript rejects calling any other class without `new` (TS2348).
+    "unicorn/throw-new-error": "off",
     "unicorn/error-message": "error",
     "unicorn/no-object-as-default-parameter": "error",
     "unicorn/no-useless-promise-resolve-reject": "error",
@@ -255,6 +258,11 @@
           }
         ],
         "vitest/consistent-test-it": ["error", { "fn": "test", "withinDescribe": "test" }],
+        // @effect/vitest's it.effect and it.live are test blocks; plain `it` stays banned above
+        "vitest/no-standalone-expect": [
+          "error",
+          { "additionalTestBlockFunctions": ["it.effect", "it.live"] }
+        ],
         "vitest/require-top-level-describe": "error",
         "vitest/no-conditional-in-test": "error",
         "vitest/prefer-strict-equal": "error",

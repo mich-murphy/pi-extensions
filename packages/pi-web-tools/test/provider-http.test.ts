@@ -1,6 +1,7 @@
-import { Cause, Effect, Exit, Result } from "effect";
-import { assert, describe, expect, test } from "vitest";
-import { FetchProviderHttpClient } from "../provider-http";
+import { assert, describe, expect, it, test } from "@effect/vitest";
+import { Cause, Duration, Effect, Exit, Fiber, Result } from "effect";
+import { TestClock } from "effect/testing";
+import { providerHttpWith } from "./fakes";
 
 /** What a recording fetch saw of one request. */
 type SeenRequest = {
@@ -42,76 +43,82 @@ describe("fetchProviderHttpClient", () => {
     url: "https://api.example/search",
     headers: { "x-api-key": "k" },
     maxResponseBytes: 1024,
-    timeoutMs: 5000,
+    timeout: Duration.millis(5000),
   };
 
-  test("postJson sends the body and returns bounded text", async () => {
-    const { fetchImpl, seen } = recordingFetch(() => jsonResponse('{"ok":true}'));
-    const client = new FetchProviderHttpClient(fetchImpl);
+  it.effect("postJson sends the body and returns bounded text", () =>
+    Effect.gen(function* () {
+      const { fetchImpl, seen } = recordingFetch(() => jsonResponse('{"ok":true}'));
+      const client = providerHttpWith(fetchImpl);
 
-    const result = await Effect.runPromise(
-      Effect.result(client.postJson({ ...request, body: { query: "x" } })),
-    );
-    expect(result).toStrictEqual(Result.succeed({ bodyText: '{"ok":true}' }));
-    expect(seen[0]?.method).toBe("POST");
-    expect(seen[0]?.contentType).toBe("application/json");
-    expect(seen[0]?.body).toBe('{"query":"x"}');
-  });
+      const result = yield* Effect.result(client.postJson({ ...request, body: { query: "x" } }));
+      expect(result).toStrictEqual(Result.succeed({ bodyText: '{"ok":true}' }));
+      expect(seen[0]?.method).toBe("POST");
+      expect(seen[0]?.contentType).toBe("application/json");
+      expect(seen[0]?.body).toBe('{"query":"x"}');
+    }),
+  );
 
-  test("getJson sends no body or content-type", async () => {
-    const { fetchImpl, seen } = recordingFetch(() => jsonResponse("{}"));
-    const client = new FetchProviderHttpClient(fetchImpl);
+  it.effect("getJson sends no body or content-type", () =>
+    Effect.gen(function* () {
+      const { fetchImpl, seen } = recordingFetch(() => jsonResponse("{}"));
+      const client = providerHttpWith(fetchImpl);
 
-    await Effect.runPromise(Effect.result(client.getJson(request)));
-    expect(seen[0]?.method).toBe("GET");
-    expect(seen[0]?.body).toBeNull();
-    expect(seen[0]?.contentType).toBeNull();
-  });
+      yield* Effect.result(client.getJson(request));
+      expect(seen[0]?.method).toBe("GET");
+      expect(seen[0]?.body).toBeNull();
+      expect(seen[0]?.contentType).toBeNull();
+    }),
+  );
 
-  test("maps failures to tagged errors", async () => {
-    const rejected = new FetchProviderHttpClient(async () => jsonResponse("no", 503));
-    const rejectedResult = await Effect.runPromise(
-      Effect.result(rejected.postJson({ ...request, body: {} })),
-    );
-    assert(Result.isFailure(rejectedResult));
-    expect(rejectedResult.failure._tag).toBe("ProviderStatusRejected");
-    expect(rejectedResult.failure.message).toBe("rejected (HTTP 503)");
+  it.effect("maps failures to tagged errors", () =>
+    Effect.gen(function* () {
+      const rejected = providerHttpWith(async () => jsonResponse("no", 503));
+      const rejectedResult = yield* Effect.result(rejected.postJson({ ...request, body: {} }));
+      assert(Result.isFailure(rejectedResult));
+      expect(rejectedResult.failure._tag).toBe("ProviderStatusRejected");
+      expect(rejectedResult.failure.message).toBe("rejected (HTTP 503)");
 
-    const failed = new FetchProviderHttpClient(async () => {
-      throw new Error("dns");
-    });
-    const failedResult = await Effect.runPromise(Effect.result(failed.getJson(request)));
-    assert(Result.isFailure(failedResult));
-    expect(failedResult.failure._tag).toBe("ProviderRequestFailed");
-    expect(failedResult.failure.message).toBe("request to api.example failed");
+      const failed = providerHttpWith(async () => {
+        throw new Error("dns");
+      });
+      const failedResult = yield* Effect.result(failed.getJson(request));
+      assert(Result.isFailure(failedResult));
+      expect(failedResult.failure._tag).toBe("ProviderRequestFailed");
+      expect(failedResult.failure.message).toBe("request to api.example failed");
 
-    const tooLarge = new FetchProviderHttpClient(async () => jsonResponse("x".repeat(4096)));
-    const tooLargeResult = await Effect.runPromise(Effect.result(tooLarge.getJson(request)));
-    assert(Result.isFailure(tooLargeResult));
-    expect(tooLargeResult.failure._tag).toBe("ProviderResponseTooLarge");
-  });
+      const tooLarge = providerHttpWith(async () => jsonResponse("x".repeat(4096)));
+      const tooLargeResult = yield* Effect.result(tooLarge.getJson(request));
+      assert(Result.isFailure(tooLargeResult));
+      expect(tooLargeResult.failure._tag).toBe("ProviderResponseTooLarge");
+    }),
+  );
 
   test("a caller abort interrupts the request", async () => {
     const aborted = new AbortController();
     aborted.abort();
-    const client = new FetchProviderHttpClient(async () => jsonResponse("{}"));
+    const client = providerHttpWith(async () => jsonResponse("{}"));
     const exit = await Effect.runPromiseExit(client.getJson(request), { signal: aborted.signal });
     assert(Exit.isFailure(exit));
     expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
-  test("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", async () => {
-    const inits: (RequestInit | undefined)[] = [];
-    const client = new FetchProviderHttpClient(async (_input, init) => {
-      inits.push(init);
-      return neverResponds();
-    });
-    const result = await Effect.runPromise(
-      Effect.result(client.getJson({ ...request, timeoutMs: 20 })),
-    );
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("ProviderTimedOut");
-    expect(result.failure.message).toBe("timed out after 1s");
-    expect(inits[0]?.signal?.aborted).toBe(true);
-  });
+  it.effect("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", () =>
+    Effect.gen(function* () {
+      const inits: (RequestInit | undefined)[] = [];
+      const client = providerHttpWith(async (_input, init) => {
+        inits.push(init);
+        return neverResponds();
+      });
+      const fiber = yield* Effect.forkChild(
+        Effect.result(client.getJson({ ...request, timeout: Duration.millis(20) })),
+      );
+      yield* TestClock.adjust(Duration.millis(20));
+      const result = yield* Fiber.join(fiber);
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("ProviderTimedOut");
+      expect(result.failure.message).toBe("timed out after 1s");
+      expect(inits[0]?.signal?.aborted).toBe(true);
+    }),
+  );
 });

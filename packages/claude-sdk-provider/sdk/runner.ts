@@ -2,7 +2,8 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Result } from "effect";
+import { Effect, Result, Stream } from "effect";
+import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
@@ -168,45 +169,109 @@ function advance(
   }
 }
 
-// Yields the turn's deltas and running usage, and returns how the query ended.
-async function* streamQuery(
+/** One step of a query: a streamed event, or how the query ended. */
+type QueryStep =
+  | { readonly _tag: "event"; readonly event: BridgeEvent }
+  | { readonly _tag: "end"; readonly outcome: QueryOutcome };
+
+const initialProgress = (): QueryProgress => ({
+  usage: undefined,
+  observedModel: undefined,
+  result: undefined,
+  apiError: undefined,
+});
+
+function ended(outcome: QueryOutcome): QueryStep {
+  return { _tag: "end", outcome };
+}
+
+// The invalid-call limit outranks whatever the query reported once it has been reached.
+function settle(capture: DeferredCallCapture, progress: QueryProgress): QueryStep {
+  return ended(capture.limitError ? Result.fail(capture.limitError) : Result.succeed(progress));
+}
+
+/**
+ * One item read from the SDK: a raw message, the failure that ended iteration, or the end of the
+ * SDK's stream. The end is an explicit item rather than mapAccum's onHalt, because onHalt also
+ * runs on defects and would report them as a missing result.
+ */
+type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted" };
+
+const HALTED: QueryItem = { _tag: "Halted" };
+
+// Folds one SDK message, the failure that ended iteration, or the stream's end into the progress.
+function step(
+  capture: DeferredCallCapture,
+): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
+  return (progress, item) => {
+    if (item._tag === "Halted") {
+      return [progress, [settle(capture, progress)]];
+    }
+    if (Result.isFailure(item)) {
+      return [progress, [ended(Result.fail(item.failure))]];
+    }
+    if (capture.limitError) {
+      return [progress, [ended(Result.fail(capture.limitError))]];
+    }
+    const parsed = parseSdkMessage(item.success);
+    if (Result.isFailure(parsed)) {
+      return [progress, [ended(Result.fail(parsed.failure))]];
+    }
+    const { progress: next, event } = advance(progress, parsed.success);
+    const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
+    // The prompt is a single message, so its result ends the turn. Stopping
+    // here keeps the turn from depending on the SDK closing its stream.
+    return [next, next.result ? [...steps, settle(capture, next)] : steps];
+  };
+}
+
+/**
+ * Closing the stream calls the query's `return()`. Aborting first lets a pending `next()` settle
+ * instead of queueing `return()` behind it. A rejection while closing is dropped: by then the
+ * turn's outcome is decided or no longer read, and real iteration failures come from `next()`.
+ * The SDK iterator is opened on the first `next()`, so a throwing iterator factory becomes an
+ * iteration failure rather than a defect.
+ */
+function abortOnClose(
+  messages: AsyncIterable<unknown>,
+  abortController: AbortController,
+): AsyncIterable<unknown> {
+  return {
+    [Symbol.asyncIterator]: () => {
+      let iterator: AsyncIterator<unknown> | undefined;
+      return {
+        next: async () => {
+          iterator ??= messages[Symbol.asyncIterator]();
+          return iterator.next();
+        },
+        return: async () => {
+          abortController.abort();
+          try {
+            await iterator?.return?.();
+          } catch {
+            // Deliberately dropped: see abortOnClose.
+          }
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+// The turn's deltas and running usage, ending with exactly one step that says how the query ended.
+function querySteps(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
-  signal: AbortSignal,
-): AsyncGenerator<BridgeEvent, QueryOutcome> {
-  let progress: QueryProgress = {
-    usage: undefined,
-    observedModel: undefined,
-    result: undefined,
-    apiError: undefined,
-  };
-  try {
-    for await (const raw of messages) {
-      if (capture.limitError) {
-        break;
-      }
-      const parsed = parseSdkMessage(raw);
-      if (Result.isFailure(parsed)) {
-        return Result.fail(parsed.failure);
-      }
-      const { progress: next, event } = advance(progress, parsed.success);
-      progress = next;
-      if (event) {
-        yield event;
-      }
-      // The prompt is a single message, so its result ends the turn. Stopping
-      // here keeps the turn from depending on the SDK closing its stream.
-      if (progress.result) {
-        break;
-      }
-    }
-  } catch (error) {
-    // A result already in hand outlives a failure while closing the finished query.
-    if (!progress.result) {
-      return Result.fail(iterationFailure(capture, signal, error));
-    }
-  }
-  return capture.limitError ? Result.fail(capture.limitError) : Result.succeed(progress);
+  abortController: AbortController,
+): Stream.Stream<QueryStep> {
+  return Stream.fromAsyncIterable(abortOnClose(messages, abortController), (error) =>
+    iterationFailure(capture, abortController.signal, error),
+  ).pipe(
+    Stream.result,
+    Stream.concat(Stream.succeed(HALTED)),
+    Stream.mapAccum(initialProgress, step(capture)),
+    Stream.takeUntil((queryStep) => queryStep._tag === "end"),
+  );
 }
 
 // Why iterating the query threw: the tool-call limit's own abort, a caller cancel, or the SDK.
@@ -223,60 +288,92 @@ function iterationFailure(
     : SdkQueryError.fromCause("iterate", error);
 }
 
-async function* runTurn(
+// The turn's AbortController, which follows Pi's signal and is aborted however the turn ends.
+function turnAbortController(
+  signal: AbortSignal | undefined,
+): Effect.Effect<AbortController, never, Scope.Scope> {
+  return Effect.acquireRelease(
+    Effect.sync(() => {
+      const controller = new AbortController();
+      const forwardAbort = (): void => {
+        controller.abort(signal?.reason);
+      };
+      signal?.addEventListener("abort", forwardAbort, { once: true });
+      return { controller, forwardAbort };
+    }),
+    ({ controller, forwardAbort }) =>
+      Effect.sync(() => {
+        signal?.removeEventListener("abort", forwardAbort);
+        // Stop the SDK subprocess however the turn ended, including an abandoned stream.
+        controller.abort();
+      }),
+  ).pipe(Effect.map(({ controller }) => controller));
+}
+
+/** What the runner reports once a query has ended. */
+type TurnObservers = {
+  readonly selector: string;
+  readonly modelObserver: RunnerOptions["modelObserver"];
+  readonly recordUsage: ((usage: TokenUsage) => void) | undefined;
+};
+
+// The terminal event for a query outcome, reporting the model and usage of a completed turn.
+function conclude(
+  outcome: QueryOutcome,
+  capture: DeferredCallCapture,
+  { selector, modelObserver, recordUsage }: TurnObservers,
+): BridgeEvent {
+  if (Result.isFailure(outcome)) {
+    return failed(outcome.failure);
+  }
+  const { usage, observedModel, result, apiError } = outcome.success;
+  if (result !== undefined && observedModel !== undefined) {
+    modelObserver?.({
+      selector,
+      canonicalModel: observedModel,
+      contextWindow: contextWindowFor(result.modelUsage, observedModel),
+    });
+  }
+  const terminal = terminalEvent(result?.result, capture.calls, apiError);
+  if (terminal.type !== "failed" && usage) {
+    recordUsage?.(usage);
+  }
+  return terminal;
+}
+
+const runTurn = Effect.fnUntraced(function* (
   { runSdkQuery, sdkEnvironment, cacheDiagnostics, modelObserver }: Collaborators,
   turn: Turn,
-): AsyncGenerator<BridgeEvent> {
+): Effect.fn.Return<Stream.Stream<BridgeEvent>, never, Scope.Scope> {
   const { request, model, options } = turn;
   const signal = options?.signal;
   if (signal?.aborted === true) {
-    yield failed(SdkQueryError.cancelled("start", signal.reason));
-    return;
+    return Stream.succeed(failed(SdkQueryError.cancelled("start", signal.reason)));
   }
-  const abortController = new AbortController();
-  const forwardAbort = (): void => {
-    abortController.abort(signal?.reason);
-  };
-  signal?.addEventListener("abort", forwardAbort, { once: true });
-  try {
-    const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
-      abortController.abort(limitError);
-    });
-    const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request);
-    let messages: AsyncIterable<unknown>;
-    try {
-      messages = runSdkQuery(
+  const abortController = yield* turnAbortController(signal);
+  const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
+    abortController.abort(limitError);
+  });
+  const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request);
+  const started = Result.try({
+    try: () =>
+      runSdkQuery(
         queryParameters(turn, { abortController, hook: capture.hook, env: sdkEnvironment }),
-      );
-    } catch (error) {
-      yield failed(SdkQueryError.fromCause("start", error));
-      return;
-    }
-
-    const ended = yield* streamQuery(messages, capture, abortController.signal);
-    if (Result.isFailure(ended)) {
-      yield failed(ended.failure);
-      return;
-    }
-    const { usage, observedModel, result, apiError } = ended.success;
-    if (result !== undefined && observedModel !== undefined) {
-      modelObserver?.({
-        selector: sdkModelSelectorFor(model.id),
-        canonicalModel: observedModel,
-        contextWindow: contextWindowFor(result.modelUsage, observedModel),
-      });
-    }
-    const terminal = terminalEvent(result?.result, capture.calls, apiError);
-    if (terminal.type !== "failed" && usage) {
-      recordUsage?.(usage);
-    }
-    yield terminal;
-  } finally {
-    signal?.removeEventListener("abort", forwardAbort);
-    // Stop the SDK subprocess however the turn ended, including an abandoned stream.
-    abortController.abort();
+      ),
+    catch: (error) => SdkQueryError.fromCause("start", error),
+  });
+  if (Result.isFailure(started)) {
+    return Stream.succeed(failed(started.failure));
   }
-}
+  const observers = { selector: sdkModelSelectorFor(model.id), modelObserver, recordUsage };
+  return querySteps(started.success, capture, abortController).pipe(
+    Stream.map((queryStep) =>
+      queryStep._tag === "event"
+        ? queryStep.event
+        : conclude(queryStep.outcome, capture, observers),
+    ),
+  );
+});
 
 /** Create a stateless Claude Agent SDK runner. */
 export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSdkRun {
@@ -286,5 +383,8 @@ export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSd
     ...options,
   };
   return (request, model, streamOptions) =>
-    runTurn(collaborators, { request, model, options: streamOptions });
+    // Pi consumes a plain AsyncIterable; ending it early runs the stream's finalizers first.
+    Stream.toAsyncIterable(
+      Stream.unwrap(runTurn(collaborators, { request, model, options: streamOptions })),
+    );
 }

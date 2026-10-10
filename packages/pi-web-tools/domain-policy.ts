@@ -1,4 +1,4 @@
-import { Data, Result } from "effect";
+import { Result, Schema } from "effect";
 import type { PublicHttpUrl } from "./types";
 
 /** Hostname allow/deny policy for webfetch. */
@@ -8,9 +8,10 @@ export type DomainPolicy = {
 };
 
 /** The hostname matches a webfetch deny-list entry. */
-export class DomainDenied extends Data.TaggedError("DomainDenied")<{
-  readonly hostname: string;
-}> {
+export class DomainDenied extends Schema.TaggedError<DomainDenied>()("DomainDenied", {
+  /** The denied hostname. */
+  hostname: Schema.String,
+}) {
   /** Safe user-facing description naming only the hostname. */
   override get message(): string {
     return `Fetching from ${this.hostname} is denied by the webfetch domain policy`;
@@ -18,9 +19,10 @@ export class DomainDenied extends Data.TaggedError("DomainDenied")<{
 }
 
 /** An allow list is configured and the hostname matches none of its entries. */
-export class DomainNotAllowed extends Data.TaggedError("DomainNotAllowed")<{
-  readonly hostname: string;
-}> {
+export class DomainNotAllowed extends Schema.TaggedError<DomainNotAllowed>()("DomainNotAllowed", {
+  /** The hostname that matched no allow-list entry. */
+  hostname: Schema.String,
+}) {
   /** Safe user-facing description naming only the hostname. */
   override get message(): string {
     return `Fetching from ${this.hostname} is not in the webfetch allowed domains list`;

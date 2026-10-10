@@ -1,33 +1,34 @@
+import process from "node:process";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Cause, Effect, Exit, Result } from "effect";
+import { Effect, Layer } from "effect";
 import { createAgentSdkStream } from "./bridge";
 import type { AgentSdkRun } from "./bridge";
-import { cacheDiagnosticsFromEnvironment } from "./cache-diagnostics";
+import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "./cache-diagnostics";
+import { createCommandRunner } from "./command-runtime";
+import type { CommandRunner } from "./command-runtime";
 import { formatModelStatus, models, providerModel } from "./models";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "./output-safety";
-import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
-import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
+import { ClaudeUsageQueries, formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
+import {
+  ClaudeSdkVersionSources,
+  formatClaudeSdkVersionStatus,
+  inspectClaudeSdkVersions,
+} from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
 
-// Command boundary: expected failures become a Result to render; defects rethrow unchanged.
-async function runCommand<A, E extends Error>(
-  program: Effect.Effect<A, E>,
-): Promise<Result.Result<A, E>> {
-  const exit = await Effect.runPromiseExit(program);
-  if (Exit.isSuccess(exit)) {
-    return Result.succeed(exit.value);
-  }
-  const failure = Cause.findError(exit.cause);
-  if (Result.isSuccess(failure)) {
-    return Result.fail(failure.success);
-  }
-  throw Cause.squash(exit.cause);
-}
+/** Services the slash commands run against. */
+type CommandServices = ClaudeSdkVersionSources | ClaudeUsageQueries;
+
+const commandLayer: Layer.Layer<CommandServices> = Layer.mergeAll(
+  ClaudeSdkVersionSources.layer,
+  ClaudeUsageQueries.layer,
+);
 
 function registerStatusCommands(
   pi: ExtensionAPI,
   observedModels: ReadonlyMap<string, string>,
+  commands: CommandRunner<CommandServices>,
 ): void {
   pi.registerCommand("claude-sdk-status", {
     description: "Show Agent SDK versions and observed model mappings",
@@ -35,15 +36,13 @@ function registerStatusCommands(
       if (!ctx.hasUI) {
         return;
       }
-      const result = await runCommand(inspectClaudeSdkVersions());
-      if (Result.isFailure(result)) {
-        ctx.ui.notify(result.failure.message, "error");
-        return;
+      const notice = await commands.report(inspectClaudeSdkVersions(), (status) => ({
+        text: `${formatClaudeSdkVersionStatus(status)}\n\n${formatModelStatus(observedModels)}`,
+        level: status.updateSuggested ? "warning" : "info",
+      }));
+      if (notice !== undefined) {
+        ctx.ui.notify(notice.text, notice.level);
       }
-      ctx.ui.notify(
-        `${formatClaudeSdkVersionStatus(result.success)}\n\n${formatModelStatus(observedModels)}`,
-        result.success.updateSuggested ? "warning" : "info",
-      );
     },
   });
   pi.registerCommand("claude-sdk-usage", {
@@ -52,12 +51,13 @@ function registerStatusCommands(
       if (!ctx.hasUI) {
         return;
       }
-      const result = await runCommand(inspectClaudeUsage());
-      if (Result.isFailure(result)) {
-        ctx.ui.notify(result.failure.message, "error");
-        return;
+      const notice = await commands.report(inspectClaudeUsage(), (status) => ({
+        text: formatClaudeUsageStatus(status),
+        level: "info",
+      }));
+      if (notice !== undefined) {
+        ctx.ui.notify(notice.text, notice.level);
       }
-      ctx.ui.notify(formatClaudeUsageStatus(result.success), "info");
     },
   });
 }
@@ -112,12 +112,19 @@ export default function registerClaudeSdkProvider(pi: ExtensionAPI): void {
   // Selector -> concrete model last observed on a real turn, for /claude-sdk-status.
   const observedModels = new Map<string, string>();
   const runClaudeAgentSdk = createClaudeAgentSdkRunner({
-    cacheDiagnostics: cacheDiagnosticsFromEnvironment(),
+    // The environment is read here, at the composition root, and nowhere deeper.
+    cacheDiagnostics: Effect.runSync(
+      cacheDiagnosticsTracker(parseCacheDiagnosticsMode(process.env)),
+    ),
     modelObserver: (observation) => {
       observedModels.set(observation.selector, observation.canonicalModel);
     },
   });
-  registerStatusCommands(pi, observedModels);
+  const commands = createCommandRunner(commandLayer);
+  pi.on("session_shutdown", async () => {
+    await commands.dispose();
+  });
+  registerStatusCommands(pi, observedModels, commands);
   registerSafetyHooks(pi);
   registerProvider(pi, runClaudeAgentSdk);
 }

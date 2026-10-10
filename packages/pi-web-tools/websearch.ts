@@ -1,26 +1,31 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Cause, Data, Effect, Exit, Result } from "effect";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import type { SearchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
-import { searchWithFallback } from "./search";
-import { clampInteger, SEARCH_MAX_RESULTS, SEARCH_PROVIDERS } from "./settings";
+import { SearchProviders, searchWithFallback } from "./search";
+import {
+  clampInteger,
+  SEARCH_MAX_RESULTS,
+  SEARCH_PROVIDERS,
+  secretsForRedaction,
+  WebToolsConfig,
+} from "./settings";
 import type { WebToolsSettings } from "./settings";
-import { projectSearchResults } from "./tool-output";
-import type { ToolOutputStore } from "./tool-output";
+import { projectSearchResults, ToolOutputStore } from "./tool-output";
+import type { ToolRuntime } from "./tool-runtime";
 import { parseSearchQuery } from "./types";
 import type { SearchProviderName, SearchQuery, WebSearchDetails } from "./types";
 
 /** Composition injected into the websearch tool. */
 export type WebSearchToolComposition = {
-  readonly settings: WebToolsSettings;
-  readonly providers: readonly SearchProvider[];
-  readonly outputStore: ToolOutputStore;
-  readonly secrets: readonly (string | undefined)[];
+  /** Non-secret settings, for input defaults and the progress message; keys stay in WebToolsConfig. */
+  readonly settings: Pick<WebToolsSettings, "search">;
+  /** The runtime every search runs on. */
+  readonly runtime: ToolRuntime<SearchProviders | ToolOutputStore | WebToolsConfig>;
 };
 
 /** Parsed websearch tool parameters. */
@@ -31,7 +36,10 @@ export type WebSearchParams = {
 };
 
 /** The websearch query was empty after trimming. */
-export class EmptySearchQueryInput extends Data.TaggedError("InvalidToolInput") {
+export class EmptySearchQueryInput extends Schema.TaggedError<EmptySearchQueryInput>()(
+  "EmptySearchQueryInput",
+  {},
+) {
   /** Safe user-facing description. */
   override get message(): string {
     return "query cannot be empty";
@@ -68,7 +76,7 @@ const WEB_SEARCH_PARAMETERS = Type.Object(
  */
 export function parseWebSearchParams(
   params: Static<typeof WEB_SEARCH_PARAMETERS>,
-  settings: WebToolsSettings,
+  settings: Pick<WebToolsSettings, "search">,
 ): Result.Result<WebSearchParams, WebSearchInputError> {
   const query = parseSearchQuery(params.query);
   if (Result.isFailure(query)) {
@@ -112,42 +120,22 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
         throw new Error(parsed.failure.message);
       }
 
+      const { query, maxResults } = parsed.success;
+      // Reported before the run, so progress shows even when the run is cancelled before it starts.
+      // parseSettings requires a Brave key whenever Brave is listed, so the first configured name
+      // is the first provider in the chain.
       onUpdate?.({
-        content: [{ type: "text", text: `Searching for ${parsed.success.query}...` }],
+        content: [{ type: "text", text: `Searching for ${query}...` }],
         details: {
-          query: parsed.success.query,
-          maxResults: parsed.success.maxResults,
-          provider: composition.providers[0]?.name ?? "exa",
+          query,
+          maxResults,
+          provider: composition.settings.search.providers[0] ?? "exa",
           attemptedProviders: [],
           resultCount: 0,
         },
       });
 
-      const { query, maxResults, provider } = parsed.success;
-      const program = searchWithFallback(
-        composition.providers,
-        { query, maxResults },
-        { providerOverride: provider },
-      ).pipe(
-        Effect.flatMap((outcome) =>
-          projectSearchResults(
-            {
-              query,
-              results: outcome.results,
-              details: {
-                query,
-                maxResults,
-                provider: outcome.provider,
-                attemptedProviders: outcome.attemptedProviders,
-                resultCount: outcome.results.length,
-              },
-            },
-            { store: composition.outputStore, secrets: composition.secrets },
-          ),
-        ),
-      );
-
-      const exit = await Effect.runPromiseExit(program, { signal });
+      const exit = await composition.runtime.runExit(runWebSearch(parsed.success), signal);
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
@@ -225,3 +213,30 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
     },
   };
 }
+
+// One search: walk the provider chain, then project the results for Pi.
+const runWebSearch = Effect.fnUntraced(function* (input: WebSearchParams) {
+  const providers = yield* SearchProviders;
+  const config = yield* WebToolsConfig;
+  const store = yield* ToolOutputStore;
+  const { query, maxResults, provider } = input;
+  const outcome = yield* searchWithFallback(
+    providers,
+    { query, maxResults },
+    { providerOverride: provider },
+  );
+  return yield* projectSearchResults(
+    {
+      query,
+      results: outcome.results,
+      details: {
+        query,
+        maxResults,
+        provider: outcome.provider,
+        attemptedProviders: outcome.attemptedProviders,
+        resultCount: outcome.results.length,
+      },
+    },
+    { store, secrets: secretsForRedaction(config.credentials) },
+  );
+});

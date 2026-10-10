@@ -81,6 +81,8 @@ function initialAssistantMessage(model: Model<Api>): AssistantMessage {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
     stopReason: "pending",
+    // Pi calls streamSimple synchronously and the start event is pushed before any Effect runs,
+    // so no Clock is in scope here.
     timestamp: Date.now(),
   };
 }

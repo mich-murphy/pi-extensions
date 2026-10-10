@@ -1,24 +1,23 @@
-import { Effect, Result } from "effect";
+import { Effect, Result, Layer } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { McpHttpClient } from "../mcp";
+import { McpClients } from "../mcp";
+import type { McpClient } from "../mcp";
+import { HttpFetch } from "../network";
 import { ExaMcpFetchProvider, ExaMcpSearchProvider } from "../provider-exa";
 import { ParallelMcpFetchProvider, ParallelMcpSearchProvider } from "../provider-parallel";
-import {
-  EXA_MCP_DEFAULT_ENDPOINT,
-  PARALLEL_MCP_DEFAULT_ENDPOINT,
-  SEARCH_MAX_RESPONSE_BYTES,
-  SEARCH_TIMEOUT_SECONDS,
-} from "../settings";
+import { EXA_MCP_DEFAULT_ENDPOINT, PARALLEL_MCP_DEFAULT_ENDPOINT } from "../settings";
 import { publicUrl, searchQuery } from "./fakes";
 
 // Live smoke tests against the real keyless endpoints. Run with: npm run test:live
 // (vitest.live.config.ts includes packages/*/test/**/*.live.ts and nothing else).
 
-function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpHttpClient {
-  return new McpHttpClient(endpoint, {
-    maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
-    timeoutMs: SEARCH_TIMEOUT_SECONDS.default * 1000,
-  });
+function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpClient {
+  const clients = McpClients.layer.pipe(Layer.provide(HttpFetch.layer));
+  return Effect.runSync(
+    Effect.gen(function* () {
+      return (yield* McpClients).forEndpoint(endpoint);
+    }).pipe(Effect.provide(clients)),
+  );
 }
 
 describe("live keyless endpoints", () => {
