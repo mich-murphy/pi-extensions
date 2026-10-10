@@ -145,7 +145,13 @@ describe("provider failures", () => {
   test("surfaces a failed turn as one categorized Pi error that keeps the partial content", async () => {
     const events = await piEvents([
       { type: "text_delta", text: "Partial" },
-      { type: "failed", error: new SdkResultError(undefined, "You're out of extra usage") },
+      {
+        type: "failed",
+        error: new SdkResultError({
+          terminalReason: undefined,
+          detail: "You're out of extra usage",
+        }),
+      },
     ]);
 
     expect(events.map((event) => event.type)).toStrictEqual([
@@ -158,7 +164,7 @@ describe("provider failures", () => {
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Partial" }]);
-    expect(message.errorMessage).toBe("Claude SDK [usage-limit]: You're out of extra usage");
+    expect(message.errorMessage).toBe("Claude Agent SDK: You're out of extra usage");
   });
 
   test("reports a failure after cancellation as aborted", async () => {
@@ -166,7 +172,12 @@ describe("provider failures", () => {
     controller.abort();
 
     const events = await piEvents(
-      [{ type: "failed", error: new SdkResultError(undefined, "interrupted") }],
+      [
+        {
+          type: "failed",
+          error: new SdkResultError({ terminalReason: undefined, detail: "interrupted" }),
+        },
+      ],
       { signal: controller.signal },
     );
 
@@ -179,7 +190,9 @@ describe("provider failures", () => {
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Truncated" }]);
-    expect(message.errorMessage).toContain("terminal-result");
+    expect(message.errorMessage).toBe(
+      "Claude SDK provider bug: the turn ended without a final result",
+    );
   });
 
   test("ignores events after the terminal event", async () => {
@@ -198,6 +211,9 @@ describe("provider failures", () => {
 
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
-    expect(message.errorMessage).toContain("adapter defect");
+    expect(message.errorMessage).toBe(
+      "Claude SDK provider bug: the SDK runner failed unexpectedly",
+    );
+    expect(message.errorMessage).not.toContain("adapter defect");
   });
 });

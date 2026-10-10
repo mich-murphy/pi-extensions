@@ -20,8 +20,12 @@ class FakeCaffeinate {
     this.listener?.({ _tag: "exited", code, signal });
   }
 
-  fail(cause: unknown): void {
-    this.listener?.({ _tag: "failed", error: new CaffeinateProcessError(cause) });
+  fail(operation: "start" | "stop", code: string): void {
+    const cause = new Error(`${operation} ${code}`);
+    this.listener?.({
+      _tag: "failed",
+      error: new CaffeinateProcessError(operation, code, cause),
+    });
   }
 }
 
@@ -131,12 +135,25 @@ describe("no-sleep lifecycle", () => {
     const pi = harness();
     await pi.emit("agent_start");
 
-    pi.spawned[0]?.child.fail(new Error("spawn /usr/bin/caffeinate ENOENT"));
-    pi.spawned[0]?.child.fail("not an Error");
+    pi.spawned[0]?.child.fail("start", "ENOENT");
+    pi.spawned[0]?.child.fail("stop", "EPERM");
 
     expect(pi.spawned).toHaveLength(1);
     expect(pi.notifications).toStrictEqual([
-      { message: "No Sleep caffeinate failed: spawn /usr/bin/caffeinate ENOENT", level: "error" },
+      { message: "No Sleep: caffeinate is not available (is this macOS?)", level: "error" },
+    ]);
+  });
+
+  test("names the failed operation and its code", async () => {
+    const pi = harness();
+    await pi.emit("agent_start");
+    pi.spawned[0]?.child.fail("start", "EAGAIN");
+    await pi.emit("agent_start");
+    pi.spawned[1]?.child.fail("stop", "EPERM");
+
+    expect(pi.notifications).toStrictEqual([
+      { message: "No Sleep: Could not start caffeinate: EAGAIN", level: "error" },
+      { message: "No Sleep: Could not stop caffeinate: EPERM", level: "error" },
     ]);
   });
 
@@ -147,7 +164,7 @@ describe("no-sleep lifecycle", () => {
     await pi.emit("agent_start");
 
     pi.spawned[0]?.child.exit(null, "SIGKILL");
-    pi.spawned[0]?.child.fail(new Error("kill EPERM"));
+    pi.spawned[0]?.child.fail("stop", "EPERM");
     await pi.emit("agent_start");
 
     expect(pi.spawned).toHaveLength(2);
@@ -159,7 +176,7 @@ describe("no-sleep lifecycle", () => {
     const pi = harness("darwin", false);
     await pi.emit("agent_start");
 
-    pi.spawned[0]?.child.fail(new Error("not executable"));
+    pi.spawned[0]?.child.fail("start", "EACCES");
 
     expect(pi.notifications).toStrictEqual([]);
   });

@@ -46,7 +46,10 @@ function parseDeferredCall(
   } else {
     reason = `"arguments" must be an object matching "${name}"'s input schema.`;
   }
-  return new InvalidDeferredCallError(requested.name, `Invalid Pi tool call: ${reason}`);
+  return new InvalidDeferredCallError({
+    requestedName: requested.name,
+    reason: `Invalid Pi tool call: ${reason}`,
+  });
 }
 
 function deny(reason: string): HookJSONOutput {
@@ -119,7 +122,10 @@ export function createDeferredCallCapture(
     if (parsed instanceof InvalidDeferredCallError) {
       invalidCalls += 1;
       if (invalidCalls > MAX_INVALID_PI_CALLS && !limitError) {
-        limitError = new InvalidDeferredCallLimitError(invalidCalls, parsed);
+        limitError = new InvalidDeferredCallLimitError({
+          attempts: invalidCalls,
+          lastError: parsed,
+        });
         onLimitExceeded(limitError);
       }
       return deny(parsed.message);

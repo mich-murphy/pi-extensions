@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Result } from "effect";
 import { FetchPage } from "./fetch-page";
 import { FetchPublicWebClient } from "./network";
 import { FetchProviderHttpClient } from "./provider-http";
@@ -13,8 +14,8 @@ import { createWebSearchTool } from "./websearch";
 /** Register the webfetch and websearch tools. */
 export default function webToolsExtension(pi: ExtensionAPI): void {
   const parsed = parseSettings();
-  if (parsed._tag === "err") {
-    const { message } = parsed.error;
+  if (Result.isFailure(parsed)) {
+    const { message } = parsed.failure;
     pi.on("session_start", (_event, ctx) => {
       ctx.ui.notify(`${WEB_TOOLS_EXTENSION_NAME}: ${message}`, "error");
     });
@@ -24,7 +25,7 @@ export default function webToolsExtension(pi: ExtensionAPI): void {
     return;
   }
 
-  const settings = parsed.value;
+  const settings = parsed.success;
   const composition = {
     settings,
     http: new FetchProviderHttpClient(),

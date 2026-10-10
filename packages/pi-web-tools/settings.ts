@@ -1,6 +1,5 @@
 import process from "node:process";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import { Data, Result } from "effect";
 import { isPublicHttpUrl, parsePublicHttpUrl } from "./types";
 import type { PublicHttpUrl, SearchProviderName, WebFetchFormat } from "./types";
 
@@ -88,10 +87,16 @@ export type WebToolsSettings = {
 };
 
 /** A settings parse failure. The message is safe to show the user: it never contains env values. */
-export type SettingsError = { readonly _tag: "InvalidSetting"; readonly message: string };
+export class InvalidSetting extends Data.TaggedError("InvalidSetting")<{
+  /** Safe description naming the environment variable, never its value. */
+  readonly message: string;
+}> {}
 
-function invalid(message: string): Result<never, SettingsError> {
-  return err({ _tag: "InvalidSetting", message });
+/** Expected failures parsing web-tools settings. */
+export type SettingsError = InvalidSetting;
+
+function invalid(message: string): Result.Result<never, SettingsError> {
+  return Result.fail(new InvalidSetting({ message }));
 }
 
 /** Round into inclusive bounds such as FETCH_TIMEOUT_SECONDS; non-finite input gets the default. */
@@ -127,13 +132,13 @@ export function parseOnOff(value: string | undefined, fallback: boolean): boolea
 function parseApiKey(
   value: string | undefined,
   envName: string,
-): Result<string | undefined, SettingsError> {
+): Result.Result<string | undefined, SettingsError> {
   if (value === undefined) {
-    return ok(undefined);
+    return Result.succeed(undefined);
   }
   const trimmed = value.trim();
   if (!trimmed) {
-    return ok(undefined);
+    return Result.succeed(undefined);
   }
   // Control characters in a credential almost always mean a mangled paste or an
   // attempted header-injection; reject fail-closed with a safe message.
@@ -141,19 +146,19 @@ function parseApiKey(
   if (/[\0-\u001F\u007F]/u.test(trimmed)) {
     return invalid(`${envName} contains control characters and was rejected`);
   }
-  return ok(trimmed);
+  return Result.succeed(trimmed);
 }
 
 function parseProviderList(
   value: string | undefined,
   braveKeyed: boolean,
-): Result<readonly SearchProviderName[], SettingsError> {
+): Result.Result<readonly SearchProviderName[], SettingsError> {
   if (value === undefined || !value.trim()) {
     const defaults: SearchProviderName[] = ["exa", "parallel"];
     if (braveKeyed) {
       defaults.push("brave");
     }
-    return ok(defaults);
+    return Result.succeed(defaults);
   }
 
   // A Set dedupes while keeping first-mention order, which is the chain's priority order.
@@ -177,21 +182,21 @@ function parseProviderList(
   if (providers.has("brave") && !braveKeyed) {
     return invalid(`${PROVIDERS_ENV} enables brave but ${BRAVE_API_KEY_ENV} is not set`);
   }
-  return ok([...providers]);
+  return Result.succeed([...providers]);
 }
 
 function parseEndpointOverride(
   value: string | undefined,
   envName: string,
-): Result<PublicHttpUrl | undefined, SettingsError> {
+): Result.Result<PublicHttpUrl | undefined, SettingsError> {
   if (value === undefined || !value.trim()) {
-    return ok(undefined);
+    return Result.succeed(undefined);
   }
   const parsed = parsePublicHttpUrl(value);
-  if (parsed._tag === "err") {
+  if (Result.isFailure(parsed)) {
     return invalid(`${envName} must be a public http:// or https:// URL without credentials`);
   }
-  return ok(parsed.value);
+  return Result.succeed(parsed.success);
 }
 
 /** Parse a comma-separated domain list into normalized lowercase hostnames. */
@@ -212,38 +217,41 @@ export function parseDomainList(value: string | undefined): readonly string[] {
 /** Parse all web-tools settings from the process environment. */
 export function parseSettings(
   environment: Readonly<Record<string, string | undefined>> = process.env,
-): Result<WebToolsSettings, SettingsError> {
+): Result.Result<WebToolsSettings, SettingsError> {
   const exaApiKey = parseApiKey(environment[EXA_API_KEY_ENV], EXA_API_KEY_ENV);
-  if (exaApiKey._tag === "err") {
-    return exaApiKey;
+  if (Result.isFailure(exaApiKey)) {
+    return Result.fail(exaApiKey.failure);
   }
   const parallelApiKey = parseApiKey(environment[PARALLEL_API_KEY_ENV], PARALLEL_API_KEY_ENV);
-  if (parallelApiKey._tag === "err") {
-    return parallelApiKey;
+  if (Result.isFailure(parallelApiKey)) {
+    return Result.fail(parallelApiKey.failure);
   }
   const braveApiKey = parseApiKey(environment[BRAVE_API_KEY_ENV], BRAVE_API_KEY_ENV);
-  if (braveApiKey._tag === "err") {
-    return braveApiKey;
+  if (Result.isFailure(braveApiKey)) {
+    return Result.fail(braveApiKey.failure);
   }
 
-  const providers = parseProviderList(environment[PROVIDERS_ENV], braveApiKey.value !== undefined);
-  if (providers._tag === "err") {
-    return providers;
+  const providers = parseProviderList(
+    environment[PROVIDERS_ENV],
+    braveApiKey.success !== undefined,
+  );
+  if (Result.isFailure(providers)) {
+    return Result.fail(providers.failure);
   }
 
   const exaEndpoint = parseEndpointOverride(environment[EXA_ENDPOINT_ENV], EXA_ENDPOINT_ENV);
-  if (exaEndpoint._tag === "err") {
-    return exaEndpoint;
+  if (Result.isFailure(exaEndpoint)) {
+    return Result.fail(exaEndpoint.failure);
   }
   const parallelEndpoint = parseEndpointOverride(
     environment[PARALLEL_ENDPOINT_ENV],
     PARALLEL_ENDPOINT_ENV,
   );
-  if (parallelEndpoint._tag === "err") {
-    return parallelEndpoint;
+  if (Result.isFailure(parallelEndpoint)) {
+    return Result.fail(parallelEndpoint.failure);
   }
 
-  return ok({
+  return Result.succeed({
     fetch: {
       defaultFormat: "markdown",
       timeoutSeconds: FETCH_TIMEOUT_SECONDS.default,
@@ -254,15 +262,15 @@ export function parseSettings(
       denyDomains: parseDomainList(environment[FETCH_DENY_DOMAINS_ENV]),
     },
     search: {
-      providers: providers.value,
+      providers: providers.success,
       timeoutSeconds: SEARCH_TIMEOUT_SECONDS.default,
       defaultMaxResults: SEARCH_MAX_RESULTS.default,
     },
     credentials: {
-      exaApiKey: exaApiKey.value,
-      parallelApiKey: parallelApiKey.value,
-      braveApiKey: braveApiKey.value,
+      exaApiKey: exaApiKey.success,
+      parallelApiKey: parallelApiKey.success,
+      braveApiKey: braveApiKey.success,
     },
-    endpoints: { exa: exaEndpoint.value, parallel: parallelEndpoint.value },
+    endpoints: { exa: exaEndpoint.success, parallel: parallelEndpoint.success },
   });
 }

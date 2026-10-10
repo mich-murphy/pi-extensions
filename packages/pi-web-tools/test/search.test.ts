@@ -1,8 +1,16 @@
+import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { ExaApiFetchProvider, ExaMcpFetchProvider } from "../provider-exa";
 import { ParallelMcpFetchProvider } from "../provider-parallel";
+import {
+  ProviderProtocolInvalid,
+  ProviderRequestFailed,
+  ProviderResponseTooLarge,
+  ProviderStatusRejected,
+  ProviderTimedOut,
+  ProviderToolError,
+} from "../provider-types";
 import type { ProviderError, SearchProvider } from "../provider-types";
-import { err, ok } from "../result";
 import {
   buildFetchProviders,
   buildSearchProviders,
@@ -18,7 +26,8 @@ function answeringProvider(name: "exa" | "parallel" | "brave"): SearchProvider {
   return {
     name,
     transport: "mcp",
-    search: async () => ok([{ title: `${name} result`, url: publicUrl("https://example.com") }]),
+    search: () =>
+      Effect.succeed([{ title: `${name} result`, url: publicUrl("https://example.com") }]),
   };
 }
 
@@ -26,10 +35,18 @@ function failingProvider(
   error: ProviderError,
   name: "exa" | "parallel" | "brave" = "exa",
 ): SearchProvider {
-  return { name, transport: "api", search: async () => err(error) };
+  return { name, transport: "api", search: () => Effect.fail(error) };
 }
 
-const UNAVAILABLE: ProviderError = { _tag: "ProviderRequestFailed" };
+const UNAVAILABLE: ProviderError = new ProviderRequestFailed({
+  hostname: "mcp.example",
+  cause: new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }),
+});
+
+/** Run the chain to its success or typed failure. */
+async function run(...args: Parameters<typeof searchWithFallback>) {
+  return Effect.runPromise(Effect.result(searchWithFallback(...args)));
+}
 
 function recordingMcpFor() {
   const endpoints: PublicHttpUrl[] = [];
@@ -49,11 +66,11 @@ describe("searchWithFallback", () => {
       answeringProvider("parallel"),
       answeringProvider("brave"),
     ];
-    const result = await searchWithFallback(providers, { query: QUERY, maxResults: 8 });
+    const result = await run(providers, { query: QUERY, maxResults: 8 });
 
-    assert(result._tag === "ok");
-    expect(result.value.provider).toBe("parallel");
-    expect(result.value.attemptedProviders).toStrictEqual(["exa", "parallel"]);
+    assert(Result.isSuccess(result));
+    expect(result.success.provider).toBe("parallel");
+    expect(result.success.attemptedProviders).toStrictEqual(["exa", "parallel"]);
   });
 
   test("aggregates failures with safe reasons when all providers fail", async () => {
@@ -61,56 +78,88 @@ describe("searchWithFallback", () => {
       failingProvider(UNAVAILABLE, "exa"),
       failingProvider(UNAVAILABLE, "parallel"),
     ];
-    const result = await searchWithFallback(providers, { query: QUERY, maxResults: 8 });
+    const result = await run(providers, { query: QUERY, maxResults: 8 });
 
-    assert(result._tag === "err");
-    assert(result.error._tag === "AllProvidersFailed");
-    expect(result.error.attempts).toStrictEqual(["exa: unavailable", "parallel: unavailable"]);
+    assert(Result.isFailure(result));
+    assert(result.failure._tag === "AllProvidersFailed");
+    expect(result.failure.attempts).toStrictEqual([
+      "exa: could not resolve host mcp.example",
+      "parallel: could not resolve host mcp.example",
+    ]);
+    expect(result.failure.message).toBe(
+      "All search providers failed (exa: could not resolve host mcp.example; parallel: could not resolve host mcp.example)",
+    );
   });
 
   test("renders every provider failure as a safe reason", async () => {
     const errors: ProviderError[] = [
-      { _tag: "ProviderRequestFailed" },
-      { _tag: "ProviderTimedOut", timeoutSeconds: 25 },
-      { _tag: "ProviderCancelled" },
-      { _tag: "ProviderStatusRejected", status: 429 },
-      { _tag: "ProviderProtocolInvalid", reason: "Missing results array" },
-      { _tag: "ProviderResponseTooLarge" },
-      { _tag: "ProviderToolError" },
+      new ProviderRequestFailed({ hostname: "mcp.exa.ai" }),
+      new ProviderRequestFailed({
+        hostname: "mcp.exa.ai",
+        cause: { code: "CERT_HAS_EXPIRED" },
+      }),
+      new ProviderTimedOut({ timeoutSeconds: 25 }),
+      new ProviderStatusRejected({ status: 429 }),
+      new ProviderProtocolInvalid({ reason: "Missing results array" }),
+      new ProviderResponseTooLarge(),
+      new ProviderToolError({ detail: "" }),
+      new ProviderToolError({ detail: "quota exceeded" }),
     ];
     const providers = errors.map((error) => failingProvider(error));
-    const result = await searchWithFallback(providers, { query: QUERY, maxResults: 8 });
+    const result = await run(providers, { query: QUERY, maxResults: 8 });
 
-    assert(result._tag === "err");
-    assert(result.error._tag === "AllProvidersFailed");
-    expect(result.error.attempts).toStrictEqual([
-      "exa: unavailable",
+    assert(Result.isFailure(result));
+    assert(result.failure._tag === "AllProvidersFailed");
+    expect(result.failure.attempts).toStrictEqual([
+      "exa: request to mcp.exa.ai failed",
+      "exa: TLS certificate error for mcp.exa.ai (CERT_HAS_EXPIRED)",
       "exa: timed out after 25s",
-      "exa: cancelled",
       "exa: rejected (HTTP 429)",
       "exa: returned an invalid response",
       "exa: response too large",
       "exa: reported an error",
+      "exa: reported an error: quota exceeded",
     ]);
+  });
+
+  test("tries providers in order, stopping at the first success", async () => {
+    const order: string[] = [];
+    const tracked = (provider: SearchProvider): SearchProvider => ({
+      ...provider,
+      search: (input) =>
+        Effect.suspend(() => {
+          order.push(provider.name);
+          return provider.search(input);
+        }),
+    });
+    const providers = [
+      tracked(failingProvider(new ProviderStatusRejected({ status: 500 }), "brave")),
+      tracked(failingProvider(new ProviderTimedOut({ timeoutSeconds: 3 }), "exa")),
+      tracked(answeringProvider("parallel")),
+    ];
+    const result = await run(providers, { query: QUERY, maxResults: 8 });
+    assert(Result.isSuccess(result));
+    expect(order).toStrictEqual(["brave", "exa", "parallel"]);
+    expect(result.success.attemptedProviders).toStrictEqual(["brave", "exa", "parallel"]);
   });
 
   test("honors the provider override and rejects unknown providers", async () => {
     const providers = [failingProvider(UNAVAILABLE, "exa"), answeringProvider("parallel")];
-    const overridden = await searchWithFallback(
+    const overridden = await run(
       providers,
       { query: QUERY, maxResults: 8 },
       { providerOverride: "parallel" },
     );
-    assert(overridden._tag === "ok");
-    expect(overridden.value.provider).toBe("parallel");
+    assert(Result.isSuccess(overridden));
+    expect(overridden.success.provider).toBe("parallel");
 
-    const unknown = await searchWithFallback(
+    const unknown = await run(
       providers,
       { query: QUERY, maxResults: 8 },
       { providerOverride: "brave" },
     );
-    assert(unknown._tag === "err");
-    expect(unknown.error._tag).toBe("UnknownProvider");
+    assert(Result.isFailure(unknown));
+    expect(unknown.failure._tag).toBe("UnknownProvider");
   });
 });
 

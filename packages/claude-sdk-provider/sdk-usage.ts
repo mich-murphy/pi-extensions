@@ -2,6 +2,7 @@ import { once } from "node:events";
 import process from "node:process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { Data, Duration, Effect, Result } from "effect";
 import { z } from "zod";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
@@ -48,31 +49,36 @@ export type ClaudeUsageStatus = {
   readonly extraUsageEnabled: boolean | null;
 };
 
-/** Expected failure while reading Claude subscription usage. */
-class ClaudeUsageInspectionError extends Error {
-  readonly _tag = "ClaudeUsageInspectionError" as const;
+const USAGE_FAILURE_MESSAGES = {
+  start: "Could not start a Claude session to read usage",
+  read: "Claude did not return usage data",
+  parse: "Claude returned usage data in an unexpected format",
+  close: "Could not close the Claude usage session",
+} as const;
 
-  /**
-   * Create a safe usage-inspection failure.
-   *
-   * @param operation - Inspection step that failed.
-   * @param cause - Unclassified local cause. Callers must not render it.
-   */
-  constructor(
-    readonly operation: "start" | "read" | "parse" | "timeout" | "close",
-    override readonly cause?: unknown,
-  ) {
-    super(`Could not ${operation} Claude usage inspection`);
-    this.name = "ClaudeUsageInspectionError";
+/** Expected failure while starting, reading, parsing, or closing a Claude usage session. */
+class ClaudeUsageInspectionError extends Data.TaggedError("ClaudeUsageInspectionError")<{
+  /** Inspection step that failed. */
+  readonly operation: keyof typeof USAGE_FAILURE_MESSAGES;
+  /** Unclassified local cause. Callers must not render it. */
+  readonly cause?: unknown;
+}> {
+  /** Plain-English summary of the failed step. */
+  override get message(): string {
+    return USAGE_FAILURE_MESSAGES[this.operation];
   }
 }
 
-export type { ClaudeUsageInspectionError };
-
-/** Result of reading Claude subscription usage. */
-export type ClaudeUsageStatusResult =
-  | { readonly _tag: "ok"; readonly value: ClaudeUsageStatus }
-  | { readonly _tag: "err"; readonly error: ClaudeUsageInspectionError };
+/** Expected failure when Claude does not answer the usage request in time. */
+class ClaudeUsageTimeoutError extends Data.TaggedError("ClaudeUsageTimeoutError")<{
+  /** How long the inspection waited. */
+  readonly timeout: Duration.Duration;
+}> {
+  /** Plain-English summary naming the wait. */
+  override get message(): string {
+    return `Timed out after ${Duration.format(this.timeout)} waiting for Claude usage`;
+  }
+}
 
 /** Minimal live SDK query used by usage inspection. */
 export type ClaudeUsageQuery = {
@@ -113,10 +119,12 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
   };
 }
 
-function parseUsageResponse(input: unknown): ClaudeUsageStatusResult {
+function parseUsageResponse(
+  input: unknown,
+): Result.Result<ClaudeUsageStatus, ClaudeUsageInspectionError> {
   const parsed = usageResponseSchema.safeParse(input);
   if (!parsed.success) {
-    return { _tag: "err", error: new ClaudeUsageInspectionError("parse") };
+    return Result.fail(new ClaudeUsageInspectionError({ operation: "parse", cause: parsed.error }));
   }
 
   const limits = parsed.data.rate_limits;
@@ -130,77 +138,62 @@ function parseUsageResponse(input: unknown): ClaudeUsageStatusResult {
   ].flatMap(({ name, window }) =>
     window ? [{ name, usedPercent: window.utilization, resetsAt: window.resets_at }] : [],
   );
-  return {
-    _tag: "ok",
-    value: {
-      subscriptionType: parsed.data.subscription_type,
-      rateLimitsAvailable: parsed.data.rate_limits_available,
-      windows,
-      extraUsageEnabled: limits?.extra_usage?.is_enabled ?? null,
-    },
-  };
-}
-
-type Settled<T> =
-  | { readonly _tag: "ok"; readonly value: T }
-  | { readonly _tag: "err"; readonly cause: unknown }
-  | { readonly _tag: "timeout" };
-
-async function settleWithin<T>(promise: Promise<T>, milliseconds: number): Promise<Settled<T>> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<Settled<T>>((resolve) => {
-    timer = setTimeout(() => {
-      resolve({ _tag: "timeout" });
-    }, milliseconds);
+  return Result.succeed({
+    subscriptionType: parsed.data.subscription_type,
+    rateLimitsAvailable: parsed.data.rate_limits_available,
+    windows,
+    extraUsageEnabled: limits?.extra_usage?.is_enabled ?? null,
   });
-  const settled = promise.then(
-    (value): Settled<T> => ({ _tag: "ok", value }),
-    (error: unknown): Settled<T> => ({ _tag: "err", cause: error }),
-  );
-  try {
-    return await Promise.race([settled, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
  * Read current Claude subscription usage without sending a model prompt.
  *
+ * The idle session is always aborted and closed, including after a failed read or an
+ * interruption. A read, parse, or timeout failure wins over a cleanup failure.
+ *
  * @param startQuery - Injectable SDK subprocess boundary.
- * @param timeoutMilliseconds - Maximum wait for the SDK response, and again for cleanup.
- * @returns Parsed usage or a typed startup, read, parse, timeout, or cleanup failure.
+ * @param timeout - Maximum wait for the SDK response, and again for cleanup.
+ * @returns Parsed usage, failing with a typed startup, read, parse, timeout, or cleanup error.
  */
-export async function inspectClaudeUsage(
+export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
   startQuery: StartClaudeUsageQuery = defaultStartClaudeUsageQuery,
-  timeoutMilliseconds = 10_000,
-): Promise<ClaudeUsageStatusResult> {
-  const abortController = new AbortController();
-  let usageQuery: ClaudeUsageQuery;
-  try {
-    usageQuery = startQuery(abortController);
-  } catch (error) {
-    return { _tag: "err", error: new ClaudeUsageInspectionError("start", error) };
-  }
-
-  const read = await settleWithin(usageQuery.readUsage(), timeoutMilliseconds);
-  abortController.abort();
-  const closed = await settleWithin(usageQuery.close(), timeoutMilliseconds);
-
-  if (read._tag === "timeout") {
-    return { _tag: "err", error: new ClaudeUsageInspectionError("timeout") };
-  }
-  if (read._tag === "err") {
-    return { _tag: "err", error: new ClaudeUsageInspectionError("read", read.cause) };
-  }
-  const result = parseUsageResponse(read.value);
-  if (result._tag === "err" || closed._tag === "ok") {
-    return result;
-  }
-  const cause =
-    closed._tag === "err" ? closed.cause : new Error("Claude usage query cleanup timed out");
-  return { _tag: "err", error: new ClaudeUsageInspectionError("close", cause) };
-}
+  timeout: Duration.Input = "10 seconds",
+) {
+  return yield* Effect.acquireUseRelease(
+    Effect.try({
+      try: () => {
+        const abortController = new AbortController();
+        return { abortController, usageQuery: startQuery(abortController) };
+      },
+      catch: (cause) => new ClaudeUsageInspectionError({ operation: "start", cause }),
+    }),
+    ({ usageQuery }) =>
+      Effect.tryPromise({
+        try: async () => usageQuery.readUsage(),
+        catch: (cause) => new ClaudeUsageInspectionError({ operation: "read", cause }),
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: timeout,
+          orElse: () =>
+            Effect.fail(
+              new ClaudeUsageTimeoutError({ timeout: Duration.fromInputUnsafe(timeout) }),
+            ),
+        }),
+        Effect.flatMap((response) => Effect.fromResult(parseUsageResponse(response))),
+      ),
+    ({ abortController, usageQuery }) =>
+      Effect.sync(() => {
+        abortController.abort();
+      }).pipe(
+        Effect.andThen(Effect.tryPromise(async () => usageQuery.close())),
+        Effect.timeout(timeout),
+        Effect.mapError((cause) => new ClaudeUsageInspectionError({ operation: "close", cause })),
+        // Release runs uninterruptibly; the cleanup timeout must still be able to stop it.
+        Effect.interruptible,
+      ),
+  );
+});
 
 function formatResetTime(resetsAt: string | null): string {
   if (resetsAt === null) {

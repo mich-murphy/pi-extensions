@@ -1,13 +1,33 @@
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import type { JsonObject } from "@earendil-works/pi-ai";
+import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { FetchPage } from "../fetch-page";
-import type { PublicWebError } from "../network";
-import type { FetchProvider } from "../provider-types";
-import { err, ok } from "../result";
-import { tempFileToolOutputStore } from "../tool-output";
-import { createWebFetchTool, isRescueEligible, parseWebFetchParams } from "../webfetch";
 import {
+  HttpStatusRejected,
+  PrivateHostBlocked,
+  PrivateIpBlocked,
+  PublicWebRequestFailed,
+  RedirectLimitExceeded,
+  RedirectLocationInvalid,
+  RedirectLocationMissing,
+  RedirectProtocolUnsupported,
+  ResponseTooLarge,
+  UrlCredentialsUnsupported,
+} from "../network";
+import type { PublicWebClient, PublicWebError } from "../network";
+import { ExaMcpFetchProvider } from "../provider-exa";
+import { ProviderStatusRejected } from "../provider-types";
+import type { FetchProvider } from "../provider-types";
+import { tempFileToolOutputStore } from "../tool-output";
+import {
+  createWebFetchTool,
+  InvalidFetchUrlInput,
+  isRescueEligible,
+  parseWebFetchParams,
+} from "../webfetch";
+import {
+  fakeMcpClient,
   fakePublicWeb,
   publicUrl,
   renderText,
@@ -27,10 +47,11 @@ function fakeFetchProvider(
   return {
     name,
     calls,
-    fetchMarkdown: async (url) => {
-      calls.push(url);
-      return markdown;
-    },
+    fetchMarkdown: (url) =>
+      Effect.sync(() => {
+        calls.push(url);
+        return markdown;
+      }),
   };
 }
 
@@ -58,25 +79,31 @@ function makeTool(
 
 function inputErrorFor(url: string): string {
   const parsed = parseWebFetchParams({ url }, DEFAULT_SETTINGS);
-  assert(parsed._tag === "err");
-  return parsed.error.message;
+  assert(Result.isFailure(parsed));
+  expect(parsed.failure).toBeInstanceOf(InvalidFetchUrlInput);
+  return parsed.failure.message;
 }
 
 function timeoutFor(timeout: number): number {
   const parsed = parseWebFetchParams({ url: "https://example.com", timeout }, DEFAULT_SETTINGS);
-  assert(parsed._tag === "ok");
-  return parsed.value.timeoutSeconds;
+  assert(Result.isSuccess(parsed));
+  return parsed.success.timeoutSeconds;
 }
 
 async function fetchShort(contentType: string) {
-  return fetchPageFor(ok(textWebResponse("<p>hi</p>", contentType))).fetch(
-    { url: publicUrl("https://short.example"), format: "markdown" },
-    FETCH_OPTIONS,
+  const page = fetchPageFor(Result.succeed(textWebResponse("<p>hi</p>", contentType)));
+  return Effect.runPromise(
+    Effect.result(
+      page.fetch({ url: publicUrl("https://short.example"), format: "markdown" }, FETCH_OPTIONS),
+    ),
   );
 }
 
+/** A public web client whose request never settles until it is interrupted. */
+const hangingWeb: PublicWebClient = { get: () => Effect.never };
+
 describe("webfetch parameter schema", () => {
-  const tool = makeTool({}, ok(textWebResponse("x")), []);
+  const tool = makeTool({}, Result.succeed(textWebResponse("x")), []);
 
   function validate(args: unknown): unknown {
     return validateToolArguments(tool, {
@@ -106,13 +133,16 @@ describe("webfetch parameter schema", () => {
 describe("parseWebFetchParams", () => {
   test("parses a minimal url with settings defaults", () => {
     expect(parseWebFetchParams({ url: " https://example.com " }, DEFAULT_SETTINGS)).toStrictEqual(
-      ok({ url: "https://example.com/", format: "markdown", timeoutSeconds: 30 }),
+      Result.succeed({ url: "https://example.com/", format: "markdown", timeoutSeconds: 30 }),
     );
   });
 
   test("rejects empty, non-http, and credentialed URLs", () => {
     expect(inputErrorFor("   ")).toBe("URL cannot be empty");
-    expect(inputErrorFor("ftp://example.com")).toBe("URL must start with http:// or https://");
+    expect(inputErrorFor("ftp://example.com")).toBe(
+      "Unsupported URL protocol ftp:; URL must start with http:// or https://",
+    );
+    expect(inputErrorFor("example.com")).toBe("URL must start with http:// or https://");
     expect(inputErrorFor("https://user:pass@example.com")).toBe(
       "URL credentials are not supported",
     );
@@ -128,31 +158,39 @@ describe("parseWebFetchParams", () => {
 describe("isRescueEligible", () => {
   test("flags bot-wall statuses", () => {
     for (const status of [401, 403, 429]) {
-      expect(isRescueEligible(err({ _tag: "HttpStatusRejected", status, statusText: "" }))).toBe(
-        true,
-      );
+      expect(
+        isRescueEligible(Result.fail(new HttpStatusRejected({ status, statusText: "" }))),
+      ).toBe(true);
     }
-    expect(isRescueEligible(err({ _tag: "HttpStatusRejected", status: 500, statusText: "" }))).toBe(
-      false,
-    );
-    expect(isRescueEligible(err({ _tag: "PrivateIpBlocked" }))).toBe(false);
+    expect(
+      isRescueEligible(Result.fail(new HttpStatusRejected({ status: 500, statusText: "" }))),
+    ).toBe(false);
+    expect(isRescueEligible(Result.fail(new PrivateIpBlocked()))).toBe(false);
   });
 
   test("flags unusable HTML shells but not real content", async () => {
     const thinShell = fetchPageFor(
-      ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
+      Result.succeed(textWebResponse('<html><body><div id="app"></div></body></html>')),
     );
-    const thin = await thinShell.fetch(
-      { url: publicUrl("https://spa.example"), format: "markdown" },
-      FETCH_OPTIONS,
+    const thin = await Effect.runPromise(
+      Effect.result(
+        thinShell.fetch(
+          { url: publicUrl("https://spa.example"), format: "markdown" },
+          FETCH_OPTIONS,
+        ),
+      ),
     );
     expect(isRescueEligible(thin)).toBe(true);
 
     const substantial = "substantial content ".repeat(40);
-    const realPage = fetchPageFor(ok(articleResponse(substantial)));
-    const real = await realPage.fetch(
-      { url: publicUrl("https://blog.example"), format: "markdown" },
-      FETCH_OPTIONS,
+    const realPage = fetchPageFor(Result.succeed(articleResponse(substantial)));
+    const real = await Effect.runPromise(
+      Effect.result(
+        realPage.fetch(
+          { url: publicUrl("https://blog.example"), format: "markdown" },
+          FETCH_OPTIONS,
+        ),
+      ),
     );
     expect(isRescueEligible(real)).toBe(false);
   });
@@ -166,7 +204,7 @@ describe("isRescueEligible", () => {
 
 describe("webfetch rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
-  const fetchPage = fetchPageFor(ok(textWebResponse("x")));
+  const fetchPage = fetchPageFor(Result.succeed(textWebResponse("x")));
   const tool = createWebFetchTool({
     settings: DEFAULT_SETTINGS,
     fetchPage,
@@ -229,7 +267,7 @@ describe("webfetch rendering", () => {
 describe("webfetch tool", () => {
   test("fetches and converts directly without rescue", async () => {
     const realContent = "real content ".repeat(40);
-    const tool = makeTool({}, ok(articleResponse(realContent)), []);
+    const tool = makeTool({}, Result.succeed(articleResponse(realContent)), []);
     const result = await tool.execute("t1", { url: "https://example.com" });
     expect(result.details.via).toBeUndefined();
     expect(textOf(result)).toContain("real content");
@@ -239,7 +277,7 @@ describe("webfetch tool", () => {
     const provider = fakeFetchProvider("exa", "# Rescued content\n\nThis came from the provider.");
     const tool = makeTool(
       {},
-      err({ _tag: "HttpStatusRejected", status: 403, statusText: "Forbidden" }),
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
       [provider],
     );
 
@@ -260,7 +298,7 @@ describe("webfetch tool", () => {
     const provider = fakeFetchProvider("parallel", "# Rendered by the provider");
     const tool = makeTool(
       {},
-      ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
+      Result.succeed(textWebResponse('<html><body><div id="app"></div></body></html>')),
       [fakeFetchProvider("exa", undefined), provider],
     );
 
@@ -272,7 +310,7 @@ describe("webfetch tool", () => {
   test("returns the direct result when no provider can rescue it", async () => {
     const tool = makeTool(
       {},
-      ok(textWebResponse('<html><body><div id="app"></div></body></html>')),
+      Result.succeed(textWebResponse('<html><body><div id="app"></div></body></html>')),
       [fakeFetchProvider("exa", undefined)],
     );
 
@@ -285,7 +323,7 @@ describe("webfetch tool", () => {
     const provider = fakeFetchProvider("exa", "# Rescued");
     const tool = makeTool(
       { PI_WEB_TOOLS_FETCH_RESCUE: "off" },
-      err({ _tag: "HttpStatusRejected", status: 403, statusText: "" }),
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
       [provider],
     );
 
@@ -297,9 +335,11 @@ describe("webfetch tool", () => {
 
   test("does not rescue non-markdown formats", async () => {
     const provider = fakeFetchProvider("exa", "# Rescued");
-    const tool = makeTool({}, err({ _tag: "HttpStatusRejected", status: 403, statusText: "" }), [
-      provider,
-    ]);
+    const tool = makeTool(
+      {},
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
+      [provider],
+    );
 
     await expect(
       tool.execute("t1", { url: "https://blocked.example", format: "html" }),
@@ -309,7 +349,7 @@ describe("webfetch tool", () => {
 
   test("does not rescue SSRF blocks", async () => {
     const provider = fakeFetchProvider("exa", "# Rescued");
-    const tool = makeTool({}, err({ _tag: "PrivateIpBlocked" }), [provider]);
+    const tool = makeTool({}, Result.fail(new PrivateIpBlocked()), [provider]);
 
     await expect(tool.execute("t1", { url: "https://internal.example" })).rejects.toThrow(
       "Blocked private or local IP",
@@ -319,9 +359,11 @@ describe("webfetch tool", () => {
 
   test("redacts configured secrets from fetched content", async () => {
     const provider = fakeFetchProvider("exa", "leaked sekrit-key in page");
-    const tool = makeTool({}, err({ _tag: "HttpStatusRejected", status: 403, statusText: "" }), [
-      provider,
-    ]);
+    const tool = makeTool(
+      {},
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
+      [provider],
+    );
 
     const result = await tool.execute("t1", { url: "https://blocked.example" });
     expect(textOf(result)).toContain("[redacted]");
@@ -331,7 +373,7 @@ describe("webfetch tool", () => {
   test("enforces the domain deny policy before fetching", async () => {
     const tool = makeTool(
       { PI_WEB_TOOLS_FETCH_DENY_DOMAINS: "evil.example" },
-      ok(textWebResponse("x")),
+      Result.succeed(textWebResponse("x")),
       [],
     );
     await expect(tool.execute("t1", { url: "https://sub.evil.example/page" })).rejects.toThrow(
@@ -343,7 +385,7 @@ describe("webfetch tool", () => {
     const allowedContent = "allowed content ".repeat(40);
     const tool = makeTool(
       { PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "docs.example.com" },
-      ok(articleResponse(allowedContent)),
+      Result.succeed(articleResponse(allowedContent)),
       [],
     );
     await expect(tool.execute("t1", { url: "https://other.example" })).rejects.toThrow(
@@ -356,36 +398,107 @@ describe("webfetch tool", () => {
 
 describe("webfetch error messages", () => {
   test.each<[PublicWebError, string]>([
-    [{ _tag: "PublicWebRequestFailed" }, "Request failed"],
-    [{ _tag: "PublicWebCancelled" }, "Web fetch cancelled"],
-    [{ _tag: "PublicWebTimedOut", timeoutSeconds: 7 }, "Web fetch timed out after 7s"],
-    [{ _tag: "PrivateHostBlocked" }, "Blocked private or local host"],
-    [{ _tag: "UrlCredentialsUnsupported" }, "URL credentials are not supported"],
-    [{ _tag: "RedirectLocationMissing" }, "Redirect response was missing a Location header"],
-    [{ _tag: "RedirectLocationInvalid" }, "Redirect response had an invalid Location header"],
-    [{ _tag: "RedirectLimitExceeded", maxRedirects: 5 }, "Too many redirects while fetching URL"],
     [
-      { _tag: "RedirectProtocolUnsupported", protocol: "ftp:" },
-      "Redirected to unsupported protocol",
+      new PublicWebRequestFailed({
+        hostname: "example.com",
+        cause: new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } }),
+      }),
+      "Connection refused by example.com",
     ],
-    [{ _tag: "HttpStatusRejected", status: 500, statusText: "Oops" }, "Request failed (500 Oops)"],
-    [{ _tag: "ResponseTooLarge", maxBytes: 5 * 1024 * 1024 }, "Response too large (5MB limit)"],
-  ])("renders %o as a safe message", async (error, message) => {
-    const tool = makeTool({}, err(error), []);
+    [new PrivateHostBlocked(), "Blocked private or local host"],
+    [new UrlCredentialsUnsupported(), "URL credentials are not supported"],
+    [new RedirectLocationMissing(), "Redirect response was missing a Location header"],
+    [new RedirectLocationInvalid(), "Redirect response had an invalid Location header"],
+    [new RedirectLimitExceeded({ maxRedirects: 5 }), "Too many redirects while fetching URL"],
+    [new RedirectProtocolUnsupported({ protocol: "ftp:" }), "Redirected to unsupported protocol"],
+    [new HttpStatusRejected({ status: 500, statusText: "Oops" }), "Request failed (500 Oops)"],
+    [new ResponseTooLarge({ maxBytes: 5 * 1024 * 1024 }), "Response too large (5MB limit)"],
+  ])("renders %s as a safe message", async (error, message) => {
+    const tool = makeTool({}, Result.fail(error), []);
     await expect(tool.execute("t1", { url: "https://example.com" })).rejects.toThrow(message);
   });
 
   test("renders unsupported binary content with its mime type", async () => {
-    const tool = makeTool({}, ok(textWebResponse("PK", "application/zip")), []);
+    const tool = makeTool({}, Result.succeed(textWebResponse("PK", "application/zip")), []);
     await expect(tool.execute("t1", { url: "https://example.com" })).rejects.toThrow(
       "Unsupported binary content (application/zip). Try a more text-oriented URL.",
     );
   });
 
   test("surfaces parse errors as tool errors", async () => {
-    const tool = makeTool({}, ok(textWebResponse("x")), []);
+    const tool = makeTool({}, Result.succeed(textWebResponse("x")), []);
     await expect(tool.execute("t1", { url: "not a url" })).rejects.toThrow(
       "URL must start with http",
+    );
+  });
+});
+
+/** A webfetch tool whose direct fetch never settles. */
+function hangingTool(providers: readonly FetchProvider[] = []) {
+  return createWebFetchTool({
+    settings: DEFAULT_SETTINGS,
+    fetchPage: new FetchPage(hangingWeb),
+    fetchProviders: providers,
+    outputStore: tempFileToolOutputStore,
+    secrets: [],
+  });
+}
+
+describe("webfetch deadline and cancellation", () => {
+  test("a fetch outliving the timeout reports the timeout, not a cancellation", async () => {
+    const outcome = hangingTool().execute("t1", { url: "https://slow.example", timeout: 1 });
+    await expect(outcome).rejects.toThrow("Web fetch timed out after 1s");
+    await expect(outcome).rejects.not.toThrow("cancelled");
+  });
+
+  test("a caller abort reports a cancellation", async () => {
+    const controller = new AbortController();
+    const outcome = hangingTool().execute(
+      "t1",
+      { url: "https://slow.example", timeout: 60 },
+      controller.signal,
+    );
+    setTimeout(() => {
+      controller.abort();
+    }, 10);
+    await expect(outcome).rejects.toThrow("Web fetch cancelled");
+  });
+});
+
+describe("webfetch rescue chain", () => {
+  test("a rescue provider whose call fails is skipped, and providers run in order", async () => {
+    const { client: failingMcp, calls: failingCalls } = fakeMcpClient([
+      Result.fail(new ProviderStatusRejected({ status: 500 })),
+    ]);
+    const empty = fakeFetchProvider("parallel", undefined);
+    const answering = fakeFetchProvider("exa", "# Third time lucky");
+    const never = fakeFetchProvider("parallel", "# Not reached");
+    const tool = makeTool(
+      {},
+      Result.fail(new HttpStatusRejected({ status: 429, statusText: "" })),
+      [new ExaMcpFetchProvider(failingMcp), empty, answering, never],
+    );
+
+    const result = await tool.execute("t1", { url: "https://blocked.example" });
+    expect(textOf(result)).toContain("Third time lucky");
+    expect(result.details.via).toBe("exa");
+    expect(failingCalls).toHaveLength(1);
+    expect(empty.calls).toHaveLength(1);
+    expect(answering.calls).toHaveLength(1);
+    expect(never.calls).toHaveLength(0);
+  });
+
+  test("when every rescue provider fails, the direct failure is reported", async () => {
+    const { client: failingMcp } = fakeMcpClient([
+      Result.fail(new ProviderStatusRejected({ status: 500 })),
+    ]);
+    const tool = makeTool(
+      {},
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
+      [new ExaMcpFetchProvider(failingMcp)],
+    );
+    await expect(tool.execute("t1", { url: "https://blocked.example" })).rejects.toThrow(
+      "Request failed (403 Forbidden)",
     );
   });
 });

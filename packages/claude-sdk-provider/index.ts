@@ -1,5 +1,6 @@
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Cause, Effect, Exit, Result } from "effect";
 import { createAgentSdkStream } from "./bridge";
 import type { AgentSdkRun } from "./bridge";
 import { cacheDiagnosticsFromEnvironment } from "./cache-diagnostics";
@@ -8,6 +9,21 @@ import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from
 import { formatClaudeUsageStatus, inspectClaudeUsage } from "./sdk-usage";
 import { formatClaudeSdkVersionStatus, inspectClaudeSdkVersions } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
+
+// Command boundary: expected failures become a Result to render; defects rethrow unchanged.
+async function runCommand<A, E extends Error>(
+  program: Effect.Effect<A, E>,
+): Promise<Result.Result<A, E>> {
+  const exit = await Effect.runPromiseExit(program);
+  if (Exit.isSuccess(exit)) {
+    return Result.succeed(exit.value);
+  }
+  const failure = Cause.findError(exit.cause);
+  if (Result.isSuccess(failure)) {
+    return Result.fail(failure.success);
+  }
+  throw Cause.squash(exit.cause);
+}
 
 function registerStatusCommands(
   pi: ExtensionAPI,
@@ -19,14 +35,14 @@ function registerStatusCommands(
       if (!ctx.hasUI) {
         return;
       }
-      const result = await inspectClaudeSdkVersions();
-      if (result._tag === "err") {
-        ctx.ui.notify(result.error.message, "error");
+      const result = await runCommand(inspectClaudeSdkVersions());
+      if (Result.isFailure(result)) {
+        ctx.ui.notify(result.failure.message, "error");
         return;
       }
       ctx.ui.notify(
-        `${formatClaudeSdkVersionStatus(result.value)}\n\n${formatModelStatus(observedModels)}`,
-        result.value.updateSuggested ? "warning" : "info",
+        `${formatClaudeSdkVersionStatus(result.success)}\n\n${formatModelStatus(observedModels)}`,
+        result.success.updateSuggested ? "warning" : "info",
       );
     },
   });
@@ -36,12 +52,12 @@ function registerStatusCommands(
       if (!ctx.hasUI) {
         return;
       }
-      const result = await inspectClaudeUsage();
-      if (result._tag === "err") {
-        ctx.ui.notify(result.error.message, "error");
+      const result = await runCommand(inspectClaudeUsage());
+      if (Result.isFailure(result)) {
+        ctx.ui.notify(result.failure.message, "error");
         return;
       }
-      ctx.ui.notify(formatClaudeUsageStatus(result.value), "info");
+      ctx.ui.notify(formatClaudeUsageStatus(result.success), "info");
     },
   });
 }

@@ -1,6 +1,8 @@
+import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { FetchPage, getAcceptHeader } from "../fetch-page";
-import { err } from "../result";
+import { FetchPage, getAcceptHeader, UnsupportedBinaryContent } from "../fetch-page";
+import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
+import { HttpStatusRejected } from "../network";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse } from "./fakes";
 
 const URL = "https://example.com/page";
@@ -8,20 +10,21 @@ const OPTIONS = { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHo
 
 describe("fetchPage", () => {
   test("converts HTML to markdown by default", async () => {
-    const { client } = fakePublicWeb({
-      _tag: "ok",
-      value: textWebResponse(
-        "<html><body><article><h1>Hello</h1><p>World</p></article></body></html>",
+    const { client } = fakePublicWeb(
+      Result.succeed(
+        textWebResponse("<html><body><article><h1>Hello</h1><p>World</p></article></body></html>"),
       ),
-    });
+    );
     const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
 
-    assert(result._tag === "ok");
-    assert(result.value.body._tag === "Text");
-    expect(result.value.body.text).toContain("# Hello");
-    expect(result.value.body.kind).toBe("html");
-    expect(result.value.meta).toStrictEqual({
+    assert(Result.isSuccess(result));
+    assert(result.success.body._tag === "Text");
+    expect(result.success.body.text).toContain("# Hello");
+    expect(result.success.body.kind).toBe("html");
+    expect(result.success.meta).toStrictEqual({
       requestedUrl: "https://example.com/page",
       finalUrl: "https://example.com/page",
       format: "markdown",
@@ -35,55 +38,63 @@ describe("fetchPage", () => {
 
   test("returns raster images inline", async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    const { client } = fakePublicWeb({
-      _tag: "ok",
-      value: {
+    const { client } = fakePublicWeb(
+      Result.succeed({
         requestedUrl: publicUrl(URL),
         finalUrl: publicUrl(URL),
         status: 200,
         headers: new Headers({ "content-type": "image/png" }),
         body: png,
-      },
-    });
+      }),
+    );
     const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
 
-    assert(result._tag === "ok");
-    expect(result.value.body).toStrictEqual({ _tag: "Image", data: png });
-    expect(result.value.meta.bytes).toBe(png.byteLength);
+    assert(Result.isSuccess(result));
+    expect(result.success.body).toStrictEqual({ _tag: "Image", data: png });
+    expect(result.success.meta.bytes).toBe(png.byteLength);
   });
 
   test("rejects unsupported binary content", async () => {
-    const { client } = fakePublicWeb({
-      _tag: "ok",
-      value: textWebResponse(String.raw`PK\u0003\u0004`, "application/zip"),
-    });
-    const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
-
-    expect(result).toStrictEqual(
-      err({ _tag: "UnsupportedBinaryContent", mime: "application/zip" }),
+    const { client } = fakePublicWeb(
+      Result.succeed(textWebResponse(String.raw`PK\u0003\u0004`, "application/zip")),
     );
+    const page = new FetchPage(client);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
+
+    assert(Result.isFailure(result));
+    assert(result.failure instanceof UnsupportedBinaryContent);
+    expect(result.failure.mime).toBe("application/zip");
   });
 
   test("leaves the mime off binary errors when the response has no content type", async () => {
-    const { client } = fakePublicWeb({ _tag: "ok", value: textWebResponse("?", "") });
+    const { client } = fakePublicWeb(Result.succeed(textWebResponse("?", "")));
     const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
 
-    expect(result).toStrictEqual(err({ _tag: "UnsupportedBinaryContent" }));
+    assert(Result.isFailure(result));
+    assert(result.failure instanceof UnsupportedBinaryContent);
+    expect(result.failure.mime).toBe("");
+    expect(result.failure.message).toBe(
+      "Unsupported binary content. Try a more text-oriented URL.",
+    );
   });
 
   test("passes through plain text for text format", async () => {
-    const { client } = fakePublicWeb({
-      _tag: "ok",
-      value: textWebResponse("plain words", "text/plain"),
-    });
+    const { client } = fakePublicWeb(Result.succeed(textWebResponse("plain words", "text/plain")));
     const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS)),
+    );
 
-    assert(result._tag === "ok");
-    expect(result.value.body).toStrictEqual({
+    assert(Result.isSuccess(result));
+    expect(result.success.body).toStrictEqual({
       _tag: "Text",
       kind: "text",
       text: "plain words",
@@ -93,13 +104,40 @@ describe("fetchPage", () => {
 
   test("propagates public web failures", async () => {
     const { client } = fakePublicWeb(
-      err({ _tag: "HttpStatusRejected", status: 500, statusText: "Server Error" }),
+      Result.fail(new HttpStatusRejected({ status: 500, statusText: "Server Error" })),
     );
     const page = new FetchPage(client);
-    const result = await page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
 
-    assert(result._tag === "err");
-    expect(result.error._tag).toBe("HttpStatusRejected");
+    assert(Result.isFailure(result));
+    expect(result.failure._tag).toBe("HttpStatusRejected");
+  });
+});
+
+describe("fetchPage conversion failures", () => {
+  test("an HTML response without elements is EmptyHtmlDocument", async () => {
+    const { client } = fakePublicWeb(Result.succeed(textWebResponse("   <!-- nothing -->  ")));
+    const page = new FetchPage(client);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS)),
+    );
+
+    assert(Result.isFailure(result));
+    expect(result.failure).toBeInstanceOf(EmptyHtmlDocument);
+  });
+
+  test("deeply nested HTML is HtmlConversionFailed", async () => {
+    const deep = `${"<div>".repeat(5000)}x${"</div>".repeat(5000)}`;
+    const { client } = fakePublicWeb(Result.succeed(textWebResponse(deep)));
+    const page = new FetchPage(client);
+    const result = await Effect.runPromise(
+      Effect.result(page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS)),
+    );
+
+    assert(Result.isFailure(result));
+    expect(result.failure).toBeInstanceOf(HtmlConversionFailed);
   });
 });
 

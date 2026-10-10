@@ -65,24 +65,35 @@ describe("caffeinate process adapter", () => {
     }
   });
 
-  test("reports a command that cannot be spawned", async () => {
+  test("reports a missing command as caffeinate being unavailable", async () => {
     const child = caffeinateSpawner("/nonexistent/caffeinate", KILL_GRACE_MS)([]);
 
     const end = await ended(child);
 
-    expect(end).toMatchObject({ _tag: "failed", error: { _tag: "CaffeinateProcessError" } });
     assert(end._tag === "failed");
-    expect(end.error.cause).toMatchObject({ code: "ENOENT" });
+    expect(end.error).toMatchObject({
+      _tag: "CaffeinateProcessError",
+      operation: "start",
+      code: "ENOENT",
+    });
+    expect(end.error.message).toBe("caffeinate is not available (is this macOS?)");
     child.stop();
   });
 
   test("reports a synchronous spawn failure through the same channel", async () => {
-    const child = caffeinateSpawner("", KILL_GRACE_MS)([]);
+    // An argument list beyond the OS limit makes spawn() throw E2BIG synchronously.
+    const child = spawnNode(["x".repeat(5_000_000)]);
 
     const end = await ended(child);
 
-    expect(end).toMatchObject({ _tag: "failed", error: { _tag: "CaffeinateProcessError" } });
+    assert(end._tag === "failed");
+    expect(end.error).toMatchObject({ operation: "start", code: "E2BIG" });
+    expect(end.error.message).toBe("Could not start caffeinate: E2BIG");
     child.stop();
+  });
+
+  test("propagates an invalid command as a defect", () => {
+    expect(() => caffeinateSpawner("", KILL_GRACE_MS)([])).toThrow(TypeError);
   });
 });
 

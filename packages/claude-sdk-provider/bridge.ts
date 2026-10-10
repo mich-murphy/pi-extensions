@@ -9,10 +9,11 @@ import type {
   ThinkingContent,
   TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { absurd } from "effect/Function";
 import { buildAgentRequest } from "./agent-request";
 import type { AgentRequest } from "./agent-request";
-import { SdkQueryError } from "./sdk/errors";
-import type { SdkRunError } from "./sdk/errors";
+import { SdkProviderDefect } from "./sdk/errors";
+import type { SdkRunError, SdkTurnFailure } from "./sdk/errors";
 import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
 
 /** Complete token counts for the latest model call of a turn. */
@@ -133,13 +134,16 @@ class AssistantMessageWriter {
         return true;
       }
       default: {
-        const _exhaustive: never = event;
-        throw new Error("Unhandled bridge event", { cause: _exhaustive });
+        return absurd(event);
       }
     }
   }
 
-  /** Write every event of one run, ending the turn with a failure if the run cannot finish it. */
+  /**
+   * Write every event of one run. The runner reports expected failures as `failed` events, so
+   * a rejection or a missing terminal event is a provider defect; Pi's stream must still end,
+   * so it is reported as a failed turn labelled as a bug rather than thrown.
+   */
   async pump(events: () => AsyncIterable<BridgeEvent>): Promise<void> {
     try {
       for await (const event of events()) {
@@ -147,15 +151,13 @@ class AssistantMessageWriter {
           return;
         }
       }
-      this.fail(
-        new SdkQueryError("terminal-result", "bridge stream ended without a terminal event"),
-      );
-    } catch (error) {
-      this.fail(new SdkQueryError("iterate", error));
+      this.fail(new SdkProviderDefect({ reason: "no-terminal-event" }));
+    } catch (cause) {
+      this.fail(new SdkProviderDefect({ reason: "run-rejected", cause }));
     }
   }
 
-  private fail(error: SdkRunError): void {
+  private fail(error: SdkTurnFailure): void {
     this.closeOpenBlock();
     this.output.stopReason = this.signal?.aborted === true ? "aborted" : "error";
     this.output.errorMessage = formatSdkRunError(error);

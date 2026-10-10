@@ -1,17 +1,15 @@
+import { Redacted } from "effect";
 import { describe, expect, test } from "vitest";
-import { Redacted, redactSecrets } from "../redacted";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "../render";
+import { redactSecrets } from "../tool-output";
 
 describe("redacted", () => {
   test("hides values from string, JSON, and inspect projections", () => {
     const secret = Redacted.make("super-secret");
+    // oxlint-disable-next-line typescript/no-base-to-string -- Redacted overrides toString at runtime; this asserts it.
     expect(String(secret)).toBe("<redacted>");
     expect(JSON.stringify(secret)).toBe('"<redacted>"');
     expect(Redacted.value(secret)).toBe("super-secret");
-  });
-
-  test("rejects foreign objects", () => {
-    expect(() => Redacted.value({})).toThrow("not in registry");
   });
 });
 

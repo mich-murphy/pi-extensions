@@ -11,9 +11,10 @@ export function resourcePathId(path: string, cwd: string): ResourcePath {
   return resolve(cwd, path) as ResourcePath;
 }
 
-/** Parse a persisted path, which must already be absolute. */
+/** Parse a persisted path, which must already be absolute and usable as a file-system path. */
 export function parseResourcePath(path: string): ResourcePath | undefined {
-  return isAbsolute(path) ? resourcePathId(path, path) : undefined;
+  // Node rejects a NUL byte with a TypeError, which would surface later as a defect.
+  return isAbsolute(path) && !path.includes("\0") ? resourcePathId(path, path) : undefined;
 }
 
 /** Whether a path is lexically inside a parent path or equal to it. */

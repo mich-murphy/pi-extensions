@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { z } from "zod";
 import type { TokenUsage } from "../bridge";
 import { undatedModelId } from "../models";
@@ -61,14 +62,11 @@ export type SdkMessage =
       readonly usage: ReportedUsage;
       /** Concrete main-loop model that served this call, when the message names one. */
       readonly model?: string;
+      /** Typed API error (such as `authentication_failed`) an assistant message reported. */
+      readonly apiError?: string;
     }
   | { readonly type: "result"; readonly result: TurnResult; readonly modelUsage: ModelUsage }
   | { readonly type: "ignored" };
-
-/** Result of parsing an untrusted SDK protocol value. */
-export type ParseResult<T> =
-  | { readonly _tag: "ok"; readonly value: T }
-  | { readonly _tag: "err"; readonly error: SdkProtocolError };
 
 const STOP_REASONS: ReadonlyMap<string, "stop" | "length" | "refusal"> = new Map([
   ["end_turn", "stop"],
@@ -82,10 +80,9 @@ const STOP_REASONS: ReadonlyMap<string, "stop" | "length" | "refusal"> = new Map
 ]);
 
 const FAILURE_MESSAGES = {
-  tool_deferred_unavailable:
-    "Claude Agent SDK could not honor the deferred Pi tool call (terminal_reason: tool_deferred_unavailable)",
-  refusal: "The model refused to complete the request",
-  error: "Claude Agent SDK reported an error result",
+  tool_deferred_unavailable: "could not hand the requested Pi tool call back to Pi",
+  refusal: "the model refused to complete the request",
+  error: "the query failed without an error description",
 } as const;
 
 // Returns undefined for a clean result whose stop reason this provider does not support.
@@ -107,7 +104,7 @@ function turnResult(result: Readonly<z.output<typeof resultSchema>>): TurnResult
   if (failure) {
     const reported = result.errors.filter((entry) => typeof entry === "string").join("; ");
     const detail = reported || result.result || FAILURE_MESSAGES[failure];
-    return { _tag: "failed", error: new SdkResultError(terminalReason, detail) };
+    return { _tag: "failed", error: new SdkResultError({ terminalReason, detail }) };
   }
   if (stop === "stop" || stop === "length") {
     return { _tag: "completed", stopReason: stop, terminalReason };
@@ -154,8 +151,12 @@ const MESSAGE_SCHEMAS: ReadonlyMap<string, z.ZodType<SdkMessage>> = new Map<
   [
     "assistant",
     z
-      .object({ message: modelCallSchema })
-      .transform(({ message }): SdkMessage => ({ type: "usage", ...message })),
+      .object({ message: modelCallSchema, error: z.string().optional().catch(undefined) })
+      .transform(({ message, error }): SdkMessage =>
+        error === undefined
+          ? { type: "usage", ...message }
+          : { type: "usage", ...message, apiError: error },
+      ),
   ],
   [
     "result",
@@ -199,22 +200,24 @@ function kindOf(input: unknown): string | undefined {
  * @param input - Value yielded by the SDK query.
  * @returns The consumed message, `ignored` for kinds this provider does not use, or a protocol error.
  */
-export function parseSdkMessage(input: unknown): ParseResult<SdkMessage> {
+export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkProtocolError> {
   const kind = kindOf(input);
   if (kind === undefined) {
-    return { _tag: "err", error: new SdkProtocolError("message", "type must be a string") };
+    return Result.fail(
+      new SdkProtocolError({ messageType: "message", detail: "type must be a string" }),
+    );
   }
   const parsed = MESSAGE_SCHEMAS.get(kind)?.safeParse(input);
   if (!parsed) {
-    return { _tag: "ok", value: { type: "ignored" } };
+    return Result.succeed({ type: "ignored" });
   }
   if (parsed.success) {
-    return { _tag: "ok", value: parsed.data };
+    return Result.succeed(parsed.data);
   }
   const summary = parsed.error.issues
     .map((issue) => [issue.path.join("."), issue.message].filter(Boolean).join(": "))
     .join("; ");
-  return { _tag: "err", error: new SdkProtocolError(kind, summary) };
+  return Result.fail(new SdkProtocolError({ messageType: kind, detail: summary }));
 }
 
 /**

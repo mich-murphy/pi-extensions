@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-/** A failure Node reported for a caffeinate child: it could not be spawned or signalled. */
+/** Node could not start (spawn) or stop (signal) a caffeinate child. */
 export class CaffeinateProcessError extends Error {
   /** Stable error discriminator. */
   readonly _tag = "CaffeinateProcessError" as const;
@@ -8,10 +8,21 @@ export class CaffeinateProcessError extends Error {
   /**
    * Create a classified caffeinate process failure.
    *
-   * @param cause - Unclassified error received from Node.
+   * @param operation - Whether starting or stopping the child failed.
+   * @param code - Node system error code, such as `ENOENT`.
+   * @param cause - Original Node error, kept for local diagnosis only.
    */
-  constructor(override readonly cause: unknown) {
-    super("caffeinate process failed");
+  constructor(
+    readonly operation: "start" | "stop",
+    readonly code: string,
+    override readonly cause: unknown,
+  ) {
+    super(
+      operation === "start" && code === "ENOENT"
+        ? "caffeinate is not available (is this macOS?)"
+        : `Could not ${operation} caffeinate: ${code}`,
+      { cause },
+    );
     this.name = "CaffeinateProcessError";
   }
 }
@@ -89,8 +100,7 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
       }
       held = undefined;
       if (end._tag === "failed") {
-        const detail = end.error.cause instanceof Error ? `: ${end.error.cause.message}` : "";
-        notify(ctx, `No Sleep caffeinate failed${detail}`, "error");
+        notify(ctx, `No Sleep: ${end.error.message}`, "error");
         return;
       }
       const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;

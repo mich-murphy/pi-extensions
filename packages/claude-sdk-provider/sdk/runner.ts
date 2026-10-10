@@ -2,13 +2,15 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { Result } from "effect";
+import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
 import { sdkModelSelectorFor } from "../models";
 import { createDeferredCallCapture, createDeferredPiCallTool } from "./deferred-tools";
 import type { DeferredCallCapture } from "./deferred-tools";
-import { SdkProtocolError, SdkQueryError } from "./errors";
+import { SdkMissingResultError, SdkProtocolError, SdkQueryError, SdkResultError } from "./errors";
 import type { SdkRunError } from "./errors";
 import { applyUsage, contextWindowFor, parseSdkMessage } from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
@@ -97,21 +99,27 @@ function queryParameters(
 function terminalEvent(
   result: TurnResult | undefined,
   calls: readonly DeferredCall[],
+  apiError: string | undefined,
 ): BridgeEvent {
   if (!result) {
-    return failed(new SdkQueryError("terminal-result", "query ended without a result message"));
+    return failed(new SdkMissingResultError());
   }
   if (result._tag === "failed") {
-    return failed(result.error);
+    const { terminalReason, detail } = result.error;
+    return failed(
+      apiError === undefined
+        ? result.error
+        : new SdkResultError({ terminalReason, detail, apiError }),
+    );
   }
   const deferred = result.terminalReason === "tool_deferred";
   if (deferred && calls.length === 0) {
     const detail = "terminal_reason was tool_deferred but the PreToolUse hook captured no calls";
-    return failed(new SdkProtocolError("result", detail));
+    return failed(new SdkProtocolError({ messageType: "result", detail }));
   }
   if (!deferred && calls.length > 0) {
     const detail = `captured deferred calls but terminal_reason was ${result.terminalReason ?? "missing"}`;
-    return failed(new SdkProtocolError("result", detail));
+    return failed(new SdkProtocolError({ messageType: "result", detail }));
   }
   return deferred ? { type: "tool_calls", calls } : { type: "done", reason: result.stopReason };
 }
@@ -122,12 +130,12 @@ type QueryProgress = {
   /** The first main-loop model of the turn; later model calls may be auxiliary. */
   readonly observedModel: string | undefined;
   readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
+  /** The first typed API error an assistant message reported, such as `authentication_failed`. */
+  readonly apiError: string | undefined;
 };
 
 /** How one SDK query ended. */
-type QueryOutcome =
-  | { readonly _tag: "ended"; readonly progress: QueryProgress }
-  | { readonly _tag: "failed"; readonly error: SdkRunError };
+type QueryOutcome = Result.Result<QueryProgress, SdkRunError>;
 
 // Folds one SDK message into the progress and returns the bridge event it produces, if any.
 function advance(
@@ -142,7 +150,11 @@ function advance(
     case "usage": {
       const usage = applyUsage(progress.usage, message.usage);
       const observedModel = progress.observedModel ?? message.model;
-      return { progress: { ...progress, usage, observedModel }, event: { type: "usage", usage } };
+      const apiError = progress.apiError ?? message.apiError;
+      return {
+        progress: { ...progress, usage, observedModel, apiError },
+        event: { type: "usage", usage },
+      };
     }
     case "result": {
       return { progress: { ...progress, result: message }, event: undefined };
@@ -151,8 +163,7 @@ function advance(
       return { progress, event: undefined };
     }
     default: {
-      const _exhaustive: never = message;
-      throw new Error("Unhandled SDK message", { cause: _exhaustive });
+      return absurd(message);
     }
   }
 }
@@ -161,18 +172,24 @@ function advance(
 async function* streamQuery(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
+  signal: AbortSignal,
 ): AsyncGenerator<BridgeEvent, QueryOutcome> {
-  let progress: QueryProgress = { usage: undefined, observedModel: undefined, result: undefined };
+  let progress: QueryProgress = {
+    usage: undefined,
+    observedModel: undefined,
+    result: undefined,
+    apiError: undefined,
+  };
   try {
     for await (const raw of messages) {
       if (capture.limitError) {
         break;
       }
       const parsed = parseSdkMessage(raw);
-      if (parsed._tag === "err") {
-        return { _tag: "failed", error: parsed.error };
+      if (Result.isFailure(parsed)) {
+        return Result.fail(parsed.failure);
       }
-      const { progress: next, event } = advance(progress, parsed.value);
+      const { progress: next, event } = advance(progress, parsed.success);
       progress = next;
       if (event) {
         yield event;
@@ -186,12 +203,24 @@ async function* streamQuery(
   } catch (error) {
     // A result already in hand outlives a failure while closing the finished query.
     if (!progress.result) {
-      return { _tag: "failed", error: capture.limitError ?? new SdkQueryError("iterate", error) };
+      return Result.fail(iterationFailure(capture, signal, error));
     }
   }
-  return capture.limitError
-    ? { _tag: "failed", error: capture.limitError }
-    : { _tag: "ended", progress };
+  return capture.limitError ? Result.fail(capture.limitError) : Result.succeed(progress);
+}
+
+// Why iterating the query threw: the tool-call limit's own abort, a caller cancel, or the SDK.
+function iterationFailure(
+  capture: DeferredCallCapture,
+  signal: AbortSignal,
+  error: unknown,
+): SdkRunError {
+  if (capture.limitError) {
+    return capture.limitError;
+  }
+  return signal.aborted
+    ? SdkQueryError.cancelled("iterate", error)
+    : SdkQueryError.fromCause("iterate", error);
 }
 
 async function* runTurn(
@@ -201,7 +230,7 @@ async function* runTurn(
   const { request, model, options } = turn;
   const signal = options?.signal;
   if (signal?.aborted === true) {
-    yield failed(new SdkQueryError("start", signal.reason));
+    yield failed(SdkQueryError.cancelled("start", signal.reason));
     return;
   }
   const abortController = new AbortController();
@@ -220,16 +249,16 @@ async function* runTurn(
         queryParameters(turn, { abortController, hook: capture.hook, env: sdkEnvironment }),
       );
     } catch (error) {
-      yield failed(new SdkQueryError("start", error));
+      yield failed(SdkQueryError.fromCause("start", error));
       return;
     }
 
-    const ended = yield* streamQuery(messages, capture);
-    if (ended._tag === "failed") {
-      yield failed(ended.error);
+    const ended = yield* streamQuery(messages, capture, abortController.signal);
+    if (Result.isFailure(ended)) {
+      yield failed(ended.failure);
       return;
     }
-    const { usage, observedModel, result } = ended.progress;
+    const { usage, observedModel, result, apiError } = ended.success;
     if (result !== undefined && observedModel !== undefined) {
       modelObserver?.({
         selector: sdkModelSelectorFor(model.id),
@@ -237,7 +266,7 @@ async function* runTurn(
         contextWindow: contextWindowFor(result.modelUsage, observedModel),
       });
     }
-    const terminal = terminalEvent(result?.result, capture.calls);
+    const terminal = terminalEvent(result?.result, capture.calls, apiError);
     if (terminal.type !== "failed" && usage) {
       recordUsage?.(usage);
     }

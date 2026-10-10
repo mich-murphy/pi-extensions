@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import { err, ok } from "./result";
-import type { Result } from "./result";
+import { Data, Effect } from "effect";
+import { absurd } from "effect/Function";
 import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
 
@@ -55,91 +55,205 @@ export type PublicWebResponse = {
   readonly body: Readonly<Buffer>;
 };
 
-/** Expected failures of the public web client. Messages derived from these never contain URLs or causes. */
-export type PublicWebError =
-  | { readonly _tag: "PublicWebRequestFailed" }
-  | { readonly _tag: "PublicWebCancelled" }
-  | { readonly _tag: "PublicWebTimedOut"; readonly timeoutSeconds: number }
-  | { readonly _tag: "PrivateHostBlocked" }
-  | { readonly _tag: "PrivateIpBlocked" }
-  | { readonly _tag: "UrlCredentialsUnsupported" }
-  | { readonly _tag: "RedirectLocationMissing" }
-  | { readonly _tag: "RedirectLocationInvalid" }
-  | { readonly _tag: "RedirectLimitExceeded"; readonly maxRedirects: number }
-  | { readonly _tag: "RedirectProtocolUnsupported"; readonly protocol: string }
-  | { readonly _tag: "HttpStatusRejected"; readonly status: number; readonly statusText: string }
-  | { readonly _tag: "ResponseTooLarge"; readonly maxBytes: number };
+/** A request could not be completed at the network level (DNS, connection, TLS, or body stream). */
+export class PublicWebRequestFailed extends Data.TaggedError("PublicWebRequestFailed")<{
+  /** The host the failing request was sent to; messages name only this, never the URL. */
+  readonly hostname: string;
+  /** The underlying fetch or stream error, kept for local diagnosis only. */
+  readonly cause?: unknown;
+}> {
+  /** Safe description of the network failure, for example "Could not resolve host example.com". */
+  override get message(): string {
+    return describeNetworkFailure(this.cause, this.hostname);
+  }
+}
 
-/** Outbound port for fetching public web resources. */
+/** The URL resolved to localhost or a *.localhost name. */
+export class PrivateHostBlocked extends Data.TaggedError("PrivateHostBlocked") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Blocked private or local host";
+  }
+}
+
+/** The URL is, or resolves to, a non-public IP address. */
+export class PrivateIpBlocked extends Data.TaggedError("PrivateIpBlocked") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Blocked private or local IP address";
+  }
+}
+
+/** The requested URL or a redirect target carries user:password credentials. */
+export class UrlCredentialsUnsupported extends Data.TaggedError("UrlCredentialsUnsupported") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "URL credentials are not supported";
+  }
+}
+
+/** A redirect response had no Location header. */
+export class RedirectLocationMissing extends Data.TaggedError("RedirectLocationMissing") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirect response was missing a Location header";
+  }
+}
+
+/** A redirect Location header did not parse as a public URL. */
+export class RedirectLocationInvalid extends Data.TaggedError("RedirectLocationInvalid") {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirect response had an invalid Location header";
+  }
+}
+
+/** The redirect chain exceeded the configured hop limit. */
+export class RedirectLimitExceeded extends Data.TaggedError("RedirectLimitExceeded")<{
+  /** The configured hop limit. */
+  readonly maxRedirects: number;
+}> {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Too many redirects while fetching URL";
+  }
+}
+
+/** A redirect pointed at a non-http(s) protocol. */
+export class RedirectProtocolUnsupported extends Data.TaggedError("RedirectProtocolUnsupported")<{
+  /** The rejected protocol, for example "ftp:". */
+  readonly protocol: string;
+}> {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirected to unsupported protocol";
+  }
+}
+
+/** The final response had a non-2xx status. */
+export class HttpStatusRejected extends Data.TaggedError("HttpStatusRejected")<{
+  /** The HTTP status code. */
+  readonly status: number;
+  /** The HTTP status text, possibly empty. */
+  readonly statusText: string;
+}> {
+  /** Safe user-facing description with the status. */
+  override get message(): string {
+    return `Request failed (${this.status}${this.statusText ? ` ${this.statusText}` : ""})`;
+  }
+}
+
+/** The response declared or streamed more bytes than the cap allows. */
+export class ResponseTooLarge extends Data.TaggedError("ResponseTooLarge")<{
+  /** The byte cap that was exceeded. */
+  readonly maxBytes: number;
+}> {
+  /** Safe user-facing description with the cap in MB. */
+  override get message(): string {
+    return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit)`;
+  }
+}
+
+/** Expected failures of the public web client. Their messages never contain URLs or causes. */
+export type PublicWebError =
+  | PublicWebRequestFailed
+  | PrivateHostBlocked
+  | PrivateIpBlocked
+  | UrlCredentialsUnsupported
+  | RedirectLocationMissing
+  | RedirectLocationInvalid
+  | RedirectLimitExceeded
+  | RedirectProtocolUnsupported
+  | HttpStatusRejected
+  | ResponseTooLarge;
+
+/**
+ * Outbound port for fetching public web resources. Interrupting the returned effect aborts the
+ * request; deadlines belong to the caller.
+ */
 export type PublicWebClient = {
-  readonly get: (
-    request: PublicWebRequest,
-    options?: { readonly signal?: AbortSignal | undefined },
-  ) => Promise<Result<PublicWebResponse, PublicWebError>>;
+  readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
 };
 
 /** DNS resolver seam, injectable for tests. */
 export type DnsLookup = (hostname: string) => Promise<readonly { address: string }[]>;
 
-/** The shape of an operation-deadline abort reason. */
-export type OperationTimeout = {
-  readonly _tag: "OperationTimeout";
-  readonly timeoutSeconds: number;
-};
+/** Network error codes, as Node and undici report them, grouped by what they mean for the user. */
+const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "timeout" | "tls"> =
+  new Map([
+    ["ENOTFOUND", "dns"],
+    ["EAI_AGAIN", "dns"],
+    ["ECONNREFUSED", "refused"],
+    ["ECONNRESET", "reset"],
+    ["UND_ERR_SOCKET", "reset"],
+    ["ETIMEDOUT", "timeout"],
+    ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
+    ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
+  ]);
+/** How deep to follow `cause` links; real fetch errors nest two or three levels. */
+const MAX_CAUSE_DEPTH = 8;
 
-/** Error aborting an operation after its deadline. */
-class OperationTimeoutError extends Error implements OperationTimeout {
-  readonly _tag = "OperationTimeout" as const;
-
-  constructor(readonly timeoutSeconds: number) {
-    super(`Operation timed out after ${timeoutSeconds}s`);
-    this.name = "OperationTimeoutError";
+/**
+ * Describe a failed network request from its error's `cause` chain, naming only the host.
+ * fetch rejects with a generic TypeError whose `cause` (or a deeper one) carries the system code.
+ *
+ * @param cause - The fetch or stream rejection.
+ * @param hostname - The host the request was sent to.
+ * @returns A sentence such as "Could not resolve host example.com".
+ */
+export function describeNetworkFailure(cause: unknown, hostname: string): string {
+  const code = findNetworkCode(cause);
+  const kind = code === undefined ? undefined : networkCodeKind(code);
+  if (kind === undefined) {
+    return `Request to ${hostname} failed`;
+  }
+  switch (kind) {
+    case "dns": {
+      return `Could not resolve host ${hostname}`;
+    }
+    case "refused": {
+      return `Connection refused by ${hostname}`;
+    }
+    case "reset": {
+      return `Connection reset by ${hostname}`;
+    }
+    case "timeout": {
+      return `Connection to ${hostname} timed out`;
+    }
+    case "tls": {
+      return `TLS certificate error for ${hostname} (${code ?? ""})`;
+    }
+    default: {
+      return absurd(kind);
+    }
   }
 }
 
-/** A composed abort signal plus its cleanup callback. */
-export type ComposedSignal = {
-  readonly signal: AbortSignal;
-  readonly cleanup: () => void;
-};
-
-/** Compose an operation deadline with an optional outer (agent) abort signal. */
-export function createOperationSignal(
-  timeoutMs: number,
-  outerSignal?: AbortSignal,
-): ComposedSignal {
-  const controller = new AbortController();
-  const timeoutSeconds = Math.ceil(timeoutMs / 1000);
-  const timeoutId = setTimeout(() => {
-    controller.abort(new OperationTimeoutError(timeoutSeconds));
-  }, timeoutMs);
-  const signal = outerSignal
-    ? AbortSignal.any([outerSignal, controller.signal])
-    : controller.signal;
-  return {
-    signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-    },
-  };
+function networkCodeKind(
+  code: string,
+): "dns" | "refused" | "reset" | "timeout" | "tls" | undefined {
+  const kind = NETWORK_CODE_KINDS.get(code);
+  if (kind !== undefined) {
+    return kind;
+  }
+  return code.startsWith("CERT_") || code.startsWith("ERR_TLS_") ? "tls" : undefined;
 }
 
-/** Returns true when a value is an operation-deadline abort reason. */
-export function isOperationTimeoutError(value: unknown): value is OperationTimeout {
-  return (
-    value instanceof OperationTimeoutError ||
-    (typeof value === "object" &&
-      value !== null &&
-      "_tag" in value &&
-      value._tag === "OperationTimeout" &&
-      "timeoutSeconds" in value &&
-      typeof value.timeoutSeconds === "number")
-  );
-}
-
-/** Returns true when an error is a DOMException-style abort. */
-export function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
+// The first recognised `code` along the cause chain; unrecognised codes keep the walk going.
+function findNetworkCode(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof current !== "object" || current === null) {
+      return undefined;
+    }
+    if ("code" in current && typeof current.code === "string" && networkCodeKind(current.code)) {
+      return current.code;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return undefined;
 }
 
 /** Parse a Content-Type header into mime, charset, and coarse body kind. */
@@ -205,52 +319,56 @@ function normalizeCharset(charset: string | undefined): string | undefined {
   return normalized;
 }
 
-/** Read a response body with a hard byte cap, returning a tagged failure instead of throwing. */
-export async function readResponseBodyWithLimit(
+/** A response body streamed past its byte cap. */
+export class ResponseBodyTooLarge extends Data.TaggedError("ResponseBodyTooLarge") {}
+
+/** A response body stream failed mid-read. */
+export class ResponseBodyReadFailed extends Data.TaggedError("ResponseBodyReadFailed")<{
+  /** The stream error; classify it with describeNetworkFailure. */
+  readonly cause: unknown;
+}> {}
+
+/**
+ * Read a response body with a hard byte cap. The reader is cancelled and released however the read
+ * ends: success, cap exceeded, stream failure, or interruption.
+ */
+export function readResponseBodyWithLimit(
   response: Response,
   maxBytes: number,
-  signal?: AbortSignal,
-): Promise<
-  Result<Buffer, { readonly _tag: "BodyTooLarge" } | { readonly _tag: "BodyReadFailed" }>
-> {
-  if (!response.body) {
-    return ok(Buffer.alloc(0));
+): Effect.Effect<Buffer, ResponseBodyTooLarge | ResponseBodyReadFailed> {
+  const { body } = response;
+  if (body === null) {
+    return Effect.succeed(Buffer.alloc(0));
   }
-
-  const reader = response.body.getReader();
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-
-  try {
-    while (true) {
-      if (signal?.aborted === true) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- cancelling ends the read loop
-        await reader.cancel(signal.reason).catch(() => undefined);
-        return err({ _tag: "BodyReadFailed" });
-      }
-
-      // oxlint-disable-next-line eslint/no-await-in-loop -- a stream yields its chunks one read at a time
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      bytes += value.byteLength;
-      if (bytes > maxBytes) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- cancelling ends the read loop
+  return Effect.acquireUseRelease(
+    Effect.sync(() => body.getReader()),
+    (reader) =>
+      Effect.gen(function* () {
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        while (true) {
+          const chunk = yield* Effect.tryPromise({
+            try: async () => reader.read(),
+            catch: (cause) => new ResponseBodyReadFailed({ cause }),
+          });
+          if (chunk.done) {
+            return Buffer.concat(chunks);
+          }
+          bytes += chunk.value.byteLength;
+          if (bytes > maxBytes) {
+            return yield* new ResponseBodyTooLarge();
+          }
+          chunks.push(
+            Buffer.from(chunk.value.buffer, chunk.value.byteOffset, chunk.value.byteLength),
+          );
+        }
+      }),
+    (reader) =>
+      Effect.promise(async () => {
         await reader.cancel().catch(() => undefined);
-        return err({ _tag: "BodyTooLarge" });
-      }
-
-      chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
-    }
-  } catch {
-    return err({ _tag: "BodyReadFailed" });
-  } finally {
-    reader.releaseLock();
-  }
-
-  return ok(Buffer.concat(chunks));
+        reader.releaseLock();
+      }),
+  );
 }
 
 // Non-public ranges blocked for outbound fetches. IPv4-mapped IPv6 (::ffff:a.b.c.d) needs no row,
@@ -299,14 +417,6 @@ type FetchedResponse = {
   readonly finalUrl: PublicHttpUrl;
 };
 
-/** What stays fixed across the hops of one redirect chain. */
-type FetchAttempt = {
-  readonly fetchImpl: typeof fetch;
-  readonly request: PublicWebRequest;
-  readonly userAgent: string;
-  readonly signal: AbortSignal | undefined;
-};
-
 /** Public web client with SSRF defenses, redirect re-validation, and a challenge-aware UA retry. */
 export class FetchPublicWebClient implements PublicWebClient {
   constructor(
@@ -317,139 +427,120 @@ export class FetchPublicWebClient implements PublicWebClient {
   ) {}
 
   /** Fetch a bounded public web response, following safe redirects. */
-  async get(
-    request: PublicWebRequest,
-    options: { readonly signal?: AbortSignal | undefined } = {},
-  ): Promise<Result<PublicWebResponse, PublicWebError>> {
-    const fetched = await this.fetchPastChallenge(request, options.signal);
-    if (fetched._tag === "err") {
-      return fetched;
-    }
+  get(request: PublicWebRequest): Effect.Effect<PublicWebResponse, PublicWebError> {
+    const fetched = this.fetchPastChallenge(request);
+    return Effect.gen(function* () {
+      const { response, finalUrl } = yield* fetched;
+      const rejection = checkResponseHead(response, request.maxResponseBytes);
+      if (rejection !== undefined) {
+        yield* cancelBody(response);
+        return yield* Effect.fail(rejection);
+      }
 
-    const { response, finalUrl } = fetched.value;
-    const head = checkResponseHead(response, request.maxResponseBytes);
-    if (head._tag === "err") {
-      await cancelBody(response);
-      return head;
-    }
-
-    const body = await readResponseBodyWithLimit(
-      response,
-      request.maxResponseBytes,
-      options.signal,
-    );
-    if (body._tag === "err") {
-      return err(classifyBodyReadFailure(body.error, request.maxResponseBytes, options.signal));
-    }
-
-    return ok({
-      requestedUrl: request.url,
-      finalUrl,
-      status: response.status,
-      headers: response.headers,
-      body: body.value,
+      const { hostname } = new URL(finalUrl);
+      const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
+        Effect.mapError((error) =>
+          error._tag === "ResponseBodyTooLarge"
+            ? new ResponseTooLarge({ maxBytes: request.maxResponseBytes })
+            : new PublicWebRequestFailed({ hostname, cause: error.cause }),
+        ),
+      );
+      return {
+        requestedUrl: request.url,
+        finalUrl,
+        status: response.status,
+        headers: response.headers,
+        body,
+      };
     });
   }
 
   // A Cloudflare challenge gets one retry with the fallback user agent; the retry's outcome,
   // challenge or not, is final.
-  private async fetchPastChallenge(
+  private fetchPastChallenge(
     request: PublicWebRequest,
-    signal: AbortSignal | undefined,
-  ): Promise<Result<FetchedResponse, PublicWebError>> {
-    const first = await this.fetchWithUserAgent(request, request.userAgent, signal);
-    if (first._tag === "err" || !isCloudflareChallenge(first.value.response)) {
-      return first;
-    }
-    await cancelBody(first.value.response);
-    return this.fetchWithUserAgent(request, request.fallbackUserAgent, signal);
+  ): Effect.Effect<FetchedResponse, PublicWebError> {
+    const first = this.fetchWithUserAgent(request, request.userAgent);
+    const retry = this.fetchWithUserAgent(request, request.fallbackUserAgent);
+    return Effect.gen(function* () {
+      const fetched = yield* first;
+      if (!isCloudflareChallenge(fetched.response)) {
+        return fetched;
+      }
+      yield* cancelBody(fetched.response);
+      return yield* retry;
+    });
   }
 
-  private async fetchWithUserAgent(
+  private fetchWithUserAgent(
     request: PublicWebRequest,
     userAgent: string,
-    signal: AbortSignal | undefined,
-  ): Promise<Result<FetchedResponse, PublicWebError>> {
-    const fetchImpl = this.dependencies.fetchImpl ?? fetch;
-    const attempt: FetchAttempt = { fetchImpl, request, userAgent, signal };
-    let currentUrl = new URL(request.url);
+  ): Effect.Effect<FetchedResponse, PublicWebError> {
+    const fetchHop = (url: URL) => this.fetchHop(url, request, userAgent);
+    return Effect.gen(function* () {
+      let currentUrl = new URL(request.url);
+      for (let redirects = 0; ; redirects += 1) {
+        const response = yield* fetchHop(currentUrl);
+        if (!REDIRECT_STATUSES.has(response.status)) {
+          // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
+          // final URL is always public; the check keeps the brand honest.
+          const finalUrl = currentUrl.toString();
+          if (isPublicHttpUrl(finalUrl)) {
+            return { response, finalUrl };
+          }
+          return yield* new RedirectLocationInvalid();
+        }
 
-    for (let redirects = 0; ; redirects += 1) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- each hop requests the previous hop's redirect target
-      const hop = await this.fetchHop(currentUrl, attempt);
-      if (hop._tag === "err") {
-        return hop;
+        yield* cancelBody(response);
+        currentUrl = yield* resolveRedirect(response, {
+          currentUrl,
+          redirects,
+          maxRedirects: request.maxRedirects,
+        });
       }
-
-      const response = hop.value;
-      if (!REDIRECT_STATUSES.has(response.status)) {
-        // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
-        // final URL is always public; the check keeps the brand honest.
-        const finalUrl = currentUrl.toString();
-        return isPublicHttpUrl(finalUrl)
-          ? ok({ response, finalUrl })
-          : err({ _tag: "RedirectLocationInvalid" });
-      }
-
-      // oxlint-disable-next-line eslint/no-await-in-loop -- the body is released before the next hop
-      await cancelBody(response);
-      const next = resolveRedirect(response, {
-        currentUrl,
-        redirects,
-        maxRedirects: request.maxRedirects,
-      });
-      if (next._tag === "err") {
-        return next;
-      }
-      currentUrl = next.value;
-    }
+    });
   }
 
   // One request in a redirect chain. The checks run in this order on every hop, so a redirect
   // target is held to the same rules as the requested URL.
-  private async fetchHop(
+  private fetchHop(
     url: URL,
-    attempt: FetchAttempt,
-  ): Promise<Result<Response, PublicWebError>> {
-    const { fetchImpl, request, userAgent, signal } = attempt;
-    if (signal?.aborted === true) {
-      return err(classifySignalAbort(signal));
-    }
-    if (url.username || url.password) {
-      return err({ _tag: "UrlCredentialsUnsupported" });
-    }
-    if (request.blockPrivateHosts) {
-      const publicCheck = await this.checkPublicUrl(url);
-      if (publicCheck._tag === "err") {
-        return publicCheck;
+    request: PublicWebRequest,
+    userAgent: string,
+  ): Effect.Effect<Response, PublicWebError> {
+    const fetchImpl = this.dependencies.fetchImpl ?? fetch;
+    const checkPublicUrl = this.checkPublicUrl(url);
+    return Effect.gen(function* () {
+      if (url.username || url.password) {
+        return yield* new UrlCredentialsUnsupported();
       }
-    }
-
-    try {
-      return ok(
-        await fetchImpl(url, {
-          method: "GET",
-          headers: {
-            "User-Agent": userAgent,
-            Accept: request.accept,
-            "Accept-Language": "en-US,en;q=0.9",
-          },
-          signal: signal ?? null,
-          redirect: "manual",
-        }),
-      );
-    } catch (error: unknown) {
-      return err(classifyFetchFailure(error, signal));
-    }
+      if (request.blockPrivateHosts) {
+        yield* checkPublicUrl;
+      }
+      return yield* Effect.tryPromise({
+        try: async (signal) =>
+          fetchImpl(url, {
+            method: "GET",
+            headers: {
+              "User-Agent": userAgent,
+              Accept: request.accept,
+              "Accept-Language": "en-US,en;q=0.9",
+            },
+            signal,
+            redirect: "manual",
+          }),
+        catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+      });
+    });
   }
 
-  private async checkPublicUrl(url: URL): Promise<Result<void, PublicWebError>> {
+  private checkPublicUrl(url: URL): Effect.Effect<void, PrivateHostBlocked | PrivateIpBlocked> {
     const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
     if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return err({ _tag: "PrivateHostBlocked" });
+      return Effect.fail(new PrivateHostBlocked());
     }
     if (isPrivateOrLocalIp(hostname)) {
-      return err({ _tag: "PrivateIpBlocked" });
+      return Effect.fail(new PrivateIpBlocked());
     }
 
     const lookupImpl =
@@ -458,59 +549,42 @@ export class FetchPublicWebClient implements PublicWebClient {
         const records = await lookup(name, { all: true, order: "verbatim" });
         return records.map((record) => ({ address: record.address }));
       });
-
-    try {
-      const records = await lookupImpl(hostname);
-      for (const record of records) {
-        if (isPrivateOrLocalIp(record.address)) {
-          return err({ _tag: "PrivateIpBlocked" });
-        }
-      }
-    } catch {
+    return Effect.tryPromise({
+      try: async () => lookupImpl(hostname),
+      catch: () => "unresolved",
+    }).pipe(
       // DNS resolution failed: let the fetch itself surface the connectivity error.
-    }
-
-    return ok(undefined);
+      Effect.orElseSucceed(() => []),
+      Effect.flatMap((records) =>
+        records.some((record) => isPrivateOrLocalIp(record.address))
+          ? Effect.fail(new PrivateIpBlocked())
+          : Effect.void,
+      ),
+    );
   }
-}
-
-function classifySignalAbort(signal: AbortSignal): PublicWebError {
-  if (isOperationTimeoutError(signal.reason)) {
-    return { _tag: "PublicWebTimedOut", timeoutSeconds: signal.reason.timeoutSeconds };
-  }
-  return { _tag: "PublicWebCancelled" };
-}
-
-// An abort surfaces as the signal's reason when there is a signal; any other rejection is a
-// request failure whose cause is not carried.
-function classifyFetchFailure(cause: unknown, signal: AbortSignal | undefined): PublicWebError {
-  if (signal?.aborted === true || isAbortError(cause)) {
-    return signal ? classifySignalAbort(signal) : { _tag: "PublicWebCancelled" };
-  }
-  return { _tag: "PublicWebRequestFailed" };
 }
 
 // The redirect checks after the body is cancelled: Location present, limit, parseable, http(s).
 function resolveRedirect(
   response: Response,
   hop: { readonly currentUrl: URL; readonly redirects: number; readonly maxRedirects: number },
-): Result<URL, PublicWebError> {
+): Effect.Effect<URL, PublicWebError> {
   const { currentUrl, redirects, maxRedirects } = hop;
   const location = response.headers.get("location");
   if (location === null || location === "") {
-    return err({ _tag: "RedirectLocationMissing" });
+    return Effect.fail(new RedirectLocationMissing());
   }
   if (redirects >= maxRedirects) {
-    return err({ _tag: "RedirectLimitExceeded", maxRedirects });
+    return Effect.fail(new RedirectLimitExceeded({ maxRedirects }));
   }
   const nextUrl = parseUrl(location, currentUrl);
   if (nextUrl === undefined) {
-    return err({ _tag: "RedirectLocationInvalid" });
+    return Effect.fail(new RedirectLocationInvalid());
   }
   if (!HTTP_PROTOCOLS.has(nextUrl.protocol)) {
-    return err({ _tag: "RedirectProtocolUnsupported", protocol: nextUrl.protocol });
+    return Effect.fail(new RedirectProtocolUnsupported({ protocol: nextUrl.protocol }));
   }
-  return ok(nextUrl);
+  return Effect.succeed(nextUrl);
 }
 
 function parseUrl(input: string, base: URL): URL | undefined {
@@ -522,20 +596,19 @@ function parseUrl(input: string, base: URL): URL | undefined {
 }
 
 // Rejections decided from the status and headers alone, before any of the body is read.
-function checkResponseHead(response: Response, maxBytes: number): Result<void, PublicWebError> {
+function checkResponseHead(
+  response: Response,
+  maxBytes: number,
+): HttpStatusRejected | ResponseTooLarge | undefined {
   if (!response.ok) {
-    return err({
-      _tag: "HttpStatusRejected",
-      status: response.status,
-      statusText: response.statusText,
-    });
+    return new HttpStatusRejected({ status: response.status, statusText: response.statusText });
   }
   // A missing or non-numeric Content-Length parses to NaN and leaves the cap to the body read.
   const declaredBytes = parseContentLength(response.headers.get("content-length"));
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
-    return err({ _tag: "ResponseTooLarge", maxBytes });
+    return new ResponseTooLarge({ maxBytes });
   }
-  return ok(undefined);
+  return undefined;
 }
 
 // The header's leading decimal digits, as parseInt reads them, so a repeated header ("5, 5") still
@@ -545,23 +618,10 @@ function parseContentLength(header: string | null): number {
   return digits === undefined ? Number.NaN : Number(digits);
 }
 
-// An aborted signal explains any body failure, so it wins over the reader's own tag.
-function classifyBodyReadFailure(
-  error: { readonly _tag: "BodyTooLarge" | "BodyReadFailed" },
-  maxBytes: number,
-  signal: AbortSignal | undefined,
-): PublicWebError {
-  if (signal?.aborted === true) {
-    return classifySignalAbort(signal);
-  }
-  if (error._tag === "BodyTooLarge") {
-    return { _tag: "ResponseTooLarge", maxBytes };
-  }
-  return { _tag: "PublicWebRequestFailed" };
-}
-
-async function cancelBody(response: Response): Promise<void> {
-  await response.body?.cancel().catch(() => undefined);
+function cancelBody(response: Response): Effect.Effect<void> {
+  return Effect.promise(async () => {
+    await response.body?.cancel().catch(() => undefined);
+  });
 }
 
 function isCloudflareChallenge(response: Pick<Response, "status" | "headers">): boolean {
