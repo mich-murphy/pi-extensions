@@ -74,13 +74,19 @@ describe("extension entry point", () => {
 });
 
 describe("bash output safety hooks", () => {
-  test("appends the bash output rule to the system prompt", () => {
-    const result = loadExtension().emit("before_agent_start", { systemPrompt: "Base prompt." });
+  test("adds the bash output rule as a section and keeps other extensions' sections", () => {
+    const sections: Record<string, string> = { "mm-mode": "Router." };
+    const result = loadExtension().emit("before_agent_start", {
+      systemPrompt: "Base prompt.",
+      systemPromptOptions: { sections },
+    });
 
-    const extendedPrompt: unknown = expect.stringMatching(
-      /^Base prompt\.\n\nBash output safety: never cat/u,
-    );
-    expect(result).toStrictEqual({ systemPrompt: extendedPrompt });
+    const bashRule: unknown = expect.stringMatching(/^Bash output safety: never cat/u);
+    expect(result).toBeUndefined();
+    expect(sections).toStrictEqual({
+      "mm-mode": "Router.",
+      "bash-output-safety": bashRule,
+    });
   });
 
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {
