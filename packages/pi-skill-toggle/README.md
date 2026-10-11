@@ -27,8 +27,10 @@ ancestor `.agents/skills`, configured skill paths, and global skill roots. The
 extension leaves those native paths and winners alone, including explicit Pi
 exclusions, and supplements them with ancestor `.pi/skills`, `.claude/skills`,
 and `.codex/skills` through the Git root. A supplemental skill never displaces a
-same-named native winner. When supplemental harness directories contain the same
-skill name, the first copy wins without a startup collision warning. Unique
+same-named native winner. Names already loaded through CLI or SDK additional
+skill paths are reserved too, without making those temporary skills toggle rows.
+When supplemental harness directories contain the same skill name, the first
+copy wins without a startup collision warning. Unique
 skills from later directories are still loaded. Malformed skills are skipped
 rather than reported as extension loading errors. Projects outside a Git
 worktree are limited to the working directory so a parent user's skills are not

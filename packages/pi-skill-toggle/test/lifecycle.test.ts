@@ -106,6 +106,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
     registerCommand(name: string, command: CommandOptions) {
       commands.set(name, command);
     },
+    getCommands: () => [],
   };
   let projectTrusted = true;
   const ctx = {
@@ -200,6 +201,7 @@ describe("extension lifecycle", () => {
     const piMock = {
       registerCommand: () => undefined,
       on: (name: string, handler: TestHandler) => handlers.set(name, handler),
+      getCommands: () => [],
     };
     skillToggle(piMock as unknown as ExtensionAPI);
 

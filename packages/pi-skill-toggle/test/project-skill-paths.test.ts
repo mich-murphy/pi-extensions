@@ -6,8 +6,12 @@ import {
   loadSkills,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, test } from "vitest";
+import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { registerSkillToggle } from "../index";
 import { discoverProjectSkillPaths } from "../project-skill-paths";
+import { ok } from "../result";
+import type { ToggleStateStore } from "../state";
 
 const temporaryDirectories: string[] = [];
 
@@ -38,8 +42,20 @@ async function pathsFor(cwd: string, agentDir: string): Promise<readonly string[
   return discoverProjectSkillPaths(cwd, agentDir);
 }
 
+function requiredHandler(
+  handlers: ReadonlyMap<string, (event: unknown, ctx: unknown) => unknown>,
+  name: string,
+): (event: unknown, ctx: unknown) => unknown {
+  const handler = handlers.get(name);
+  if (!handler) {
+    throw new Error(`test setup: ${name} was not registered`);
+  }
+  return handler;
+}
+
 describe("discoverProjectSkillPaths", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -147,6 +163,68 @@ describe("discoverProjectSkillPaths", () => {
     );
 
     await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([supplemental]);
+  });
+
+  test("the extension binding reserves a real loader's additional skill winner", async () => {
+    const { root, cwd, agentDir } = project();
+    vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+    const explicit = writeSkill(join(root, "explicit"), "winner", "cli-collision");
+    writeSkill(join(root, ".claude", "skills"), "duplicate", "cli-collision");
+    const extra = writeSkill(join(root, ".claude", "skills"), "extra", "extra");
+    const settingsManager = SettingsManager.inMemory(
+      { enableSkillCommands: false },
+      { projectTrusted: true },
+    );
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      additionalSkillPaths: [explicit],
+      noExtensions: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await loader.reload();
+    const handlers = new Map<string, (event: unknown, ctx: unknown) => unknown>();
+    const piDouble = {
+      registerCommand: () => undefined,
+      on: (name: string, handler: (event: unknown, ctx: unknown) => unknown) => {
+        handlers.set(name, handler);
+      },
+      // This is the public getCommands contract bound by AgentSession in Pi 0.85 and 1.1.
+      getCommands: (): SlashCommandInfo[] =>
+        loader.getSkills().skills.map((skill) => ({
+          name: `skill:${skill.name}`,
+          description: skill.description,
+          source: "skill",
+          sourceInfo: skill.sourceInfo,
+        })),
+    };
+    const store: ToggleStateStore = {
+      load: () => ok(new Map()),
+      set: () => ok(new Map()),
+    };
+    registerSkillToggle(piDouble as unknown as ExtensionAPI, store);
+    const discover = requiredHandler(handlers, "resources_discover");
+
+    const contribution = await discover({}, { cwd, isProjectTrusted: () => true });
+    expect(contribution).toStrictEqual({ skillPaths: [extra] });
+    loader.extendResources({
+      skillPaths: [extra].map((path) => ({
+        path,
+        metadata: { source: "extension:test", scope: "temporary", origin: "top-level" },
+      })),
+    });
+    await expect(discover({}, { cwd, isProjectTrusted: () => true })).resolves.toStrictEqual({
+      skillPaths: [extra],
+    });
+    const loaded = loader.getSkills();
+
+    expect(loaded.skills.find((skill) => skill.name === "cli-collision")?.filePath).toBe(explicit);
+    expect(
+      loaded.diagnostics.filter((diagnostic) => diagnostic.type === "collision"),
+    ).toStrictEqual([]);
   });
 
   test("a real DefaultResourceLoader keeps excluded native skills out without collision warnings", async () => {

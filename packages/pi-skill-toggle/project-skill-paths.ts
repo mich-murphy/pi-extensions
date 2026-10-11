@@ -61,6 +61,7 @@ async function reservedNativeSkillNames(
 export async function discoverProjectSkillPaths(
   cwd: string,
   agentDir = getAgentDir(),
+  loadedNativeNames: ReadonlySet<string> = new Set(),
 ): Promise<readonly string[]> {
   const roots = supplementalSkillDirectories(cwd).filter((path) => existsSync(path));
   if (roots.length === 0) {
@@ -73,7 +74,10 @@ export async function discoverProjectSkillPaths(
     skillPaths: roots,
     includeDefaults: false,
   });
-  const nativeNames = await reservedNativeSkillNames(cwd, agentDir);
+  const nativeNames = new Set([
+    ...(await reservedNativeSkillNames(cwd, agentDir)),
+    ...loadedNativeNames,
+  ]);
   const invalidPaths = new Set(
     result.diagnostics.flatMap((diagnostic) =>
       diagnostic.type !== "collision" && diagnostic.path !== undefined && diagnostic.path !== ""
