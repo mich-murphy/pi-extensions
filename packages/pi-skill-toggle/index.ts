@@ -29,7 +29,7 @@ export function registerSkillToggle(pi: ExtensionAPI, store: ToggleStateStore): 
     description: "Enable or disable user-managed instructions and skills",
     handler: async (args, ctx) => extension.openMenu(args, ctx),
   });
-  pi.on("resources_discover", (_event, ctx) => extension.contributeProjectSkills(ctx));
+  pi.on("resources_discover", async (_event, ctx) => extension.contributeProjectSkills(ctx));
   pi.on("before_agent_start", (event, ctx) => extension.filterPrompt(event, ctx));
 }
 
@@ -59,10 +59,12 @@ class SkillToggle {
 
   constructor(private readonly store: ToggleStateStore) {}
 
-  contributeProjectSkills(
+  async contributeProjectSkills(
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-  ): { skillPaths: string[] } | undefined {
-    const skillPaths = ctx.isProjectTrusted() ? [...discoverProjectSkillPaths(ctx.cwd)] : [];
+  ): Promise<{ skillPaths: string[] } | undefined> {
+    const skillPaths = ctx.isProjectTrusted()
+      ? [...(await discoverProjectSkillPaths(ctx.cwd))]
+      : [];
     this.contributedSkills = new Set(skillPaths.map((path) => resourcePathId(path, ctx.cwd)));
     return skillPaths.length > 0 ? { skillPaths } : undefined;
   }

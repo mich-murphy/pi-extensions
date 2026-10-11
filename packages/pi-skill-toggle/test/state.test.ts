@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,6 +128,26 @@ describe("toggleStateFile", () => {
       retained,
       other,
     ]);
+  });
+
+  test("preserves an unverifiable ELOOP entry while updating an accessible resource", () => {
+    const context = testContext();
+    const accessible = context.resourceFile("accessible");
+    const loop = join(context.directory, "loop");
+    symlinkSync("loop", loop);
+    const unverifiable = resourcePathId(join(loop, "SKILL.md"), context.directory);
+    context.writeState({ version: 6, overrides: { [unverifiable]: "enabled" } });
+
+    const saved = overrides(context.store.set(accessible, "disabled"));
+
+    expect([...saved]).toStrictEqual([
+      [unverifiable, "enabled"],
+      [accessible, "disabled"],
+    ]);
+    expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
+      version: 6,
+      overrides: { [accessible]: "disabled", [unverifiable]: "enabled" },
+    });
   });
 
   test.each([4, 5])(

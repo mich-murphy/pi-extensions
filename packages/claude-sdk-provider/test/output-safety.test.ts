@@ -29,10 +29,24 @@ function sanitizedText(messages: Parameters<typeof sanitizeContextMessages>[0], 
 }
 
 describe("bash output safety", () => {
-  test("blocks the executable-dump pattern that poisoned the investigated session", () => {
-    expect(inspectBashCommand("cat $(which plannotator) 2>/dev/null | head -100")).toContain(
-      'file "$(which COMMAND)"',
-    );
+  test.each([
+    "cat $(which plannotator) 2>/dev/null | head -100",
+    'cat "$(command -v plannotator)"',
+    "cat '$(which plannotator)'",
+    "cat `which plannotator`",
+    'cat "`command -v plannotator`"',
+  ])("blocks executable dumps through supported shell substitutions: %s", (command) => {
+    expect(inspectBashCommand(command)).toContain('file "$(which COMMAND)"');
+  });
+
+  test.each([
+    "cat README.md; executable=$(which plannotator)",
+    "cat README.md && command -v plannotator",
+    "cat README.md || which plannotator",
+    "cat README.md\nwhich plannotator",
+    "cat README.md | head; command -v plannotator",
+  ])("does not span unrelated shell statements: %s", (command) => {
+    expect(inspectBashCommand(command)).toBeUndefined();
   });
 
   test("quarantines binary output before it enters the transcript", () => {

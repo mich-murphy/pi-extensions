@@ -175,30 +175,61 @@ function responseHeaders(incoming: IncomingMessage): Headers {
   return headers;
 }
 
+function decoderFor(encoding: string): Transform | "identity" | undefined {
+  if (encoding === "gzip" || encoding === "x-gzip") {
+    return createGunzip();
+  }
+  if (encoding === "deflate") {
+    return createInflate();
+  }
+  if (encoding === "br") {
+    return createBrotliDecompress();
+  }
+  return encoding === "identity" ? "identity" : undefined;
+}
+
 function decodedResponseBody(
   incoming: IncomingMessage,
   contentEncoding: string | null,
 ): Readable | undefined {
-  const encoding = contentEncoding?.trim().toLowerCase();
-  let decoder: Transform | undefined;
-  if (encoding === "gzip" || encoding === "x-gzip") {
-    decoder = createGunzip();
-  } else if (encoding === "deflate") {
-    decoder = createInflate();
-  } else if (encoding === "br") {
-    decoder = createBrotliDecompress();
-  }
-  if (decoder === undefined) {
+  const encodings =
+    contentEncoding
+      ?.split(",")
+      .map((encoding) => encoding.trim().toLowerCase())
+      .filter(Boolean) ?? [];
+  const selected = encodings.map((encoding) => decoderFor(encoding));
+  // Preserve an unknown encoding and its header verbatim instead of partially decoding a stack.
+  if (selected.length === 0 || selected.some((decoder) => decoder === undefined)) {
     return undefined;
   }
-  // pipeline destroys both streams on decode errors and when Response cancellation destroys the
-  // decoder. Its callback observes completion so an emitted pipeline error is never unhandled.
-  pipeline(incoming, decoder, () => undefined);
-  return decoder;
+  const decoders = selected
+    .toReversed()
+    .filter((decoder): decoder is Transform => decoder !== "identity");
+  const output = decoders.at(-1);
+  if (output === undefined) {
+    return undefined;
+  }
+  // Content codings are applied in header order and decoded in reverse. A single pipeline carries
+  // cancellation and decode failures through every transform and back to the owned socket.
+  pipeline([incoming, ...decoders], () => undefined);
+  return output;
 }
 
+const WEB_STREAM_HIGH_WATER_MARK_BYTES = 64 * 1024;
+
+// IncomingMessage and every zlib decoder used here are binary, non-object-mode streams, so Node's
+// toWeb adapter always supplies Uint8Array chunks to this strategy callback.
+const chunkByteLength = (chunk: Uint8Array): number => chunk.byteLength;
+
 function webReadable(stream: Readable): ReadableStream<Uint8Array> {
-  // SAFETY: Node's Readable.toWeb emits Uint8Array chunks for IncomingMessage and zlib streams.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node's generic uses ArrayBufferLike while fetch accepts the same Uint8Array chunks.
-  return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+  const converted = Readable.toWeb(stream, {
+    strategy: {
+      highWaterMark: WEB_STREAM_HIGH_WATER_MARK_BYTES,
+      size: chunkByteLength,
+    },
+  });
+  // SAFETY: The binary stream invariant above also makes Node's stream/web value compatible with
+  // Fetch's global ReadableStream; their declarations differ only in ArrayBuffer generic details.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- justified by the binary stream invariant above.
+  return converted as unknown as ReadableStream<Uint8Array>;
 }

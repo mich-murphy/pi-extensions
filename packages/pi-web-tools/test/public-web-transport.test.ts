@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
@@ -170,6 +170,51 @@ describe("PublicWebTransport", () => {
         const body = await Effect.runPromise(Effect.result(readResponseBodyWithLimit(response, 8)));
         expect(body).toStrictEqual(Result.fail(new ResponseBodyTooLarge()));
         await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+      },
+    );
+  });
+
+  test("decodes stacked content encodings in reverse order", async () => {
+    const text = "stacked compression".repeat(100);
+    await withLocalServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-encoding": "gzip, br" });
+        response.end(brotliCompressSync(gzipSync(text)));
+      },
+      async (port) => {
+        const response = await transportService().get(
+          new URL(`http://stacked-compression.invalid:${port}/`),
+          [{ address: "127.0.0.1", family: 4 }],
+          {
+            headers: { "Accept-Encoding": "gzip, br" },
+            signal: new AbortController().signal,
+          },
+        );
+
+        expect(response.headers.get("content-encoding")).toBeNull();
+        await expect(response.text()).resolves.toBe(text);
+      },
+    );
+  });
+
+  test("leaves unknown content encodings untouched", async () => {
+    await withLocalServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-encoding": "future-coding" });
+        response.end("opaque bytes");
+      },
+      async (port) => {
+        const response = await transportService().get(
+          new URL(`http://unknown-compression.invalid:${port}/`),
+          [{ address: "127.0.0.1", family: 4 }],
+          {
+            headers: { "Accept-Encoding": "future-coding" },
+            signal: new AbortController().signal,
+          },
+        );
+
+        expect(response.headers.get("content-encoding")).toBe("future-coding");
+        await expect(response.text()).resolves.toBe("opaque bytes");
       },
     );
   });
