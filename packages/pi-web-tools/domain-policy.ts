@@ -37,7 +37,7 @@ export type DomainPolicyError = DomainDenied | DomainNotAllowed;
  * An entry matches the hostname exactly or any subdomain of it. Deny wins over allow.
  */
 export function checkDomainPolicy(
-  url: PublicHttpUrl,
+  url: PublicHttpUrl | URL,
   policy: DomainPolicy,
 ): Result.Result<void, DomainPolicyError> {
   const hostname = new URL(url).hostname.toLowerCase();

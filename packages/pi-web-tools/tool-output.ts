@@ -126,22 +126,38 @@ export function projectFetchResult(
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const { meta, body } = result;
+  const safeMeta = {
+    ...meta,
+    requestedUrl: redactSecrets(meta.requestedUrl, options.secrets),
+    finalUrl: redactSecrets(meta.finalUrl, options.secrets),
+    mime: redactSecrets(meta.mime, options.secrets),
+    contentType: redactSecrets(meta.contentType, options.secrets),
+    ...(meta.charset === undefined
+      ? {}
+      : { charset: redactSecrets(meta.charset, options.secrets) }),
+  };
   if (body._tag === "Image") {
     return Effect.succeed({
       content: [
         {
           type: "text",
-          text: `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
+          text: redactSecrets(
+            `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
+            options.secrets,
+          ),
         },
         { type: "image", data: body.data.toString("base64"), mimeType: meta.mime },
       ],
-      details: { ...meta, image: true },
+      details: { ...safeMeta, image: true },
     });
   }
 
   return projectTextOutput<WebFetchDetails>({
     output: redactSecrets(body.text, options.secrets),
-    details: { ...meta, decoder: body.decoder },
+    details: {
+      ...safeMeta,
+      decoder: redactSecrets(body.decoder, options.secrets),
+    },
     store: options.store,
     tempPrefix: "pi-webfetch-",
   });
@@ -162,10 +178,10 @@ export function projectProviderFetchedPage(
   return projectTextOutput<WebFetchDetails>({
     output: redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
     details: {
-      requestedUrl: page.url,
+      requestedUrl: redactSecrets(page.url, options.secrets),
       format: "markdown",
       bytes: Buffer.byteLength(page.markdown, "utf8"),
-      via: page.provider,
+      via: redactSecrets(page.provider, options.secrets),
     },
     store: options.store,
     tempPrefix: "pi-webfetch-",
@@ -186,7 +202,10 @@ export function projectSearchResults(
 ): Effect.Effect<PiToolResult<WebSearchDetails>, ToolOutputStoreError> {
   return projectTextOutput({
     output: redactSecrets(formatSearchResults(search.query, search.results), options.secrets),
-    details: search.details,
+    details: {
+      ...search.details,
+      query: redactSecrets(search.details.query, options.secrets),
+    },
     store: options.store,
     tempPrefix: "pi-websearch-",
   });

@@ -35,6 +35,8 @@ import type { PublicHttpUrl, WebFetchDetails, WebFetchFormat } from "./types";
 export type WebFetchToolComposition = {
   /** Non-secret settings, for input defaults and domain policy; keys stay in WebToolsConfig. */
   readonly settings: Pick<WebToolsSettings, "fetch">;
+  /** Redact configured secrets before text or metadata reaches Pi. */
+  readonly redactText: (input: string) => string;
   /** The runtime every fetch runs on. */
   readonly runtime: ToolRuntime<
     FetchPage | FetchRescueProviders | ToolOutputStore | WebToolsConfig
@@ -163,7 +165,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
     ) {
       const parsed = parseWebFetchParams(params, composition.settings);
       if (Result.isFailure(parsed)) {
-        throw new Error(parsed.failure.message);
+        throw new Error(composition.redactText(parsed.failure.message));
       }
 
       const policy = checkDomainPolicy(parsed.success.url, {
@@ -171,13 +173,14 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         deny: composition.settings.fetch.denyDomains,
       });
       if (Result.isFailure(policy)) {
-        throw new Error(policy.failure.message);
+        throw new Error(composition.redactText(policy.failure.message));
       }
 
       const { url, format } = parsed.success;
+      const safeUrl = composition.redactText(url);
       onUpdate?.({
-        content: [{ type: "text", text: `Fetching ${url}...` }],
-        details: { requestedUrl: url, format, bytes: 0 },
+        content: [{ type: "text", text: composition.redactText(`Fetching ${url}...`) }],
+        details: { requestedUrl: safeUrl, format, bytes: 0 },
       });
 
       const exit = await composition.runtime.runExit(runWebFetch(parsed.success), signal);
@@ -189,7 +192,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       }
       const failure = Cause.findError(exit.cause);
       if (Result.isSuccess(failure)) {
-        throw new Error(renderWebFetchFailure(failure.success));
+        throw new Error(composition.redactText(renderWebFetchFailure(failure.success)));
       }
       throw Cause.squash(exit.cause);
     },
@@ -199,7 +202,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       theme: RenderTheme,
     ) {
       let text = theme.fg("toolTitle", theme.bold("webfetch "));
-      text += theme.fg("accent", redactUrlCredentialsForDisplay(args.url));
+      text += theme.fg("accent", composition.redactText(redactUrlCredentialsForDisplay(args.url)));
       if (args.format !== undefined && args.format !== "markdown") {
         text += theme.fg("muted", ` (${args.format})`);
       }
@@ -220,7 +223,10 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       }
       if (result.isError === true) {
         return new Text(
-          theme.fg("error", `✗ ${getTextContent(result.content) || "Fetch failed"}`),
+          theme.fg(
+            "error",
+            composition.redactText(`✗ ${getTextContent(result.content) || "Fetch failed"}`),
+          ),
           0,
           0,
         );
@@ -246,7 +252,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         }
       }
 
-      return new Text(text, 0, 0);
+      return new Text(composition.redactText(text), 0, 0);
     },
   };
 }
@@ -294,11 +300,14 @@ const runWebFetch = Effect.fnUntraced(
           maxRedirects: limits.maxRedirects,
           maxResponseBytes: limits.maxResponseBytes,
           blockPrivateHosts: true,
+          domainPolicy: { allow: limits.allowDomains, deny: limits.denyDomains },
         },
       ),
     );
+    // A remote provider controls its own redirect chain, so it cannot enforce this local policy.
+    const hasDomainRestrictions = limits.allowDomains.length > 0 || limits.denyDomains.length > 0;
     const rescued =
-      limits.rescue && format === "markdown" && isRescueEligible(result)
+      limits.rescue && !hasDomainRestrictions && format === "markdown" && isRescueEligible(result)
         ? yield* tryProviderRescue(url, yield* FetchRescueProviders)
         : undefined;
     if (rescued !== undefined) {

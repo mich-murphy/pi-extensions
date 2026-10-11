@@ -60,7 +60,9 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
   const { hostname } = new URL(url);
   const response = yield* Effect.tryPromise({
-    try: async (signal) => http.fetch(url, { ...init, signal }),
+    // Provider credentials must never survive an origin change. Redirects are protocol failures
+    // handled through the existing non-2xx status path instead of being followed by fetch.
+    try: async (signal) => http.fetch(url, { ...init, signal, redirect: "manual" }),
     catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
   });
   const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(

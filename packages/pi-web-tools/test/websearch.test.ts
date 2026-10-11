@@ -1,11 +1,14 @@
 import { Effect, Result, Duration } from "effect";
 import { describe, expect, test } from "vitest";
+import { ExaMcpSearchProvider } from "../provider-exa";
 import { withProviderDeadline } from "../provider-http";
 import { ProviderRequestFailed } from "../provider-types";
 import type { SearchProvider } from "../provider-types";
 import { createWebSearchTool, EmptySearchQueryInput, parseWebSearchParams } from "../websearch";
 import {
+  fakeMcpClient,
   publicUrl,
+  redactorFor,
   renderText,
   settingsFrom,
   settleOnTestClock,
@@ -66,6 +69,7 @@ describe("websearch tool", () => {
   test("returns results from the first healthy provider", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
       runtime: toolRuntimeWith({
         settings: DEFAULT_SETTINGS,
         searchProviders: [failingProvider("exa"), answeringProvider("parallel")],
@@ -79,9 +83,29 @@ describe("websearch tool", () => {
     expect(textOf(result)).toContain("parallel result");
   });
 
+  test("falls back when Exa MCP returns only malformed nonempty sections", async () => {
+    const { client } = fakeMcpClient([
+      Result.succeed({ text: ["Title: Broken\nURL: not-a-url\nText: unusable"] }),
+    ]);
+    const tool = createWebSearchTool({
+      settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [new ExaMcpSearchProvider(client), answeringProvider("parallel")],
+      }),
+    });
+
+    const result = await tool.execute("t1", { query: "pi agent" });
+    expect(result.details.provider).toBe("parallel");
+    expect(result.details.attemptedProviders).toStrictEqual(["exa", "parallel"]);
+    expect(textOf(result)).toContain("parallel result");
+  });
+
   test("provider override skips the rest of the chain", async () => {
     const tool = createWebSearchTool({
       settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
+      redactText: redactorFor("BSA_test"),
       runtime: toolRuntimeWith({
         settings: settingsFrom({ BRAVE_API_KEY: "BSA_test" }),
         secret: "BSA_test",
@@ -100,6 +124,7 @@ describe("websearch tool", () => {
   test("throws a safe message when every provider fails", async () => {
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
       runtime: toolRuntimeWith({
         settings: DEFAULT_SETTINGS,
         searchProviders: [failingProvider("exa"), failingProvider("parallel")],
@@ -119,15 +144,20 @@ describe("websearch tool", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
+      redactText: redactorFor("sekrit-key"),
       runtime: toolRuntimeWith({
         settings: DEFAULT_SETTINGS,
         secret: "sekrit-key",
         searchProviders: [leaky],
       }),
     });
-    const result = await tool.execute("t1", { query: "x" });
-    expect(textOf(result)).not.toContain("sekrit-key");
+    const updates: unknown[] = [];
+    const result = await tool.execute("t1", { query: "find sekrit-key" }, undefined, (update) => {
+      updates.push(update);
+    });
+    expect(JSON.stringify({ result, updates })).not.toContain("sekrit-key");
     expect(textOf(result)).toContain("[redacted]");
+    expect(result.details.query).toBe("find [redacted]");
   });
 });
 
@@ -135,6 +165,7 @@ describe("websearch tool", () => {
 function toolWith(provider: SearchProvider) {
   return createWebSearchTool({
     settings: DEFAULT_SETTINGS,
+    redactText: redactorFor(),
     runtime: toolRuntimeWith({
       settings: DEFAULT_SETTINGS,
       searchProviders: [provider],
@@ -155,7 +186,11 @@ describe("websearch deadline and cancellation", () => {
       searchProviders: [slow],
       testClock: true,
     });
-    const tool = createWebSearchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const tool = createWebSearchTool({
+      settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
+      runtime,
+    });
     const outcome = tool.execute("t1", { query: "slow" });
     await settleOnTestClock(runtime, Duration.millis(20), outcome);
     await expect(outcome).rejects.toThrow("All search providers failed (exa: timed out after 1s)");
@@ -177,6 +212,7 @@ describe("websearch deadline and cancellation", () => {
     };
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
       runtime: toolRuntimeWith({
         settings: DEFAULT_SETTINGS,
         searchProviders: [hanging, fallback],
@@ -188,6 +224,23 @@ describe("websearch deadline and cancellation", () => {
     }, 10);
     await expect(outcome).rejects.toThrow("Web search cancelled");
     expect(fallbackCalls).toBe(0);
+  });
+});
+
+describe("websearch call rendering", () => {
+  test("redacts configured secrets from the query", () => {
+    const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+    const tool = createWebSearchTool({
+      settings: DEFAULT_SETTINGS,
+      redactText: redactorFor("sekrit-key"),
+      runtime: toolRuntimeWith({
+        settings: DEFAULT_SETTINGS,
+        searchProviders: [answeringProvider("exa")],
+      }),
+    });
+    const rendered = renderText(tool.renderCall({ query: "find sekrit-key" }, theme));
+    expect(rendered).not.toContain("sekrit-key");
+    expect(rendered).toContain("[redacted]");
   });
 });
 

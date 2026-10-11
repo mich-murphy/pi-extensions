@@ -5,7 +5,12 @@ import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse, fetchPageWith } from "./fakes";
 
 const URL = "https://example.com/page";
-const OPTIONS = { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHosts: true };
+const OPTIONS = {
+  maxRedirects: 5,
+  maxResponseBytes: 1024 * 1024,
+  blockPrivateHosts: true,
+  domainPolicy: { allow: [], deny: [] },
+};
 
 describe("fetchPage", () => {
   it.effect("converts HTML to markdown by default", () =>

@@ -24,6 +24,8 @@ import type { SearchProviderName, SearchQuery, WebSearchDetails } from "./types"
 export type WebSearchToolComposition = {
   /** Non-secret settings, for input defaults and the progress message; keys stay in WebToolsConfig. */
   readonly settings: Pick<WebToolsSettings, "search">;
+  /** Redact configured secrets before text or metadata reaches Pi. */
+  readonly redactText: (input: string) => string;
   /** The runtime every search runs on. */
   readonly runtime: ToolRuntime<SearchProviders | ToolOutputStore | WebToolsConfig>;
 };
@@ -117,7 +119,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
     ) {
       const parsed = parseWebSearchParams(params, composition.settings);
       if (Result.isFailure(parsed)) {
-        throw new Error(parsed.failure.message);
+        throw new Error(composition.redactText(parsed.failure.message));
       }
 
       const { query, maxResults } = parsed.success;
@@ -125,9 +127,9 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       // parseSettings requires a Brave key whenever Brave is listed, so the first configured name
       // is the first provider in the chain.
       onUpdate?.({
-        content: [{ type: "text", text: `Searching for ${query}...` }],
+        content: [{ type: "text", text: composition.redactText(`Searching for ${query}...`) }],
         details: {
-          query,
+          query: composition.redactText(query),
           maxResults,
           provider: composition.settings.search.providers[0] ?? "exa",
           attemptedProviders: [],
@@ -146,9 +148,11 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       if (Result.isSuccess(failure)) {
         const error = failure.success;
         throw new Error(
-          error._tag === "OutputStoreError"
-            ? `Could not save full websearch output to ${error.path}: ${error.reason}`
-            : error.message,
+          composition.redactText(
+            error._tag === "OutputStoreError"
+              ? `Could not save full websearch output to ${error.path}: ${error.reason}`
+              : error.message,
+          ),
         );
       }
       throw Cause.squash(exit.cause);
@@ -159,7 +163,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       theme: RenderTheme,
     ) {
       let text = theme.fg("toolTitle", theme.bold("websearch "));
-      text += theme.fg("accent", args.query);
+      text += theme.fg("accent", composition.redactText(args.query));
       if (args.provider) {
         text += theme.fg("muted", ` (${args.provider})`);
       }
@@ -180,7 +184,10 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       }
       if (result.isError === true) {
         return new Text(
-          theme.fg("error", `✗ ${getTextContent(result.content) || "Search failed"}`),
+          theme.fg(
+            "error",
+            composition.redactText(`✗ ${getTextContent(result.content) || "Search failed"}`),
+          ),
           0,
           0,
         );
@@ -209,7 +216,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
         }
       }
 
-      return new Text(text, 0, 0);
+      return new Text(composition.redactText(text), 0, 0);
     },
   };
 }
