@@ -1,7 +1,41 @@
+import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { assert, describe, expect, it, test } from "@effect/vitest";
 import { Cause, Duration, Effect, Exit, Fiber, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { providerHttpWith } from "./fakes";
+
+type LocalServer = {
+  readonly url: string;
+  readonly close: () => Promise<void>;
+};
+
+async function startLocalServer(
+  handler: (request: IncomingMessage, response: ServerResponse) => void,
+): Promise<LocalServer> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (typeof address !== "object" || address === null) {
+    throw new Error("Test HTTP server did not expose a TCP address");
+  }
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: async () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      }),
+  };
+}
 
 type SeenRequest = {
   readonly method: string | undefined;
@@ -65,6 +99,56 @@ describe("fetchProviderHttpClient", () => {
       expect(seen[0]?.contentType).toBeNull();
     }),
   );
+
+  test("rejects cross-origin redirects without forwarding provider key headers", async () => {
+    let destinationRequests = 0;
+    const destination = await startLocalServer((_request, response) => {
+      destinationRequests += 1;
+      response.end("must not be reached");
+    });
+    const sourceHeaders: string[] = [];
+    const source = await startLocalServer((incoming, response) => {
+      sourceHeaders.push(
+        `${String(incoming.headers["x-api-key"])}|${String(incoming.headers["x-subscription-token"])}`,
+      );
+      response.writeHead(302, { location: `${destination.url}/collect` });
+      response.end();
+    });
+
+    try {
+      const client = providerHttpWith(globalThis.fetch);
+      const providerKeys = [
+        { name: "x-api-key", value: "exa-fake-key" },
+        { name: "x-api-key", value: "parallel-fake-key" },
+        { name: "x-subscription-token", value: "brave-fake-key" },
+      ] as const;
+      for (const key of providerKeys) {
+        const result = await Effect.runPromise(
+          Effect.result(
+            client.postJson({
+              url: `${source.url}/provider`,
+              headers: { [key.name]: key.value },
+              body: { query: "test" },
+              maxResponseBytes: 1024,
+              timeout: Duration.seconds(2),
+            }),
+          ),
+        );
+        assert(Result.isFailure(result));
+        expect(result.failure._tag).toBe("ProviderStatusRejected");
+      }
+
+      expect(sourceHeaders).toStrictEqual([
+        "exa-fake-key|undefined",
+        "parallel-fake-key|undefined",
+        "undefined|brave-fake-key",
+      ]);
+      expect(destinationRequests).toBe(0);
+    } finally {
+      await source.close();
+      await destination.close();
+    }
+  });
 
   it.effect("maps failures to tagged errors", () =>
     Effect.gen(function* () {

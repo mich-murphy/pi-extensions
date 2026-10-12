@@ -148,7 +148,20 @@ function advance(
       };
     }
     case "result": {
-      return { progress: { ...progress, result: message }, event: undefined };
+      if (message.usage === undefined) {
+        return { progress: { ...progress, result: message }, event: undefined };
+      }
+      const usage = applyUsage(progress.usage, message.usage);
+      const unchanged =
+        progress.usage !== undefined &&
+        progress.usage.input === usage.input &&
+        progress.usage.output === usage.output &&
+        progress.usage.cacheRead === usage.cacheRead &&
+        progress.usage.cacheWrite === usage.cacheWrite;
+      return {
+        progress: { ...progress, usage, result: message },
+        event: unchanged ? undefined : { type: "usage", usage },
+      };
     }
     case "ignored": {
       return { progress, event: undefined };
@@ -174,8 +187,18 @@ function ended(outcome: QueryOutcome): QueryStep {
   return { _tag: "end", outcome };
 }
 
-function settle(capture: DeferredCallCapture, progress: QueryProgress): QueryStep {
-  return ended(capture.limitError ? Result.fail(capture.limitError) : Result.succeed(progress));
+function settle(
+  capture: DeferredCallCapture,
+  progress: QueryProgress,
+  callerSignal: AbortSignal | undefined,
+): QueryStep {
+  if (capture.limitError) {
+    return ended(Result.fail(capture.limitError));
+  }
+  if (callerSignal?.aborted === true && progress.result?.result._tag === "completed") {
+    return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)));
+  }
+  return ended(Result.succeed(progress));
 }
 
 /**
@@ -189,10 +212,11 @@ const HALTED: QueryItem = { _tag: "Halted" };
 
 function step(
   capture: DeferredCallCapture,
+  callerSignal: AbortSignal | undefined,
 ): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
   return (progress, item) => {
     if (item._tag === "Halted") {
-      return [progress, [settle(capture, progress)]];
+      return [progress, [settle(capture, progress, callerSignal)]];
     }
     if (Result.isFailure(item)) {
       return [progress, [ended(Result.fail(item.failure))]];
@@ -208,7 +232,7 @@ function step(
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
     // The prompt is a single message, so its result ends the turn. Stopping
     // here keeps the turn from depending on the SDK closing its stream.
-    return [next, next.result ? [...steps, settle(capture, next)] : steps];
+    return [next, next.result ? [...steps, settle(capture, next, callerSignal)] : steps];
   };
 }
 
@@ -249,13 +273,14 @@ function querySteps(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
   abortController: AbortController,
+  callerSignal: AbortSignal | undefined,
 ): Stream.Stream<QueryStep> {
   return Stream.fromAsyncIterable(abortOnClose(messages, abortController), (error) =>
     iterationFailure(capture, abortController.signal, error),
   ).pipe(
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),
-    Stream.mapAccum(initialProgress, step(capture)),
+    Stream.mapAccum(initialProgress, step(capture, callerSignal)),
     Stream.takeUntil((queryStep) => queryStep._tag === "end"),
   );
 }
@@ -347,7 +372,7 @@ const runTurn = Effect.fnUntraced(function* (
     return Stream.succeed(failed(started.failure));
   }
   const observers = { selector: sdkModelSelectorFor(model.id), modelObserver, recordUsage };
-  return querySteps(started.success, capture, abortController).pipe(
+  return querySteps(started.success, capture, abortController, signal).pipe(
     Stream.map((queryStep) =>
       queryStep._tag === "event"
         ? queryStep.event

@@ -6,8 +6,10 @@ export type SuspiciousOutputKind = "binary" | "base64";
 
 const MIN_SUSPICIOUS_CHARACTERS = 4096;
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/u;
+// Stay within one simple shell command. Crossing `;`, a newline, or another control operator would
+// connect an innocent `cat` to an unrelated executable lookup later in the script.
 const DISCOVERED_EXECUTABLE_CAT =
-  /\bcat\b[\s\S]*(?:\$\(\s*(?:which|command\s+-v)\b|`\s*(?:which|command\s+-v)\b)/iu;
+  /\bcat\b[^\n;&|]*(?:\$\(\s*(?:which|command\s+-v)\b[^)]*\)|`\s*(?:which|command\s+-v)\b[^`]*`)/iu;
 
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
   if (text.length < MIN_SUSPICIOUS_CHARACTERS) {

@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import { absurd } from "effect/Function";
+import type { DomainPolicy } from "./domain-policy";
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
 import type { HtmlConversionError } from "./html-conversion";
 import { decodeTextBuffer, parseContentType, PublicWebClient } from "./network";
@@ -62,6 +63,7 @@ type FetchPageOptions = {
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
   readonly blockPrivateHosts: boolean;
+  readonly domainPolicy: DomainPolicy;
 };
 
 /** Application service: fetch one public page and project it to the requested representation. */
@@ -75,6 +77,7 @@ export class FetchPage extends Context.Service<
         readonly maxRedirects: number;
         readonly maxResponseBytes: number;
         readonly blockPrivateHosts: boolean;
+        readonly domainPolicy: DomainPolicy;
       },
     ) => Effect.Effect<FetchPageResult, FetchPageError>;
   }
@@ -96,6 +99,7 @@ export class FetchPage extends Context.Service<
           maxRedirects: options.maxRedirects,
           maxResponseBytes: options.maxResponseBytes,
           blockPrivateHosts: options.blockPrivateHosts,
+          domainPolicy: options.domainPolicy,
         });
         return yield* Effect.fromResult(projectResponse(response, input.format));
       });

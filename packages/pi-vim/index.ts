@@ -129,8 +129,24 @@ function modeLabel(state: VimState): string {
   return state.pending === "" ? " NORMAL " : ` NORMAL ${state.pending} `;
 }
 
+const MAX_UNICODE_CODE_POINT = 1_114_111;
+
+function decodeXtermPrintable(data: string): string | undefined {
+  const prefix = "\u001B[27;";
+  if (!data.startsWith(prefix)) {
+    return undefined;
+  }
+  const match = /^(?<modifier>1|2);(?<codePoint>[1-9]\d*)~$/u.exec(data.slice(prefix.length));
+  const codePoint = Number(match?.groups?.codePoint);
+  if (!match || !Number.isSafeInteger(codePoint) || codePoint > MAX_UNICODE_CODE_POINT) {
+    return undefined;
+  }
+  const text = String.fromCodePoint(codePoint);
+  return /^\P{C}$/u.test(text) ? text : undefined;
+}
+
 function printableText(data: string): string | undefined {
-  const decoded = decodeKittyPrintable(data);
+  const decoded = decodeKittyPrintable(data) ?? decodeXtermPrintable(data);
   if (decoded !== undefined) {
     return decoded;
   }
@@ -187,7 +203,8 @@ class VimEditor extends CustomEditor {
     }
     if (this.vimState.mode === "insert") {
       if (this.isShowingAutocomplete()) {
-        super.handleInput(data);
+        // Normalize Kitty Ctrl+[ to Escape and bypass app/extension shortcuts while dismissing.
+        this.performInput("\u001B");
       }
       this.perform("left");
     }

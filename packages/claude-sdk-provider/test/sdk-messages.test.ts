@@ -209,6 +209,19 @@ describe("terminal SDK result", () => {
     });
   });
 
+  test("carries optional authoritative usage from the terminal result", () => {
+    expect(parsed(resultMessage({ usage }))).toMatchObject({ type: "result", usage });
+    expect(parsed(resultMessage())).not.toHaveProperty("usage");
+  });
+
+  test("rejects malformed terminal usage instead of replacing it with zeroes", () => {
+    const error = protocolError(resultMessage({ usage: { output_tokens: "secret-value" } }));
+
+    expect(error.messageType).toBe("result");
+    expect(error.message).toContain("usage.output_tokens");
+    expect(error.message).not.toContain("secret-value");
+  });
+
   test("prefers the reported terminal_reason over the one implied by stop_reason", () => {
     expect(turnResult({ stop_reason: null, terminal_reason: "tool_deferred" })).toMatchObject({
       terminalReason: "tool_deferred",

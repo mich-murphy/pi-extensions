@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { Context } from "effect";
 import { Duration, Effect, Exit, Layer, Redacted, Result } from "effect";
 import { TestClock } from "effect/testing";
@@ -9,10 +10,11 @@ import type { PublicWebError, PublicWebRequest, PublicWebResponse } from "../net
 import { ProviderHttpClient } from "../provider-http";
 import type { ProviderHttpRequest, ProviderHttpResponse } from "../provider-http";
 import type { FetchProvider, ProviderError, SearchProvider } from "../provider-types";
+import { PublicWebTransport } from "../public-web-transport";
 import { FetchRescueProviders, SearchProviders } from "../search";
 import { parseSettings, WebToolsConfig } from "../settings";
 import type { WebToolsSettings } from "../settings";
-import { ToolOutputStore } from "../tool-output";
+import { redactSecrets, ToolOutputStore } from "../tool-output";
 import { createToolRuntime } from "../tool-runtime";
 import type { ToolRuntime } from "../tool-runtime";
 import { parsePublicHttpUrl, parseSearchQuery } from "../types";
@@ -105,6 +107,11 @@ export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWeb
   return { client, requests };
 }
 
+/** Build the same configured-secret redaction closure the composition root gives each tool. */
+export function redactorFor(...secrets: readonly string[]): (input: string) => string {
+  return (input) => redactSecrets(input, secrets);
+}
+
 /** Extract the joined text of a pi tool result for assertions. */
 export function textOf(result: {
   readonly content: readonly { readonly type: string; readonly text?: string }[];
@@ -154,16 +161,44 @@ function fakeHttpFetch(fetchImpl: typeof fetch): Layer.Layer<HttpFetch> {
   return Layer.succeed(HttpFetch, HttpFetch.of({ fetch: fetchImpl }));
 }
 
-/** The live public web client over a test fetch and a test resolver. */
+/** The live public web client over a test transport and resolver. */
 export function publicWebClientWith(dependencies: {
   readonly fetchImpl: typeof fetch;
-  readonly lookup: DnsLookup["Service"]["lookup"];
+  readonly lookup: (
+    hostname: string,
+  ) => Promise<readonly { readonly address: string; readonly family?: 4 | 6 }[]>;
 }): PublicWebClient["Service"] {
-  const outbound = Layer.mergeAll(
-    fakeHttpFetch(dependencies.fetchImpl),
-    Layer.succeed(DnsLookup, DnsLookup.of({ lookup: dependencies.lookup })),
+  const transport = Layer.succeed(
+    PublicWebTransport,
+    PublicWebTransport.of({
+      get: async (url, _addresses, request) =>
+        dependencies.fetchImpl(url, {
+          method: "GET",
+          headers: request.headers,
+          signal: request.signal,
+          redirect: "manual",
+        }),
+    }),
   );
-  return serviceFrom(PublicWebClient, PublicWebClient.layer.pipe(Layer.provide(outbound)));
+  const resolver = Layer.succeed(
+    DnsLookup,
+    DnsLookup.of({
+      lookup: async (hostname) => {
+        const records = await dependencies.lookup(hostname);
+        return records.map((record) => {
+          const family = record.family ?? isIP(record.address);
+          if (family !== 4 && family !== 6) {
+            throw new Error(`Invalid test address: ${record.address}`);
+          }
+          return { address: record.address, family };
+        });
+      },
+    }),
+  );
+  return serviceFrom(
+    PublicWebClient,
+    PublicWebClient.layer.pipe(Layer.provide(Layer.mergeAll(transport, resolver))),
+  );
 }
 
 /** The live provider HTTP client over a test fetch. */

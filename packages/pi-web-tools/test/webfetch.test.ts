@@ -1,6 +1,6 @@
 import { Duration, Effect, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import type { FetchPage } from "../fetch-page";
+import { FetchPage } from "../fetch-page";
 import {
   HttpStatusRejected,
   PrivateHostBlocked,
@@ -27,6 +27,7 @@ import {
   fakeMcpClient,
   fakePublicWeb,
   publicUrl,
+  redactorFor,
   renderText,
   settingsFrom,
   settleOnTestClock,
@@ -37,7 +38,12 @@ import {
 } from "./fakes";
 
 const DEFAULT_SETTINGS = settingsFrom();
-const FETCH_OPTIONS = { maxRedirects: 5, maxResponseBytes: 1024 * 1024, blockPrivateHosts: true };
+const FETCH_OPTIONS = {
+  maxRedirects: 5,
+  maxResponseBytes: 1024 * 1024,
+  blockPrivateHosts: true,
+  domainPolicy: { allow: [], deny: [] },
+};
 
 function fakeFetchProvider(
   name: "exa" | "parallel",
@@ -71,6 +77,7 @@ function makeTool(
   const settings = settingsFrom(env);
   return createWebFetchTool({
     settings,
+    redactText: redactorFor("sekrit-key"),
     runtime: toolRuntimeWith({
       settings,
       secret: "sekrit-key",
@@ -181,6 +188,7 @@ describe("webfetch call rendering", () => {
   const fetchPage = fetchPageFor(Result.succeed(textWebResponse("x")));
   const tool = createWebFetchTool({
     settings: DEFAULT_SETTINGS,
+    redactText: redactorFor("sekrit-key"),
     runtime: toolRuntimeWith({ settings: DEFAULT_SETTINGS, fetchPage }),
   });
 
@@ -193,6 +201,14 @@ describe("webfetch call rendering", () => {
     expect(rendered).toContain("webfetch");
     expect(rendered).not.toContain("pass");
     expect(rendered).toContain("(text)");
+  });
+
+  test("redacts configured secrets from call text", () => {
+    const rendered = renderText(
+      tool.renderCall({ url: "https://example.com/?key=sekrit-key" }, theme),
+    );
+    expect(rendered).not.toContain("sekrit-key");
+    expect(rendered).toContain("[redacted]");
   });
 });
 
@@ -357,9 +373,53 @@ describe("webfetch tool", () => {
       [provider],
     );
 
-    const result = await tool.execute("t1", { url: "https://blocked.example" });
+    const result = await tool.execute("t1", {
+      url: "https://blocked.example/page?key=sekrit-key",
+    });
+    expect(JSON.stringify(result)).not.toContain("sekrit-key");
     expect(textOf(result)).toContain("[redacted]");
-    expect(textOf(result)).not.toContain("sekrit-key");
+  });
+
+  test("redacts image progress and metadata without changing the image payload", async () => {
+    const raw = Buffer.from("raw-image-payload", "utf8");
+    const settings = settingsFrom();
+    const fetchPage = FetchPage.of({
+      fetch: (input) =>
+        Effect.succeed({
+          meta: {
+            requestedUrl: input.url,
+            finalUrl: input.url,
+            format: input.format,
+            status: 200,
+            mime: "image/png",
+            contentType: "image/png; reflected=sekrit-key",
+            charset: "sekrit-key",
+            bytes: raw.byteLength,
+          },
+          body: { _tag: "Image" as const, data: raw },
+        }),
+    });
+    const tool = createWebFetchTool({
+      settings,
+      redactText: redactorFor("sekrit-key"),
+      runtime: toolRuntimeWith({ settings, secret: "sekrit-key", fetchPage }),
+    });
+    const updates: unknown[] = [];
+    const result = await tool.execute(
+      "t1",
+      { url: "https://images.example/p.png?token=sekrit-key" },
+      undefined,
+      (update) => {
+        updates.push(update);
+      },
+    );
+
+    expect(JSON.stringify({ result, updates })).not.toContain("sekrit-key");
+    expect(result.content).toContainEqual({
+      type: "image",
+      data: raw.toString("base64"),
+      mimeType: "image/png",
+    });
   });
 
   test("enforces the domain deny policy before fetching", async () => {
@@ -385,6 +445,19 @@ describe("webfetch tool", () => {
     );
     const allowed = await tool.execute("t1", { url: "https://docs.example.com" });
     expect(textOf(allowed)).toContain("allowed content");
+  });
+
+  test("disables provider rescue while domain restrictions are configured", async () => {
+    const provider = fakeFetchProvider("exa", "# Must not be requested");
+    const tool = makeTool(
+      { PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "allowed.example" },
+      Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
+      [provider],
+    );
+    await expect(tool.execute("t1", { url: "https://allowed.example/page" })).rejects.toThrow(
+      "Request failed (403 Forbidden)",
+    );
+    expect(provider.calls).toHaveLength(0);
   });
 });
 
@@ -428,6 +501,7 @@ describe("webfetch error messages", () => {
 function hangingTool(providers: readonly FetchProvider[] = []) {
   return createWebFetchTool({
     settings: DEFAULT_SETTINGS,
+    redactText: redactorFor(),
     runtime: toolRuntimeWith({
       settings: DEFAULT_SETTINGS,
       fetchPage: fetchPageWith(hangingWeb),
@@ -443,7 +517,11 @@ describe("webfetch deadline and cancellation", () => {
       fetchPage: fetchPageWith(hangingWeb),
       testClock: true,
     });
-    const tool = createWebFetchTool({ settings: DEFAULT_SETTINGS, runtime });
+    const tool = createWebFetchTool({
+      settings: DEFAULT_SETTINGS,
+      redactText: redactorFor(),
+      runtime,
+    });
     const outcome = tool.execute("t1", { url: "https://slow.example", timeout: 1 });
     await settleOnTestClock(runtime, Duration.seconds(1), outcome);
     await expect(outcome).rejects.toThrow("Web fetch timed out after 1s");

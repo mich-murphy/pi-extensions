@@ -22,14 +22,20 @@ every editable skill uses the same values.
 
 Pi may load `AGENTS.override.md`, `AGENTS.md`, or `CLAUDE.md`. The extension
 shows whichever files Pi loaded. It includes only user-managed global and
-project resources. It discovers project skills used by Pi, Claude Code, and
-Codex under `.pi/skills`, `.agents/skills`, `.claude/skills`, and `.codex/skills`.
-It checks the working directory and each ancestor through the Git root. When
-harness directories contain the same skill name, the first copy wins without a
-startup collision warning. Unique skills from later directories are still
-loaded. Malformed skills are skipped rather than reported as extension loading
-errors. Projects outside a Git worktree are limited to the working directory so
-a parent user's skills are not mistaken for project skills.
+project resources. Pi already discovers the working directory's `.pi/skills`,
+ancestor `.agents/skills`, configured skill paths, and global skill roots. The
+extension leaves those native paths and winners alone, including explicit Pi
+exclusions, and supplements them with ancestor `.pi/skills`, `.claude/skills`,
+and `.codex/skills` through the Git root. A supplemental skill never displaces a
+same-named native winner. Names already loaded through CLI or SDK additional
+skill paths are reserved too, without making those temporary skills toggle rows.
+When supplemental harness directories contain the same skill name, the first
+copy wins without a startup collision warning. Unique
+skills from later directories are still loaded. Malformed skills are skipped
+rather than reported as extension loading errors. Projects outside a Git
+worktree are limited to the working directory so a parent user's skills are not
+mistaken for project skills. Missing configured packages are never installed
+merely to inspect native winners.
 
 Project-scoped skills may also live elsewhere when project settings configure
 their directory. Package, internal, unrelated extension-provided, and temporary
@@ -74,10 +80,12 @@ so prompt caching and section diffing keep working. If another extension
 replaces the whole system prompt, Pi sends that text and toggles do not apply
 to it.
 
-Pi 0.85 and older expose only the rendered prompt. There the extension replaces
-the exact project-context and skills sections and returns the new text.
-`hideResources` in `prompt-filter.ts` holds both strategies; the second half can
-be deleted once Pi 0.85 support is dropped.
+Pi 0.85 exposes only the rendered prompt. There the extension replaces the exact
+project-context and skills sections and returns the new text. Pi has discovered
+`.agents/skills` natively since 0.54, so the supplemental discovery rules above
+also avoid duplicate native paths on the supported 0.85 release.
+`hideResources` in `prompt-filter.ts` holds both prompt strategies; its legacy
+half can be deleted once Pi 0.85 support is dropped.
 
 ## Failure behavior
 
@@ -92,13 +100,13 @@ instead of silently claiming success.
 - Never edit an instruction file or `SKILL.md`.
 - Never override source-level `disable-model-invocation`.
 - Preserve manual `/skill:name` invocation.
-- Contribute deduplicated project skill files, then use Pi's loaded resources.
+- Reserve every native skill name and contribute only deduplicated supplemental project files.
 - Keep global resources before project resources in the menu.
 - Identify resources by path, never by display or project name.
 - Treat a `temporary` skill as a project skill only when this extension
   contributed its path.
-- Never mutate prompt options on Pi 0.85 and older. They are Pi's live objects.
-- Return a replacement prompt only on Pi 0.85 and older, and only when a
+- Never mutate prompt options on Pi 0.85. They are Pi's live objects.
+- Return a replacement prompt only on Pi 0.85, and only when a
   resource is hidden.
 - Keep project skills model-hidden until the user enables them.
 - Preserve unrelated state during updates and cleanup.

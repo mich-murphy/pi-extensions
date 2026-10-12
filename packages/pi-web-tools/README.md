@@ -49,11 +49,11 @@ Parameters: `url` (required), `format` (`markdown` default, `text`, `html`), `ti
 
 Behavior:
 
-- Blocks private and local hosts and IPs (with DNS resolution, re-checked on every redirect hop).
+- Blocks private and local hosts and IPs, binds each connection to the DNS addresses it validated, and re-checks domain policy plus DNS on every redirect hop.
 - Follows at most 5 redirects; rejects URL credentials, non-HTTP redirects, and binary content over 5 MB.
 - Returns PNG, JPEG, GIF, and WebP images inline.
 - Spills oversized output to a private temp file (0700 directory, 0600 file) so the agent can read it in chunks.
-- **Fetch rescue**: when a direct fetch hits a bot wall (401/403/429) or returns an unusable JS-only shell, the URL is retried through Exa's or Parallel's fetch infrastructure (following the search provider priority order). Rescued content is flagged in the output, since the URL is shared with that provider. Rescue only applies to the default markdown format.
+- **Fetch rescue**: when a direct fetch hits a bot wall (401/403/429) or returns an unusable JS-only shell, the URL is retried through Exa's or Parallel's fetch infrastructure (following the search provider priority order). Rescued content is flagged in the output, since the URL is shared with that provider. Rescue only applies to the default markdown format and is disabled whenever a fetch domain allow or deny list is configured, because a remote provider cannot enforce the local policy across its redirects.
 
 ## Acknowledgements
 

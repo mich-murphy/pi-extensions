@@ -256,6 +256,77 @@ describe("turn streaming", () => {
     ]);
   });
 
+  test("reconciles authoritative terminal usage before completion without double-counting SDK rounds", async () => {
+    const events = await runTurn(
+      queryWith(
+        [],
+        streamEvent({ type: "message_start", message: { usage: { input_tokens: 10 } } }),
+        streamEvent({ type: "message_delta", usage: { output_tokens: 2 } }),
+        streamEvent({ type: "message_start", message: { usage: { input_tokens: 4 } } }),
+        resultMessage({
+          usage: {
+            input_tokens: 14,
+            output_tokens: 5,
+            cache_read_input_tokens: 3,
+            cache_creation_input_tokens: 1,
+          },
+        }),
+      ),
+    );
+
+    expect(events.at(-2)).toStrictEqual({
+      type: "usage",
+      usage: { input: 14, output: 5, cacheRead: 3, cacheWrite: 1 },
+    });
+    expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
+  });
+
+  test("does not repeat terminal usage that matches the last streamed totals", async () => {
+    const finalUsage = { input_tokens: 8, output_tokens: 3 };
+    const events = await runTurn(
+      queryWith(
+        [],
+        streamEvent({ type: "message_delta", usage: finalUsage }),
+        resultMessage({ usage: finalUsage }),
+      ),
+    );
+
+    expect(events).toStrictEqual([
+      { type: "usage", usage: { input: 8, output: 3, cacheRead: 0, cacheWrite: 0 } },
+      { type: "done", reason: "stop" },
+    ]);
+  });
+
+  test("keeps streamed usage when an older terminal result omits usage", async () => {
+    const events = await runTurn(
+      queryWith(
+        [],
+        streamEvent({ type: "message_delta", usage: { input_tokens: 7, output_tokens: 2 } }),
+        resultMessage(),
+      ),
+    );
+
+    expect(events).toStrictEqual([
+      { type: "usage", usage: { input: 7, output: 2, cacheRead: 0, cacheWrite: 0 } },
+      { type: "done", reason: "stop" },
+    ]);
+  });
+
+  test("emits terminal usage before a terminal SDK failure", async () => {
+    const events = await runTurn(
+      queryWith(
+        [],
+        resultMessage({ is_error: true, usage: { input_tokens: 3, output_tokens: 1 } }),
+      ),
+    );
+
+    expect(events[0]).toStrictEqual({
+      type: "usage",
+      usage: { input: 3, output: 1, cacheRead: 0, cacheWrite: 0 },
+    });
+    expect(events[1]?.type).toBe("failed");
+  });
+
   test("ends the turn at the result without waiting for the SDK to close its stream", async () => {
     let closed = false;
 
@@ -565,6 +636,42 @@ describe("SDK query cancellation", () => {
       operation: "start",
       reason: { _tag: "Cancelled" },
     });
+  });
+
+  test("reports caller cancellation when the SDK returns a clean result after being aborted", async () => {
+    const controller = new AbortController();
+    const events = await runTurn(
+      async function* fakeQuery() {
+        controller.abort("cancelled before terminal result");
+        yield resultMessage();
+      },
+      requestFixture(),
+      { signal: controller.signal },
+    );
+
+    expect(failureOf(events)).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "iterate",
+      reason: { _tag: "Cancelled" },
+    });
+  });
+
+  test("keeps the invalid-call limit ahead of cancellation and a clean result", async () => {
+    const controller = new AbortController();
+    const events = await runTurn(
+      async function* fakeQuery(params) {
+        await deliverToolUses(
+          installedHook(params),
+          toolUses([INVALID_CALL, INVALID_CALL, INVALID_CALL, INVALID_CALL]),
+        );
+        controller.abort("cancelled after invalid calls");
+        yield resultMessage();
+      },
+      requestFixture(),
+      { signal: controller.signal },
+    );
+
+    expect(failureOf(events)._tag).toBe("InvalidDeferredCallLimitError");
   });
 
   test("forwards cancellation during iteration and ends Pi with one aborted event", async () => {

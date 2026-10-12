@@ -147,7 +147,7 @@ export class ToggleStateFile implements ToggleStateStore {
     return this.read("load");
   }
 
-  /** Change one override, keep the others, and drop entries whose file no longer exists. */
+  /** Change one override, keep the others, and drop entries whose file is definitely missing. */
   set(id: ResourcePath, value: ToggleValue | "default"): ToggleStateResult {
     const stored = this.read("update");
     if (stored._tag === "err") {
@@ -155,7 +155,7 @@ export class ToggleStateFile implements ToggleStateStore {
     }
     return fileSystem("update", this.path, () => {
       const overrides = new Map(
-        [...stored.value].filter(([path]) => statSync(path, { throwIfNoEntry: false })),
+        [...stored.value].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
       );
       if (value === "default") {
         overrides.delete(id);
@@ -205,6 +205,18 @@ function fileSystem<A>(
   } catch (cause) {
     if (cause instanceof Error && "syscall" in cause && "code" in cause) {
       return err(new ToggleStateUnavailable(operation, path, String(cause.code), cause));
+    }
+    throw cause;
+  }
+}
+
+/** Keep inaccessible entries; cleanup is allowed to remove only paths the OS says are absent. */
+function resourceExistsOrIsUnverifiable(path: ResourcePath): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false }) !== undefined;
+  } catch (cause) {
+    if (cause instanceof Error && "syscall" in cause && "code" in cause) {
+      return cause.code !== "ENOENT" && cause.code !== "ENOTDIR";
     }
     throw cause;
   }

@@ -35,6 +35,7 @@ const resultSchema = Schema.Struct({
   terminal_reason: Schema.optional(Schema.String),
   errors: Schema.optional(withFallback(Schema.Array(Schema.Unknown), [])),
   result: Schema.optional(withFallback(Schema.String, "")),
+  usage: Schema.optional(usageSchema),
   modelUsage: Schema.optional(modelUsageSchema),
 });
 
@@ -64,7 +65,13 @@ export type SdkMessage =
       /** Typed API error (such as `authentication_failed`) an assistant message reported. */
       readonly apiError?: string;
     }
-  | { readonly type: "result"; readonly result: TurnResult; readonly modelUsage: ModelUsage }
+  | {
+      readonly type: "result";
+      readonly result: TurnResult;
+      /** Authoritative main-loop totals for this turn, when the SDK reports them. */
+      readonly usage?: ReportedUsage;
+      readonly modelUsage: ModelUsage;
+    }
   | { readonly type: "ignored" };
 
 const STOP_REASONS: ReadonlyMap<string, "stop" | "length" | "refusal"> = new Map([
@@ -192,7 +199,12 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
       const turn = turnResult(result);
       return turn === undefined
         ? Result.fail(`unsupported stop_reason ${result.stop_reason}`)
-        : Result.succeed({ type: "result", result: turn, modelUsage: result.modelUsage ?? {} });
+        : Result.succeed({
+            type: "result",
+            result: turn,
+            ...(result.usage === undefined ? {} : { usage: result.usage }),
+            modelUsage: result.modelUsage ?? {},
+          });
     }),
   ],
 ]);

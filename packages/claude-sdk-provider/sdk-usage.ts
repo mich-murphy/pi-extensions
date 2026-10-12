@@ -25,6 +25,9 @@ const modelScopedWindowSchema = Schema.Struct({
 const rateLimitsSchema = Schema.Struct({
   five_hour: Schema.optional(Schema.NullOr(usageWindowSchema)),
   seven_day: Schema.optional(Schema.NullOr(usageWindowSchema)),
+  seven_day_oauth_apps: Schema.optional(Schema.NullOr(usageWindowSchema)),
+  seven_day_opus: Schema.optional(Schema.NullOr(usageWindowSchema)),
+  seven_day_sonnet: Schema.optional(Schema.NullOr(usageWindowSchema)),
   model_scoped: Schema.optional(Schema.Array(modelScopedWindowSchema)),
   extra_usage: Schema.optional(Schema.NullOr(Schema.Struct({ is_enabled: Schema.Boolean }))),
 });
@@ -184,9 +187,12 @@ function parseUsageResponse(
   }
 
   const limits = parsed.success.rate_limits;
-  const windows = [
+  const reportedWindows = [
     { name: "Current session", window: limits?.five_hour },
-    { name: "Weekly", window: limits?.seven_day },
+    { name: "All models weekly", window: limits?.seven_day },
+    { name: "OAuth apps weekly", window: limits?.seven_day_oauth_apps },
+    { name: "Opus weekly", window: limits?.seven_day_opus },
+    { name: "Sonnet weekly", window: limits?.seven_day_sonnet },
     ...(limits?.model_scoped ?? []).map((window) => ({
       name: `${window.display_name} weekly`,
       window,
@@ -194,6 +200,15 @@ function parseUsageResponse(
   ].flatMap(({ name, window }) =>
     window ? [{ name, usedPercent: window.utilization, resetsAt: window.resets_at }] : [],
   );
+  const names = new Set<string>();
+  const windows = reportedWindows.filter((window) => {
+    const name = window.name.toLowerCase();
+    if (names.has(name)) {
+      return false;
+    }
+    names.add(name);
+    return true;
+  });
   return Result.succeed({
     subscriptionType: parsed.success.subscription_type,
     rateLimitsAvailable: parsed.success.rate_limits_available,

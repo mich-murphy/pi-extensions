@@ -253,9 +253,15 @@ export class ExaMcpSearchProvider implements SearchProvider {
         numResults: input.maxResults,
       })
       .pipe(
-        Effect.map((call) =>
-          parseExaSearchText(call.text.join("\n\n")).results.slice(0, input.maxResults),
-        ),
+        Effect.flatMap((call) => {
+          const parsed = parseExaSearchText(call.text.join("\n\n"));
+          if (parsed.results.length === 0 && parsed.discardedSections > 0) {
+            return Effect.fail(
+              new ProviderProtocolInvalid({ reason: "No usable Exa search sections" }),
+            );
+          }
+          return Effect.succeed(parsed.results.slice(0, input.maxResults));
+        }),
       );
   }
 }

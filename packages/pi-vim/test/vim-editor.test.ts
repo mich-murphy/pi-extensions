@@ -86,6 +86,10 @@ function kittyPress(key: string): string {
   return base === key ? `\u001B[${code}u` : `\u001B[${base.codePointAt(0)}:${code};2u`;
 }
 
+function xtermPress(modifier: number, codePoint: number): string {
+  return `\u001B[27;${modifier};${codePoint}~`;
+}
+
 const KEYBOARDS: readonly Keyboard[] = [
   { name: "legacy", kittyProtocol: false, escape: "\u001B", press: identity },
   { name: "Kitty", kittyProtocol: true, escape: "\u001B[27u", press: kittyPress },
@@ -318,6 +322,45 @@ describe("vimEditor inside Pi", () => {
     expectLabel(editor, "NORMAL");
   });
 
+  test("owns xterm modifyOtherKeys printable input in Normal mode", () => {
+    const editor = legacyNormalMode("one two");
+
+    editor.handleInput(xtermPress(1, 48));
+    editor.handleInput(xtermPress(1, 119));
+    expect(editor.getCursor()).toStrictEqual({ line: 0, col: 4 });
+    editor.handleInput(xtermPress(2, 36));
+    expect(editor.getCursor()).toStrictEqual({ line: 0, col: 6 });
+    editor.handleInput(xtermPress(1, 113));
+    expect(editor.getText()).toBe("one two");
+    expectLabel(editor, "NORMAL");
+  });
+
+  test("passes invalid or modified xterm encodings to Pi as control input", () => {
+    const editor = legacyNormalMode("one");
+    const claimed: string[] = [];
+    editor.onExtensionShortcut = (data) => {
+      claimed.push(data);
+      return true;
+    };
+    const inputs = [
+      "\u001B[27;3;113~",
+      "\u001B[27;5;113~",
+      "\u001B[27;1;31~",
+      "\u001B[27;1;127~",
+      "\u001B[27;1;55296~",
+      "\u001B[27;1;1114112~",
+      "\u001B[27;1;0113~",
+    ];
+
+    for (const input of inputs) {
+      editor.handleInput(input);
+    }
+
+    expect(claimed).toStrictEqual(inputs);
+    expect(editor.getText()).toBe("one");
+    expectLabel(editor, "NORMAL");
+  });
+
   test("performs commands when the user has rebound Pi's editor keys", () => {
     const configured = new KeybindingsManager(TUI_KEYBINDINGS, {
       "tui.editor.cursorLeft": [],
@@ -380,6 +423,34 @@ describe("vimEditor inside Pi", () => {
 
     expect(editor.isShowingAutocomplete()).toBe(false);
     expectLabel(editor, "NORMAL");
+  });
+
+  test("Kitty Ctrl+[ closes autocomplete and enters Normal mode without shortcuts", async () => {
+    setKittyProtocolActive(true);
+    const provider: AutocompleteProvider = {
+      getSuggestions: async () => ({
+        items: [{ value: "/model", label: "model" }],
+        prefix: "/",
+      }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    };
+    const editor = createEditor();
+    const claimed: string[] = [];
+    editor.setAutocompleteProvider(provider);
+    editor.handleInput(kittyPress("/"));
+    await vi.waitFor(() => {
+      expect(editor.isShowingAutocomplete()).toBe(true);
+    });
+    editor.onExtensionShortcut = (data) => {
+      claimed.push(data);
+      return true;
+    };
+
+    editor.handleInput("\u001B[91;5u");
+
+    expect(editor.isShowingAutocomplete()).toBe(false);
+    expectLabel(editor, "NORMAL");
+    expect(claimed).toStrictEqual([]);
   });
 
   test("leaves a border unchanged when it is too narrow for the mode label", () => {

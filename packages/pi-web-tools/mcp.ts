@@ -130,6 +130,7 @@ function makeSessionPerToolCallMcpHttpClient(
         method: "DELETE",
         headers: { "mcp-session-id": sessionId },
         signal: AbortSignal.timeout(CLOSE_SESSION_TIMEOUT_MS),
+        redirect: "manual",
       }),
     ).pipe(Effect.ignore);
 

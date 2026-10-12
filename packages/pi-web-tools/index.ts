@@ -4,10 +4,11 @@ import { FetchPage } from "./fetch-page";
 import { McpClients } from "./mcp";
 import { DnsLookup, HttpFetch, PublicWebClient } from "./network";
 import { ProviderHttpClient } from "./provider-http";
+import { PublicWebTransport } from "./public-web-transport";
 import { FetchRescueProviders, SearchProviders } from "./search";
-import { parseSettings, WebToolsConfig } from "./settings";
+import { parseSettings, secretsForRedaction, WebToolsConfig } from "./settings";
 import type { WebToolsSettings } from "./settings";
-import { ToolOutputStore } from "./tool-output";
+import { redactSecrets, ToolOutputStore } from "./tool-output";
 import { createToolRuntime } from "./tool-runtime";
 import { WEB_TOOLS_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
@@ -45,12 +46,16 @@ export default function webToolsExtension(pi: WebToolsRegistration): void {
   pi.on("session_shutdown", async () => {
     await runtime.dispose();
   });
-  pi.registerTool(createWebSearchTool({ settings: { search: settings.search }, runtime }));
-  pi.registerTool(createWebFetchTool({ settings: { fetch: settings.fetch }, runtime }));
+  const secrets = secretsForRedaction(settings.credentials);
+  const redactText = (input: string) => redactSecrets(input, secrets);
+  pi.registerTool(
+    createWebSearchTool({ settings: { search: settings.search }, redactText, runtime }),
+  );
+  pi.registerTool(createWebFetchTool({ settings: { fetch: settings.fetch }, redactText, runtime }));
 }
 
 function appLayer(settings: WebToolsSettings) {
-  const outbound = Layer.mergeAll(HttpFetch.layer, DnsLookup.layer);
+  const outbound = Layer.mergeAll(HttpFetch.layer, PublicWebTransport.layer, DnsLookup.layer);
   const config = WebToolsConfig.layer(settings);
   const providerDeps = Layer.mergeAll(ProviderHttpClient.layer, McpClients.layer, config);
   // One build of both chains shares their internal provider pairs (Parallel session id, MCP clients).
