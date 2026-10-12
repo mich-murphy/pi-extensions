@@ -41,11 +41,14 @@ export type CaffeinateEnd =
 /** A spawned caffeinate child as the lifecycle sees it. */
 export type CaffeinateProcess = {
   /**
-   * Subscribe to the child's end. Spawn failures arrive here too, never synchronously.
-   * A child can report more than once (a failed signal, then its exit).
+   * Subscribe to process notifications. Spawn failures arrive here asynchronously. A `failed`
+   * stop notification does not prove terminal exit, so the child may later report `exited`.
    */
   readonly onEnd: (listener: (end: CaffeinateEnd) => void) => void;
-  /** Terminate the child. Harmless once the child has ended. */
+  /**
+   * Request termination without waiting for it. A signalling failure may be reported through
+   * `onEnd`; the process can continue and later emit its actual exit.
+   */
   readonly stop: () => void;
 };
 
@@ -59,7 +62,7 @@ export type NoSleepDependencies = {
   readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
 };
 
-/** Restart attempts after caffeinate exits unexpectedly, bounded so failures cannot loop. */
+/** Restart attempts after caffeinate exits unexpectedly, reset by each later agent start. */
 const UNEXPECTED_EXIT_RESTARTS = 1;
 
 function notify(ctx: ExtensionContext, message: string, level: "warning" | "error"): void {

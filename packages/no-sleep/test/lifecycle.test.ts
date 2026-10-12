@@ -131,6 +131,21 @@ describe("no-sleep lifecycle", () => {
     expect(pi.spawned).toHaveLength(3);
   });
 
+  test("a continuation without settlement gets a fresh restart allowance", async () => {
+    const pi = harness();
+    await pi.emit("agent_start");
+    pi.setIdle(false);
+
+    pi.spawned[0]?.child.exit(1, null);
+    pi.spawned[1]?.child.exit(1, null);
+    expect(pi.spawned).toHaveLength(2);
+
+    await pi.emit("agent_start");
+    expect(pi.spawned).toHaveLength(3);
+    pi.spawned[2]?.child.exit(1, null);
+    expect(pi.spawned).toHaveLength(4);
+  });
+
   test("reports a caffeinate that cannot run without restarting it", async () => {
     const pi = harness();
     await pi.emit("agent_start");

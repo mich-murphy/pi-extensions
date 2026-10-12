@@ -4,7 +4,7 @@ import type {
   ExtensionContext,
   ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, SettingsList, Text } from "@earendil-works/pi-tui";
 import type { SettingItem } from "@earendil-works/pi-tui";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
@@ -24,12 +24,12 @@ export default function skillToggle(pi: ExtensionAPI): void {
 
 /** Register the skill-toggle command and event handlers with an injected store. */
 export function registerSkillToggle(pi: ExtensionAPI, store: ToggleStateStore): void {
-  const extension = new SkillToggle(store);
+  const extension = new SkillToggle(store, pi);
   pi.registerCommand("skill-toggle", {
     description: "Enable or disable user-managed instructions and skills",
     handler: async (args, ctx) => extension.openMenu(args, ctx),
   });
-  pi.on("resources_discover", (_event, ctx) => extension.contributeProjectSkills(ctx));
+  pi.on("resources_discover", async (_event, ctx) => extension.contributeProjectSkills(ctx));
   pi.on("before_agent_start", (event, ctx) => extension.filterPrompt(event, ctx));
 }
 
@@ -57,12 +57,35 @@ class SkillToggle {
   private readonly reportStateFailure = createFailureReporter();
   private readonly reportPromptFailure = createFailureReporter();
 
-  constructor(private readonly store: ToggleStateStore) {}
+  constructor(
+    private readonly store: ToggleStateStore,
+    private readonly pi: Readonly<Pick<ExtensionAPI, "getCommands">>,
+  ) {}
 
-  contributeProjectSkills(
+  async contributeProjectSkills(
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-  ): { skillPaths: string[] } | undefined {
-    const skillPaths = ctx.isProjectTrusted() ? [...discoverProjectSkillPaths(ctx.cwd)] : [];
+  ): Promise<{ skillPaths: string[] } | undefined> {
+    if (!ctx.isProjectTrusted()) {
+      this.contributedSkills = new Set();
+      return undefined;
+    }
+    const loadedNativeNames = new Set(
+      this.pi.getCommands().flatMap((command) => {
+        if (
+          command.source !== "skill" ||
+          !command.name.startsWith("skill:") ||
+          this.contributedSkills.has(resourcePathId(command.sourceInfo.path, ctx.cwd))
+        ) {
+          return [];
+        }
+        // Pi 0.85 and current Pi expose every loaded skill this way; `enableSkillCommands`
+        // controls interactive command registration, not this public resource inventory.
+        return [command.name.slice("skill:".length)];
+      }),
+    );
+    const skillPaths = [
+      ...(await discoverProjectSkillPaths(ctx.cwd, getAgentDir(), loadedNativeNames)),
+    ];
     this.contributedSkills = new Set(skillPaths.map((path) => resourcePathId(path, ctx.cwd)));
     return skillPaths.length > 0 ? { skillPaths } : undefined;
   }

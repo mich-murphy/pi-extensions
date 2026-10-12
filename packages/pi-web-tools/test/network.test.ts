@@ -152,6 +152,7 @@ function makeRequest(overrides: Partial<PublicWebRequest> = {}): PublicWebReques
     maxRedirects: 5,
     maxResponseBytes: 1024 * 1024,
     blockPrivateHosts: true,
+    domainPolicy: { allow: [], deny: [] },
     ...overrides,
   };
 }
@@ -196,7 +197,9 @@ function trackedResponse(
 /** A client whose fetch records each hop and delegates to `respond`, over an empty DNS. */
 function recordingClient(
   respond: (url: string) => Response,
-  lookup: () => Promise<readonly { address: string }[]> = async () => [],
+  lookup: () => Promise<readonly { address: string }[]> = async () => [
+    { address: "93.184.216.34" },
+  ],
 ) {
   const hops: { readonly url: string; readonly init: RequestInit | undefined }[] = [];
   const fetchImpl: typeof fetch = async (input: unknown, init?: RequestInit) => {
@@ -331,17 +334,35 @@ describe("fetchPublicWebClient hop checks", () => {
     }),
   );
 
-  it.effect("leaves a failed DNS lookup for the fetch to report", () =>
+  it.effect("fails closed when DNS resolution rejects", () =>
     Effect.gen(function* () {
       const { client, hops } = recordingClient(
         () => responseOf({ status: 200 }),
         async () => {
-          throw new Error("ENOTFOUND");
+          throw Object.assign(new Error("not found"), { code: "ENOTFOUND" });
         },
       );
       const result = yield* Effect.result(client.get(makeRequest()));
-      expect(result._tag).toBe("Success");
-      expect(hops).toHaveLength(1);
+      expect(failureOf(result)).toStrictEqual({
+        tag: "PublicWebRequestFailed",
+        message: "Could not resolve host example.com",
+      });
+      expect(hops).toHaveLength(0);
+    }),
+  );
+
+  it.effect("fails closed when DNS resolution returns no addresses", () =>
+    Effect.gen(function* () {
+      const { client, hops } = recordingClient(
+        () => responseOf({ status: 200 }),
+        async () => [],
+      );
+      const result = yield* Effect.result(client.get(makeRequest()));
+      expect(failureOf(result)).toStrictEqual({
+        tag: "PublicWebRequestFailed",
+        message: "Could not resolve host example.com",
+      });
+      expect(hops).toHaveLength(0);
     }),
   );
 });
@@ -386,7 +407,7 @@ describe("fetchPublicWebClient fetch failures", () => {
   test("a caller deadline interrupts a hanging fetch and aborts its signal", async () => {
     const inits: (RequestInit | undefined)[] = [];
     const client = publicWebClientWith({
-      lookup: async () => [],
+      lookup: async () => [{ address: "93.184.216.34" }],
       fetchImpl: async (_input, init) => {
         inits.push(init);
         return neverResponds();
@@ -531,6 +552,32 @@ describe("fetchPublicWebClient redirects", () => {
       );
     }),
   );
+
+  test.each([
+    {
+      name: "denied",
+      policy: { allow: [], deny: ["blocked.example"] },
+      destination: "https://blocked.example/secret",
+      tag: "DomainDenied",
+    },
+    {
+      name: "unlisted",
+      policy: { allow: ["example.com"], deny: [] },
+      destination: "https://unlisted.example/secret",
+      tag: "DomainNotAllowed",
+    },
+  ])("rejects a $name redirect before requesting its destination", async (testCase) => {
+    const { client, hops } = recordingClient(
+      inOrder(
+        () => responseOf({ status: 302, headers: { location: testCase.destination } }),
+        () => responseOf({ status: 200, body: "must not be reached" }),
+      ),
+    );
+    const result = await run(client.get(makeRequest({ domainPolicy: testCase.policy })));
+    assert(Result.isFailure(result));
+    expect(result.failure._tag).toBe(testCase.tag);
+    expect(hops.map((hop) => hop.url)).toStrictEqual(["https://example.com/"]);
+  });
 });
 
 describe("fetchPublicWebClient challenge retry", () => {

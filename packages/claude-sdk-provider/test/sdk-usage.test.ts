@@ -57,16 +57,63 @@ describe("claude SDK usage", () => {
         rateLimitsAvailable: true,
         windows: [
           { name: "Current session", usedPercent: 12, resetsAt: "2026-08-31T14:50:00.000Z" },
-          { name: "Weekly", usedPercent: 29, resetsAt: "2026-09-02T09:00:00.000Z" },
+          { name: "All models weekly", usedPercent: 29, resetsAt: "2026-09-02T09:00:00.000Z" },
           { name: "Fable weekly", usedPercent: 49, resetsAt: null },
         ],
         extraUsageEnabled: false,
       });
       const formatted = formatClaudeUsageStatus(status);
       expect(formatted).toContain("Current session: 88% remaining");
-      expect(formatted).toContain("Weekly: 71% remaining");
+      expect(formatted).toContain("All models weekly: 71% remaining");
       expect(formatted).toContain("Fable weekly: 51% remaining");
       expect(formatted).toContain("Extra usage: disabled");
+    }),
+  );
+
+  it.effect("supports named weekly windows and does not duplicate model-scoped equivalents", () =>
+    Effect.gen(function* () {
+      const response = {
+        ...usageResponse,
+        rate_limits: {
+          ...usageResponse.rate_limits,
+          seven_day_oauth_apps: { utilization: 9, resets_at: null },
+          seven_day_opus: { utilization: 19, resets_at: null },
+          seven_day_sonnet: null,
+          model_scoped: [
+            { display_name: "Opus", utilization: 20, resets_at: null },
+            { display_name: "Fable", utilization: 30, resets_at: null },
+          ],
+        },
+      };
+
+      const status = yield* withStart(() => usageQuery(response));
+
+      expect(status.windows.map((window) => window.name)).toStrictEqual([
+        "Current session",
+        "All models weekly",
+        "OAuth apps weekly",
+        "Opus weekly",
+        "Fable weekly",
+      ]);
+      expect(status.windows.find((window) => window.name === "Opus weekly")?.usedPercent).toBe(19);
+    }),
+  );
+
+  it.effect("accepts null optional named weekly windows", () =>
+    Effect.gen(function* () {
+      const status = yield* withStart(() =>
+        usageQuery({
+          ...usageResponse,
+          rate_limits: {
+            ...usageResponse.rate_limits,
+            seven_day_oauth_apps: null,
+            seven_day_opus: null,
+            seven_day_sonnet: null,
+          },
+        }),
+      );
+
+      expect(status.windows).toHaveLength(3);
     }),
   );
 

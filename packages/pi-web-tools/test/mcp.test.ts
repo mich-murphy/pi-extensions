@@ -135,6 +135,7 @@ type RecordedRequest = {
   readonly httpMethod: string;
   readonly sessionId: string | null;
   readonly rpcMethod: string | undefined;
+  readonly redirect: RequestRedirect | undefined;
 };
 
 /** The JSON-RPC method of a request body, when it is one. */
@@ -163,6 +164,7 @@ function fakeMcpEndpoint(
       httpMethod,
       sessionId: new Headers(init?.headers).get("mcp-session-id"),
       rpcMethod,
+      redirect: init?.redirect,
     });
     if (httpMethod === "DELETE") {
       return new Response(null, { status: 200 });
@@ -220,6 +222,12 @@ describe("mcpHttpClient", () => {
           "POST",
           "POST",
           "DELETE",
+        ]);
+        expect(requests.map((request) => request.redirect)).toStrictEqual([
+          "manual",
+          "manual",
+          "manual",
+          "manual",
         ]);
         // The initialize POST has no session header; subsequent calls carry it.
         expect(requests[0]?.sessionId).toBeNull();
@@ -383,7 +391,12 @@ describe("mcpHttpClient session cleanup", () => {
       assert(Result.isFailure(result));
       expect(result.failure.message).toBe("rejected (HTTP 500)");
       expect(deletes(requests)).toStrictEqual([
-        { httpMethod: "DELETE", sessionId: "session-9", rpcMethod: undefined },
+        {
+          httpMethod: "DELETE",
+          sessionId: "session-9",
+          rpcMethod: undefined,
+          redirect: "manual",
+        },
       ]);
     }),
   );

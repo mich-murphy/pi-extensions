@@ -135,6 +135,37 @@ describe("exaMcpSearchProvider", () => {
     }),
   );
 
+  it.effect(
+    "rejects wholly malformed nonempty text but accepts partial and explicit empty results",
+    () =>
+      Effect.gen(function* () {
+        const { client } = fakeMcpClient([
+          Result.succeed({ text: ["Title: Broken\nURL: not-a-url\nText: unusable"] }),
+          Result.succeed({
+            text: [
+              "Title: Broken\nURL: not-a-url\nText: unusable\n\nTitle: Good\nURL: https://good.example\nText: usable",
+            ],
+          }),
+          Result.succeed({ text: ["No results found for this query"] }),
+        ]);
+        const provider = new ExaMcpSearchProvider(client);
+
+        expect(
+          yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 })),
+        ).toStrictEqual(
+          Result.fail(new ProviderProtocolInvalid({ reason: "No usable Exa search sections" })),
+        );
+        const partial = yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 }));
+        assert(Result.isSuccess(partial));
+        expect(partial.success.map((result) => result.url)).toStrictEqual([
+          "https://good.example/",
+        ]);
+        expect(
+          yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 })),
+        ).toStrictEqual(Result.succeed([]));
+      }),
+  );
+
   it.effect("passes MCP failures through", () =>
     Effect.gen(function* () {
       const { client } = fakeMcpClient([Result.fail(new ProviderStatusRejected({ status: 429 }))]);

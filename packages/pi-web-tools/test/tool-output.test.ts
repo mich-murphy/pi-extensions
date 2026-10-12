@@ -145,6 +145,36 @@ describe("projectFetchResult", () => {
     }),
   );
 
+  it.effect("redacts image descriptions and reflected metadata without changing image bytes", () =>
+    Effect.gen(function* () {
+      const raw = Buffer.from("binary-sekrit", "utf8");
+      const image: FetchPageResult = {
+        meta: {
+          requestedUrl: publicUrl("https://sekrit.example/i.png?key=sekrit"),
+          finalUrl: publicUrl("https://cdn.example/sekrit.png"),
+          format: "markdown",
+          status: 200,
+          mime: "image/png",
+          contentType: "image/png; reflected=sekrit",
+          charset: "sekrit-charset",
+          bytes: raw.byteLength,
+        },
+        body: { _tag: "Image", data: raw },
+      };
+      const projected = yield* projectFetchResult(image, {
+        store: liveToolOutputStore(),
+        secrets: ["sekrit"],
+      });
+
+      expect(JSON.stringify(projected)).not.toContain("sekrit");
+      expect(projected.content).toContainEqual({
+        type: "image",
+        data: raw.toString("base64"),
+        mimeType: "image/png",
+      });
+    }),
+  );
+
   it.effect("surfaces store failures", () =>
     Effect.gen(function* () {
       const projected = yield* Effect.result(
@@ -184,6 +214,21 @@ describe("projectProviderFetchedPage", () => {
       });
     }),
   );
+
+  it.effect("redacts the rescued requested URL metadata", () =>
+    Effect.gen(function* () {
+      const projected = yield* projectProviderFetchedPage(
+        {
+          provider: "exa",
+          url: publicUrl("https://blocked.example/page?key=sekrit"),
+          markdown: "safe page",
+        },
+        { store: liveToolOutputStore(), secrets: ["sekrit"] },
+      );
+      expect(JSON.stringify(projected)).not.toContain("sekrit");
+      expect(projected.details.requestedUrl).toContain("[redacted]");
+    }),
+  );
 });
 
 describe("projectSearchResults", () => {
@@ -217,6 +262,27 @@ describe("projectSearchResults", () => {
         resultCount: 1,
         truncated: false,
       });
+    }),
+  );
+
+  it.effect("redacts the query carried in result details", () =>
+    Effect.gen(function* () {
+      const projected = yield* projectSearchResults(
+        {
+          query: "find sekrit",
+          results: [],
+          details: {
+            query: "find sekrit",
+            maxResults: 8,
+            provider: "exa",
+            attemptedProviders: ["exa"],
+            resultCount: 0,
+          },
+        },
+        { store: liveToolOutputStore(), secrets: ["sekrit"] },
+      );
+      expect(JSON.stringify(projected)).not.toContain("sekrit");
+      expect(projected.details.query).toBe("find [redacted]");
     }),
   );
 });

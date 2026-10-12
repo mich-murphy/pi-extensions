@@ -2,6 +2,10 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import { Context, Effect, Layer, Schema } from "effect";
 import { absurd } from "effect/Function";
+import { checkDomainPolicy } from "./domain-policy";
+import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
+import { PublicWebTransport } from "./public-web-transport";
+import type { ApprovedAddress } from "./public-web-transport";
 import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
 
@@ -44,6 +48,8 @@ export type PublicWebRequest = {
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
   readonly blockPrivateHosts: boolean;
+  /** Hostname policy enforced before DNS and transport work on every redirect hop. */
+  readonly domainPolicy: DomainPolicy;
 };
 
 /** A bounded public web response. */
@@ -184,6 +190,7 @@ export class ResponseTooLarge extends Schema.TaggedError<ResponseTooLarge>()("Re
 /** Expected failures of the public web client. Their messages never contain URLs or causes. */
 export type PublicWebError =
   | PublicWebRequestFailed
+  | DomainPolicyError
   | PrivateHostBlocked
   | PrivateIpBlocked
   | UrlCredentialsUnsupported
@@ -457,15 +464,12 @@ export class HttpFetch extends Context.Service<
   );
 }
 
-/** Outbound port resolving host names, used by the private-host checks. */
+/** Outbound port resolving host names for public-address validation and bound connections. */
 export class DnsLookup extends Context.Service<
   DnsLookup,
   {
-    /**
-     * Resolve every address of a host. A rejection means the host did not resolve; the public web
-     * client then lets the fetch itself report the connectivity error.
-     */
-    readonly lookup: (hostname: string) => Promise<readonly { readonly address: string }[]>;
+    /** Resolve every address of a host in resolver order. */
+    readonly lookup: (hostname: string) => Promise<readonly ApprovedAddress[]>;
   }
 >()("pi-web-tools/network/DnsLookup") {
   /** The live layer over the system resolver, in resolver order. */
@@ -474,7 +478,13 @@ export class DnsLookup extends Context.Service<
     DnsLookup.of({
       lookup: async (hostname) => {
         const records = await dnsLookup(hostname, { all: true, order: "verbatim" });
-        return records.map((record) => ({ address: record.address }));
+        return records.map((record) => {
+          const family = isIP(record.address);
+          if (family !== 4 && family !== 6) {
+            throw new Error("DNS returned a non-IP address");
+          }
+          return { address: record.address, family };
+        });
       },
     }),
   );
@@ -492,35 +502,45 @@ export class PublicWebClient extends Context.Service<
     readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
   }
 >()("pi-web-tools/network/PublicWebClient") {
-  /** The live client over HttpFetch and DnsLookup. */
+  /** The live client over PublicWebTransport and DnsLookup. */
   static readonly layer = Layer.effect(
     PublicWebClient,
     Effect.gen(function* () {
-      const http = yield* HttpFetch;
+      const transport = yield* PublicWebTransport;
       const dns = yield* DnsLookup;
 
-      const checkPublicUrl = (
+      const approvedAddresses = (
         url: URL,
-      ): Effect.Effect<void, PrivateHostBlocked | PrivateIpBlocked> => {
+      ): Effect.Effect<
+        readonly ApprovedAddress[],
+        PublicWebRequestFailed | PrivateHostBlocked | PrivateIpBlocked
+      > => {
         const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
         if (hostname === "localhost" || hostname.endsWith(".localhost")) {
           return Effect.fail(new PrivateHostBlocked());
         }
-        if (isPrivateOrLocalIp(hostname)) {
-          return Effect.fail(new PrivateIpBlocked());
+        const literalFamily = isIP(hostname);
+        if (literalFamily === 4 || literalFamily === 6) {
+          return isPrivateOrLocalIp(hostname)
+            ? Effect.fail(new PrivateIpBlocked())
+            : Effect.succeed([{ address: hostname, family: literalFamily }]);
         }
-        return Effect.tryPromise({
-          try: async () => dns.lookup(hostname),
-          catch: () => "unresolved",
-        }).pipe(
-          // DNS resolution failed: let the fetch itself surface the connectivity error.
-          Effect.orElseSucceed(() => []),
-          Effect.flatMap((records) =>
-            records.some((record) => isPrivateOrLocalIp(record.address))
-              ? Effect.fail(new PrivateIpBlocked())
-              : Effect.void,
-          ),
-        );
+        return Effect.gen(function* () {
+          const records = yield* Effect.tryPromise({
+            try: async () => dns.lookup(hostname),
+            catch: (cause) => new PublicWebRequestFailed({ hostname, cause }),
+          });
+          if (records.length === 0) {
+            return yield* new PublicWebRequestFailed({
+              hostname,
+              cause: Object.assign(new Error("DNS returned no addresses"), { code: "ENOTFOUND" }),
+            });
+          }
+          if (records.some((record) => isPrivateOrLocalIp(record.address))) {
+            return yield* new PrivateIpBlocked();
+          }
+          return records;
+        });
       };
 
       // One request in a redirect chain. The checks run in this order on every hop, so a redirect
@@ -533,20 +553,36 @@ export class PublicWebClient extends Context.Service<
         if (url.username || url.password) {
           return yield* new UrlCredentialsUnsupported();
         }
+        yield* Effect.fromResult(checkDomainPolicy(url, request.domainPolicy));
+        const hostname = stripIpv6Brackets(url.hostname);
+        const literalFamily = isIP(hostname);
+        let addresses: readonly ApprovedAddress[];
         if (request.blockPrivateHosts) {
-          yield* checkPublicUrl(url);
+          addresses = yield* approvedAddresses(url);
+        } else if (literalFamily === 4 || literalFamily === 6) {
+          addresses = [{ address: hostname, family: literalFamily }];
+        } else {
+          addresses = yield* Effect.tryPromise({
+            try: async () => dns.lookup(hostname),
+            catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+          });
+        }
+        if (addresses.length === 0) {
+          return yield* new PublicWebRequestFailed({
+            hostname: url.hostname,
+            cause: Object.assign(new Error("DNS returned no addresses"), { code: "ENOTFOUND" }),
+          });
         }
         return yield* Effect.tryPromise({
           try: async (signal) =>
-            http.fetch(url, {
-              method: "GET",
+            transport.get(url, addresses, {
               headers: {
                 "User-Agent": userAgent,
                 Accept: request.accept,
                 "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
               },
               signal,
-              redirect: "manual",
             }),
           catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
         });
