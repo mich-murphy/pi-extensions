@@ -3,7 +3,6 @@ import { assert, describe, expect, test } from "vitest";
 import * as Html from "../html";
 import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 
-/** Unwrap a successful conversion; these fixtures all have elements and shallow nesting. */
 function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
   return Result.getOrThrow(Html.htmlToMarkdown(rawHtml, baseUrl));
 }
@@ -63,7 +62,6 @@ describe("htmlToText", () => {
 });
 
 describe("readable root extraction", () => {
-  // Every preferred selector in priority order, with an element that matches it.
   const preferredRoots = [
     ["#readme", "div", 'id="readme"'],
     ["[data-testid='repository-readme-content']", "div", 'data-testid="repository-readme-content"'],
@@ -84,7 +82,6 @@ describe("readable root extraction", () => {
     [".story", "div", 'class="story"'],
   ] as const;
 
-  // Each selector paired with the next one, the selector names first for the test titles.
   const adjacentRoots = preferredRoots
     .slice(1)
     .flatMap(([laterName, laterTag, laterAttributes], index) => {
@@ -115,8 +112,6 @@ describe("readable root extraction", () => {
     },
   );
 
-  // Both candidates match .markdown-body (+1500). The shorter one wins only if its bonus from a
-  // second group is added on top: the filler outweighs half that bonus.
   const bonusCases = [
     ["main-content", 'class="markdown-body main-content"', 500],
     ["#bigbox", 'class="markdown-body" id="bigbox"', 1000],
@@ -166,7 +161,6 @@ describe("htmlToMarkdown block links", () => {
 });
 
 describe("htmlToMarkdown on large documents", () => {
-  // Large enough, with enough children in one container, that the conversion runs in chunks.
   const paragraphs = Array.from(
     { length: 3000 },
     (_, index) => `Paragraph ${index} with some words to fill the line out.`,
@@ -250,8 +244,6 @@ describe("htmlToMarkdown tables", () => {
 });
 
 describe("layout table detection", () => {
-  // sanitizeHtml keeps a data table and flattens a layout table to divs. Each case is decided by
-  // the named rule; where a later rule would decide otherwise, the case proves the rule order.
   const grid = "<tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr>";
   const cases: readonly (readonly [string, "data" | "layout", string])[] = [
     ["a caption", "data", `<table border="1"><caption>c</caption>${grid}</table>`],
@@ -385,8 +377,9 @@ describe("conversion failures", () => {
   });
 
   test("other exceptions propagate as defects", () => {
-    // SAFETY: deliberately violates the string contract to provoke a non-RangeError defect.
-    const notHtml = Symbol("not html") as unknown as string;
-    expect(() => Html.htmlToText(notHtml, "https://example.com")).toThrow(TypeError);
+    const notHtml = Symbol("not html");
+    expect(() => {
+      Reflect.apply(Html.htmlToText, undefined, [notHtml, "https://example.com"]);
+    }).toThrow(TypeError);
   });
 });

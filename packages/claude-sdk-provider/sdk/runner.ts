@@ -48,14 +48,12 @@ function failed(error: SdkRunError): BridgeEvent {
   return { type: "failed", error };
 }
 
-/** One provider turn as Pi requested it. */
 type Turn = {
   readonly request: AgentRequest;
   readonly model: Model<Api>;
   readonly options: SimpleStreamOptions | undefined;
 };
 
-/** Per-turn SDK wiring the runner creates before starting the query. */
 type QueryWiring = {
   readonly abortController: AbortController;
   readonly hook: HookCallback;
@@ -79,7 +77,6 @@ function queryParameters(
       abortController,
       cwd: process.cwd(),
       model: sdkModelSelectorFor(model.id),
-      // Models without reasoning support, such as Haiku 4.5, reject the effort option.
       ...(model.reasoning && reasoning
         ? { effort: reasoning === "minimal" ? ("low" as const) : reasoning }
         : {}),
@@ -95,8 +92,6 @@ function queryParameters(
   };
 }
 
-// Pi receives deferred calls only after a clean result that confirms the defer,
-// and a confirmed defer must have captured the calls it deferred.
 function terminalEvent(
   result: TurnResult | undefined,
   calls: readonly DeferredCall[],
@@ -125,20 +120,15 @@ function terminalEvent(
   return deferred ? { type: "tool_calls", calls } : { type: "done", reason: result.stopReason };
 }
 
-/** What one SDK query has reported so far. */
 type QueryProgress = {
   readonly usage: TokenUsage | undefined;
-  /** The first main-loop model of the turn; later model calls may be auxiliary. */
   readonly observedModel: string | undefined;
   readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
-  /** The first typed API error an assistant message reported, such as `authentication_failed`. */
   readonly apiError: string | undefined;
 };
 
-/** How one SDK query ended. */
 type QueryOutcome = Result.Result<QueryProgress, SdkRunError>;
 
-// Folds one SDK message into the progress and returns the bridge event it produces, if any.
 function advance(
   progress: QueryProgress,
   message: SdkMessage,
@@ -182,7 +172,6 @@ function advance(
   }
 }
 
-/** One step of a query: a streamed event, or how the query ended. */
 type QueryStep =
   | { readonly _tag: "event"; readonly event: BridgeEvent }
   | { readonly _tag: "end"; readonly outcome: QueryOutcome };
@@ -198,7 +187,6 @@ function ended(outcome: QueryOutcome): QueryStep {
   return { _tag: "end", outcome };
 }
 
-// The invalid-call limit outranks whatever the query reported once it has been reached.
 function settle(
   capture: DeferredCallCapture,
   progress: QueryProgress,
@@ -222,7 +210,6 @@ type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted"
 
 const HALTED: QueryItem = { _tag: "Halted" };
 
-// Folds one SDK message, the failure that ended iteration, or the stream's end into the progress.
 function step(
   capture: DeferredCallCapture,
   callerSignal: AbortSignal | undefined,
@@ -273,7 +260,7 @@ function abortOnClose(
           try {
             await iterator?.return?.();
           } catch {
-            // Deliberately dropped: see abortOnClose.
+            return { done: true, value: undefined };
           }
           return { done: true, value: undefined };
         },
@@ -282,7 +269,6 @@ function abortOnClose(
   };
 }
 
-// The turn's deltas and running usage, ending with exactly one step that says how the query ended.
 function querySteps(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
@@ -299,7 +285,6 @@ function querySteps(
   );
 }
 
-// Why iterating the query threw: the tool-call limit's own abort, a caller cancel, or the SDK.
 function iterationFailure(
   capture: DeferredCallCapture,
   signal: AbortSignal,
@@ -313,7 +298,6 @@ function iterationFailure(
     : SdkQueryError.fromCause("iterate", error);
 }
 
-// The turn's AbortController, which follows Pi's signal and is aborted however the turn ends.
 function turnAbortController(
   signal: AbortSignal | undefined,
 ): Effect.Effect<AbortController, never, Scope.Scope> {
@@ -329,20 +313,17 @@ function turnAbortController(
     ({ controller, forwardAbort }) =>
       Effect.sync(() => {
         signal?.removeEventListener("abort", forwardAbort);
-        // Stop the SDK subprocess however the turn ended, including an abandoned stream.
         controller.abort();
       }),
   ).pipe(Effect.map(({ controller }) => controller));
 }
 
-/** What the runner reports once a query has ended. */
 type TurnObservers = {
   readonly selector: string;
   readonly modelObserver: RunnerOptions["modelObserver"];
   readonly recordUsage: ((usage: TokenUsage) => void) | undefined;
 };
 
-// The terminal event for a query outcome, reporting the model and usage of a completed turn.
 function conclude(
   outcome: QueryOutcome,
   capture: DeferredCallCapture,

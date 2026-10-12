@@ -123,9 +123,6 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       }
 
       const { query, maxResults } = parsed.success;
-      // Reported before the run, so progress shows even when the run is cancelled before it starts.
-      // parseSettings requires a Brave key whenever Brave is listed, so the first configured name
-      // is the first provider in the chain.
       onUpdate?.({
         content: [{ type: "text", text: composition.redactText(`Searching for ${query}...`) }],
         details: {
@@ -221,7 +218,6 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
   };
 }
 
-// One search: walk the provider chain, then project the results for Pi.
 const runWebSearch = Effect.fnUntraced(function* (input: WebSearchParams) {
   const providers = yield* SearchProviders;
   const config = yield* WebToolsConfig;

@@ -1,5 +1,7 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Effect, Layer, Result } from "effect";
+import { Duration, Effect, Layer, Result } from "effect";
+import { McpClients } from "../mcp";
+import { HttpFetch } from "../network";
 import { ExaApiFetchProvider, ExaMcpFetchProvider } from "../provider-exa";
 import { ProviderHttpClient } from "../provider-http";
 import { ParallelMcpFetchProvider } from "../provider-parallel";
@@ -52,7 +54,6 @@ const UNAVAILABLE: ProviderError = new ProviderRequestFailed({
   cause: new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }),
 });
 
-/** Build both provider chains from settings in one layer build, as the extension does. */
 function buildChains(
   settings: WebToolsSettings,
   mcpClients: ReturnType<typeof recordingMcpClients> = recordingMcpClients(),
@@ -228,6 +229,82 @@ describe("buildSearchProviders", () => {
   });
 });
 
+describe("provider route isolation", () => {
+  it.effect("shared overrides stay keyless for search and rescue despite configured API keys", () =>
+    Effect.gen(function* () {
+      const settings = settingsFrom({
+        PI_WEB_TOOLS_PROVIDERS: "parallel,exa,brave",
+        EXA_API_KEY: "exa-secret",
+        PARALLEL_API_KEY: "parallel-secret",
+        BRAVE_API_KEY: "brave-secret",
+        PI_WEB_TOOLS_EXA_ENDPOINT: "https://override.example/mcp",
+        PI_WEB_TOOLS_PARALLEL_ENDPOINT: "https://override.example/mcp",
+      });
+      const outbound: { url: string; headers: Headers; body: string }[] = [];
+      const fetchImpl: typeof fetch = async (input, init) => {
+        let url: string;
+        if (typeof input === "string") {
+          url = input;
+        } else {
+          url = input instanceof URL ? input.href : input.url;
+        }
+        outbound.push({
+          url,
+          headers: new Headers(init?.headers),
+          body: typeof init?.body === "string" ? init.body : "",
+        });
+        return new Response(
+          JSON.stringify({ result: { content: [], structuredContent: { results: [] } } }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        );
+      };
+      const http = fakeProviderHttp([]);
+      const dependencies = Layer.mergeAll(
+        WebToolsConfig.layer(settings),
+        Layer.succeed(ProviderHttpClient, http.client),
+        McpClients.layerWith({ maxResponseBytes: 1024, timeout: Duration.seconds(1) }).pipe(
+          Layer.provide(Layer.succeed(HttpFetch, { fetch: fetchImpl })),
+        ),
+      );
+      const chains = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
+        Layer.provide(dependencies),
+      );
+      yield* Effect.gen(function* () {
+        const search = yield* SearchProviders;
+        const rescue = yield* FetchRescueProviders;
+        expect(search.map(({ name, transport }) => [name, transport])).toStrictEqual([
+          ["parallel", "mcp"],
+          ["exa", "mcp"],
+          ["brave", "api"],
+        ]);
+        expect(rescue.map(({ name }) => name)).toStrictEqual(["parallel", "exa"]);
+        for (const provider of search.filter(({ name }) => name !== "brave")) {
+          yield* provider.search({ query: QUERY, maxResults: 1 });
+        }
+        for (const provider of rescue) {
+          yield* provider.fetchMarkdown(publicUrl("https://page.example/"));
+        }
+      }).pipe(Effect.provide(chains));
+      expect(http.requests).toStrictEqual([]);
+      expect(outbound).toHaveLength(12);
+      const parallelSessionIds = outbound.flatMap(({ body }) => {
+        const match = /"session_id":"(?<sessionId>[^"]+)"/u.exec(body);
+        return match?.groups?.sessionId ?? [];
+      });
+      expect(parallelSessionIds).toHaveLength(2);
+      expect(parallelSessionIds[0]).toBe(parallelSessionIds[1]);
+      for (const request of outbound) {
+        expect(request.url).toBe("https://override.example/mcp");
+        expect(request.headers.has("authorization")).toBe(false);
+        expect(request.headers.has("x-api-key")).toBe(false);
+        expect(request.body).not.toContain("secret");
+      }
+    }),
+  );
+});
+
 describe("buildFetchProviders", () => {
   test("excludes brave and follows search priority order", () => {
     const settings = settingsFrom({
@@ -259,7 +336,6 @@ describe("buildFetchProviders", () => {
     const [exa, parallel] = buildChains(settings, mcpClients).fetch;
     expect(exa).toBeInstanceOf(ExaMcpFetchProvider);
     expect(parallel).toBeInstanceOf(ParallelMcpFetchProvider);
-    // One MCP client per provider, shared by its search and fetch sides.
     expect(endpoints).toStrictEqual([
       "https://exa.internal.example/mcp",
       "https://parallel.internal.example/mcp",

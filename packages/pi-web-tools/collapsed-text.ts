@@ -3,24 +3,23 @@
  * the collapsed string, and composable across adjacent pieces of text.
  */
 
-/** Returns true for the code points JavaScript's `\s` matches (the same set `trim` removes). */
-function isWhitespaceCode(code: number): boolean {
-  if (code <= 32) {
-    return code === 32 || (code >= 9 && code <= 13);
+function isWhitespaceCodeUnit(codeUnit: number): boolean {
+  if (codeUnit <= 32) {
+    return codeUnit === 32 || (codeUnit >= 9 && codeUnit <= 13);
   }
-  if (code < 160) {
+  if (codeUnit < 160) {
     return false;
   }
   return (
-    code === 160 ||
-    code === 5760 ||
-    (code >= 8192 && code <= 8202) ||
-    code === 8232 ||
-    code === 8233 ||
-    code === 8239 ||
-    code === 8287 ||
-    code === 12_288 ||
-    code === 65_279
+    codeUnit === 160 ||
+    codeUnit === 5760 ||
+    (codeUnit >= 8192 && codeUnit <= 8202) ||
+    codeUnit === 8232 ||
+    codeUnit === 8233 ||
+    codeUnit === 8239 ||
+    codeUnit === 8287 ||
+    codeUnit === 12_288 ||
+    codeUnit === 65_279
   );
 }
 
@@ -30,23 +29,18 @@ function isWhitespaceCode(code: number): boolean {
  * leading one merge, as the two whitespace runs would.
  */
 export class CollapsedTextLength {
-  /** Length of the collapsed, untrimmed text. */
   #length = 0;
-  /** Whether the collapsed text starts with a space. */
   #leadingSpace = false;
-  /** Whether the collapsed text ends with a space. */
   #trailingSpace = false;
 
   /**
-   * Append raw text.
+   * Append raw text, counting its UTF-16 code units.
    *
    * @param text - Text to append.
    */
   appendText(text: string): void {
-    for (let index = 0; index < text.length; index += 1) {
-      // Each unit of a surrogate pair reads as a non-space code point, so the pair counts as two
-      // units, as it does in the collapsed string's length.
-      if (!isWhitespaceCode(text.codePointAt(index) ?? 0)) {
+    for (let codeUnitIndex = 0; codeUnitIndex < text.length; codeUnitIndex += 1) {
+      if (!isWhitespaceCodeUnit(text.charCodeAt(codeUnitIndex))) {
         this.#length += 1;
         this.#trailingSpace = false;
       } else if (this.#length === 0) {
@@ -82,7 +76,6 @@ export class CollapsedTextLength {
    * @returns The normalized length.
    */
   trimmedLength(): number {
-    // A lone collapsed space is both the leading and the trailing space.
     if (this.#length === 1 && this.#leadingSpace) {
       return 0;
     }

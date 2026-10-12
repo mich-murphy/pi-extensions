@@ -37,14 +37,12 @@ async function startLocalServer(
   };
 }
 
-/** What a recording fetch saw of one request. */
 type SeenRequest = {
   readonly method: string | undefined;
   readonly body: BodyInit | null | undefined;
   readonly contentType: string | null;
 };
 
-/** A fetch that records each request it receives and replies with `reply`. */
 function recordingFetch(reply: () => Response) {
   const seen: SeenRequest[] = [];
   const fetchImpl: typeof fetch = async (_input: unknown, init?: RequestInit) => {
@@ -65,11 +63,8 @@ function jsonResponse(body: string, status = 200): Response {
   });
 }
 
-/** A response that never arrives; only an abort of the request ends the wait. */
 async function neverResponds(): Promise<Response> {
-  return new Promise<Response>(() => {
-    // Never settles.
-  });
+  return Promise.withResolvers<Response>().promise;
 }
 
 describe("fetchProviderHttpClient", () => {

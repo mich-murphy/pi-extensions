@@ -40,7 +40,6 @@ export function createToolRuntime<R>(layer: Layer.Layer<R>): ToolRuntime<R> {
       return runtime.runPromiseExit(program, signal === undefined ? undefined : { signal });
     },
     dispose: async () => {
-      // Clear the holder before awaiting so a repeated dispose is a no-op and a later run rebuilds.
       const current = runtime;
       runtime = undefined;
       await current?.dispose();

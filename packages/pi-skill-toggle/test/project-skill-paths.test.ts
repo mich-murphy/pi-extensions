@@ -6,9 +6,10 @@ import {
   loadSkills,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerSkillToggle } from "../index";
+import type { ToggleHandlers } from "../index";
 import { discoverProjectSkillPaths } from "../project-skill-paths";
 import { ok } from "../result";
 import type { ToggleStateStore } from "../state";
@@ -42,15 +43,12 @@ async function pathsFor(cwd: string, agentDir: string): Promise<readonly string[
   return discoverProjectSkillPaths(cwd, agentDir);
 }
 
-function requiredHandler(
-  handlers: ReadonlyMap<string, (event: unknown, ctx: unknown) => unknown>,
-  name: string,
-): (event: unknown, ctx: unknown) => unknown {
-  const handler = handlers.get(name);
-  if (!handler) {
-    throw new Error(`test setup: ${name} was not registered`);
+function requiredDiscover(handlers: Partial<ToggleHandlers>): ToggleHandlers["resources_discover"] {
+  const discover = handlers.resources_discover;
+  if (!discover) {
+    throw new Error("test setup: resources_discover was not registered");
   }
-  return handler;
+  return discover;
 }
 
 describe("discoverProjectSkillPaths", () => {
@@ -165,6 +163,36 @@ describe("discoverProjectSkillPaths", () => {
     await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([supplemental]);
   });
 
+  test("reserves native and excluded names independently when their roots collide", async () => {
+    const { root, cwd, agentDir } = project();
+    const winner = writeSkill(join(cwd, ".pi", "skills"), "winner", "shared");
+    const excluded = writeSkill(join(root, ".agents", "skills"), "excluded", "shared");
+    const excludedOnly = writeSkill(join(root, ".agents", "skills"), "hidden", "hidden");
+    writeFileSync(
+      join(cwd, ".pi", "settings.json"),
+      JSON.stringify({ skills: [`-${excluded}`, `-${excludedOnly}`] }),
+    );
+    writeSkill(join(root, ".claude", "skills"), "shared", "shared");
+    writeSkill(join(root, ".claude", "skills"), "hidden", "hidden");
+    const extra = writeSkill(join(root, ".codex", "skills"), "extra", "extra");
+
+    await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([extra]);
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+      noExtensions: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await loader.reload();
+    expect(loader.getSkills().skills.find((skill) => skill.name === "shared")?.filePath).toBe(
+      winner,
+    );
+    expect(loader.getSkills().skills.some((skill) => skill.name === "hidden")).toBe(false);
+  });
+
   test("the extension binding reserves a real loader's additional skill winner", async () => {
     const { root, cwd, agentDir } = project();
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
@@ -186,13 +214,12 @@ describe("discoverProjectSkillPaths", () => {
       noContextFiles: true,
     });
     await loader.reload();
-    const handlers = new Map<string, (event: unknown, ctx: unknown) => unknown>();
+    const handlers: Partial<ToggleHandlers> = {};
     const piDouble = {
       registerCommand: () => undefined,
-      on: (name: string, handler: (event: unknown, ctx: unknown) => unknown) => {
-        handlers.set(name, handler);
+      on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
+        handlers[name] = handler;
       },
-      // This is the public getCommands contract bound by AgentSession in Pi 0.85 and 1.1.
       getCommands: (): SlashCommandInfo[] =>
         loader.getSkills().skills.map((skill) => ({
           name: `skill:${skill.name}`,
@@ -205,8 +232,8 @@ describe("discoverProjectSkillPaths", () => {
       load: () => ok(new Map()),
       set: () => ok(new Map()),
     };
-    registerSkillToggle(piDouble as unknown as ExtensionAPI, store);
-    const discover = requiredHandler(handlers, "resources_discover");
+    registerSkillToggle(piDouble, store);
+    const discover = requiredDiscover(handlers);
 
     const contribution = await discover({}, { cwd, isProjectTrusted: () => true });
     expect(contribution).toStrictEqual({ skillPaths: [extra] });

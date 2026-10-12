@@ -4,7 +4,6 @@ import { undatedModelId } from "../models";
 import { SdkProtocolError, SdkResultError } from "./errors";
 import { lenientOptional, withFallback } from "./lenient-schema";
 
-// The API reports null or omits counts it has no value for, so both mean "unchanged".
 const tokenCountSchema = Schema.optional(
   Schema.NullOr(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
 );
@@ -14,13 +13,11 @@ const usageSchema = Schema.Struct({
   cache_read_input_tokens: tokenCountSchema,
   cache_creation_input_tokens: tokenCountSchema,
 });
-// A missing or malformed model leaves the call unobserved, so the key is omitted.
 const modelCallSchema = Schema.Struct({
   model: lenientOptional(Schema.NonEmptyString),
   usage: usageSchema,
 });
 
-// Model usage only feeds /claude-sdk-status, so a malformed entry must never fail a turn.
 const modelUsageEntrySchema = withFallback(
   Schema.Struct({
     canonicalModel: lenientOptional(Schema.String),
@@ -94,7 +91,6 @@ const FAILURE_MESSAGES = {
   error: "the query failed without an error description",
 } as const;
 
-// Returns undefined for a clean result whose stop reason this provider does not support.
 function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
   const stop = STOP_REASONS.get(result.stop_reason ?? "end_turn");
   const terminalReason =
@@ -109,7 +105,6 @@ function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
     failure = stop;
   }
 
-  // A failed result wins over its stop reason, so an error never surfaces as a protocol fault.
   if (failure) {
     const reported = (result.errors ?? []).filter((entry) => typeof entry === "string").join("; ");
     const detail = reported || (result.result ?? "") || FAILURE_MESSAGES[failure];
@@ -133,7 +128,6 @@ function describeIssue(issue: SchemaIssue.Issue): string {
     .join("; ");
 }
 
-/** Decodes one message kind, failing with a safe protocol detail. */
 type MessageParser = (input: unknown) => Result.Result<SdkMessage, string>;
 
 function messageParser<S extends Schema.ConstraintDecoder<unknown>>(
@@ -160,8 +154,6 @@ function usageMessage(
   });
 }
 
-// Every SDK message this provider consumes, keyed by its dotted discriminator path.
-// Any other kind is ignored, so new SDK message, event, and delta types stay harmless.
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
     "stream_event.content_block_delta.text_delta",
@@ -217,7 +209,6 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
   ],
 ]);
 
-// Only the discriminators are read, so other keys may be stripped.
 const decodeNode = Schema.decodeUnknownOption(
   Schema.Struct({
     type: Schema.String,
@@ -226,7 +217,6 @@ const decodeNode = Schema.decodeUnknownOption(
   }),
 );
 
-// The message type, then its stream event type, then its content delta type.
 function kindOf(input: unknown): string | undefined {
   const message = Option.getOrUndefined(decodeNode(input));
   if (message?.type !== "stream_event") {

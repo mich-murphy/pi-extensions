@@ -15,7 +15,6 @@ import { redactSecrets } from "./tool-output";
 import type { PublicHttpUrl } from "./types";
 import { WEB_TOOLS_VERSION } from "./types";
 
-/** MCP protocol revision spoken by this client (Streamable HTTP). */
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 
 /** Extracted payload of a successful MCP tools/call. */
@@ -38,13 +37,10 @@ type McpPostOutcome = {
   readonly contentType: string;
 };
 
-/** How long the best-effort session DELETE may take. */
 const CLOSE_SESSION_TIMEOUT_MS = 5000;
 
-/** Bounds applied to every MCP tool call. */
 type McpClientOptions = {
   readonly maxResponseBytes: number;
-  /** Deadline for a whole session; ProviderTimedOut names it in whole seconds, rounded up. */
   readonly timeout: Duration.Duration;
 };
 
@@ -80,7 +76,7 @@ export class McpClients extends Context.Service<
           if (cached !== undefined) {
             return cached;
           }
-          const client = makeMcpHttpClient(http, endpoint, options);
+          const client = makeSessionPerToolCallMcpHttpClient(http, endpoint, options);
           cache.set(endpoint, client);
           return client;
         };
@@ -96,15 +92,7 @@ export class McpClients extends Context.Service<
   });
 }
 
-/**
- * Minimal MCP Streamable HTTP client for one endpoint.
- *
- * Speaks the official handshake — initialize, notifications/initialized,
- * tools/call — honoring the Mcp-Session-Id header and both JSON and SSE
- * response framings, then closes the session with DELETE. One session per
- * tool call keeps the client stateless between calls.
- */
-function makeMcpHttpClient(
+function makeSessionPerToolCallMcpHttpClient(
   http: HttpFetch["Service"],
   endpoint: PublicHttpUrl,
   options: McpClientOptions,
@@ -136,7 +124,6 @@ function makeMcpHttpClient(
     };
   });
 
-  // Best-effort: servers expire sessions on their own, so a failed DELETE is ignored.
   const closeSession = (sessionId: string): Effect.Effect<void> =>
     Effect.tryPromise(async () =>
       http.fetch(endpoint, {
@@ -147,7 +134,6 @@ function makeMcpHttpClient(
       }),
     ).pipe(Effect.ignore);
 
-  // Run a full MCP session for a single tool call; the session closes however the call ends.
   const callTool = Effect.fn("McpClient.callTool")(function* (
     name: string,
     args: Readonly<Record<string, unknown>>,
@@ -169,7 +155,6 @@ function makeMcpHttpClient(
       );
       ({ sessionId } = init);
 
-      // A rejected notification does not invalidate the session on all servers; proceed.
       yield* post({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId).pipe(
         Effect.catchTag("ProviderStatusRejected", () => Effect.void),
       );
@@ -217,7 +202,6 @@ export function parseMcpMessage(
   return parseJsonBody(body);
 }
 
-/** Pick the last JSON-RPC response from an SSE stream; malformed events are skipped. */
 function parseSseResponse(body: string): Result.Result<unknown, ProviderError> {
   const events = parseSseDataLines(body).map((chunk) => parseJsonBody(chunk));
   const responses = events.filter(
@@ -235,12 +219,10 @@ function parseSseResponse(body: string): Result.Result<unknown, ProviderError> {
   );
 }
 
-// Only text content is extracted; images and resources are dropped (blank text is dropped later).
 const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
 
 const decodeToolCallResponse = Schema.decodeUnknownResult(
   Schema.Struct({
-    // Only an error object marks a JSON-RPC failure; any other error value is ignored.
     error: orFallback(
       Schema.UndefinedOr(Schema.Struct({ message: orFallback(Schema.String, "") })),
       undefined,
@@ -258,7 +240,6 @@ const decodeToolCallResponse = Schema.decodeUnknownResult(
   }),
 );
 
-/** Longest provider error excerpt carried into a user-facing message. */
 const MAX_TOOL_ERROR_DETAIL = 200;
 
 /**
@@ -290,7 +271,6 @@ export function parseMcpToolResult(
   return Result.succeed({ text, structuredContent: result.structuredContent });
 }
 
-// Collapse, scrub, then cut: scrubbing first means truncation can never leave half a secret.
 function toolErrorDetail(text: string, secrets: readonly (string | undefined)[]): string {
   const scrubbed = redactSecrets(text.replaceAll(/\s+/gu, " ").trim(), secrets);
   return scrubbed.length <= MAX_TOOL_ERROR_DETAIL

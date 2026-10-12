@@ -101,7 +101,6 @@ export type ProviderError =
   | ProviderProtocolInvalid
   | ProviderToolError;
 
-// Lower-case the first letter unless it starts an acronym such as "TLS".
 function lowerInitial(text: string): string {
   const second = text.charAt(1);
   return second !== "" && second === second.toUpperCase() && second !== second.toLowerCase()

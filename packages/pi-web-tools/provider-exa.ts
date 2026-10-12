@@ -74,23 +74,25 @@ function splitSearchSections(input: string): string[] {
   return sections.filter((section) => section.length > 0);
 }
 
-/** Header fields an Exa MCP search section can carry before its snippet. */
-type ExaHeaderField = "title" | "url" | "publishedAt" | "source" | "author" | "score";
+type ExaTextHeaderField = "title" | "url" | "publishedAt" | "source" | "author";
 
-/** One header line prefix, the field it fills, and how its raw value becomes usable. */
-type ExaHeaderRule = {
-  readonly prefix: string;
-  readonly field: ExaHeaderField;
-  readonly normalize: (raw: string) => string | undefined;
+type ExaSectionHeaders = Record<ExaTextHeaderField, string | undefined> & {
+  score: number | undefined;
 };
 
-/**
- * Header prefixes of an Exa MCP search section. For every field the last line
- * with a usable value wins; placeholder metadata (see normalizeMetadataValue),
- * blank values, and non-numeric scores never clear an earlier value.
- * `Published Date:` and `Published:` are aliases for the same field.
- */
-const EXA_HEADER_RULES: readonly ExaHeaderRule[] = [
+type LastUsableHeaderRule =
+  | {
+      readonly prefix: string;
+      readonly field: ExaTextHeaderField;
+      readonly normalize: (raw: string) => string | undefined;
+    }
+  | {
+      readonly prefix: string;
+      readonly field: "score";
+      readonly normalize: (raw: string) => number | undefined;
+    };
+
+const EXA_LAST_USABLE_HEADER_RULES: readonly LastUsableHeaderRule[] = [
   { prefix: "Title: ", field: "title", normalize: normalizeNonEmpty },
   { prefix: "URL: ", field: "url", normalize: normalizeNonEmpty },
   { prefix: "Published Date: ", field: "publishedAt", normalize: normalizeMetadataValue },
@@ -102,15 +104,14 @@ const EXA_HEADER_RULES: readonly ExaHeaderRule[] = [
 
 function parseSearchSection(section: string): NormalizedSearchResult | undefined {
   const lines = section.split("\n");
-  // The first Text:/Highlights: line starts the snippet; everything after it is snippet text.
   const snippetStart = lines.findIndex(
     (line) => line.startsWith("Text:") || line.startsWith("Highlights:"),
   );
   const headerLines = snippetStart === -1 ? lines : lines.slice(0, snippetStart);
   const snippetLines = snippetStart === -1 ? [] : lines.slice(snippetStart);
-  const headers = readSectionHeaders(headerLines);
+  const headers = readLastUsableSectionHeaders(headerLines);
 
-  const url = headers.get("url");
+  const url = headers.url;
   if (url === undefined) {
     return undefined;
   }
@@ -124,30 +125,44 @@ function parseSearchSection(section: string): NormalizedSearchResult | undefined
     firstSnippetLine.slice(firstSnippetLine.indexOf(":") + 1).trim(),
     ...restSnippetLines,
   ].join("\n");
-  const title = headers.get("title") ?? "";
-  const score = headers.get("score");
+  const title = headers.title ?? "";
   return {
     title: title || parsedUrl.success,
     url: parsedUrl.success,
     snippet: summarizeSnippet(snippetText, title),
-    publishedAt: headers.get("publishedAt"),
-    // Source beats Author; Author only names the source when no usable Source line exists.
-    source: headers.get("source") ?? headers.get("author"),
-    // normalizeScore stored the score as parseFloat's canonical output.
-    score: score === undefined ? undefined : Number(score),
+    publishedAt: headers.publishedAt,
+    source: headers.source ?? headers.author,
+    score: headers.score,
   };
 }
 
-function readSectionHeaders(lines: readonly string[]): ReadonlyMap<ExaHeaderField, string> {
-  const headers = new Map<ExaHeaderField, string>();
+function readLastUsableSectionHeaders(lines: readonly string[]): ExaSectionHeaders {
+  const headers: ExaSectionHeaders = {
+    title: undefined,
+    url: undefined,
+    publishedAt: undefined,
+    source: undefined,
+    author: undefined,
+    score: undefined,
+  };
   for (const line of lines) {
-    const rule = EXA_HEADER_RULES.find((candidate) => line.startsWith(candidate.prefix));
+    const rule = EXA_LAST_USABLE_HEADER_RULES.find((candidate) =>
+      line.startsWith(candidate.prefix),
+    );
     if (rule === undefined) {
       continue;
     }
-    const value = rule.normalize(line.slice(rule.prefix.length));
-    if (value !== undefined) {
-      headers.set(rule.field, value);
+    const raw = line.slice(rule.prefix.length);
+    if (rule.field === "score") {
+      const value = rule.normalize(raw);
+      if (value !== undefined) {
+        headers.score = value;
+      }
+    } else {
+      const value = rule.normalize(raw);
+      if (value !== undefined) {
+        headers[rule.field] = value;
+      }
     }
   }
   return headers;
@@ -157,10 +172,9 @@ function normalizeNonEmpty(value: string): string | undefined {
   return value.trim() || undefined;
 }
 
-// A score is the number at the start of the value, as parseFloat reads it, stored in canonical form.
-function normalizeScore(value: string): string | undefined {
+function normalizeScore(value: string): number | undefined {
   const score = Number.parseFloat(value);
-  return Number.isFinite(score) ? String(score) : undefined;
+  return Number.isFinite(score) ? score : undefined;
 }
 
 function summarizeSnippet(text: string, title: string): string | undefined {
@@ -191,7 +205,6 @@ function summarizeSnippet(text: string, title: string): string | undefined {
 function stripRepeatedLeadingTitle(snippet: string, title: string): string {
   const normalizedTitle = title.trim().toLowerCase();
   const lines = snippet.split("\n");
-  // Skip leading blank lines and every leading repeat of the title.
   const bodyStart = lines.findIndex((line) => {
     const trimmed = line.trim();
     return trimmed.length > 0 && trimmed.toLowerCase() !== normalizedTitle;
@@ -199,7 +212,6 @@ function stripRepeatedLeadingTitle(snippet: string, title: string): string {
   return bodyStart === -1 ? "" : lines.slice(bodyStart).join("\n").trim();
 }
 
-/** Metadata values Exa uses to mean "absent", compared case-insensitively. */
 const PLACEHOLDER_METADATA_VALUES: ReadonlySet<string> = new Set([
   "n/a",
   "na",
@@ -237,7 +249,6 @@ export class ExaMcpSearchProvider implements SearchProvider {
     return this.mcp
       .callTool("web_search_exa", {
         query: input.query,
-        // The hosted endpoint requires an objective; the query is the objective we have.
         objective: input.query,
         numResults: input.maxResults,
       })
@@ -259,7 +270,6 @@ const ExaApiResult = Schema.Struct({
   url: publicHttpUrlSchema,
   title: optionalTextSchema,
   highlights: orFallback(lenientArray(Schema.String), []),
-  // Exa's metadata passes through as sent, untrimmed.
   publishedDate: orFallback(Schema.UndefinedOr(Schema.String), undefined),
   author: orFallback(Schema.UndefinedOr(Schema.String), undefined),
   score: orFallback(Schema.UndefinedOr(Schema.Finite), undefined),
@@ -280,7 +290,6 @@ const decodeExaApiSearchPayload = Schema.decodeUnknownResult(
   Schema.Struct({ results: lenientArray(ExaApiResult) }),
 );
 
-// Only the first result is read: it answers the single URL each request asks for.
 const decodeExaApiContentsPayload = Schema.decodeUnknownOption(
   Schema.Struct({
     results: Schema.TupleWithRest(Schema.Tuple([Schema.Struct({ text: optionalTextSchema })]), [

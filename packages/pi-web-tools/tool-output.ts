@@ -211,7 +211,6 @@ export function projectSearchResults(
   });
 }
 
-/** Truncate text output for the model, spilling the full text to the store when it is too large. */
 function projectTextOutput<Details>({
   output,
   details,

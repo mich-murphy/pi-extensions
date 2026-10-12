@@ -50,6 +50,5 @@ export function appendExpandHint(base: string, expanded: boolean): string {
   if (expanded) {
     return base;
   }
-  // SAFETY: pi's keyHint accepts built-in keybinding identifiers; this one is stable.
   return `${base} ${keyHint("app.tools.expand", "for details")}`;
 }

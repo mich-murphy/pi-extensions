@@ -27,7 +27,7 @@ import {
   textDelta,
   unsettled,
 } from "./fixtures";
-import type { ToolUse } from "./fixtures";
+import type { ToolUse, MessageFixture } from "./fixtures";
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 
@@ -43,12 +43,10 @@ async function runTurn(
   return drain(createClaudeAgentSdkRunner({ ...options, runSdkQuery })(request, sonnet, options));
 }
 
-// Gateway requests numbered in arrival order, as the SDK assigns tool-use IDs.
 function toolUses(toolInputs: readonly unknown[]): ToolUse[] {
   return toolInputs.map((input, index) => ({ id: `toolu_${index}`, input }));
 }
 
-// A fake SDK query that delivers gateway requests to the installed hook, then yields messages.
 function queryWith(toolInputs: readonly unknown[], ...messages: readonly unknown[]): RunSdkQuery {
   return async function* fakeQuery(params) {
     await deliverToolUses(installedHook(params), toolUses(toolInputs));
@@ -99,7 +97,7 @@ async function effortFor(id: string, reasoning: SimpleStreamOptions["reasoning"]
   return options && "effort" in options ? options.effort : "omitted";
 }
 
-async function runWithHistory(history: readonly unknown[]): Promise<BridgeEvent[]> {
+async function runWithHistory(history: readonly MessageFixture[]): Promise<BridgeEvent[]> {
   return runTurn(
     async function* fakeQuery({ prompt }) {
       await drain(sdkPromptFixture(prompt));
@@ -119,7 +117,6 @@ async function observeModels(...messages: readonly unknown[]) {
   return { events, observations };
 }
 
-// One gateway request for toolName in a turn that allows only the allowed tool.
 async function runAllowing(
   toolName: string,
   allowed: string,
@@ -358,7 +355,7 @@ describe("turn streaming", () => {
   });
 
   test("an unsupported image kept in transcript history does not throw on a later turn", async () => {
-    const messages = [
+    const messages: MessageFixture[] = [
       {
         role: "user",
         content: [
@@ -432,7 +429,6 @@ describe("deferred tool calls", () => {
     await expect(runAllowing("write", "write", DEFERRED)).resolves.toStrictEqual([
       { type: "tool_calls", calls: [{ id: "toolu_0", name: "write", arguments: {} }] },
     ]);
-    // A tool valid in an earlier turn is denied here, and a denial alone is not fatal.
     await expect(runAllowing("read", "write", resultMessage())).resolves.toStrictEqual([
       { type: "done", reason: "stop" },
     ]);

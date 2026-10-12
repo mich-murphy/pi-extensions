@@ -28,7 +28,6 @@ export type SdkFailureDiagnostic = {
   readonly terminalReason?: string;
 };
 
-// Failure text matches in this order, so the first matching pattern names the kind.
 const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] = [
   [
     "usage-limit",
@@ -59,7 +58,6 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
       return "tool-contract";
     }
     case "SdkQueryError": {
-      // The raw cause is matched here only; it never reaches the diagnostic or the user.
       const { cause, reason } = error;
       return reason._tag === "Cancelled"
         ? "cancelled"

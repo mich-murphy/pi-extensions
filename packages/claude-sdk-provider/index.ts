@@ -1,6 +1,15 @@
 import process from "node:process";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  ToolCallEvent,
+  ToolResultEvent,
+  ProviderConfig,
+  ToolCallEventResult,
+  ToolResultEventResult,
+  ContextEventResult,
+} from "@earendil-works/pi-coding-agent";
 import { Effect, Layer } from "effect";
 import { createAgentSdkStream } from "./bridge";
 import type { AgentSdkRun } from "./bridge";
@@ -17,7 +26,45 @@ import {
 } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
 
-/** Services the slash commands run against. */
+/** Event data consumed by the provider's safety hooks. */
+export type ClaudeEvents = {
+  readonly before_agent_start: {
+    readonly systemPromptOptions: { readonly sections: Record<string, string> };
+  };
+  readonly tool_call: ToolCallEvent;
+  readonly tool_result: Pick<ToolResultEvent, "toolName" | "content">;
+  readonly context: { readonly messages: Parameters<typeof sanitizeContextMessages>[0] };
+  readonly session_shutdown: unknown;
+};
+
+/** Hook callbacks registered by this provider. */
+export type ClaudeHandlers = {
+  [K in keyof ClaudeEvents]: (
+    event: ClaudeEvents[K],
+    ctx: Pick<ExtensionContext, "hasUI"> & {
+      readonly ui: Pick<ExtensionContext["ui"], "notify">;
+    },
+  ) => {
+    readonly before_agent_start: undefined;
+    readonly tool_call: Pick<ToolCallEventResult, "block" | "reason"> | undefined;
+    readonly tool_result: Pick<ToolResultEventResult, "content"> | undefined;
+    readonly context: Pick<ContextEventResult, "messages">;
+    readonly session_shutdown: Promise<void>;
+  }[K];
+};
+
+/** Pi registration capabilities consumed by the provider. */
+export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand"> & {
+  readonly registerProvider: (name: string, config: ProviderConfig) => void;
+  readonly on: {
+    (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): unknown;
+    (name: "tool_call", handler: ClaudeHandlers["tool_call"]): unknown;
+    (name: "tool_result", handler: ClaudeHandlers["tool_result"]): unknown;
+    (name: "context", handler: ClaudeHandlers["context"]): unknown;
+    (name: "session_shutdown", handler: ClaudeHandlers["session_shutdown"]): unknown;
+  };
+};
+
 type CommandServices = ClaudeSdkVersionSources | ClaudeUsageQueries;
 
 const commandLayer: Layer.Layer<CommandServices> = Layer.mergeAll(
@@ -26,7 +73,7 @@ const commandLayer: Layer.Layer<CommandServices> = Layer.mergeAll(
 );
 
 function registerStatusCommands(
-  pi: ExtensionAPI,
+  pi: ClaudeRegistration,
   observedModels: ReadonlyMap<string, string>,
   commands: CommandRunner<CommandServices>,
 ): void {
@@ -62,12 +109,13 @@ function registerStatusCommands(
   });
 }
 
-function registerSafetyHooks(pi: ExtensionAPI): void {
+function registerSafetyHooks(pi: ClaudeRegistration): void {
   // A section, not a returned systemPrompt: returning one replaces the whole prompt and drops
   // the sections other extensions set in the same event.
   pi.on("before_agent_start", (event) => {
     event.systemPromptOptions.sections["bash-output-safety"] =
       "Bash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.";
+    return undefined;
   });
   pi.on("tool_call", (event) => {
     if (!isToolCallEventType("bash", event)) {
@@ -95,7 +143,7 @@ function registerSafetyHooks(pi: ExtensionAPI): void {
   pi.on("context", (event) => ({ messages: sanitizeContextMessages(event.messages) }));
 }
 
-function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): void {
+function registerProvider(pi: ClaudeRegistration, runClaudeAgentSdk: AgentSdkRun): void {
   pi.registerProvider("claude-sdk", {
     name: "Claude subscription via official Agent SDK",
     baseUrl: "agent-sdk://local-claude-code",
@@ -108,11 +156,9 @@ function registerProvider(pi: ExtensionAPI, runClaudeAgentSdk: AgentSdkRun): voi
 }
 
 /** Register the Claude Agent SDK provider and bash-output safety hooks. */
-export default function registerClaudeSdkProvider(pi: ExtensionAPI): void {
-  // Selector -> concrete model last observed on a real turn, for /claude-sdk-status.
+export default function registerClaudeSdkProvider(pi: ClaudeRegistration): void {
   const observedModels = new Map<string, string>();
   const runClaudeAgentSdk = createClaudeAgentSdkRunner({
-    // The environment is read here, at the composition root, and nowhere deeper.
     cacheDiagnostics: Effect.runSync(
       cacheDiagnosticsTracker(parseCacheDiagnosticsMode(process.env)),
     ),

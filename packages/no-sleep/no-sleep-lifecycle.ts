@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /** Node could not start (spawn) or stop (signal) a caffeinate child. */
 export class CaffeinateProcessError extends Error {
@@ -62,10 +62,32 @@ export type NoSleepDependencies = {
   readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
 };
 
-/** Restart attempts after caffeinate exits unexpectedly, reset by each later agent start. */
-const UNEXPECTED_EXIT_RESTARTS = 1;
+/** Lifecycle callbacks consumed by sleep prevention. */
+export type NoSleepHandlers = {
+  [K in "agent_start" | "agent_settled" | "session_shutdown"]: (
+    event: { readonly type: K },
+    ctx: Pick<ExtensionContext, "hasUI" | "isIdle"> & {
+      readonly ui: Pick<ExtensionContext["ui"], "notify">;
+    },
+  ) => void | Promise<void>;
+};
 
-function notify(ctx: ExtensionContext, message: string, level: "warning" | "error"): void {
+/** Pi capabilities consumed by sleep prevention. */
+export type NoSleepRegistration = {
+  readonly on: {
+    (name: "agent_start", handler: NoSleepHandlers["agent_start"]): unknown;
+    (name: "agent_settled", handler: NoSleepHandlers["agent_settled"]): unknown;
+    (name: "session_shutdown", handler: NoSleepHandlers["session_shutdown"]): unknown;
+  };
+};
+
+type NoSleepContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {
+  readonly ui: Pick<ExtensionContext["ui"], "notify">;
+};
+
+const UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START = 1;
+
+function notify(ctx: NoSleepContext, message: string, level: "warning" | "error"): void {
   if (ctx.hasUI) {
     ctx.ui.notify(message, level);
   }
@@ -77,7 +99,7 @@ function notify(ctx: ExtensionContext, message: string, level: "warning" | "erro
  * @param pi - Pi extension API used to subscribe to lifecycle events.
  * @param dependencies - Platform and process operations owned by this extension runtime.
  */
-export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependencies): void {
+export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDependencies): void {
   if (dependencies.platform !== "darwin") {
     return;
   }
@@ -86,7 +108,7 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
   // process, so it may overlap its successor, and `-w` bounds its lifetime whatever happens.
   let held: CaffeinateProcess | undefined;
 
-  const hold = (ctx: ExtensionContext, restartsLeft: number): void => {
+  const hold = (ctx: NoSleepContext, restartsLeft: number): void => {
     const child = dependencies.spawnCaffeinate([
       "-d",
       "-i",
@@ -96,8 +118,6 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
     ]);
     held = child;
     child.onEnd((end) => {
-      // Pi invalidates ctx only after session_shutdown, which releases the child, so ctx is
-      // live past this guard.
       if (held !== child) {
         return;
       }
@@ -115,7 +135,6 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
   };
 
   const release = (): void => {
-    // Forget before stopping, so whatever the child reports next is ignored, however soon.
     const child = held;
     held = undefined;
     child?.stop();
@@ -123,11 +142,10 @@ export function registerNoSleep(pi: ExtensionAPI, dependencies: NoSleepDependenc
 
   pi.on("agent_start", (_event, ctx) => {
     if (held === undefined) {
-      hold(ctx, UNEXPECTED_EXIT_RESTARTS);
+      hold(ctx, UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START);
     }
   });
   pi.on("agent_settled", (_event, ctx) => {
-    // Another extension may already have started the next run.
     if (ctx.isIdle()) {
       release();
     }

@@ -71,7 +71,6 @@ export const models: readonly SdkModelConfig[] = [
     maxTokens: 128_000,
   },
   {
-    // The `haiku` alias moved to Haiku 5.5, so this entry pins the full model ID.
     id: "claude-4.5-haiku",
     name: "Claude Haiku 4.5 (official Agent SDK)",
     sdkModel: "claude-haiku-4-5",

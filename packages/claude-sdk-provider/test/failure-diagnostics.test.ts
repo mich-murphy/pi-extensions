@@ -15,7 +15,6 @@ import {
   writeSdkFailureDiagnostic,
 } from "../sdk/failure-diagnostics";
 
-/** An SDK rejection carrying the structured fields the SDK attaches to its own errors. */
 function sdkRejection(message: string, fields: Readonly<Record<string, unknown>>): Error {
   return Object.assign(new Error(message), fields);
 }
@@ -143,7 +142,6 @@ describe("claude SDK failure diagnostics", () => {
       "could not start the query (cancelled)",
     ],
     [
-      // Message text alone is never trusted: without the SDK's errorClass this stays unclassified.
       new Error("Claude Code process exited with code 2"),
       "could not start the query (unexpected SDK error)",
     ],

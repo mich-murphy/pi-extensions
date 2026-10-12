@@ -17,13 +17,50 @@ import type { ToggleOverrides, ToggleResource } from "./resources";
 import { ToggleStateFile } from "./state";
 import type { ToggleStateResult, ToggleStateStore } from "./state";
 
+/** Context capabilities used by the toggle command. */
+export type ToggleCommandContext = Pick<
+  ExtensionCommandContext,
+  "mode" | "getSystemPromptOptions"
+> & {
+  readonly ui: Pick<ExtensionUIContext, "notify"> & {
+    readonly custom: (factory: Parameters<ExtensionUIContext["custom"]>[0]) => Promise<unknown>;
+  };
+};
+
+/** Event callbacks consumed by skill toggle. */
+export type ToggleHandlers = {
+  readonly resources_discover: (
+    event: unknown,
+    ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+  ) => Promise<{ skillPaths: string[] } | undefined>;
+  readonly before_agent_start: (
+    event: PromptFilterEvent,
+    ctx: { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> },
+  ) => { systemPrompt: string } | undefined;
+};
+
+/** Pi registration capabilities used by skill toggle. */
+export type ToggleRegistration = Pick<ExtensionAPI, "getCommands"> & {
+  readonly on: {
+    (name: "resources_discover", handler: ToggleHandlers["resources_discover"]): unknown;
+    (name: "before_agent_start", handler: ToggleHandlers["before_agent_start"]): unknown;
+  };
+  readonly registerCommand: (
+    name: string,
+    command: {
+      readonly description: string;
+      readonly handler: (args: string, ctx: ToggleCommandContext) => Promise<void>;
+    },
+  ) => void;
+};
+
 /** Register the skill-toggle extension with its default persistent store. */
-export default function skillToggle(pi: ExtensionAPI): void {
+export default function skillToggle(pi: ToggleRegistration): void {
   registerSkillToggle(pi, new ToggleStateFile());
 }
 
 /** Register the skill-toggle command and event handlers with an injected store. */
-export function registerSkillToggle(pi: ExtensionAPI, store: ToggleStateStore): void {
+export function registerSkillToggle(pi: ToggleRegistration, store: ToggleStateStore): void {
   const extension = new SkillToggle(store, pi);
   pi.registerCommand("skill-toggle", {
     description: "Enable or disable user-managed instructions and skills",
@@ -40,7 +77,6 @@ const STATE_FAILURE_CONSEQUENCE = {
   update: "The toggle was not saved.",
 } as const;
 
-/** Report a failure once until it changes or clears, so it does not repeat on every prompt. */
 function createFailureReporter(): (ctx: UiContext, failure: string | undefined) => void {
   let lastFailure: string | undefined;
   return (ctx, failure) => {
@@ -51,7 +87,6 @@ function createFailureReporter(): (ctx: UiContext, failure: string | undefined) 
   };
 }
 
-/** Session state shared by the command and event handlers. */
 class SkillToggle {
   private contributedSkills: ReadonlySet<ResourcePath> = new Set();
   private readonly reportStateFailure = createFailureReporter();
@@ -120,7 +155,7 @@ class SkillToggle {
       : { systemPrompt: result.systemPrompt };
   }
 
-  async openMenu(args: string, ctx: ExtensionCommandContext): Promise<void> {
+  async openMenu(args: string, ctx: ToggleCommandContext): Promise<void> {
     if (args.trim()) {
       ctx.ui.notify("Usage: /skill-toggle", "error");
       return;
@@ -206,7 +241,6 @@ class SkillToggle {
     });
   }
 
-  /** Unwrap a state result, surfacing a failure and its consequence to the user once. */
   private overridesFrom(
     operation: keyof typeof STATE_FAILURE_CONSEQUENCE,
     result: ToggleStateResult,

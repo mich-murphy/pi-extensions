@@ -13,7 +13,6 @@ import {
 const decodePackage = Schema.decodeUnknownSync(
   Schema.Struct({ dependencies: Schema.Struct({ [AGENT_SDK_PACKAGE]: Schema.String }) }),
 );
-// Only each locked package's version is read, so its other keys may be stripped.
 const decodeLock = Schema.decodeUnknownSync(
   Schema.Struct({
     packages: Schema.Record(

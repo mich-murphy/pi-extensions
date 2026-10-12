@@ -219,6 +219,108 @@ describe("PublicWebTransport", () => {
     );
   });
 
+  test.each(["future-coding, gzip", "gzip, future-coding", "gzip, identity, future-coding, br"])(
+    "leaves the entire unsupported stack %s and its length untouched",
+    async (encoding) => {
+      const opaque = gzipSync("opaque stacked bytes");
+      await withLocalServer(
+        (_request, response) => {
+          response.writeHead(200, {
+            "content-encoding": encoding,
+            "content-length": opaque.byteLength,
+          });
+          response.end(opaque);
+        },
+        async (port) => {
+          const response = await transportService().get(
+            new URL(`http://unknown-stack.invalid:${port}/`),
+            [{ address: "127.0.0.1", family: 4 }],
+            { headers: {}, signal: new AbortController().signal },
+          );
+          expect(response.headers.get("content-encoding")).toBe(encoding);
+          expect(response.headers.get("content-length")).toBe(String(opaque.byteLength));
+          expect(new Uint8Array(await response.arrayBuffer())).toStrictEqual(
+            new Uint8Array(opaque),
+          );
+        },
+      );
+    },
+  );
+
+  test("propagates an interrupted Node response body as a read failure", async () => {
+    await withLocalServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-length": "1000" });
+        response.write("partial bytes");
+        setImmediate(() => response.destroy());
+      },
+      async (port) => {
+        const response = await transportService().get(
+          new URL(`http://interrupted.invalid:${port}/`),
+          [{ address: "127.0.0.1", family: 4 }],
+          { headers: {}, signal: new AbortController().signal },
+        );
+        await expect(response.text()).rejects.toThrow("aborted");
+      },
+    );
+  });
+
+  test("body cancellation closes an uncompressed Node response that never ends", async () => {
+    const connectionClosed = undefinedDeferred();
+    await withLocalServer(
+      (request, response) => {
+        request.socket.once("close", connectionClosed.resolve);
+        response.writeHead(200);
+        response.write("ongoing bytes");
+      },
+      async (port) => {
+        const response = await transportService().get(
+          new URL(`http://cancel-body.invalid:${port}/`),
+          [{ address: "127.0.0.1", family: 4 }],
+          { headers: {}, signal: new AbortController().signal },
+        );
+        assert(response.body !== null);
+        const reader = response.body.getReader();
+        const first = await reader.read();
+        expect(first.done).toBe(false);
+        expect(first.value).toBeInstanceOf(Uint8Array);
+        await reader.cancel();
+        reader.releaseLock();
+        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+      },
+    );
+  });
+
+  test("cancelling a pending body read releases its reader and socket", async () => {
+    const connectionClosed = undefinedDeferred();
+    await withLocalServer(
+      (request, response) => {
+        request.socket.once("close", connectionClosed.resolve);
+        response.writeHead(200);
+        response.flushHeaders();
+      },
+      async (port) => {
+        const response = await transportService().get(
+          new URL(`http://pending-read.invalid:${port}/`),
+          [{ address: "127.0.0.1", family: 4 }],
+          { headers: {}, signal: new AbortController().signal },
+        );
+        assert(response.body !== null);
+        const reader = response.body.getReader();
+        const pendingRead = reader.read();
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+
+        await reader.cancel();
+        await expect(pendingRead).resolves.toMatchObject({ done: true });
+        reader.releaseLock();
+        expect(response.body.locked).toBe(false);
+        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+      },
+    );
+  });
+
   test("surfaces malformed compressed response errors", async () => {
     await withLocalServer(
       (_request, response) => {

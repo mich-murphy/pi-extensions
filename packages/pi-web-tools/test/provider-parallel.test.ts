@@ -100,7 +100,6 @@ describe("parseParallelMcpPayload", () => {
     expect(parseParallelMcpPayload({ text: ["not json"] })).toStrictEqual(
       Result.fail("Invalid structured search results"),
     );
-    // A present structuredContent wins over text, even when it is not a results payload.
     expect(
       parseParallelMcpPayload({ text: [JSON.stringify(RESULTS_PAYLOAD)], structuredContent: null }),
     ).toStrictEqual(Result.fail("Missing results array"));
@@ -250,7 +249,6 @@ describe("parallelMcpFetchProvider", () => {
 
   it.effect("reads the first result from structured content or JSON text, else the raw text", () =>
     Effect.gen(function* () {
-      // Blank content falls back to the excerpts.
       expect(
         yield* fetchWith({
           text: [],
@@ -262,7 +260,6 @@ describe("parallelMcpFetchProvider", () => {
           text: [JSON.stringify({ results: [{ content: " # From JSON text " }] })],
         }),
       ).toBe("# From JSON text");
-      // Only the first result counts; a malformed first result leaves the raw text.
       expect(
         yield* fetchWith({
           text: ["fallback text"],

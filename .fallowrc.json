@@ -1,11 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  // includeEntryExports, failOnParseError and dupes --fail-on-issues need this release or later
   "minimumVersion": "3.32.0",
-  // Only the settings that differ from Fallow's defaults. Entry points need no list: Fallow finds
-  // each package's index.ts, the Vitest tests and the live configs on its own.
   "rules": {
-    // Dependency hygiene and suppression discipline gate CI, matching Oxlint's denyWarnings
     "unused-dev-dependencies": "error",
     "unused-optional-dependencies": "error",
     "type-only-dependencies": "error",
@@ -14,14 +10,11 @@
     "re-export-cycle": "error",
     "stale-suppressions": "error",
     "require-suppression-reason": "error",
-    // An exported signature must not depend on a type its module keeps private
     "private-type-leaks": "error"
   },
   // A stray export from a package entry is dead too: Pi reads only the default export
   "includeEntryExports": true,
-  // A file Fallow cannot parse would silently drop out of every check
   "failOnParseError": true,
-  // Tagged errors carry a `_tag` discriminant that callers read structurally, never by name
   "usedClassMembers": [{ "extends": "Error", "members": ["_tag"] }],
   "typeAware": {
     "enabled": true,
@@ -32,8 +25,6 @@
     "coverage": "coverage/coverage-final.json"
   },
   "duplicates": {
-    // Fallow's default clone size (50 tokens, 5 lines) with exact-token matching. Three
-    // occurrences skips pair-only noise, as `fallow init` seeds it.
     "mode": "strict",
     "minOccurrences": 3
   }

@@ -2,8 +2,6 @@ import { parseHTML } from "linkedom";
 import { describe, expect, test } from "vitest";
 import { compileSelector, compileSelectorSet } from "../element-selector";
 
-// Elements exercising tag, id, class-token, attribute-presence, and attribute-value matching,
-// including whitespace-separated and repeated class tokens and case variations.
 const DOCUMENT = `<html><body>
   <article class="markdown-body">a</article>
   <article class="x markdown-body" id="readme">b</article>
@@ -55,7 +53,6 @@ const elements = () => [...parseHTML(DOCUMENT).document.querySelectorAll("*")];
 describe("compileSelector", () => {
   test.each(SELECTORS)("matches %s exactly as linkedom does", (selector) => {
     const matches = compileSelector(selector);
-    // Each verdict is paired with its element's markup, so a mismatch names the element.
     expect(elements().map((element) => [element.outerHTML, matches(element)])).toStrictEqual(
       elements().map((element) => [element.outerHTML, element.matches(selector)]),
     );
@@ -79,7 +76,6 @@ describe("compileSelectorSet", () => {
       });
       return [element.outerHTML, reported.toSorted((a, b) => a - b)];
     };
-    // Each list of indexes is paired with its element's markup, so a mismatch names the element.
     expect(elements().map((element) => reportedFor(element))).toStrictEqual(
       elements().map((element) => [
         element.outerHTML,

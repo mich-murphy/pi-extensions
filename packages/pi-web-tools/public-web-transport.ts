@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import type { LookupFunction } from "node:net";
 import { pipeline, Readable } from "node:stream";
 import type { Transform } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { Context, Layer } from "effect";
 
@@ -175,40 +176,71 @@ function responseHeaders(incoming: IncomingMessage): Headers {
   return headers;
 }
 
-function decoderFor(encoding: string): Transform | "identity" | undefined {
-  if (encoding === "gzip" || encoding === "x-gzip") {
+type CompressionCoding = "gzip" | "deflate" | "br";
+type ContentDecodingPlan =
+  | { readonly kind: "untouched" }
+  | {
+      readonly kind: "decode";
+      readonly codings: readonly [CompressionCoding, ...CompressionCoding[]];
+    };
+
+function contentDecodingPlan(contentEncoding: string | null): ContentDecodingPlan {
+  const encodings =
+    contentEncoding
+      ?.split(",")
+      .map((encoding) => encoding.trim().toLowerCase())
+      .filter(Boolean) ?? [];
+  const codings: CompressionCoding[] = [];
+  for (const encoding of encodings) {
+    switch (encoding) {
+      case "gzip":
+      case "x-gzip": {
+        codings.push("gzip");
+        break;
+      }
+      case "deflate":
+      case "br": {
+        codings.push(encoding);
+        break;
+      }
+      case "identity": {
+        break;
+      }
+      default: {
+        return { kind: "untouched" };
+      }
+    }
+  }
+  const [firstCoding, ...remainingCodings] = codings;
+  return firstCoding === undefined
+    ? { kind: "untouched" }
+    : { kind: "decode", codings: [firstCoding, ...remainingCodings] };
+}
+
+function decoderFor(encoding: CompressionCoding): Transform {
+  if (encoding === "gzip") {
     return createGunzip();
   }
   if (encoding === "deflate") {
     return createInflate();
   }
-  if (encoding === "br") {
-    return createBrotliDecompress();
-  }
-  return encoding === "identity" ? "identity" : undefined;
+  return createBrotliDecompress();
 }
 
 function decodedResponseBody(
   incoming: IncomingMessage,
   contentEncoding: string | null,
 ): Readable | undefined {
-  const encodings =
-    contentEncoding
-      ?.split(",")
-      .map((encoding) => encoding.trim().toLowerCase())
-      .filter(Boolean) ?? [];
-  const selected = encodings.map((encoding) => decoderFor(encoding));
-  // Preserve an unknown encoding and its header verbatim instead of partially decoding a stack.
-  if (selected.length === 0 || selected.some((decoder) => decoder === undefined)) {
+  const plan = contentDecodingPlan(contentEncoding);
+  if (plan.kind === "untouched") {
     return undefined;
   }
-  const decoders = selected
-    .toReversed()
-    .filter((decoder): decoder is Transform => decoder !== "identity");
-  const output = decoders.at(-1);
-  if (output === undefined) {
-    return undefined;
-  }
+  const [firstAppliedCoding, ...laterAppliedCodings] = plan.codings;
+  const output = decoderFor(firstAppliedCoding);
+  const decoders = [
+    ...laterAppliedCodings.toReversed().map((coding) => decoderFor(coding)),
+    output,
+  ];
   // Content codings are applied in header order and decoded in reverse. A single pipeline carries
   // cancellation and decode failures through every transform and back to the owned socket.
   pipeline([incoming, ...decoders], () => undefined);
@@ -217,19 +249,53 @@ function decodedResponseBody(
 
 const WEB_STREAM_HIGH_WATER_MARK_BYTES = 64 * 1024;
 
-// IncomingMessage and every zlib decoder used here are binary, non-object-mode streams, so Node's
-// toWeb adapter always supplies Uint8Array chunks to this strategy callback.
-const chunkByteLength = (chunk: Uint8Array): number => chunk.byteLength;
+function parseByteChunk(chunk: unknown): Uint8Array {
+  if (chunk instanceof Uint8Array) {
+    return chunk;
+  }
+  throw new TypeError("HTTP response stream supplied a non-byte chunk");
+}
 
 function webReadable(stream: Readable): ReadableStream<Uint8Array> {
-  const converted = Readable.toWeb(stream, {
+  const converted: NodeReadableStream<unknown> = Readable.toWeb(stream, {
     strategy: {
       highWaterMark: WEB_STREAM_HIGH_WATER_MARK_BYTES,
-      size: chunkByteLength,
+      // IncomingMessage and every zlib decoder used here are binary, non-object-mode streams, so Node's
+      // toWeb adapter always supplies Uint8Array chunks to this strategy callback.
+      size: (chunk: Uint8Array) => chunk.byteLength,
     },
   });
-  // SAFETY: The binary stream invariant above also makes Node's stream/web value compatible with
-  // Fetch's global ReadableStream; their declarations differ only in ArrayBuffer generic details.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- justified by the binary stream invariant above.
-  return converted as unknown as ReadableStream<Uint8Array>;
+  const reader = converted.getReader();
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          const chunk = await reader.read();
+          if (chunk.done) {
+            reader.releaseLock();
+            controller.close();
+          } else {
+            controller.enqueue(parseByteChunk(chunk.value));
+          }
+        } catch (cause) {
+          try {
+            await reader.cancel(cause);
+          } catch {
+            // A failed Node stream may already have rejected cancellation with the same error.
+          } finally {
+            reader.releaseLock();
+          }
+          controller.error(cause);
+        }
+      },
+      async cancel(reason: unknown) {
+        try {
+          await reader.cancel(reason);
+        } finally {
+          reader.releaseLock();
+        }
+      },
+    },
+    { highWaterMark: 0 },
+  );
 }

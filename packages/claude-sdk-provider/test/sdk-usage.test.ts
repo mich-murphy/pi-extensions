@@ -11,7 +11,6 @@ const withStart = (start: StartClaudeUsageQuery, timeout?: number) =>
 const failureOf = (start: StartClaudeUsageQuery, timeout?: number) =>
   Effect.flip(withStart(start, timeout));
 
-/** Run `effect` in the background, advance virtual time by each step, then join it. */
 const afterAdvancing = Effect.fnUntraced(function* <A, E>(
   effect: Effect.Effect<A, E>,
   steps: readonly Duration.Input[],

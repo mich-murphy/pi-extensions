@@ -39,19 +39,15 @@ export function caffeinateSpawner(
             listener(end);
           });
         },
-        stop: () => {
-          // Nothing was spawned, so there is nothing to stop.
-        },
+        stop: () => undefined,
       };
     }
-    // The child must never keep Pi's event loop alive.
     child.unref();
 
     return {
       onEnd: (listener) => {
         // Permanent, not once(): an "error" event without a listener would crash Pi.
         child.on("error", (cause) => {
-          // A child without a PID never started; otherwise signalling it failed.
           listener(failed(child.pid === undefined ? "start" : "stop", cause));
         });
         child.once("exit", (code, signal) => {

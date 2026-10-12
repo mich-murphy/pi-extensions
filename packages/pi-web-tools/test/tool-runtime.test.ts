@@ -4,7 +4,6 @@ import { createToolRuntime } from "../tool-runtime";
 
 class Counter extends Context.Service<Counter, { readonly build: number }>()("test/Counter") {}
 
-/** A layer that records how many times it has been built. */
 function countingLayer() {
   const state = { builds: 0 };
   const layer = Layer.effect(

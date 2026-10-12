@@ -1,9 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // Clippy's model, which Oxlint's categories copy: the bug-finding categories are on, and
-  // pedantic, style and restriction rules are opted into one at a time, never as whole
-  // categories. The opt-ins follow typescript-eslint's strict-type-checked and
-  // stylistic-type-checked presets plus the typescript skill, grouped by what each group buys.
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise"],
   "categories": {
     "correctness": "error",
@@ -21,7 +17,6 @@
     // the flagged maps copy a handful of small objects
     "oxc/no-map-spread": "off",
 
-    // Type safety: typescript-eslint recommended-type-checked and strict-type-checked
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/no-unsafe-argument": "error",
@@ -49,14 +44,9 @@
     "typescript/related-getter-setter-pairs": "error",
     "typescript/use-unknown-in-catch-callback-variable": "error",
     "typescript/prefer-literal-enum-member": "error",
-    // Exhaustive unions are how the typescript skill models state
     "typescript/switch-exhaustiveness-check": "error",
-    // Nullable strings and numbers must be compared explicitly, so "" and 0 are never "missing"
     "typescript/strict-boolean-expressions": "error",
-    // A promise-returning function must reject rather than throw synchronously. This makes
-    // some functions async without an await, so require-await stays off.
     "typescript/promise-function-async": "error",
-    // Property-style signatures are checked contravariantly under strictFunctionTypes
     "typescript/method-signature-style": "error",
     "eslint/eqeqeq": "error",
     "eslint/no-throw-literal": "error",
@@ -72,7 +62,6 @@
     "eslint/default-param-last": "error",
     "eslint/no-shadow": "error",
     "eslint/no-param-reassign": "error",
-    // Unicode-aware regexes match by code point, not UTF-16 unit
     "eslint/require-unicode-regexp": "error",
     "unicorn/no-array-callback-reference": "error",
     "unicorn/no-instanceof-array": "error",
@@ -92,7 +81,6 @@
     "promise/no-return-wrap": "error",
     "promise/param-names": "error",
 
-    // Readability: one idiom per construct, and no shapes that hide control flow
     "typescript/consistent-type-definitions": ["error", "type"],
     "typescript/consistent-type-assertions": "error",
     "typescript/consistent-indexed-object-style": "error",
@@ -109,9 +97,7 @@
     "typescript/unified-signatures": "error",
     "typescript/class-literal-property-style": "error",
     "typescript/ban-tslint-comment": "error",
-    // Tagged errors use readonly parameter properties, as the typescript skill shows
     "typescript/parameter-properties": ["error", { "allow": ["readonly", "private readonly"] }],
-    // `_tag` is the skill's discriminant and `const _exhaustive: never` its exhaustiveness check
     "eslint/no-underscore-dangle": ["error", { "allow": ["_tag", "_exhaustive"] }],
     "eslint/func-style": ["error", "declaration", { "allowArrowFunctions": true }],
     "eslint/curly": "error",
@@ -160,7 +146,6 @@
     "unicorn/numeric-separators-style": "error",
     "unicorn/switch-case-braces": "error",
 
-    // Data structures and efficient built-ins
     "typescript/prefer-find": "error",
     "typescript/prefer-includes": "error",
     "typescript/prefer-string-starts-ends-with": "error",
@@ -193,7 +178,6 @@
     "unicorn/no-useless-collection-argument": "error",
     "eslint/no-useless-call": "error",
 
-    // Modules: named exports, explicit node: built-ins, type-only imports, no barrels or cycles
     "import/no-default-export": "error",
     "import/no-duplicates": "error",
     "import/first": "error",
@@ -245,11 +229,8 @@
       "files": ["packages/*/test/**"],
       "plugins": ["vitest"],
       "rules": {
-        // Test doubles implement only the slice of a framework type the code under test reads
-        "typescript/no-unsafe-type-assertion": "off",
         // Tests sequence awaits to pin down ordering; their speed is not the product
         "eslint/no-await-in-loop": "off",
-        // The typescript skill bans module mocks: inject a fake through a real seam instead
         "vitest/no-restricted-vi-methods": [
           "error",
           {
@@ -278,12 +259,15 @@
         "vitest/no-duplicate-hooks": "error",
         "vitest/no-alias-methods": "error",
         "vitest/no-test-return-statement": "error",
-        // Helpers named expect* or assert* wrap expect
         "vitest/expect-expect": [
           "error",
           { "assertFunctionNames": ["expect", "expect*", "assert", "assert*"] }
         ]
       }
+    },
+    {
+      "files": ["packages/pi-web-tools/collapsed-text.ts"],
+      "rules": { "unicorn/prefer-code-point": "off" }
     }
   ]
 }

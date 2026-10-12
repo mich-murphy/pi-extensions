@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer, Result, Schema } from "effect";
+import type { Redacted } from "effect";
 import { McpClients } from "./mcp";
 import type { McpClient } from "./mcp";
 import { BraveApiSearchProvider } from "./provider-brave";
@@ -29,57 +30,69 @@ import type {
   SearchQuery,
 } from "./types";
 
-/** Dependencies provider construction draws from. */
 type ProviderComposition = {
   readonly settings: WebToolsSettings;
   readonly http: ProviderHttpClient["Service"];
   readonly sessionId: string;
-  /** The shared MCP client for an endpoint (see McpClients.forEndpoint). */
   readonly mcpFor: (endpoint: PublicHttpUrl) => McpClient;
 };
 
-/** The search provider for one configured name, plus its fetch-rescue provider when it has one. */
 type ProviderPair = {
   readonly search: SearchProvider;
   readonly fetch?: FetchProvider;
 };
 
-/**
- * How each configured provider name is built. Keyed providers use official
- * REST APIs; unkeyed Exa/Parallel use the official hosted MCP endpoints; an
- * endpoint override forces MCP to the override and never receives API keys.
- * A pair shares one MCP client between search and fetch, which is safe because
- * every MCP client opens a fresh session per tool call.
- */
+type ProviderRoute =
+  | { readonly _tag: "OfficialApi"; readonly apiKey: Redacted.Redacted }
+  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl };
+
+function selectProviderRoute(
+  apiKey: Redacted.Redacted | undefined,
+  override: PublicHttpUrl | undefined,
+  defaultEndpoint: PublicHttpUrl,
+): ProviderRoute {
+  return override === undefined && apiKey !== undefined
+    ? { _tag: "OfficialApi", apiKey }
+    : { _tag: "KeylessMcp", endpoint: override ?? defaultEndpoint };
+}
+
 const PROVIDER_BUILDERS: Record<
   SearchProviderName,
   (composition: ProviderComposition) => ProviderPair | undefined
 > = {
   exa: ({ settings, http, mcpFor }) => {
-    const apiKey = settings.credentials.exaApiKey;
-    if (settings.endpoints.exa === undefined && apiKey !== undefined) {
+    const route = selectProviderRoute(
+      settings.credentials.exaApiKey,
+      settings.endpoints.exa,
+      EXA_MCP_DEFAULT_ENDPOINT,
+    );
+    if (route._tag === "OfficialApi") {
       return {
-        search: new ExaApiSearchProvider(apiKey, http),
-        fetch: new ExaApiFetchProvider(apiKey, http),
+        search: new ExaApiSearchProvider(route.apiKey, http),
+        fetch: new ExaApiFetchProvider(route.apiKey, http),
       };
     }
-    const mcp = mcpFor(settings.endpoints.exa ?? EXA_MCP_DEFAULT_ENDPOINT);
+    const mcp = mcpFor(route.endpoint);
     return { search: new ExaMcpSearchProvider(mcp), fetch: new ExaMcpFetchProvider(mcp) };
   },
   parallel: ({ settings, http, sessionId, mcpFor }) => {
-    const apiKey = settings.credentials.parallelApiKey;
-    const mcp = mcpFor(settings.endpoints.parallel ?? PARALLEL_MCP_DEFAULT_ENDPOINT);
+    const route = selectProviderRoute(
+      settings.credentials.parallelApiKey,
+      settings.endpoints.parallel,
+      PARALLEL_MCP_DEFAULT_ENDPOINT,
+    );
+    const mcp = mcpFor(
+      route._tag === "KeylessMcp" ? route.endpoint : PARALLEL_MCP_DEFAULT_ENDPOINT,
+    );
     return {
       search:
-        settings.endpoints.parallel === undefined && apiKey !== undefined
-          ? new ParallelApiSearchProvider(apiKey, http)
+        route._tag === "OfficialApi"
+          ? new ParallelApiSearchProvider(route.apiKey, http)
           : new ParallelMcpSearchProvider(mcp, sessionId),
-      // Parallel has no REST fetch provider, so the rescue path always uses MCP.
       fetch: new ParallelMcpFetchProvider(mcp, sessionId),
     };
   },
   brave: ({ settings, http }) => {
-    // parseSettings guarantees the key when brave is in the provider list. Brave has no page fetch.
     const apiKey = settings.credentials.braveApiKey;
     return apiKey === undefined ? undefined : { search: new BraveApiSearchProvider(apiKey, http) };
   },

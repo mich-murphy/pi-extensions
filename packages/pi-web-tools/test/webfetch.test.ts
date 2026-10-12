@@ -109,7 +109,6 @@ async function fetchShort(contentType: string) {
   );
 }
 
-/** A public web client whose request never settles until it is interrupted. */
 const hangingWeb: PublicWebClient["Service"] = { get: () => Effect.never };
 
 describe("parseWebFetchParams", () => {
@@ -294,7 +293,6 @@ describe("webfetch tool", () => {
     const result = await tool.execute("t1", { url: "https://blocked.example" });
     expect(textOf(result)).toContain("Direct fetch was blocked");
     expect(textOf(result)).toContain("Rescued content");
-    // A rescue records no HTTP facts it did not observe.
     expect(result.details).toStrictEqual({
       requestedUrl: "https://blocked.example/",
       format: "markdown",
@@ -500,7 +498,6 @@ describe("webfetch error messages", () => {
   });
 });
 
-/** A webfetch tool whose direct fetch never settles. */
 function hangingTool(providers: readonly FetchProvider[] = []) {
   return createWebFetchTool({
     settings: DEFAULT_SETTINGS,

@@ -67,23 +67,17 @@ export class InvalidFetchUrlInput extends Schema.TaggedError<InvalidFetchUrlInpu
 /** Expected failures parsing webfetch tool input. */
 export type WebFetchInputError = InvalidFetchUrlInput;
 
-/** The whole fetch, rescue included, ran past the tool's deadline. */
 class WebFetchTimedOut extends Schema.TaggedError<WebFetchTimedOut>()("WebFetchTimedOut", {
-  /** The tool's deadline in whole seconds. */
   timeoutSeconds: Schema.Number,
 }) {
-  /** Safe user-facing description naming the deadline. */
   override get message(): string {
     return `Web fetch timed out after ${this.timeoutSeconds}s`;
   }
 }
 
-/** Every expected failure of one webfetch run, after input parsing and domain policy. */
 type WebFetchRunError = FetchPageError | ToolOutputStoreError | WebFetchTimedOut;
 
-/** Statuses that indicate an anti-bot wall worth retrying through a provider's fetch infrastructure. */
 const RESCUE_STATUSES = new Set([401, 403, 429]);
-/** Below this many characters of converted text an HTML page counts as unusable (JS-only shell). */
 const MIN_USABLE_TEXT_LENGTH = 160;
 
 /**
@@ -257,7 +251,6 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
   };
 }
 
-/** The summary after "✓ Fetched": mime, size, provider and flags. */
 function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme): string {
   if (details === undefined) {
     return "";
@@ -281,8 +274,6 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   return text;
 }
 
-// One fetch under the tool deadline: fetch directly, rescue through a provider when eligible, then
-// project the page for Pi.
 const runWebFetch = Effect.fnUntraced(
   function* (input: WebFetchParams) {
     const { url, format } = input;
@@ -322,7 +313,6 @@ const runWebFetch = Effect.fnUntraced(
     }),
 );
 
-// Rescue providers are tried in order; a provider that fails just yields nothing.
 const tryProviderRescue = Effect.fnUntraced(function* (
   url: PublicHttpUrl,
   providers: readonly FetchProvider[],
@@ -336,7 +326,6 @@ const tryProviderRescue = Effect.fnUntraced(function* (
   return undefined;
 });
 
-// Only the store failure needs context (the tool name); every other failure's message stands alone.
 function renderWebFetchFailure(error: WebFetchRunError): string {
   return error._tag === "OutputStoreError"
     ? `Could not save full webfetch output to ${error.path}: ${error.reason}`

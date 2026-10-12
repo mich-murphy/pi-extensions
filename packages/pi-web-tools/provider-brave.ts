@@ -22,7 +22,6 @@ const BraveResult = Schema.Struct({
   url: publicHttpUrlSchema,
   title: optionalTextSchema,
   description: optionalTextSchema,
-  // Dates pass through untrimmed; a string page_age wins over age even when empty.
   page_age: orFallback(Schema.UndefinedOr(Schema.String), undefined),
   age: orFallback(Schema.UndefinedOr(Schema.String), undefined),
 });

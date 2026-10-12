@@ -12,13 +12,11 @@ const PI_CALL_INPUT_SCHEMA = {
     .describe(
       'Exact Pi tool name from the available-tools catalog; never "pi_call" itself, which is this gateway\'s own name',
     ),
-  // Tool input arrives as JSON, and Pi's tool-call content block requires JSON values.
   arguments: z
     .record(z.string(), z.json())
     .describe("Arguments matching that Pi tool's input schema"),
 };
 
-// The hook sees raw model output, so each field is parsed leniently to explain what was wrong.
 const requestedCallSchema = z
   .object({
     name: z.string().catch(""),
@@ -30,7 +28,6 @@ function parseDeferredCall(
   availableTools: ReadonlySet<string>,
   input: unknown,
 ): Omit<DeferredCall, "id"> | InvalidDeferredCallError {
-  // Every level has a fallback, so this parse cannot fail.
   const requested = requestedCallSchema.parse(input);
   if (availableTools.has(requested.name) && requested.arguments) {
     return { name: requested.name, arguments: requested.arguments };
