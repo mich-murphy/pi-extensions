@@ -16,6 +16,23 @@ function supplementalSkillDirectories(cwd: string): readonly string[] {
   ]);
 }
 
+type NativeSkillReservations = {
+  readonly collisionWinnerNames: ReadonlySet<string>;
+  readonly excludedSkillNames: ReadonlySet<string>;
+};
+
+function skillNamesAtPaths(
+  cwd: string,
+  agentDir: string,
+  skillPaths: string[],
+): ReadonlySet<string> {
+  return new Set(
+    loadSkills({ cwd, agentDir, skillPaths, includeDefaults: false }).skills.map(
+      (skill) => skill.name,
+    ),
+  );
+}
+
 /**
  * Load Pi's actual native winners without installing a missing package.
  *
@@ -25,28 +42,23 @@ function supplementalSkillDirectories(cwd: string): readonly string[] {
 async function reservedNativeSkillNames(
   cwd: string,
   agentDir: string,
-): Promise<ReadonlySet<string>> {
+): Promise<NativeSkillReservations> {
   const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
   await settingsManager.reload();
   const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
   const resolved = await packageManager.resolve(async () => "skip");
-  const names = new Set<string>();
-  // Enabled paths reserve Pi's actual collision winners. Disabled paths reserve explicitly excluded
-  // names so a copy from another harness cannot silently reintroduce the excluded skill.
-  for (const enabled of [true, false]) {
-    const loaded = loadSkills({
+  return {
+    collisionWinnerNames: skillNamesAtPaths(
       cwd,
       agentDir,
-      skillPaths: resolved.skills
-        .filter((resource) => resource.enabled === enabled)
-        .map((resource) => resource.path),
-      includeDefaults: false,
-    });
-    for (const skill of loaded.skills) {
-      names.add(skill.name);
-    }
-  }
-  return names;
+      resolved.skills.filter((resource) => resource.enabled).map((resource) => resource.path),
+    ),
+    excludedSkillNames: skillNamesAtPaths(
+      cwd,
+      agentDir,
+      resolved.skills.filter((resource) => !resource.enabled).map((resource) => resource.path),
+    ),
+  };
 }
 
 /**
@@ -72,8 +84,10 @@ export async function discoverProjectSkillPaths(
     skillPaths: roots,
     includeDefaults: false,
   });
+  const reservations = await reservedNativeSkillNames(cwd, agentDir);
   const nativeNames = new Set([
-    ...(await reservedNativeSkillNames(cwd, agentDir)),
+    ...reservations.collisionWinnerNames,
+    ...reservations.excludedSkillNames,
     ...loadedNativeNames,
   ]);
   const invalidPaths = new Set(

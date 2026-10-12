@@ -163,6 +163,36 @@ describe("discoverProjectSkillPaths", () => {
     await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([supplemental]);
   });
 
+  test("reserves native and excluded names independently when their roots collide", async () => {
+    const { root, cwd, agentDir } = project();
+    const winner = writeSkill(join(cwd, ".pi", "skills"), "winner", "shared");
+    const excluded = writeSkill(join(root, ".agents", "skills"), "excluded", "shared");
+    const excludedOnly = writeSkill(join(root, ".agents", "skills"), "hidden", "hidden");
+    writeFileSync(
+      join(cwd, ".pi", "settings.json"),
+      JSON.stringify({ skills: [`-${excluded}`, `-${excludedOnly}`] }),
+    );
+    writeSkill(join(root, ".claude", "skills"), "shared", "shared");
+    writeSkill(join(root, ".claude", "skills"), "hidden", "hidden");
+    const extra = writeSkill(join(root, ".codex", "skills"), "extra", "extra");
+
+    await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([extra]);
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+      noExtensions: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await loader.reload();
+    expect(loader.getSkills().skills.find((skill) => skill.name === "shared")?.filePath).toBe(
+      winner,
+    );
+    expect(loader.getSkills().skills.some((skill) => skill.name === "hidden")).toBe(false);
+  });
+
   test("the extension binding reserves a real loader's additional skill winner", async () => {
     const { root, cwd, agentDir } = project();
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
@@ -190,7 +220,6 @@ describe("discoverProjectSkillPaths", () => {
       on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
         handlers[name] = handler;
       },
-      // This is the public getCommands contract bound by AgentSession in Pi 0.85 and 1.1.
       getCommands: (): SlashCommandInfo[] =>
         loader.getSkills().skills.map((skill) => ({
           name: `skill:${skill.name}`,

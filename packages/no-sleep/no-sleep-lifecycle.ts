@@ -85,7 +85,7 @@ type NoSleepContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {
   readonly ui: Pick<ExtensionContext["ui"], "notify">;
 };
 
-const UNEXPECTED_EXIT_RESTARTS = 1;
+const UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START = 1;
 
 function notify(ctx: NoSleepContext, message: string, level: "warning" | "error"): void {
   if (ctx.hasUI) {
@@ -142,7 +142,7 @@ export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDe
 
   pi.on("agent_start", (_event, ctx) => {
     if (held === undefined) {
-      hold(ctx, UNEXPECTED_EXIT_RESTARTS);
+      hold(ctx, UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START);
     }
   });
   pi.on("agent_settled", (_event, ctx) => {

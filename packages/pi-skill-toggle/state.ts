@@ -210,7 +210,6 @@ function fileSystem<A>(
   }
 }
 
-/** Keep inaccessible entries; cleanup is allowed to remove only paths the OS says are absent. */
 function resourceExistsOrIsUnverifiable(path: ResourcePath): boolean {
   try {
     return statSync(path, { throwIfNoEntry: false }) !== undefined;

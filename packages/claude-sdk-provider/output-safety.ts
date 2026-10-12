@@ -6,9 +6,7 @@ export type SuspiciousOutputKind = "binary" | "base64";
 
 const MIN_SUSPICIOUS_CHARACTERS = 4096;
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/u;
-// Stay within one simple shell command. Crossing `;`, a newline, or another control operator would
-// connect an innocent `cat` to an unrelated executable lookup later in the script.
-const DISCOVERED_EXECUTABLE_CAT =
+const SIMPLE_COMMAND_DISCOVERED_EXECUTABLE_CAT =
   /\bcat\b[^\n;&|]*(?:\$\(\s*(?:which|command\s+-v)\b[^)]*\)|`\s*(?:which|command\s+-v)\b[^`]*`)/iu;
 
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
@@ -93,7 +91,7 @@ export function sanitizeBashContent(
  * @returns A blocking explanation when the unsafe pattern is present.
  */
 export function inspectBashCommand(command: string): string | undefined {
-  if (!DISCOVERED_EXECUTABLE_CAT.test(command)) {
+  if (!SIMPLE_COMMAND_DISCOVERED_EXECUTABLE_CAT.test(command)) {
     return undefined;
   }
   return 'Refusing to pipe a discovered executable through cat. Inspect it with file "$(which COMMAND)", otool, or strings "$(which COMMAND)" | head instead.';
