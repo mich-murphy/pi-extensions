@@ -7,8 +7,6 @@ on:
         required: false
         default: false
         type: boolean
-  # Offset from the home-infra run so the two self-hosted bots do not spend the
-  # same token's API budget at the same time.
   schedule:
     - cron: "30 5,7 * * *"
 permissions:

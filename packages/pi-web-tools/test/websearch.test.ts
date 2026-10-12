@@ -131,7 +131,6 @@ describe("websearch tool", () => {
   });
 });
 
-/** A websearch tool over a single provider. */
 function toolWith(provider: SearchProvider) {
   return createWebSearchTool({
     settings: DEFAULT_SETTINGS,
@@ -144,7 +143,6 @@ function toolWith(provider: SearchProvider) {
 
 describe("websearch deadline and cancellation", () => {
   test("a provider deadline reports the timeout, not a cancellation", async () => {
-    // The provider applies its own deadline, as the real HTTP and MCP clients do.
     const slow: SearchProvider = {
       name: "exa",
       transport: "api",

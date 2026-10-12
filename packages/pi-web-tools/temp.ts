@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Predicate, Schema } from "effect";
 
-/** Plain-English descriptions of the filesystem error codes a temp-file write realistically hits. */
 const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
   ENOSPC: "no space left on device",
   EDQUOT: "disk quota exceeded",
@@ -75,7 +74,6 @@ function attempt<A>(
   );
 }
 
-/** Node system errors carry both a string `code` and the failing `syscall`. */
 function isNodeSystemError(
   value: unknown,
 ): value is Error & { readonly code: string; readonly syscall: string } {

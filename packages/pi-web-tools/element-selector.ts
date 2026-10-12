@@ -70,12 +70,9 @@ const COMPOUND_RE =
 const PART_RE =
   /#(?<id>[\w-]+)|\.(?<className>[\w-]+)|\[(?<attribute>[a-z][a-z0-9-]*)(?:=(?:'(?<singleQuoted>[^']*)'|"(?<doubleQuoted>[^"]*)"|(?<bare>[\w-]+)))?\]/gu;
 
-/** A parsed compound selector: an optional tag name plus attribute conditions, all required. */
 type Compound = {
   readonly tag: string | undefined;
-  /** The id the compound requires, if any. */
   readonly id: string | undefined;
-  /** The first class token the compound requires, if any. */
   readonly className: string | undefined;
   readonly conditions: readonly ElementPredicate[];
 };
@@ -130,7 +127,6 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
   }
 
   return (element, onMatch) => {
-    // A list can match through several compounds or repeated class tokens; report it once.
     const reported: number[] = [];
     const test = (entries: readonly Entry[] | undefined) => {
       if (entries === undefined) {
@@ -145,7 +141,6 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
     };
 
     test(byTag.get(element.localName));
-    // Every other compound requires an attribute.
     if (!element.hasAttributes()) {
       return;
     }
@@ -155,7 +150,6 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
     }
     const classes = element.getAttributeNode("class")?.value;
     if (classes !== undefined && byClass.size > 0) {
-      // classList's tokens: the attribute split on whitespace runs, without empty tokens.
       for (const token of classes.split(CLASS_TOKEN_SEPARATOR_RE)) {
         if (token) {
           test(byClass.get(token));
@@ -190,8 +184,6 @@ export function compileSelector(selectorList: string): ElementPredicate {
   if (compounds.length === 0) {
     return (element) => tags.has(element.localName);
   }
-  // Every compound left has an attribute condition, so an element without attributes can match
-  // only by tag name.
   return (element) => {
     if (tags.has(element.localName)) {
       return true;

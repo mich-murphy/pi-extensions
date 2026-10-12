@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Layer, Result } from "effect";
 import { FetchPage } from "./fetch-page";
 import { McpClients } from "./mcp";
@@ -13,32 +13,42 @@ import { WEB_TOOLS_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
 import { createWebSearchTool } from "./websearch";
 
+/** Pi registration capabilities consumed by web tools. */
+export type WebToolsRegistration = Pick<ExtensionAPI, "registerTool"> & {
+  readonly on: {
+    (
+      name: "session_start",
+      handler: (
+        event: unknown,
+        ctx: { readonly ui: Pick<ExtensionContext["ui"], "notify"> },
+      ) => void,
+    ): unknown;
+    (name: "session_shutdown", handler: () => Promise<void>): unknown;
+  };
+};
+
 /** Register the webfetch and websearch tools. */
-export default function webToolsExtension(pi: ExtensionAPI): void {
+export default function webToolsExtension(pi: WebToolsRegistration): void {
   const parsed = parseSettings();
   if (Result.isFailure(parsed)) {
     const { message } = parsed.failure;
     pi.on("session_start", (_event, ctx) => {
       ctx.ui.notify(`${WEB_TOOLS_EXTENSION_NAME}: ${message}`, "error");
     });
-    // Register tools that surface the configuration problem instead of silently disappearing.
     pi.registerTool(createFailingTool("websearch", "Web Search", message));
     pi.registerTool(createFailingTool("webfetch", "Web Fetch", message));
     return;
   }
 
   const settings = parsed.success;
-  // One runtime for both tools; it is built on the first tool call and disposed at shutdown.
   const runtime = createToolRuntime(appLayer(settings));
   pi.on("session_shutdown", async () => {
     await runtime.dispose();
   });
-  // The tools get only the non-secret settings; API keys reach the adapters via WebToolsConfig.
   pi.registerTool(createWebSearchTool({ settings: { search: settings.search }, runtime }));
   pi.registerTool(createWebFetchTool({ settings: { fetch: settings.fetch }, runtime }));
 }
 
-// The live layer graph both tools run against.
 function appLayer(settings: WebToolsSettings) {
   const outbound = Layer.mergeAll(HttpFetch.layer, DnsLookup.layer);
   const config = WebToolsConfig.layer(settings);

@@ -48,7 +48,6 @@ function overrides(result: ToggleStateResult): ToggleOverrides {
   return result.value;
 }
 
-/** The failure of a state result, which must have failed. */
 function failureOf(result: ToggleStateResult): ToggleStateError {
   if (result._tag === "ok") {
     throw new Error("expected the state operation to fail");
@@ -150,36 +149,51 @@ describe("toggleStateFile", () => {
     },
   );
 
-  test("keeps enabled version 5 entries when rewriting them as version 6", () => {
-    const context = testContext();
-    const disabled = context.resourceFile("disabled");
-    const enabled = context.resourceFile("enabled");
-    const entry = { kind: "skill", origin: "global", owner: context.directory };
-    context.writeState({
-      version: 5,
-      resources: {
-        [disabled]: { ...entry, enabled: false },
-        [enabled]: { ...entry, origin: "project", enabled: true },
-      },
-    });
+  test.each([4, 5])(
+    "keeps enabled version %i entries when rewriting them as version 6",
+    (version) => {
+      const context = testContext();
+      const disabled = context.resourceFile("disabled");
+      const enabled = context.resourceFile("enabled");
+      const entry = { kind: "skill", origin: "global", owner: context.directory };
+      context.writeState({
+        version,
+        resources: {
+          [disabled]: { ...entry, enabled: false },
+          [enabled]: { ...entry, origin: "project", enabled: true },
+        },
+      });
 
-    const loaded = overrides(context.store.load());
-    expect(loaded.get(disabled)).toBe("disabled");
-    expect(loaded.get(enabled)).toBe("enabled");
+      const loaded = overrides(context.store.load());
+      expect(loaded.get(disabled)).toBe("disabled");
+      expect(loaded.get(enabled)).toBe("enabled");
 
-    overrides(context.store.set(disabled, "default"));
-    expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
-      version: 6,
-      overrides: { [enabled]: "enabled" },
-    });
-  });
+      overrides(context.store.set(disabled, "default"));
+      expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
+        version: 6,
+        overrides: { [enabled]: "enabled" },
+      });
+    },
+  );
 
-  test("discards name-keyed state from before version 4", () => {
-    const context = testContext();
-    context.writeState({ version: 3, globalSkillPolicy: { research: "manual-only" } });
+  test.each([1, 2, 3])(
+    "discards name-keyed version %i state without rewriting on load",
+    (version) => {
+      const context = testContext();
+      context.writeState({ version, globalSkillPolicy: { research: "manual-only" } });
+      const before = readFileSync(context.statePath, "utf8");
 
-    expect(overrides(context.store.load())).toStrictEqual(new Map());
-  });
+      expect(overrides(context.store.load())).toStrictEqual(new Map());
+      expect(readFileSync(context.statePath, "utf8")).toBe(before);
+
+      const enabled = context.resourceFile("enabled");
+      overrides(context.store.set(enabled, "enabled"));
+      expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
+        version: 6,
+        overrides: { [enabled]: "enabled" },
+      });
+    },
+  );
 
   test.each<
     readonly [

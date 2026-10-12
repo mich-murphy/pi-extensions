@@ -1,10 +1,5 @@
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import type {
-  KeybindingsManager as AppKeybindingsManager,
-  ExtensionAPI,
-  ExtensionContext,
-  ExtensionUIContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import {
   getKeybindings,
   KeybindingsManager,
@@ -12,9 +7,11 @@ import {
   setKittyProtocolActive,
   TUI_KEYBINDINGS,
 } from "@earendil-works/pi-tui";
-import type { AutocompleteProvider, EditorTheme, TUI } from "@earendil-works/pi-tui";
+import type { AutocompleteProvider, EditorTheme } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { testTui, testKeybindings } from "../../../test-support/pi-tui";
 import vimMode from "../index";
+import type { VimRegistration } from "../index";
 
 const identity = (text: string): string => text;
 const theme: EditorTheme = {
@@ -28,10 +25,9 @@ const theme: EditorTheme = {
   },
 };
 
-type SessionStartHandler = (event: unknown, ctx: ExtensionContext) => unknown;
+type SessionStartHandler = Parameters<VimRegistration["on"]>[1];
 type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditorComponent"]>[0]>;
 
-/** Start a session in the given Pi mode and return the editor factory the extension installed. */
 function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory | undefined {
   let sessionStart: SessionStartHandler | undefined;
   const piDouble = {
@@ -41,7 +37,7 @@ function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory |
       }
     },
   };
-  vimMode(piDouble as unknown as ExtensionAPI);
+  vimMode(piDouble);
   if (!sessionStart) {
     throw new Error("Vim extension did not register session_start");
   }
@@ -55,7 +51,7 @@ function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory |
       },
     },
   };
-  sessionStart({}, contextDouble as unknown as ExtensionContext);
+  sessionStart({}, contextDouble);
   return editorFactory;
 }
 
@@ -65,26 +61,15 @@ function createEditor(): CustomEditor {
     throw new Error("Vim extension did not install an editor factory");
   }
 
-  const tuiDouble = {
-    terminal: { rows: 40, columns: 120 },
-    requestRender: () => undefined,
-  };
-  const tuiKeybindings = new KeybindingsManager({
-    ...TUI_KEYBINDINGS,
-    "app.interrupt": { defaultKeys: "escape", description: "Interrupt" },
-  });
-  const editor = editorFactory(
-    tuiDouble as unknown as TUI,
-    theme,
-    tuiKeybindings as unknown as AppKeybindingsManager,
-  );
+  const tuiDouble = testTui();
+  const tuiKeybindings = testKeybindings();
+  const editor = editorFactory(tuiDouble, theme, tuiKeybindings);
   if (!(editor instanceof CustomEditor)) {
     throw new Error("Vim factory returned an unsupported editor");
   }
   return editor;
 }
 
-/** How a terminal encodes key presses. Pi negotiates one of these per session. */
 type Keyboard = {
   readonly name: string;
   readonly kittyProtocol: boolean;
@@ -115,7 +100,6 @@ function resetKeyboard(): void {
   setKeybindings(new KeybindingsManager(TUI_KEYBINDINGS));
 }
 
-/** An editor holding `text`, switched to Normal mode with a legacy escape. */
 function legacyNormalMode(text: string): CustomEditor {
   const editor = createEditor();
   editor.setText(text);
@@ -132,7 +116,6 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
     }
   }
 
-  /** An editor holding `text`, switched to Normal mode, after typing `keys`. */
   function normalMode(text: string, keys = ""): CustomEditor {
     setKittyProtocolActive(keyboard.kittyProtocol);
     const editor = createEditor();

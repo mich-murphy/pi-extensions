@@ -31,7 +31,6 @@ const InstalledVersionFailure = Schema.Literals(["not-installed", "timed-out", "
 /** Why `claude --version` could not be read. */
 type InstalledVersionFailure = typeof InstalledVersionFailure.Type;
 
-/** How long `claude --version` may run before it counts as unresponsive. */
 const INSTALLED_VERSION_TIMEOUT_MS = 3000;
 
 const INSTALLED_VERSION_MESSAGES: Readonly<Record<InstalledVersionFailure, string>> = {

@@ -110,7 +110,6 @@ export function sanitizeContextMessages(
     if (message.role !== "toolResult" || message.toolName !== "bash") {
       return message;
     }
-    // Sessions persist across versions, so recorded content is not trusted to match its type.
     if (!Array.isArray(message.content)) {
       return message;
     }

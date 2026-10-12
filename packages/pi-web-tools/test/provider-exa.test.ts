@@ -71,7 +71,6 @@ describe("parseExaSearchText", () => {
   test("the last usable header line wins; placeholders and bad scores never clear a value", () => {
     const [result] = parseExaSearchText(
       [
-        // A Title: line after a URL: line starts a new section, so repeated titles come first.
         "Title: First",
         "Title: Second",
         "URL: https://first.example",
@@ -86,9 +85,27 @@ describe("parseExaSearchText", () => {
     ).results;
     expect(result?.title).toBe("Second");
     expect(result?.url).toBe("https://second.example/");
-    // Published Date: and Published: are aliases; n/a does not erase the earlier date.
     expect(result?.publishedAt).toBe("2026-02-02");
     expect(result?.score).toBe(0.5);
+  });
+
+  test("Published aliases share line-order precedence and scores remain finite numbers", () => {
+    const [result] = parseExaSearchText(
+      [
+        "Title: Page",
+        "URL: https://a.example",
+        "Published Date: 2026-01-01",
+        "Published: 2026-02-02",
+        "Published Date: unknown",
+        "Score: 1",
+        "Score: 0.75 relevance",
+        "Score: Infinity",
+        "Score: NaN",
+        "Text: body",
+      ].join("\n"),
+    ).results;
+    expect(result?.publishedAt).toBe("2026-02-02");
+    expect(result?.score).toBe(0.75);
   });
 
   test("source beats Author, and Author fills in when Source is a placeholder", () => {
@@ -116,7 +133,6 @@ describe("parseExaSearchText", () => {
     const [titleOnly] = parseExaSearchText(
       "Title: Pi Agent\nURL: https://a.example\nText: Pi Agent",
     ).results;
-    // Nothing but the title is left, so the snippet keeps the collapsed text.
     expect(titleOnly?.snippet).toBe("Pi Agent");
   });
 });
@@ -272,7 +288,6 @@ describe("exaApiSearchProvider", () => {
           {
             title: "B",
             url: "https://b.example/",
-            // Non-string highlights are dropped and the repeated leading title is stripped.
             snippet: "Body text.",
             publishedAt: "2026-01-01",
             source: "Ada",

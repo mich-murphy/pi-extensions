@@ -5,7 +5,16 @@ import type {
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { normalizeContext } from "@earendil-works/pi-ai";
-import type { Context, Model, TranscriptContext } from "@earendil-works/pi-ai";
+import type {
+  Context,
+  Message,
+  Model,
+  TranscriptContext,
+  AssistantMessage,
+  SystemMessage,
+  UserMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
 
@@ -29,11 +38,45 @@ export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
  * Normalization is Pi's own, so the fixture folds the prompt and tools into a
  * leading system message exactly as a real turn does.
  *
- * @param input - Deliberately partial framework context fixture.
+ * @param input - Prompt and message fields varied by the test.
  * @returns The fixture as a normalized provider context.
  */
-export function contextFixture(input: unknown): TranscriptContext {
-  return normalizeContext(input as Context);
+export function contextFixture(input: {
+  readonly systemPrompt?: string;
+  readonly messages: readonly MessageFixture[];
+  readonly tools?: NonNullable<Context["tools"]>;
+}): TranscriptContext {
+  return normalizeContext({ ...input, messages: input.messages.map(messageFixture) });
+}
+
+/** Message fields varied by tests; constructors supply Pi's bookkeeping fields. */
+export type MessageFixture =
+  | (Omit<UserMessage, "timestamp"> & { readonly timestamp?: number })
+  | (Omit<SystemMessage, "timestamp"> & { readonly timestamp?: number })
+  | (Omit<ToolResultMessage, "timestamp"> & { readonly timestamp?: number })
+  | (Pick<AssistantMessage, "role" | "content"> &
+      Partial<Omit<AssistantMessage, "role" | "content">>);
+
+function messageFixture(input: MessageFixture): Message {
+  if (input.role === "assistant") {
+    return {
+      api: "claude-sdk",
+      provider: "claude-sdk",
+      model: "claude-5.5-sonnet",
+      stopReason: "stop",
+      timestamp: 0,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      ...input,
+    };
+  }
+  return { timestamp: 0, ...input };
 }
 
 /**
@@ -43,11 +86,11 @@ export function contextFixture(input: unknown): TranscriptContext {
  * such as a mid-conversation prompt or tool change; {@link contextFixture}
  * covers the ordinary case.
  *
- * @param messages - Deliberately partial transcript messages, system messages included.
+ * @param messages - Message fields, including system messages, to complete and normalize.
  * @returns The messages as a normalized provider context.
  */
-export function transcriptFixture(messages: readonly unknown[]): TranscriptContext {
-  return { messages } as unknown as TranscriptContext;
+export function transcriptFixture(messages: readonly MessageFixture[]): TranscriptContext {
+  return contextFixture({ messages });
 }
 
 /** Fields a test varies on an otherwise complete Claude SDK model. */
@@ -89,9 +132,7 @@ export const sonnet = modelFixture({ id: "claude-5.5-sonnet" });
  * @returns A promise that neither resolves nor rejects.
  */
 export async function unsettled<T>(): Promise<T> {
-  return new Promise<T>(() => {
-    // Never settles.
-  });
+  return Promise.withResolvers<T>().promise;
 }
 
 /**

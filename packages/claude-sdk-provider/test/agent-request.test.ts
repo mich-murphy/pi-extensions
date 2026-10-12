@@ -1,12 +1,14 @@
+import type { Context, SystemMessage } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import { contextFixture, transcriptFixture } from "./fixtures";
+import type { MessageFixture } from "./fixtures";
 
-const readCall = {
+const readCall: MessageFixture = {
   role: "assistant",
   content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "package.json" } }],
 };
-const readResult = {
+const readResult: MessageFixture = {
   role: "toolResult",
   toolCallId: "call-1",
   toolName: "read",
@@ -21,19 +23,18 @@ const readTool = {
 };
 const bashTool = { name: "bash", description: "Run a command", parameters: { type: "object" } };
 
-function systemMessage(fields: Readonly<Record<string, unknown>>) {
+function systemMessage(fields: Partial<SystemMessage>): SystemMessage {
   return { role: "system", content: "", timestamp: 0, ...fields };
 }
 
-function requestFor(messages: readonly unknown[], tools: readonly unknown[] = []) {
+function requestFor(messages: readonly MessageFixture[], tools: Context["tools"] = []) {
   return buildAgentRequest(contextFixture({ systemPrompt: "s", messages, tools }));
 }
 
-function userEntries(count: number) {
+function userEntries(count: number): MessageFixture[] {
   return Array.from({ length: count }, (_, index) => ({ role: "user", content: `entry ${index}` }));
 }
 
-// promptBlocks = [preamble, ...transcript entries, closing instruction].
 function transcriptOf(request: ReturnType<typeof buildAgentRequest>) {
   return request.promptBlocks.slice(1, -1);
 }
@@ -144,8 +145,6 @@ describe("agent request construction", () => {
   });
 
   test("places the single cache breakpoint on the newest transcript entry, never the closing instruction", () => {
-    // Entry N-1 is prompt block N because the preamble is block 0. The sanitized
-    // failing session first broke at 41 entries, the old second-marker threshold.
     for (const count of [2, 40, 41, 62]) {
       const request = requestFor(userEntries(count));
       expect(request.promptBlocks).toHaveLength(count + 2);
@@ -221,7 +220,7 @@ describe("prompt and tools replayed from the transcript", () => {
 
 describe("stable transcript caching", () => {
   test("keeps the transcript prefix (text and images) byte-identical as entries are appended, so a later turn can hit cache on it", () => {
-    const messages = [
+    const messages: MessageFixture[] = [
       {
         role: "user",
         content: [
@@ -235,14 +234,12 @@ describe("stable transcript caching", () => {
     const before = requestFor(messages);
     const after = requestFor([...messages, readResult]);
 
-    // Everything except the closing instruction is the prefix a later turn must reproduce.
     const stablePrefix = before.promptBlocks.slice(0, -1);
     expect(after.promptBlocks.slice(0, stablePrefix.length)).toStrictEqual(stablePrefix);
     expect(stablePrefix[1]?.images).toStrictEqual([
       { data: "aW1hZ2Utb25l", mediaType: "image/png" },
     ]);
 
-    // The breakpoint moves forward onto the newest entry each turn.
     expect(before.cacheBreakpoint).toBe(stablePrefix.length - 1);
     expect(after.cacheBreakpoint).toBe(stablePrefix.length);
   });

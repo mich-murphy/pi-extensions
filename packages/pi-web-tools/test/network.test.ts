@@ -19,7 +19,6 @@ import {
   ResponseTooLarge,
   UrlCredentialsUnsupported,
 } from "../network";
-import type { PublicHttpUrl } from "../types";
 import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
@@ -41,21 +40,16 @@ describe("isPrivateOrLocalIp", () => {
     "::ffff:127.0.0.1",
     "::ffff:10.1.2.3",
     "[::1]",
-    // IPv4-mapped loopback written other ways.
     "::FFFF:7F00:1",
     "0:0:0:0:0:ffff:127.0.0.1",
-    // IPv4-compatible (::/96), even when the embedded address is public.
     "::8.8.8.8",
-    // NAT64 (64:ff9b::/96) wrapping 10.0.0.1.
     "64:ff9b::a00:1",
     "64:ff9b::10.0.0.1",
-    // IPv4 multicast (224.0.0.0/4) and reserved (240.0.0.0/4).
     "224.0.0.1",
     "239.255.255.255",
     "240.0.0.1",
     "255.255.255.255",
     "::ffff:224.0.0.1",
-    // IPv6 multicast (ff00::/8) and the top of link-local (fe80::/10).
     "ff02::1",
     "ff0e::1",
     "febf::1",
@@ -74,13 +68,10 @@ describe("isPrivateOrLocalIp", () => {
     "100.128.0.1",
     "2001:4860:4860::8888",
     "not-an-ip",
-    // A mapped public address stays public: the IPv4-compatible range is ::/96, not ::/8.
     "::ffff:8.8.8.8",
-    // Just outside the multicast, NAT64, and link-local ranges.
     "223.255.255.255",
     "64:ff9b:1::1",
     "fec0::1",
-    // Expand to 00fc:: and 0fe8::, outside fc00::/7 and fe80::/10 despite the textual prefix.
     "fc::1",
     "fe8::1",
   ];
@@ -169,10 +160,6 @@ function responseOf(init: {
 
 type BodyPull = (controller: ReadableStreamDefaultController<Uint8Array>) => void;
 
-/**
- * A response over a body stream that is pulled only on read and records whether the client
- * cancelled it. Without a pull, reading the body never settles.
- */
 function trackedResponse(
   init: { readonly status: number; readonly headers?: Readonly<Record<string, string>> },
   source: { readonly pull?: BodyPull } = {},
@@ -193,7 +180,6 @@ function trackedResponse(
   };
 }
 
-/** A client whose fetch records each hop and delegates to `respond`, over an empty DNS. */
 function recordingClient(
   respond: (url: string) => Response,
   lookup: () => Promise<readonly { address: string }[]> = async () => [],
@@ -201,14 +187,12 @@ function recordingClient(
   const hops: { readonly url: string; readonly init: RequestInit | undefined }[] = [];
   const fetchImpl: typeof fetch = async (input: unknown, init?: RequestInit) => {
     hops.push({ url: String(input), init });
-    // Reply on a later microtask, as a real fetch would.
     await Promise.resolve();
     return respond(String(input));
   };
   return { client: publicWebClientWith({ fetchImpl, lookup }), hops };
 }
 
-/** Replies to successive fetches in order, repeating the last reply. */
 function inOrder(...replies: readonly (() => Response)[]): () => Response {
   let index = 0;
   return () => {
@@ -221,24 +205,16 @@ function inOrder(...replies: readonly (() => Response)[]): () => Response {
   };
 }
 
-/** A URL the parser would reject, to check that the client defends itself anyway. */
-function unparsedUrl(input: string): PublicHttpUrl {
-  return input as PublicHttpUrl;
-}
-
-/** An already-aborted signal. */
 function abortedSignal(): AbortSignal {
   const controller = new AbortController();
   controller.abort();
   return controller.signal;
 }
 
-/** Run a client call to its success or typed failure. */
 async function run<A, E>(effect: Effect.Effect<A, E>): Promise<Result.Result<A, E>> {
   return Effect.runPromise(Effect.result(effect));
 }
 
-/** Run a client call under a caller signal and report whether it ended interrupted. */
 async function wasInterrupted(
   effect: Effect.Effect<unknown, unknown>,
   signal: AbortSignal,
@@ -247,17 +223,13 @@ async function wasInterrupted(
   return Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause);
 }
 
-/** The tag and message of a typed failure. */
 function failureOf<A>(result: Result.Result<A, PublicWebError>) {
   assert(Result.isFailure(result));
   return { tag: result.failure._tag, message: result.failure.message };
 }
 
-/** A response that never arrives; only an abort of the request ends the wait. */
 async function neverResponds(): Promise<Response> {
-  return new Promise<Response>(() => {
-    // Never settles.
-  });
+  return Promise.withResolvers<Response>().promise;
 }
 
 const nestedCode = (code: unknown) =>
@@ -280,15 +252,19 @@ describe("fetchPublicWebClient hop checks", () => {
     expect(hops).toHaveLength(1);
   });
 
-  it.effect("rejects URL credentials before the private-host check", () =>
-    Effect.gen(function* () {
-      const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
-      const url = unparsedUrl("http://user:secret@127.0.0.1/");
-      const result = yield* Effect.result(client.get(makeRequest({ url })));
-      expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
-      expect(hops).toHaveLength(0);
-    }),
-  );
+  test("rejects URL credentials before the private-host check", async () => {
+    const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
+    const request = { ...makeRequest(), url: "http://user:secret@127.0.0.1/" };
+    const invocation: unknown = Reflect.apply(client.get, client, [request]);
+    assert(Effect.isEffect(invocation));
+    const execution: unknown = Reflect.apply(Effect.runPromise, undefined, [
+      Effect.result(invocation),
+    ]);
+    assert(execution instanceof Promise);
+    const result: unknown = await execution;
+    expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
+    expect(hops).toHaveLength(0);
+  });
 
   it.effect("rejects a redirect to a URL with credentials", () =>
     Effect.gen(function* () {
@@ -358,8 +334,6 @@ describe("fetchPublicWebClient fetch failures", () => {
       message: "Request to example.com failed",
     },
     {
-      // fetch() itself never aborts unless the effect is interrupted, so a stray AbortError is
-      // just a failed request.
       name: "a stray AbortError",
       cause: new DOMException("aborted", "AbortError"),
       message: "Request to example.com failed",
@@ -656,7 +630,6 @@ describe("fetchPublicWebClient response body", () => {
   );
 
   test("a caller deadline during the body read cancels the body", async () => {
-    // Without a pull source the body read never settles.
     const slow = trackedResponse({ status: 200 });
     const { client } = recordingClient(() => slow.response);
     const result = await run(client.get(makeRequest()).pipe(Effect.timeout("20 millis")));

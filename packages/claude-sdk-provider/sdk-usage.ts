@@ -5,8 +5,6 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Context, Duration, Effect, Layer, Result, Schema } from "effect";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
-// The pattern behind zod's z.iso.datetime({ offset: true }): an RFC 3339 calendar date (leap
-// years included), a time with required seconds and optional fraction, then Z or +hh:mm.
 const CALENDAR_DATE = String.raw`(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8])))`;
 const OFFSET_DATE_TIME = new RegExp(
   String.raw`^${CALENDAR_DATE}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$`,

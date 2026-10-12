@@ -22,7 +22,6 @@ const FETCH_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export const SEARCH_MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
 const FETCH_MAX_REDIRECTS = 5;
 
-/** Brand a built-in endpoint. An invalid one is a defect, so it fails at module load. */
 function builtInEndpoint(url: string): PublicHttpUrl {
   if (!isPublicHttpUrl(url)) {
     throw new Error(`Built-in endpoint is not a public HTTP(S) URL: ${url}`);
@@ -119,7 +118,6 @@ function isSearchProviderName(value: string): value is SearchProviderName {
   return SEARCH_PROVIDER_NAMES.has(value);
 }
 
-/** Parse an on/off environment toggle, falling back when unset or unrecognized. */
 function parseOnOff(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -145,8 +143,6 @@ function parseApiKey(
   if (!trimmed) {
     return Result.succeed(undefined);
   }
-  // Control characters in a credential almost always mean a mangled paste or an
-  // attempted header-injection; reject fail-closed with a safe message.
   // oxlint-disable-next-line eslint/no-control-regex -- detecting control characters is the point
   if (/[\0-\u001F\u007F]/u.test(trimmed)) {
     return invalid(`${envName} contains control characters and was rejected`);
@@ -166,7 +162,6 @@ function parseProviderList(
     return Result.succeed(defaults);
   }
 
-  // A Set dedupes while keeping first-mention order, which is the chain's priority order.
   const providers = new Set<SearchProviderName>();
   for (const entry of value.split(",")) {
     const normalized = entry.trim().toLowerCase();
@@ -204,7 +199,6 @@ function parseEndpointOverride(
   return Result.succeed(parsed.success);
 }
 
-/** Parse a comma-separated domain list into normalized lowercase hostnames. */
 function parseDomainList(value: string | undefined): readonly string[] {
   if (value === undefined) {
     return [];
@@ -299,7 +293,6 @@ export class WebToolsConfig extends Context.Service<WebToolsConfig, WebToolsSett
 export function secretsForRedaction(
   credentials: WebToolsCredentials,
 ): readonly (string | undefined)[] {
-  // Deliberate unwrap: output scrubbing has to match the raw key text.
   return [credentials.exaApiKey, credentials.parallelApiKey, credentials.braveApiKey].map((key) =>
     key === undefined ? undefined : Redacted.value(key),
   );

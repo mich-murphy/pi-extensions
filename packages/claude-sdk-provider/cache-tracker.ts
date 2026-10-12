@@ -38,7 +38,6 @@ export type CacheDiagnosticTracker = (
 ) => (usage: TokenUsage) => void;
 
 type BlockStats = {
-  /** Digest of the serialized block, so the previous turn is kept without its text or images. */
   readonly digest: string;
   readonly textCharacters: number;
   readonly imageCharacters: number;

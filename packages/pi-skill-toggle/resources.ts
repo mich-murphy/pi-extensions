@@ -99,7 +99,6 @@ export function toggleResources(
       (left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id),
     );
 
-  // Instructions keep Pi's discovery order and precede skills, so grouping by origin is enough.
   const unique = new Map<ResourcePath, ToggleResource>();
   for (const resource of [...instructions, ...skills]) {
     if (!unique.has(resource.id)) {
@@ -112,7 +111,6 @@ export function toggleResources(
   );
 }
 
-/** An instruction in the agent directory is global, one in `cwd` or an ancestor is project. */
 function instructionOrigin({
   parent,
   agentDirectory,
@@ -128,7 +126,6 @@ function instructionOrigin({
   return pathIsInsideOrEqual(cwd, parent) ? "project" : undefined;
 }
 
-/** Package, extension-owned, and CLI skills are not user-managed and have no origin. */
 function skillOrigin({
   sourceInfo,
   id,
@@ -154,7 +151,6 @@ function skillOrigin({
       return contributedSkills.has(id) ? "project" : undefined;
     }
     default: {
-      // A scope added by a later Pi release is not user-managed.
       const _exhaustive: never = sourceInfo.scope;
       void _exhaustive;
       return undefined;

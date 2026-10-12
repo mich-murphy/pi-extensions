@@ -81,7 +81,6 @@ describe("caffeinate process adapter", () => {
   });
 
   test("reports a synchronous spawn failure through the same channel", async () => {
-    // An argument list beyond the OS limit makes spawn() throw E2BIG synchronously.
     const child = spawnNode(["x".repeat(5_000_000)]);
 
     const end = await ended(child);

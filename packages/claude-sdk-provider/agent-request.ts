@@ -41,7 +41,6 @@ const BRIDGE_INSTRUCTIONS = [
   "When no tool is needed, answer the user directly.",
 ].join("\n");
 
-// Image bytes travel as separate SDK blocks; the JSONL text only references them.
 function transcriptEntry(
   fields: object,
   content: string | readonly (TextContent | ImageContent)[],
@@ -74,7 +73,6 @@ function transcriptEntries(messages: readonly Message[]): PromptBlock[] {
           }
           return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
         });
-        // Thinking is ephemeral, so an assistant message with nothing else has no entry.
         if (content.length === 0) {
           return [];
         }
@@ -93,8 +91,6 @@ function transcriptEntries(messages: readonly Message[]): PromptBlock[] {
           ),
         ];
       }
-      // System messages carry the prompt and tool declarations. The preamble and
-      // the gateway catalog replay both in full, so an entry would duplicate them.
       case "system": {
         return [];
       }
@@ -135,7 +131,6 @@ export function buildAgentRequest(context: TranscriptContext): AgentRequest {
       ...entries,
       { text: "Continue from the final conversation entry above.", images: [] },
     ],
-    // Pi only appends to the transcript, so the newest entry ends the reusable prefix.
     cacheBreakpoint: entries.length > 0 ? entries.length : undefined,
     toolDescription: [
       "Request one tool from Pi. The call is deferred to Pi and this SDK process must not execute it.",

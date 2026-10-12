@@ -14,7 +14,6 @@ import {
 import type { ToolOutputStore } from "../tool-output";
 import { UTF8, publicUrl, textOf, liveToolOutputStore } from "./fakes";
 
-/** Permission bits of a file mode: its low nine bits. */
 function permissionBits(mode: number): number {
   return mode & 0o777;
 }
@@ -108,7 +107,6 @@ describe("projectFetchResult", () => {
     assert(typeof fullOutputPath === "string");
 
     const fileStat = await stat(fullOutputPath);
-    // 0600 on the file; 0700 on the containing directory.
     expect(permissionBits(fileStat.mode)).toBe(0o600);
     const dirStat = await stat(fullOutputPath.slice(0, fullOutputPath.lastIndexOf("/")));
     expect(permissionBits(dirStat.mode)).toBe(0o700);
@@ -208,7 +206,6 @@ describe("projectSearchResults", () => {
       assert(Result.isSuccess(projected));
       expect(textOf(projected.success)).not.toContain("sekrit");
       expect(textOf(projected.success)).toContain("[redacted]");
-      // Results live in the content text only; details stay a small summary.
       expect(projected.success.details).toStrictEqual({
         query: "q",
         maxResults: 8,

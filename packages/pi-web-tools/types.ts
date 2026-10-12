@@ -5,8 +5,10 @@ export const WEB_TOOLS_EXTENSION_NAME = "pi-web-tools";
 /** Version reported to provider endpoints (for example MCP clientInfo). */
 export const WEB_TOOLS_VERSION = "0.1.0";
 
+const NormalizedPublicHttpUrl = Schema.String.pipe(Schema.brand("PublicHttpUrl"));
+
 /** A public HTTP(S) URL accepted by web-tools. */
-export type PublicHttpUrl = string & { readonly __brand: "PublicHttpUrl" };
+export type PublicHttpUrl = typeof NormalizedPublicHttpUrl.Type;
 
 /** A non-empty, trimmed search query. */
 export type SearchQuery = string & { readonly __brand: "SearchQuery" };
@@ -103,39 +105,25 @@ export function parsePublicHttpUrl(
     return Result.fail({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return Result.fail({ _tag: "UnsupportedUrlProtocol", protocol: url.protocol });
-  }
-
   if (url.username || url.password) {
     return Result.fail({ _tag: "UrlCredentialsUnsupported", url: Redacted.make(url.toString()) });
   }
 
-  // A parsed URL serializes to a string that parses back to itself, so this check always passes.
-  const href = url.toString();
-  return isPublicHttpUrl(href)
-    ? Result.succeed(href)
-    : Result.fail({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
+  return Result.succeed(NormalizedPublicHttpUrl.make(url.toString()));
 }
 
 /**
  * Returns true when a string is a URL in the form parsePublicHttpUrl produces: it parses, uses
  * http or https, carries no credentials, and is already serialized.
  */
-export function isPublicHttpUrl(value: string): value is PublicHttpUrl {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  return (
-    (url.protocol === "http:" || url.protocol === "https:") &&
-    url.username === "" &&
-    url.password === "" &&
-    url.toString() === value
-  );
-}
+export const isPublicHttpUrl = Schema.is(
+  NormalizedPublicHttpUrl.check(
+    Schema.makeFilter((value) => {
+      const parsed = parsePublicHttpUrl(value);
+      return Result.isSuccess(parsed) && parsed.success === value;
+    }),
+  ),
+);
 
 /** Parse and trim a non-empty search query from boundary input. */
 export function parseSearchQuery(input: string): Result.Result<SearchQuery, ParseSearchQueryError> {
@@ -147,7 +135,6 @@ function isSearchQuery(value: string): value is SearchQuery {
   return value !== "" && value.trim() === value;
 }
 
-/** Placeholder shown instead of a URL that carries credentials (matches Redacted's projection). */
 const REDACTED_DISPLAY = "<redacted>";
 
 /** Format URL-like UI text without exposing URL userinfo credentials. */

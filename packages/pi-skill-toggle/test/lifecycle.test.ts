@@ -4,17 +4,15 @@ import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, getAgentDir, initTheme } from "@earendil-works/pi-coding-agent";
 import type {
   BuildSystemPromptOptions,
-  ExtensionAPI,
   ExtensionCommandContext,
   ExtensionUIContext,
-  KeybindingsManager,
-  RegisteredCommand,
   Skill,
-  Theme,
 } from "@earendil-works/pi-coding-agent";
-import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { testTui, testTheme, testKeybindings } from "../../../test-support/pi-tui";
 import skillToggle, { registerSkillToggle } from "../index";
+import type { ToggleRegistration, ToggleHandlers } from "../index";
+import type { PromptFilterEvent } from "../prompt-filter";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
 import { err, ok } from "../result";
@@ -43,22 +41,12 @@ const options: BuildSystemPromptOptions = { cwd, skills: [research] };
 
 const temporaryDirectories: string[] = [];
 
-type TestHandler = (event: unknown, context: unknown) => unknown;
-type CommandOptions = Omit<RegisteredCommand, "name" | "sourceInfo">;
+type CommandOptions = Parameters<ToggleRegistration["registerCommand"]>[1];
 type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
 
 async function selectFirstDialogItem(factory: DialogFactory): Promise<string[]> {
   initTheme();
-  const fakeTheme = {
-    fg: (_color: string, text: string) => text,
-    bold: (text: string) => text,
-  };
-  const component = await factory(
-    { requestRender: () => undefined } as unknown as TUI,
-    fakeTheme as unknown as Theme,
-    {} as KeybindingsManager,
-    () => undefined,
-  );
+  const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
   component.handleInput?.(" ");
   component.invalidate();
   return component.render(120);
@@ -96,12 +84,12 @@ function failure(operation: "load" | "update"): ToggleStateResult {
 }
 
 function harness(store: ToggleStateStore, projectDirectory = cwd) {
-  const handlers = new Map<string, TestHandler[]>();
+  const handlers: Partial<ToggleHandlers> = {};
   const commands = new Map<string, CommandOptions>();
   const notifications: string[] = [];
   const piMock = {
-    on(name: string, handler: TestHandler) {
-      handlers.set(name, [...(handlers.get(name) ?? []), handler]);
+    on<K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) {
+      handlers[name] = handler;
     },
     registerCommand(name: string, command: CommandOptions) {
       commands.set(name, command);
@@ -115,13 +103,14 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
       notify: (message: string) => notifications.push(message),
     },
   };
-  registerSkillToggle(piMock as unknown as ExtensionAPI, store);
-  const emit = async (name: string, event: unknown): Promise<unknown> => {
-    let result: unknown;
-    for (const handler of handlers.get(name) ?? []) {
-      result = await handler(event, ctx);
+  registerSkillToggle(piMock, store);
+  const emit = async (
+    ...args: ["resources_discover", unknown] | ["before_agent_start", PromptFilterEvent]
+  ): Promise<unknown> => {
+    if (args[0] === "resources_discover") {
+      return handlers.resources_discover?.(args[1], ctx);
     }
-    return result;
+    return handlers.before_agent_start?.(args[1], ctx);
   };
   const runCommand = async (
     args: string,
@@ -144,7 +133,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
         custom: commandOptions.custom ?? (async () => undefined),
       },
     };
-    await command.handler(args, commandContext as unknown as ExtensionCommandContext);
+    await command.handler(args, commandContext);
   };
   return {
     commands,
@@ -196,19 +185,21 @@ describe("extension lifecycle", () => {
       join(agentDirectory, "pi-skill-toggle.json"),
       JSON.stringify({ version: 6, overrides: { [path]: "disabled" } }),
     );
-    const handlers = new Map<string, TestHandler>();
+    const handlers: Partial<ToggleHandlers> = {};
     const piMock = {
       registerCommand: () => undefined,
-      on: (name: string, handler: TestHandler) => handlers.set(name, handler),
+      on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
+        handlers[name] = handler;
+      },
     };
-    skillToggle(piMock as unknown as ExtensionAPI);
+    skillToggle(piMock);
 
-    const result = await handlers.get("before_agent_start")?.(
+    const result = handlers.before_agent_start?.(
       {
         systemPrompt: `base${formatSkillsForPrompt([skill])}`,
         systemPromptOptions: { cwd, skills: [skill] },
       },
-      { cwd, isProjectTrusted: () => true, ui: { notify: () => undefined } },
+      { ui: { notify: () => undefined } },
     );
 
     expect(result).toStrictEqual({ systemPrompt: "base" });

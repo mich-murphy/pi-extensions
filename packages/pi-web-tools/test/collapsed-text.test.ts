@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { CollapsedTextLength, normalizedTextLength } from "../collapsed-text";
 
-// Every code unit JavaScript's \s matches, plus non-whitespace neighbours.
 const ALPHABET = [
   "a",
   "b",
   "é",
+  "😀",
+  "\uD800",
+  "\uDC00",
   "​",
   " ",
   "\t",
@@ -26,7 +28,6 @@ const ALPHABET = [
   "﻿",
 ];
 
-// Park and Miller's minimal standard generator: every product stays an exact integer.
 function createRandom(seed: number): (limit: number) => number {
   let state = seed;
   return (limit) => {
@@ -64,6 +65,17 @@ describe("normalizedTextLength", () => {
 });
 
 describe("collapsedTextLength", () => {
+  test("counts UTF-16 units even when a surrogate pair spans appended pieces", () => {
+    const measure = new CollapsedTextLength();
+    measure.appendText(" \uD83D");
+    const following = new CollapsedTextLength();
+    following.appendText("\uDE00 \uD800 \uDC00 ");
+    measure.append(following);
+
+    expect(measure.trimmedLength()).toBe(6);
+    expect(normalizedTextLength(" 😀 \uD800 \uDC00 ")).toBe(6);
+  });
+
   test("appending measures of pieces measures their concatenation", () => {
     const random = createRandom(11);
     for (let run = 0; run < 2000; run += 1) {

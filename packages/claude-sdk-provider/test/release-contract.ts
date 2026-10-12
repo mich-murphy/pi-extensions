@@ -10,7 +10,6 @@ export const LIVE_CONTRACTS = ["text-response", "deferred-tool-call", "advertise
 /** One contract the live gate verifies. */
 export type LiveContract = (typeof LIVE_CONTRACTS)[number];
 
-/** Result fields through which the SDK has reported a deferred tool call. */
 const DEFERRED_RESULTS = ["stop_reason:tool_deferred", "terminal_reason:tool_deferred"] as const;
 
 /** How a live SDK result reported the deferred tool call. */
@@ -19,11 +18,8 @@ export type DeferredResult = (typeof DEFERRED_RESULTS)[number];
 /** Location of the attestation the live gate writes and ordinary CI checks. */
 export const RELEASE_CONTRACT_URL = new URL("../sdk-release-contract.json", import.meta.url);
 
-// zod's z.iso.datetime() shape: UTC with required seconds. Unlike zod, this does not check
-// calendar validity, which the attestation writer (Date#toISOString) guarantees anyway.
 const UTC_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
 
-/** Shape of `sdk-release-contract.json`. */
 const releaseContractSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   agentSdkVersion: Schema.String,

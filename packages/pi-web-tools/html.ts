@@ -69,9 +69,6 @@ const LANDMARK_REMOVAL_SELECTOR = [
   "[aria-hidden='true']",
 ].join(", ");
 
-// Elements removed with their subtrees. Removing them in one document-order walk, together with
-// boilerplate-attributed elements, leaves the same tree as separate passes: each removal depends only
-// on the element's own tag and attributes.
 const isRemovedElement = compileSelector(`${REMOVAL_SELECTOR}, ${LANDMARK_REMOVAL_SELECTOR}`);
 
 // linkedom keeps these elements' markup as text and serializes it unescaped, so as the root their
@@ -90,13 +87,10 @@ const TABLE_PART_TAGS: ReadonlySet<string> = new Set(["thead", "tbody", "tfoot",
 const TABLE_HEADING_MARKUP_TAGS: ReadonlySet<string> = new Set(["caption", "thead", "th"]);
 const TABLE_CELL_TAGS: ReadonlySet<string> = new Set(["td", "th"]);
 
-// Readable-root selectors in the order extractReadableRoot tries them. A candidate's score also gains
-// the bonus of every group it matches, which ranks candidates that one selector returns.
 const CONTENT_SELECTOR_GROUPS: readonly {
   readonly bonus: number;
   readonly selectors: readonly string[];
 }[] = [
-  // Repository READMEs.
   {
     bonus: 1500,
     selectors: [
@@ -106,14 +100,11 @@ const CONTENT_SELECTOR_GROUPS: readonly {
       ".markdown-body",
     ],
   },
-  // Hacker News.
   { bonus: 1000, selectors: ["#bigbox"] },
-  // Semantic and conventional main-content containers.
   {
     bonus: 500,
     selectors: ["article", "main", "[role='main']", "#content", "#main-content", ".main-content"],
   },
-  // CMS and feed content wrappers: tried last, no bonus.
   {
     bonus: 0,
     selectors: [
@@ -130,19 +121,14 @@ const CONTENT_SELECTOR_GROUPS: readonly {
 const PREFERRED_CONTENT_SELECTORS: readonly string[] = CONTENT_SELECTOR_GROUPS.flatMap(
   (group) => group.selectors,
 );
-// All preferred selectors tested together; a match reports the selector's index.
 const matchPreferredContent = compileSelectorSet(PREFERRED_CONTENT_SELECTORS);
 
-// Each bonus group's selectors compiled into one predicate, so scoring runs one match per group.
 const CONTENT_SELECTOR_BONUSES = CONTENT_SELECTOR_GROUPS.filter((group) => group.bonus !== 0).map(
   (group) => ({ bonus: group.bonus, matches: compileSelector(group.selectors.join(", ")) }),
 );
 
-/** Resolves an attribute value against the page URL; undefined means the attribute is removed. */
 type UrlAttributeResolver = (value: string, baseUrl: string) => string | undefined;
 
-// URL-bearing attributes that sanitizeHtml rewrites, in rewrite order. Links may not carry data:
-// URLs; media may.
 const URL_ATTRIBUTE_RESOLVERS: readonly (readonly [string, UrlAttributeResolver])[] = [
   ["href", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "reject")],
   ["src", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "allow")],
@@ -161,8 +147,6 @@ const RAW_HTML_BLOCK_TAG_RE =
 // root is converted in chunks of about the target text size (see convertToMarkdown).
 const TURNDOWN_CHUNK_MIN_INPUT_BYTES = 128 * 1024;
 const TURNDOWN_CHUNK_TARGET_CHARS = 16 * 1024;
-// The join's cost grows with the number of children one container accumulates. Below this many
-// children in the chunked container, parsing for chunks costs more than the join it saves.
 const TURNDOWN_CHUNK_MIN_CHILDREN = 400;
 
 // Children a chunk may start with: blocks whose every replacement (rule, blank, or keep) starts
@@ -202,7 +186,6 @@ const CHUNK_BOUNDARY_TAGS: ReadonlySet<string> = new Set([
   "ul",
 ]);
 
-// A private-use character that marks chunk edges; documents that contain it are not chunked.
 const CHUNK_SENTINEL = "\uE000";
 
 const turndown = createTurndownService();
@@ -292,7 +275,6 @@ export function htmlToMarkdownWithTextFallback(
   );
 }
 
-// True when a markdown conversion is dominated by raw HTML blocks (JS-heavy pages).
 function isPoorMarkdownConversion(markdown: string): boolean {
   const rawBlockTags = markdown.match(RAW_HTML_BLOCK_TAG_RE)?.length ?? 0;
   if (rawBlockTags >= 6) {
@@ -326,10 +308,6 @@ function createTurndownService(): TurndownService {
   return service;
 }
 
-/**
- * Parse, pick the readable root, and strip boilerplate and unsafe URL attributes from it. The root
- * stays attached to its parsed document, which is local to this call, so it is mutated in place.
- */
 function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | undefined {
   const { document } = parseHTML(rawHtml);
   const root = extractReadableRoot(document);
@@ -346,7 +324,6 @@ function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | und
 // Candidates come from querySelectorAll, which skips template contents, and are tried selector by
 // selector; the first selector with a scoring candidate decides. Without one, body (or the document
 // element) and its article, main, section, and div descendants compete.
-/** Pick the readable root, or undefined when the document has no elements at all. */
 function extractReadableRoot(document: Document): Element | undefined {
   const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
@@ -385,13 +362,11 @@ function pickPreferredCandidate(candidates: readonly Element[]): Element | undef
     return undefined;
   }
   if (candidates.length === 1) {
-    // A lone candidate wins whenever it scores at all: it is not raw text and has visible text.
     return !RAW_TEXT_TAGS.has(only.localName) && /\S/u.test(only.textContent ?? "")
       ? only
       : undefined;
   }
 
-  // Measure each outermost candidate's subtree once; nested candidates are measured on the way.
   const wanted = new Set(candidates);
   const stats = new Map<Element, ContentStats>();
   let outermost: Element | undefined;
@@ -466,7 +441,6 @@ function scoreContentCandidate(element: Element, stats: Readonly<ContentStats>):
  */
 class ContentStats {
   readonly text = new CollapsedTextLength();
-  /** Sum of the normalized text lengths of descendant links. */
   linkTextLength = 0;
   paragraphs = 0;
   listItems = 0;
@@ -485,7 +459,6 @@ class ContentStats {
     readonly inTemplateContent: boolean,
   ) {}
 
-  /** Add a finished child's stats to this element's. */
   addChild(child: Readonly<ContentStats>): void {
     this.text.append(child.text);
     const name = child.element.localName;
@@ -511,18 +484,14 @@ class ContentStats {
   }
 }
 
-/**
- * Measure root's subtree in one iterative post-order walk, returning the stats of root and of every
- * descendant `isCandidate` selects, plus those descendants in document order.
- */
 function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredContent {
   const rootStats = new ContentStats(root, false, false);
   const candidates: Element[] = [];
   const stats = new Map([[root, rootStats]]);
-  // Iterative, since documents can nest deeper than the call stack allows.
-  const stack: ContentStats[] = [rootStats];
+  const stack: { readonly stats: ContentStats; nextChild: ChildNode | null }[] = [
+    { stats: rootStats, nextChild: root.firstChild },
+  ];
 
-  // Start measuring an element, recording it when it is a candidate.
   const openElement = (element: Element, parent: Readonly<ContentStats>): ContentStats => {
     const inTemplateContent = parent.inTemplateContent || parent.hidesContent;
     const elementStats = new ContentStats(
@@ -537,54 +506,31 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
     return elementStats;
   };
 
-  // Finish the element on top of the stack, adding its stats to its parent's. Returns the node
-  // after it, or undefined once the measured root is finished.
-  const closeElement = (): ChildNode | null | undefined => {
-    const finished = stack.pop();
-    const parent = stack.at(-1);
-    if (finished === undefined || parent === undefined) {
-      return undefined;
-    }
-    parent.addChild(finished);
-    return finished.element.nextSibling;
-  };
-
-  // `undefined` ends the walk; `null` means the element on top of the stack has no more children.
-  let node: ChildNode | null | undefined = root.firstChild;
-  while (node !== undefined) {
-    const current = stack.at(-1);
-    if (current === undefined) {
-      break;
-    }
+  for (let current = stack.at(-1); current !== undefined; current = stack.at(-1)) {
+    const node = current.nextChild;
     if (node === null) {
-      node = closeElement();
-    } else if (isElementNode(node)) {
-      stack.push(openElement(node, current));
-      node = node.firstChild;
-    } else {
-      if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
-        current.text.appendText(node.nodeValue ?? "");
-      }
-      node = node.nextSibling;
+      stack.pop();
+      stack.at(-1)?.stats.addChild(current.stats);
+      continue;
+    }
+    current.nextChild = node.nextSibling;
+    if (isElementNode(node)) {
+      stack.push({ stats: openElement(node, current.stats), nextChild: node.firstChild });
+    } else if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
+      current.stats.text.appendText(node.nodeValue ?? "");
     }
   }
 
   return { candidates, stats };
 }
 
-/** The candidates measureContent found, in document order, and the stats it recorded. */
 type MeasuredContent = {
   readonly candidates: Element[];
   readonly stats: Map<Element, ContentStats>;
 };
 
-/** Selects the descendants measureContent reports, given whether they are in template contents. */
 type CandidateFilter = (element: Element, inTemplateContent: boolean) => boolean;
 
-/**
- * Remove removal-selector and boilerplate subtrees from root's descendants, returning the tables and
- * the links with an href that remain, in document order.
- */
 function removeBoilerplate(root: Element): {
   readonly tables: Element[];
   readonly links: Element[];
@@ -610,7 +556,6 @@ function removeBoilerplate(root: Element): {
   return { tables, links };
 }
 
-/** The next element in document order after element's subtree, staying inside root. */
 function nextElementAfterSubtree(element: Element, root: Element): Element | null {
   let current: Element | null = element;
   while (current !== null && current !== root) {
@@ -623,7 +568,6 @@ function nextElementAfterSubtree(element: Element, root: Element): Element | nul
   return null;
 }
 
-// Innermost tables first, each inspected in the tree as earlier flattening left it.
 function flattenLayoutTables(tables: readonly Element[], root: Element): void {
   for (let index = tables.length - 1; index >= 0; index -= 1) {
     const table = tables[index];
@@ -656,29 +600,18 @@ function isLikelyLayoutTable(shape: TableShape): boolean {
   return false;
 }
 
-/**
- * What the layout-table rules read about a table. A table's own descendants are those whose nearest
- * table ancestor is this table rather than one nested inside it.
- */
 type TableShape = {
   readonly table: Element;
-  /** The readable root being sanitized; rules must not look at ancestors outside it. */
   readonly root: Element;
-  /** A caption, thead, or th anywhere below the table, nested tables included. */
   readonly hasHeadingMarkup: boolean;
   readonly hasNestedTable: boolean;
-  /** Own rows, each as its td/th children; rows without cells are left out. */
-  readonly rows: readonly (readonly Element[])[];
-  /** Own links, with or without an href. */
+  readonly ownRows: readonly (readonly Element[])[];
   readonly ownLinkCount: number;
-  /** Own thead, tbody, tfoot, tr, td, and th elements in document order. */
   readonly ownParts: readonly Element[];
 };
 
-/** A layout-table rule's verdict; undefined leaves the decision to the next rule. */
 type TableVerdict = "layout" | "data" | undefined;
 
-// Tried in order; the first verdict decides, and a table no rule decides is a data table.
 const LAYOUT_TABLE_RULES: readonly ((shape: TableShape) => TableVerdict)[] = [
   headingMarkupRule,
   tableRoleRule,
@@ -698,13 +631,12 @@ const PRESENTATIONAL_TABLE_ATTRIBUTES = [
   "width",
 ] as const;
 
-/** Gather a table's shape in one walk of its subtree. */
 function inspectTable(table: Element, root: Element): TableShape {
   const draft: TableShapeDraft = {
     hasHeadingMarkup: false,
     hasNestedTable: false,
     ownLinkCount: 0,
-    rows: [],
+    ownRows: [],
     ownParts: [],
   };
   const recordOwnElement = (element: Element): void => {
@@ -718,7 +650,7 @@ function inspectTable(table: Element, root: Element): TableShape {
     if (name === "tr") {
       const cells = childCells(element);
       if (cells.length > 0) {
-        draft.rows.push(cells);
+        draft.ownRows.push(cells);
       }
     } else if (name === "a") {
       draft.ownLinkCount += 1;
@@ -728,7 +660,6 @@ function inspectTable(table: Element, root: Element): TableShape {
   let element = table.firstElementChild;
   while (element !== null) {
     if (element.localName === "table") {
-      // A nested table's descendants are not this table's own, but its heading markup counts.
       draft.hasNestedTable = true;
       draft.hasHeadingMarkup ||= hasDescendant(element, (descendant) =>
         TABLE_HEADING_MARKUP_TAGS.has(descendant.localName),
@@ -742,12 +673,11 @@ function inspectTable(table: Element, root: Element): TableShape {
   return { table, root, ...draft };
 }
 
-/** The parts of a TableShape gathered while walking the table. */
 type TableShapeDraft = {
   hasHeadingMarkup: boolean;
   hasNestedTable: boolean;
   ownLinkCount: number;
-  readonly rows: Element[][];
+  readonly ownRows: Element[][];
   readonly ownParts: Element[];
 };
 
@@ -781,8 +711,6 @@ function tableRoleRule({ table }: TableShape): TableVerdict {
   return role === "table" || role === "grid" ? "data" : undefined;
 }
 
-// Hacker News lays out its pages with tables. The root stays attached to its parsed document, so
-// only the table itself and its ancestors up to and including the root count.
 function hackerNewsRule({ table, root }: TableShape): TableVerdict {
   for (let current: Element | null = table; current !== null; current = current.parentElement) {
     const id = current.getAttribute("id");
@@ -806,15 +734,13 @@ function presentationalAttributeRule({ table }: TableShape): TableVerdict {
     : undefined;
 }
 
-// Data rows share one width of at least two cells. No rows, one column, or ragged rows mean layout.
-function irregularGridRule({ rows }: TableShape): TableVerdict {
-  const widths = new Set(rows.map((cells) => cells.length));
+function irregularGridRule({ ownRows }: TableShape): TableVerdict {
+  const widths = new Set(ownRows.map((cells) => cells.length));
   return widths.size === 1 && !widths.has(1) ? undefined : "layout";
 }
 
-// Short cells that are mostly links make a navigation list, not data.
-function linkListRule({ rows, ownLinkCount }: TableShape): TableVerdict {
-  const cells = rows.flat();
+function linkListRule({ ownRows, ownLinkCount }: TableShape): TableVerdict {
+  const cells = ownRows.flat();
   if (ownLinkCount <= cells.length * 0.6) {
     return undefined;
   }
@@ -824,7 +750,6 @@ function linkListRule({ rows, ownLinkCount }: TableShape): TableVerdict {
   return averageCellTextLength < 120 ? "layout" : undefined;
 }
 
-// Links whose only element child is a heading become headings that contain the link.
 function normalizeBlockLinks(links: readonly Element[]): void {
   for (const link of links) {
     const onlyChild = link.firstElementChild;
@@ -850,9 +775,6 @@ function normalizeBlockLinks(links: readonly Element[]): void {
   }
 }
 
-// One reverse document-order pass. Removing an empty container can empty its parent, which comes
-// earlier. URL rewriting shares the pass: an element that is rewritten keeps an element child in
-// every ancestor, so no rewritten element is removed later, and no removed one is rewritten.
 function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): void {
   const elements = root.querySelectorAll("*");
   for (let index = elements.length - 1; index >= 0; index -= 1) {
@@ -889,8 +811,6 @@ function resolveUrlAttributes(element: Element, baseUrl: string): void {
   }
 }
 
-// The class attribute is read raw rather than through classList (which builds a token set): the
-// token regex treats any whitespace run as a boundary, so the raw value tests the same.
 function isBoilerplateElement(element: Element): boolean {
   if (!element.hasAttributes()) {
     return false;
@@ -961,7 +881,6 @@ function shouldTryChunking(html: string, sanitizedRoot: Element): boolean {
   );
 }
 
-/** Convert the input in chunks, or return undefined when it must be converted in one pass. */
 function convertInChunks(input: string): string | undefined {
   // turndown's own string parsing (turndown.cjs.js RootNode) when no DOMParser is global.
   const root = createDocument(`<x-turndown id="turndown-root">${input}</x-turndown>`).querySelector(
@@ -1000,7 +919,6 @@ function convertInChunks(input: string): string | undefined {
   return markdown.replace(/^[\t\r\n]+/u, "").replace(/[\t\r\n\s]+$/u, "");
 }
 
-/** Which edges of a chunk carry a sentinel block. */
 type ChunkEdges = {
   readonly sentinelBefore: boolean;
   readonly sentinelAfter: boolean;
@@ -1027,7 +945,6 @@ function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefin
   return text;
 }
 
-/** The root and its chain of lone wrappers (see loneWrapperChild), outermost first. */
 function wrapperChain(root: Element): {
   readonly levels: readonly Element[];
   readonly container: Element;
@@ -1080,7 +997,6 @@ function loneWrapperChild(container: Element): Element | undefined {
   return classes !== null && GFM_HIGHLIGHT_CLASS_RE.test(classes) ? undefined : wrapper;
 }
 
-/** The container's only element child, when every other child is a node turndown drops. */
 function soleElementChild(container: Element): Element | undefined {
   let sole: Element | undefined;
   for (let node = container.firstChild; node !== null; node = node.nextSibling) {
@@ -1104,7 +1020,6 @@ function isDroppedByTurndown(node: ChildNode): boolean {
   return node.nodeType === TEXT_NODE && COLLAPSIBLE_WHITESPACE_RE.test(node.nodeValue ?? "");
 }
 
-/** Split the container's children into runs of about TURNDOWN_CHUNK_TARGET_CHARS of text. */
 function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] {
   const chunks: ChildNode[][] = [];
   let current: ChildNode[] = [];

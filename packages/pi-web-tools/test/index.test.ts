@@ -1,4 +1,3 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import webToolsExtension from "../index";
 
@@ -9,13 +8,17 @@ type RegisteredTool = {
 
 function fakePi() {
   const tools: RegisteredTool[] = [];
-  const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
+  type Handler = (
+    event: unknown,
+    ctx: { readonly ui: { readonly notify: (message: string) => void } },
+  ) => void | Promise<void>;
+  const handlers = new Map<string, Handler>();
   const notifications: string[] = [];
   const api = {
     registerTool: (tool: RegisteredTool) => {
       tools.push(tool);
     },
-    on: (event: string, handler: (event: unknown, ctx: unknown) => void) => {
+    on: (event: string, handler: Handler) => {
       handlers.set(event, handler);
     },
   };
@@ -27,7 +30,7 @@ function fakePi() {
     },
   };
   return {
-    pi: api as unknown as ExtensionAPI,
+    pi: api,
     tools,
     handlers,
     ctx,
@@ -72,7 +75,7 @@ describe("webToolsExtension", () => {
     expect(tools.map((tool) => tool.name)).toStrictEqual(["websearch", "webfetch"]);
     await expect(tools[0]?.execute()).rejects.toThrow("configuration error");
 
-    handlers.get("session_start")?.({}, ctx);
+    await handlers.get("session_start")?.({}, ctx);
     expect(notifications[0]).toContain("unknown provider");
   });
 });

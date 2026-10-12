@@ -5,8 +5,6 @@ import { absurd } from "effect/Function";
 import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
 
-// Exact mime types, checked before the suffix rules in classifyMimeType. Types those rules already
-// classify as text (application/ld+json, application/atom+xml, ...) need no entry.
 const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind>([
   ["text/html", "html"],
   ["application/xhtml+xml", "html"],
@@ -22,7 +20,6 @@ const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind
   ["application/ecmascript", "text"],
 ]);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-// The WHATWG name of UTF-8: TextDecoder reports it, and webfetch details show it as the decoder.
 const UTF8_LABEL = "utf-8";
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 const LEADING_DIGITS_RE = /^\d+/u;
@@ -194,7 +191,6 @@ export type PublicWebError =
   | HttpStatusRejected
   | ResponseTooLarge;
 
-/** Network error codes, as Node and undici report them, grouped by what they mean for the user. */
 const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "timeout" | "tls"> =
   new Map([
     ["ENOTFOUND", "dns"],
@@ -208,7 +204,6 @@ const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "tim
     ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
     ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
   ]);
-/** How deep to follow `cause` links; real fetch errors nest two or three levels. */
 const MAX_CAUSE_DEPTH = 8;
 
 /**
@@ -257,7 +252,6 @@ function networkCodeKind(
   return code.startsWith("CERT_") || code.startsWith("ERR_TLS_") ? "tls" : undefined;
 }
 
-// The first recognised `code` along the cause chain; unrecognised codes keep the walk going.
 function findNetworkCode(error: unknown): string | undefined {
   let current = error;
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
@@ -401,20 +395,20 @@ const NON_PUBLIC_RANGES: readonly (readonly [
   prefixLength: number,
   family: "ipv4" | "ipv6",
 ])[] = [
-  ["0.0.0.0", 8, "ipv4"], // "This network"
-  ["10.0.0.0", 8, "ipv4"], // Private
-  ["100.64.0.0", 10, "ipv4"], // Carrier-grade NAT shared space
-  ["127.0.0.0", 8, "ipv4"], // Loopback
-  ["169.254.0.0", 16, "ipv4"], // Link-local, including cloud metadata endpoints
-  ["172.16.0.0", 12, "ipv4"], // Private
-  ["192.168.0.0", 16, "ipv4"], // Private
-  ["224.0.0.0", 4, "ipv4"], // Multicast
-  ["240.0.0.0", 4, "ipv4"], // Reserved, including broadcast 255.255.255.255
-  ["::", 96, "ipv6"], // Unspecified, loopback, and deprecated IPv4-compatible (::a.b.c.d)
-  ["64:ff9b::", 96, "ipv6"], // NAT64, which can wrap a private IPv4 address
-  ["fc00::", 7, "ipv6"], // Unique local
-  ["fe80::", 10, "ipv6"], // Link-local
-  ["ff00::", 8, "ipv6"], // Multicast
+  ["0.0.0.0", 8, "ipv4"],
+  ["10.0.0.0", 8, "ipv4"],
+  ["100.64.0.0", 10, "ipv4"],
+  ["127.0.0.0", 8, "ipv4"],
+  ["169.254.0.0", 16, "ipv4"],
+  ["172.16.0.0", 12, "ipv4"],
+  ["192.168.0.0", 16, "ipv4"],
+  ["224.0.0.0", 4, "ipv4"],
+  ["240.0.0.0", 4, "ipv4"],
+  ["::", 96, "ipv6"],
+  ["64:ff9b::", 96, "ipv6"],
+  ["fc00::", 7, "ipv6"],
+  ["fe80::", 10, "ipv6"],
+  ["ff00::", 8, "ipv6"],
 ];
 
 const NON_PUBLIC_ADDRESSES = new BlockList();
@@ -433,7 +427,6 @@ function stripIpv6Brackets(hostname: string): string {
   return hostname.replace(/^\[/u, "").replace(/\]$/u, "");
 }
 
-/** A response that ended a redirect chain, with the URL it came from. */
 type FetchedResponse = {
   readonly response: Response;
   readonly finalUrl: PublicHttpUrl;
@@ -513,7 +506,6 @@ export class PublicWebClient extends Context.Service<
           try: async () => dns.lookup(hostname),
           catch: () => "unresolved",
         }).pipe(
-          // DNS resolution failed: let the fetch itself surface the connectivity error.
           Effect.orElseSucceed(() => []),
           Effect.flatMap((records) =>
             records.some((record) => isPrivateOrLocalIp(record.address))
@@ -523,8 +515,6 @@ export class PublicWebClient extends Context.Service<
         );
       };
 
-      // One request in a redirect chain. The checks run in this order on every hop, so a redirect
-      // target is held to the same rules as the requested URL.
       const fetchHop = Effect.fnUntraced(function* (
         url: URL,
         request: PublicWebRequest,
@@ -560,8 +550,6 @@ export class PublicWebClient extends Context.Service<
         for (let redirects = 0; ; redirects += 1) {
           const response = yield* fetchHop(currentUrl, request, userAgent);
           if (!REDIRECT_STATUSES.has(response.status)) {
-            // fetchHop rejects credentials and resolveRedirect admits only http(s) targets, so the
-            // final URL is always public; the check keeps the brand honest.
             const finalUrl = currentUrl.toString();
             if (isPublicHttpUrl(finalUrl)) {
               return { response, finalUrl };
@@ -578,8 +566,6 @@ export class PublicWebClient extends Context.Service<
         }
       });
 
-      // A Cloudflare challenge gets one retry with the fallback user agent; the retry's outcome,
-      // challenge or not, is final.
       const fetchPastChallenge = Effect.fnUntraced(function* (
         request: PublicWebRequest,
       ): Effect.fn.Return<FetchedResponse, PublicWebError> {
@@ -624,7 +610,6 @@ export class PublicWebClient extends Context.Service<
   );
 }
 
-// The redirect checks after the body is cancelled: Location present, limit, parseable, http(s).
 function resolveRedirect(
   response: Response,
   hop: { readonly currentUrl: URL; readonly redirects: number; readonly maxRedirects: number },
@@ -655,7 +640,6 @@ function parseUrl(input: string, base: URL): URL | undefined {
   }
 }
 
-// Rejections decided from the status and headers alone, before any of the body is read.
 function checkResponseHead(
   response: Response,
   maxBytes: number,
@@ -663,7 +647,6 @@ function checkResponseHead(
   if (!response.ok) {
     return new HttpStatusRejected({ status: response.status, statusText: response.statusText });
   }
-  // A missing or non-numeric Content-Length parses to NaN and leaves the cap to the body read.
   const declaredBytes = parseContentLength(response.headers.get("content-length"));
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
     return new ResponseTooLarge({ maxBytes });
@@ -671,8 +654,6 @@ function checkResponseHead(
   return undefined;
 }
 
-// The header's leading decimal digits, as parseInt reads them, so a repeated header ("5, 5") still
-// counts; a header without leading digits reads as NaN.
 function parseContentLength(header: string | null): number {
   const digits = LEADING_DIGITS_RE.exec(header ?? "")?.[0];
   return digits === undefined ? Number.NaN : Number(digits);

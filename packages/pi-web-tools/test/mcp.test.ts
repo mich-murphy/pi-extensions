@@ -39,7 +39,6 @@ describe("parseMcpMessage", () => {
     expect(parseMcpMessage(body, "text/event-stream")).toStrictEqual(
       Result.succeed({ jsonrpc: "2.0", id: 2, error: { code: -32_000, message: "late" } }),
     );
-    // A data: line marks SSE framing even under a JSON content type.
     expect(parseMcpMessage(body, "application/json")._tag).toBe("Success");
   });
 
@@ -96,7 +95,6 @@ describe("parseMcpToolResult", () => {
 
   test("tolerates wrong-typed fields and drops unusable content items", () => {
     const result = parseMcpToolResult({
-      // Only an error object marks a JSON-RPC failure.
       error: "not an object",
       result: {
         isError: "true",
@@ -130,14 +128,12 @@ function jsonResponse(
 
 const decodeRpcRequest = Schema.decodeUnknownOption(Schema.Struct({ method: Schema.String }));
 
-/** One request the fake MCP endpoint received. */
 type RecordedRequest = {
   readonly httpMethod: string;
   readonly sessionId: string | null;
   readonly rpcMethod: string | undefined;
 };
 
-/** The JSON-RPC method of a request body, when it is one. */
 function rpcMethodOf(body: unknown): string | undefined {
   if (typeof body !== "string") {
     return undefined;
@@ -147,10 +143,6 @@ function rpcMethodOf(body: unknown): string | undefined {
   );
 }
 
-/**
- * A fake MCP endpoint. It answers DELETE with 200 and a POST from the reply for its JSON-RPC
- * method, or `otherwise`, and records every request.
- */
 function fakeMcpEndpoint(
   replies: Readonly<Record<string, () => Response>>,
   otherwise: () => Response,
@@ -221,11 +213,47 @@ describe("mcpHttpClient", () => {
           "POST",
           "DELETE",
         ]);
-        // The initialize POST has no session header; subsequent calls carry it.
         expect(requests[0]?.sessionId).toBeNull();
         expect(requests[1]?.sessionId).toBe("session-123");
         expect(requests[2]?.sessionId).toBe("session-123");
       }),
+  );
+
+  it.effect("a reused client opens and closes a distinct session for each tool call", () =>
+    Effect.gen(function* () {
+      let initialized = 0;
+      const { fetchImpl, requests } = fakeMcpEndpoint(
+        {
+          initialize: () => {
+            initialized += 1;
+            return jsonResponse({}, { headers: { "mcp-session-id": `session-${initialized}` } });
+          },
+          "notifications/initialized": () => new Response(null, { status: 202 }),
+        },
+        toolCallReply("found it"),
+      );
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 1024,
+        timeoutMs: 5000,
+        fetchImpl,
+      });
+      yield* client.callTool("search", {});
+      yield* client.callTool("fetch", {});
+      expect(requests.map(({ sessionId }) => sessionId)).toStrictEqual([
+        null,
+        "session-1",
+        "session-1",
+        "session-1",
+        null,
+        "session-2",
+        "session-2",
+        "session-2",
+      ]);
+      expect(deletes(requests).map(({ sessionId }) => sessionId)).toStrictEqual([
+        "session-1",
+        "session-2",
+      ]);
+    }),
   );
 
   it.effect("maps non-2xx initialize responses to ProviderStatusRejected", () =>
@@ -278,7 +306,6 @@ describe("mcpHttpClient", () => {
   );
 });
 
-/** The detail and message of the ProviderToolError a payload parses to. */
 function detailOf(payload: unknown, secrets: readonly string[] = []) {
   const result = parseMcpToolResult(payload, secrets);
   assert(Result.isFailure(result));
@@ -350,19 +377,13 @@ function deletes(requests: readonly RecordedRequest[]) {
   return requests.filter((request) => request.httpMethod === "DELETE");
 }
 
-/**
- * Wrap a fake endpoint so tools/call never answers; `onHang` runs when it is sent. Every other
- * request goes to `fetchImpl`.
- */
 function hangingToolsCall(fetchImpl: typeof fetch, onHang: () => void = () => undefined) {
   const wrapped: typeof fetch = async (input, init) => {
     if (rpcMethodOf(init?.body) !== "tools/call") {
       return fetchImpl(input, init);
     }
     onHang();
-    return new Promise<Response>(() => {
-      // Never settles.
-    });
+    return Promise.withResolvers<Response>().promise;
   };
   return wrapped;
 }

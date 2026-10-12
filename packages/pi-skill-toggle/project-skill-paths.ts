@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, loadSkills } from "@earendil-works/pi-coding-agent";
 
-/** Project-local skill directories understood by Pi and other common agent clients. */
 const PROJECT_SKILL_DIRECTORIES = [
   join(CONFIG_DIR_NAME, "skills"),
   join(".agents", "skills"),
@@ -45,7 +44,6 @@ export function discoverProjectSkillPaths(cwd: string): readonly string[] {
     .map((skill) => skill.filePath);
 }
 
-/** Outside a Git worktree only `cwd` counts, so a parent user's skills are not claimed. */
 function directoriesThroughGitRoot(cwd: string): readonly string[] {
   const directories: string[] = [];
   for (let directory = cwd; ; directory = dirname(directory)) {

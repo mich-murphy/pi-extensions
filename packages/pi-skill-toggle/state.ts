@@ -12,7 +12,6 @@ import type { Result } from "./result";
 const STATE_VERSION = 6;
 const RESET_ADVICE = "Fix the file, or remove it to reset all toggles.";
 
-/** Plain-English reasons for the file-system failures users can act on. */
 const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
   EACCES: "permission was denied. Check the permissions of the file and its folder.",
   EPERM: "the operation is not permitted. Check the permissions of the file and its folder.",
@@ -224,23 +223,47 @@ function parseState(path: string, content: string): ToggleStateResult {
   if (!isRecord(state) || typeof state.version !== "number") {
     return err(new ToggleStateMalformed(path, undefined));
   }
-  if (state.version === STATE_VERSION) {
+  const format = stateVersionFormat(state.version);
+  if (format === "overrides") {
     return parseOverrides(path, state.overrides, (entry) => entry);
   }
-  if (state.version > STATE_VERSION) {
+  if (format === "migrate-enabled-resources") {
+    return parseOverrides(path, state.resources, migrateEnabledResource);
+  }
+  if (format === "drop-name-keyed-state") {
+    return ok(new Map());
+  }
+  if (format === "too-new") {
     return err(new ToggleStateTooNew(path, state.version));
   }
-  // Versions 4 and 5 stored `{ enabled }` beside metadata that is now derived from the path.
-  if (state.version === 4 || state.version === 5) {
-    return parseOverrides(path, state.resources, (entry) => {
-      if (!isRecord(entry) || typeof entry.enabled !== "boolean") {
-        return undefined;
-      }
-      return entry.enabled ? "enabled" : "disabled";
-    });
+  return err(new ToggleStateMalformed(path, undefined));
+}
+
+type StateVersionFormat =
+  | "overrides"
+  | "migrate-enabled-resources"
+  | "drop-name-keyed-state"
+  | "too-new"
+  | "malformed";
+
+function stateVersionFormat(version: number): StateVersionFormat {
+  if (version === STATE_VERSION) {
+    return "overrides";
   }
-  // Versions before 4 identified resources by name, which cannot be mapped to a path.
-  return state.version < 4 ? ok(new Map()) : err(new ToggleStateMalformed(path, undefined));
+  if (version > STATE_VERSION) {
+    return "too-new";
+  }
+  if (version === 4 || version === 5) {
+    return "migrate-enabled-resources";
+  }
+  return version < 4 ? "drop-name-keyed-state" : "malformed";
+}
+
+function migrateEnabledResource(entry: unknown): ToggleValue | undefined {
+  if (!isRecord(entry) || typeof entry.enabled !== "boolean") {
+    return undefined;
+  }
+  return entry.enabled ? "enabled" : "disabled";
 }
 
 function parseOverrides(

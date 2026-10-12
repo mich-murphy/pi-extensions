@@ -1,5 +1,5 @@
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   decodeKittyPrintable,
   Editor,
@@ -11,11 +11,9 @@ import {
   truncateToWidth,
 } from "@earendil-works/pi-tui";
 
-/** The cursor and its surroundings: everything an action or command may depend on. */
 type View = {
   readonly line: number;
   readonly col: number;
-  /** Text of the cursor line. */
   readonly text: string;
   readonly lineCount: number;
 };
@@ -31,7 +29,6 @@ type Action = { readonly input: string; readonly when: Guard; readonly repeats: 
 const always: Guard = () => true;
 const inLine: Guard = (view) => view.col < view.text.length;
 const onLastLine: Guard = (view) => view.line >= view.lineCount - 1;
-/** The end of a line counts as blank, so word motions continue onto the next line. */
 const onBlank: Guard = (view) => !/\S/u.test(view.text.slice(view.col, view.col + 1));
 
 const once = (input: string, when: Guard = always): Action => ({ input, when, repeats: false });
@@ -57,7 +54,6 @@ const ACTIONS = {
   joinNextLine: once("\u001B[3~", (view) => !inLine(view)),
   joinPreviousLine: once("\u007F", (view) => view.col === 0),
   undo: once("\u001F"),
-  /** Normal mode keeps the cursor on a character, never after the last one. */
   clamp: once("\u001B[D", (view) => view.col > 0 && !inLine(view)),
 } satisfies Record<string, Action>;
 type ActionName = keyof typeof ACTIONS;
@@ -65,7 +61,6 @@ type ActionName = keyof typeof ACTIONS;
 /** Actions run under these bindings, so a user's remapped keys cannot redirect them. */
 const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
 
-/** A Normal-mode command: the actions to perform, then the mode to continue in. */
 type Command = {
   readonly mode: "insert" | "normal";
   readonly steps: (view: View) => readonly ActionName[];
@@ -79,7 +74,6 @@ const normal = (...steps: readonly ActionName[]): Command => ({
   mode: "normal",
   steps: () => steps,
 });
-/** Pi's word boundaries find the word under the cursor. A blank has no word, so it is left alone. */
 const innerWord: Command["steps"] = (view) =>
   onBlank(view) ? [] : ["wordRight", "wordLeft", "deleteWord"];
 const wholeLine: Command["steps"] = (view) => [
@@ -88,7 +82,6 @@ const wholeLine: Command["steps"] = (view) => [
   onLastLine(view) ? "joinPreviousLine" : "joinNextLine",
 ];
 
-/** Every binding, keyed by its full key sequence. A sequence's proper prefixes are pending states. */
 const COMMANDS: ReadonlyMap<string, Command> = new Map(
   Object.entries<Command>({
     i: insert(),
@@ -118,14 +111,12 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map(
   }),
 );
 
-/** The pending states: every proper prefix of a command's key sequence. */
 const PENDING_SEQUENCES: ReadonlySet<string> = new Set(
   [...COMMANDS.keys()].flatMap((keys) =>
     Array.from({ length: keys.length - 1 }, (_, index) => keys.slice(0, index + 1)),
   ),
 );
 
-/** `pending` holds the keys typed so far of an unfinished command, or "" when there are none. */
 type VimState = { readonly mode: "insert" } | { readonly mode: "normal"; readonly pending: string };
 
 const INSERT: VimState = { mode: "insert" };
@@ -138,7 +129,6 @@ function modeLabel(state: VimState): string {
   return state.pending === "" ? " NORMAL " : ` NORMAL ${state.pending} `;
 }
 
-/** The text this input types, or undefined for control and navigation keys. */
 function printableText(data: string): string | undefined {
   const decoded = decodeKittyPrintable(data);
   if (decoded !== undefined) {
@@ -148,13 +138,11 @@ function printableText(data: string): string | undefined {
   return code !== undefined && code >= 0x20 && code !== 0x7f ? data : undefined;
 }
 
-/** Whether text is one code point: a single key press rather than unbracketed pasted text. */
 function isOneCodePoint(text: string): boolean {
   const code = text.codePointAt(0);
   return code !== undefined && String.fromCodePoint(code).length === text.length;
 }
 
-/** Pi's main prompt editor with a deliberately small set of Vim bindings. */
 class VimEditor extends CustomEditor {
   private vimState: VimState = INSERT;
 
@@ -168,9 +156,6 @@ class VimEditor extends CustomEditor {
       return;
     }
 
-    // Printable input belongs to Vim and never reaches Pi. Everything else is Pi's, unless it
-    // interrupts a pending command. One character is a key press. Longer text is a paste the
-    // terminal did not bracket, which must not run as commands.
     const text = printableText(data);
     if (text !== undefined && isOneCodePoint(text)) {
       this.handleSequence(this.vimState.pending + text);
@@ -243,7 +228,6 @@ class VimEditor extends CustomEditor {
     for (let view = this.view(); when(view);) {
       this.performInput(input);
       const next = this.view();
-      // A repeating action ends when its guard fails or when the cursor stops moving.
       if (!repeats || (next.line === view.line && next.col === view.col)) {
         return;
       }
@@ -272,8 +256,21 @@ class VimEditor extends CustomEditor {
   }
 }
 
+/** Registration capabilities consumed by the Vim editor. */
+export type VimRegistration = {
+  readonly on: (
+    name: "session_start",
+    handler: (
+      event: unknown,
+      ctx: Pick<ExtensionContext, "mode"> & {
+        readonly ui: Pick<ExtensionContext["ui"], "setEditorComponent">;
+      },
+    ) => void,
+  ) => unknown;
+};
+
 /** Register Vim-style modal editing for Pi's interactive prompt composer. */
-export default function vimMode(pi: ExtensionAPI): void {
+export default function vimMode(pi: VimRegistration): void {
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") {
       return;

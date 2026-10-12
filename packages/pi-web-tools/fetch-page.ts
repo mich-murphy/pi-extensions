@@ -6,13 +6,10 @@ import { decodeTextBuffer, parseContentType, PublicWebClient } from "./network";
 import type { PublicWebError, PublicWebResponse } from "./network";
 import type { PublicHttpUrl, WebFetchFormat } from "./types";
 
-/** Browser-like default user agent for direct fetches. */
 const WEBFETCH_DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
-/** Fallback user agent used to retry Cloudflare challenge responses. */
 const WEBFETCH_FALLBACK_USER_AGENT = "pi-web-tools";
 
-/** Input to the fetch-page service. */
 type FetchPageInput = {
   readonly url: PublicHttpUrl;
   readonly format: WebFetchFormat;
@@ -61,7 +58,6 @@ export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBina
 /** Expected failures of the fetch-page service; every member has a safe `message`. */
 export type FetchPageError = PublicWebError | UnsupportedBinaryContent | HtmlConversionError;
 
-/** Options bounding one page fetch. */
 type FetchPageOptions = {
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
@@ -108,7 +104,6 @@ export class FetchPage extends Context.Service<
   );
 }
 
-// The pure half of a fetch: classify the content type, then decode and convert the body.
 function projectResponse(
   response: PublicWebResponse,
   format: WebFetchFormat,
@@ -153,7 +148,6 @@ function projectResponse(
   });
 }
 
-// The Accept header for a webfetch format: the requested representation first, HTML as fallback.
 function getAcceptHeader(format: WebFetchFormat): string {
   switch (format) {
     case "markdown": {

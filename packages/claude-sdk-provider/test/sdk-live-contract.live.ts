@@ -55,7 +55,6 @@ function request(prompt: string, toolNames: readonly string[] = []): AgentReques
   });
 }
 
-// A result message that reports the defer, named by the field that carried it.
 const isStopReasonDeferred = Schema.is(
   Schema.Struct({ type: Schema.Literal("result"), stop_reason: Schema.Literal("tool_deferred") }),
 );
@@ -73,7 +72,6 @@ function deferredResultOf(message: unknown): DeferredResult | undefined {
   return isTerminalReasonDeferred(message) ? "terminal_reason:tool_deferred" : undefined;
 }
 
-/** Run the real SDK query, reporting how its result message signalled a deferred tool call. */
 function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery {
   return async function* observedQuery(params) {
     for await (const message of query(params)) {
@@ -86,7 +84,6 @@ function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery 
   };
 }
 
-// Tests in a file run in order, so the attestation test sees every contract that passed before it.
 describe("installed Claude Agent SDK live contract", () => {
   const verified = new Set<LiveContract>();
   let observedDeferredResult: DeferredResult | undefined;
@@ -118,8 +115,6 @@ describe("installed Claude Agent SDK live contract", () => {
     });
     expect(observedDeferredResult).toBeDefined();
 
-    // Regression for a coding request that once printed <invoke> markup instead
-    // of making a real call. A plain text answer must not satisfy this check.
     const codingRequest = request(
       "Update this project's SDK dependency. First read package.json using the read Pi tool with path package.json. Wait for the tool result before editing or answering.",
       ["read"],

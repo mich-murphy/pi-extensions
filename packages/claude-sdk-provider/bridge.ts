@@ -81,17 +81,13 @@ function initialAssistantMessage(model: Model<Api>): AssistantMessage {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
     stopReason: "pending",
-    // Pi calls streamSimple synchronously and the start event is pushed before any Effect runs,
-    // so no Clock is in scope here.
     timestamp: Date.now(),
   };
 }
 
-/** Builds one Pi assistant message while mirroring each change onto Pi's event stream. */
 class AssistantMessageWriter {
   readonly stream = createAssistantMessageEventStream();
   private readonly output: AssistantMessage;
-  // Deltas only ever extend the newest content block, so one reference is the whole cursor.
   private open: TextContent | ThinkingContent | undefined;
 
   constructor(
@@ -102,7 +98,6 @@ class AssistantMessageWriter {
     this.stream.push({ type: "start", partial: this.output });
   }
 
-  /** Apply one bridge event and report whether it ended the turn. */
   write(event: BridgeEvent): boolean {
     switch (event.type) {
       case "text_delta": {

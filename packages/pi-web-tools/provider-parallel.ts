@@ -20,10 +20,8 @@ import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 
 const PARALLEL_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 
-/** Excerpt strings; a missing or non-array value reads as none. */
 const excerptsSchema = orFallback(lenientArray(Schema.String), []);
 
-/** Excerpts joined into one block; undefined when none carry text. */
 function joinExcerpts(excerpts: readonly string[]): string | undefined {
   return excerpts.join("\n\n").trim() || undefined;
 }
@@ -49,7 +47,6 @@ const decodeParallelResultsPayload = Schema.decodeUnknownResult(
   Schema.Struct({ results: lenientArray(ParallelResult) }),
 );
 
-// Only the first result is read: it answers the single URL each web_fetch call asks for.
 const decodeParallelFetchPayload = Schema.decodeUnknownOption(
   Schema.Struct({
     results: Schema.TupleWithRest(
@@ -181,12 +178,10 @@ function readParallelFetchResult(call: McpToolCallResult): string | undefined {
   if (!text) {
     return undefined;
   }
-  // Some deployments return the results payload as JSON text instead of structuredContent.
   const payload = parseJsonBody(text);
   const fromJson = Result.isSuccess(payload)
     ? extractParallelFetchText(payload.success)
     : undefined;
-  // Not a results payload: treat the text as the page content itself.
   return fromJson ?? text;
 }
 

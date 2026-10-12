@@ -8,9 +8,6 @@ import { ParallelMcpFetchProvider, ParallelMcpSearchProvider } from "../provider
 import { EXA_MCP_DEFAULT_ENDPOINT, PARALLEL_MCP_DEFAULT_ENDPOINT } from "../settings";
 import { publicUrl, searchQuery } from "./fakes";
 
-// Live smoke tests against the real keyless endpoints. Run with: npm run test:live
-// (vitest.live.config.ts includes packages/*/test/**/*.live.ts and nothing else).
-
 function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpClient {
   const clients = McpClients.layer.pipe(Layer.provide(HttpFetch.layer));
   return Effect.runSync(

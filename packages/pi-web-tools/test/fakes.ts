@@ -142,7 +142,6 @@ export function textWebResponse(
   };
 }
 
-/** Build a service from a layer whose dependencies are all provided. */
 function serviceFrom<I, S>(tag: Context.Key<I, S>, layer: Layer.Layer<I>): S {
   return Effect.runSync(
     Effect.gen(function* () {
@@ -151,7 +150,6 @@ function serviceFrom<I, S>(tag: Context.Key<I, S>, layer: Layer.Layer<I>): S {
   );
 }
 
-/** A fake HttpFetch layer delegating every request to a test fetch. */
 function fakeHttpFetch(fetchImpl: typeof fetch): Layer.Layer<HttpFetch> {
   return Layer.succeed(HttpFetch, HttpFetch.of({ fetch: fetchImpl }));
 }

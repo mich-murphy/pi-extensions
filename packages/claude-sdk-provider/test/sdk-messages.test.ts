@@ -290,7 +290,6 @@ describe("contextWindowFor", () => {
   });
 
   test("matches an undated entry when the served model carries a snapshot date", () => {
-    // A request pinned to the full id is keyed undated, but message_start reports the dated model.
     const pinned = parsed(
       resultMessage({
         modelUsage: {
