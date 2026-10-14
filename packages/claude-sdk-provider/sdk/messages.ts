@@ -3,6 +3,7 @@ import type { TokenUsage } from "../bridge";
 import { undatedModelId } from "../models";
 import { SdkProtocolError, SdkResultError } from "./errors";
 import { lenientOptional, withFallback } from "./lenient-schema";
+import { resultFailureCategory, safeApiError, safeTerminalReason } from "./result-failure";
 
 const tokenCountSchema = Schema.optional(
   Schema.NullOr(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
@@ -33,8 +34,7 @@ const resultSchema = Schema.Struct({
   is_error: Schema.Boolean,
   stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
   terminal_reason: Schema.optional(Schema.String),
-  errors: Schema.optional(withFallback(Schema.Array(Schema.Unknown), [])),
-  result: Schema.optional(withFallback(Schema.String, "")),
+  subtype: lenientOptional(Schema.String),
   usage: Schema.optional(usageSchema),
   modelUsage: Schema.optional(modelUsageSchema),
 });
@@ -85,30 +85,24 @@ const STOP_REASONS: ReadonlyMap<string, "stop" | "length" | "refusal"> = new Map
   ["refusal", "refusal"],
 ]);
 
-const FAILURE_MESSAGES = {
-  tool_deferred_unavailable: "could not hand the requested Pi tool call back to Pi",
-  refusal: "the model refused to complete the request",
-  error: "the query failed without an error description",
-} as const;
-
 function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
   const stop = STOP_REASONS.get(result.stop_reason ?? "end_turn");
   const terminalReason =
-    result.terminal_reason ??
+    safeTerminalReason(result.terminal_reason) ??
     (result.stop_reason === "tool_deferred" ? "tool_deferred" : undefined);
-  let failure: keyof typeof FAILURE_MESSAGES | undefined;
+  let failure: "tool-contract" | "provider" | "refusal" | undefined;
   if (terminalReason === "tool_deferred_unavailable") {
-    failure = terminalReason;
+    failure = "tool-contract";
   } else if (result.is_error) {
-    failure = "error";
+    failure = "provider";
   } else if (stop === "refusal") {
     failure = stop;
   }
 
   if (failure) {
-    const reported = (result.errors ?? []).filter((entry) => typeof entry === "string").join("; ");
-    const detail = reported || (result.result ?? "") || FAILURE_MESSAGES[failure];
-    return { _tag: "failed", error: new SdkResultError({ terminalReason, detail }) };
+    const category =
+      failure === "provider" ? resultFailureCategory(terminalReason, result.subtype) : failure;
+    return { _tag: "failed", error: new SdkResultError({ terminalReason, category }) };
   }
   if (stop === "stop" || stop === "length") {
     return { _tag: "completed", stopReason: stop, terminalReason };
@@ -146,11 +140,12 @@ function usageMessage(
   { model, usage }: typeof modelCallSchema.Type,
   apiError: string | undefined,
 ): Result.Result<SdkMessage, string> {
+  const safeError = safeApiError(apiError);
   return Result.succeed({
     type: "usage",
     usage,
     ...(model === undefined ? {} : { model }),
-    ...(apiError === undefined ? {} : { apiError }),
+    ...(safeError === undefined ? {} : { apiError: safeError }),
   });
 }
 
@@ -198,7 +193,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
     messageParser(resultSchema, (result) => {
       const turn = turnResult(result);
       return turn === undefined
-        ? Result.fail(`unsupported stop_reason ${result.stop_reason}`)
+        ? Result.fail("unsupported stop_reason")
         : Result.succeed({
             type: "result",
             result: turn,

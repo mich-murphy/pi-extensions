@@ -234,17 +234,17 @@ describe("terminal SDK result", () => {
   test("rejects unknown SDK stop reasons on an otherwise clean result", () => {
     const error = protocolError(resultMessage({ stop_reason: "future_reason" }));
 
-    expect(error.message).toContain("unsupported stop_reason future_reason");
+    expect(error.message).toContain("unsupported stop_reason");
   });
 
   test("surfaces the SDK's own error result instead of silently reporting an empty stop", () => {
     expect(failedResult({ errors: ["context deadline exceeded", 7, "retry later"] }).message).toBe(
-      "context deadline exceeded; retry later",
+      "the query failed; retry or check Claude Code status",
     );
     expect(failedResult({ result: "The model refused to respond." }).message).toBe(
-      "The model refused to respond.",
+      "the query failed; retry or check Claude Code status",
     );
-    expect(failedResult({}).message).toBe("the query failed without an error description");
+    expect(failedResult({}).message).toBe("the query failed; retry or check Claude Code status");
     expect(failedResult({ terminal_reason: "model_error" }).terminalReason).toBe("model_error");
   });
 
@@ -255,7 +255,10 @@ describe("terminal SDK result", () => {
       errors: ["upstream failed"],
     });
 
-    expect(result).toMatchObject({ _tag: "failed", error: { message: "upstream failed" } });
+    expect(result).toMatchObject({
+      _tag: "failed",
+      error: { message: "the query failed; retry or check Claude Code status" },
+    });
   });
 
   test("treats terminal_reason tool_deferred_unavailable as an error even when is_error is false", () => {

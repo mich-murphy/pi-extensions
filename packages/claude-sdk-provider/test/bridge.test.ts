@@ -149,7 +149,7 @@ describe("provider failures", () => {
         type: "failed",
         error: new SdkResultError({
           terminalReason: undefined,
-          detail: "You're out of extra usage",
+          category: "usage-limit",
         }),
       },
     ]);
@@ -164,7 +164,9 @@ describe("provider failures", () => {
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Partial" }]);
-    expect(message.errorMessage).toBe("Claude Agent SDK: You're out of extra usage");
+    expect(message.errorMessage).toBe(
+      "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
+    );
   });
 
   test("reports a failure after cancellation as aborted", async () => {
@@ -175,7 +177,7 @@ describe("provider failures", () => {
       [
         {
           type: "failed",
-          error: new SdkResultError({ terminalReason: undefined, detail: "interrupted" }),
+          error: new SdkResultError({ terminalReason: undefined, category: "cancelled" }),
         },
       ],
       { signal: controller.signal },

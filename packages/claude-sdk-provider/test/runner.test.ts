@@ -472,7 +472,7 @@ describe("deferred tool calls", () => {
 
     const error = failureOf(events);
     expect(error._tag).toBe("InvalidDeferredCallLimitError");
-    expect(error.message).toMatch(/pi_call.*is this gateway's own name/u);
+    expect(error.message).toContain("invalid Pi tool requests");
     expect(abortReason).toBe(error);
   });
 
@@ -517,7 +517,7 @@ describe("turn failures", () => {
     const error = failureOf(await runTurn(queryWith([READ_PACKAGE], unavailable)));
 
     expect(error._tag).toBe("SdkResultError");
-    expect(error.message).toBe("the SDK could not honor the deferred tool call");
+    expect(error.message).toBe("could not hand the requested Pi tool call back to Pi");
   });
 
   test("does not execute a captured tool call when SDK iteration fails", async () => {
