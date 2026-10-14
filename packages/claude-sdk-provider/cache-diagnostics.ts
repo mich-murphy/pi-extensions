@@ -1,9 +1,9 @@
-import process from "node:process";
 import { Effect } from "effect";
 import { createCacheDiagnosticTracker } from "./cache-tracker";
 import type { CacheDiagnosticTracker } from "./cache-tracker";
+import { writeRedirectedDiagnostic } from "./diagnostic-output";
 
-/** Whether opt-in cache diagnostics are written to stderr. */
+/** Whether opt-in cache diagnostics are written to redirected stderr. */
 export type CacheDiagnosticsMode = "enabled" | "disabled";
 
 /**
@@ -22,7 +22,7 @@ export function parseCacheDiagnosticsMode(
  * Build the opt-in cache tracker, timed by the `Clock` in scope.
  *
  * @param mode - Parsed diagnostics switch.
- * @returns A tracker writing to stderr, or undefined when diagnostics are disabled.
+ * @returns A tracker writing to redirected stderr, or undefined when diagnostics are disabled.
  */
 export const cacheDiagnosticsTracker = Effect.fnUntraced(function* (
   mode: CacheDiagnosticsMode,
@@ -31,6 +31,6 @@ export const cacheDiagnosticsTracker = Effect.fnUntraced(function* (
     return undefined;
   }
   return yield* createCacheDiagnosticTracker((diagnostic) => {
-    process.stderr.write(`[claude-sdk-cache] ${JSON.stringify(diagnostic)}\n`);
+    writeRedirectedDiagnostic(`[claude-sdk-cache] ${JSON.stringify(diagnostic)}\n`);
   });
 });
