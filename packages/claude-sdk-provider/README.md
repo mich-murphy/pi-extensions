@@ -35,7 +35,7 @@ This provider is experimental. For cache-sensitive or API-billed work, select Pi
 
 Run `/claude-sdk-status` to compare the pinned Agent SDK, its bundled Claude Code, and the `claude` executable on `PATH`, and to show each model's advertised ID next to the canonical model it actually resolves to. Run `/claude-sdk-usage` to show the remaining subscription allowance and reset time for each rate-limit window reported by Claude. The usage command calls the Agent SDK's experimental structured usage API without sending a model prompt.
 
-Failed turns include a stable category: `authentication`, `cancelled`, `defect` (a provider bug), `host-sleep`, `network`, `protocol`, `provider`, `timeout`, `tool-contract`, or `usage-limit`. The provider also writes one `[claude-sdk-error]` JSON record to stderr with `schemaVersion`, `kind`, `errorTag`, and, when present, `operation` (`start` or `iterate`) and `terminalReason`. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause.
+Failed turns include a stable category: `authentication`, `cancelled`, `defect` (a provider bug), `host-sleep`, `network`, `protocol`, `provider`, `timeout`, `tool-contract`, or `usage-limit`. When stderr is redirected, the provider also writes one `[claude-sdk-error]` JSON record with `schemaVersion`, `kind`, `errorTag`, and, when present, `operation` (`start` or `iterate`) and `terminalReason`. That record contains routing fields only. It excludes the provider message, prompt, credentials, and underlying cause. Diagnostic writes are suppressed when stderr is a terminal so they cannot corrupt Pi's editor or status bar; normal provider errors still appear through Pi's UI. To capture diagnostics during an interactive session, run `pi 2>claude-sdk-diagnostics.log`.
 
 Error messages never echo raw SDK error text. Query failures are classified from the structured fields the Agent SDK attaches to its own errors (`errorClass`, `exitCode`, `signal`), and authentication failures from the typed `error` on assistant messages, so a missing executable, a crashed subprocess, or an expired login each produce a specific, actionable message.
 
@@ -66,10 +66,10 @@ The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routi
 Diagnostics are opt-in and contain only counts, breakpoint positions, usage, and truncated SHA-256 fingerprints—never prompt text or image bytes:
 
 ```sh
-PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi
+PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi 2>claude-sdk-diagnostics.log
 ```
 
-Each request emits a `[claude-sdk-cache]` JSON line on stderr. A request carries at most one provider cache breakpoint, reported as `breakpointBlock`. Consecutive request records include `commonPrefixBlocks` and `commonPrefixCharacters`; usage records include `cacheReadPercent` and flag a large turn below 50% reuse as `possibleCollapse`. Use these records to distinguish local prefix divergence from an upstream cache miss.
+Each request emits a `[claude-sdk-cache]` JSON line on redirected stderr. Terminal stderr is deliberately silent, even with diagnostics enabled. A request carries at most one provider cache breakpoint, reported as `breakpointBlock`. Consecutive request records include `commonPrefixBlocks` and `commonPrefixCharacters`; usage records include `cacheReadPercent` and flag a large turn below 50% reuse as `possibleCollapse`. Use these records to distinguish local prefix divergence from an upstream cache miss.
 
 ## Model routing
 
@@ -110,6 +110,6 @@ npm run typecheck
 npm run test:claude-sdk-upgrade
 pi --list-models claude-sdk
 
-# Optional live cache trace (inspect stderr; no raw prompt content is logged)
-PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi --model claude-sdk/claude-5.5-sonnet
+# Optional live cache trace (inspect the log; no raw prompt content is logged)
+PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1 pi --model claude-sdk/claude-5.5-sonnet 2>claude-sdk-diagnostics.log
 ```
