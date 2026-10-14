@@ -2,6 +2,8 @@ import { isIP } from "node:net";
 import type { Context } from "effect";
 import { Duration, Effect, Exit, Layer, Redacted, Result } from "effect";
 import { TestClock } from "effect/testing";
+import { CredentialResolver } from "../credentials";
+import type { CredentialSnapshot } from "../credentials";
 import { FetchPage } from "../fetch-page";
 import { McpClients } from "../mcp";
 import type { McpClient, McpToolCallResult } from "../mcp";
@@ -41,6 +43,34 @@ export function settingsFrom(
     throw new Error(`Invalid test settings: ${parsed.failure.message}`);
   }
   return parsed.success;
+}
+
+function syntheticKey(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+function syntheticOutcome(key: string | undefined) {
+  return Result.succeed(key === undefined ? undefined : Redacted.make(key));
+}
+
+/** Synthetic request-time credentials; never consults the developer's environment or auth store. */
+export function credentialSnapshotFrom(
+  environment: Readonly<Record<string, string | undefined>> = {},
+): CredentialSnapshot {
+  const keys = {
+    exa: syntheticKey(environment.EXA_API_KEY),
+    parallel: syntheticKey(environment.PARALLEL_API_KEY),
+    brave: syntheticKey(environment.BRAVE_API_KEY),
+  };
+  return {
+    outcomes: {
+      exa: syntheticOutcome(keys.exa),
+      parallel: syntheticOutcome(keys.parallel),
+      brave: syntheticOutcome(keys.brave),
+    },
+    secrets: Object.values(keys).filter((key): key is string => key !== undefined),
+  };
 }
 
 /** Parse a test query through the real parser; an invalid one is a broken test. */
@@ -265,25 +295,44 @@ export function liveToolOutputStore(): ToolOutputStore["Service"] {
 export function toolRuntimeWith(services: {
   readonly settings: WebToolsSettings;
   readonly secret?: string;
+  readonly credentials?: CredentialResolver["Service"];
   readonly searchProviders?: readonly SearchProvider[];
   readonly fetchProviders?: readonly FetchProvider[];
   readonly fetchPage?: FetchPage["Service"];
   readonly testClock?: boolean;
 }): ToolRuntime<
-  SearchProviders | FetchRescueProviders | FetchPage | ToolOutputStore | WebToolsConfig
+  | SearchProviders
+  | FetchRescueProviders
+  | FetchPage
+  | ToolOutputStore
+  | WebToolsConfig
+  | CredentialResolver
 > {
   const { settings, secret } = services;
+  const snapshot = credentialSnapshotFrom({ EXA_API_KEY: secret });
   const credentials =
-    secret === undefined
-      ? settings.credentials
-      : { ...settings.credentials, exaApiKey: Redacted.make(secret) };
+    services.credentials ??
+    CredentialResolver.of({
+      resolve: (provider) => Effect.fromResult(snapshot.outcomes[provider]),
+    });
   return createToolRuntime(
     Layer.mergeAll(
-      Layer.succeed(SearchProviders, SearchProviders.of(services.searchProviders ?? [])),
-      Layer.succeed(FetchRescueProviders, FetchRescueProviders.of(services.fetchProviders ?? [])),
+      Layer.succeed(CredentialResolver, credentials),
+      Layer.succeed(
+        SearchProviders,
+        SearchProviders.of({
+          forRequest: () => services.searchProviders ?? [],
+        }),
+      ),
+      Layer.succeed(
+        FetchRescueProviders,
+        FetchRescueProviders.of({
+          forRequest: () => services.fetchProviders ?? [],
+        }),
+      ),
       Layer.succeed(FetchPage, services.fetchPage ?? FetchPage.of({ fetch: () => Effect.never })),
       ToolOutputStore.layer,
-      WebToolsConfig.layer({ ...settings, credentials }),
+      WebToolsConfig.layer(settings),
       services.testClock === true ? TestClock.layer() : Layer.empty,
     ),
   );

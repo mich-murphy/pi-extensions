@@ -11,6 +11,7 @@ import {
 } from "./provider-types";
 import type { ProviderError } from "./provider-types";
 import { SEARCH_MAX_RESPONSE_BYTES, SEARCH_TIMEOUT_SECONDS } from "./settings";
+import { withSafeSpan } from "./telemetry";
 import { redactSecrets } from "./tool-output";
 import type { PublicHttpUrl } from "./types";
 import { WEB_TOOLS_VERSION } from "./types";
@@ -28,6 +29,7 @@ export type McpClient = {
   readonly callTool: (
     name: string,
     args: Readonly<Record<string, unknown>>,
+    secrets?: readonly string[],
   ) => Effect.Effect<McpToolCallResult, ProviderError>;
 };
 
@@ -134,48 +136,55 @@ function makeSessionPerToolCallMcpHttpClient(
       }),
     ).pipe(Effect.ignore);
 
-  const callTool = Effect.fn("McpClient.callTool")(function* (
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-  ): Effect.fn.Return<McpToolCallResult, ProviderError> {
-    let sessionId: string | null = null;
-    const session = Effect.gen(function* () {
-      const init = yield* post(
-        {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: MCP_PROTOCOL_VERSION,
-            capabilities: {},
-            clientInfo: { name: "pi-web-tools", version: WEB_TOOLS_VERSION },
+  const callTool = Effect.fnUntraced(
+    function* (
+      name: string,
+      args: Readonly<Record<string, unknown>>,
+      secrets: readonly string[] = [],
+    ): Effect.fn.Return<McpToolCallResult, ProviderError> {
+      let sessionId: string | null = null;
+      const session = Effect.gen(function* () {
+        const init = yield* post(
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: MCP_PROTOCOL_VERSION,
+              capabilities: {},
+              clientInfo: { name: "pi-web-tools", version: WEB_TOOLS_VERSION },
+            },
           },
-        },
-        null,
-      );
-      ({ sessionId } = init);
+          null,
+        );
+        ({ sessionId } = init);
 
-      yield* post({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId).pipe(
-        Effect.catchTag("ProviderStatusRejected", () => Effect.void),
-      );
+        yield* post({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId).pipe(
+          Effect.catchTag("ProviderStatusRejected", () => Effect.void),
+        );
 
-      const call = yield* post(
-        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
-        sessionId,
-      );
-      const message = yield* Effect.fromResult(parseMcpMessage(call.bodyText, call.contentType));
-      return yield* Effect.fromResult(parseMcpToolResult(message));
-    });
+        const call = yield* post(
+          { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
+          sessionId,
+        );
+        const message = yield* Effect.fromResult(parseMcpMessage(call.bodyText, call.contentType));
+        return yield* Effect.fromResult(parseMcpToolResult(message, secrets));
+      });
 
-    return yield* session.pipe(
-      Effect.ensuring(
-        Effect.suspend(() =>
-          sessionId === null || sessionId === "" ? Effect.void : closeSession(sessionId),
+      return yield* session.pipe(
+        Effect.ensuring(
+          Effect.suspend(() =>
+            sessionId === null || sessionId === "" ? Effect.void : closeSession(sessionId),
+          ),
         ),
-      ),
-      withProviderDeadline(options.timeout),
-    );
-  });
+        withProviderDeadline(options.timeout),
+      );
+    },
+    (effect) =>
+      withSafeSpan("McpClient.callTool", effect, (error) => ({
+        type: error._tag,
+      })),
+  );
 
   return { callTool };
 }
@@ -272,7 +281,7 @@ export function parseMcpToolResult(
 }
 
 function toolErrorDetail(text: string, secrets: readonly (string | undefined)[]): string {
-  const scrubbed = redactSecrets(text.replaceAll(/\s+/gu, " ").trim(), secrets);
+  const scrubbed = redactSecrets(text, secrets).replaceAll(/\s+/gu, " ").trim();
   return scrubbed.length <= MAX_TOOL_ERROR_DETAIL
     ? scrubbed
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;

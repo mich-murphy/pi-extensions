@@ -49,14 +49,18 @@ export class ToolOutputStore extends Context.Service<
  * must not be able to reflect credentials back into the session transcript.
  */
 export function redactSecrets(input: string, secrets: readonly (string | undefined)[]): string {
-  let output = input;
-  for (const secret of secrets) {
-    if (secret === undefined || secret === "") {
-      continue;
-    }
-    output = output.split(secret).join("[redacted]");
+  const unique = [
+    ...new Set(secrets.filter((secret): secret is string => secret !== undefined && secret !== "")),
+  ];
+  if (unique.length === 0) {
+    return input;
   }
-  return output;
+  // Match the original input once: longest alternatives win, and replacements are never rescanned.
+  const pattern = unique
+    .toSorted((a, b) => b.length - a.length)
+    .map((secret) => secret.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
+    .join("|");
+  return input.replaceAll(new RegExp(pattern, "gu"), () => "[redacted]");
 }
 
 /** Pi text content item. */
@@ -146,7 +150,7 @@ export function projectFetchResult(
             options.secrets,
           ),
         },
-        { type: "image", data: body.data.toString("base64"), mimeType: meta.mime },
+        { type: "image", data: body.data.toString("base64"), mimeType: safeMeta.mime },
       ],
       details: { ...safeMeta, image: true },
     });

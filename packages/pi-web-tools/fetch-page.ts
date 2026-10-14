@@ -5,6 +5,7 @@ import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
 import type { HtmlConversionError } from "./html-conversion";
 import { decodeTextBuffer, parseContentType, PublicWebClient } from "./network";
 import type { PublicWebError, PublicWebResponse } from "./network";
+import { withSafeSpan } from "./telemetry";
 import type { PublicHttpUrl, WebFetchFormat } from "./types";
 
 const WEBFETCH_DEFAULT_USER_AGENT =
@@ -87,22 +88,25 @@ export class FetchPage extends Context.Service<
     FetchPage,
     Effect.gen(function* () {
       const publicWeb = yield* PublicWebClient;
-      const fetch = Effect.fn("FetchPage.fetch")(function* (
-        input: FetchPageInput,
-        options: FetchPageOptions,
-      ): Effect.fn.Return<FetchPageResult, FetchPageError> {
-        const response = yield* publicWeb.get({
-          url: input.url,
-          accept: getAcceptHeader(input.format),
-          userAgent: WEBFETCH_DEFAULT_USER_AGENT,
-          fallbackUserAgent: WEBFETCH_FALLBACK_USER_AGENT,
-          maxRedirects: options.maxRedirects,
-          maxResponseBytes: options.maxResponseBytes,
-          blockPrivateHosts: options.blockPrivateHosts,
-          domainPolicy: options.domainPolicy,
-        });
-        return yield* Effect.fromResult(projectResponse(response, input.format));
-      });
+      const fetch = Effect.fnUntraced(
+        function* (
+          input: FetchPageInput,
+          options: FetchPageOptions,
+        ): Effect.fn.Return<FetchPageResult, FetchPageError> {
+          const response = yield* publicWeb.get({
+            url: input.url,
+            accept: getAcceptHeader(input.format),
+            userAgent: WEBFETCH_DEFAULT_USER_AGENT,
+            fallbackUserAgent: WEBFETCH_FALLBACK_USER_AGENT,
+            maxRedirects: options.maxRedirects,
+            maxResponseBytes: options.maxResponseBytes,
+            blockPrivateHosts: options.blockPrivateHosts,
+            domainPolicy: options.domainPolicy,
+          });
+          return yield* Effect.fromResult(projectResponse(response, input.format));
+        },
+        (effect) => withSafeSpan("FetchPage.fetch", effect, (error) => ({ type: error._tag })),
+      );
       return FetchPage.of({ fetch });
     }),
   );

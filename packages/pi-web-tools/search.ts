@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import type { Redacted } from "effect";
+import { CredentialFailure } from "./credentials";
+import type { CredentialSnapshot } from "./credentials";
 import { McpClients } from "./mcp";
 import type { McpClient } from "./mcp";
 import { BraveApiSearchProvider } from "./provider-brave";
@@ -32,6 +34,7 @@ import type {
 
 type ProviderComposition = {
   readonly settings: WebToolsSettings;
+  readonly snapshot: CredentialSnapshot;
   readonly http: ProviderHttpClient["Service"];
   readonly sessionId: string;
   readonly mcpFor: (endpoint: PublicHttpUrl) => McpClient;
@@ -44,28 +47,42 @@ type ProviderPair = {
 
 type ProviderRoute =
   | { readonly _tag: "OfficialApi"; readonly apiKey: Redacted.Redacted }
-  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl };
+  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl }
+  | { readonly _tag: "Failed"; readonly error: CredentialFailure };
 
 function selectProviderRoute(
-  apiKey: Redacted.Redacted | undefined,
+  outcome: CredentialSnapshot["outcomes"][SearchProviderName],
   override: PublicHttpUrl | undefined,
   defaultEndpoint: PublicHttpUrl,
 ): ProviderRoute {
-  return override === undefined && apiKey !== undefined
-    ? { _tag: "OfficialApi", apiKey }
-    : { _tag: "KeylessMcp", endpoint: override ?? defaultEndpoint };
+  if (override !== undefined) {
+    return { _tag: "KeylessMcp", endpoint: override };
+  }
+  if (Result.isFailure(outcome)) {
+    return { _tag: "Failed", error: outcome.failure };
+  }
+  return outcome.success === undefined
+    ? { _tag: "KeylessMcp", endpoint: defaultEndpoint }
+    : { _tag: "OfficialApi", apiKey: outcome.success };
+}
+
+function failedPair(name: SearchProviderName, error: CredentialFailure): ProviderPair {
+  return { search: { name, transport: "api", search: () => Effect.fail(error) } };
 }
 
 const PROVIDER_BUILDERS: Record<
   SearchProviderName,
-  (composition: ProviderComposition) => ProviderPair | undefined
+  (composition: ProviderComposition) => ProviderPair
 > = {
-  exa: ({ settings, http, mcpFor }) => {
+  exa: ({ settings, snapshot, http, mcpFor }) => {
     const route = selectProviderRoute(
-      settings.credentials.exaApiKey,
+      snapshot.outcomes.exa,
       settings.endpoints.exa,
       EXA_MCP_DEFAULT_ENDPOINT,
     );
+    if (route._tag === "Failed") {
+      return failedPair("exa", route.error);
+    }
     if (route._tag === "OfficialApi") {
       return {
         search: new ExaApiSearchProvider(route.apiKey, http),
@@ -75,12 +92,15 @@ const PROVIDER_BUILDERS: Record<
     const mcp = mcpFor(route.endpoint);
     return { search: new ExaMcpSearchProvider(mcp), fetch: new ExaMcpFetchProvider(mcp) };
   },
-  parallel: ({ settings, http, sessionId, mcpFor }) => {
+  parallel: ({ settings, snapshot, http, sessionId, mcpFor }) => {
     const route = selectProviderRoute(
-      settings.credentials.parallelApiKey,
+      snapshot.outcomes.parallel,
       settings.endpoints.parallel,
       PARALLEL_MCP_DEFAULT_ENDPOINT,
     );
+    if (route._tag === "Failed") {
+      return failedPair("parallel", route.error);
+    }
     const mcp = mcpFor(
       route._tag === "KeylessMcp" ? route.endpoint : PARALLEL_MCP_DEFAULT_ENDPOINT,
     );
@@ -92,47 +112,68 @@ const PROVIDER_BUILDERS: Record<
       fetch: new ParallelMcpFetchProvider(mcp, sessionId),
     };
   },
-  brave: ({ settings, http }) => {
-    const apiKey = settings.credentials.braveApiKey;
-    return apiKey === undefined ? undefined : { search: new BraveApiSearchProvider(apiKey, http) };
+  brave: ({ snapshot, http }) => {
+    const outcome = snapshot.outcomes.brave;
+    if (Result.isFailure(outcome)) {
+      return failedPair("brave", outcome.failure);
+    }
+    return outcome.success === undefined
+      ? failedPair("brave", new CredentialFailure({ provider: "brave", reason: "unavailable" }))
+      : { search: new BraveApiSearchProvider(outcome.success, http) };
   },
 };
 
-function buildProviderPairs(composition: ProviderComposition): ProviderPair[] {
-  return composition.settings.search.providers.flatMap(
-    (name) => PROVIDER_BUILDERS[name](composition) ?? [],
-  );
+function buildProviderPairs(composition: ProviderComposition): readonly ProviderPair[] {
+  const { settings, snapshot } = composition;
+  const brave = snapshot.outcomes.brave;
+  const providers =
+    settings.search.defaultProviders && (Result.isFailure(brave) || brave.success !== undefined)
+      ? [...settings.search.providers, "brave" as const]
+      : settings.search.providers;
+  return providers.map((name) => PROVIDER_BUILDERS[name](composition));
 }
 
-/**
- * The configured provider pairs, built once per layer build. Both chains read this one service, so
- * they share its Parallel session id and its MCP clients (McpClients also caches per endpoint).
- */
-class ProviderPairs extends Context.Service<ProviderPairs, readonly ProviderPair[]>()(
-  "pi-web-tools/search/ProviderPairs",
-) {
+/** Shared runtime composition; request adapters retain its clients and Parallel session identity. */
+class ProviderPairs extends Context.Service<
+  ProviderPairs,
+  {
+    readonly forRequest: (snapshot: CredentialSnapshot) => readonly ProviderPair[];
+  }
+>()("pi-web-tools/search/ProviderPairs") {
   static readonly layer = Layer.effect(
     ProviderPairs,
     Effect.gen(function* () {
       const settings = yield* WebToolsConfig;
       const http = yield* ProviderHttpClient;
       const mcpClients = yield* McpClients;
-      return ProviderPairs.of(
-        buildProviderPairs({
-          settings,
-          http,
-          sessionId: randomUUID(),
-          mcpFor: mcpClients.forEndpoint,
-        }),
-      );
+      const composition = {
+        settings,
+        http,
+        sessionId: randomUUID(),
+        mcpFor: mcpClients.forEndpoint,
+      };
+      return ProviderPairs.of({
+        forRequest: (snapshot) =>
+          buildProviderPairs({
+            ...composition,
+            snapshot,
+            mcpFor: (endpoint) => {
+              const cached = composition.mcpFor(endpoint);
+              return { callTool: (name, args) => cached.callTool(name, args, snapshot.secrets) };
+            },
+          }),
+      });
     }),
   );
 }
 
 /** The ordered search provider chain from settings (see PROVIDER_BUILDERS for selection). */
-export class SearchProviders extends Context.Service<SearchProviders, readonly SearchProvider[]>()(
-  "pi-web-tools/search/SearchProviders",
-) {
+export class SearchProviders extends Context.Service<
+  SearchProviders,
+  {
+    readonly forRequest: (snapshot: CredentialSnapshot) => readonly SearchProvider[];
+  }
+>()("pi-web-tools/search/SearchProviders") {
   /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with FetchRescueProviders. */
   static readonly layer: Layer.Layer<
     SearchProviders,
@@ -142,7 +183,9 @@ export class SearchProviders extends Context.Service<SearchProviders, readonly S
     SearchProviders,
     Effect.gen(function* () {
       const pairs = yield* ProviderPairs;
-      return SearchProviders.of(pairs.map((pair) => pair.search));
+      return SearchProviders.of({
+        forRequest: (snapshot) => pairs.forRequest(snapshot).map((pair) => pair.search),
+      });
     }),
   ).pipe(Layer.provide(ProviderPairs.layer));
 }
@@ -150,7 +193,7 @@ export class SearchProviders extends Context.Service<SearchProviders, readonly S
 /** The ordered fetch-rescue provider chain (search priority order, fetch-capable providers only). */
 export class FetchRescueProviders extends Context.Service<
   FetchRescueProviders,
-  readonly FetchProvider[]
+  { readonly forRequest: (snapshot: CredentialSnapshot) => readonly FetchProvider[] }
 >()("pi-web-tools/search/FetchRescueProviders") {
   /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with SearchProviders. */
   static readonly layer: Layer.Layer<
@@ -161,7 +204,9 @@ export class FetchRescueProviders extends Context.Service<
     FetchRescueProviders,
     Effect.gen(function* () {
       const pairs = yield* ProviderPairs;
-      return FetchRescueProviders.of(pairs.flatMap((pair) => pair.fetch ?? []));
+      return FetchRescueProviders.of({
+        forRequest: (snapshot) => pairs.forRequest(snapshot).flatMap((pair) => pair.fetch ?? []),
+      });
     }),
   ).pipe(Layer.provide(ProviderPairs.layer));
 }

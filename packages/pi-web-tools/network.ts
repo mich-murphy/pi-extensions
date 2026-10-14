@@ -6,6 +6,7 @@ import { checkDomainPolicy } from "./domain-policy";
 import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
 import { PublicWebTransport } from "./public-web-transport";
 import type { ApprovedAddress } from "./public-web-transport";
+import { withSafeSpan } from "./telemetry";
 import { isPublicHttpUrl } from "./types";
 import type { ContentKind, PublicHttpUrl } from "./types";
 
@@ -64,7 +65,7 @@ export class PublicWebRequestFailed extends Schema.TaggedError<PublicWebRequestF
   {
     /** The host the failing request was sent to; messages name only this, never the URL. */
     hostname: Schema.String,
-    /** The underlying fetch or stream error, kept for local diagnosis only. */
+    /** Production clients retain only an allowlisted network code, never raw fetch/stream data. */
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -210,8 +211,19 @@ const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "tim
     ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls"],
     ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
     ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
+    ["CERT_HAS_EXPIRED", "tls"],
+    ["CERT_NOT_YET_VALID", "tls"],
+    ["CERT_REVOKED", "tls"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
+    ["ERR_TLS_CERT_SIGNATURE_ALGORITHM_UNSUPPORTED", "tls"],
   ]);
 const MAX_CAUSE_DEPTH = 8;
+
+/** Retain only an allowlisted diagnostic code, never reflected messages, stacks, or payloads. */
+export function sanitizeNetworkFailure(cause: unknown): { readonly code: string } | undefined {
+  const code = findNetworkCode(cause);
+  return code === undefined ? undefined : { code };
+}
 
 /**
  * Describe a failed network request from its error's `cause` chain, naming only the host.
@@ -256,7 +268,7 @@ function networkCodeKind(
   if (kind !== undefined) {
     return kind;
   }
-  return code.startsWith("CERT_") || code.startsWith("ERR_TLS_") ? "tls" : undefined;
+  return undefined;
 }
 
 function findNetworkCode(error: unknown): string | undefined {
@@ -521,12 +533,13 @@ export class PublicWebClient extends Context.Service<
         return Effect.gen(function* () {
           const records = yield* Effect.tryPromise({
             try: async () => dns.lookup(hostname),
-            catch: (cause) => new PublicWebRequestFailed({ hostname, cause }),
+            catch: (cause) =>
+              new PublicWebRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
           });
           if (records.length === 0) {
             return yield* new PublicWebRequestFailed({
               hostname,
-              cause: Object.assign(new Error("DNS returned no addresses"), { code: "ENOTFOUND" }),
+              cause: { code: "ENOTFOUND" },
             });
           }
           if (records.some((record) => isPrivateOrLocalIp(record.address))) {
@@ -555,13 +568,17 @@ export class PublicWebClient extends Context.Service<
         } else {
           addresses = yield* Effect.tryPromise({
             try: async () => dns.lookup(hostname),
-            catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+            catch: (cause) =>
+              new PublicWebRequestFailed({
+                hostname: url.hostname,
+                cause: sanitizeNetworkFailure(cause),
+              }),
           });
         }
         if (addresses.length === 0) {
           return yield* new PublicWebRequestFailed({
             hostname: url.hostname,
-            cause: Object.assign(new Error("DNS returned no addresses"), { code: "ENOTFOUND" }),
+            cause: { code: "ENOTFOUND" },
           });
         }
         return yield* Effect.tryPromise({
@@ -575,7 +592,11 @@ export class PublicWebClient extends Context.Service<
               },
               signal,
             }),
-          catch: (cause) => new PublicWebRequestFailed({ hostname: url.hostname, cause }),
+          catch: (cause) =>
+            new PublicWebRequestFailed({
+              hostname: url.hostname,
+              cause: sanitizeNetworkFailure(cause),
+            }),
         });
       });
 
@@ -614,33 +635,46 @@ export class PublicWebClient extends Context.Service<
         return yield* fetchWithUserAgent(request, request.fallbackUserAgent);
       });
 
-      const get = Effect.fn("PublicWebClient.get")(function* (
-        request: PublicWebRequest,
-      ): Effect.fn.Return<PublicWebResponse, PublicWebError> {
-        const { response, finalUrl } = yield* fetchPastChallenge(request);
-        const rejection = checkResponseHead(response, request.maxResponseBytes);
-        if (rejection !== undefined) {
-          yield* cancelBody(response);
-          return yield* Effect.fail(rejection);
-        }
+      const get = Effect.fnUntraced(
+        function* (request: PublicWebRequest): Effect.fn.Return<PublicWebResponse, PublicWebError> {
+          const { response, finalUrl } = yield* fetchPastChallenge(request);
+          const rejection = checkResponseHead(response, request.maxResponseBytes);
+          if (rejection !== undefined) {
+            yield* cancelBody(response);
+            return yield* Effect.fail(rejection);
+          }
 
-        const { hostname } = new URL(finalUrl);
-        const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
-          Effect.catchTags({
-            ResponseBodyTooLarge: () =>
-              Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes })),
-            ResponseBodyReadFailed: (error) =>
-              Effect.fail(new PublicWebRequestFailed({ hostname, cause: error.cause })),
-          }),
-        );
-        return {
-          requestedUrl: request.url,
-          finalUrl,
-          status: response.status,
-          headers: response.headers,
-          body,
-        };
-      });
+          const { hostname } = new URL(finalUrl);
+          const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
+            Effect.catchTags({
+              ResponseBodyTooLarge: () =>
+                Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes })),
+              ResponseBodyReadFailed: (error) =>
+                Effect.fail(
+                  new PublicWebRequestFailed({
+                    hostname,
+                    cause: sanitizeNetworkFailure(error.cause),
+                  }),
+                ),
+            }),
+          );
+          return {
+            requestedUrl: request.url,
+            finalUrl,
+            status: response.status,
+            headers: response.headers,
+            body,
+          };
+        },
+        (effect) =>
+          withSafeSpan("PublicWebClient.get", effect, (error) => ({
+            type: error._tag,
+            network:
+              error._tag === "PublicWebRequestFailed"
+                ? sanitizeNetworkFailure(error.cause)
+                : undefined,
+          })),
+      );
 
       return PublicWebClient.of({ get });
     }),

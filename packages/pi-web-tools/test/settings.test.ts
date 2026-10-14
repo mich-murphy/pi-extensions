@@ -1,4 +1,4 @@
-import { Redacted, Result } from "effect";
+import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
   BRAVE_API_KEY_ENV,
@@ -6,7 +6,6 @@ import {
   InvalidSetting,
   EXA_ENDPOINT_ENV,
   FETCH_RESCUE_ENV,
-  PARALLEL_API_KEY_ENV,
   PROVIDERS_ENV,
   parseSettings,
 } from "../settings";
@@ -16,15 +15,15 @@ describe("parseSettings", () => {
     const settings = parseSettings({});
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["exa", "parallel"]);
-    expect(settings.success.credentials.exaApiKey).toBeUndefined();
+    expect(settings.success.search.defaultProviders).toBe(true);
     expect(settings.success.fetch.rescue).toBe(true);
     expect(settings.success.fetch.allowDomains).toStrictEqual([]);
   });
 
-  test("appends brave to the default chain when keyed", () => {
+  test("does not read keys or append Brave during static parsing", () => {
     const settings = parseSettings({ [BRAVE_API_KEY_ENV]: "BSA_test" });
     assert(Result.isSuccess(settings));
-    expect(settings.success.search.providers).toStrictEqual(["exa", "parallel", "brave"]);
+    expect(settings.success.search.providers).toStrictEqual(["exa", "parallel"]);
   });
 
   test("honors explicit provider ordering and filtering", () => {
@@ -34,9 +33,7 @@ describe("parseSettings", () => {
     });
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["parallel", "exa"]);
-    const { exaApiKey } = settings.success.credentials;
-    assert(exaApiKey !== undefined);
-    expect(Redacted.value(exaApiKey)).toBe("exa-key");
+    expect(settings.success.search.defaultProviders).toBe(false);
     expect(JSON.stringify(settings.success)).not.toContain("exa-key");
   });
 
@@ -58,22 +55,21 @@ describe("parseSettings", () => {
     expect(settings._tag).toBe("Failure");
   });
 
-  test("rejects brave without a key when explicitly listed", () => {
-    const settings = parseSettings({ [PROVIDERS_ENV]: "exa,brave" });
-    assert(Result.isFailure(settings));
-    expect(settings.failure.message).toContain(BRAVE_API_KEY_ENV);
-  });
-
-  test("rejects API keys containing control characters", () => {
-    const settings = parseSettings({ [EXA_API_KEY_ENV]: "exa-\nkey" });
-    assert(Result.isFailure(settings));
-    expect(settings.failure.message).toContain("control characters");
-  });
-
-  test("treats empty API keys as unset", () => {
-    const settings = parseSettings({ [PARALLEL_API_KEY_ENV]: "   " });
+  test("accepts explicit Brave without inspecting credentials", () => {
+    const settings = parseSettings({
+      [PROVIDERS_ENV]: "exa,brave",
+      [EXA_API_KEY_ENV]: "exa-\nkey",
+    });
     assert(Result.isSuccess(settings));
-    expect(settings.success.credentials.parallelApiKey).toBeUndefined();
+    expect(settings.success.search.providers).toStrictEqual(["exa", "brave"]);
+    expect(settings.success.search.defaultProviders).toBe(false);
+    expect(JSON.stringify(settings.success)).not.toContain("key");
+  });
+
+  test("blank provider configuration retains the default chain", () => {
+    const settings = parseSettings({ [PROVIDERS_ENV]: "  " });
+    assert(Result.isSuccess(settings));
+    expect(settings.success.search.defaultProviders).toBe(true);
   });
 
   test("parses the fetch rescue toggle", () => {

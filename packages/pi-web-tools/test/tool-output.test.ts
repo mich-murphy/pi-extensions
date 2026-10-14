@@ -6,6 +6,7 @@ import { Effect, Result } from "effect";
 import type { FetchPageResult } from "../fetch-page";
 import { OutputStoreError, writeTempTextFile } from "../temp";
 import {
+  redactSecrets,
   formatSearchResults,
   projectFetchResult,
   projectProviderFetchedPage,
@@ -294,6 +295,65 @@ describe("writeTempTextFile", () => {
       expect(written.failure.operation).toBe("mkdtemp");
       expect(written.failure.path).toBe(join(tmpdir(), prefix));
       expect(written.failure.reason).toBe("directory does not exist (ENOENT)");
+    }),
+  );
+});
+
+describe("credential reflection defense", () => {
+  test("redacts longest matches in one pass without rescanning placeholders", () => {
+    expect(
+      redactSecrets("key-long key a.b [redacted]", [
+        "key",
+        "key-long",
+        "key-long",
+        "a.b",
+        "redacted",
+        "",
+        undefined,
+      ]),
+    ).toBe("[redacted] [redacted] [redacted] [[redacted]]");
+  });
+
+  it.effect("scrubs rotated and prefix keys before spilling and projecting metadata", () =>
+    Effect.gen(function* () {
+      const secrets = ["key", "key-long", "rotated-key"];
+      const raw = "key-long rotated-key key\n".repeat(3000);
+      const page = textResult(raw);
+      const reflected = {
+        ...page,
+        meta: { ...page.meta, mime: "key-long", contentType: "rotated-key", charset: "key" },
+      };
+      let spilled = "";
+      const result = yield* projectFetchResult(reflected, {
+        secrets,
+        store: {
+          writeTextFile: (_prefix, _name, content) => {
+            spilled = content;
+            return Effect.succeed("/private/output.txt");
+          },
+        },
+      });
+      expect(result.details.truncated).toBe(true);
+      expect(spilled).toBe("[redacted] [redacted] [redacted]\n".repeat(3000));
+      const serialized = JSON.stringify(result);
+      for (const secret of secrets) {
+        expect(serialized).not.toContain(secret);
+      }
+    }),
+  );
+
+  it.effect("scrubs reflected image MIME content and details", () =>
+    Effect.gen(function* () {
+      const page = textResult("");
+      const result = yield* projectFetchResult(
+        {
+          meta: { ...page.meta, mime: "image/key-long" },
+          body: { _tag: "Image", data: Buffer.from([0, 1]) },
+        },
+        { secrets: ["key", "key-long"], store: liveToolOutputStore() },
+      );
+      expect(result.content[1]).toMatchObject({ mimeType: "image/[redacted]" });
+      expect(JSON.stringify(result)).not.toContain("key");
     }),
   );
 });
