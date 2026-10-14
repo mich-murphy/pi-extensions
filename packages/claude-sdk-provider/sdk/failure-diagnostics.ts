@@ -1,4 +1,5 @@
 import { absurd } from "effect/Function";
+import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import type { SdkQueryError, SdkTurnFailure } from "./errors";
 
 /** Stable operational categories for Claude Agent SDK failures. */
@@ -97,10 +98,10 @@ export function formatSdkRunError(error: SdkTurnFailure): string {
     : `Claude Agent SDK: ${error.message}`;
 }
 
-/** Emit one message-free JSON diagnostic for operational routing. */
+/** Emit one message-free JSON diagnostic; the default sink skips terminal stderr. */
 export function writeSdkFailureDiagnostic(
   error: SdkTurnFailure,
-  write: (line: string) => void = (line) => process.stderr.write(line),
+  write: (line: string) => void = writeRedirectedDiagnostic,
 ): void {
   write(`[claude-sdk-error] ${JSON.stringify(diagnoseSdkRunError(error))}\n`);
 }
