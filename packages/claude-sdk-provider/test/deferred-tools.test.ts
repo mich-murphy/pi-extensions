@@ -188,7 +188,7 @@ describe("deferred tool validation", () => {
     expect(capture.limitError).toBe(limitErrors[0]);
     expect(capture.limitError?._tag).toBe("InvalidDeferredCallLimitError");
     expect(capture.limitError?.attempts).toBe(4);
-    expect(capture.limitError?.message).toMatch(/pi_call.*is this gateway's own name/u);
+    expect(capture.limitError?.message).toContain("invalid Pi tool requests");
     expect(fifth).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny" } });
   });
 });

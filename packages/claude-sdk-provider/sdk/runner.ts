@@ -13,6 +13,7 @@ import { createDeferredCallCapture, createDeferredPiCallTool } from "./deferred-
 import type { DeferredCallCapture } from "./deferred-tools";
 import { SdkMissingResultError, SdkProtocolError, SdkQueryError, SdkResultError } from "./errors";
 import type { SdkRunError } from "./errors";
+import { instrumentEvent, instrumentRequest } from "./instrumentation";
 import { applyUsage, contextWindowFor, parseSdkMessage } from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream } from "./prompt-stream";
@@ -101,11 +102,11 @@ function terminalEvent(
     return failed(new SdkMissingResultError());
   }
   if (result._tag === "failed") {
-    const { terminalReason, detail } = result.error;
+    const { terminalReason, category } = result.error;
     return failed(
       apiError === undefined
         ? result.error
-        : new SdkResultError({ terminalReason, detail, apiError }),
+        : new SdkResultError({ terminalReason, category, apiError }),
     );
   }
   const deferred = result.terminalReason === "tool_deferred";
@@ -218,11 +219,11 @@ function step(
     if (item._tag === "Halted") {
       return [progress, [settle(capture, progress, callerSignal)]];
     }
-    if (Result.isFailure(item)) {
-      return [progress, [ended(Result.fail(item.failure))]];
-    }
     if (capture.limitError) {
       return [progress, [ended(Result.fail(capture.limitError))]];
+    }
+    if (Result.isFailure(item)) {
+      return [progress, [ended(Result.fail(item.failure))]];
     }
     const parsed = parseSdkMessage(item.success);
     if (Result.isFailure(parsed)) {
@@ -273,14 +274,17 @@ function querySteps(
   messages: AsyncIterable<unknown>,
   capture: DeferredCallCapture,
   abortController: AbortController,
-  callerSignal: AbortSignal | undefined,
+  turn: Turn,
 ): Stream.Stream<QueryStep> {
   return Stream.fromAsyncIterable(abortOnClose(messages, abortController), (error) =>
     iterationFailure(capture, abortController.signal, error),
   ).pipe(
+    Stream.mapEffect((event) =>
+      instrumentEvent(event, turn.model, turn.options, abortController.signal),
+    ),
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),
-    Stream.mapAccum(initialProgress, step(capture, callerSignal)),
+    Stream.mapAccum(initialProgress, step(capture, turn.options?.signal)),
     Stream.takeUntil((queryStep) => queryStep._tag === "end"),
   );
 }
@@ -351,12 +355,23 @@ const runTurn = Effect.fnUntraced(function* (
   { runSdkQuery, sdkEnvironment, cacheDiagnostics, modelObserver }: Collaborators,
   turn: Turn,
 ): Effect.fn.Return<Stream.Stream<BridgeEvent>, never, Scope.Scope> {
-  const { request, model, options } = turn;
+  const { model, options } = turn;
   const signal = options?.signal;
   if (signal?.aborted === true) {
     return Stream.succeed(failed(SdkQueryError.cancelled("start", signal.reason)));
   }
   const abortController = yield* turnAbortController(signal);
+  const applied = yield* Effect.result(
+    instrumentRequest(turn.request, model, options, abortController.signal),
+  );
+  if (Result.isFailure(applied)) {
+    return Stream.succeed(failed(applied.failure));
+  }
+  if (abortController.signal.aborted) {
+    return Stream.succeed(failed(SdkQueryError.cancelled("start", undefined)));
+  }
+  const request = applied.success;
+  const appliedTurn = { ...turn, request };
   const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
     abortController.abort(limitError);
   });
@@ -364,7 +379,7 @@ const runTurn = Effect.fnUntraced(function* (
   const started = Result.try({
     try: () =>
       runSdkQuery(
-        queryParameters(turn, { abortController, hook: capture.hook, env: sdkEnvironment }),
+        queryParameters(appliedTurn, { abortController, hook: capture.hook, env: sdkEnvironment }),
       ),
     catch: (error) => SdkQueryError.fromCause("start", error),
   });
@@ -372,7 +387,7 @@ const runTurn = Effect.fnUntraced(function* (
     return Stream.succeed(failed(started.failure));
   }
   const observers = { selector: sdkModelSelectorFor(model.id), modelObserver, recordUsage };
-  return querySteps(started.success, capture, abortController, signal).pipe(
+  return querySteps(started.success, capture, abortController, appliedTurn).pipe(
     Stream.map((queryStep) =>
       queryStep._tag === "event"
         ? queryStep.event

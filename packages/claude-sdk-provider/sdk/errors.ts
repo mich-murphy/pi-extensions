@@ -2,6 +2,11 @@ import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import { Option, Predicate, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { lenientOptional } from "./lenient-schema";
+import {
+  effectiveResultCategory,
+  ResultFailureCategory,
+  resultFailureMessage,
+} from "./result-failure";
 
 /** Error produced when a deferred Pi tool request is malformed or names an unavailable tool. */
 export class InvalidDeferredCallError extends Schema.TaggedError<InvalidDeferredCallError>()(
@@ -36,16 +41,14 @@ export class SdkProtocolError extends Schema.TaggedError<SdkProtocolError>()("Sd
 export class SdkResultError extends Schema.TaggedError<SdkResultError>()("SdkResultError", {
   /** The SDK terminal reason when one was supplied. */
   terminalReason: Schema.UndefinedOr(Schema.String),
-  /** The SDK's safe error summary. */
-  detail: Schema.String,
+  /** Safe category derived only from structured SDK fields. */
+  category: ResultFailureCategory,
   /** The typed API error an assistant message reported during the turn, if any. */
   apiError: Schema.optional(Schema.String),
 }) {
-  /** Safe summary: an actionable sentence for a typed authentication failure, else the SDK's. */
+  /** Synthetic bounded summary; no raw SDK text is retained. */
   override get message(): string {
-    return this.apiError === "authentication_failed"
-      ? "Claude Code authentication failed; run `claude` to sign in"
-      : this.detail;
+    return resultFailureMessage(effectiveResultCategory(this.category, this.apiError));
   }
 }
 
@@ -61,7 +64,7 @@ export class InvalidDeferredCallLimitError extends Schema.TaggedError<InvalidDef
 ) {
   /** Safe summary naming the final invalid call. */
   override get message(): string {
-    return `Claude exceeded the invalid Pi tool-call limit after ${this.attempts} attempts: ${this.lastError.message}`;
+    return `Claude exceeded the invalid Pi tool-call limit after ${this.attempts} attempts: invalid Pi tool requests`;
   }
 }
 
@@ -117,7 +120,10 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
         : { _tag: "ProcessExited", exitCode: tagged.exitCode };
     }
     case "process_killed_by_signal": {
-      return tagged.signal === undefined
+      return tagged.signal === undefined ||
+        !/^SIG(?:ABRT|ALRM|BUS|CHLD|CONT|FPE|HUP|ILL|INT|KILL|PIPE|QUIT|SEGV|STOP|TERM|TRAP|TSTP|TTIN|TTOU|URG|USR1|USR2|VTALRM|WINCH|XCPU|XFSZ)$/u.test(
+          tagged.signal,
+        )
         ? { _tag: "Unclassified" }
         : { _tag: "ProcessKilled", signal: tagged.signal };
     }
@@ -204,8 +210,22 @@ export class SdkMissingResultError extends Schema.TaggedError<SdkMissingResultEr
   }
 }
 
+/** Safe callback/setup failure. Callback exceptions and invalid payload values are discarded. */
+export class SdkInstrumentationError extends Schema.TaggedError<SdkInstrumentationError>()(
+  "SdkInstrumentationError",
+  { operation: Schema.Literals(["payload", "replacement", "event", "cancelled"]) },
+) {
+  /** Static summary that never contains callback or payload data. */
+  override get message(): string {
+    return this.operation === "replacement"
+      ? "request instrumentation returned an invalid SDK-adapted payload"
+      : "request instrumentation did not complete";
+  }
+}
+
 /** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
+  | SdkInstrumentationError
   | InvalidDeferredCallLimitError
   | SdkMissingResultError
   | SdkProtocolError

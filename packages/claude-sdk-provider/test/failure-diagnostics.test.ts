@@ -21,7 +21,7 @@ function sdkRejection(message: string, fields: Readonly<Record<string, unknown>>
 
 const outOfUsage = new SdkResultError({
   terminalReason: undefined,
-  detail: "You're out of extra usage",
+  category: "usage-limit",
 });
 
 describe("claude SDK failure diagnostics", () => {
@@ -41,24 +41,18 @@ describe("claude SDK failure diagnostics", () => {
     [SdkQueryError.fromCause("iterate", new Error("getaddrinfo ENOTFOUND api.example")), "network"],
     [SdkQueryError.fromCause("iterate", new Error("Request timed out")), "timeout"],
     [
-      new SdkResultError({
-        terminalReason: undefined,
-        detail: "Your computer went to sleep mid-response",
-      }),
+      SdkQueryError.fromCause("iterate", new Error("Your computer went to sleep mid-response")),
       "host-sleep",
     ],
     [SdkQueryError.fromCause("iterate", new Error("This operation was aborted")), "cancelled"],
     [SdkQueryError.cancelled("start", "stop"), "cancelled"],
-    [
-      new SdkResultError({ terminalReason: "model_error", detail: "upstream model error" }),
-      "provider",
-    ],
+    [new SdkResultError({ terminalReason: "model_error", category: "provider" }), "provider"],
     [new SdkMissingResultError(), "provider"],
     [new SdkProviderDefect({ reason: "no-terminal-event" }), "defect"],
     [
       new SdkResultError({
         terminalReason: undefined,
-        detail: "Invalid API key · Please run /login",
+        category: "provider",
         apiError: "authentication_failed",
       }),
       "authentication",
@@ -87,7 +81,7 @@ describe("claude SDK failure diagnostics", () => {
   test("turns a typed authentication failure into an actionable message", () => {
     const error = new SdkResultError({
       terminalReason: undefined,
-      detail: "Invalid API key · Please run /login",
+      category: "provider",
       apiError: "authentication_failed",
     });
     expect(formatSdkRunError(error)).toBe(
@@ -96,7 +90,9 @@ describe("claude SDK failure diagnostics", () => {
   });
 
   test("prefixes the SDK name once onto the safe summary", () => {
-    expect(formatSdkRunError(outOfUsage)).toBe("Claude Agent SDK: You're out of extra usage");
+    expect(formatSdkRunError(outOfUsage)).toBe(
+      "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
+    );
     expect(formatSdkRunError(new SdkMissingResultError())).toBe(
       "Claude Agent SDK: the query ended without returning a result",
     );

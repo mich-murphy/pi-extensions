@@ -1,6 +1,7 @@
 import { absurd } from "effect/Function";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import type { SdkQueryError, SdkTurnFailure } from "./errors";
+import { effectiveResultCategory, safeTerminalReason } from "./result-failure";
 
 /** Stable operational categories for Claude Agent SDK failures. */
 export type SdkFailureKind =
@@ -49,6 +50,9 @@ function textKind(text: string): SdkFailureKind {
 
 function failureKind(error: SdkTurnFailure): SdkFailureKind {
   switch (error._tag) {
+    case "SdkInstrumentationError": {
+      return "provider";
+    }
     case "SdkProviderDefect": {
       return "defect";
     }
@@ -65,9 +69,13 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
         : textKind(cause instanceof Error ? cause.message : String(cause));
     }
     case "SdkResultError": {
-      return error.apiError === "authentication_failed"
-        ? "authentication"
-        : textKind(error.message);
+      const category = effectiveResultCategory(error.category, error.apiError);
+      return category === "authentication" ||
+        category === "usage-limit" ||
+        category === "cancelled" ||
+        category === "tool-contract"
+        ? category
+        : "provider";
     }
     case "SdkMissingResultError": {
       return textKind(error.message);
@@ -86,7 +94,7 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     errorTag: error._tag,
     ...(error._tag === "SdkQueryError" ? { operation: error.operation } : {}),
     ...(error._tag === "SdkResultError" && error.terminalReason !== undefined
-      ? { terminalReason: error.terminalReason }
+      ? { terminalReason: safeTerminalReason(error.terminalReason) }
       : {}),
   };
 }
