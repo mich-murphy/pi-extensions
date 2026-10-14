@@ -4,30 +4,37 @@ import { Text } from "@earendil-works/pi-tui";
 import { Cause, Effect, Exit, Result, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
+import { resolveCredentialSnapshot } from "./credentials";
+import type { CredentialFailure, CredentialResolver, CredentialSnapshot } from "./credentials";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
 import { SearchProviders, searchWithFallback } from "./search";
-import {
-  clampInteger,
-  SEARCH_MAX_RESULTS,
-  SEARCH_PROVIDERS,
-  secretsForRedaction,
-  WebToolsConfig,
-} from "./settings";
+import type { SearchChainError } from "./search";
+import { clampInteger, SEARCH_MAX_RESULTS, SEARCH_PROVIDERS, WebToolsConfig } from "./settings";
 import type { WebToolsSettings } from "./settings";
+import {
+  createRequestRedactor,
+  credentialNames,
+  validateExplicitBrave,
+  withToolCredentials,
+} from "./tool-credentials";
+import type { ToolCredentialComposition, ToolCredentialContext } from "./tool-credentials";
 import { projectSearchResults, ToolOutputStore } from "./tool-output";
+import type { ToolOutputStoreError } from "./tool-output";
 import type { ToolRuntime } from "./tool-runtime";
 import { parseSearchQuery } from "./types";
 import type { SearchProviderName, SearchQuery, WebSearchDetails } from "./types";
 
 /** Composition injected into the websearch tool. */
-export type WebSearchToolComposition = {
-  /** Non-secret settings, for input defaults and the progress message; keys stay in WebToolsConfig. */
+export type WebSearchToolComposition = ToolCredentialComposition & {
+  /** Non-secret settings, for input defaults and the progress message. */
   readonly settings: Pick<WebToolsSettings, "search">;
   /** Redact configured secrets before text or metadata reaches Pi. */
   readonly redactText: (input: string) => string;
   /** The runtime every search runs on. */
-  readonly runtime: ToolRuntime<SearchProviders | ToolOutputStore | WebToolsConfig>;
+  readonly runtime: ToolRuntime<
+    SearchProviders | ToolOutputStore | WebToolsConfig | CredentialResolver
+  >;
 };
 
 /** Parsed websearch tool parameters. */
@@ -116,25 +123,32 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       params: Static<typeof WEB_SEARCH_PARAMETERS>,
       signal?: AbortSignal,
       onUpdate?: AgentToolUpdateCallback<WebSearchDetails>,
+      context?: ToolCredentialContext,
     ) {
       const parsed = parseWebSearchParams(params, composition.settings);
       if (Result.isFailure(parsed)) {
         throw new Error(composition.redactText(parsed.failure.message));
       }
 
-      const { query, maxResults } = parsed.success;
-      onUpdate?.({
-        content: [{ type: "text", text: composition.redactText(`Searching for ${query}...`) }],
-        details: {
-          query: composition.redactText(query),
-          maxResults,
-          provider: composition.settings.search.providers[0] ?? "exa",
-          attemptedProviders: [],
-          resultCount: 0,
-        },
+      const redactor = createRequestRedactor(composition.redactText);
+      const program = runWebSearch(parsed.success, (snapshot) => {
+        redactor.capture(snapshot);
+        const { query, maxResults } = parsed.success;
+        onUpdate?.({
+          content: [{ type: "text", text: redactor.redactText(`Searching for ${query}...`) }],
+          details: {
+            query: redactor.redactText(query),
+            maxResults,
+            provider: composition.settings.search.providers[0] ?? "exa",
+            attemptedProviders: [],
+            resultCount: 0,
+          },
+        });
       });
-
-      const exit = await composition.runtime.runExit(runWebSearch(parsed.success), signal);
+      const exit = await composition.runtime.runExit(
+        withToolCredentials(program, composition, context),
+        signal,
+      );
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
@@ -143,16 +157,9 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       }
       const failure = Cause.findError(exit.cause);
       if (Result.isSuccess(failure)) {
-        const error = failure.success;
-        throw new Error(
-          composition.redactText(
-            error._tag === "OutputStoreError"
-              ? `Could not save full websearch output to ${error.path}: ${error.reason}`
-              : error.message,
-          ),
-        );
+        throw new Error(redactor.redactText(renderWebSearchFailure(failure.success)));
       }
-      throw Cause.squash(exit.cause);
+      throw new Error("Web search failed unexpectedly");
     },
 
     renderCall(
@@ -218,13 +225,30 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
   };
 }
 
-const runWebSearch = Effect.fnUntraced(function* (input: WebSearchParams) {
+function renderWebSearchFailure(
+  error: SearchChainError | ToolOutputStoreError | CredentialFailure,
+): string {
+  if (error._tag === "OutputStoreError") {
+    return `Could not save full websearch output to ${error.path}: ${error.reason}`;
+  }
+  return error._tag === "CredentialFailure" ? `${error.provider}: ${error.message}` : error.message;
+}
+
+const runWebSearch = Effect.fnUntraced(function* (
+  input: WebSearchParams,
+  onCredentials: (snapshot: CredentialSnapshot) => void,
+) {
   const providers = yield* SearchProviders;
   const config = yield* WebToolsConfig;
   const store = yield* ToolOutputStore;
   const { query, maxResults, provider } = input;
+  const snapshot = yield* resolveCredentialSnapshot(
+    credentialNames(config, provider === undefined ? {} : { providerOverride: provider }),
+  );
+  onCredentials(snapshot);
+  yield* validateExplicitBrave(config, snapshot, provider);
   const outcome = yield* searchWithFallback(
-    providers,
+    providers.forRequest(snapshot),
     { query, maxResults },
     { providerOverride: provider },
   );
@@ -240,6 +264,6 @@ const runWebSearch = Effect.fnUntraced(function* (input: WebSearchParams) {
         resultCount: outcome.results.length,
       },
     },
-    { store, secrets: secretsForRedaction(config.credentials) },
+    { store, secrets: snapshot.secrets },
   );
 });

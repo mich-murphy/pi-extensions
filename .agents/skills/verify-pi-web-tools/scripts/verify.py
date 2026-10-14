@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""Real isolated Pi TUI verification; never sends a model prompt or tool request."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import signal
+import subprocess
+import tempfile
+import time
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("mode", choices=["startup", "invalid-config", "native-auth"])
+    args = parser.parse_args()
+    repo = Path(__file__).resolve().parents[4]
+    evidence = Path(tempfile.mkdtemp(prefix="pi-web-tools-evidence-", dir="/tmp"))
+    scratch = Path(tempfile.mkdtemp(prefix="pi-web-tools-state-", dir="/tmp"))
+    for name in ["home", "agent", "cwd", "tmp"]:
+        (scratch / name).mkdir()
+    (scratch / "agent/settings.json").write_text(json.dumps({"packages": [], "cacheWarming": "off", "theme": "dark"}))
+    socket = str(scratch / "tmux.sock")
+    tmux = shutil.which("tmux")
+    pi = shutil.which("pi")
+    assert tmux and pi, "Install tmux and Pi 1.1.0 first"
+    env = {"HOME": str(scratch / "home"), "PI_CODING_AGENT_DIR": str(scratch / "agent"),
+           "TMPDIR": str(scratch / "tmp"), "PATH": os.environ["PATH"], "TERM": "xterm-256color",
+           "NODE_DISABLE_COMPILE_CACHE": "1", "PI_OFFLINE": "1", "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
+    native = {"pi-web-tools-exa": "Web Tools: Exa", "pi-web-tools-parallel": "Web Tools: Parallel", "pi-web-tools-brave": "Web Tools: Brave"}
+    synthetic = "pi-web-tools-verification-not-a-real-key"
+    if args.mode == "native-auth":
+        env.update({name: synthetic for name in ["EXA_API_KEY", "PARALLEL_API_KEY", "BRAVE_API_KEY"]})
+    if args.mode == "invalid-config":
+        env["PI_WEB_TOOLS_PROVIDERS"] = "verification-unknown-provider"
+    flags = ["--no-extensions", "-e", str(repo / "packages/pi-web-tools/index.ts"),
+             "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-context-files", "--no-themes",
+             "--no-approve", "--offline", "--no-session", "--verbose", "--tui-mode", "regular"]
+    actions = []
+    def t(*argv, check=True):
+        return subprocess.run([tmux, "-S", socket, *argv], text=True, capture_output=True, check=check)
+    def capture(label):
+        text = t("capture-pane", "-p", "-t", "verify:0.0").stdout
+        (evidence / (label + ".txt")).write_text(text)
+        return text
+    def wait(label, needle, timeout=20):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            text = capture(label)
+            assert "could not register web authentication" not in text, text
+            assert "Extension errors" not in text, text
+            if needle in text:
+                return text
+            time.sleep(.2)
+        raise RuntimeError(f"{label}: missing {needle!r}; inspect {evidence}")
+    def send(text):
+        # Drop old terminal history so subsequent waits cannot match an earlier action.
+        t("clear-history", "-t", "verify:0.0")
+        actions.append(text)
+        t("send-keys", "-t", "verify:0.0", "-l", text)
+        # Let Pi distinguish the literal text burst from the submit key.
+        time.sleep(.2)
+        if text.startswith("/"):
+            actions.append("KEY Escape (dismiss command completion)")
+            t("send-keys", "-t", "verify:0.0", "Escape")
+            time.sleep(.2)
+        t("send-keys", "-t", "verify:0.0", "Enter")
+        time.sleep(.6)
+        # Pi's command completion can consume Enter to accept an argument first.
+        # Submit again only while the literal command is still in the editor.
+        if text.startswith("/") and text != "/quit":
+            pane = t("capture-pane", "-p", "-t", "verify:0.0").stdout
+            if any(line.rstrip() == text for line in pane.splitlines()):
+                actions.append("KEY Enter (submit accepted command completion)")
+                t("send-keys", "-t", "verify:0.0", "Enter")
+                time.sleep(.6)
+    def key(name):
+        actions.append("KEY " + name)
+        t("send-keys", "-t", "verify:0.0", name)
+        time.sleep(.4)
+    def auth(label):
+        path = scratch / "agent/auth.json"
+        data = json.loads(path.read_text()) if path.exists() else {}
+        # Synthetic-only run; retain types/presence, never resolved key values.
+        summary = {k: {"type": v.get("type"), "synthetic": v.get("key") == "pi-web-tools-verification-not-a-real-key"} for k, v in data.items()}
+        (evidence / (label + ".json")).write_text(json.dumps(summary, indent=2))
+        return data
+    def wait_auth(label, expected):
+        end = time.monotonic() + 10
+        while time.monotonic() < end:
+            data = auth(label)
+            if set(data) == set(expected):
+                assert all(v.get("type") == "api_key" and v.get("key") == synthetic for v in data.values())
+                return
+            time.sleep(.2)
+        raise AssertionError(f"{label}: unexpected credential IDs {list(data)}")
+    status = "failed"
+    owned_pids = set()
+    try:
+        version = subprocess.run([pi, "--version"], env=env, text=True, capture_output=True, check=True).stdout.strip()
+        assert version == "1.1.0", version
+        (evidence / "launch.json").write_text(json.dumps({"version": version, "cwd": str(scratch / "cwd"), "env": env, "argv": [pi, *flags]}, indent=2))
+        command = shlex.join(["env", "-i", *[k + "=" + v for k, v in env.items()], pi, *flags])
+        t("-f", "/dev/null", "new-session", "-d", "-s", "verify", "-x", "120", "-y", "45", "-c", str(scratch / "cwd"), command)
+        owned_pids.add(int(t("display-message", "-p", "-t", "verify:0.0", "#{pane_pid}").stdout.strip()))
+        t("set-option", "-t", "verify", "history-limit", "20000")
+        startup = wait("startup", "Extensions")
+        assert str(repo / "packages/pi-web-tools") in startup, startup
+        assert "Extension errors" not in startup, startup
+        (evidence / "doctor.txt").write_text(t("list-panes", "-t", "verify", "-F", "#{pane_pid} #{pane_current_command} #{pane_dead}").stdout)
+        assert not auth("initial-auth"), "Fresh profile must have no stored credentials"
+        if args.mode == "invalid-config":
+            wait("invalid-config", "verification-unknown-provider")
+        send("/model")
+        time.sleep(.5)
+        capture("model-picker")
+        key("Escape")
+        send("/reload")
+        wait("reload", "Reloaded")
+        assert not auth("after-reload"), "Baseline must not write credentials"
+        if args.mode == "native-auth":
+            # Native CLI, not a mock login API: Escape must leave storage unchanged.
+            send("/login pi-web-tools-brave")
+            wait("cancel-login-prompt", "Web Tools: Brave")
+            key("Escape")
+            capture("cancel-login-result")
+            wait_auth("after-cancel", [])
+            saved = []
+            for provider, label in native.items():
+                send("/login " + provider)
+                wait(provider + "-login-prompt", label)
+                send(synthetic)
+                saved.append(provider)
+                wait_auth(provider + "-after-login", saved)
+                wait(provider + "-login-result", "Saved API key for " + label)
+            for i in range(2):
+                send("/reload")
+                wait("native-reload-" + str(i + 1), "Reloaded")
+                wait_auth("native-reload-auth-" + str(i + 1), saved)
+                send("/login Web Tools")
+                picker = wait("native-reload-providers-" + str(i + 1), "Select provider to configure:")
+                # Current pane only: scrollback includes earlier login messages.
+                visible = t("capture-pane", "-p", "-t", "verify:0.0").stdout.split("Select provider to configure:", 1)[-1]
+                for label in native.values():
+                    assert visible.count(label) == 1, visible
+                key("Escape")
+            for provider, label in native.items():
+                send("/logout")
+                wait(provider + "-logout-picker", "Select provider to logout:")
+                # Filter the real selector rather than assuming provider ordering.
+                t("send-keys", "-t", "verify:0.0", "-l", label)
+                actions.append("FILTER " + label)
+                time.sleep(.4)
+                capture(provider + "-logout-filter")
+                key("Enter")
+                saved.remove(provider)
+                wait_auth(provider + "-after-logout", saved)
+                wait(provider + "-logout-result", "Removed stored API key for " + label)
+            send("/logout")
+            wait("logout-empty", "No stored credentials to remove")
+        # Public SDK read-only second view; same sole extension, no prompts or requests.
+        sdk = Path("/opt/homebrew/Cellar/pi-coding-agent/1.1.0/libexec/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js")
+        probe = scratch / "doctor.mjs"
+        probe.write_text('''import {createAgentSession,DefaultResourceLoader,SessionManager,SettingsManager} from ''' + json.dumps(sdk.as_uri()) + ''';
+const cwd=process.cwd(), agentDir=process.env.PI_CODING_AGENT_DIR;
+const settingsManager=SettingsManager.inMemory({packages:[],cacheWarming:"off",defaultProjectTrust:"never"});
+const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:true,noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,additionalExtensionPaths:[''' + json.dumps(str(repo / "packages/pi-web-tools/index.ts")) + ''']});
+await resourceLoader.reload();
+if(resourceLoader.getExtensions().errors.length) throw new Error("Extension load failed");
+const {session}=await createAgentSession({cwd,agentDir,settingsManager,resourceLoader,sessionManager:SessionManager.inMemory(cwd)});
+try {
+ await session.bindExtensions({});
+ const providers=await Promise.all(session.modelRuntime.getProviders().filter(p=>p.id.startsWith("pi-web-tools")).map(async p=>({id:p.id,name:p.name,auth:await session.modelRuntime.checkAuth(p.id)})));
+ const models=session.modelRuntime.getAllModels().map(m=>({provider:m.provider,id:m.id,type:m.type}));
+ const tools=session.getAllTools().map(t=>({name:t.name,description:t.description}));
+ console.log(JSON.stringify({providers,extensions:resourceLoader.getExtensions().extensions.map(e=>e.path),skills:resourceLoader.getSkills().skills.length,prompts:resourceLoader.getPrompts().prompts.length,context:resourceLoader.getAgentsFiles().agentsFiles.length,tools,models},null,2));
+} finally {session.dispose();}
+''')
+        (evidence / "catalog-doctor.mjs").write_text(probe.read_text())
+        result = subprocess.run([shutil.which("node"), str(probe)], cwd=scratch / "cwd", env=env, text=True, capture_output=True, timeout=30)
+        (evidence / "catalog-doctor.json").write_text(result.stdout)
+        (evidence / "catalog-doctor.stderr.txt").write_text(result.stderr)
+        assert result.returncode == 0, result.stderr
+        catalog = json.loads(result.stdout)
+        assert {"websearch", "webfetch"} <= {tool["name"] for tool in catalog["tools"]}
+        assert not any(m["provider"].startswith("pi-web-tools") for m in catalog["models"])
+        assert catalog["skills"] == catalog["prompts"] == catalog["context"] == 0
+        if args.mode == "invalid-config":
+            assert all("Unavailable:" in tool["description"] for tool in catalog["tools"] if tool["name"] in ["websearch", "webfetch"])
+        provider_ids = [p["id"] for p in catalog["providers"]]
+        assert sorted(provider_ids) == sorted(native), provider_ids
+        assert len(provider_ids) == len(set(provider_ids)), "Duplicate native registrations"
+        if args.mode == "native-auth":
+            assert all(p["auth"] and p["auth"].get("source") == env_name for p, env_name in zip(sorted(catalog["providers"], key=lambda p: p["id"]), ["BRAVE_API_KEY", "EXA_API_KEY", "PARALLEL_API_KEY"])), catalog["providers"]
+        assert not auth("after-doctor"), "Read-only catalog doctor must not store credentials"
+        inventory = [{"path": str(p.relative_to(scratch)), "bytes": p.stat().st_size,
+                      "mode": oct(p.stat().st_mode & 0o777)} for p in sorted(scratch.rglob("*")) if p.is_file()]
+        (evidence / "storage-metadata.json").write_text(json.dumps(inventory, indent=2))
+        send("/quit")
+        status = "passed"
+    finally:
+        (evidence / "actions.json").write_text(json.dumps(actions, indent=2))
+        errors = []
+        # Snapshot descendants before stopping the dedicated tmux server. No name-based kills.
+        processes = subprocess.run(["ps", "-axo", "pid=,ppid="], text=True, capture_output=True, check=True)
+        pairs = [tuple(map(int, line.split())) for line in processes.stdout.splitlines()]
+        while True:
+            children = {pid for pid, ppid in pairs if ppid in owned_pids}
+            if children <= owned_pids:
+                break
+            owned_pids.update(children)
+        def alive():
+            live = set()
+            for pid in owned_pids:
+                proc = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], text=True, capture_output=True)
+                if proc.returncode == 0 and proc.stdout.strip() and not proc.stdout.strip().startswith("Z"):
+                    live.add(pid)
+            return live
+        t("kill-server", check=False)
+        for sig in [None, signal.SIGTERM, signal.SIGKILL]:
+            if sig:
+                for pid in alive():
+                    try:
+                        os.kill(pid, sig)
+                    except ProcessLookupError:
+                        pass
+            deadline = time.monotonic() + 5
+            while alive() and time.monotonic() < deadline:
+                time.sleep(.1)
+            if not alive():
+                break
+        stopped = t("list-sessions", check=False).returncode != 0
+        processes_stopped = not alive()
+        if not stopped or not processes_stopped:
+            errors.append("Owned tmux server or pane descendants still running")
+        if processes_stopped:
+            for attempt in range(5):
+                try:
+                    shutil.rmtree(scratch)
+                    break
+                except FileNotFoundError:
+                    break
+                except OSError as error:
+                    if attempt == 4:
+                        errors.append(str(error))
+                    else:
+                        time.sleep(.3)
+        if scratch.exists():
+            errors.append("Scratch directory remains: " + str(scratch))
+        (evidence / "result.json").write_text(json.dumps({"status": status if not errors else "failed", "mode": args.mode,
+            "serverStopped": stopped, "ownedPids": sorted(owned_pids), "ownedProcessesStopped": processes_stopped,
+            "scratchRemoved": not scratch.exists(), "cleanupErrors": errors}, indent=2))
+        print(evidence, flush=True)
+        if errors:
+            raise RuntimeError("Cleanup failed: " + "; ".join(errors))
+
+
+if __name__ == "__main__":
+    main()

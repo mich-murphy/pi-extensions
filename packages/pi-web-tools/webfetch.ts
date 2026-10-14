@@ -6,6 +6,8 @@ import { Cause, Duration, Effect, Exit, Result, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { Type } from "typebox";
 import type { Static } from "typebox";
+import { resolveCredentialSnapshot } from "./credentials";
+import type { CredentialResolver, CredentialSnapshot } from "./credentials";
 import { checkDomainPolicy } from "./domain-policy";
 import { FetchPage } from "./fetch-page";
 import type { FetchPageError, FetchPageResult } from "./fetch-page";
@@ -13,14 +15,10 @@ import type { FetchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
 import { FetchRescueProviders } from "./search";
-import {
-  clampInteger,
-  FETCH_TIMEOUT_SECONDS,
-  secretsForRedaction,
-  WEB_FETCH_FORMATS,
-  WebToolsConfig,
-} from "./settings";
+import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS, WebToolsConfig } from "./settings";
 import type { WebToolsSettings } from "./settings";
+import { createRequestRedactor, credentialNames, withToolCredentials } from "./tool-credentials";
+import type { ToolCredentialComposition, ToolCredentialContext } from "./tool-credentials";
 import { projectFetchResult, projectProviderFetchedPage, ToolOutputStore } from "./tool-output";
 import type { ProviderFetchedPage, ToolOutputStoreError } from "./tool-output";
 import type { ToolRuntime } from "./tool-runtime";
@@ -32,14 +30,14 @@ import {
 import type { PublicHttpUrl, WebFetchDetails, WebFetchFormat } from "./types";
 
 /** Composition injected into the webfetch tool. */
-export type WebFetchToolComposition = {
-  /** Non-secret settings, for input defaults and domain policy; keys stay in WebToolsConfig. */
+export type WebFetchToolComposition = ToolCredentialComposition & {
+  /** Non-secret settings, for input defaults and domain policy. */
   readonly settings: Pick<WebToolsSettings, "fetch">;
   /** Redact configured secrets before text or metadata reaches Pi. */
   readonly redactText: (input: string) => string;
   /** The runtime every fetch runs on. */
   readonly runtime: ToolRuntime<
-    FetchPage | FetchRescueProviders | ToolOutputStore | WebToolsConfig
+    FetchPage | FetchRescueProviders | ToolOutputStore | WebToolsConfig | CredentialResolver
   >;
 };
 
@@ -156,6 +154,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       params: Static<typeof WEB_FETCH_PARAMETERS>,
       signal?: AbortSignal,
       onUpdate?: AgentToolUpdateCallback<WebFetchDetails>,
+      context?: ToolCredentialContext,
     ) {
       const parsed = parseWebFetchParams(params, composition.settings);
       if (Result.isFailure(parsed)) {
@@ -167,17 +166,27 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         deny: composition.settings.fetch.denyDomains,
       });
       if (Result.isFailure(policy)) {
-        throw new Error(composition.redactText(policy.failure.message));
+        // Validation runs before credentials: never echo caller-controlled hostnames here.
+        throw new Error(
+          policy.failure._tag === "DomainDenied"
+            ? "Fetching from this hostname is denied by the webfetch domain policy"
+            : "Fetching from this hostname is not in the webfetch allowed domains list",
+        );
       }
 
-      const { url, format } = parsed.success;
-      const safeUrl = composition.redactText(url);
-      onUpdate?.({
-        content: [{ type: "text", text: composition.redactText(`Fetching ${url}...`) }],
-        details: { requestedUrl: safeUrl, format, bytes: 0 },
+      const redactor = createRequestRedactor(composition.redactText);
+      const program = runWebFetch(parsed.success, (snapshot) => {
+        redactor.capture(snapshot);
+        const { url, format } = parsed.success;
+        onUpdate?.({
+          content: [{ type: "text", text: redactor.redactText(`Fetching ${url}...`) }],
+          details: { requestedUrl: redactor.redactText(url), format, bytes: 0 },
+        });
       });
-
-      const exit = await composition.runtime.runExit(runWebFetch(parsed.success), signal);
+      const exit = await composition.runtime.runExit(
+        withToolCredentials(program, composition, context),
+        signal,
+      );
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
@@ -186,9 +195,9 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       }
       const failure = Cause.findError(exit.cause);
       if (Result.isSuccess(failure)) {
-        throw new Error(composition.redactText(renderWebFetchFailure(failure.success)));
+        throw new Error(redactor.redactText(renderWebFetchFailure(failure.success)));
       }
-      throw Cause.squash(exit.cause);
+      throw new Error("Web fetch failed unexpectedly");
     },
 
     renderCall(
@@ -275,14 +284,16 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
 }
 
 const runWebFetch = Effect.fnUntraced(
-  function* (input: WebFetchParams) {
+  function* (input: WebFetchParams, onCredentials: (snapshot: CredentialSnapshot) => void) {
     const { url, format } = input;
     const fetchPage = yield* FetchPage;
     const config = yield* WebToolsConfig;
     const limits = config.fetch;
+    const snapshot = yield* resolveCredentialSnapshot(credentialNames(config, { fetchOnly: true }));
+    onCredentials(snapshot);
     const output = {
       store: yield* ToolOutputStore,
-      secrets: secretsForRedaction(config.credentials),
+      secrets: snapshot.secrets,
     };
     const result = yield* Effect.result(
       fetchPage.fetch(
@@ -299,7 +310,7 @@ const runWebFetch = Effect.fnUntraced(
     const hasDomainRestrictions = limits.allowDomains.length > 0 || limits.denyDomains.length > 0;
     const rescued =
       limits.rescue && !hasDomainRestrictions && format === "markdown" && isRescueEligible(result)
-        ? yield* tryProviderRescue(url, yield* FetchRescueProviders)
+        ? yield* tryProviderRescue(url, (yield* FetchRescueProviders).forRequest(snapshot))
         : undefined;
     if (rescued !== undefined) {
       return yield* projectProviderFetchedPage(rescued, output);
@@ -338,9 +349,8 @@ function renderUrlParseError(error: ParsePublicHttpUrlError): string {
       return "URL cannot be empty";
     }
     case "UnsupportedUrlProtocol": {
-      return error.protocol === undefined
-        ? "URL must start with http:// or https://"
-        : `Unsupported URL protocol ${error.protocol}; URL must start with http:// or https://`;
+      // An arbitrary scheme can itself be a secret. Validation must not echo it.
+      return "URL must start with http:// or https://";
     }
     case "InvalidUrl": {
       return "Invalid URL";

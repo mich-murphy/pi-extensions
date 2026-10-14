@@ -1,5 +1,5 @@
 import process from "node:process";
-import { Context, Duration, Layer, Redacted, Result, Schema } from "effect";
+import { Context, Duration, Layer, Result, Schema } from "effect";
 import { isPublicHttpUrl, parsePublicHttpUrl } from "./types";
 import type { PublicHttpUrl, SearchProviderName, WebFetchFormat } from "./types";
 
@@ -31,15 +31,15 @@ function builtInEndpoint(url: string): PublicHttpUrl {
 
 /** Official Exa MCP endpoint, usable without an API key. */
 export const EXA_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://mcp.exa.ai/mcp");
-/** Official Exa REST search endpoint, used when EXA_API_KEY is present. */
+/** Official Exa REST search endpoint, used when an Exa credential resolves. */
 export const EXA_API_SEARCH_URL = "https://api.exa.ai/search";
 /** Official Exa REST contents endpoint, used for keyed fetch rescue. */
 export const EXA_API_CONTENTS_URL = "https://api.exa.ai/contents";
 /** Official Parallel MCP endpoint, usable without an API key. */
 export const PARALLEL_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://search.parallel.ai/mcp");
-/** Official Parallel REST search endpoint (GA v1), used when PARALLEL_API_KEY is present. */
+/** Official Parallel REST search endpoint (GA v1), used when a Parallel credential resolves. */
 export const PARALLEL_API_SEARCH_URL = "https://api.parallel.ai/v1/search";
-/** Official Brave REST web search endpoint, used when BRAVE_API_KEY is present. */
+/** Official Brave REST web search endpoint, used when a Brave credential resolves. */
 export const BRAVE_API_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
 export const EXA_API_KEY_ENV = "EXA_API_KEY";
@@ -51,16 +51,6 @@ const PARALLEL_ENDPOINT_ENV = "PI_WEB_TOOLS_PARALLEL_ENDPOINT";
 export const FETCH_RESCUE_ENV = "PI_WEB_TOOLS_FETCH_RESCUE";
 const FETCH_ALLOW_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS";
 const FETCH_DENY_DOMAINS_ENV = "PI_WEB_TOOLS_FETCH_DENY_DOMAINS";
-
-/**
- * API credentials resolved from the process environment, wrapped in Redacted at ingress so they
- * never print. Only the adapter that sends a key, and output scrubbing, unwrap them.
- */
-export type WebToolsCredentials = {
-  readonly exaApiKey?: Redacted.Redacted | undefined;
-  readonly parallelApiKey?: Redacted.Redacted | undefined;
-  readonly braveApiKey?: Redacted.Redacted | undefined;
-};
 
 /** MCP endpoint overrides for self-hosted or proxied providers. Keys are never sent to overridden endpoints. */
 export type WebToolsEndpoints = {
@@ -82,11 +72,12 @@ export type WebToolsSettings = {
   };
   readonly search: {
     readonly providers: readonly SearchProviderName[];
+    /** Whether request-time Brave availability extends the default chain. */
+    readonly defaultProviders: boolean;
     /** The deadline for one provider search call. */
     readonly timeout: Duration.Duration;
     readonly defaultMaxResults: number;
   };
-  readonly credentials: WebToolsCredentials;
   readonly endpoints: WebToolsEndpoints;
 };
 
@@ -132,34 +123,11 @@ function parseOnOff(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-function parseApiKey(
-  value: string | undefined,
-  envName: string,
-): Result.Result<Redacted.Redacted | undefined, SettingsError> {
-  if (value === undefined) {
-    return Result.succeed(undefined);
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return Result.succeed(undefined);
-  }
-  // oxlint-disable-next-line eslint/no-control-regex -- detecting control characters is the point
-  if (/[\0-\u001F\u007F]/u.test(trimmed)) {
-    return invalid(`${envName} contains control characters and was rejected`);
-  }
-  return Result.succeed(Redacted.make(trimmed));
-}
-
 function parseProviderList(
   value: string | undefined,
-  braveKeyed: boolean,
 ): Result.Result<readonly SearchProviderName[], SettingsError> {
   if (value === undefined || !value.trim()) {
-    const defaults: SearchProviderName[] = ["exa", "parallel"];
-    if (braveKeyed) {
-      defaults.push("brave");
-    }
-    return Result.succeed(defaults);
+    return Result.succeed(["exa", "parallel"]);
   }
 
   const providers = new Set<SearchProviderName>();
@@ -178,9 +146,6 @@ function parseProviderList(
 
   if (providers.size === 0) {
     return invalid(`${PROVIDERS_ENV} must name at least one provider`);
-  }
-  if (providers.has("brave") && !braveKeyed) {
-    return invalid(`${PROVIDERS_ENV} enables brave but ${BRAVE_API_KEY_ENV} is not set`);
   }
   return Result.succeed([...providers]);
 }
@@ -217,23 +182,7 @@ function parseDomainList(value: string | undefined): readonly string[] {
 export function parseSettings(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): Result.Result<WebToolsSettings, SettingsError> {
-  const exaApiKey = parseApiKey(environment[EXA_API_KEY_ENV], EXA_API_KEY_ENV);
-  if (Result.isFailure(exaApiKey)) {
-    return Result.fail(exaApiKey.failure);
-  }
-  const parallelApiKey = parseApiKey(environment[PARALLEL_API_KEY_ENV], PARALLEL_API_KEY_ENV);
-  if (Result.isFailure(parallelApiKey)) {
-    return Result.fail(parallelApiKey.failure);
-  }
-  const braveApiKey = parseApiKey(environment[BRAVE_API_KEY_ENV], BRAVE_API_KEY_ENV);
-  if (Result.isFailure(braveApiKey)) {
-    return Result.fail(braveApiKey.failure);
-  }
-
-  const providers = parseProviderList(
-    environment[PROVIDERS_ENV],
-    braveApiKey.success !== undefined,
-  );
+  const providers = parseProviderList(environment[PROVIDERS_ENV]);
   if (Result.isFailure(providers)) {
     return Result.fail(providers.failure);
   }
@@ -262,13 +211,9 @@ export function parseSettings(
     },
     search: {
       providers: providers.success,
+      defaultProviders: (environment[PROVIDERS_ENV]?.trim() ?? "") === "",
       timeout: Duration.seconds(SEARCH_TIMEOUT_SECONDS.default),
       defaultMaxResults: SEARCH_MAX_RESULTS.default,
-    },
-    credentials: {
-      exaApiKey: exaApiKey.success,
-      parallelApiKey: parallelApiKey.success,
-      braveApiKey: braveApiKey.success,
     },
     endpoints: { exa: exaEndpoint.success, parallel: parallelEndpoint.success },
   });
@@ -287,13 +232,4 @@ export class WebToolsConfig extends Context.Service<WebToolsConfig, WebToolsSett
   static layer(settings: WebToolsSettings): Layer.Layer<WebToolsConfig> {
     return Layer.succeed(WebToolsConfig, WebToolsConfig.of(settings));
   }
-}
-
-/** The raw configured key values, for scrubbing them from tool output with redactSecrets. */
-export function secretsForRedaction(
-  credentials: WebToolsCredentials,
-): readonly (string | undefined)[] {
-  return [credentials.exaApiKey, credentials.parallelApiKey, credentials.braveApiKey].map((key) =>
-    key === undefined ? undefined : Redacted.value(key),
-  );
 }

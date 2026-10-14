@@ -1,5 +1,6 @@
 import { Option, Result, Schema, SchemaGetter } from "effect";
 import type { Effect } from "effect";
+import type { CredentialFailure } from "./credentials";
 import { describeNetworkFailure } from "./network";
 import { isPublicHttpUrl, parsePublicHttpUrl } from "./types";
 import type {
@@ -94,6 +95,7 @@ export class ProviderToolError extends Schema.TaggedError<ProviderToolError>()(
  * are lower-case phrases meant to follow a "<provider>: " prefix.
  */
 export type ProviderError =
+  | CredentialFailure
   | ProviderRequestFailed
   | ProviderTimedOut
   | ProviderStatusRejected

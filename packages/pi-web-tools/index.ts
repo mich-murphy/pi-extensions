@@ -1,27 +1,34 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Layer, Result } from "effect";
+import { createWebAuthentication } from "./authentication";
+import { CredentialResolver } from "./credentials";
 import { FetchPage } from "./fetch-page";
 import { McpClients } from "./mcp";
 import { DnsLookup, HttpFetch, PublicWebClient } from "./network";
 import { ProviderHttpClient } from "./provider-http";
 import { PublicWebTransport } from "./public-web-transport";
 import { FetchRescueProviders, SearchProviders } from "./search";
-import { parseSettings, secretsForRedaction, WebToolsConfig } from "./settings";
+import { parseSettings, WebToolsConfig } from "./settings";
 import type { WebToolsSettings } from "./settings";
-import { redactSecrets, ToolOutputStore } from "./tool-output";
+import { ToolOutputStore } from "./tool-output";
 import { createToolRuntime } from "./tool-runtime";
 import { WEB_TOOLS_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
 import { createWebSearchTool } from "./websearch";
 
 /** Pi registration capabilities consumed by web tools. */
-export type WebToolsRegistration = Pick<ExtensionAPI, "registerTool"> & {
+export type WebToolsRegistration = Pick<
+  ExtensionAPI,
+  "registerTool" | "registerProvider" | "unregisterProvider"
+> & {
   readonly on: {
     (
       name: "session_start",
       handler: (
         event: unknown,
-        ctx: { readonly ui: Pick<ExtensionContext["ui"], "notify"> },
+        ctx: Pick<ExtensionContext, "modelRegistry"> & {
+          readonly ui: Pick<ExtensionContext["ui"], "notify">;
+        },
       ) => void,
     ): unknown;
     (name: "session_shutdown", handler: () => Promise<void>): unknown;
@@ -30,7 +37,30 @@ export type WebToolsRegistration = Pick<ExtensionAPI, "registerTool"> & {
 
 /** Register the webfetch and websearch tools. */
 export default function webToolsExtension(pi: WebToolsRegistration): void {
+  const authentication = createWebAuthentication();
+  let currentRegistry: ExtensionContext["modelRegistry"] | undefined;
+  pi.on("session_start", (_event, ctx) => {
+    currentRegistry = ctx.modelRegistry;
+    try {
+      authentication.register(pi, ctx.modelRegistry);
+    } catch {
+      ctx.ui.notify(
+        `${WEB_TOOLS_EXTENSION_NAME}: could not register web authentication providers (provider ID conflict or unsupported runtime)`,
+        "error",
+      );
+    }
+  });
   const parsed = parseSettings();
+  const runtime = Result.isSuccess(parsed)
+    ? registerConfiguredTools(pi, parsed.success, authentication)
+    : undefined;
+  pi.on("session_shutdown", async () => {
+    await runtime?.dispose();
+    if (currentRegistry !== undefined) {
+      authentication.unregister(pi, currentRegistry);
+      currentRegistry = undefined;
+    }
+  });
   if (Result.isFailure(parsed)) {
     const { message } = parsed.failure;
     pi.on("session_start", (_event, ctx) => {
@@ -38,20 +68,27 @@ export default function webToolsExtension(pi: WebToolsRegistration): void {
     });
     pi.registerTool(createFailingTool("websearch", "Web Search", message));
     pi.registerTool(createFailingTool("webfetch", "Web Fetch", message));
-    return;
   }
+}
 
-  const settings = parsed.success;
+function registerConfiguredTools(
+  pi: WebToolsRegistration,
+  settings: WebToolsSettings,
+  authentication: ReturnType<typeof createWebAuthentication>,
+) {
   const runtime = createToolRuntime(appLayer(settings));
-  pi.on("session_shutdown", async () => {
-    await runtime.dispose();
+  pi.on("session_start", () => {
+    runtime.start();
   });
-  const secrets = secretsForRedaction(settings.credentials);
-  const redactText = (input: string) => redactSecrets(input, secrets);
-  pi.registerTool(
-    createWebSearchTool({ settings: { search: settings.search }, redactText, runtime }),
-  );
-  pi.registerTool(createWebFetchTool({ settings: { fetch: settings.fetch }, redactText, runtime }));
+  const composition = {
+    redactText: (input: string) => input,
+    credentialsForContext: (ctx: Pick<ExtensionContext, "modelRegistry">) =>
+      authentication.resolverFor(ctx.modelRegistry),
+    runtime,
+  };
+  pi.registerTool(createWebSearchTool({ ...composition, settings: { search: settings.search } }));
+  pi.registerTool(createWebFetchTool({ ...composition, settings: { fetch: settings.fetch } }));
+  return runtime;
 }
 
 function appLayer(settings: WebToolsSettings) {
@@ -67,6 +104,7 @@ function appLayer(settings: WebToolsSettings) {
     config,
     FetchPage.layer.pipe(Layer.provide(PublicWebClient.layer)),
     ToolOutputStore.layer,
+    CredentialResolver.unavailableLayer,
   ).pipe(Layer.provide(outbound));
 }
 

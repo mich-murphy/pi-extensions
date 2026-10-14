@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer } from "effect";
-import { HttpFetch, readResponseBodyWithLimit } from "./network";
+import { HttpFetch, readResponseBodyWithLimit, sanitizeNetworkFailure } from "./network";
 import {
   parseJsonBody,
   ProviderRequestFailed,
@@ -8,6 +8,7 @@ import {
   ProviderTimedOut,
 } from "./provider-types";
 import type { ProviderError } from "./provider-types";
+import { withSafeSpan } from "./telemetry";
 
 /** A bounded, successful (2xx) provider REST response. */
 export type ProviderHttpResponse = {
@@ -63,13 +64,15 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
     // Provider credentials must never survive an origin change. Redirects are protocol failures
     // handled through the existing non-2xx status path instead of being followed by fetch.
     try: async (signal) => http.fetch(url, { ...init, signal, redirect: "manual" }),
-    catch: (cause) => new ProviderRequestFailed({ hostname, cause }),
+    catch: (cause) => new ProviderRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
   });
   const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
     Effect.catchTags({
       ResponseBodyTooLarge: () => Effect.fail(new ProviderResponseTooLarge()),
       ResponseBodyReadFailed: (error) =>
-        Effect.fail(new ProviderRequestFailed({ hostname, cause: error.cause })),
+        Effect.fail(
+          new ProviderRequestFailed({ hostname, cause: sanitizeNetworkFailure(error.cause) }),
+        ),
     }),
   );
   return { response, bodyText: body.toString("utf8") };
@@ -142,17 +145,33 @@ export class ProviderHttpClient extends Context.Service<
         (effect, _method, request) => withProviderDeadline(request.timeout)(effect),
       );
 
-      const postJson = Effect.fn("ProviderHttpClient.postJson")(function* (
+      const postJson = Effect.fnUntraced(function* (
         request: ProviderHttpRequest,
       ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
-        return yield* send("POST", request);
+        return yield* withSafeSpan(
+          "ProviderHttpClient.postJson",
+          send("POST", request),
+          safeProviderFailure,
+        );
       });
-      const getJson = Effect.fn("ProviderHttpClient.getJson")(function* (
+      const getJson = Effect.fnUntraced(function* (
         request: ProviderHttpRequest,
       ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
-        return yield* send("GET", request);
+        return yield* withSafeSpan(
+          "ProviderHttpClient.getJson",
+          send("GET", request),
+          safeProviderFailure,
+        );
       });
       return ProviderHttpClient.of({ postJson, getJson });
     }),
   );
+}
+
+function safeProviderFailure(error: ProviderError): unknown {
+  return {
+    type: error._tag,
+    network:
+      error._tag === "ProviderRequestFailed" ? sanitizeNetworkFailure(error.cause) : undefined,
+  };
 }

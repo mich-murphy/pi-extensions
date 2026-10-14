@@ -8,7 +8,7 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `no-sleep` keeps macOS awake while Pi is working.
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
-- `pi-web-tools` adds public web search and fetch tools that work without API keys.
+- `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
 
 Pi loads all five extensions from the root package manifest. Install the repository with:
 
@@ -23,6 +23,8 @@ npm install
 npm run check
 pi -e ./packages/no-sleep/index.ts
 ```
+
+For isolated CLI interaction checks of web-tools native authentication, use [the verification skill](.agents/skills/verify-pi-web-tools/SKILL.md); it drives real Pi with synthetic credentials and retains evidence without touching your normal profile or calling providers.
 
 Pi supplies its core packages to extensions at runtime. Keep those packages in `peerDependencies`; third-party runtime packages belong in the owning workspace's `dependencies`.
 

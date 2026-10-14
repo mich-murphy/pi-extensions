@@ -1,41 +1,50 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { WEB_AUTH_PROVIDERS } from "../authentication";
 import webToolsExtension from "../index";
+import { nativeAuthFixture } from "./native-auth-fixture";
 
 type RegisteredTool = {
   readonly name: string;
   readonly execute: (...args: readonly never[]) => Promise<unknown>;
 };
 
-function fakePi() {
+type TestContext = Pick<ExtensionContext, "modelRegistry"> & {
+  readonly ui: { readonly notify: (message: string) => void };
+};
+
+async function fakePi() {
+  const { registry } = await nativeAuthFixture({ register: false });
   const tools: RegisteredTool[] = [];
-  type Handler = (
-    event: unknown,
-    ctx: { readonly ui: { readonly notify: (message: string) => void } },
-  ) => void | Promise<void>;
-  const handlers = new Map<string, Handler>();
+  type Handler = (event: unknown, ctx: TestContext) => void | Promise<void>;
+  const handlers = new Map<string, Handler[]>();
   const notifications: string[] = [];
   const api = {
+    registerProvider: registry.registerProvider.bind(registry),
+    unregisterProvider: registry.unregisterProvider.bind(registry),
     registerTool: (tool: RegisteredTool) => {
       tools.push(tool);
     },
     on: (event: string, handler: Handler) => {
-      handlers.set(event, handler);
+      const existing = handlers.get(event) ?? [];
+      existing.push(handler);
+      handlers.set(event, existing);
     },
   };
   const ctx = {
+    modelRegistry: registry,
     ui: {
       notify: (message: string) => {
         notifications.push(message);
       },
     },
   };
-  return {
-    pi: api,
-    tools,
-    handlers,
-    ctx,
-    notifications,
+  const emit = async (event: string) => {
+    for (const handler of handlers.get(event) ?? []) {
+      await handler({}, ctx);
+    }
   };
+  return { pi: api, tools, ctx, emit, registry, notifications };
 }
 
 const ENV_KEYS = [
@@ -56,26 +65,51 @@ describe("webToolsExtension", () => {
       vi.stubEnv(key, undefined);
     }
   });
-
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  test("registers websearch and webfetch with zero configuration", () => {
-    const { pi, tools } = fakePi();
+  test("registers tools at load and auth-only providers at session start, repeatably", async () => {
+    const { pi, tools, emit, registry, notifications } = await fakePi();
     webToolsExtension(pi);
     expect(tools.map((tool) => tool.name)).toStrictEqual(["websearch", "webfetch"]);
+    expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();
+    await emit("session_start");
+    await emit("session_start");
+    for (const { id } of Object.values(WEB_AUTH_PROVIDERS)) {
+      expect(typeof registry.getProvider(id)?.auth.apiKey?.login).toBe("function");
+      expect(registry.getModelsOfType("chat", id)).toStrictEqual([]);
+      expect(registry.getModelsOfType("image", id)).toStrictEqual([]);
+      expect(registry.getModelsOfType("classifier", id)).toStrictEqual([]);
+    }
+    expect(notifications).toStrictEqual([]);
+    await emit("session_shutdown");
+    expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();
+    await emit("session_start");
+    await emit("session_shutdown");
   });
 
-  test("registers failing tools that surface invalid configuration", async () => {
+  test("invalid static configuration disables tools but leaves native login available", async () => {
     vi.stubEnv("PI_WEB_TOOLS_PROVIDERS", "exa,google");
-    const { pi, tools, handlers, ctx, notifications } = fakePi();
+    const { pi, tools, emit, registry, notifications } = await fakePi();
     webToolsExtension(pi);
-
-    expect(tools.map((tool) => tool.name)).toStrictEqual(["websearch", "webfetch"]);
     await expect(tools[0]?.execute()).rejects.toThrow("configuration error");
+    await emit("session_start");
+    expect(notifications.some((message) => message.includes("unknown provider"))).toBe(true);
+    expect(typeof registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)?.auth.apiKey?.login).toBe(
+      "function",
+    );
+  });
 
-    await handlers.get("session_start")?.({}, ctx);
-    expect(notifications[0]).toContain("unknown provider");
+  test("provider conflicts fail safely without replacing unrelated registrations", async () => {
+    const { pi, emit, registry, notifications } = await fakePi();
+    registry.registerProvider(WEB_AUTH_PROVIDERS.parallel.id, { name: "Unrelated", models: [] });
+    webToolsExtension(pi);
+    await emit("session_start");
+    expect(registry.getProvider(WEB_AUTH_PROVIDERS.parallel.id)?.name).toBe("Unrelated");
+    expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toContain("provider ID conflict");
+    await emit("session_shutdown");
   });
 });

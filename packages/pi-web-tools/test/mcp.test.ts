@@ -459,3 +459,36 @@ describe("mcpHttpClient session cleanup", () => {
     expect(deletes(requests)).toHaveLength(1);
   });
 });
+
+describe("credential reflection", () => {
+  test("callTool scrubs JSON-RPC and tool errors before excerpt truncation", async () => {
+    const secrets = ["prefix", `prefix${"-long".repeat(60)}`, "rotated-key"];
+    for (const isRpcError of [true, false]) {
+      let calls = 0;
+      const client = mcpClientWith(ENDPOINT, {
+        maxResponseBytes: 8192,
+        timeoutMs: 5000,
+        fetchImpl: async () => {
+          calls += 1;
+          const text = `${"x".repeat(170)} ${secrets[1]} rotated-key`;
+          return reflectedMcpResponse(calls, text, isRpcError);
+        },
+      });
+      const result = await Effect.runPromise(Effect.result(client.callTool("search", {}, secrets)));
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("ProviderToolError");
+      expect(result.failure.message).toContain("[redacted]");
+      expect(result.failure.message).not.toContain("-long");
+      for (const secret of secrets) {
+        expect(JSON.stringify(result.failure)).not.toContain(secret);
+      }
+    }
+  });
+});
+
+function reflectedMcpResponse(calls: number, text: string, rpc: boolean): Response {
+  const payload = rpc
+    ? { error: { message: text } }
+    : { result: { isError: true, content: [{ type: "text", text }] } };
+  return new Response(JSON.stringify(calls < 3 ? { result: {} } : payload));
+}
