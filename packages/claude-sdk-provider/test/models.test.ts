@@ -1,11 +1,31 @@
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import { formatModelStatus, models } from "../models";
+import { modelFixture } from "./fixtures";
 
 describe("model table", () => {
   test("routes every registered model through a distinct selector", () => {
     const selectors = models.map((model) => model.sdkModel);
 
     expect(new Set(selectors).size).toBe(selectors.length);
+  });
+
+  test("offers the thinking levels each model's effort setting supports, matching Pi's anthropic catalog", () => {
+    const levels = Object.fromEntries(
+      models.map(({ id, reasoning, thinkingLevelMap }) => [
+        id,
+        getSupportedThinkingLevels(modelFixture({ id, reasoning, thinkingLevelMap })),
+      ]),
+    );
+
+    const adaptive = ["low", "medium", "high", "xhigh", "max"];
+    expect(levels).toStrictEqual({
+      "claude-5.5-sonnet": adaptive,
+      "claude-5.5-opus": adaptive,
+      "claude-5.1-fable": ["minimal", ...adaptive],
+      "claude-5.5-haiku": adaptive,
+      "claude-4.5-haiku": ["off"],
+    });
   });
 
   test("declares image input support on every model so Pi's read tool attaches images instead of omitting them", () => {
