@@ -1,6 +1,24 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+/**
+ * Effort levels for adaptive-thinking models, matching Pi's built-in `anthropic` catalog. These
+ * models cannot turn thinking off (the Agent SDK runs `disabled` as adaptive), so `off` is
+ * unsupported; `xhigh` and `max` must be mapped explicitly or Pi hides them.
+ */
+const adaptiveEffortLevels = {
+  off: null,
+  minimal: null,
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
+} as const;
+
+/** Fable keeps Pi's `minimal` level, which the runner sends as `low` effort. */
+const fableEffortLevels = { off: null, xhigh: "xhigh", max: "max" } as const;
 const DATE_SUFFIX = /-\d{8}$/u;
 
 /**
@@ -32,6 +50,7 @@ export const models: readonly SdkModelConfig[] = [
     sdkModel: "sonnet",
     canonicalModel: "claude-sonnet-5-5",
     reasoning: true,
+    thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,
@@ -43,6 +62,7 @@ export const models: readonly SdkModelConfig[] = [
     sdkModel: "opus",
     canonicalModel: "claude-opus-5-5",
     reasoning: true,
+    thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,
@@ -54,6 +74,7 @@ export const models: readonly SdkModelConfig[] = [
     sdkModel: "fable",
     canonicalModel: "claude-fable-5-1",
     reasoning: true,
+    thinkingLevelMap: fableEffortLevels,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,
@@ -65,6 +86,7 @@ export const models: readonly SdkModelConfig[] = [
     sdkModel: "haiku",
     canonicalModel: "claude-haiku-5-5",
     reasoning: true,
+    thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,

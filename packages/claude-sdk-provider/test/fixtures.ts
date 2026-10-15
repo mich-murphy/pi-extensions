@@ -99,16 +99,23 @@ export type ModelFixtureFields = {
   readonly id: string;
   /** Whether the model accepts effort-based reasoning. */
   readonly reasoning?: boolean;
+  /** Pi thinking levels the model maps; omitted when it uses Pi's defaults. */
+  readonly thinkingLevelMap?: Model<"claude-sdk">["thinkingLevelMap"] | undefined;
 };
 
 /**
  * Build a complete Claude SDK model with subscription pricing.
  *
- * @param fields - The model ID and, when it matters, its reasoning support.
+ * @param fields - The model ID and, when it matters, its reasoning support and thinking levels.
  * @returns The Claude SDK model.
  */
-export function modelFixture({ id, reasoning = false }: ModelFixtureFields): Model<"claude-sdk"> {
+export function modelFixture({
+  id,
+  reasoning = false,
+  thinkingLevelMap,
+}: ModelFixtureFields): Model<"claude-sdk"> {
   return {
+    ...(thinkingLevelMap === undefined ? {} : { thinkingLevelMap }),
     id,
     name: id,
     api: "claude-sdk",
