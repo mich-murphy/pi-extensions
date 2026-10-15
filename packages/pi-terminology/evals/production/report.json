@@ -1,0 +1,766 @@
+{
+  "schemaVersion": 1,
+  "outcome": "passed",
+  "plannedCalls": 360,
+  "maxCalls": 360,
+  "repeats": 1,
+  "retries": 0,
+  "precisionTarget": 0.9,
+  "budget": {
+    "attempts": 0,
+    "jevReservedNanos": 0,
+    "jevObservedNanos": 0,
+    "otherCostNanos": 0,
+    "overallNanos": 0,
+    "plannedAttempts": 360,
+    "plannedReserveNanos": 990904320,
+    "projectedJevNanos": 990904320,
+    "projectedOverallNanos": 990904320,
+    "jevRemainingNanos": 9095680,
+    "overallRemainingNanos": 4009095680,
+    "fits": true
+  },
+  "provenance": {
+    "schemaVersion": 1,
+    "manifestHash": "1e429d0128d59bee29de13586c55665ca70b9458f97985d3d78bec07e9bf5286",
+    "catalogueHash": "d72a0c030f9edd57ef40c3962017a2c8aca529a2ddcad2fefcd386604cba5538",
+    "catalogueSnapshot": "d76c9a8d73c9617a4df710dd35988fd0e03896e0c809fb871198d8fa71901bfb",
+    "criteriaHash": "9d1158cbcbb85952d670732d29601d9681f838cfb2be09391be9dd082c775726",
+    "policyHash": "9c4f7cb0d817ec7ea21d533fb5261e57633d9d1919e6eb7941c0633cd8ad9676",
+    "threshold": 0.85,
+    "conceptThresholds": {
+      "core:ubiquitous-language": 0.85,
+      "core:mutation-testing": 0.85,
+      "core:design-by-contract": 0.85,
+      "core:refactoring": 0.85,
+      "core:property-based-testing": 0.85,
+      "core:test-driven-development": 0.85,
+      "core:accidental-complexity": 0.91,
+      "core:dead-code": 0.9,
+      "core:smoke-test": 0.9,
+      "core:separation-of-duties": 0.91
+    },
+    "precisionTarget": 0.9,
+    "datasets": [
+      {
+        "kind": "private",
+        "sha256": "d8a6d3336d1775dd10635b7495c9e17ca92da08694804885d3ea836b875e04eb",
+        "records": 280
+      },
+      {
+        "kind": "synthetic",
+        "sha256": "2aa79f6e077cc2a8ac5812b4aca068dc14b49b5c25235bde7fe7adfdd209c8a5",
+        "records": 80
+      }
+    ],
+    "plannedCalls": 360,
+    "repeats": 1,
+    "retries": 0
+  },
+  "policyWritten": true,
+  "metrics": {
+    "overall": {
+      "prompts": 360,
+      "attempts": 360,
+      "overall": {
+        "tp": 47,
+        "fp": 1,
+        "fn": 15,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 1,
+        "overSuppressedFn": 0,
+        "precision": 0.9791666666666666,
+        "conservativePrecision": 0.9791666666666666,
+        "recall": 0.7580645161290323
+      },
+      "perConcept": {
+        "core:accidental-complexity": {
+          "tp": 6,
+          "fp": 1,
+          "fn": 5,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 1,
+          "overSuppressedFn": 0,
+          "precision": 0.8571428571428571,
+          "conservativePrecision": 0.8571428571428571,
+          "recall": 0.5454545454545454,
+          "distinctUnnamedPositivePrompts": 11
+        },
+        "core:dead-code": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.8571428571428571,
+          "distinctUnnamedPositivePrompts": 7
+        },
+        "core:design-by-contract": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:mutation-testing": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:property-based-testing": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:refactoring": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 3,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.625,
+          "distinctUnnamedPositivePrompts": 8
+        },
+        "core:separation-of-duties": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 5,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.5454545454545454,
+          "distinctUnnamedPositivePrompts": 11
+        },
+        "core:smoke-test": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.8,
+          "distinctUnnamedPositivePrompts": 5
+        },
+        "core:test-driven-development": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:ubiquitous-language": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        }
+      }
+    },
+    "datasets": [
+      {
+        "kind": "private",
+        "metrics": {
+          "prompts": 280,
+          "attempts": 280,
+          "overall": {
+            "tp": 6,
+            "fp": 0,
+            "fn": 12,
+            "ambiguousHits": 0,
+            "redundantReminderFp": 0,
+            "overSuppressedFn": 0,
+            "precision": 1,
+            "conservativePrecision": 1,
+            "recall": 0.3333333333333333
+          },
+          "perConcept": {
+            "core:accidental-complexity": {
+              "tp": 2,
+              "fp": 0,
+              "fn": 5,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 0.2857142857142857,
+              "distinctUnnamedPositivePrompts": 7
+            },
+            "core:dead-code": {
+              "tp": 2,
+              "fp": 0,
+              "fn": 1,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 0.6666666666666666,
+              "distinctUnnamedPositivePrompts": 3
+            },
+            "core:design-by-contract": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            },
+            "core:mutation-testing": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            },
+            "core:property-based-testing": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            },
+            "core:refactoring": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            },
+            "core:separation-of-duties": {
+              "tp": 2,
+              "fp": 0,
+              "fn": 5,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 0.2857142857142857,
+              "distinctUnnamedPositivePrompts": 7
+            },
+            "core:smoke-test": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 1,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": 0,
+              "distinctUnnamedPositivePrompts": 1
+            },
+            "core:test-driven-development": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            },
+            "core:ubiquitous-language": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": null,
+              "conservativePrecision": null,
+              "recall": null,
+              "distinctUnnamedPositivePrompts": 0
+            }
+          }
+        }
+      },
+      {
+        "kind": "synthetic",
+        "metrics": {
+          "prompts": 80,
+          "attempts": 80,
+          "overall": {
+            "tp": 41,
+            "fp": 1,
+            "fn": 3,
+            "ambiguousHits": 0,
+            "redundantReminderFp": 1,
+            "overSuppressedFn": 0,
+            "precision": 0.9761904761904762,
+            "conservativePrecision": 0.9761904761904762,
+            "recall": 0.9318181818181818
+          },
+          "perConcept": {
+            "core:accidental-complexity": {
+              "tp": 4,
+              "fp": 1,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 1,
+              "overSuppressedFn": 0,
+              "precision": 0.8,
+              "conservativePrecision": 0.8,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:dead-code": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:design-by-contract": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:mutation-testing": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:property-based-testing": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:refactoring": {
+              "tp": 5,
+              "fp": 0,
+              "fn": 3,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 0.625,
+              "distinctUnnamedPositivePrompts": 8
+            },
+            "core:separation-of-duties": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:smoke-test": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:test-driven-development": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            },
+            "core:ubiquitous-language": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "ambiguousHits": 0,
+              "redundantReminderFp": 0,
+              "overSuppressedFn": 0,
+              "precision": 1,
+              "conservativePrecision": 1,
+              "recall": 1,
+              "distinctUnnamedPositivePrompts": 4
+            }
+          }
+        }
+      }
+    ],
+    "private": {
+      "prompts": 280,
+      "attempts": 280,
+      "overall": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 12,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 0.3333333333333333
+      },
+      "perConcept": {
+        "core:accidental-complexity": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 5,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.2857142857142857,
+          "distinctUnnamedPositivePrompts": 7
+        },
+        "core:dead-code": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.6666666666666666,
+          "distinctUnnamedPositivePrompts": 3
+        },
+        "core:design-by-contract": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        },
+        "core:mutation-testing": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        },
+        "core:property-based-testing": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        },
+        "core:refactoring": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        },
+        "core:separation-of-duties": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 5,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.2857142857142857,
+          "distinctUnnamedPositivePrompts": 7
+        },
+        "core:smoke-test": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": 0,
+          "distinctUnnamedPositivePrompts": 1
+        },
+        "core:test-driven-development": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        },
+        "core:ubiquitous-language": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": null,
+          "conservativePrecision": null,
+          "recall": null,
+          "distinctUnnamedPositivePrompts": 0
+        }
+      }
+    },
+    "synthetic": {
+      "prompts": 80,
+      "attempts": 80,
+      "overall": {
+        "tp": 41,
+        "fp": 1,
+        "fn": 3,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 1,
+        "overSuppressedFn": 0,
+        "precision": 0.9761904761904762,
+        "conservativePrecision": 0.9761904761904762,
+        "recall": 0.9318181818181818
+      },
+      "perConcept": {
+        "core:accidental-complexity": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 1,
+          "overSuppressedFn": 0,
+          "precision": 0.8,
+          "conservativePrecision": 0.8,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:dead-code": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:design-by-contract": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:mutation-testing": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:property-based-testing": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:refactoring": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 3,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.625,
+          "distinctUnnamedPositivePrompts": 8
+        },
+        "core:separation-of-duties": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:smoke-test": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:test-driven-development": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        },
+        "core:ubiquitous-language": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "distinctUnnamedPositivePrompts": 4
+        }
+      }
+    }
+  },
+  "ledger": {
+    "attempts": 360,
+    "jevReservedNanos": 990904320,
+    "jevObservedNanos": 32543028,
+    "otherCostNanos": 0,
+    "overallNanos": 990904320,
+    "inputTokens": 774834,
+    "outputTokens": 77400,
+    "nativeCostUsd": 0
+  }
+}

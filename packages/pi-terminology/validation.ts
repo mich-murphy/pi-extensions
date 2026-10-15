@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { compileClassifierQuestion } from "./classifier-request";
 import { escapeForDisplay, isUnsafeForDisplay } from "./display";
 import type {
   BookReference,
@@ -36,6 +37,7 @@ const RECOGNITION_KEYS = new Set([
   "conceptId",
   "matches",
   "doesNotMatch",
+  "classifierAliases",
   "questionStyle",
   "tip",
   "caution",
@@ -252,18 +254,7 @@ function compileRecognizer(item: Recognition, concept: Concept): CompiledRecogni
   return {
     ...item,
     concept,
-    question: {
-      type: "bool",
-      ...(item.questionStyle === "instructions-focused"
-        ? {
-            instructions: `${item.matches} Non-matching boundary: ${item.doesNotMatch}`,
-            criteria: { true: "The request matches.", false: "The request does not match." },
-          }
-        : {
-            instructions: item.matches,
-            criteria: { true: item.matches, false: item.doesNotMatch },
-          }),
-    },
+    question: compileClassifierQuestion(item, concept),
   };
 }
 
@@ -278,6 +269,7 @@ function stripCompiled(item: CompiledRecognition): Recognition {
     doesNotMatch: item.doesNotMatch,
     tip: item.tip,
     ...(item.questionStyle === undefined ? {} : { questionStyle: item.questionStyle }),
+    ...(item.classifierAliases === undefined ? {} : { classifierAliases: item.classifierAliases }),
     ...(item.caution === undefined ? {} : { caution: item.caution }),
   };
 }
@@ -342,6 +334,18 @@ function parseRecognition(value: unknown, source: string, errors: string[]): Rec
       `${source}: recognition[${index}].caution`,
       errors,
     );
+    const classifierAliases = optionalStringArray(
+      entry.classifierAliases,
+      `${source}: recognition[${index}].classifierAliases`,
+      errors,
+    );
+    if (
+      classifierAliases !== undefined &&
+      new Set(classifierAliases.map((alias) => normalizeLabel(alias))).size !==
+        classifierAliases.length
+    ) {
+      errors.push(`${source}: recognition[${index}].classifierAliases must be distinct`);
+    }
     const questionStyle = parseQuestionStyle(
       entry.questionStyle,
       `${source}: recognition[${index}].questionStyle`,
@@ -357,6 +361,7 @@ function parseRecognition(value: unknown, source: string, errors: string[]): Rec
       ),
       tip: stringField(entry.tip, `${source}: recognition[${index}].tip`, errors),
       ...(questionStyle === undefined ? {} : { questionStyle }),
+      ...(classifierAliases === undefined ? {} : { classifierAliases }),
       ...(caution === undefined ? {} : { caution }),
     });
   }
@@ -368,10 +373,19 @@ function parseQuestionStyle(
   label: string,
   errors: string[],
 ): Recognition["questionStyle"] {
-  if (value === undefined || value === "instructions-focused" || value === "with-criteria") {
+  if (
+    value === undefined ||
+    value === "instructions-focused" ||
+    value === "with-criteria" ||
+    value === "named" ||
+    value === "no-criteria" ||
+    value === "structured"
+  ) {
     return value;
   }
-  errors.push(`${label} must be instructions-focused or with-criteria`);
+  errors.push(
+    `${label} must be instructions-focused or with-criteria, named, no-criteria, or structured`,
+  );
   return undefined;
 }
 

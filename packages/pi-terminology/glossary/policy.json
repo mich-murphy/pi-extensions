@@ -1,10 +1,23 @@
 {
   "schemaVersion": 1,
   "model": "jev-1.13.0",
-  "catalogueHash": "08b7d26717845639e6b7954c5112cbbd2ea1235656a0ea7f61ba1526ec1c7a36",
-  "criteriaHash": "132fddc7c3400dfbab3c27944f254126d2f89838581bc0d2c42921743fba818d",
-  "fixtureHash": "40f256589cc568d0e5ba0037a9cb272137a8f542898d8ba0659f168abc140727",
+  "catalogueHash": "d72a0c030f9edd57ef40c3962017a2c8aca529a2ddcad2fefcd386604cba5538",
+  "criteriaHash": "9d1158cbcbb85952d670732d29601d9681f838cfb2be09391be9dd082c775726",
+  "fixtureHash": "1e429d0128d59bee29de13586c55665ca70b9458f97985d3d78bec07e9bf5286",
   "threshold": 0.85,
-  "measuredDisplayedPrecision": 1,
+  "conceptThresholds": {
+    "core:ubiquitous-language": 0.85,
+    "core:mutation-testing": 0.85,
+    "core:design-by-contract": 0.85,
+    "core:refactoring": 0.85,
+    "core:property-based-testing": 0.85,
+    "core:test-driven-development": 0.85,
+    "core:accidental-complexity": 0.91,
+    "core:dead-code": 0.9,
+    "core:smoke-test": 0.9,
+    "core:separation-of-duties": 0.91
+  },
+  "precisionTarget": 0.9,
+  "measuredDisplayedPrecision": 0.9791666666666666,
   "measured": true
 }

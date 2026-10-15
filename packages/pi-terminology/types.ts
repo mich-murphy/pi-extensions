@@ -44,7 +44,14 @@ export type Recognition = {
   readonly conceptId: string;
   readonly matches: string;
   readonly doesNotMatch: string;
-  readonly questionStyle?: "instructions-focused" | "with-criteria";
+  /** Prompt-recognition names; may include a related principle rather than a glossary synonym. */
+  readonly classifierAliases?: readonly string[];
+  readonly questionStyle?:
+    | "instructions-focused"
+    | "with-criteria"
+    | "named"
+    | "no-criteria"
+    | "structured";
   readonly tip: string;
   readonly caution?: string;
 };
@@ -71,6 +78,8 @@ export type Policy = {
   readonly criteriaHash: string;
   readonly fixtureHash: string;
   readonly threshold: number;
+  readonly conceptThresholds?: Readonly<Record<string, number>>;
+  readonly precisionTarget?: number;
   readonly measuredDisplayedPrecision: number;
   readonly measured: boolean;
 };

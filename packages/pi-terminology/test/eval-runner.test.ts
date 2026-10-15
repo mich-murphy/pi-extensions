@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Usage } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { criteriaHash, loadCatalogue } from "../catalogue";
+import { criteriaHash } from "../catalogue";
 import { ATTEMPT_RESERVATION_NANOS, readLedger } from "../eval-budget";
 import {
   EvalCliError,
@@ -15,6 +15,9 @@ import {
   runEvaluation,
 } from "../scripts/evaluate";
 import type { EvalCliDependencies, EvalOptions, EvalRegistry, Matcher } from "../scripts/evaluate";
+import { historicalCatalogue } from "./historical-fixture";
+
+const archivedCatalogue = historicalCatalogue();
 
 const TDD = "core:test-driven-development";
 const REFACTORING = "core:refactoring";
@@ -68,7 +71,7 @@ const fileExists = async (path: string) =>
   );
 
 const frozenPolicy = (overrides: object = {}) => {
-  const { catalogue } = loadCatalogue();
+  const catalogue = archivedCatalogue;
   return {
     schemaVersion: 1,
     model: "jev-1.13.0",
@@ -121,6 +124,7 @@ describe("runEvaluation", () => {
 
   const options = (overrides: Partial<EvalOptions> = {}): EvalOptions => ({
     split: "development",
+    catalogue: archivedCatalogue,
     repetitions: 1,
     outputDir: join(root, "out"),
     dryRun: false,
@@ -377,6 +381,7 @@ describe("runCli", () => {
     let stdout = "";
     let stderr = "";
     return {
+      catalogue: archivedCatalogue,
       agentDir: () => join(root, "agent"),
       stdout: {
         write: (chunk: string | Uint8Array) => {

@@ -28,7 +28,9 @@ export function suppressAlreadyNamed(prompt: string, catalogue: Catalogue): Read
   const normalizedPrompt = normalizeForSearch(unquotedAffirmative);
   const suppressed = new Set<string>();
   for (const concept of catalogue.concepts) {
-    const labels = [concept.label, ...(concept.alternativeLabels ?? [])];
+    const classifierAliases =
+      catalogue.recognition.find((item) => item.conceptId === concept.id)?.classifierAliases ?? [];
+    const labels = [concept.label, ...(concept.alternativeLabels ?? []), ...classifierAliases];
     if (
       labels.some(
         (label) =>

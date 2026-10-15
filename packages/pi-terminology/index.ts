@@ -7,6 +7,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import { loadCatalogue } from "./catalogue";
+import { extractClassifierText } from "./classifier-request";
 import { escapeForDisplay } from "./display";
 import { matchWithNativeClassifier } from "./native-matcher";
 import type { NativeClassifierRegistry } from "./native-matcher";
@@ -372,6 +373,7 @@ export class TerminologyExtension {
         task.prompt,
         loaded.policy.threshold,
         task.abort.signal,
+        loaded.policy.conceptThresholds,
       );
     } finally {
       clearTimeout(deadline);
@@ -389,7 +391,7 @@ export class TerminologyExtension {
       matches,
       { ...state, dismissedConceptIds: this.sessionDismissed },
       Date.now(),
-      suppressAlreadyNamed(task.prompt, catalogue),
+      suppressAlreadyNamed(extractClassifierText(catalogue, task.prompt), catalogue),
     );
     if (!this.isCurrent(task, ctx)) {
       return;
