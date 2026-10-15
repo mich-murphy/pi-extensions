@@ -7,6 +7,7 @@ import { getAgentDir, ModelRegistry, ModelRuntime } from "@earendil-works/pi-cod
 // Pi does not export AuthStorage from the package root; the native fixtures import it from dist.
 import { AuthStorage } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 import { criteriaHash, loadCatalogue } from "../catalogue";
+import { hasClassifierProfiles } from "../classifier-request";
 import {
   BudgetError,
   INPUT_NANOS_PER_TOKEN,
@@ -76,6 +77,8 @@ export type Matcher = (
 ) => Promise<NativeMatcherResult>;
 
 export type EvalOptions = {
+  /** Explicit immutable catalogue for historical/offline callers; never a CLI override. */
+  readonly catalogue?: Catalogue;
   readonly dataset?: "v2";
   readonly variant?: Variant;
   readonly split: Split;
@@ -248,6 +251,16 @@ async function loadFixtures(
   return fixtures;
 }
 
+function isThresholdMap(value: unknown): value is Readonly<Record<string, number>> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (cutoff) =>
+        typeof cutoff === "number" && Number.isFinite(cutoff) && cutoff > 0 && cutoff <= 1,
+    )
+  );
+}
+
 function parsePolicy(text: string): Policy | undefined {
   const value: unknown = JSON.parse(text);
   if (
@@ -259,6 +272,14 @@ function parsePolicy(text: string): Policy | undefined {
     typeof value.fixtureHash !== "string" ||
     typeof value.threshold !== "number" ||
     typeof value.measuredDisplayedPrecision !== "number" ||
+    (value.precisionTarget !== undefined &&
+      !(
+        typeof value.precisionTarget === "number" &&
+        Number.isFinite(value.precisionTarget) &&
+        value.precisionTarget >= 0.9 &&
+        value.precisionTarget <= 1
+      )) ||
+    (value.conceptThresholds !== undefined && !isThresholdMap(value.conceptThresholds)) ||
     typeof value.measured !== "boolean"
   ) {
     return undefined;
@@ -270,6 +291,10 @@ function parsePolicy(text: string): Policy | undefined {
     criteriaHash: value.criteriaHash,
     fixtureHash: value.fixtureHash,
     threshold: value.threshold,
+    ...(value.precisionTarget === undefined ? {} : { precisionTarget: value.precisionTarget }),
+    ...(value.conceptThresholds === undefined
+      ? {}
+      : { conceptThresholds: value.conceptThresholds }),
     measuredDisplayedPrecision: value.measuredDisplayedPrecision,
     measured: value.measured,
   };
@@ -306,6 +331,9 @@ function frozenProblem(
 ): string | undefined {
   if (policy === undefined) {
     return "there is no policy file";
+  }
+  if (policy.conceptThresholds !== undefined || policy.precisionTarget !== undefined) {
+    return "production profiles require verify-production.ts, not the historical experiment";
   }
   if (policy.measured) {
     return "the policy is already measured and held-out data is single use";
@@ -355,7 +383,7 @@ function preparationCatalogue(
   round: RoundContext | undefined,
   manifest: Manifest,
 ): Catalogue {
-  const { catalogue: currentCatalogue } = loadCatalogue();
+  const currentCatalogue = options.catalogue ?? loadCatalogue().catalogue;
   const catalogue =
     round !== undefined && options.variant !== undefined
       ? round.candidates[options.variant].catalogue
@@ -375,6 +403,11 @@ async function prepare(options: EvalOptions): Promise<Prep> {
   const round =
     options.dataset === "v2" ? await roundContext(options.evalsDir, options.ledgerPath) : undefined;
   const catalogue = preparationCatalogue(options, round, manifest);
+  if (hasClassifierProfiles(catalogue)) {
+    throw new EvalCliError(
+      "Production classifier profiles require verify-production.ts; the legacy evaluator cannot measure per-concept policies.",
+    );
+  }
   const policy = await readPolicyFile(options.policyPath);
   if (options.split === "heldout") {
     const problem = frozenProblem(policy, catalogue, manifest);
@@ -1020,6 +1053,7 @@ function describeReport(report: EvalReport): string {
 const SUCCESS = new Set<EvalReport["outcome"]>(["dry-run", "policy-written", "passed"]);
 
 export type EvalCliDependencies = {
+  readonly catalogue?: Catalogue;
   readonly agentDir: () => string;
   readonly stdout: Pick<typeof process.stdout, "write">;
   readonly stderr: Pick<typeof process.stderr, "write">;
@@ -1037,6 +1071,7 @@ export async function runCli(
     const cli = parseCli(argv);
     if (cli.operation !== undefined) {
       const offlinePaths: OfflinePaths = {
+        ...(dependencies.catalogue === undefined ? {} : { catalogue: dependencies.catalogue }),
         ledgerPath: ledgerPathFor(dependencies.agentDir()),
         evalsDir: join(PACKAGE_DIR, "evals", "v2"),
         policyPath: join(PACKAGE_DIR, "glossary", "policy.json"),
@@ -1058,6 +1093,7 @@ export async function runCli(
 function cliOptions(cli: CliArgs, dependencies: EvalCliDependencies): EvalOptions {
   const agentDir = dependencies.agentDir();
   return {
+    ...(dependencies.catalogue === undefined ? {} : { catalogue: dependencies.catalogue }),
     ...(cli.dataset === undefined ? {} : { dataset: cli.dataset }),
     ...(cli.variant === undefined ? {} : { variant: cli.variant }),
     split: cli.split,

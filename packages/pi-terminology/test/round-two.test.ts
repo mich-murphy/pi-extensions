@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { loadCatalogue } from "../catalogue";
 import { ATTEMPT_RESERVATION_NANOS, openLedger, readLedger } from "../eval-budget";
 import type { EvalFixture } from "../eval-metrics";
 import { parseCli, runEvaluation } from "../scripts/evaluate";
@@ -18,6 +17,9 @@ import {
   reserveRoundAttempt,
 } from "../scripts/round-two-state";
 import type { Variant } from "../scripts/round-two-state";
+import { historicalCatalogue } from "./historical-fixture";
+
+const archivedCatalogue = historicalCatalogue();
 
 const registry: EvalRegistry = {
   findOfType: () => undefined,
@@ -27,7 +29,7 @@ const registry: EvalRegistry = {
   getProviderAuthStatus: () => ({ configured: true }),
 };
 const now = () => new Date("2026-10-14T00:00:00Z");
-const concepts = loadCatalogue().catalogue.concepts.map((concept) => concept.id);
+const concepts = archivedCatalogue.concepts.map((concept) => concept.id);
 
 function fixtures(count: number, prefix: string): EvalFixture[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -86,6 +88,7 @@ describe("round two synthetic workflow", () => {
   const ledgerPath = () => join(root, "agent", "eval-ledger.json");
   const output = (variant: Variant | "heldout") => join(root, variant);
   const paths = () => ({
+    catalogue: archivedCatalogue,
     ledgerPath: ledgerPath(),
     evalsDir: evalsDir(),
     policyPath: join(root, "policy.json"),
@@ -149,6 +152,7 @@ describe("round two synthetic workflow", () => {
     extra: Partial<EvalOptions> = {},
   ): EvalOptions => ({
     dataset: "v2",
+    catalogue: archivedCatalogue,
     ...(variant === "heldout" ? {} : { variant }),
     split: variant === "heldout" ? "heldout" : "development",
     repetitions: 2,
@@ -219,7 +223,10 @@ describe("round two synthetic workflow", () => {
     dev = fixtures(30, "development");
     heldout = fixtures(40, "acceptance");
     await mkdir(join(evalsDir(), "candidates"), { recursive: true });
-    const text = await readFile(new URL("../glossary/core.json", import.meta.url), "utf8");
+    const text = await readFile(
+      new URL("../evals/v2/candidates/with-criteria.json", import.meta.url),
+      "utf8",
+    );
     const document: unknown = JSON.parse(text);
     if (!isRecord(document) || !Array.isArray(document.recognition)) {
       throw new Error("invalid dummy catalogue");

@@ -2,7 +2,7 @@
 
 Pi terminology is an inactive-by-default Pi 1.1 extension that shows source-backed software terminology reminders outside the model context.
 
-It does not rewrite prompts, inject instructions, invoke skills, or send glossary text to the coding model. The approved second synthetic screen passed and wrote a measured classifier policy. Automatic reminders are permitted if explicitly loaded, but this extension is not activated. Browse the bundled glossary with `/terms` or `Ctrl+Shift+T` after manual loading.
+It does not rewrite prompts, inject instructions, invoke skills, or send glossary text to the coding model. The bundled policy gates automatic reminders independently of manual extension loading. This extension is not autoloaded. Browse the bundled glossary with `/terms` or `Ctrl+Shift+T` after manual loading.
 
 Manual activation for local development:
 
@@ -53,11 +53,41 @@ The compact above-editor widget shows up to three labels plus an overflow count.
 
 Automatic reminders use Pi's native TypeSafe classifier registry, request `jev-1.13.0`, set `maxRetries: 0`, and use a five-second total advisory deadline. Credential resolution is preflighted at TUI session start or `/terms-auth-refresh`; input handling does not run secret-manager commands. The evaluation CLI also warms Pi's native TypeSafe auth snapshot before checking configured credentials, using the default agent `auth.json` and no profile override. Pi's native credential lookup can block synchronously before JavaScript can enforce the timeout, so slow credential commands can still delay startup, refresh or evaluation preflight.
 
-The bundled six core concepts are verified seed entries, not full textbook chapter coverage. Fixtures are independently agent-authored and separately agent-reviewed synthetic screens, not human-reviewed representative private prompts. The [initial synthetic screen](evals/results/2026-10-14/README.md) failed at its frozen 0.83 threshold: 33/37 precision (89.19%). The [second synthetic screen](evals/results/2026-10-15-round-2/README.md) selected `with-criteria` at 0.85 before new held-out access and passed: 56/56 precision (100%), 56/60 recall (93.3333%), and at least 80% recall per concept. The runtime policy is now measured, but extension activation is separate and has not occurred. These small repeated synthetic screens do not establish a real-world guarantee or an independent 95% precision lower bound. Fresh final acceptance verification and PR delivery remain pending.
+The ten bundled concepts include the original six seeds plus **accidental complexity, dead code, smoke test, and separation of duties**. They are useful coverage, not a complete textbook vocabulary. The approved acceptance target is **90% empirically scored displayed precision**, distinct from a classifier probability cutoff or statistical confidence bound. Ambiguous reminders are reported separately; conservative precision is not substituted as a hidden acceptance gate.
+
+| Concepts | Wire criteria | Probability cutoff |
+| --- | --- | --- |
+| Original six seeds | Legacy string criteria, scoped to current real work | 0.85 |
+| Accidental complexity | Named string criteria | 0.91 |
+| Dead code | Structured criteria | 0.90 |
+| Smoke test | No criteria | 0.90 |
+| Separation of duties | No criteria | 0.91 |
+
+The native boolean API retains its required string placeholders; a validated `onPayload` adapter supplies the exact measured `noul` questions, including truly omitted or structured criteria. The policy hash covers the actual wire questions and versioned state/extraction/transport semantics. Mixed profiles use the same extracted annotation reply for classification and already-named suppression. Literal annotation headings in prose or fenced examples do not replace the request. Recognition-only aliases are separate from glossary synonyms: KISS is an accidental-complexity classifier/suppression cue, not a claim that the terms are synonyms.
+
+See the [production verification evidence](evals/production/README.md) for fresh private-prompt aggregates, public synthetic fixtures, frozen cutoffs, provenance and limitations. Labels are independently agent-reviewed, not human-reviewed, and small samples do not establish a real-world guarantee. Manual extension loading remains separate from policy verification.
+
+Historical evidence is preserved unchanged: the [initial synthetic screen](evals/results/2026-10-14/README.md) failed at 0.83 with 33/37 precision (89.19%); the [second synthetic screen](evals/results/2026-10-15-round-2/README.md) passed at 0.85 with 56/56 precision and 56/60 recall. Its six-concept policy is archived alongside that report, not overwritten.
 
 Evaluation budget comments and reports use the official TypeSafe `jev-1.13.0` tariff: $0.042 per million input tokens and output free. TypeSafe documents a 64k-token total input limit for state plus questions and a 32k-token state plus longest-question sublimit. The ledger reserves 65,536 input tokens per call before dispatch, which is conservative for the tiny public fixtures.
 
-## Evaluation workflow
+## Production verification
+
+The local-only verifier exercises the actual matcher, per-concept cutoffs, reply extraction, named suppression and empty-state selector. Its manifest commits complete ten-concept labels and SHA-256 dataset hashes. Private prompts and raw provider responses stay outside the repository; only public synthetic fixtures, commitments and aggregate evidence are published.
+
+```sh
+bun packages/pi-terminology/scripts/verify-production.ts --manifest /path/to/local/manifest.json --output /tmp/new-terms-run --dry-run
+```
+
+Dry runs read and validate inputs and preview budget only: no registry, credentials, calls or writes. With separate approval, omit `--dry-run` and optionally add `--write-policy`. The CLI has no auth, ledger, threshold or model override. A persistent single-use receipt prevents reruns. Failures burn the receipt, stop immediately and cannot activate a policy. Do not delete receipts or reset ledgers.
+
+The fixed plan permits at most 280 fresh private prompts and 80 public synthetic prompts, once each, with zero retries. A separate $1 verification ledger reserves the full 360-call ceiling ($0.99090432) before proceeding; historical production and exploratory ledgers remain untouched. Acceptance requires complete valid results, at least 90% scored precision overall and separately on the private and synthetic sets, and at least 50% synthetic recall with unnamed positive coverage per concept. Only success with unchanged frozen inputs may write a measured policy. No cutoff tuning follows held-out answers.
+
+`real-prompt-metrics.ts` provides reusable scoring and development-only policy tuning. Its default precision target is 0.90; an explicit target can reproduce historical 0.95 experiments. Score thresholds, minimum tuning evidence and held-out tuning safeguards are independent settings.
+
+## Historical evaluation workflow
+
+These commands document consumed, immutable six-concept experiments. The historical runner deliberately refuses the expanded production profiles; use the production verifier for the current catalogue. Archived catalogues are injected only by offline regression tests, never by CLI overrides.
 
 Do not run live Jev calls without explicit approval and a fresh implementation review. The CLI requires Bun only for running operator TypeScript, not for loading the extension. No command activates the extension.
 
@@ -114,4 +144,4 @@ The new held-out receipt is persisted before loading its 40 prompts. Run exactly
 
 All calls use the same native agent directory and cumulative `pi-terminology/eval-ledger.json`. The separate persistent round allowance is at most 200 additional attempts, including failures, while preserving the $1 Jev and $5 overall lifetime caps. The conservative reservation is 65,536 × 42 nanodollars per attempt. The original 108 plus 200 additional attempts reserve $0.847773696, not a verified provider invoice. Locks are exclusive and are never automatically stolen. Preserve both legacy and round-two receipts.
 
-The second screen wrote `measured: true`; paid evaluation is stopped. Lifetime retained reservations are $0.847773696 and the usage-based estimate is $0.011561256, not a provider invoice. Fresh final acceptance verification and unchanged full quality gates after coordinated edits stabilize remain pending before PR delivery. There is no authorization to merge or activate automatic reminders.
+The second screen wrote its archived `measured: true` policy and consumed its allowance. That historical ledger retains $0.847773696 in reservations and a $0.011561256 usage-based estimate, not a provider invoice. These figures do not include the separate exploratory or fresh production-verification ledgers. Neither evaluation nor opening a PR authorizes merging or autoloading the extension.

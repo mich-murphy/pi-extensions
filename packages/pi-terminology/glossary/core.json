@@ -95,6 +95,70 @@
         }
       ],
       "alternativeLabels": ["property-based tests", "property-based test"]
+    },
+    {
+      "id": "core:accidental-complexity",
+      "label": "accidental complexity",
+      "domain": "software design",
+      "definition": "Complexity introduced by the chosen implementation rather than inherent in the problem being solved.",
+      "references": [
+        {
+          "kind": "book",
+          "title": "The Mythical Man-Month",
+          "authors": ["Frederick P. Brooks Jr."],
+          "edition": "Anniversary edition",
+          "locator": "Chapter 16, No Silver Bullet; Essence and Accidents"
+        }
+      ],
+      "alternativeLabels": ["essential vs accidental complexity"]
+    },
+    {
+      "id": "core:dead-code",
+      "label": "dead code",
+      "domain": "software maintenance",
+      "definition": "Code or configuration that is no longer used and can be removed without losing needed behavior.",
+      "references": [
+        {
+          "kind": "book",
+          "title": "Refactoring: Improving the Design of Existing Code",
+          "authors": ["Martin Fowler"],
+          "edition": "2nd edition",
+          "locator": "Remove Dead Code"
+        }
+      ],
+      "alternativeLabels": ["remove dead code", "unused code"]
+    },
+    {
+      "id": "core:smoke-test",
+      "label": "smoke test",
+      "domain": "software testing",
+      "definition": "A small set of checks establishing that a build or deployment runs and its main functions and dependencies are available.",
+      "references": [
+        {
+          "kind": "book",
+          "title": "Continuous Delivery",
+          "authors": ["Jez Humble", "David Farley"],
+          "edition": "1st edition",
+          "locator": "Deployment Pipeline Practices, Smoke-Test Your Deployments",
+          "url": "https://www.informit.com/articles/article.aspx?p=1621865&seqNum=3"
+        }
+      ],
+      "alternativeLabels": ["post-deployment smoke test", "build verification test"]
+    },
+    {
+      "id": "core:separation-of-duties",
+      "label": "separation of duties",
+      "domain": "software quality",
+      "definition": "Assigning distinct responsibilities to different actors, including a maker and an independent checker, so one actor does not perform and approve all work.",
+      "references": [
+        {
+          "kind": "web",
+          "title": "NIST CSRC Glossary: Separation of Duty",
+          "url": "https://csrc.nist.gov/glossary/term/separation_of_duty",
+          "locator": "Definitions"
+        }
+      ],
+      "alternativeLabels": ["maker-checker", "four-eyes principle"]
     }
   ],
   "recognition": [
@@ -139,6 +203,35 @@
       "doesNotMatch": "No tests of general correctness properties over generated inputs are requested. Hand-picked examples only, random performance runs without correctness properties, or production-code mutation alone without generated-property tests do not match.",
       "tip": "A term for this activity is property-based testing.",
       "questionStyle": "with-criteria"
+    },
+    {
+      "conceptId": "core:accidental-complexity",
+      "matches": "Asks to keep a real change simple, avoid or remove unnecessary moving parts, effort or indirection in how a current need is met, or to justify existing or proposed complexity (e.g. 'keep it simple', 'no complete redesign', 'far too much work for this', 'is this more complicated than necessary').",
+      "doesNotMatch": "Hypothetical or illustrative examples; questioning whether the whole design or approach is wrong (a redesign question); dropping a capability that is not needed (YAGNI); deleting unused code (dead code); quality audits that merely list complexity among many criteria; performance tuning.",
+      "tip": "A term for this activity is accidental complexity.",
+      "questionStyle": "named",
+      "classifierAliases": ["essential vs accidental complexity", "KISS"]
+    },
+    {
+      "conceptId": "core:dead-code",
+      "matches": "Asks to find or remove code, configuration, installed files, services or infrastructure definitions that are no longer used, including leftovers of software that was removed or replaced.",
+      "doesNotMatch": "Cleaning up git branches, worktrees, PRs or build artefacts; asking why something exists (Chesterton's fence); avoiding a not-yet-built feature (YAGNI); silencing warnings.",
+      "tip": "A term for this activity is dead code.",
+      "questionStyle": "structured"
+    },
+    {
+      "conceptId": "core:smoke-test",
+      "matches": "After a change is merged or deployed, asks to confirm it is live and that the system works or behaves as expected in the target environment (e.g. 'PR merged, make sure everything is live', 'confirm nothing broke after deploying').",
+      "doesNotMatch": "A request to commit, push or deploy that only asks for the deploy itself to happen; watching CI checks or a PR until it merges; running the full test suite before merge.",
+      "tip": "A term for this activity is smoke test.",
+      "questionStyle": "no-criteria"
+    },
+    {
+      "conceptId": "core:separation-of-duties",
+      "matches": "Asks that work produced by one agent or person be checked or approved by a different agent or person, including a coordinator validating subagents' work, a fresh reviewer, or implement-review-fix loops.",
+      "doesNotMatch": "Asking about or researching such workflows or their terminology; self-review; delegation with no separate check; running tests or linters only.",
+      "tip": "A term for this activity is separation of duties.",
+      "questionStyle": "no-criteria"
     }
   ]
 }

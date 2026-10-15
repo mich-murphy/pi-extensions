@@ -5,7 +5,7 @@ import { openLedger } from "../eval-budget";
 import type { LedgerSession } from "../eval-budget";
 import type { EvalFixture } from "../eval-metrics";
 import { JEV_MODEL_ID } from "../native-matcher";
-import type { Policy } from "../types";
+import type { Catalogue, Policy } from "../types";
 import { stableHash } from "../validation";
 import { betterScore, chooseThreshold } from "./eval-screen";
 import type { RawObservation, Screen } from "./eval-screen";
@@ -33,6 +33,8 @@ export type OfflineOptions = {
   readonly output: string;
 };
 export type OfflinePaths = {
+  /** Historical/offline dependency only, not an operator CLI path override. */
+  readonly catalogue?: Catalogue;
   readonly ledgerPath: string;
   readonly evalsDir: string;
   readonly policyPath: string;
@@ -386,7 +388,7 @@ async function freeze(
   if (stableHash(policy) !== stableHash(expected.policy)) {
     throw roundError("selected snapshot or unmeasured policy mismatch");
   }
-  const current = loadCatalogue().catalogue;
+  const current = paths.catalogue ?? loadCatalogue().catalogue;
   if (current.hash !== selected.catalogue.hash || criteriaHash(current) !== selected.criteria) {
     throw roundError(
       `apply ${expected.selectedCandidate}.json to the bundled core before freezing`,

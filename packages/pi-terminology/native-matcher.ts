@@ -6,9 +6,10 @@ import type {
   ClassifierOptions,
   Usage,
 } from "@earendil-works/pi-ai";
+import { JEV_MODEL_ID, classifierPayloadHook, classifierState } from "./classifier-request";
 import type { Catalogue, Match, MatchResult } from "./types";
 
-export const JEV_MODEL_ID = "jev-1.13.0";
+export { JEV_MODEL_ID } from "./classifier-request";
 export type NativeMatcherResult =
   | { readonly ok: true; readonly value: MatchResult }
   | {
@@ -35,6 +36,7 @@ export async function matchWithNativeClassifier(
   prompt: string,
   threshold: number,
   signal: AbortSignal,
+  conceptThresholds?: Readonly<Record<string, number>>,
 ): Promise<NativeMatcherResult> {
   const model = registry.findOfType("classifier", "typesafe", "jev-latest");
   if (model === undefined) {
@@ -45,16 +47,17 @@ export async function matchWithNativeClassifier(
   );
   const result = await registry.classify(
     { ...model, id: JEV_MODEL_ID },
-    { state: { prompt }, questions },
-    { signal, timeoutMs: 5000, maxRetries: 0 },
+    { state: classifierState(catalogue, prompt), questions },
+    { signal, timeoutMs: 5000, maxRetries: 0, onPayload: classifierPayloadHook(catalogue) },
   );
-  return interpretClassifierResult(result, catalogue, threshold);
+  return interpretClassifierResult(result, catalogue, threshold, conceptThresholds);
 }
 
 export function interpretClassifierResult(
   result: ClassifierResult,
   catalogue: Catalogue,
   threshold: number,
+  conceptThresholds?: Readonly<Record<string, number>>,
 ): NativeMatcherResult {
   if (result.stopReason === "aborted") {
     return { ok: false, reason: "aborted" };
@@ -62,25 +65,45 @@ export function interpretClassifierResult(
   if (result.stopReason === "error") {
     return { ok: false, reason: "error" };
   }
+  if (
+    conceptThresholds !== undefined &&
+    Object.keys(conceptThresholds).length !== catalogue.recognition.length
+  ) {
+    return { ok: false, reason: "invalid" };
+  }
   const matches: Match[] = [];
   for (const recognition of catalogue.recognition) {
-    const answer = result.answers[recognition.conceptId];
-    if (answer === undefined || answer.type !== "bool" || !Number.isFinite(answer.probability)) {
+    const probability = answerProbability(result.answers[recognition.conceptId]);
+    if (probability === undefined) {
       return { ok: false, reason: "invalid" };
     }
-    if (answer.probability < 0 || answer.probability > 1) {
+    const cutoff =
+      conceptThresholds === undefined ? threshold : conceptThresholds[recognition.conceptId];
+    if (!isProbability(cutoff) || (conceptThresholds !== undefined && cutoff === 0)) {
       return { ok: false, reason: "invalid" };
     }
-    if (answer.probability >= threshold) {
+    if (probability >= cutoff) {
       matches.push({
         concept: recognition.concept,
         recognition,
-        probability: answer.probability,
+        probability,
         tip: recognition.tip,
       });
     }
   }
   return { ok: true, value: withUsage(matches, result.usage) };
+}
+
+function answerProbability(
+  answer: ClassifierResult["answers"][string] | undefined,
+): number | undefined {
+  return answer?.type === "bool" && isProbability(answer.probability)
+    ? answer.probability
+    : undefined;
+}
+
+function isProbability(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
 function withUsage(matches: readonly Match[], usage: Usage | undefined): MatchResult {

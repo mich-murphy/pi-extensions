@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CLASSIFIER_REQUEST_PROFILE,
+  classifierWireQuestions,
+  hasClassifierProfiles,
+} from "./classifier-request";
 import type { Catalogue, GlossaryDocument, Policy } from "./types";
 import { composeGlossaries, parseGlossary, stableHash } from "./validation";
 
@@ -80,6 +85,13 @@ function joinWarnings(left: string | undefined, right: string): string {
 }
 
 export function criteriaHash(catalogue: Catalogue): string {
+  if (hasClassifierProfiles(catalogue)) {
+    return stableHash({
+      profile: CLASSIFIER_REQUEST_PROFILE,
+      questions: classifierWireQuestions(catalogue),
+    });
+  }
+  // Preserve historical policy/archive hashes for legacy-only catalogues.
   return stableHash(catalogue.recognition.map((item) => [item.conceptId, item.question]));
 }
 
@@ -113,6 +125,7 @@ export function isPolicy(value: unknown, coreCatalogue: Catalogue): value is Pol
     isRecord(value) &&
     hasPolicyShape(value) &&
     hasCurrentHashes(value, coreCatalogue) &&
+    hasConceptThresholds(value, coreCatalogue) &&
     hasMeasuredPolicyProvenance(value)
   );
 }
@@ -126,6 +139,8 @@ function hasPolicyShape(value: Record<string, unknown>): value is Policy {
     typeof value.fixtureHash === "string" &&
     isProbability(value.threshold) &&
     isProbability(value.measuredDisplayedPrecision) &&
+    (value.precisionTarget === undefined ||
+      (isProbability(value.precisionTarget) && value.precisionTarget >= 0.9)) &&
     typeof value.measured === "boolean"
   );
 }
@@ -143,11 +158,30 @@ function hasCurrentHashes(value: Policy, coreCatalogue: Catalogue): boolean {
   );
 }
 
+function hasConceptThresholds(value: Policy, catalogue: Catalogue): boolean {
+  const thresholds = value.conceptThresholds;
+  if (thresholds === undefined) {
+    return !value.measured || !hasClassifierProfiles(catalogue);
+  }
+  return (
+    isRecord(thresholds) &&
+    Object.keys(thresholds).length === catalogue.recognition.length &&
+    catalogue.recognition.every((item) => {
+      const cutoff = thresholds[item.conceptId];
+      return Object.hasOwn(thresholds, item.conceptId) && isProbability(cutoff) && cutoff > 0;
+    })
+  );
+}
+
 function hasMeasuredPolicyProvenance(value: Policy): boolean {
   if (!value.measured) {
     return true;
   }
-  return value.measuredDisplayedPrecision >= 0.95 && /^[0-9a-f]{64}$/u.test(value.fixtureHash);
+  // An omitted target retains the historical policy contract, including archived policies.
+  return (
+    value.measuredDisplayedPrecision >= (value.precisionTarget ?? 0.95) &&
+    /^[0-9a-f]{64}$/u.test(value.fixtureHash)
+  );
 }
 
 function isProbability(value: unknown): value is number {

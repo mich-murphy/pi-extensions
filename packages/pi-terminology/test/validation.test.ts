@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { criteriaHash } from "../catalogue";
-import type { Recognition } from "../types";
+import { criteriaHash, isPolicy } from "../catalogue";
+import type { Policy, Recognition } from "../types";
 import { composeGlossaries, normalizeLabel, parseGlossary } from "../validation";
 import { expectErr, expectOk } from "./helpers";
 
@@ -111,8 +111,14 @@ describe("terminology validation", () => {
     });
   });
 
-  test.each(["instructions-focused", "with-criteria"] as const)(
-    "binds exact positive and negative text to the compiled question hash: %s",
+  test.each([
+    "instructions-focused",
+    "with-criteria",
+    "named",
+    "no-criteria",
+    "structured",
+  ] as const)(
+    "binds raw boundaries to catalogue identity and actual wire text to criteria identity: %s",
     (questionStyle) => {
       const original = styledCatalogue(questionStyle);
       for (const field of ["matches", "doesNotMatch"] as const) {
@@ -133,7 +139,9 @@ describe("terminology validation", () => {
             ),
           ]),
         );
-        expect(criteriaHash(changed)).not.toBe(criteriaHash(original));
+        expect(changed.hash).not.toBe(original.hash);
+        const sameWire = ["no-criteria:doesNotMatch"].includes(`${questionStyle}:${field}`);
+        expect(criteriaHash(changed) === criteriaHash(original)).toBe(sameWire);
       }
     },
   );
@@ -157,28 +165,31 @@ describe("terminology validation", () => {
     },
   );
 
-  test.each(["instructions-focused", "with-criteria"] as const)(
-    "still rejects unsafe recognition text for %s",
-    (questionStyle) => {
-      const errors = expectErr(
-        parseGlossary(
-          {
-            ...document,
-            recognition: document.recognition.map((item) => ({
-              ...item,
-              questionStyle,
-              matches: "generated\u0085inputs",
-              doesNotMatch: "examples\u2028only",
-              extra: true,
-            })),
-          },
-          "bad",
-        ),
-      );
-      expect(errors.join("\n")).toContain("unknown field extra");
-      expect(errors.join("\n")).toContain("unsafe control or bidi text");
-    },
-  );
+  test.each([
+    "instructions-focused",
+    "with-criteria",
+    "named",
+    "no-criteria",
+    "structured",
+  ] as const)("still rejects unsafe recognition text for %s", (questionStyle) => {
+    const errors = expectErr(
+      parseGlossary(
+        {
+          ...document,
+          recognition: document.recognition.map((item) => ({
+            ...item,
+            questionStyle,
+            matches: "generated\u0085inputs",
+            doesNotMatch: "examples\u2028only",
+            extra: true,
+          })),
+        },
+        "bad",
+      ),
+    );
+    expect(errors.join("\n")).toContain("unknown field extra");
+    expect(errors.join("\n")).toContain("unsafe control or bidi text");
+  });
   test("normalizes equivalent labels", () => {
     expect(normalizeLabel(" Property　Based   Testing ")).toBe("property based testing");
   });
@@ -367,4 +378,120 @@ describe("terminology validation", () => {
     );
     expect(duplicate.join("\n")).toContain("related concept IDs must be distinct");
   });
+});
+
+function measuredPolicy(style?: Recognition["questionStyle"]) {
+  const catalogue = styledCatalogue(style);
+  const policy: Policy = {
+    schemaVersion: 1,
+    model: "jev-1.13.0",
+    catalogueHash: catalogue.hash,
+    criteriaHash: criteriaHash(catalogue),
+    fixtureHash: "b".repeat(64),
+    threshold: 0.85,
+    measuredDisplayedPrecision: 0.95,
+    measured: true,
+  };
+  return { catalogue, policy };
+}
+
+describe("profile policy validation", () => {
+  test("keeps legacy policies valid without optional fields and preserves historical precision", () => {
+    const { catalogue, policy } = measuredPolicy("instructions-focused");
+    expect(isPolicy(policy, catalogue)).toBe(true);
+    expect(isPolicy({ ...policy, measuredDisplayedPrecision: 0.94 }, catalogue)).toBe(false);
+    expect(
+      isPolicy({ ...policy, precisionTarget: 0.9, measuredDisplayedPrecision: 0.9 }, catalogue),
+    ).toBe(true);
+  });
+
+  test.each(["named", "no-criteria", "structured"] as const)(
+    "%s measured policies require a full exact per-concept map",
+    (style) => {
+      const { catalogue, policy } = measuredPolicy(style);
+      expect(isPolicy(policy, catalogue)).toBe(false);
+      const complete = { ...policy, conceptThresholds: { "project:one": 0.91 } };
+      expect(isPolicy(complete, catalogue)).toBe(true);
+      expect(isPolicy({ ...complete, criteriaHash: "a".repeat(64) }, catalogue)).toBe(false);
+      expect(isPolicy({ ...complete, catalogueHash: "a".repeat(64) }, catalogue)).toBe(false);
+      expect(isPolicy({ ...complete, fixtureHash: "pending" }, catalogue)).toBe(false);
+    },
+  );
+
+  test.each([undefined, "no-criteria"] as const)(
+    "validates any provided threshold map, including legacy catalogues: %s",
+    (style) => {
+      const { catalogue, policy } = measuredPolicy(style);
+      for (const conceptThresholds of [
+        null,
+        [],
+        0.91,
+        {},
+        { "project:two": 0.91 },
+        { "project:one": 0.91, "project:two": 0.91 },
+        ...[0, -0.1, 1.01, Number.NaN, Infinity, "0.91", null].map((value) => ({
+          "project:one": value,
+        })),
+      ]) {
+        expect(isPolicy({ ...policy, conceptThresholds }, catalogue)).toBe(false);
+      }
+      for (const cutoff of [0.001, 0.85, 0.9, 0.91, 1]) {
+        expect(
+          isPolicy({ ...policy, conceptThresholds: { "project:one": cutoff } }, catalogue),
+        ).toBe(true);
+      }
+    },
+  );
+
+  test("precision targets are finite, at least .90, and enforced on measured policies", () => {
+    const { catalogue, policy } = measuredPolicy("named");
+    const complete = { ...policy, conceptThresholds: { "project:one": 0.91 } };
+    for (const precisionTarget of [0, 0.89, 1.01, Number.NaN, Infinity, "0.9", null]) {
+      expect(isPolicy({ ...complete, precisionTarget }, catalogue)).toBe(false);
+    }
+    for (const precisionTarget of [0.9, 0.91, 0.95, 1]) {
+      expect(
+        isPolicy(
+          { ...complete, precisionTarget, measuredDisplayedPrecision: precisionTarget },
+          catalogue,
+        ),
+      ).toBe(true);
+      expect(
+        isPolicy(
+          { ...complete, precisionTarget, measuredDisplayedPrecision: precisionTarget - 0.001 },
+          catalogue,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  test.each(["named", "no-criteria", "structured"] as const)(
+    "preserves %s through parsing and binds it and labels to catalogue/hash identity",
+    (style) => {
+      const original = styledCatalogue(style);
+      expect(original.recognition[0]?.questionStyle).toBe(style);
+      expect(original.hash).not.toBe(styledCatalogue("with-criteria").hash);
+      for (const change of [{ label: "Renamed practice" }, { alternativeLabels: ["New alias"] }]) {
+        const changed = expectOk(
+          composeGlossaries([
+            expectOk(
+              parseGlossary(
+                {
+                  ...document,
+                  concepts: document.concepts.map((item) => ({ ...item, ...change })),
+                  recognition: document.recognition.map((item) => ({
+                    ...item,
+                    questionStyle: style,
+                  })),
+                },
+                "changed",
+              ),
+            ),
+          ]),
+        );
+        expect(changed.hash).not.toBe(original.hash);
+        expect(criteriaHash(changed)).not.toBe(criteriaHash(original));
+      }
+    },
+  );
 });

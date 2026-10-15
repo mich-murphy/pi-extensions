@@ -5,6 +5,7 @@ import { criteriaHash, isPolicy, loadCatalogue } from "../catalogue";
 import type { Policy } from "../types";
 import { composeGlossaries, parseGlossary } from "../validation";
 import { expectOk } from "./helpers";
+import { historicalPolicy } from "./historical-fixture";
 
 function measured(overrides: Partial<Policy> = {}) {
   const loaded = loadCatalogue();
@@ -15,6 +16,10 @@ function measured(overrides: Partial<Policy> = {}) {
     criteriaHash: criteriaHash(loaded.catalogue),
     fixtureHash: "b".repeat(64),
     threshold: 0.95,
+    conceptThresholds: Object.fromEntries(
+      loaded.catalogue.recognition.map((item) => [item.conceptId, 0.9]),
+    ),
+    precisionTarget: 0.9,
     measuredDisplayedPrecision: 0.95,
     measured: true,
     ...overrides,
@@ -107,12 +112,14 @@ describe("terminology question candidates", () => {
 });
 
 describe("terminology catalogue policy provenance", () => {
-  test("loads the accepted measured bundle with matching held-out provenance", () => {
-    const loaded = loadCatalogue();
-    expect(loaded.ok).toBe(true);
+  test("preserves the historical round-two policy and its original 95 percent contract", () => {
+    const catalogue = expectOk(composeGlossaries([candidateDocument("with-criteria")]));
+    const policy = historicalPolicy(catalogue);
+    const loaded = { catalogue, policy };
     expect(loaded.catalogue.concepts).toHaveLength(6);
     expect(loaded.policy.measured).toBe(true);
     expect(isPolicy(loaded.policy, loaded.catalogue)).toBe(true);
+    expect(isPolicy({ ...policy, measuredDisplayedPrecision: 0.94 }, catalogue)).toBe(false);
     expect(loaded.policy.threshold).toBe(0.85);
     expect(loaded.policy.measuredDisplayedPrecision).toBeGreaterThanOrEqual(0.95);
     expect(loaded.policy.catalogueHash).toBe(loaded.catalogue.hash);
@@ -167,6 +174,35 @@ describe("terminology catalogue policy provenance", () => {
     expect(isPolicy({ ...policy, criteriaHash: "pending" }, catalogue)).toBe(false);
     expect(isPolicy({ ...policy, fixtureHash: "pending" }, catalogue)).toBe(false);
     expect(isPolicy({ ...policy, fixtureHash: "x" }, catalogue)).toBe(false);
-    expect(isPolicy({ ...policy, measuredDisplayedPrecision: 0.94 }, catalogue)).toBe(false);
+    expect(isPolicy({ ...policy, measuredDisplayedPrecision: 0.94 }, catalogue)).toBe(true);
+    expect(isPolicy({ ...policy, measuredDisplayedPrecision: 0.89 }, catalogue)).toBe(false);
+  });
+
+  test("validates a complete per-concept map independently of the precision target", () => {
+    const { catalogue, policy } = measured({ measuredDisplayedPrecision: 0.9 });
+    expect(isPolicy(policy, catalogue)).toBe(true);
+    expect(isPolicy({ ...policy, conceptThresholds: undefined }, catalogue)).toBe(false);
+    expect(
+      isPolicy(
+        { ...policy, conceptThresholds: { ...policy.conceptThresholds, unknown: 0.9 } },
+        catalogue,
+      ),
+    ).toBe(false);
+    expect(
+      isPolicy(
+        { ...policy, conceptThresholds: { ...policy.conceptThresholds, "core:dead-code": 0 } },
+        catalogue,
+      ),
+    ).toBe(false);
+    expect(
+      isPolicy(
+        {
+          ...policy,
+          conceptThresholds: { ...policy.conceptThresholds, "core:dead-code": Number.NaN },
+        },
+        catalogue,
+      ),
+    ).toBe(false);
+    expect(isPolicy({ ...policy, precisionTarget: 0.95 }, catalogue)).toBe(false);
   });
 });
