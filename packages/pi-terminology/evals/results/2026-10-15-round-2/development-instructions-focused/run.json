@@ -1,0 +1,487 @@
+{
+  "schemaVersion": 1,
+  "dataset": "v2",
+  "variant": "instructions-focused",
+  "binding": "df444589c190855c93b46ff96b7ea4ad55d3033631efc8168dfc09f24a7025bd",
+  "runId": "01cda0ca-9156-4c95-981f-a8b55065edd9",
+  "split": "development",
+  "outcome": "no-policy",
+  "date": "2026-10-15T00:01:02.838Z",
+  "requestedModel": "jev-1.13.0",
+  "modelNote": "The requested model id; the serving model is not reported.",
+  "hashes": {
+    "catalogue": "ca53491100f6ec4c4980e2d77e4ce2d325bc67ff7d7e962744e7198372536d99",
+    "criteria": "fa5f92219b5a70be0e979c2e12e0d72e4ee868e628ab2a57d301c316482038d8",
+    "fixture": "a0bbd4dcfb1fe4972386f653f3ebe8abcc1b8d1f6a006848b8317b361329ab41"
+  },
+  "prompts": 30,
+  "repetitions": 2,
+  "plannedAttempts": 60,
+  "threshold": 0.99,
+  "thresholdSource": "offline sweep",
+  "metrics": {
+    "scope": "selected-terms",
+    "prompts": 30,
+    "attempts": 60,
+    "errors": 0,
+    "missingAttempts": 0,
+    "displayed": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 38,
+      "precision": null,
+      "recall": 0,
+      "precisionWilson95": null,
+      "meetsPrecisionTarget": false
+    },
+    "nonemptyPromptCoverage": 0,
+    "abstentionRate": 1,
+    "anyFalseGroupRate": 0,
+    "perConcept": {
+      "core:design-by-contract": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 6,
+        "precision": null,
+        "recall": 0
+      },
+      "core:mutation-testing": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 4,
+        "precision": null,
+        "recall": 0
+      },
+      "core:property-based-testing": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8,
+        "precision": null,
+        "recall": 0
+      },
+      "core:refactoring": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8,
+        "precision": null,
+        "recall": 0
+      },
+      "core:test-driven-development": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 6,
+        "precision": null,
+        "recall": 0
+      },
+      "core:ubiquitous-language": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 6,
+        "precision": null,
+        "recall": 0
+      }
+    },
+    "applicability": {
+      "threshold": 0.99,
+      "tp": 0,
+      "fp": 0,
+      "fn": 62,
+      "precision": null,
+      "recall": 0
+    },
+    "flips": {
+      "repeatedPrompts": 30,
+      "unstablePrompts": 0
+    },
+    "latency": {
+      "count": 60,
+      "meanMs": 202.86666666666667,
+      "p50Ms": 198,
+      "maxMs": 290
+    },
+    "usage": {
+      "inputTokens": 53088,
+      "outputTokens": 7740
+    }
+  },
+  "sweep": [
+    {
+      "threshold": 0.5,
+      "precision": 0.7631578947368421,
+      "recall": 0.7631578947368421,
+      "falsePositives": 9,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.51,
+      "precision": 0.7631578947368421,
+      "recall": 0.7631578947368421,
+      "falsePositives": 9,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.52,
+      "precision": 0.7631578947368421,
+      "recall": 0.7631578947368421,
+      "falsePositives": 9,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.53,
+      "precision": 0.7837837837837838,
+      "recall": 0.7631578947368421,
+      "falsePositives": 8,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.54,
+      "precision": 0.8055555555555556,
+      "recall": 0.7631578947368421,
+      "falsePositives": 7,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.55,
+      "precision": 0.8787878787878788,
+      "recall": 0.7631578947368421,
+      "falsePositives": 4,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.56,
+      "precision": 0.875,
+      "recall": 0.7368421052631579,
+      "falsePositives": 4,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.57,
+      "precision": 0.875,
+      "recall": 0.7368421052631579,
+      "falsePositives": 4,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.58,
+      "precision": 0.9310344827586207,
+      "recall": 0.7105263157894737,
+      "falsePositives": 2,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.59,
+      "precision": 0.9642857142857143,
+      "recall": 0.7105263157894737,
+      "falsePositives": 1,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.6,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.61,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.62,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.63,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.64,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.65,
+      "precision": 1,
+      "recall": 0.6842105263157895,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.66,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.67,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.68,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.69,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.7,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.71,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.72,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.73,
+      "precision": 1,
+      "recall": 0.6578947368421053,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.74,
+      "precision": 1,
+      "recall": 0.631578947368421,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.75,
+      "precision": 1,
+      "recall": 0.631578947368421,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.76,
+      "precision": 1,
+      "recall": 0.631578947368421,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.77,
+      "precision": 1,
+      "recall": 0.631578947368421,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.78,
+      "precision": 1,
+      "recall": 0.5526315789473685,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.79,
+      "precision": 1,
+      "recall": 0.5263157894736842,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.8,
+      "precision": 1,
+      "recall": 0.5263157894736842,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.81,
+      "precision": 1,
+      "recall": 0.5263157894736842,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.82,
+      "precision": 1,
+      "recall": 0.47368421052631576,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.83,
+      "precision": 1,
+      "recall": 0.47368421052631576,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.84,
+      "precision": 1,
+      "recall": 0.47368421052631576,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.85,
+      "precision": 1,
+      "recall": 0.47368421052631576,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.86,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.87,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.88,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.89,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.9,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.91,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.92,
+      "precision": 1,
+      "recall": 0.42105263157894735,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.93,
+      "precision": 1,
+      "recall": 0.3684210526315789,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.94,
+      "precision": 1,
+      "recall": 0.3157894736842105,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.95,
+      "precision": 1,
+      "recall": 0.23684210526315788,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.96,
+      "precision": 1,
+      "recall": 0.18421052631578946,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.97,
+      "precision": 1,
+      "recall": 0.05263157894736842,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.98,
+      "precision": null,
+      "recall": 0,
+      "falsePositives": 0,
+      "meetsTarget": false
+    },
+    {
+      "threshold": 0.99,
+      "precision": null,
+      "recall": 0,
+      "falsePositives": 0,
+      "meetsTarget": false
+    }
+  ],
+  "errors": [],
+  "budget": {
+    "pricingUrl": "https://docs.typesafe.ai/models",
+    "inputNanosPerToken": 42,
+    "outputPriced": false,
+    "documentedTotalInputTokenLimit": 65536,
+    "documentedStatePlusLongestQuestionTokenLimit": 32000,
+    "jevCapNanos": 1000000000,
+    "overallCapNanos": 5000000000,
+    "run": {
+      "attempts": 60,
+      "reservedNanos": 165150720,
+      "observedNanos": 2229696
+    },
+    "cumulative": {
+      "attempts": 168,
+      "jevReservedNanos": 462422016,
+      "jevObservedNanos": 6053796,
+      "otherCostNanos": 0,
+      "overallNanos": 462422016
+    }
+  },
+  "limitations": [
+    "Small synthetic screening set, not representative private-prompt validation.",
+    "Repeated attempts are not independent prompts; the Wilson interval is descriptive only.",
+    "Acceptance is the 95 percent precision point estimate over the selected-term group screen.",
+    "TypeSafe documents a 64k-token total input limit and a 32k-token state plus longest-question sublimit; these public fixtures are tiny."
+  ]
+}

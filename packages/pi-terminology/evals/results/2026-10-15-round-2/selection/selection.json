@@ -1,0 +1,965 @@
+{
+  "schemaVersion": 1,
+  "dataset": "v2",
+  "binding": "df444589c190855c93b46ff96b7ea4ad55d3033631efc8168dfc09f24a7025bd",
+  "model": "jev-1.13.0",
+  "developmentFixtureHash": "a0bbd4dcfb1fe4972386f653f3ebe8abcc1b8d1f6a006848b8317b361329ab41",
+  "candidates": [
+    {
+      "candidateId": "instructions-focused",
+      "outputDir": "/tmp/pi-terminology-v2-20261015T000035Z-instructions",
+      "artifactHash": "62b2a1db30ffaf934e9eeebf0cdd00e1cb5fe52a27695f5fc6127b5c73a30fe6",
+      "candidateFileHash": "3c0fce1de4e809be9d805cce7b1b83f626b573b4c26cba1b1df4a26cb8258884",
+      "catalogueHash": "ca53491100f6ec4c4980e2d77e4ce2d325bc67ff7d7e962744e7198372536d99",
+      "criteriaHash": "fa5f92219b5a70be0e979c2e12e0d72e4ee868e628ab2a57d301c316482038d8",
+      "compiledQuestions": [
+        [
+          "core:design-by-contract",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements. Non-matching boundary: No explicit caller preconditions, routine postconditions and state invariants or responsibilities are requested. Ordinary input validation, schema compatibility, or an isolated assertion alone do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ],
+        [
+          "core:mutation-testing",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior. Non-matching boundary: No deliberate production-code changes to assess test detection are requested. Implementation edits, changing test inputs, fuzzing, or coverage measurement alone do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ],
+        [
+          "core:property-based-testing",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests testing general correctness properties over generated inputs from a domain. Non-matching boundary: No tests of general correctness properties over generated inputs are requested. Hand-picked examples only, random performance runs without correctness properties, or production-code mutation alone without generated-property tests do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ],
+        [
+          "core:refactoring",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements. Non-matching boundary: No behavior-preserving internal code change is requested. Adding behavior, fixing user-visible behavior, changing external contracts, or documentation-only naming conventions alone do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ],
+        [
+          "core:test-driven-development",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case. Non-matching boundary: No failing-test-first, pass, then refactor cycle is requested. Tests after implementation, rerunning tests, or test additions alone do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ],
+        [
+          "core:ubiquitous-language",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model. Non-matching boundary: No shared precise domain-model vocabulary for developers and domain experts is requested. Naming conventions, technical abbreviations, or an unrelated glossary alone do not match.",
+            "criteria": {
+              "true": "The request matches.",
+              "false": "The request does not match."
+            }
+          }
+        ]
+      ],
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "precision": 0.7631578947368421,
+          "recall": 0.7631578947368421,
+          "falsePositives": 9,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.51,
+          "precision": 0.7631578947368421,
+          "recall": 0.7631578947368421,
+          "falsePositives": 9,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.52,
+          "precision": 0.7631578947368421,
+          "recall": 0.7631578947368421,
+          "falsePositives": 9,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.53,
+          "precision": 0.7837837837837838,
+          "recall": 0.7631578947368421,
+          "falsePositives": 8,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.54,
+          "precision": 0.8055555555555556,
+          "recall": 0.7631578947368421,
+          "falsePositives": 7,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.55,
+          "precision": 0.8787878787878788,
+          "recall": 0.7631578947368421,
+          "falsePositives": 4,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.56,
+          "precision": 0.875,
+          "recall": 0.7368421052631579,
+          "falsePositives": 4,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.57,
+          "precision": 0.875,
+          "recall": 0.7368421052631579,
+          "falsePositives": 4,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.58,
+          "precision": 0.9310344827586207,
+          "recall": 0.7105263157894737,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.59,
+          "precision": 0.9642857142857143,
+          "recall": 0.7105263157894737,
+          "falsePositives": 1,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.6,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.61,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.62,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.63,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.64,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.65,
+          "precision": 1,
+          "recall": 0.6842105263157895,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.66,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.67,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.68,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.69,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.7,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.71,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.72,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.73,
+          "precision": 1,
+          "recall": 0.6578947368421053,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.74,
+          "precision": 1,
+          "recall": 0.631578947368421,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.75,
+          "precision": 1,
+          "recall": 0.631578947368421,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.76,
+          "precision": 1,
+          "recall": 0.631578947368421,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.77,
+          "precision": 1,
+          "recall": 0.631578947368421,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.78,
+          "precision": 1,
+          "recall": 0.5526315789473685,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.79,
+          "precision": 1,
+          "recall": 0.5263157894736842,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.8,
+          "precision": 1,
+          "recall": 0.5263157894736842,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.81,
+          "precision": 1,
+          "recall": 0.5263157894736842,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.82,
+          "precision": 1,
+          "recall": 0.47368421052631576,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.83,
+          "precision": 1,
+          "recall": 0.47368421052631576,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.84,
+          "precision": 1,
+          "recall": 0.47368421052631576,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.85,
+          "precision": 1,
+          "recall": 0.47368421052631576,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.86,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.87,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.88,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.89,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.9,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.91,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.92,
+          "precision": 1,
+          "recall": 0.42105263157894735,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.93,
+          "precision": 1,
+          "recall": 0.3684210526315789,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.94,
+          "precision": 1,
+          "recall": 0.3157894736842105,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.95,
+          "precision": 1,
+          "recall": 0.23684210526315788,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.96,
+          "precision": 1,
+          "recall": 0.18421052631578946,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.97,
+          "precision": 1,
+          "recall": 0.05263157894736842,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.98,
+          "precision": null,
+          "recall": 0,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.99,
+          "precision": null,
+          "recall": 0,
+          "falsePositives": 0,
+          "meetsTarget": false
+        }
+      ],
+      "best": null
+    },
+    {
+      "candidateId": "with-criteria",
+      "outputDir": "/tmp/pi-terminology-v2-20261015T000035Z-criteria",
+      "artifactHash": "5a00864985561125b3c2fd33bc29f710257a2e0ad85e63a65573b55d127906e3",
+      "candidateFileHash": "f501ab2c98ce1b11a31fb66856116b5dc6b03b9a06e52906b739e0ea0dcbfa4c",
+      "catalogueHash": "08b7d26717845639e6b7954c5112cbbd2ea1235656a0ea7f61ba1526ec1c7a36",
+      "criteriaHash": "132fddc7c3400dfbab3c27944f254126d2f89838581bc0d2c42921743fba818d",
+      "compiledQuestions": [
+        [
+          "core:design-by-contract",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements.",
+            "criteria": {
+              "true": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements.",
+              "false": "No explicit caller preconditions, routine postconditions and state invariants or responsibilities are requested. Ordinary input validation, schema compatibility, or an isolated assertion alone do not match."
+            }
+          }
+        ],
+        [
+          "core:mutation-testing",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior.",
+            "criteria": {
+              "true": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior.",
+              "false": "No deliberate production-code changes to assess test detection are requested. Implementation edits, changing test inputs, fuzzing, or coverage measurement alone do not match."
+            }
+          }
+        ],
+        [
+          "core:property-based-testing",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests testing general correctness properties over generated inputs from a domain.",
+            "criteria": {
+              "true": "`prompt` requests testing general correctness properties over generated inputs from a domain.",
+              "false": "No tests of general correctness properties over generated inputs are requested. Hand-picked examples only, random performance runs without correctness properties, or production-code mutation alone without generated-property tests do not match."
+            }
+          }
+        ],
+        [
+          "core:refactoring",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements.",
+            "criteria": {
+              "true": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements.",
+              "false": "No behavior-preserving internal code change is requested. Adding behavior, fixing user-visible behavior, changing external contracts, or documentation-only naming conventions alone do not match."
+            }
+          }
+        ],
+        [
+          "core:test-driven-development",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case.",
+            "criteria": {
+              "true": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case.",
+              "false": "No failing-test-first, pass, then refactor cycle is requested. Tests after implementation, rerunning tests, or test additions alone do not match."
+            }
+          }
+        ],
+        [
+          "core:ubiquitous-language",
+          {
+            "type": "bool",
+            "instructions": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model.",
+            "criteria": {
+              "true": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model.",
+              "false": "No shared precise domain-model vocabulary for developers and domain experts is requested. Naming conventions, technical abbreviations, or an unrelated glossary alone do not match."
+            }
+          }
+        ]
+      ],
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "precision": 0.9,
+          "recall": 0.9473684210526315,
+          "falsePositives": 4,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.51,
+          "precision": 0.9,
+          "recall": 0.9473684210526315,
+          "falsePositives": 4,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.52,
+          "precision": 0.9230769230769231,
+          "recall": 0.9473684210526315,
+          "falsePositives": 3,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.53,
+          "precision": 0.9210526315789473,
+          "recall": 0.9210526315789473,
+          "falsePositives": 3,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.54,
+          "precision": 0.9210526315789473,
+          "recall": 0.9210526315789473,
+          "falsePositives": 3,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.55,
+          "precision": 0.9459459459459459,
+          "recall": 0.9210526315789473,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.56,
+          "precision": 0.9459459459459459,
+          "recall": 0.9210526315789473,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.57,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.58,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.59,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.6,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.61,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.62,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.63,
+          "precision": 0.9444444444444444,
+          "recall": 0.8947368421052632,
+          "falsePositives": 2,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.64,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.65,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.66,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.67,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.68,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.69,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.7,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.71,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.72,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.73,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.74,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.75,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.76,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.77,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.78,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.79,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.8,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.81,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.82,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.83,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.84,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.85,
+          "precision": 1,
+          "recall": 0.8947368421052632,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.86,
+          "precision": 1,
+          "recall": 0.8157894736842105,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.87,
+          "precision": 1,
+          "recall": 0.7894736842105263,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.88,
+          "precision": 1,
+          "recall": 0.7894736842105263,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.89,
+          "precision": 1,
+          "recall": 0.7894736842105263,
+          "falsePositives": 0,
+          "meetsTarget": true
+        },
+        {
+          "threshold": 0.9,
+          "precision": 1,
+          "recall": 0.7368421052631579,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.91,
+          "precision": 1,
+          "recall": 0.7368421052631579,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.92,
+          "precision": 1,
+          "recall": 0.7368421052631579,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.93,
+          "precision": 1,
+          "recall": 0.7368421052631579,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.94,
+          "precision": 1,
+          "recall": 0.7368421052631579,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.95,
+          "precision": 1,
+          "recall": 0.631578947368421,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.96,
+          "precision": 1,
+          "recall": 0.5526315789473685,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.97,
+          "precision": 1,
+          "recall": 0.23684210526315788,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.98,
+          "precision": 1,
+          "recall": 0.10526315789473684,
+          "falsePositives": 0,
+          "meetsTarget": false
+        },
+        {
+          "threshold": 0.99,
+          "precision": null,
+          "recall": 0,
+          "falsePositives": 0,
+          "meetsTarget": false
+        }
+      ],
+      "best": {
+        "threshold": 0.85,
+        "metrics": {
+          "scope": "selected-terms",
+          "prompts": 30,
+          "attempts": 60,
+          "errors": 0,
+          "missingAttempts": 0,
+          "displayed": {
+            "tp": 34,
+            "fp": 0,
+            "fn": 4,
+            "precision": 1,
+            "recall": 0.8947368421052632,
+            "precisionWilson95": [0.8984820937803899, 1],
+            "meetsPrecisionTarget": true
+          },
+          "nonemptyPromptCoverage": 1,
+          "abstentionRate": 0.5,
+          "anyFalseGroupRate": 0,
+          "perConcept": {
+            "core:design-by-contract": {
+              "tp": 6,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1,
+              "recall": 1
+            },
+            "core:mutation-testing": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1,
+              "recall": 1
+            },
+            "core:property-based-testing": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 4,
+              "precision": 1,
+              "recall": 0.5
+            },
+            "core:refactoring": {
+              "tp": 8,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1,
+              "recall": 1
+            },
+            "core:test-driven-development": {
+              "tp": 6,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1,
+              "recall": 1
+            },
+            "core:ubiquitous-language": {
+              "tp": 6,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1,
+              "recall": 1
+            }
+          },
+          "applicability": {
+            "threshold": 0.85,
+            "tp": 48,
+            "fp": 0,
+            "fn": 14,
+            "precision": 1,
+            "recall": 0.7741935483870968
+          },
+          "flips": {
+            "repeatedPrompts": 30,
+            "unstablePrompts": 0
+          },
+          "latency": {
+            "count": 60,
+            "meanMs": 203.85,
+            "p50Ms": 199,
+            "maxMs": 278
+          },
+          "usage": {
+            "inputTokens": 55848,
+            "outputTokens": 7740
+          }
+        }
+      }
+    }
+  ],
+  "selectedCandidate": "with-criteria",
+  "policy": {
+    "schemaVersion": 1,
+    "model": "jev-1.13.0",
+    "catalogueHash": "08b7d26717845639e6b7954c5112cbbd2ea1235656a0ea7f61ba1526ec1c7a36",
+    "criteriaHash": "132fddc7c3400dfbab3c27944f254126d2f89838581bc0d2c42921743fba818d",
+    "fixtureHash": "a0bbd4dcfb1fe4972386f653f3ebe8abcc1b8d1f6a006848b8317b361329ab41",
+    "threshold": 0.85,
+    "measuredDisplayedPrecision": 1,
+    "measured": false
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "runId": "45f995c8-4e52-4c3e-946f-bcd853063208",
+  "split": "heldout",
+  "outcome": "failed",
+  "date": "2026-10-14T22:02:13.218Z",
+  "requestedModel": "jev-1.13.0",
+  "modelNote": "The requested model id; the serving model is not reported.",
+  "hashes": {
+    "catalogue": "de22f5b38f4a7d174291ecaa52c5a0e11061bdd4b3472a6ff2fc2a09263564da",
+    "criteria": "f89dfdd34e0c3eeaa05d2d7ab34d590ece841a20f4e130606d170505b41b0e56",
+    "fixture": "15f8c0047252e568831010b2083ce515edf0ebe1a20e65e9b70a0d2e8f3b7627"
+  },
+  "prompts": 30,
+  "repetitions": 2,
+  "plannedAttempts": 60,
+  "threshold": 0.83,
+  "thresholdSource": "frozen policy",
+  "metrics": {
+    "scope": "selected-terms",
+    "prompts": 30,
+    "attempts": 60,
+    "errors": 0,
+    "missingAttempts": 0,
+    "displayed": {
+      "tp": 33,
+      "fp": 4,
+      "fn": 11,
+      "precision": 0.8918918918918919,
+      "recall": 0.75,
+      "precisionWilson95": [0.7529115358483284, 0.9571487947949374],
+      "meetsPrecisionTarget": false
+    },
+    "nonemptyPromptCoverage": 0.9615384615384616,
+    "abstentionRate": 0.5166666666666667,
+    "anyFalseGroupRate": 0.06666666666666667,
+    "perConcept": {
+      "core:design-by-contract": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1
+      },
+      "core:mutation-testing": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1
+      },
+      "core:property-based-testing": {
+        "tp": 1,
+        "fp": 2,
+        "fn": 9,
+        "precision": 0.3333333333333333,
+        "recall": 0.1
+      },
+      "core:refactoring": {
+        "tp": 10,
+        "fp": 2,
+        "fn": 2,
+        "precision": 0.8333333333333334,
+        "recall": 0.8333333333333334
+      },
+      "core:test-driven-development": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1
+      },
+      "core:ubiquitous-language": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1
+      }
+    },
+    "applicability": {
+      "threshold": 0.83,
+      "tp": 45,
+      "fp": 2,
+      "fn": 11,
+      "precision": 0.9574468085106383,
+      "recall": 0.8035714285714286
+    },
+    "flips": {
+      "repeatedPrompts": 30,
+      "unstablePrompts": 1
+    },
+    "latency": {
+      "count": 60,
+      "meanMs": 207.46666666666667,
+      "p50Ms": 202,
+      "maxMs": 314
+    },
+    "usage": {
+      "inputTokens": 50724,
+      "outputTokens": 7740
+    }
+  },
+  "sweep": null,
+  "errors": [],
+  "budget": {
+    "pricingUrl": "https://docs.typesafe.ai/models",
+    "inputNanosPerToken": 42,
+    "outputPriced": false,
+    "documentedTotalInputTokenLimit": 65536,
+    "documentedStatePlusLongestQuestionTokenLimit": 32000,
+    "jevCapNanos": 1000000000,
+    "overallCapNanos": 5000000000,
+    "run": {
+      "attempts": 60,
+      "reservedNanos": 165150720,
+      "observedNanos": 2130408
+    },
+    "cumulative": {
+      "attempts": 108,
+      "jevReservedNanos": 297271296,
+      "jevObservedNanos": 3824100,
+      "otherCostNanos": 0,
+      "overallNanos": 297271296
+    }
+  },
+  "limitations": [
+    "Small synthetic screening set, not representative private-prompt validation.",
+    "Repeated attempts are not independent prompts; the Wilson interval is descriptive only.",
+    "Acceptance is the 95 percent precision point estimate over the selected-term group screen.",
+    "TypeSafe documents a 64k-token total input limit and a 32k-token state plus longest-question sublimit; these public fixtures are tiny."
+  ]
+}
