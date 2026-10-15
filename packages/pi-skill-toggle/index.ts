@@ -1,30 +1,57 @@
+import { basename, isAbsolute, relative } from "node:path";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
   ExtensionUIContext,
+  InputSource,
 } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, SettingsList, Text } from "@earendil-works/pi-tui";
 import type { SettingItem } from "@earendil-works/pi-tui";
+import {
+  disabledResourceMatcher,
+  effectiveOverrides,
+  INSTRUCTION_FILE_NAMES,
+  toolPath,
+} from "./guard";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { hideResources } from "./prompt-filter";
 import type { PromptFilterEvent } from "./prompt-filter";
+import { RepositoryLocator } from "./repository";
 import { resourcePathId } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
 import { defaultToggleValue, isToggleValue, toggleResources, toggleValue } from "./resources";
 import type { ToggleOverrides, ToggleResource } from "./resources";
+import { pathsReadByCommand } from "./shell-reads";
 import { ToggleStateFile } from "./state";
 import type { ToggleStateResult, ToggleStateStore } from "./state";
 
 /** Context capabilities used by the toggle command. */
 export type ToggleCommandContext = Pick<
   ExtensionCommandContext,
-  "mode" | "getSystemPromptOptions"
+  "cwd" | "mode" | "getSystemPromptOptions"
 > & {
   readonly ui: Pick<ExtensionUIContext, "notify"> & {
     readonly custom: (factory: Parameters<ExtensionUIContext["custom"]>[0]) => Promise<unknown>;
   };
+};
+
+/** UI capabilities used to report failures. */
+export type UiContext = { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> };
+
+/** Session capabilities the guard reads. */
+export type GuardContext = UiContext & {
+  readonly cwd: string;
+  readonly sessionManager: {
+    readonly getHeader: () => { readonly parentSession?: string } | null;
+  };
+};
+
+/** The part of a `tool_call` event the guard reads. */
+export type GuardedToolCall = {
+  readonly toolName: string;
+  readonly input: Readonly<Record<string, unknown>>;
 };
 
 /** Event callbacks consumed by skill toggle. */
@@ -35,15 +62,25 @@ export type ToggleHandlers = {
   ) => Promise<{ skillPaths: string[] } | undefined>;
   readonly before_agent_start: (
     event: PromptFilterEvent,
-    ctx: { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> },
+    ctx: UiContext,
   ) => { systemPrompt: string } | undefined;
+  readonly tool_call: (
+    event: GuardedToolCall,
+    ctx: GuardContext,
+  ) => { block: true; reason: string } | undefined;
+  readonly input: (
+    event: { readonly text: string; readonly source: InputSource },
+    ctx: GuardContext,
+  ) => void;
 };
 
 /** Pi registration capabilities used by skill toggle. */
-export type ToggleRegistration = Pick<ExtensionAPI, "getCommands"> & {
+export type ToggleRegistration = Pick<ExtensionAPI, "getCommands" | "exec"> & {
   readonly on: {
     (name: "resources_discover", handler: ToggleHandlers["resources_discover"]): unknown;
     (name: "before_agent_start", handler: ToggleHandlers["before_agent_start"]): unknown;
+    (name: "tool_call", handler: ToggleHandlers["tool_call"]): unknown;
+    (name: "input", handler: ToggleHandlers["input"]): unknown;
   };
   readonly registerCommand: (
     name: string,
@@ -68,14 +105,30 @@ export function registerSkillToggle(pi: ToggleRegistration, store: ToggleStateSt
   });
   pi.on("resources_discover", async (_event, ctx) => extension.contributeProjectSkills(ctx));
   pi.on("before_agent_start", (event, ctx) => extension.filterPrompt(event, ctx));
+  pi.on("tool_call", (event, ctx) => extension.guardToolCall(event, ctx));
+  pi.on("input", (event, ctx) => {
+    extension.recordManualSkill(event, ctx);
+  });
 }
 
-type UiContext = { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> };
+/**
+ * Whether a session is a subagent's child session.
+ *
+ * Subagent extensions record the parent's session id. Pi's own `/new` and `/fork` record the
+ * parent's session file path instead, so those sessions stay main sessions.
+ */
+export function isSubagentSession(ctx: Pick<GuardContext, "sessionManager">): boolean {
+  const parent = ctx.sessionManager.getHeader()?.parentSession;
+  return parent !== undefined && parent !== "" && !isAbsolute(parent) && !parent.endsWith(".jsonl");
+}
 
 const STATE_FAILURE_CONSEQUENCE = {
-  load: "The prompt was left unchanged.",
+  load: "The prompt was left unchanged, and the model cannot read instruction or skill files until it is fixed.",
   update: "The toggle was not saved.",
 } as const;
+
+const MANUAL_SKILL = /^\/skill:(?<name>\S+)/u;
+const GIT_TIMEOUT_MS = 5000;
 
 function createFailureReporter(): (ctx: UiContext, failure: string | undefined) => void {
   let lastFailure: string | undefined;
@@ -89,12 +142,16 @@ function createFailureReporter(): (ctx: UiContext, failure: string | undefined) 
 
 class SkillToggle {
   private contributedSkills: ReadonlySet<ResourcePath> = new Set();
+  /** Resources Pi loaded for the latest run, before the prompt filter hid any. */
+  private resources: readonly ToggleResource[] = [];
+  /** Skills the user invoked with `/skill:name` in this session. */
+  private readonly manualSkills = new Set<string>();
   private readonly reportStateFailure = createFailureReporter();
   private readonly reportPromptFailure = createFailureReporter();
 
   constructor(
     private readonly store: ToggleStateStore,
-    private readonly pi: Readonly<Pick<ExtensionAPI, "getCommands">>,
+    private readonly pi: Readonly<Pick<ExtensionAPI, "getCommands" | "exec">>,
   ) {}
 
   async contributeProjectSkills(
@@ -127,12 +184,15 @@ class SkillToggle {
 
   filterPrompt(event: PromptFilterEvent, ctx: UiContext): { systemPrompt: string } | undefined {
     const options = event.systemPromptOptions;
-    const overrides = this.overridesFrom("load", this.store.load(), ctx);
-    if (!overrides) {
+    const resources = toggleResources(options, this.contributedSkills);
+    this.resources = resources;
+    const loaded = this.overridesFrom("load", this.store.load(), ctx);
+    if (!loaded) {
       return undefined;
     }
+    const { overrides } = effectiveOverrides(loaded, resources);
     const hidden = new Set<ResourcePath>(
-      toggleResources(options, this.contributedSkills)
+      resources
         .filter((resource) => toggleValue(overrides, resource) === "disabled")
         .map((resource) => resource.id),
     );
@@ -155,6 +215,58 @@ class SkillToggle {
       : { systemPrompt: result.systemPrompt };
   }
 
+  /** Refuse `read` of a disabled resource, and subagent `bash` commands that print one. */
+  guardToolCall(
+    event: GuardedToolCall,
+    ctx: GuardContext,
+  ): { block: true; reason: string } | undefined {
+    const shell = event.toolName === "bash";
+    const paths = shell ? this.subagentShellReads(event, ctx) : this.readPath(event, ctx);
+    if (paths.length === 0) {
+      return undefined;
+    }
+    const loaded = this.overridesFrom("load", this.store.load(), ctx);
+    const overrides =
+      loaded === undefined ? undefined : effectiveOverrides(loaded, this.resources).overrides;
+    const matcher = disabledResourceMatcher(
+      this.resources,
+      overrides,
+      isSubagentSession(ctx) ? new Set() : this.manualSkills,
+    );
+    const blocked = [
+      ...new Set(
+        paths.flatMap((path) => {
+          const match = matcher.match(path);
+          return match === undefined ? [] : [match];
+        }),
+      ),
+    ];
+    if (blocked.length === 0) {
+      return undefined;
+    }
+    const names = blocked.join(", ");
+    return {
+      block: true,
+      reason: shell
+        ? `This command reads ${names}, which the user disabled in /skill-toggle. Run it without ${blocked.length === 1 ? "that file" : "those files"}.`
+        : `${names} is disabled in /skill-toggle, so it cannot be read.`,
+    };
+  }
+
+  /** Remember a skill the user invoked explicitly, so its own files stay readable. */
+  recordManualSkill(
+    event: { readonly text: string; readonly source: InputSource },
+    ctx: GuardContext,
+  ): void {
+    if (event.source === "extension" || isSubagentSession(ctx)) {
+      return;
+    }
+    const name = MANUAL_SKILL.exec(event.text.trim())?.groups?.name;
+    if (name !== undefined) {
+      this.manualSkills.add(name);
+    }
+  }
+
   async openMenu(args: string, ctx: ToggleCommandContext): Promise<void> {
     if (args.trim()) {
       ctx.ui.notify("Usage: /skill-toggle", "error");
@@ -164,7 +276,11 @@ class SkillToggle {
       ctx.ui.notify("/skill-toggle requires TUI mode", "error");
       return;
     }
-    const resources = toggleResources(ctx.getSystemPromptOptions(), this.contributedSkills);
+    const loadedResources = toggleResources(ctx.getSystemPromptOptions(), this.contributedSkills);
+    const resources = withNestedInstructions(
+      loadedResources,
+      await this.nestedInstructions(ctx.cwd, loadedResources),
+    );
     if (resources.length === 0) {
       ctx.ui.notify("No user-managed instructions or skills are loaded", "info");
       return;
@@ -173,7 +289,7 @@ class SkillToggle {
     if (!loaded) {
       return;
     }
-    let overrides = loaded;
+    let effective = effectiveOverrides(loaded, resources);
 
     const resourcesById = new Map<string, ToggleResource>(
       resources.map((resource) => [resource.id, resource]),
@@ -184,7 +300,10 @@ class SkillToggle {
       label: `[${resource.origin}] ${resource.label}`,
       description: resource.description,
       ...(resource.editability === "editable"
-        ? { currentValue: toggleValue(loaded, resource), values: ["enabled", "disabled"] }
+        ? {
+            currentValue: toggleValue(effective.overrides, resource),
+            values: ["enabled", "disabled"],
+          }
         : { currentValue: "manual only" }),
     }));
 
@@ -206,15 +325,17 @@ class SkillToggle {
           if (!(resource && isToggleValue(value))) {
             return;
           }
-          const saved = this.overridesFrom(
-            "update",
-            this.store.set(resource.id, value === defaultToggleValue(resource) ? "default" : value),
-            ctx,
-          );
+          // A worktree row that inherits another worktree's toggle keeps an explicit value,
+          // so returning it to the default still overrides the inherited one.
+          const stored =
+            value === defaultToggleValue(resource) && !effective.inherited.has(resource.id)
+              ? "default"
+              : value;
+          const saved = this.overridesFrom("update", this.store.set(resource.id, stored), ctx);
           if (saved) {
-            overrides = saved;
+            effective = effectiveOverrides(saved, resources);
           } else {
-            list.updateValue(id, toggleValue(overrides, resource));
+            list.updateValue(id, toggleValue(effective.overrides, resource));
           }
         },
         () => {
@@ -241,6 +362,69 @@ class SkillToggle {
     });
   }
 
+  private readPath(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
+    const { path } = event.input;
+    return event.toolName === "read" && typeof path === "string" ? [toolPath(path, ctx.cwd)] : [];
+  }
+
+  private subagentShellReads(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
+    const { command } = event.input;
+    return typeof command === "string" && isSubagentSession(ctx)
+      ? pathsReadByCommand(command, ctx.cwd)
+      : [];
+  }
+
+  /** Instruction files tracked in the current worktree that Pi did not load. */
+  private async nestedInstructions(
+    cwd: string,
+    loaded: readonly ToggleResource[],
+  ): Promise<readonly ToggleResource[]> {
+    const root = new RepositoryLocator().worktreeRoot(resourcePathId(cwd, cwd));
+    if (root === undefined) {
+      return [];
+    }
+    let stdout: string;
+    try {
+      const result = await this.pi.exec(
+        "git",
+        [
+          "-C",
+          root,
+          "ls-files",
+          "-z",
+          "--",
+          ...[...INSTRUCTION_FILE_NAMES].map((name) => `*${name}`),
+        ],
+        { timeout: GIT_TIMEOUT_MS },
+      );
+      if (result.code !== 0) {
+        return [];
+      }
+      ({ stdout } = result);
+    } catch {
+      return [];
+    }
+    const known = new Set(loaded.map((resource) => resource.id));
+    return [
+      ...new Set(
+        stdout
+          .split("\0")
+          .filter((path) => INSTRUCTION_FILE_NAMES.has(basename(path)))
+          .map((path) => resourcePathId(path, root)),
+      ),
+    ]
+      .filter((id) => !known.has(id))
+      .toSorted()
+      .map<ToggleResource>((id) => ({
+        id,
+        kind: "instruction",
+        origin: "project",
+        label: relative(root, id),
+        description: `project instruction\n${id}`,
+        editability: "editable",
+      }));
+  }
+
   private overridesFrom(
     operation: keyof typeof STATE_FAILURE_CONSEQUENCE,
     result: ToggleStateResult,
@@ -256,4 +440,17 @@ class SkillToggle {
     );
     return undefined;
   }
+}
+
+/** Place nested instructions after the loaded project instructions, before project skills. */
+function withNestedInstructions(
+  loaded: readonly ToggleResource[],
+  nested: readonly ToggleResource[],
+): readonly ToggleResource[] {
+  const index = loaded.findIndex(
+    (resource) => resource.origin === "project" && resource.kind === "skill",
+  );
+  return index === -1
+    ? [...loaded, ...nested]
+    : [...loaded.slice(0, index), ...nested, ...loaded.slice(index)];
 }
