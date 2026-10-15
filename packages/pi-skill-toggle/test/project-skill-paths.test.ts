@@ -227,6 +227,7 @@ describe("discoverProjectSkillPaths", () => {
           source: "skill",
           sourceInfo: skill.sourceInfo,
         })),
+      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
     };
     const store: ToggleStateStore = {
       load: () => ok(new Map()),

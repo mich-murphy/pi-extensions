@@ -95,6 +95,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
       commands.set(name, command);
     },
     getCommands: () => [],
+    exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
   };
   let projectTrusted = true;
   const ctx = {
@@ -193,6 +194,7 @@ describe("extension lifecycle", () => {
         handlers[name] = handler;
       },
       getCommands: () => [],
+      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
     };
     skillToggle(piMock);
 
@@ -241,7 +243,7 @@ describe("extension lifecycle", () => {
 
     expect(opened).toBe(false);
     expect(testHarness.notifications).toStrictEqual([
-      "Could not load Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged.",
+      "Could not load Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged, and the model cannot read instruction or skill files until it is fixed.",
     ]);
   });
 
