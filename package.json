@@ -54,7 +54,11 @@
   },
   "pi": {
     "extensions": [
-      "./packages/*/index.ts"
+      "./packages/claude-sdk-provider/index.ts",
+      "./packages/no-sleep/index.ts",
+      "./packages/pi-skill-toggle/index.ts",
+      "./packages/pi-vim/index.ts",
+      "./packages/pi-web-tools/index.ts"
     ]
   }
 }

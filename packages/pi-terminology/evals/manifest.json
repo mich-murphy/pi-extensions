@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "frozenAt": "2026-10-14T07:09:19Z",
+  "source": "Independently authored synthetic prompts; no private session prompts",
+  "labelReview": "Independent semantic review before any classifier evaluation; not human-reviewed",
+  "development": {
+    "file": "development.json",
+    "sha256": "2dec56bfd386e3fa08a73df8fa13ebe13a232fb24f1130bf90ba76299621249a",
+    "records": 24,
+    "expectedDisplayedTerms": 14
+  },
+  "heldout": {
+    "file": "heldout.json",
+    "sha256": "15f8c0047252e568831010b2083ce515edf0ebe1a20e65e9b70a0d2e8f3b7627",
+    "records": 30,
+    "expectedDisplayedTerms": 22
+  },
+  "preEvaluationCorrection": "dev-13 labels the explicitly named TDD cycle only; implicit phase naming is not separately labelled as a behavior-preserving cleanup request",
+  "limitations": [
+    "Small synthetic screening set, not representative private-prompt validation",
+    "Some development and held-out cases share conceptual patterns despite different wording",
+    "Report denominators and uncertainty; repeated runs do not create new independent prompts"
+  ]
+}

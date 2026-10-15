@@ -1,0 +1,194 @@
+[
+  {
+    "id": "heldout-01",
+    "prompt": "Implement the overdue-charge rules incrementally. Before touching the charge calculation, encode the next rule as an automated check and confirm it fails. Make it pass with the necessary implementation, then improve the internal organization while retaining all externally visible results, and continue with the next rule.",
+    "applicable": ["core:test-driven-development", "core:refactoring"],
+    "displayed": ["core:test-driven-development", "core:refactoring"]
+  },
+  {
+    "id": "heldout-02",
+    "prompt": "The dependency resolver's nested conditionals are hard to maintain. Replace their internal arrangement with a clearer decomposition, but preserve every resolution result, diagnostic and public interface. There is no new functionality in this ticket.",
+    "applicable": ["core:refactoring"],
+    "displayed": ["core:refactoring"]
+  },
+  {
+    "id": "heldout-03",
+    "prompt": "Give the bounded queue explicit operation specifications: enqueue requires the caller to provide spare capacity, successful dequeue guarantees the oldest value is returned and the size drops by one, and the queue's size must remain between zero and its bound. Represent these obligations and guarantees as executable assertions around the operations.",
+    "applicable": ["core:design-by-contract"],
+    "displayed": ["core:design-by-contract"]
+  },
+  {
+    "id": "heldout-04",
+    "prompt": "Evaluate how much confidence the eligibility suite deserves. Create temporary versions of the real eligibility function with a removed condition or reversed comparison, execute the existing tests on each version, and identify the incorrect versions that still pass.",
+    "applicable": ["core:mutation-testing"],
+    "displayed": ["core:mutation-testing"]
+  },
+  {
+    "id": "heldout-05",
+    "prompt": "Our programmers and auction specialists disagree about what closing a lot means. Collaborate on a rigorous auction model and its vocabulary, and make that vocabulary the common language of team conversations, requirements and implementation rather than maintaining separate business and technical terms.",
+    "applicable": ["core:ubiquitous-language"],
+    "displayed": ["core:ubiquitous-language"]
+  },
+  {
+    "id": "heldout-06",
+    "prompt": "Exercise the deduplication function across automatically generated sequences of supported identifiers. Assert for each sequence that applying it again has no further effect and that no distinct identifier is lost; let the generator explore sequences beyond our example cases.",
+    "applicable": ["core:property-based-testing"],
+    "displayed": ["core:property-based-testing"]
+  },
+  {
+    "id": "heldout-07",
+    "prompt": "Grow the permission evaluator through a repeating cycle: a new automated denial or allowance check must fail before you add its corresponding code; after it passes, simplify the evaluator's internals without altering its decisions. Deliver the feature through those small cycles.",
+    "applicable": ["core:test-driven-development", "core:refactoring"],
+    "displayed": ["core:test-driven-development", "core:refactoring"]
+  },
+  {
+    "id": "heldout-08",
+    "prompt": "For the ordered set, state what insert requires of its caller, what membership and size guarantees it provides on return, and the ordering invariant of the stored state. Then generate legal sets and insertion sequences to check that size, membership and ordering satisfy those specifications for all generated cases.",
+    "applicable": ["core:design-by-contract", "core:property-based-testing"],
+    "displayed": ["core:design-by-contract", "core:property-based-testing"]
+  },
+  {
+    "id": "heldout-09",
+    "prompt": "Test the path normalizer with generated legal paths, checking that normalization is idempotent and preserves the resolved destination. Separately, inject deliberate faults into the shipped normalizer, such as skipping a segment or reversing a condition, and measure which faults this suite exposes.",
+    "applicable": ["core:mutation-testing", "core:property-based-testing"],
+    "displayed": ["core:mutation-testing", "core:property-based-testing"]
+  },
+  {
+    "id": "heldout-10",
+    "prompt": "Develop the lending model together with librarians so borrower, loan and renewal have agreed precise meanings in software and daily discussions. For renewal, specify the caller's eligibility obligations, the promised new due date and the invariant limiting active loans. Generate allowed borrower states and action sequences and assert that the loan limit is never broken.",
+    "applicable": [
+      "core:design-by-contract",
+      "core:ubiquitous-language",
+      "core:property-based-testing"
+    ],
+    "displayed": [
+      "core:design-by-contract",
+      "core:ubiquitous-language",
+      "core:property-based-testing"
+    ]
+  },
+  {
+    "id": "heldout-11",
+    "prompt": "Reorganize the receipt renderer behind its existing interface, preserving the exact rendered output and failure modes. Also audit the tests by intentionally changing the production renderer's separators and total calculation in temporary variants, checking that each introduced fault makes a test fail.",
+    "applicable": ["core:refactoring", "core:mutation-testing"],
+    "displayed": ["core:refactoring", "core:mutation-testing"]
+  },
+  {
+    "id": "heldout-12",
+    "prompt": "For each new rule in the binary record codec, write and run a failing automated check before implementing the rule, make it green, and then reshape the internal code without changing the codec's observable behavior. In addition, generate records from the supported schema and assert that an encode/decode round trip preserves every field.",
+    "applicable": [
+      "core:test-driven-development",
+      "core:refactoring",
+      "core:property-based-testing"
+    ],
+    "displayed": ["core:test-driven-development", "core:refactoring", "core:property-based-testing"]
+  },
+  {
+    "id": "heldout-13",
+    "prompt": "Use test-driven development for the retry policy. After each failing-test-first increment is implemented and green, consolidate its internal branches while preserving the timings and retry decisions already established.",
+    "applicable": ["core:test-driven-development", "core:refactoring"],
+    "displayed": ["core:refactoring"]
+  },
+  {
+    "id": "heldout-14",
+    "prompt": "Please refactor the audit writer into smaller cohesive routines. This refactoring must retain the same events, ordering and exceptions as before.",
+    "applicable": ["core:refactoring"],
+    "displayed": []
+  },
+  {
+    "id": "heldout-15",
+    "prompt": "Use design by contract (DBC) for inventory withdrawal, documenting the caller's stock requirement, the routine's promised remaining quantity and the inventory invariant.",
+    "applicable": ["core:design-by-contract"],
+    "displayed": []
+  },
+  {
+    "id": "heldout-16",
+    "prompt": "Add mutation testing to the search-ranking suite so we can inspect which intentional changes to the ranking implementation survive its assertions.",
+    "applicable": ["core:mutation-testing"],
+    "displayed": []
+  },
+  {
+    "id": "heldout-17",
+    "prompt": "Establish a ubiquitous language for the repair-order model with the workshop managers and developers; carry its agreed meanings into code and all model discussions.",
+    "applicable": ["core:ubiquitous-language"],
+    "displayed": []
+  },
+  {
+    "id": "heldout-18",
+    "prompt": "Use property-based tests for the rational-number operations, generating valid numerator/denominator pairs and checking algebraic laws on the results.",
+    "applicable": ["core:property-based-testing"],
+    "displayed": []
+  },
+  {
+    "id": "heldout-19",
+    "prompt": "Ship the new export handler first. Once it works, add a few regression tests for the delivered behavior. We are deliberately not starting from a failing automated test.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-20",
+    "prompt": "Replace the current stock selection rules with a new policy that prefers the oldest lot. Existing selections are expected to change, so do not treat this as a behavior-preserving restructure.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-21",
+    "prompt": "At the HTTP boundary, reject requests whose quantity is not a positive integer and return a descriptive 422 response. This is ordinary request validation, not a specification of caller obligations, completion guarantees or object invariants.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-22",
+    "prompt": "Exercise the profile editor by changing a user's display name and then checking the saved record. The mutation here is the normal application update; leave the production implementation untouched.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-23",
+    "prompt": "Standardize boolean variable names to start with is or has, and add the convention to the coding style page. This is a syntax convention only, not an effort to build a shared domain model with our customers.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-24",
+    "prompt": "Generate random search queries and record latency percentiles under load. Do not assert laws or other general correctness properties over these inputs; the requested deliverable is a performance report.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-25",
+    "prompt": "The proposal recommends 'TDD, mutation testing and property-based testing'. I am rejecting those approaches for this task. Only update the support email address in the footer.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-26",
+    "prompt": "For the release archive, preserve the sentence 'The team adopted a ubiquitous language and design by contract in version 2.' Fix the archive page's date formatting only; that sentence records past work and is not a request to adopt either approach now.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-27",
+    "prompt": "Last quarter we refactored the report builder and ran mutation testing. Today I only need the changelog link repaired. No code or test work is requested.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-28",
+    "prompt": "Take the same approach over there, please.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-29",
+    "prompt": "The comment contains the phrase 'red-green-refactor', which the localization team needs left in English. Correct the surrounding translation punctuation without acting on the quoted workflow.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "heldout-30",
+    "prompt": "Do not refactor the billing service or introduce DBC in this patch. Rotate the development logging setting from debug to info, leaving the implementation alone.",
+    "applicable": [],
+    "displayed": []
+  }
+]

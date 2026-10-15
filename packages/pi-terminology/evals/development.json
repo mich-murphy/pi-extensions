@@ -1,0 +1,154 @@
+[
+  {
+    "id": "dev-01",
+    "prompt": "Build the discount calculator one small case at a time. First write an automated test for the next rule and run it to see it fail, then implement just enough to pass. Once green, reorganize the implementation without changing its outputs before starting the next case.",
+    "applicable": ["core:test-driven-development", "core:refactoring"],
+    "displayed": ["core:test-driven-development", "core:refactoring"]
+  },
+  {
+    "id": "dev-02",
+    "prompt": "Split the giant invoice formatter into smaller internal functions. Keep the public API, returned strings and error behavior exactly as they are; this is only a change to its internal structure.",
+    "applicable": ["core:refactoring"],
+    "displayed": ["core:refactoring"]
+  },
+  {
+    "id": "dev-03",
+    "prompt": "Specify the stack's obligations explicitly: callers may pop only a nonempty stack, a successful push increases its size by one and puts that value on top, and the stored count must always equal the number of elements. Make these caller requirements, routine guarantees and persistent state rules checkable.",
+    "applicable": ["core:design-by-contract"],
+    "displayed": ["core:design-by-contract"]
+  },
+  {
+    "id": "dev-04",
+    "prompt": "Our tax tests all pass, but do they detect faulty calculations? Temporarily replace arithmetic operators and boundary comparisons in the production calculator, run the suite against each altered version, and report which deliberate defects went undetected.",
+    "applicable": ["core:mutation-testing"],
+    "displayed": ["core:mutation-testing"]
+  },
+  {
+    "id": "dev-05",
+    "prompt": "Work with the warehouse specialists to agree precisely what a reservation, allocation and dispatch mean in our domain model. Use that shared model vocabulary consistently in conversations, specifications and code, and revise it together when the model changes.",
+    "applicable": ["core:ubiquitous-language"],
+    "displayed": ["core:ubiquitous-language"]
+  },
+  {
+    "id": "dev-06",
+    "prompt": "Test the interval merger using generated valid lists of intervals. For every generated list, assert that merging twice gives the same result as merging once and that the union of covered points is preserved, rather than relying only on hand-picked examples.",
+    "applicable": ["core:property-based-testing"],
+    "displayed": ["core:property-based-testing"]
+  },
+  {
+    "id": "dev-07",
+    "prompt": "The CSV parser is already implemented. Add automated examples for empty files and escaped commas now, but leave its implementation and development workflow alone.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-08",
+    "prompt": "Change the password reset endpoint so expired tokens return HTTP 410 instead of 400. This is an intentional public behavior change, not an internal cleanup.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-09",
+    "prompt": "Validate the signup form: reject malformed email addresses, missing passwords and oversized uploads with helpful messages. Keep this at the untrusted input boundary; no caller obligations or routine guarantees are being specified.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-10",
+    "prompt": "Check that the parser rejects a damaged packet by flipping bits in the packet fixture. Do not alter production code; we only need a malformed-input example.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-11",
+    "prompt": "Make helper names camelCase and table names snake_case according to our style guide. No domain modeling or discussion with business experts is needed for this mechanical naming pass.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-12",
+    "prompt": "Send random byte strings to the image decoder for ten minutes and record crashes. We are not asserting any general rule about its results, just collecting failures for triage.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-13",
+    "prompt": "Use TDD for the new slug generator, following red-green-refactor for each new requirement.",
+    "applicable": ["core:test-driven-development"],
+    "displayed": []
+  },
+  {
+    "id": "dev-14",
+    "prompt": "Refactor the notification scheduler to remove duplicated branching while preserving observable behavior. Keep this a refactoring-only patch.",
+    "applicable": ["core:refactoring"],
+    "displayed": []
+  },
+  {
+    "id": "dev-15",
+    "prompt": "Apply DBC to the account transfer routine: define caller preconditions, completion postconditions and account state invariants explicitly.",
+    "applicable": ["core:design-by-contract"],
+    "displayed": []
+  },
+  {
+    "id": "dev-16",
+    "prompt": "Run mutation testing on the authorization module and investigate the surviving mutations in production code.",
+    "applicable": ["core:mutation-testing"],
+    "displayed": []
+  },
+  {
+    "id": "dev-17",
+    "prompt": "Develop a ubiquitous language with our claims adjusters so the claims model, implementation and business discussions use the same precise meanings.",
+    "applicable": ["core:ubiquitous-language"],
+    "displayed": []
+  },
+  {
+    "id": "dev-18",
+    "prompt": "Add property-based testing for the encoder: generate domain-valid messages and assert that decoding an encoded message returns the original.",
+    "applicable": ["core:property-based-testing"],
+    "displayed": []
+  },
+  {
+    "id": "dev-19",
+    "prompt": "For the shipping fee feature, start each rule with a runnable automated test that fails before its implementation exists. Implement until it passes, then extract the repeated logic while keeping the now-tested behavior unchanged. Repeat that cycle for the remaining rules.",
+    "applicable": ["core:test-driven-development", "core:refactoring"],
+    "displayed": ["core:test-driven-development", "core:refactoring"]
+  },
+  {
+    "id": "dev-20",
+    "prompt": "Pair with the booking experts to establish a precise shared domain vocabulary for available and reserved seats, used in both code and discussion. Specify the reservation routine's caller requirements and promised result, plus the invariant that reserved seats never exceed capacity. Generate valid booking states and operation sequences and test that this invariant holds throughout.",
+    "applicable": [
+      "core:design-by-contract",
+      "core:ubiquitous-language",
+      "core:property-based-testing"
+    ],
+    "displayed": [
+      "core:design-by-contract",
+      "core:ubiquitous-language",
+      "core:property-based-testing"
+    ]
+  },
+  {
+    "id": "dev-21",
+    "prompt": "Strengthen the money conversion tests in two ways: generate supported currency amounts and assert that converting to minor units and back preserves the amount; then deliberately alter rounding and sign handling in the production converter to see whether those tests catch each defect.",
+    "applicable": ["core:mutation-testing", "core:property-based-testing"],
+    "displayed": ["core:mutation-testing", "core:property-based-testing"]
+  },
+  {
+    "id": "dev-22",
+    "prompt": "Do not use test-driven development or mutation testing for this documentation task. Just correct the installation command in the README.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-23",
+    "prompt": "An old retrospective says, 'We used design by contract and a ubiquitous language.' Preserve that historical quote verbatim when fixing the document's broken table layout; do not introduce those practices into the current project.",
+    "applicable": [],
+    "displayed": []
+  },
+  {
+    "id": "dev-24",
+    "prompt": "Please do that for the other module too.",
+    "applicable": [],
+    "displayed": []
+  }
+]
