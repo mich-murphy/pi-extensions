@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:claude-sdk-pin": "vitest run packages/claude-sdk-provider/test/sdk-release-contract.test.ts",
+    "test:claude-sdk-pin": "vitest run packages/pi-claude-sdk/test/sdk-release-contract.test.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:claude-sdk-upgrade": "npm run test:live && npm run test:claude-sdk-pin",
     "fallow:audit": "fallow audit --gate new-only --coverage coverage/coverage-final.json",
@@ -58,8 +58,8 @@
   },
   "pi": {
     "extensions": [
-      "./packages/claude-sdk-provider/index.ts",
-      "./packages/no-sleep/index.ts",
+      "./packages/pi-claude-sdk/index.ts",
+      "./packages/pi-caffeinate/index.ts",
       "./packages/pi-skill-toggle/index.ts",
       "./packages/pi-vim/index.ts",
       "./packages/pi-web-tools/index.ts"

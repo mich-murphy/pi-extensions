@@ -5,7 +5,7 @@ import type {
   ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, test } from "vitest";
-import noSleep from "../../no-sleep/index";
+import noSleep from "../../pi-caffeinate/index";
 import skillToggle from "../../pi-skill-toggle/index";
 import vimMode from "../../pi-vim/index";
 import webToolsExtension from "../../pi-web-tools/index";

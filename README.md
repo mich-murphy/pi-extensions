@@ -4,8 +4,8 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 
 ## Packages
 
-- `claude-sdk-provider` routes Claude model turns through the official Claude Agent SDK.
-- `no-sleep` keeps macOS awake while Pi is working.
+- `pi-claude-sdk` routes Claude model turns through the official Claude Agent SDK.
+- `pi-caffeinate` keeps macOS awake while Pi is working.
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
@@ -21,7 +21,7 @@ For local development:
 ```sh
 npm install
 npm run check
-pi -e ./packages/no-sleep/index.ts
+pi -e ./packages/pi-caffeinate/index.ts
 ```
 
 For isolated CLI interaction checks of web-tools native authentication, use [the verification skill](.agents/skills/verify-pi-web-tools/SKILL.md); it drives real Pi with synthetic credentials and retains evidence without touching your normal profile or calling providers.
