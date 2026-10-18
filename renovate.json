@@ -30,7 +30,7 @@
       "matchPackageNames": ["@anthropic-ai/claude-agent-sdk"],
       "automerge": false,
       "prBodyNotes": [
-        ":warning: Run `npm run test:claude-sdk-upgrade` on a workstation with a Claude subscription, then update `sdk-release-contract.json` with the SDK version, the bundled Claude Code version, the UTC verification time, and the observed defer shape. CI checks that the attestation matches the pin but cannot produce it. See `packages/claude-sdk-provider/README.md`."
+        ":warning: Run `npm run test:claude-sdk-upgrade` on a workstation with a Claude subscription, then update `sdk-release-contract.json` with the SDK version, the bundled Claude Code version, the UTC verification time, and the observed defer shape. CI checks that the attestation matches the pin but cannot produce it. See `packages/pi-claude-sdk/README.md`."
       ]
     },
     {

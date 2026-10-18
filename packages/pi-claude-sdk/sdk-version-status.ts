@@ -143,7 +143,7 @@ export class ClaudeSdkVersionSources extends Context.Service<
     /** Read `claude --version` output. */
     readonly readInstalledClaudeVersion: () => Effect.Effect<string, ClaudeInstalledVersionError>;
   }
->()("pi-claude-sdk-provider/sdk-version-status/ClaudeSdkVersionSources") {
+>()("pi-claude-sdk/sdk-version-status/ClaudeSdkVersionSources") {
   /**
    * Build the service from raw reads, translating their rejections into typed errors.
    *

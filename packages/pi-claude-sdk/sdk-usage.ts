@@ -149,7 +149,7 @@ export class ClaudeUsageQueries extends Context.Service<
       abortController: AbortController,
     ) => Effect.Effect<ClaudeUsageQuery, ClaudeUsageInspectionError>;
   }
->()("pi-claude-sdk-provider/sdk-usage/ClaudeUsageQueries") {
+>()("pi-claude-sdk/sdk-usage/ClaudeUsageQueries") {
   /**
    * Build the service from a raw starter, translating a thrown startup failure into a typed error.
    *

@@ -65,7 +65,7 @@ without those helpers:
 
 ```sh
 npm ci
-npm test -- packages/claude-sdk-provider/test
+npm test -- packages/pi-claude-sdk/test
 npm run check
 ```
 

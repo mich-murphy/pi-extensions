@@ -1,4 +1,4 @@
-# Pi No Sleep
+# Pi Caffeinate
 
 Prevents macOS idle and display sleep while Pi is doing agent work. It also
 prevents system sleep while the Mac is connected to AC power.

@@ -1,4 +1,4 @@
-# Claude subscription provider for Pi
+# Pi Claude SDK
 
 This Pi extension routes model turns through Anthropic's official Claude Agent SDK. Claude Code owns authentication; the extension does not read, copy, replay, or spoof OAuth tokens and does not call private Anthropic endpoints.
 
@@ -106,7 +106,7 @@ The Agent SDK dependency must remain an exact version. The installed SDK is the 
 
 To change the pinned SDK version:
 
-1. Install the exact version, for example `npm install @anthropic-ai/claude-agent-sdk@<version> --save-exact -w packages/claude-sdk-provider`.
+1. Install the exact version, for example `npm install @anthropic-ai/claude-agent-sdk@<version> --save-exact -w packages/pi-claude-sdk`.
 2. Authenticate the local Claude Code installation intended for the live check.
 3. Run `npm run test:claude-sdk-upgrade`. It probes text streaming, an explicit deferred tool request, and a coding request that must call `read` rather than print tool-call markup. It then probes every registered model to assert the advertised IDs and context windows match what the new bundled Claude Code actually serves (fix `models.ts` if the probe reports a moved alias). When every contract passes, the live run rewrites `sdk-release-contract.json` from the installed SDK's metadata with the UTC verification time and the defer shape it observed. The command then checks the pinned versions.
 4. Commit the rewritten attestation with the pin change. A failed or filtered live run leaves the file untouched.
