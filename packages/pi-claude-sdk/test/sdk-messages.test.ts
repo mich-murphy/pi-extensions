@@ -1,7 +1,7 @@
 import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
-import { applyUsage, contextWindowFor, parseSdkMessage } from "../sdk/messages";
+import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
 import type { SdkMessage } from "../sdk/messages";
 import { resultMessage, streamEvent, textDelta } from "./fixtures";
 
@@ -279,6 +279,70 @@ describe("terminal SDK result", () => {
       _tag: "failed",
       error: { message: "the model refused to complete the request" },
     });
+  });
+});
+
+describe("maxOutputTokensFor", () => {
+  test.each([
+    ["claude-haiku-4-5", undefined, "claude-haiku-4-5", 64_000],
+    ["claude-haiku-4-5-20251001", undefined, "claude-haiku-4-5", 64_000],
+    ["claude-haiku-4-5", undefined, "claude-haiku-4-5-20251001", 64_000],
+    ["haiku", "claude-haiku-4-5-20251001", "claude-haiku-4-5", 64_000],
+    ["haiku", "claude-haiku-4-5", "claude-haiku-4-5-20251001", 64_000],
+    ["haiku", "claude-haiku-4-5", "claude-opus-5-5", undefined],
+  ])("matches key %s or canonical model %s against %s", (key, canonicalModel, model, expected) => {
+    const result = parsed(
+      resultMessage({ modelUsage: { [key]: { canonicalModel, maxOutputTokens: 64_000 } } }),
+    );
+    assert(result.type === "result", "test setup: expected a result message");
+
+    expect(maxOutputTokensFor(result.modelUsage, model)).toBe(expected);
+  });
+
+  test.each([undefined, null, 0, -1, 1.5, "64000", Number.NaN, Number.POSITIVE_INFINITY])(
+    "ignores an absent or invalid output limit %s without losing the context window",
+    (maxOutputTokens) => {
+      const result = parsed(
+        resultMessage({
+          modelUsage: { "claude-haiku-4-5": { contextWindow: 200_000, maxOutputTokens } },
+        }),
+      );
+      assert(result.type === "result", "test setup: expected a result message");
+
+      expect(result.result._tag).toBe("completed");
+      expect(maxOutputTokensFor(result.modelUsage, "claude-haiku-4-5")).toBeUndefined();
+      expect(contextWindowFor(result.modelUsage, "claude-haiku-4-5")).toBe(200_000);
+    },
+  );
+
+  test.each([
+    undefined,
+    null,
+    "nope",
+    { "claude-haiku-4-5": "nope" },
+    { "claude-haiku-4-5": null },
+    { "claude-haiku-4-5": {} },
+  ])("ignores missing or malformed model usage %s", (modelUsage) => {
+    const result = parsed(resultMessage({ modelUsage }));
+    assert(result.type === "result", "test setup: expected a result message");
+
+    expect(result.result._tag).toBe("completed");
+    expect(maxOutputTokensFor(result.modelUsage, "claude-haiku-4-5")).toBeUndefined();
+  });
+
+  test("looks up each limit independently across matching entries", () => {
+    const result = parsed(
+      resultMessage({
+        modelUsage: {
+          haiku: { canonicalModel: "claude-haiku-4-5", contextWindow: 200_000 },
+          "claude-haiku-4-5": { contextWindow: 0, maxOutputTokens: 64_000 },
+        },
+      }),
+    );
+    assert(result.type === "result", "test setup: expected a result message");
+
+    expect(contextWindowFor(result.modelUsage, "claude-haiku-4-5")).toBe(200_000);
+    expect(maxOutputTokensFor(result.modelUsage, "claude-haiku-4-5")).toBe(64_000);
   });
 });
 

@@ -211,6 +211,73 @@ describe("SDK query parameters", () => {
     ).resolves.toStrictEqual(levels.map(() => "omitted"));
   });
 
+  test.each([
+    ["minimal", 1024],
+    ["low", 2048],
+    ["medium", 8192],
+    ["high", 16_384],
+    ["xhigh", 16_384],
+    ["max", 16_384],
+  ] as const)(
+    "uses a manual thinking budget for Haiku 4.5 at %s",
+    async (reasoning, budgetTokens) => {
+      const model = modelFixture({ id: "claude-4.5-haiku", reasoning: true });
+      const { options } = await capturedParameters(requestFixture(), model, { reasoning });
+
+      expect(options?.thinking).toStrictEqual({ type: "enabled", budgetTokens });
+      expect(options?.effort).toBeUndefined();
+    },
+  );
+
+  test("explicitly disables Haiku 4.5 thinking when Pi reasoning is off", async () => {
+    const model = modelFixture({ id: "claude-4.5-haiku", reasoning: true });
+    const { options } = await capturedParameters(requestFixture(), model);
+
+    expect(options?.thinking).toStrictEqual({ type: "disabled" });
+    expect(options?.effort).toBeUndefined();
+  });
+
+  test.each(["claude-haiku-4-5", "claude-haiku-4-5-20251001"])(
+    "recognizes the manual thinking selector %s for custom models",
+    async (id) => {
+      const { options } = await capturedParameters(
+        requestFixture(),
+        modelFixture({ id, reasoning: true }),
+        { reasoning: "low" },
+      );
+      expect(options?.thinking).toStrictEqual({ type: "enabled", budgetTokens: 2048 });
+      expect(options?.effort).toBeUndefined();
+    },
+  );
+
+  test.each([
+    [4096, 4096],
+    [4096.9, 4096],
+    [1, 1024],
+    [-1, 1024],
+    [128_000, 30_976],
+    [Number.NaN, 2048],
+    [Number.POSITIVE_INFINITY, 2048],
+  ])("bounds the custom manual thinking budget %s", async (budget, expected) => {
+    const { options } = await capturedParameters(
+      requestFixture(),
+      { ...modelFixture({ id: "claude-4.5-haiku", reasoning: true }), maxTokens: 32_000 },
+      { reasoning: "low", thinkingBudgets: { low: budget } },
+    );
+    expect(options?.thinking).toStrictEqual({ type: "enabled", budgetTokens: expected });
+    expect(options?.effort).toBeUndefined();
+  });
+
+  test("does not enable thinking or effort for a custom non-reasoning model", async () => {
+    const { options } = await capturedParameters(
+      requestFixture(),
+      modelFixture({ id: "custom", reasoning: false }),
+      { reasoning: "high" },
+    );
+    expect(options?.thinking).toBeUndefined();
+    expect(options?.effort).toBeUndefined();
+  });
+
   test("leaves room for the SDK's three cache breakpoints so the API never receives five", async () => {
     const request = buildAgentRequest(
       contextFixture({
@@ -375,7 +442,7 @@ describe("turn streaming", () => {
 });
 
 describe("model observation", () => {
-  test("reports the first main-loop model and its context window from a completed turn", async () => {
+  test("reports the first main-loop model and its limits from a completed turn", async () => {
     const usage = { input_tokens: 1, output_tokens: 1 };
     const { events, observations } = await observeModels(
       streamEvent({ type: "message_start", message: { model: "claude-sonnet-5-5", usage } }),
@@ -385,15 +452,25 @@ describe("model observation", () => {
           "claude-haiku-4-5-20251001": {
             canonicalModel: "claude-haiku-4-5",
             contextWindow: 200_000,
+            maxOutputTokens: 64_000,
           },
-          "claude-sonnet-5-5": { canonicalModel: "claude-sonnet-5-5", contextWindow: 1_000_000 },
+          "claude-sonnet-5-5": {
+            canonicalModel: "claude-sonnet-5-5",
+            contextWindow: 1_000_000,
+            maxOutputTokens: 128_000,
+          },
         },
       }),
     );
 
     expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
     expect(observations).toStrictEqual([
-      { selector: "sonnet", canonicalModel: "claude-sonnet-5-5", contextWindow: 1_000_000 },
+      {
+        selector: "sonnet",
+        canonicalModel: "claude-sonnet-5-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+      },
     ]);
   });
 
