@@ -3,9 +3,9 @@ import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 /**
- * Effort levels for adaptive-thinking models, matching Pi's built-in `anthropic` catalog. These
- * models cannot turn thinking off (the Agent SDK runs `disabled` as adaptive), so `off` is
- * unsupported; `xhigh` and `max` must be mapped explicitly or Pi hides them.
+ * Effort levels exposed by Claude Code for the current adaptive models. Its model metadata
+ * reports thinking-off as unsupported, even where the direct Messages API supports it.
+ * `xhigh` and `max` must be mapped explicitly or Pi hides them.
  */
 const adaptiveEffortLevels = {
   off: null,
@@ -36,8 +36,9 @@ export type SdkModelConfig = {
    */
   readonly sdkModel: string;
   /**
-   * Concrete model the selector resolves to under the pinned Agent SDK, as the
-   * SDK names it in `message_start`. The live upgrade gate asserts this.
+   * Expected default model resolution, as the SDK names it in `message_start`.
+   * Aliases can move independently of the pin or be overridden by Claude Code
+   * environment/policy. The live upgrade gate asserts the actual resolution.
    */
   readonly canonicalModel: string;
 } & ChatModelConfig;
@@ -78,7 +79,8 @@ export const models: readonly SdkModelConfig[] = [
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,
-    maxTokens: 128_000,
+    // Claude Code 2.1.303 reports 64K, below the direct Messages API's 128K.
+    maxTokens: 64_000,
   },
   {
     id: "claude-5.5-haiku",
@@ -97,11 +99,12 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Haiku 4.5 (official Agent SDK)",
     sdkModel: "claude-haiku-4-5",
     canonicalModel: "claude-haiku-4-5",
-    reasoning: false,
+    reasoning: true,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 200_000,
-    maxTokens: 64_000,
+    // Claude Code 2.1.303 reports 32K, below the direct Messages API's 64K.
+    maxTokens: 32_000,
   },
 ];
 

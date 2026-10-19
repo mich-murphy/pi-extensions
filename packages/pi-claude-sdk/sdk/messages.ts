@@ -23,6 +23,7 @@ const modelUsageEntrySchema = withFallback(
   Schema.Struct({
     canonicalModel: lenientOptional(Schema.String),
     contextWindow: lenientOptional(Schema.Int.check(Schema.isGreaterThan(0))),
+    maxOutputTokens: lenientOptional(Schema.Int.check(Schema.isGreaterThan(0))),
   }),
   {},
 );
@@ -264,24 +265,44 @@ export function applyUsage(previous: TokenUsage | undefined, reported: ReportedU
 }
 
 /**
- * Read the context window the SDK reported for a concrete model id.
- *
  * Entries are keyed by the model string each request named, while
  * `message_start` reports the served model, so either side may carry a date
  * suffix the other lacks (a pinned `claude-haiku-4-5` request is served as
  * `claude-haiku-4-5-20251001`). An entry matches when its key or its
  * `canonicalModel` equals the observed main-loop model once both are undated.
+ */
+function modelLimitFor(
+  modelUsage: ModelUsage,
+  model: string,
+  field: "contextWindow" | "maxOutputTokens",
+): number | undefined {
+  const wanted = undatedModelId(model);
+  return Object.entries(modelUsage).find(
+    ([key, entry]) =>
+      (undatedModelId(key) === wanted ||
+        (entry.canonicalModel !== undefined && undatedModelId(entry.canonicalModel) === wanted)) &&
+      entry[field] !== undefined,
+  )?.[1][field];
+}
+
+/**
+ * Read the context window the SDK reported for a concrete model id.
  *
  * @param modelUsage - Per-model usage from the terminal SDK result.
  * @param model - Concrete main-loop model id observed for the turn.
  * @returns Context window in tokens, or undefined when unreported.
  */
 export function contextWindowFor(modelUsage: ModelUsage, model: string): number | undefined {
-  const wanted = undatedModelId(model);
-  return Object.entries(modelUsage).find(
-    ([key, entry]) =>
-      (undatedModelId(key) === wanted ||
-        (entry.canonicalModel !== undefined && undatedModelId(entry.canonicalModel) === wanted)) &&
-      entry.contextWindow !== undefined,
-  )?.[1].contextWindow;
+  return modelLimitFor(modelUsage, model, "contextWindow");
+}
+
+/**
+ * Read the output limit the SDK reported for a concrete model id.
+ *
+ * @param modelUsage - Per-model usage from the terminal SDK result.
+ * @param model - Concrete main-loop model id observed for the turn.
+ * @returns Maximum output tokens, or undefined when unreported.
+ */
+export function maxOutputTokensFor(modelUsage: ModelUsage, model: string): number | undefined {
+  return modelLimitFor(modelUsage, model, "maxOutputTokens");
 }

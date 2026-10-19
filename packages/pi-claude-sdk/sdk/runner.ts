@@ -8,13 +8,13 @@ import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
-import { sdkModelSelectorFor } from "../models";
+import { sdkModelSelectorFor, undatedModelId } from "../models";
 import { createDeferredCallCapture, createDeferredPiCallTool } from "./deferred-tools";
 import type { DeferredCallCapture } from "./deferred-tools";
 import { SdkMissingResultError, SdkProtocolError, SdkQueryError, SdkResultError } from "./errors";
 import type { SdkRunError } from "./errors";
 import { instrumentEvent, instrumentRequest } from "./instrumentation";
-import { applyUsage, contextWindowFor, parseSdkMessage } from "./messages";
+import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream } from "./prompt-stream";
 import { subscriptionEnvironment } from "./subscription-environment";
@@ -30,6 +30,8 @@ export type ModelObservation = {
   readonly canonicalModel: string;
   /** Context window the request actually ran with, when reported. */
   readonly contextWindow: number | undefined;
+  /** Maximum output the SDK reports for this model, when available. */
+  readonly maxOutputTokens: number | undefined;
 };
 
 /** Runner collaborators. Each falls back to production behaviour. */
@@ -61,11 +63,41 @@ type QueryWiring = {
   readonly env: Readonly<Record<string, string | undefined>>;
 };
 
+const thinkingBudgets = { minimal: 1024, low: 2048, medium: 8192, high: 16_384 } as const;
+
+function reasoningOptions({
+  model,
+  options,
+}: Turn): Pick<NonNullable<SdkQueryParameters["options"]>, "thinking" | "effort"> {
+  if (!model.reasoning) {
+    return {};
+  }
+  const reasoning = options?.reasoning;
+  // Haiku 4.5 supports manual thinking, not effort. Recognize custom models using
+  // its canonical/snapshot selector too, not only our Pi-facing versioned ID.
+  if (undatedModelId(sdkModelSelectorFor(model.id)) === "claude-haiku-4-5") {
+    if (!reasoning) {
+      return { thinking: { type: "disabled" } };
+    }
+    const level = reasoning === "xhigh" || reasoning === "max" ? "high" : reasoning;
+    const requested = options?.thinkingBudgets?.[level];
+    const budget =
+      requested !== undefined && Number.isFinite(requested) ? requested : thinkingBudgets[level];
+    return {
+      thinking: {
+        type: "enabled",
+        budgetTokens: Math.max(1024, Math.min(Math.floor(budget), model.maxTokens - 1024)),
+      },
+    };
+  }
+  return reasoning ? { effort: reasoning === "minimal" ? "low" : reasoning } : {};
+}
+
 function queryParameters(
-  { request, model, options }: Turn,
+  turn: Turn,
   { abortController, hook, env }: QueryWiring,
 ): SdkQueryParameters {
-  const reasoning = options?.reasoning;
+  const { request, model } = turn;
   const server = createSdkMcpServer({
     name: "pi",
     version: "0.1.0",
@@ -78,9 +110,7 @@ function queryParameters(
       abortController,
       cwd: process.cwd(),
       model: sdkModelSelectorFor(model.id),
-      ...(model.reasoning && reasoning
-        ? { effort: reasoning === "minimal" ? ("low" as const) : reasoning }
-        : {}),
+      ...reasoningOptions(turn),
       includePartialMessages: true,
       persistSession: false,
       systemPrompt: request.systemPrompt,
@@ -342,6 +372,7 @@ function conclude(
       selector,
       canonicalModel: observedModel,
       contextWindow: contextWindowFor(result.modelUsage, observedModel),
+      maxOutputTokens: maxOutputTokensFor(result.modelUsage, observedModel),
     });
   }
   const terminal = terminalEvent(result?.result, capture.calls, apiError);

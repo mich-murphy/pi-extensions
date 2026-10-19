@@ -1,6 +1,8 @@
+import { once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import type { AgentRequest } from "../agent-request";
@@ -8,6 +10,7 @@ import type { BridgeEvent } from "../bridge";
 import { models, undatedModelId } from "../models";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
+import { subscriptionEnvironment } from "../sdk/subscription-environment";
 import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 import {
   decodeReleaseContract,
@@ -28,15 +31,16 @@ const model: Model<Api> = {
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 1_000_000,
-  maxTokens: 128_000,
+  maxTokens: 64_000,
 };
 
 async function collect(
   agentRequest: AgentRequest,
   probeModel: Model<Api> = model,
   options: RunnerOptions = {},
+  streamOptions?: SimpleStreamOptions,
 ): Promise<readonly BridgeEvent[]> {
-  return drain(createClaudeAgentSdkRunner(options)(agentRequest, probeModel));
+  return drain(createClaudeAgentSdkRunner(options)(agentRequest, probeModel, streamOptions));
 }
 
 function textOf(events: readonly BridgeEvent[]): string {
@@ -84,9 +88,73 @@ function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery 
   };
 }
 
+// oxlint-disable-next-line eslint/require-yield -- Metadata needs an idle query, not a billable prompt.
+async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> {
+  if (!signal.aborted) {
+    await once(signal, "abort");
+  }
+}
+
+function expectedThinkingMetadata(canonicalModel: string) {
+  // Haiku 4.5 uses manual thinking budgets, not adaptive thinking or native effort.
+  const adaptive = canonicalModel !== "claude-haiku-4-5";
+  return {
+    supportsAdaptiveThinking: adaptive,
+    supportsEffort: adaptive,
+    supportedEffortLevels: adaptive ? ["low", "medium", "high", "xhigh", "max"] : [],
+  };
+}
+
 describe("installed Claude Agent SDK live contract", () => {
   const verified = new Set<LiveContract>();
   let observedDeferredResult: DeferredResult | undefined;
+  let metadataVerified = false;
+
+  test("model metadata resolves selectors and advertises native effort levels without a prompt", async () => {
+    const abortController = new AbortController();
+    const sdkQuery = query({
+      prompt: idlePrompt(abortController.signal),
+      options: {
+        abortController,
+        env: { ...subscriptionEnvironment() },
+        persistSession: false,
+        settingSources: [],
+        tools: [],
+      },
+    });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const supportedModels = await Promise.race([
+        sdkQuery.supportedModels(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            reject(new Error("Timed out waiting for SDK model metadata"));
+          }, 20_000);
+        }),
+      ]);
+      for (const entry of models) {
+        const metadata = supportedModels.find(
+          (candidate) => undatedModelId(candidate.value) === entry.sdkModel,
+        );
+        assert(metadata !== undefined, `missing model metadata for ${entry.sdkModel}`);
+        assert(metadata.resolvedModel !== undefined, `missing resolution for ${entry.sdkModel}`);
+        expect(undatedModelId(metadata.resolvedModel)).toBe(entry.canonicalModel);
+        const {
+          supportsAdaptiveThinking = false,
+          supportsEffort = false,
+          supportedEffortLevels = [],
+        } = metadata;
+        expect({ supportsAdaptiveThinking, supportsEffort, supportedEffortLevels }).toStrictEqual(
+          expectedThinkingMetadata(entry.canonicalModel),
+        );
+      }
+      metadataVerified = true;
+    } finally {
+      clearTimeout(timeout);
+      abortController.abort();
+      sdkQuery.close();
+    }
+  });
 
   test("streams a normal text response", async () => {
     const events = await collect(request('Reply with exactly "CLAUDE_SDK_TEXT_OK".'));
@@ -139,21 +207,26 @@ describe("installed Claude Agent SDK live contract", () => {
 
       const events = await collect(
         request('Reply with exactly "CLAUDE_SDK_MODEL_OK".'),
-        modelFixture(entry),
+        { ...modelFixture(entry), contextWindow: entry.contextWindow, maxTokens: entry.maxTokens },
         {
           modelObserver: (observation) => {
             observations.push(observation);
           },
         },
+        { reasoning: "low" },
       );
 
       expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
       expect(observations).toHaveLength(1);
       const [observation] = observations;
       assert(observation !== undefined, "test setup: no model observation recorded");
-      expect(undatedModelId(observation.canonicalModel)).toBe(entry.canonicalModel);
-      expect(observation.contextWindow).toBe(entry.contextWindow);
+      expect(undatedModelId(observation.canonicalModel), `${entry.id} resolution`).toBe(
+        entry.canonicalModel,
+      );
+      expect(observation.contextWindow, `${entry.id} context window`).toBe(entry.contextWindow);
+      expect(observation.maxOutputTokens, `${entry.id} output limit`).toBe(entry.maxTokens);
     }
+    expect(metadataVerified, "model metadata must also pass in this run").toBe(true);
     verified.add("advertised-models");
   });
 
