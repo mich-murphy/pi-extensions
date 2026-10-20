@@ -179,6 +179,27 @@ describe("usage accumulation", () => {
     expect(finished).toStrictEqual({ input: 12, output: 3, cacheRead: 4, cacheWrite: 0 });
   });
 
+  test("reads the 1h and 5m cache-write split leniently and keeps it across reports", () => {
+    const split = applyUsage(undefined, {
+      cache_creation_input_tokens: 10,
+      cache_creation: { ephemeral_1h_input_tokens: 7, ephemeral_5m_input_tokens: 3 },
+    });
+    expect(split).toStrictEqual({
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 10,
+      cacheWrite1h: 7,
+      cacheWrite5m: 3,
+    });
+    expect(applyUsage(split, { output_tokens: 2 })).toMatchObject({ cacheWrite1h: 7 });
+    expect(
+      parsed(
+        streamEvent({ type: "message_delta", usage: { output_tokens: 1, cache_creation: null } }),
+      ),
+    ).toMatchObject({ type: "usage", usage: { output_tokens: 1 } });
+  });
+
   test("accepts the null counts the API sends on message_delta", () => {
     const message = parsed(
       streamEvent({ type: "message_delta", usage: { input_tokens: null, output_tokens: 9 } }),

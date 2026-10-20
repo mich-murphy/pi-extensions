@@ -163,7 +163,7 @@ export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequ
   return {
     systemPrompt: "stable system prompt",
     promptBlocks: [textBlock("hello")],
-    cacheBreakpoint: undefined,
+    cacheBreakpoints: [],
     toolDescription: "stable tools",
     toolNames: new Set(["read"]),
     ...overrides,

@@ -33,3 +33,5 @@ A filtered live test cannot update/replace the full live attestation requirement
 - [Inspect subscription allowance](usage.md): actual usage command without a prompt.
 - [Chat and use Pi tools](live.md): actual Pi text/read journeys, real SDK metadata,
   and the full live SDK upgrade gate across all selectors.
+- [Reuse the prompt cache](cache.md): live multi-turn cache read shares, no
+  hidden side requests, cross-session and fan-out reuse.

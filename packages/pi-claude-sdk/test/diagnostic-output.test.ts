@@ -1,7 +1,11 @@
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import process from "node:process";
 import { Effect } from "effect";
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
-import { cacheDiagnosticsTracker } from "../cache-diagnostics";
+import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "../cache-diagnostics";
+import type { CacheDiagnosticsMode } from "../cache-diagnostics";
 import { SdkQueryError } from "../sdk/errors";
 import { writeSdkFailureDiagnostic } from "../sdk/failure-diagnostics";
 import { textBlock } from "./fixtures";
@@ -14,12 +18,12 @@ function setTerminalStderr(isTTY: boolean | undefined): void {
   Object.defineProperty(stderr, "isTTY", { configurable: true, value: isTTY });
 }
 
-function emitCacheDiagnostics(): void {
-  const tracker = Effect.runSync(cacheDiagnosticsTracker("enabled"));
+function emitCacheDiagnostics(mode: CacheDiagnosticsMode = "enabled"): void {
+  const tracker = Effect.runSync(cacheDiagnosticsTracker(mode));
   assert(tracker !== undefined);
   const recordUsage = tracker("claude-sdk/sonnet", {
     promptBlocks: [textBlock("stable")],
-    cacheBreakpoint: 0,
+    cacheBreakpoints: [0],
   });
   recordUsage({ input: 100, output: 10, cacheRead: 50, cacheWrite: 0 });
 }
@@ -84,7 +88,40 @@ describe("terminal-safe diagnostic output", () => {
     const tracker = Effect.runSync(cacheDiagnosticsTracker("enabled"));
     assert(tracker !== undefined);
     setTerminalStderr(true);
-    tracker("claude-sdk/sonnet", { promptBlocks: [textBlock("stable")], cacheBreakpoint: 0 });
+    tracker("claude-sdk/sonnet", { promptBlocks: [textBlock("stable")], cacheBreakpoints: [0] });
     expect(write).not.toHaveBeenCalled();
+  });
+
+  test("parses the diagnostics switches, the file destination implying enabled", () => {
+    expect(parseCacheDiagnosticsMode({})).toBe("disabled");
+    expect(parseCacheDiagnosticsMode({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" })).toBe("enabled");
+    expect(
+      parseCacheDiagnosticsMode({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "/tmp/cache.jsonl" }),
+    ).toStrictEqual({ file: "/tmp/cache.jsonl" });
+  });
+
+  test("appends owner-only JSONL to the diagnostics file even on a terminal, never throwing", () => {
+    setTerminalStderr(true);
+    const directory = mkdtempSync(join(tmpdir(), "pi-claude-sdk-cache-"));
+    const file = join(directory, "cache.jsonl");
+
+    emitCacheDiagnostics({ file });
+    emitCacheDiagnostics({ file });
+
+    const records = readFileSync(file, "utf8")
+      .trim()
+      .split("\n")
+      .map((line): unknown => JSON.parse(line));
+    expect(records).toMatchObject([
+      { type: "request" },
+      { type: "usage" },
+      { type: "request" },
+      { type: "usage" },
+    ]);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(write).not.toHaveBeenCalled();
+    expect(() => {
+      emitCacheDiagnostics({ file: join(directory, "missing", "cache.jsonl") });
+    }).not.toThrow();
   });
 });

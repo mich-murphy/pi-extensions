@@ -67,7 +67,7 @@ describe("conversation serialization", () => {
     ]);
 
     expect(transcriptOf(request)).toHaveLength(1);
-    expect(request.cacheBreakpoint).toBe(1);
+    expect(request.cacheBreakpoints).toStrictEqual([0, 1]);
   });
 
   test("forwards a user message's image bytes as an attachment, not embedded in the JSONL text", () => {
@@ -144,16 +144,54 @@ describe("agent request construction", () => {
     expect(request.toolNames).toStrictEqual(new Set(["read"]));
   });
 
-  test("places the single cache breakpoint on the newest transcript entry, never the closing instruction", () => {
-    for (const count of [2, 40, 41, 62]) {
+  test.each([
+    [2, [0, 2]],
+    [40, [0, 20, 40]],
+    [41, [0, 1, 21, 41]],
+    [62, [0, 22, 42, 62]],
+  ])(
+    "caches the preamble and the newest of %i entries, splitting gaps wider than the lookback, never the closing instruction",
+    (count, breakpoints) => {
       const request = requestFor(userEntries(count));
       expect(request.promptBlocks).toHaveLength(count + 2);
-      expect(request.cacheBreakpoint).toBe(count);
-    }
+      expect(request.cacheBreakpoints).toStrictEqual(breakpoints);
+    },
+  );
+
+  test("also caches the previous request's tail, so a wide tool fan-out still reads the earlier conversation", () => {
+    const calls = Array.from({ length: 25 }, (_, index) => ({
+      type: "toolCall" as const,
+      id: `call-${index}`,
+      name: "read",
+      arguments: { path: `${index}` },
+    }));
+    const results = calls.map(({ id }): MessageFixture => ({ ...readResult, toolCallId: id }));
+    const request = requestFor([
+      { role: "user", content: "Read everything" },
+      { role: "assistant", content: calls },
+      ...results,
+    ]);
+
+    expect(request.cacheBreakpoints).toStrictEqual([0, 1, 7, 27]);
   });
 
-  test("requests no cache breakpoint for an empty transcript", () => {
-    expect(requestFor([]).cacheBreakpoint).toBeUndefined();
+  test("counts each image as its own wire block when splitting gaps", () => {
+    const images = Array.from({ length: 30 }, () => ({
+      type: "image" as const,
+      data: "aW1n",
+      mimeType: "image/png",
+    }));
+    const request = requestFor([
+      { role: "user", content: "before" },
+      { role: "user", content: images },
+      { role: "user", content: "after" },
+    ]);
+
+    expect(request.cacheBreakpoints).toStrictEqual([0, 2, 3]);
+  });
+
+  test("caches only the preamble for an empty transcript", () => {
+    expect(requestFor([]).cacheBreakpoints).toStrictEqual([0]);
   });
 });
 
@@ -189,6 +227,8 @@ describe("prompt and tools replayed from the transcript", () => {
     expect(request.toolNames).toStrictEqual(new Set(["read", "web_search"]));
     expect(request.promptBlocks[0]?.text).toContain("Base prompt.");
     expect(request.promptBlocks[0]?.text).toContain("Web access is enabled.");
+    expect(request.toolDescription).toContain('"name":"web_search"');
+    expect(request.toolDescription).not.toContain('"name":"bash"');
   });
 
   test("keeps system messages out of the JSONL transcript, which carries conversation only", () => {
@@ -240,7 +280,43 @@ describe("stable transcript caching", () => {
       { data: "aW1hZ2Utb25l", mediaType: "image/png" },
     ]);
 
-    expect(before.cacheBreakpoint).toBe(stablePrefix.length - 1);
-    expect(after.cacheBreakpoint).toBe(stablePrefix.length);
+    expect(before.cacheBreakpoints).toStrictEqual([0, 1, 2]);
+    expect(after.cacheBreakpoints).toStrictEqual([0, 1, 3]);
+  });
+
+  test("a mid-conversation section or tool change updates the preamble and catalog to Pi's current state, leaving conversation entries unchanged", () => {
+    const base: MessageFixture[] = [
+      systemMessage({
+        content: "Base prompt.",
+        sections: { rules: "<rules>a</rules>" },
+        toolsAdded: [readTool],
+      }),
+      { role: "user", content: "Hello" },
+      readCall,
+      readResult,
+    ];
+    const before = buildAgentRequest(transcriptFixture(base));
+    const after = buildAgentRequest(
+      transcriptFixture([
+        ...base,
+        systemMessage({
+          sections: { rules: "<rules>b</rules>" },
+          toolsAdded: [bashTool],
+          toolsRemoved: [{ name: "read" }],
+        }),
+        { role: "user", content: "Now run it" },
+      ]),
+    );
+
+    expect(after.promptBlocks[0]?.text).toContain("<rules>b</rules>");
+    expect(after.promptBlocks[0]?.text).not.toContain("<rules>a</rules>");
+    expect(after.toolDescription).toContain('"name":"bash"');
+    expect(after.toolDescription).not.toContain('"name":"read"');
+    expect(after.toolNames).toStrictEqual(new Set(["bash"]));
+    const conversation = transcriptOf(before);
+    expect(transcriptOf(after).slice(0, conversation.length)).toStrictEqual(conversation);
+    expect(transcriptOf(after).map((block) => block.text)).not.toContainEqual(
+      expect.stringContaining('"role":"system"'),
+    );
   });
 });

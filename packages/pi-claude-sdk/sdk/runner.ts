@@ -16,7 +16,8 @@ import type { SdkRunError } from "./errors";
 import { instrumentEvent, instrumentRequest } from "./instrumentation";
 import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
-import { buildPromptStream } from "./prompt-stream";
+import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
+import type { CacheTtl } from "./prompt-stream";
 import { subscriptionEnvironment } from "./subscription-environment";
 
 /** Injectable Claude Agent SDK query function used by the runner and its tests. */
@@ -61,9 +62,12 @@ type QueryWiring = {
   readonly abortController: AbortController;
   readonly hook: HookCallback;
   readonly env: Readonly<Record<string, string | undefined>>;
+  readonly ttl: CacheTtl;
 };
 
 const thinkingBudgets = { minimal: 1024, low: 2048, medium: 8192, high: 16_384 } as const;
+
+const SESSION_TITLE = "Pi Coding Agent turn";
 
 function reasoningOptions({
   model,
@@ -95,7 +99,7 @@ function reasoningOptions({
 
 function queryParameters(
   turn: Turn,
-  { abortController, hook, env }: QueryWiring,
+  { abortController, hook, env, ttl }: QueryWiring,
 ): SdkQueryParameters {
   const { request, model } = turn;
   const server = createSdkMcpServer({
@@ -105,7 +109,7 @@ function queryParameters(
     alwaysLoad: true,
   });
   return {
-    prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoint),
+    prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
       abortController,
       cwd: process.cwd(),
@@ -113,6 +117,9 @@ function queryParameters(
       ...reasoningOptions(turn),
       includePartialMessages: true,
       persistSession: false,
+      // A fixed title skips Claude Code's per-query session-titling request, which would
+      // otherwise resend the whole transcript uncached on every stateless Pi turn.
+      title: SESSION_TITLE,
       systemPrompt: request.systemPrompt,
       settingSources: [],
       tools: [],
@@ -188,7 +195,8 @@ function advance(
         progress.usage.input === usage.input &&
         progress.usage.output === usage.output &&
         progress.usage.cacheRead === usage.cacheRead &&
-        progress.usage.cacheWrite === usage.cacheWrite;
+        progress.usage.cacheWrite === usage.cacheWrite &&
+        progress.usage.cacheWrite1h === usage.cacheWrite1h;
       return {
         progress: { ...progress, usage, result: message },
         event: unchanged ? undefined : { type: "usage", usage },
@@ -406,11 +414,23 @@ const runTurn = Effect.fnUntraced(function* (
   const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
     abortController.abort(limitError);
   });
-  const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request);
+  const ttl = cacheTtlFor(
+    options?.cacheRetention,
+    options?.env?.PI_CACHE_RETENTION ?? sdkEnvironment.PI_CACHE_RETENTION,
+  );
+  const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request, {
+    ttl,
+    reasoning: options?.reasoning,
+  });
   const started = Result.try({
     try: () =>
       runSdkQuery(
-        queryParameters(appliedTurn, { abortController, hook: capture.hook, env: sdkEnvironment }),
+        queryParameters(appliedTurn, {
+          abortController,
+          hook: capture.hook,
+          env: sdkEnvironment,
+          ttl,
+        }),
       ),
     catch: (error) => SdkQueryError.fromCause("start", error),
   });

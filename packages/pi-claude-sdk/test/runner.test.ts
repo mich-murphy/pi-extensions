@@ -130,7 +130,7 @@ async function runAllowing(
 
 async function diagnose(...messages: readonly unknown[]): Promise<CacheDiagnostic[]> {
   const diagnostics: CacheDiagnostic[] = [];
-  await runTurn(queryWith([], ...messages), requestFixture({ cacheBreakpoint: 0 }), {
+  await runTurn(queryWith([], ...messages), requestFixture({ cacheBreakpoints: [0] }), {
     cacheDiagnostics: Effect.runSync(
       createCacheDiagnosticTracker((diagnostic) => {
         diagnostics.push(diagnostic);
@@ -278,7 +278,7 @@ describe("SDK query parameters", () => {
     expect(options?.effort).toBeUndefined();
   });
 
-  test("leaves room for the SDK's three cache breakpoints so the API never receives five", async () => {
+  test("sends at most four provider cache breakpoints, the last on the newest entry", async () => {
     const request = buildAgentRequest(
       contextFixture({
         systemPrompt: "s",
@@ -294,8 +294,8 @@ describe("SDK query parameters", () => {
 
     const [message] = await drain(sdkPromptFixture(prompt));
     const marked = sdkContentRecords(message).filter((block) => block.cache_control !== undefined);
-    expect(marked).toHaveLength(1);
-    expect(marked[0]?.text).toContain("entry 40");
+    expect(marked).toHaveLength(4);
+    expect(marked.at(-1)?.text).toContain("entry 40");
   });
 });
 
@@ -806,7 +806,7 @@ describe("cache diagnostics", () => {
 
   test("records the request and the final usage of a completed turn", async () => {
     await expect(diagnose(usage, resultMessage())).resolves.toMatchObject([
-      { type: "request", turn: 1, model: "claude-sdk/claude-5.5-sonnet", breakpointBlock: 0 },
+      { type: "request", turn: 1, model: "claude-sdk/claude-5.5-sonnet", breakpoints: [0] },
       { type: "usage", turn: 1, input: 5, cacheRead: 95, cacheReadPercent: 95 },
     ]);
   });
@@ -816,4 +816,34 @@ describe("cache diagnostics", () => {
 
     expect(diagnostics.map((diagnostic) => diagnostic.type)).toStrictEqual(["request"]);
   });
+});
+
+describe("prompt cache settings", () => {
+  test("names the session so the SDK skips its transcript-titling side request", async () => {
+    const { options } = await capturedParameters(requestFixture());
+
+    expect(options?.title).toMatch(/\S/u);
+  });
+
+  test.each([
+    [{ cacheRetention: "none" }, undefined],
+    [{ cacheRetention: "short" }, { type: "ephemeral" }],
+    [{ cacheRetention: "long" }, { type: "ephemeral", ttl: "1h" }],
+    [{}, { type: "ephemeral" }],
+  ] as const)(
+    "maps stream options %j to every breakpoint's cache_control",
+    async (retention, expected) => {
+      const request = requestFixture({
+        promptBlocks: [textBlock("a"), textBlock("b")],
+        cacheBreakpoints: [0, 1],
+      });
+      const { prompt } = await capturedParameters(request, sonnet, retention);
+
+      const [message] = await drain(sdkPromptFixture(prompt));
+      expect(sdkContentRecords(message).map((block) => block.cache_control)).toStrictEqual([
+        expected,
+        expected,
+      ]);
+    },
+  );
 });

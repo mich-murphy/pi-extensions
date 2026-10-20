@@ -32,7 +32,7 @@ const context = contextFixture({
     { name: "read", description: "Read fixture", parameters: { type: "object", properties: {} } },
   ],
 });
-const payload = { promptBlocks: [textBlock("replacement")], cacheBreakpoint: 0 };
+const payload = { promptBlocks: [textBlock("replacement")], cacheBreakpoints: [0] };
 
 function terminalOf(events: readonly AssistantMessageEvent[]) {
   const terminal = events.at(-1);
@@ -388,7 +388,7 @@ describe("public SDK-adapted instrumentation", () => {
         {
           onPayload: (original) => {
             assertObject(original);
-            expect(Object.keys(original)).toStrictEqual(["promptBlocks", "cacheBreakpoint"]);
+            expect(Object.keys(original)).toStrictEqual(["promptBlocks", "cacheBreakpoints"]);
             Object.assign(original, payload);
             return chooseReplacement(replace, undefined);
           },
@@ -403,13 +403,13 @@ describe("public SDK-adapted instrumentation", () => {
       );
       expect(message.stopReason).toBe("stop");
       expect(wire).toStrictEqual([
-        { type: "text", text: "replacement", cache_control: { type: "ephemeral", ttl: "1h" } },
+        { type: "text", text: "replacement", cache_control: { type: "ephemeral" } },
       ]);
       expect(diagnostics[0]).toMatchObject({
         type: "request",
         blocks: 1,
         textCharacters: 11,
-        breakpointBlock: 0,
+        breakpoints: [0],
       });
       expect(JSON.stringify(diagnostics)).not.toContain("replacement");
       expect(diagnostics.map((record) => record.type)).toStrictEqual(["request", "usage"]);
@@ -427,7 +427,7 @@ describe("public SDK-adapted instrumentation", () => {
       {
         onPayload: () => ({
           promptBlocks: [textBlock("image", [{ data: "fixture", mediaType: "image/png" }])],
-          cacheBreakpoint: null,
+          cacheBreakpoints: [],
         }),
       },
     );
@@ -440,8 +440,10 @@ describe("public SDK-adapted instrumentation", () => {
   test.each([
     null,
     {},
-    { ...payload, cacheBreakpoint: -1 },
-    { ...payload, cacheBreakpoint: 1 },
+    { ...payload, cacheBreakpoints: [-1] },
+    { ...payload, cacheBreakpoints: [1] },
+    { ...payload, cacheBreakpoints: [0, 0] },
+    { ...payload, cacheBreakpoints: [0, 0, 0, 0, 0] },
     { ...payload, promptBlocks: [] },
     { ...payload, promptBlocks: [{ text: 7, images: [] }] },
     { ...payload, promptBlocks: [textBlock("x", [{ data: "x", mediaType: "" }])] },
@@ -533,7 +535,7 @@ describe("public SDK-adapted instrumentation", () => {
   test("payload mutation is isolated from the original request, including nested images", async () => {
     const original = requestFixture({
       promptBlocks: [textBlock("original", [{ data: "fixture", mediaType: "image/png" }])],
-      cacheBreakpoint: 0,
+      cacheBreakpoints: [0],
     });
     const snapshot = structuredClone(original);
     const run = createClaudeAgentSdkRunner({
