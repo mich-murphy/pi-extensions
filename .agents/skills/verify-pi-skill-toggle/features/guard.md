@@ -1,50 +1,61 @@
 # Guard and manual invocation boundaries
 
-Disabled resources should not be automatically advertised or read through the
-supported guarded paths. Explicit user invocation and maintenance paths have
-different semantics; this is best-effort control, not strict context isolation.
+Disabled resources are not advertised to the model and model `read` calls of
+their files are refused. Explicit user invocation keeps a skill usable. This is
+best-effort control, not strict context isolation.
 
 ## Sub-features
 
-- `guard-prompt`: disabled resources are absent from the next model prompt.
-- `guard-read`: model `read` of disabled instructions/skill files is refused.
-- `guard-shell`: supported literal content readers are checked in subagents.
-- `guard-manual`: explicit `/skill:name` allows that skill in the main session.
-- `guard-user`: user attachments and shell maintenance are not model read calls.
+- `guard-prompt`: disabled resources are absent from the first model prompt and
+  announced by a note after a mid-session toggle (see [caching](cache.md)).
+- `guard-read`: model `read` of a disabled skill or a default-off project skill
+  is refused with a message naming it; an enabled skill is readable.
+- `guard-live`: a toggle mid-session blocks the next read at once.
+- `guard-manual`: after `/skill:name`, that skill's files stay readable in the
+  main session.
+- `guard-main-bash`: main-session `bash` is deliberately **not** guarded.
+- `guard-shell`: subagent `bash` that prints a disabled file is refused (see
+  [subagents](subagent.md)).
+- `guard-user`: user `@file` attachments and `!` commands are never checked.
 
 ## How to get to it (user POV)
 
-- Disable a resource in `/skill-toggle`, then request a task that would load it.
+- Disable a resource in `/skill-toggle`, then ask for a task that would load it.
 - Explicitly invoke a skill with `/skill:name`.
-- Delegate a task to a subagent that encounters a disabled resource.
-- Attach a file with `@path` or use a user-entered `!` command for maintenance.
+- Delegate a task to a subagent that touches a disabled resource.
 
-## Driving it with verify.py
+## Driving it with model.py
 
 Preconditions:
 
-- These paths require model-turn/tool-event and subagent fixtures that this safe
-  TUI helper deliberately does not provide.
-- Never submit those prompts to an actual provider to fill this coverage gap.
+- `model.py launch` and `doctor` pass. Launch state: `legacy-notes` disabled,
+  project skills `proj-deploy` and `proj-review` default off, `research` on.
 
-- **Safe run.** `.agents/skills/verify-pi-skill-toggle/scripts/verify.py drive --feature all`
-  proves the menu preconditions only; `result.json` explicitly marks guard as
-  **not executed**. It does not invoke `/skill:name`, attach a file, or execute a
-  model tool call.
-- **Required future proof.** Use a deterministic offline model/subagent boundary
-  fixture reviewed separately. Capture actual prompt/tool actions, visible
-  refusal naming the resource, allowed user/manual behavior, and unchanged
-  source files. Production provider requests are not an acceptable substitute.
-- **Status.** Every sub-feature on this page is mapped but **not executed** by the
-  generated verification skill. Component tests or state snapshots do not turn
-  these into end-to-end coverage.
+- **Run.** `"$M" drive --evidence "$E" --scenario guard --model all`, then
+  `"$M" report --strict --evidence "$E"`.
+- **Journey.** The recorder scripts real tool calls from prompt markers
+  (`READ-FILES: a|b`, `RUN-BASH: cmd`); Pi executes them through the real
+  extension `tool_call` hook:
+  1. read `legacy-notes`, `proj-deploy`, `research`;
+  2. `/skill:proj-review ...`;
+  3. read `proj-review`;
+  4. `bash cat` of `legacy-notes`;
+  5. after the state file disables `research`, read `research` again.
+- **Expected.** `toolOutcomes` in `report.json`, in order: blocked, blocked,
+  allowed, allowed, allowed (main `bash` is unguarded), blocked. Each refusal
+  text names the skill, e.g. `skill "legacy-notes" is disabled in
+  /skill-toggle, so it cannot be read.` Nine requests (one follow-up per tool
+  turn), and `--strict` still sees no system patch.
 
 ## Gotchas
 
-- No-model menu evidence cannot establish prompt filtering or tool blocking.
-- The shell check is best-effort; do not promise interpreter analysis, universal
-  blocking, or a security sandbox.
-- User `!` commands are not model `bash` tool calls. Pi `/new` and `/fork` are not
-  proof of subagent behavior.
+- The model is a scripted recorder, not a real provider. Never fill this
+  coverage with prompts to a production model.
+- `@file` attachments and user `!` commands are not driven: they never reach the
+  guard by design, and RPC prompts cannot attach files the way the TUI does.
+- The shell check is best-effort; do not promise interpreter analysis,
+  universal blocking, or a sandbox.
+- Pi `/new` and `/fork` are not subagents; only `@gotgenes/pi-subagents`
+  children (parent session id in the header) get the shell guard.
 - A current implementation defect must be reported, not hidden by weakening the
-  intended journey or expanding the claimed coverage.
+  journey.

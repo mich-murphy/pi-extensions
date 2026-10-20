@@ -1,6 +1,6 @@
 ---
 name: verify-pi-skill-toggle
-description: Verify pi-skill-toggle menu usability, keyboard changes, immediate persistence, restart, and repository-wide worktree policy through an isolated real terminal UI of the checkout's pinned Pi devDependency. Use after changing toggle UI, discovery, or state behavior; no provider calls.
+description: Verify pi-skill-toggle end to end with the checkout's pinned Pi devDependency - menu usability, keyboard changes, persistence, restart, and repository-wide worktree policy through an isolated real terminal UI, plus prompt caching, toggle notes, the read guard, and subagents following the parent through RPC with an offline recorder model. Use after changing toggle UI, discovery, state, prompt-filter, guard, or cache behavior; no provider calls unless live mode is explicitly confirmed.
 ---
 
 # Verify pi-skill-toggle
@@ -153,11 +153,60 @@ cleanup errors. Report every feature marked `not executed`; never infer it from
 a convenient neighboring journey.
 
 No model prompt, manual `/skill:name` invocation, provider request, or model tool
-call occurs. `--offline` suppresses automatic Pi network activity; it is **not a
-firewall**. The command allowlist and absent credentials keep this journey from
-asking a provider to do anything. The [guard boundary feature](features/guard.md)
-is mapped but deliberately **not executed**. This skill does not establish strict
+call occurs in `verify.py`. `--offline` suppresses automatic Pi network activity;
+it is **not a firewall**. The command allowlist and absent credentials keep this
+journey from asking a provider to do anything. `verify.py` therefore marks
+`guard` **not executed** and points at `model.py`, which drives the
+[guard](features/guard.md), [caching](features/cache.md), and
+[subagent](features/subagent.md) journeys. This skill does not establish strict
 context isolation or claim the best-effort shell guard blocks all reading forms.
+
+## Model journeys
+
+`scripts/model.py` drives the model-facing behaviour through the same pinned Pi
+(it imports `pi_command` from `verify.py`) in RPC mode. An offline recorder
+provider, `scripts/recorder-provider.ts`, stands in for the model: it registers
+`recorder/codex-like` (mid-conversation system messages kept in place, like
+Codex) and `recorder/collapse-like` (folded into the head, like `pi-claude-sdk`),
+logs every request's full context and `sessionId` to `runs/<run>/requests.jsonl`,
+and replies with canned text or scripted tool calls from prompt markers
+(`READ-FILES: a|b`, `RUN-BASH: cmd`, `SPAWN-CHILD`). Pi executes those calls
+through the real extension hooks.
+
+```sh
+M=.agents/skills/verify-pi-skill-toggle/scripts/model.py
+E=$(mktemp -d /tmp/pi-skill-toggle-model-proof-XXXXXX)
+export PI_SKILL_TOGGLE_CACHE_DEBUG=1   # optional: per-run cache-debug.jsonl
+"$M" launch --evidence "$E"
+"$M" doctor --evidence "$E"
+"$M" drive --evidence "$E" --scenario all --model all
+"$M" report --strict --evidence "$E"
+"$M" compare --evidence "$E" --baseline <earlier report.json>   # optional
+"$M" cleanup --evidence "$E"
+```
+
+Scenarios: `steady`, `toggle-mid`, `toggle-back`, `toggle-twice`,
+`instruction-off` ([caching](features/cache.md)), `guard`
+([guard](features/guard.md)), and `subagent` ([subagents](features/subagent.md)).
+`launch` builds a scratch fixture under `/tmp/pi-skill-toggle-model-*` (six
+global skills, two project skills, global and project `AGENTS.md`, a Git repo)
+with `legacy-notes` disabled; evidence must be a fresh directory under `/tmp`.
+Each run uses `--no-extensions` with explicit `-e` for the toggle and recorder,
+`--approve --offline`, an allowlisted environment, and a scratch `HOME`. The
+state file is reset before every run and rewritten atomically between prompts
+per the scenario plan (`state-before-prompt-N.json`).
+
+`report` writes `report.json` and `report.txt`: per request, rendered chars,
+common prefix with the previous request, un-reused chars, reuse percent, system
+patch and note counts, `skillsVisible`, and `toolOutcomes` for scripted calls.
+`--strict` also fails any system patch after request 1. Exit 0 pass, 1 fail,
+2 blocked; `report` exits nonzero if any check fails. `cleanup` removes only the
+scratch directory; evidence stays (mode 0700). Run it after failures too.
+
+Live mode (`--live claude-sdk --confirm-subscription-usage`) loads
+`packages/pi-claude-sdk` instead of the recorder and spends the user's
+subscription allowance: ask first, follow `verify-pi-claude-sdk`, run one short
+caching scenario. Scripted scenarios (`guard`, `subagent`) never run live.
 
 ## Cleanup
 
@@ -188,5 +237,7 @@ path. Do not remove `/tmp/pi-skill-toggle-evidence-*`.
 `./scripts/verify.py doctor` checks prerequisites without mutation.
 `./scripts/verify.py drive --feature all` runs launch → instance doctor → all safe
 mapped journeys → evidence → cleanup. The three feature-specific invocations
-above allow focused reproduction. Nonzero exit means unmet expectations, not a
-reason to weaken the journey. No extra Python package installation is needed.
+above allow focused reproduction. `./scripts/model.py` covers the model journeys
+(see [Model journeys](#model-journeys)); a full verification runs both. Nonzero
+exit means unmet expectations, not a reason to weaken the journey. No extra
+Python package installation is needed.
