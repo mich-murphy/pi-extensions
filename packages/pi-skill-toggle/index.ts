@@ -15,7 +15,7 @@ import {
   Text,
   truncateToWidth,
 } from "@earendil-works/pi-tui";
-import type { SettingItem } from "@earendil-works/pi-tui";
+import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { disabledResourceMatcher, INSTRUCTION_FILE_NAMES, toolPath } from "./guard";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { hideResources } from "./prompt-filter";
@@ -311,18 +311,11 @@ class SkillToggle {
       const accentBorder = (): DynamicBorder =>
         new DynamicBorder((text: string) => theme.fg("accent", text));
       const title = new Text("", 1, 0);
-      const help = new Text("", 1, 0);
       const scope = new Text("", 1, 0);
       const updateText = (): void => {
         title.setText(theme.fg("accent", theme.bold("Skill Toggle")));
         scope.setText(
           theme.fg("dim", "Saved immediately · repository choices affect all worktrees"),
-        );
-        help.setText(
-          theme.fg(
-            "dim",
-            "Enter toggle · Space toggle (empty search) · type to search · Esc clear search, then close",
-          ),
         );
       };
       const save = (id: string, value: string): void => {
@@ -351,7 +344,7 @@ class SkillToggle {
         new SettingsList(
           items,
           Math.min(items.length + 2, 20),
-          getSettingsListTheme(),
+          menuListTheme(),
           save,
           () => {
             done(undefined);
@@ -363,7 +356,7 @@ class SkillToggle {
       const container = new Container();
       const assemble = (): void => {
         container.clear();
-        for (const child of [accentBorder(), title, scope, list, help, accentBorder()]) {
+        for (const child of [accentBorder(), title, scope, list, accentBorder()]) {
           container.addChild(child);
         }
       };
@@ -513,6 +506,25 @@ class SearchQueryMirror {
       this.input.handleInput(data);
     }
   }
+}
+
+/**
+ * SettingsList's own search-enabled hint says "Esc to cancel", but Esc first clears a nonempty
+ * query here. Replace exactly that known string; every other hint (no matches, scroll position,
+ * or an unknown future hint) passes through unchanged. Search is always enabled, so the
+ * search-disabled hint cannot occur, and its "Esc to cancel" would be accurate if it did.
+ * Enter and Esc come first so they stay visible when SettingsList truncates the hint (60 columns).
+ */
+const SETTINGS_LIST_HINTS: ReadonlyMap<string, string> = new Map([
+  [
+    "  Type to search · Enter/Space to change · Esc to cancel",
+    "  Enter toggle · Esc clear search, then close · type to search · Space toggle (empty search)",
+  ],
+]);
+
+function menuListTheme(): SettingsListTheme {
+  const base = getSettingsListTheme();
+  return { ...base, hint: (text) => base.hint(SETTINGS_LIST_HINTS.get(text) ?? text) };
 }
 
 /** Discovery details plus one scope line derived from the policy rule used for persistence. */

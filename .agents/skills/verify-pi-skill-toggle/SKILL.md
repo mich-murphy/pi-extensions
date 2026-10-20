@@ -1,6 +1,6 @@
 ---
 name: verify-pi-skill-toggle
-description: Verify pi-skill-toggle menu usability, keyboard changes, immediate persistence, restart, and repository-wide worktree policy through an isolated real terminal UI of the checkout's pinned Pi 1.1.0 devDependency. Use after changing toggle UI, discovery, or state behavior; no provider calls.
+description: Verify pi-skill-toggle menu usability, keyboard changes, immediate persistence, restart, and repository-wide worktree policy through an isolated real terminal UI of the checkout's pinned Pi devDependency. Use after changing toggle UI, discovery, or state behavior; no provider calls.
 ---
 
 # Verify pi-skill-toggle
@@ -22,7 +22,10 @@ From the checkout root, with the documented development dependencies installed
 
 The helper is executable and resolves the checkout from its own location. It
 requires Python 3 (stdlib only), Node, Git, tmux, and the checkout's installed
-Pi **1.1.0** devDependency (`node_modules/@earendil-works/pi-coding-agent`).
+pinned Pi devDependency (`node_modules/@earendil-works/pi-coding-agent`). The
+expected version is read from the root `package.json` `devDependencies` entry for
+`@earendil-works/pi-coding-agent`, which must be an exact version; a dependency
+bump needs no helper edit.
 The helper runs that package's declared `bin` entry with Node. It never executes
 a global `pi` on PATH, which may be a different version (the doctor reports it as
 `globalPiOnPathNotUsed`). This keeps the verified Pi identical to the version the
@@ -45,7 +48,7 @@ node <checkout>/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js
   --no-session --verbose --tui-mode regular
 ```
 
-Pi 1.1.0 permits explicit `-e` with `--no-extensions`. Skill and context discovery
+Pi permits explicit `-e` with `--no-extensions` (verified on 1.1.0). Skill and context discovery
 remain enabled because they are the surface under test. The helper rejects
 unexpected ancestor instruction files instead of silently loading them.
 `--approve` trusts only the disposable fixture for this process; settings default
@@ -68,7 +71,8 @@ Launch, drive, and teardown are one command, with `finally` cleanup on failures.
 ```
 
 This standalone doctor is **read-only**: check dependency executables, that the
-checkout's Pi CLI reports exactly the pinned 1.1.0 version, the extension entry
+installed Pi package and its CLI `--version` both match exactly the root
+`package.json` devDependency pin (reported as `pinnedVersion`), the extension entry
 point, and the installed TUI dependency; print JSON including `piCommand`. It creates no fixture,
 starts no session, installs nothing, and never reads or updates user settings.
 It uses `/var/empty` as HOME for the Pi `--version` check.
@@ -105,7 +109,11 @@ The menu journey captures normal **120×45** and resized **60×28** terminals.
 Assertions use plain terminal cells, not color. It checks instruction versus
 skill labels, global versus project scope, repository-relative instruction
 paths, enabled/disabled/manual-only states, selected read-only explanation,
-the help line `… · Esc clear search, then close`, the selected row's single scope
+exactly one key-hint line, `Enter toggle · Esc clear search, then close
+· type to search · Space toggle (empty search)`, with SettingsList's contradictory `Esc to
+cancel` never shown (also after search, no-match, and Escape clearing a search;
+at 60 columns the hint is truncated after `Esc clear search, then close`, which
+must stay visible), the selected row's single scope
 line (`<Global|Project> <instruction|skill> · <repository-wide (all
 worktrees)|this path only>[ · Manual only (read-only)]`, with no duplicate legacy
 `Repository-wide: all worktrees` line), search match/empty/clear, usage feedback,

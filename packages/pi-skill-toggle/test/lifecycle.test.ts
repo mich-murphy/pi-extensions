@@ -8,6 +8,7 @@ import type {
   ExtensionUIContext,
   Skill,
 } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { testTui, testTheme, testKeybindings } from "../../../test-support/pi-tui";
 import skillToggle, { registerSkillToggle } from "../index";
@@ -70,6 +71,17 @@ async function driveDialog(
 
 const ESCAPE = "\u001b";
 const DOWN = "\u001b[B";
+const SGR = new RegExp(String.raw`${ESCAPE}\[[0-9;]*m`, "gu");
+
+/** Rendered lines without color codes, as the user reads them. */
+function plain(lines: readonly string[]): string[] {
+  return lines.map((line) => line.replaceAll(SGR, ""));
+}
+
+/** Lines describing menu keys: every key hint mentions Esc. */
+function hintLines(lines: readonly string[]): string[] {
+  return plain(lines).filter((line) => /\bEsc\b/u.test(line));
+}
 
 function overrides(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleOverrides {
   return {
@@ -488,6 +500,66 @@ describe("extension lifecycle", () => {
       "enabled",
     );
     expect(store.writes).toStrictEqual([]);
+  });
+
+  test("the menu shows one accurate key hint and keeps other list hints", async () => {
+    const many = Array.from({ length: 25 }, (_, index): Skill => {
+      const path = join(getAgentDir(), `skills/hint-${String(index).padStart(2, "0")}/SKILL.md`);
+      return {
+        ...research,
+        name: `hint-${index}`,
+        filePath: path,
+        baseDir: dirname(path),
+        sourceInfo: { ...research.sourceInfo, path },
+      };
+    });
+    const screens: (readonly [string, string[]])[] = [];
+
+    for (const [name, keys] of [
+      ["open", []],
+      ["search", ["h"]],
+      ["empty", ["z", "z", "z"]],
+      ["cleared", ["z", "z", "z", ESCAPE]],
+    ] as const) {
+      await harness(storeWith()).runCommand("", {
+        promptOptions: { cwd, skills: many },
+        custom: async (factory) => {
+          initTheme();
+          const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
+            throw new Error("menu closed unexpectedly");
+          });
+          for (const key of keys) {
+            component.handleInput?.(key);
+          }
+          screens.push([name, component.render(120)]);
+          for (const width of [1, 8, 20, 40, 60, 120]) {
+            const lines = component.render(width);
+            expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+          }
+        },
+      });
+    }
+
+    for (const [name, rendered] of screens) {
+      const text = plain(rendered).join("\n");
+      expect({ name, hints: hintLines(rendered) }).toStrictEqual({
+        name,
+        hints: [
+          "  Enter toggle · Esc clear search, then close · type to search · Space toggle (empty search)",
+        ],
+      });
+      expect({ name, stale: text.includes("Esc to cancel") }).toStrictEqual({ name, stale: false });
+      expect({ name, stale: text.includes("Enter/Space to change") }).toStrictEqual({
+        name,
+        stale: false,
+      });
+    }
+    const byName = new Map(screens.map(([name, rendered]) => [name, plain(rendered).join("\n")]));
+    // SettingsList's own scroll and empty-result hints pass through unchanged.
+    expect(byName.get("open")).toContain("  (1/25)");
+    expect(byName.get("cleared")).toContain("  (1/25)");
+    expect(byName.get("empty")).toContain("  No matching settings");
+    expect(byName.get("open")).not.toContain("No matching settings");
   });
 
   test("Esc with an empty search closes the menu without writing", async () => {

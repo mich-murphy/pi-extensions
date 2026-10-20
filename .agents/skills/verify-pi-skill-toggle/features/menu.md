@@ -39,7 +39,10 @@ Preconditions:
   `menu-search-global-skill.txt`, and `menu-search-manual.txt` each show exactly
   the expected single scope line, e.g. `Global skill · this path only` or
   `Project skill · repository-wide (all worktrees) · Manual only (read-only)`.
-  The help line must read `… · Esc clear search, then close`.
+  The menu shows exactly one key hint, `Enter toggle · Esc clear search, then close
+  · type to search · Space toggle (empty search)`, in `menu-normal.txt`,
+  `menu-search-match.txt`, and `menu-search-empty.txt`; `Esc to cancel` never
+  appears.
 - **Resize.** It resizes the owned terminal to 60×28, searches the nested
   instruction and manual skill. `menu-narrow*.txt` and corresponding SVGs show
   layout, repository-relative paths, and selected read-only explanation.

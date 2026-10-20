@@ -19,9 +19,19 @@ EXTENSION = REPO / "packages/pi-skill-toggle/index.ts"
 # Verify the exact Pi the package is developed and type-checked against (the pinned devDependency),
 # not whichever global `pi` happens to be on PATH.
 PI_PACKAGE = REPO / "node_modules/@earendil-works/pi-coding-agent"
-PI_VERSION = "1.1.0"
 FEATURES = ["menu", "changes", "scope"]
 HELP = "Esc clear search, then close"
+# The single key hint replaces SettingsList's own "Esc to cancel" hint; it must never reappear.
+HINT = "Enter toggle \u00b7 " + HELP + " \u00b7 type to search \u00b7 Space toggle (empty search)"
+STALE_HINT = "Esc to cancel"
+
+
+def pinned_pi_version():
+    """The exact root devDependency pin, so a dependency bump needs no edit here."""
+    pinned = json.loads((REPO / "package.json").read_text())["devDependencies"]["@earendil-works/pi-coding-agent"]
+    assert pinned and pinned[0].isdigit() and all(part.isdigit() for part in pinned.split(".")), \
+        f"Root devDependency must pin an exact Pi version, got {pinned!r}"
+    return pinned
 
 
 def clean_env(home, agent, temporary):
@@ -49,11 +59,13 @@ def doctor():
     env = clean_env("/var/empty", "/var/empty/pi-verification-unused", "/tmp")
     version = subprocess.run([*command, "--version"], env=env, text=True,
                              capture_output=True, check=True, timeout=20).stdout.strip()
-    assert version == declared == PI_VERSION, f"This recipe targets Pi {PI_VERSION}, got {version} ({declared})"
+    pinned = pinned_pi_version()
+    assert version == declared == pinned, \
+        f"Expected the pinned Pi {pinned}; CLI reports {version}, installed package {declared}; run npm install"
     assert EXTENSION.is_file(), str(EXTENSION)
     assert (REPO / "node_modules/@earendil-works/pi-tui").is_dir(), "Run npm install first"
     # A global `pi` is reported only so a version mismatch is visible; it is never executed.
-    return {"version": version, "piCommand": command, "globalPiOnPathNotUsed": shutil.which("pi"),
+    return {"version": version, "pinnedVersion": pinned, "piCommand": command, "globalPiOnPathNotUsed": shutil.which("pi"),
             "tools": tools, "extension": str(EXTENSION), "readOnly": True, "modelRequests": "not issued"}
 
 
@@ -67,6 +79,7 @@ class Run:
         self.pids = set()
         self.session = None
         self.counter = 0
+        self.wide = True  # The full hint fits (and is asserted verbatim) only at 120 columns.
         self.results = {name: "not executed" for name in [*FEATURES, "guard"]}
         self.results["guard"] = "not executed: no model prompts/tool calls; see feature map"
         self.failure = None
@@ -180,6 +193,7 @@ class Run:
 
     def launch(self, directory="main", width=120, height=45):
         self.counter += 1
+        self.wide = width >= 120
         self.session = "verify" + str(self.counter)
         argv = [*pi_command()[0], "--no-extensions", "-e", str(EXTENSION), "--no-mcp",
                 "--no-prompt-templates", "--no-themes", "--approve", "--offline",
@@ -267,7 +281,21 @@ class Run:
         assert not any(line.strip() == "> " + query for line in rows), f"Query still present:\n{text}"
         # Every row returns, so the filtered-out row is visible again inside the menu.
         assert any(hidden in line for line in rows), f"Search was not cleared:\n{text}"
+        assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
+        if self.wide:
+            self.single_hint(text)
+        else:
+            # Truncated at narrow width, but Enter and Esc lead the hint so they stay visible.
+            assert "Enter toggle \u00b7 " + HELP in text, f"Narrow hint lost Esc:\n{text}"
         return text
+
+    def single_hint(self, text):
+        """Exactly one key-hint line inside the open menu, the accurate one; no 'Esc to cancel'."""
+        rows = [line.strip() for line in self.menu_lines(text)]
+        hints = [line for line in rows if "Esc" in line]
+        assert hints == [HINT], f"Expected exactly one hint {HINT!r}, got {hints}:\n{text}"
+        assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
+        return hints[0]
 
     def menu_lines(self, text):
         """Only the open menu's cells: Pi's startup header also lists skill names."""
@@ -311,13 +339,14 @@ class Run:
         assert "worktree" in text.lower() or "repository" in text.lower(), "Missing repository-wide scope help"
         for word in ["enter", "space", "search", "esc"]:
             assert word in text.lower(), (word, text)
-        assert HELP in text, f"Help must say {HELP!r}:\n{text}"
+        self.single_hint(text)
         # The selected (first) row is the global instruction: one scope line, no duplicate.
         self.scope_line(text, "Global instruction \u00b7 this path only")
         line = self.row(text, "web/agent/AGENTS.md", "enabled")
         assert str(self.scratch) not in line, "Instruction label must be repository relative"
         text = self.filter("verify-project", "menu-search-match")
         self.row(text, "verify-project", "disabled")
+        self.single_hint(text)
         self.scope_line(text, "Project skill \u00b7 repository-wide (all worktrees)")
         text = self.filter("web/agent/AGENTS.md", "menu-search-instruction")
         self.scope_line(text, "Project instruction \u00b7 repository-wide (all worktrees)")
@@ -328,6 +357,7 @@ class Run:
         assert not any("verify-global" in line and "enabled" in line for line in text.splitlines()), text
         text = self.filter("no-such-fixture-zzzz", "menu-search-empty")
         assert "No matching" in text, text
+        self.single_hint(text)
         self.key("C-u")
         self.row(self.screen("menu-search-clear"), "verify-global", "enabled")
         self.close("menu-escape")
@@ -335,11 +365,14 @@ class Run:
         self.open("menu-before-resize")
         self.action("resize", [60, 28])
         self.tmux("resize-window", "-t", self.session, "-x", "60", "-y", "28")
+        self.wide = False
         time.sleep(.6)
         text = self.screen("menu-narrow")
         self.row(text, "verify-project", "disabled")
         self.row(text, "verify-manual", "manual only")
         assert "Skill Toggle" in text and "esc" in text.lower(), text
+        assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
+        assert "Enter toggle \u00b7 " + HELP in text, f"Narrow hint lost Esc:\n{text}"
         self.filter("web/agent/AGENTS.md", "menu-narrow-instruction")
         self.row(self.screen("menu-narrow-instruction-result"), "web/agent/AGENTS.md", "enabled")
         text = self.filter("verify-manual", "menu-narrow-manual")

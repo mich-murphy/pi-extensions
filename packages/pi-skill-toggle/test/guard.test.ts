@@ -695,7 +695,7 @@ describe("skill-toggle guard", () => {
               const rendered = component.render(120).join("\n");
               expect(rendered).toContain(expected);
               expect(rendered).not.toContain(other);
-              for (const width of [1, 8, 20, 40]) {
+              for (const width of [1, 8, 20, 40, 60, 120]) {
                 expect(() => component.render(width)).not.toThrow();
               }
             }

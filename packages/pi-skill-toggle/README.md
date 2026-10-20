@@ -10,7 +10,9 @@ Run `/skill-toggle` in Pi's interactive terminal. Select a row and press Enter
 to toggle `enabled` / `disabled`; Space also toggles when search is empty. Type
 to search. Esc clears a nonempty search; with an empty search it closes the
 menu. Choices save immediately; closing does not undo them. Project skills start
-disabled; instructions and global skills start enabled.
+disabled; instructions and global skills start enabled. One hint line at the
+bottom summarizes these keys: `Enter toggle · Esc clear search, then close
+· type to search · Space toggle (empty search)`.
 
 The list groups global instructions, global skills, project/inherited
 instructions, then project skills. Rows show their origin and kind;

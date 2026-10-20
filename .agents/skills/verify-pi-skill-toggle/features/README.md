@@ -26,7 +26,7 @@ From the checkout root:
 
 The helper can run from another cwd because it resolves the checkout from its
 own location. Python stdlib, Git, Node, tmux, installed dependencies, and the checkout's
-pinned Pi 1.1.0 devDependency are required (a global `pi` is never used). See [Launch](../SKILL.md#launch) for exact argv and isolation.
+pinned Pi devDependency (exact version from the root `package.json`) are required (a global `pi` is never used). See [Launch](../SKILL.md#launch) for exact argv and isolation.
 
 Global `verify-global` starts enabled. Project `verify-project` starts disabled.
 `verify-manual` declares source-level manual invocation only and is read-only.
