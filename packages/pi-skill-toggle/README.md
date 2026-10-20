@@ -85,10 +85,33 @@ A subagent session has a parent session id in its header, as written by
 path instead, so they remain main sessions for this check.
 
 Explicit `/skill:name` invocation lets that loaded skill's files remain readable
-for the rest of the current session. This exception is session-local, does not
-change saved policy, and is not inherited by subagents. Source-level manual-only
+for the rest of the current session. This exception does not change saved policy.
+Subagents of that session inherit it while the parent is registered in the same
+process (see below). Source-level manual-only
 skills still require explicit invocation. User `@file` attachments and `!`
 commands are not checked.
+
+### Subagents follow the parent
+
+Every session registers itself in a process-wide registry
+(`globalThis[Symbol.for("pi-skill-toggle.sessions")]`, keyed by session id),
+so a subagent created in the same process finds its parent even though it
+loads its own copy of the extension. When the parent is registered, the parent
+decides, live at every tool call and run:
+
+- **Reads.** A path is blocked in the subagent exactly when the parent would
+  block it: the parent's resources, the current state, and the skills the user
+  invoked with `/skill:name` in the parent.
+- **Prompt.** A toggle resource the parent knows, by path or, for skills, by
+  name, is visible in the subagent when it is enabled or manually invoked in
+  the parent. Resources the parent does not know keep the subagent's own state.
+  A parent toggle during a subagent run reaches the subagent as an appended
+  note, so its cached prompt stays frozen.
+- Nested subagents follow the root through their own parent.
+
+When the parent is not registered (another process, or it has shut down), a
+subagent uses its own state as before, and manual skills are not inherited. If
+the parent's state cannot be loaded, the parent blocks every listed resource.
 
 ### Limitations
 
@@ -171,18 +194,93 @@ Name-keyed state from versions 1 to 3 is ignored.
 ## Compatibility and failures
 
 Pi 0.86+ provides private mutable prompt options; the extension filters those so
-Pi's prompt rendering, caching, and section diffing keep working. Pi 0.85 uses
+Pi renders the prompt itself. [Prompt caching](#prompt-caching) explains how
+toggles avoid section changes after the first request. Pi 0.85 uses
 exact rendered-section replacement without mutating live options. An unmatched
 legacy section is reported. If another extension replaces the entire system
 prompt, its replacement can bypass this filtering.
 
 Invalid JSON, malformed policy, a newer unsupported version, or filesystem
 errors are reported rather than silently resetting choices. On a load failure,
-the prompt is left unchanged; the read guard treats known loaded resources as
+the first request's prompt is left unfiltered and later runs keep the prompt and
+the model's view without a note; the read guard treats known loaded resources as
 disabled, subject to the manual-invocation exception and the tool limitations
 above. This does not guarantee that all instruction or skill content is blocked.
 A failed save leaves the previous policy and displayed values in place. Repeated
 identical state errors are reported once until the error changes or clears.
+
+### Prompt caching
+
+On Pi 0.86 and newer the prompt is frozen after a session's first request, so a
+toggle never invalidates the provider's prompt cache. Each run reads the
+current branch's transcript (`buildSessionProjection`) and replays its system
+messages to learn which toggle resources the model's prompt lists, then picks
+an epoch:
+
+- `initial`: the transcript has no system message yet. The current toggles
+  shape the prompt Pi writes as the session head.
+- `model-change`: since the latest response, the user selected a different
+  model from the one that response ran under, so the new model's cache is cold.
+  The current toggles are applied to the prompt. Virtual-model routing and
+  re-recording an unchanged selection stay `frozen`.
+- `frozen`: every other run. Each toggle resource keeps exactly the prompt
+  status it already has, so Pi finds no section to patch. Package, CLI, and
+  other non-toggle resources pass through untouched.
+
+Freezing deliberately departs from the Pi extension guide's advice to prefer
+section changes over rewriting the prompt. Providers that cannot represent
+mid-conversation system messages, including `pi-claude-sdk`, which renders
+the folded system prompt as its first block, receive a section change as a
+full checkpoint that invalidates the cached prefix. Even capable providers
+resend the whole section. An appended note costs only its own text.
+
+The model's view is the prompt's set, overridden by the latest
+`pi-skill-toggle` note. When the user's choice differs from that view, the run
+appends one hidden note after the user's message. Each note is standalone: it
+states every difference between the user's choice and the system prompt, so
+the latest surviving note is enough even if compaction or context editing
+removed earlier ones. Its `details` (`{ version: 1, visible: [...] }`) record
+the full visible set, so toggling back to what the model already sees sends
+nothing. Text is deterministic and sorted:
+
+```text
+The user changed /skill-toggle. This note supersedes earlier /skill-toggle notes and overrides the skills and project instructions listed in the system prompt.
+Disabled skills (do not load unless the user invokes /skill:<name>): alpha, beta
+Disabled instructions (disregard): /work/AGENTS.md
+Enabled skills:
+<Pi's formatSkillsForPrompt block for the run's reader tool, trimmed>
+Enabled instructions:
+<project_instructions path="/work/docs/AGENTS.md">
+...content...
+</project_instructions>
+```
+
+Empty groups are left out. When the user's choice matches the system prompt
+again after an earlier note, the note reads only:
+
+```text
+The user changed /skill-toggle. This note supersedes earlier /skill-toggle notes.
+The system prompt's skills and project instructions apply as listed.
+```
+
+Compaction keeps the prompt head; if it summarises a note away, the next run announces the difference again. Resume, fork, and tree navigation
+work because the view comes from the branch, not from memory. Reads are
+always checked against the current state.
+
+### Cache diagnostics
+
+Set `PI_SKILL_TOGGLE_CACHE_DEBUG=1` to append JSON lines to
+`pi-skill-toggle-cache-debug.jsonl` in the agent directory, or set it to a file
+path. Unset, empty, or `0` turns it off. Records are never printed, never hold
+file contents, and a failed write is ignored:
+
+- `run`: epoch, state load result, desired and prompt-hidden ids, the note's
+  changes and length, and fingerprints of the skills and instructions handed
+  to Pi, so identical prompts have identical fingerprints.
+- `usage`: input, output, cache read and write tokens of each response.
+- `discover`: project skill discovery duration and contributed count.
+
+The log grows without bound; delete the file to reset it.
 
 ## Maintainer invariants
 
@@ -193,3 +291,12 @@ identical state errors are reported once until the error changes or clears.
   shell guarding to main sessions or guard `edit`, `write`, `grep`, `find`, or `ls`.
 - Preserve native discovery winners and exclusions, global-first menu ordering,
   unrelated saved choices, and project-skills-disabled defaults.
+- Let a registered parent session decide a subagent's reads and toggle
+  visibility, evaluated live; fall back to the subagent's own state otherwise.
+- Keep registry entries plain versioned objects, validate them on every read,
+  and never throw on malformed registry content.
+- On Pi 0.86+, change a toggle resource's prompt status only in the `initial`
+  or `model-change` epoch; announce every other toggle in an appended note.
+- Derive the prompt and the model's view from the current branch's transcript.
+- Render skill entries exactly like Pi's `formatSkillsForPrompt`.
+- Never write diagnostics to stdout or stderr.

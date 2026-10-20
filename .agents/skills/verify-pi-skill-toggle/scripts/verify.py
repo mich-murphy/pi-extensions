@@ -81,7 +81,7 @@ class Run:
         self.counter = 0
         self.wide = True  # The full hint fits (and is asserted verbatim) only at 120 columns.
         self.results = {name: "not executed" for name in [*FEATURES, "guard"]}
-        self.results["guard"] = "not executed: no model prompts/tool calls; see feature map"
+        self.results["guard"] = "not executed here: no model prompts/tool calls; run scripts/model.py --scenario guard"
         self.failure = None
         self.env = clean_env(self.scratch / "home", self.scratch / "agent", self.scratch / "tmp")
         self.manifest = {"scratch": str(self.scratch), "socket": self.socket,

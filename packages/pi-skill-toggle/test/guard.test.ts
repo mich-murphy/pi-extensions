@@ -141,7 +141,15 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
           contextFiles: contextPaths.map((path) => ({ path, content: "rules" })),
         },
       },
-      context(),
+      {
+        ...context(),
+        model: undefined,
+        sessionManager: {
+          ...context().sessionManager,
+          buildSessionProjection: () => ({ messages: [], entries: [] }),
+          getSessionId: () => "session",
+        },
+      },
     );
   const call = (toolName: string, input: Record<string, unknown>, parentSession?: string) =>
     handlers.tool_call?.({ toolName, input }, context(parentSession));
@@ -533,7 +541,15 @@ describe("skill-toggle guard", () => {
         };
         guard.handlers.before_agent_start?.(
           { systemPrompt: "base", systemPromptOptions },
-          { ui: { notify: () => undefined } },
+          {
+            ui: { notify: () => undefined },
+            model: undefined,
+            sessionManager: {
+              getHeader: () => ({}),
+              buildSessionProjection: () => ({ messages: [], entries: [] }),
+              getSessionId: () => "session",
+            },
+          },
         );
         expect(systemPromptOptions.contextFiles).toStrictEqual([]);
         expect(guard.call("read", { path })).toMatchObject({ block: true });

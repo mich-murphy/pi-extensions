@@ -134,6 +134,11 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
   let projectTrusted = true;
   const ctx = {
     cwd: projectDirectory,
+    model: undefined,
+    sessionManager: {
+      buildSessionProjection: () => ({ messages: [], entries: [] }),
+      getSessionId: () => "session",
+    },
     isProjectTrusted: () => projectTrusted,
     ui: {
       notify: (message: string) => notifications.push(message),
@@ -237,7 +242,14 @@ describe("extension lifecycle", () => {
         systemPrompt: `base${formatSkillsForPrompt([skill])}`,
         systemPromptOptions: { cwd, skills: [skill] },
       },
-      { ui: { notify: () => undefined } },
+      {
+        ui: { notify: () => undefined },
+        model: undefined,
+        sessionManager: {
+          buildSessionProjection: () => ({ messages: [], entries: [] }),
+          getSessionId: () => "session",
+        },
+      },
     );
 
     expect(result).toStrictEqual({ systemPrompt: "base" });

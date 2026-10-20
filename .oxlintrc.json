@@ -222,7 +222,11 @@
   "overrides": [
     {
       // Pi loads each extension's default export; Vitest loads its config's
-      "files": ["packages/*/index.ts", "vitest*.config.ts"],
+      "files": [
+        "packages/*/index.ts",
+        ".agents/skills/*/scripts/*-provider.ts",
+        "vitest*.config.ts"
+      ],
       "rules": { "import/no-default-export": "off" }
     },
     {

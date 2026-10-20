@@ -12,8 +12,14 @@ never drive a shared session or weaken a journey to match a bug.
   immediate actual file changes, reload, and process restart.
 - [Repository-wide scope](scope.md): one choice across linked worktrees, default
   reset, global discovery-path choices, and unrelated repository isolation.
-- [Guard and manual invocation boundaries](guard.md): mapped **not executed**;
-  actual model reads and explicit skill invocation are outside this safe driver.
+- [Guard and manual invocation boundaries](guard.md): model reads of disabled,
+  default-off, enabled, invoked, and newly disabled skills; main `bash` unguarded.
+  Driven by `model.py`.
+- [Prompt caching and toggle notes](cache.md): steady, toggle mid-session, toggle
+  back, toggle twice, instruction off; frozen prompt plus notes. Driven by `model.py`.
+- [Subagents follow the parent](subagent.md): a real pi-subagents child reads what
+  the parent invoked, is blocked from what it disabled, and keeps 100% reuse.
+  Driven by `model.py`.
 
 ## Baseline and driving conventions
 
@@ -49,6 +55,33 @@ screenshots. Raw PTY transcripts supplement screen captures.
 
 `result.json` records per-feature execution. `all` runs menu, changes, and scope;
 `scope` also runs changes for preconditions. Unselected features stay explicitly
-`not executed`. Guard/manual invocation is **always not executed** by this helper:
-no provider/model calls or model tool execution is permitted. Do not report that
-feature as verified through menu evidence.
+`not executed`. `verify.py` always marks guard **not executed**: it never submits
+a model prompt. Do not report guard as verified through menu evidence; report it
+from `model.py`'s `report.json` (`toolOutcomes` and checks) instead.
+
+## Model journeys (model.py)
+
+Run from the checkout root; see [Model journeys](../SKILL.md#model-journeys):
+
+```sh
+M=.agents/skills/verify-pi-skill-toggle/scripts/model.py
+E=$(mktemp -d /tmp/pi-skill-toggle-model-proof-XXXXXX)
+"$M" launch --evidence "$E" && "$M" doctor --evidence "$E"
+"$M" drive --evidence "$E" --scenario all --model all
+"$M" report --strict --evidence "$E"; "$M" cleanup --evidence "$E"
+```
+
+Reading the report:
+
+- `commonPrefixChars` approximates what a prefix cache can reuse; 100% reuse
+  means the previous request is a strict prefix of this one.
+- `unreusedChars` is what must be processed again: the new turn, any note, and
+  any invalidated tail.
+- `systemPatchMessages` counts transcript system messages after the head. The
+  extension should cause none after request 1 (`--strict`).
+- `skillsVisible` is the model's view: the prompt's list overridden by the
+  latest note (each note restates every difference, so only the latest counts).
+- `toolOutcomes` lists each scripted `read`/`bash` call, its target, and whether
+  it was allowed, for the guard (main session) and subagent (child) journeys.
+- `debug` rows summarise `PI_SKILL_TOGGLE_CACHE_DEBUG` records: epochs
+  (`initial` once, then `frozen`), notes, state-load failures, fingerprints.

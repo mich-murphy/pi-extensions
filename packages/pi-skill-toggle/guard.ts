@@ -29,15 +29,19 @@ type SkillOwner = { readonly resource: ToggleResource } | { readonly disabledSki
  * Match actual skill directories, not folder names under guessed skill roots. Walking parents
  * also finds persisted disabled SKILL.md paths when that skill is not currently loaded.
  * Repository equivalence and explicit choices always go through the same policy as the UI.
+ *
+ * @param decide - Optional decision for a loaded resource, such as a subagent's parent session's;
+ *   undefined falls back to the session's own state.
  */
 export function disabledResourceMatcher(
   resources: readonly ToggleResource[],
   overrides: ToggleOverrides | undefined,
   manualSkills: ReadonlySet<string>,
+  decide?: (resource: ToggleResource) => boolean | undefined,
 ): ResourceMatcher {
   const policy = new ResourcePolicy(overrides ?? emptyOverrides());
   const disabled = (resource: ToggleResource): boolean =>
-    overrides === undefined || policy.value(resource) === "disabled";
+    decide?.(resource) ?? (overrides === undefined || policy.value(resource) === "disabled");
   const canonical = canonicalizer();
   const loadedOnDisk = lazy(
     () =>

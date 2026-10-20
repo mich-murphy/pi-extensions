@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "bench:skill-toggle-cache": "vitest run packages/pi-skill-toggle/test/cache-benchmark.test.ts",
     "test:claude-sdk-pin": "vitest run packages/pi-claude-sdk/test/sdk-release-contract.test.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:claude-sdk-upgrade": "npm run test:live && npm run test:claude-sdk-pin",
