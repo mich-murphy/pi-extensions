@@ -15,11 +15,13 @@ Start Pi with the web-tools extension; no API keys are required.
 
 ## Driving it with verify.py
 
-Preconditions: dependencies installed, Pi 1.1.0, Python 3, Node, and tmux; no
+Preconditions: dependencies installed (the checkout's pinned Pi
+devDependency), Python 3, Node, and tmux; no
 configured profile is reused.
 
 - **Launch:** run `.agents/skills/verify-pi-web-tools/scripts/verify.py startup`
-  from the repo root. `startup.txt` shows Pi 1.1.0 and only the explicitly
+  from the repo root. `doctor.txt` shows the pinned Pi version and
+  command, and `startup.txt` shows only the explicitly
   loaded extension.
 - **Discover:** inspect `catalog-doctor.json`; require tool names `websearch`
   and `webfetch`, and zero skills, prompts, and context files.

@@ -11,6 +11,26 @@ import subprocess
 import tempfile
 import time
 
+PI_PACKAGE = "@earendil-works/pi-coding-agent"
+
+
+def pinned_pi(repo):
+    """Resolve the checkout's pinned Pi devDependency: expected version, CLI entry, SDK entry."""
+    expected = json.loads((repo / "package.json").read_text())["devDependencies"][PI_PACKAGE]
+    package_dir = repo / "node_modules" / PI_PACKAGE
+    manifest_path = package_dir / "package.json"
+    assert manifest_path.is_file(), f"Missing {manifest_path}; run npm install in the checkout first"
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["version"] == expected, f"Installed {PI_PACKAGE} {manifest['version']} != pinned {expected}; run npm install"
+    bin_entry = manifest["bin"] if isinstance(manifest["bin"], str) else manifest["bin"]["pi"]
+    exports = manifest.get("exports")
+    export = exports.get(".", exports) if isinstance(exports, dict) else exports
+    sdk_entry = export.get("import") if isinstance(export, dict) else export
+    cli = (package_dir / bin_entry).resolve()
+    sdk = (package_dir / (sdk_entry or manifest["main"])).resolve()
+    assert cli.is_file() and sdk.is_file(), (cli, sdk)
+    return expected, cli, sdk
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -24,8 +44,12 @@ def main():
     (scratch / "agent/settings.json").write_text(json.dumps({"packages": [], "cacheWarming": "off", "theme": "dark"}))
     socket = str(scratch / "tmux.sock")
     tmux = shutil.which("tmux")
-    pi = shutil.which("pi")
-    assert tmux and pi, "Install tmux and Pi 1.1.0 first"
+    node = shutil.which("node")
+    assert tmux and node, "Install tmux and Node first"
+    expected_version, pi_cli, pi_sdk = pinned_pi(repo)
+    # Run the pinned devDependency, never a global install. A global `pi` is only noted.
+    pi = [node, str(pi_cli)]
+    global_pi = shutil.which("pi")
     env = {"HOME": str(scratch / "home"), "PI_CODING_AGENT_DIR": str(scratch / "agent"),
            "TMPDIR": str(scratch / "tmp"), "PATH": os.environ["PATH"], "TERM": "xterm-256color",
            "NODE_DISABLE_COMPILE_CACHE": "1", "PI_OFFLINE": "1", "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
@@ -99,17 +123,24 @@ def main():
     status = "failed"
     owned_pids = set()
     try:
-        version = subprocess.run([pi, "--version"], env=env, text=True, capture_output=True, check=True).stdout.strip()
-        assert version == "1.1.0", version
-        (evidence / "launch.json").write_text(json.dumps({"version": version, "cwd": str(scratch / "cwd"), "env": env, "argv": [pi, *flags]}, indent=2))
-        command = shlex.join(["env", "-i", *[k + "=" + v for k, v in env.items()], pi, *flags])
+        version = subprocess.run([*pi, "--version"], env=env, text=True, capture_output=True, check=True).stdout.strip()
+        assert version == expected_version, f"pi --version {version!r} != pinned {expected_version!r}"
+        doctor_header = [f"pi version: {version} (pinned devDependency {PI_PACKAGE} {expected_version})",
+                         "pi command: " + shlex.join(pi), "pi sdk: " + str(pi_sdk),
+                         "global pi on PATH (noted, not run): " + (global_pi or "none")]
+        print("\n".join(doctor_header), flush=True)
+        (evidence / "launch.json").write_text(json.dumps({"version": version, "expectedVersion": expected_version,
+            "piCommand": pi, "piSdk": str(pi_sdk), "globalPiNotRun": global_pi,
+            "cwd": str(scratch / "cwd"), "env": env, "argv": [*pi, *flags]}, indent=2))
+        command = shlex.join(["env", "-i", *[k + "=" + v for k, v in env.items()], *pi, *flags])
         t("-f", "/dev/null", "new-session", "-d", "-s", "verify", "-x", "120", "-y", "45", "-c", str(scratch / "cwd"), command)
         owned_pids.add(int(t("display-message", "-p", "-t", "verify:0.0", "#{pane_pid}").stdout.strip()))
         t("set-option", "-t", "verify", "history-limit", "20000")
         startup = wait("startup", "Extensions")
         assert str(repo / "packages/pi-web-tools") in startup, startup
         assert "Extension errors" not in startup, startup
-        (evidence / "doctor.txt").write_text(t("list-panes", "-t", "verify", "-F", "#{pane_pid} #{pane_current_command} #{pane_dead}").stdout)
+        panes = t("list-panes", "-t", "verify", "-F", "#{pane_pid} #{pane_current_command} #{pane_dead}").stdout
+        (evidence / "doctor.txt").write_text("\n".join(doctor_header) + "\npane: " + panes)
         assert not auth("initial-auth"), "Fresh profile must have no stored credentials"
         if args.mode == "invalid-config":
             wait("invalid-config", "verification-unknown-provider")
@@ -161,9 +192,8 @@ def main():
             send("/logout")
             wait("logout-empty", "No stored credentials to remove")
         # Public SDK read-only second view; same sole extension, no prompts or requests.
-        sdk = Path("/opt/homebrew/Cellar/pi-coding-agent/1.1.0/libexec/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js")
         probe = scratch / "doctor.mjs"
-        probe.write_text('''import {createAgentSession,DefaultResourceLoader,SessionManager,SettingsManager} from ''' + json.dumps(sdk.as_uri()) + ''';
+        probe.write_text('''import {createAgentSession,DefaultResourceLoader,SessionManager,SettingsManager} from ''' + json.dumps(pi_sdk.as_uri()) + ''';
 const cwd=process.cwd(), agentDir=process.env.PI_CODING_AGENT_DIR;
 const settingsManager=SettingsManager.inMemory({packages:[],cacheWarming:"off",defaultProjectTrust:"never"});
 const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:true,noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,additionalExtensionPaths:[''' + json.dumps(str(repo / "packages/pi-web-tools/index.ts")) + ''']});
@@ -179,7 +209,7 @@ try {
 } finally {session.dispose();}
 ''')
         (evidence / "catalog-doctor.mjs").write_text(probe.read_text())
-        result = subprocess.run([shutil.which("node"), str(probe)], cwd=scratch / "cwd", env=env, text=True, capture_output=True, timeout=30)
+        result = subprocess.run([node, str(probe)], cwd=scratch / "cwd", env=env, text=True, capture_output=True, timeout=30)
         (evidence / "catalog-doctor.json").write_text(result.stdout)
         (evidence / "catalog-doctor.stderr.txt").write_text(result.stderr)
         assert result.returncode == 0, result.stderr

@@ -13,7 +13,7 @@ cancels. `/logout` removes a selected stored key, not shell environment keys.
 .agents/skills/verify-pi-web-tools/scripts/verify.py native-auth
 ```
 
-A fresh isolated Pi 1.1.0 terminal has synthetic `EXA_API_KEY`,
+A fresh isolated terminal running the checkout's pinned Pi devDependency has synthetic `EXA_API_KEY`,
 `PARALLEL_API_KEY`, and `BRAVE_API_KEY` environment fallbacks. The harness:
 
 1. Cancels a Brave login and requires no stored credential.
@@ -46,7 +46,7 @@ and HTTP cancellation require deterministic production-boundary integration
 tests; this UI harness does not establish them. There are no test-only
 production APIs or verification driver extensions.
 
-Pi 1.1.0 native stored `!command` resolution is synchronous, uses a ten-second
+Pi's native stored `!command` resolution (unchanged through 1.3.0) is synchronous, uses a ten-second
 executor, and caches successful command output. An extension AbortSignal cannot
 interrupt that synchronous resolution; elapsed-time guards are not hard
 cancellation. This harness deliberately does not execute credential commands.
