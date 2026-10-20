@@ -35,14 +35,14 @@
     "@effect/vitest": "4.0.5",
     "@types/node": "24.19.2",
     "@types/turndown": "5.0.6",
-    "@vitest/coverage-v8": "5.0.4",
+    "@vitest/coverage-v8": "5.0.5",
     "fallow": "3.33.1",
     "markdownlint-cli2": "0.23.3",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2004",
     "typescript": "7.0.2",
-    "vitest": "5.0.4"
+    "vitest": "5.0.5"
   },
   "overrides": {
     "katex": "0.19.0",
