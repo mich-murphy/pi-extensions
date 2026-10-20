@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { RepositoryLocator } from "./repository";
 import { parseResourcePath } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
-import { isToggleValue } from "./resources";
+import { emptyOverrides, isGlobalResourcePath, isToggleValue } from "./resources";
 import type { ToggleOverrides, ToggleValue } from "./resources";
 import { err, ok } from "./result";
 import type { Result } from "./result";
 
-const STATE_VERSION = 6;
+const STATE_VERSION = 7;
 const RESET_ADVICE = "Fix the file, or remove it to reset all toggles.";
 
 const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
@@ -129,7 +130,11 @@ export type ToggleStateStore = {
   readonly load: () => ToggleStateResult;
 
   /** Persist one resource's override, or clear it with `"default"`. */
-  readonly set: (id: ResourcePath, value: ToggleValue | "default") => ToggleStateResult;
+  readonly set: (
+    id: ResourcePath,
+    value: ToggleValue | "default",
+    origin?: "global" | "project",
+  ) => ToggleStateResult;
 };
 
 /**
@@ -148,20 +153,45 @@ export class ToggleStateFile implements ToggleStateStore {
   }
 
   /** Change one override, keep the others, and drop entries whose file is definitely missing. */
-  set(id: ResourcePath, value: ToggleValue | "default"): ToggleStateResult {
+  set(
+    id: ResourcePath,
+    value: ToggleValue | "default",
+    origin?: "global" | "project",
+  ): ToggleStateResult {
     const stored = this.read("update");
     if (stored._tag === "err") {
       return stored;
     }
     return fileSystem("update", this.path, () => {
-      const overrides = new Map(
-        [...stored.value].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
+      const files = new Map(
+        [...stored.value.files].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
       );
-      if (value === "default") {
-        overrides.delete(id);
+      // Never prune repository policy based on one checkout's files or continued existence.
+      const repositories = new Map(stored.value.repositories);
+      const location =
+        origin === "global" || isGlobalResourcePath(id)
+          ? undefined
+          : new RepositoryLocator().locate(id);
+      if (location === undefined) {
+        if (value === "default") {
+          files.delete(id);
+        } else {
+          files.set(id, value);
+        }
       } else {
-        overrides.set(id, value);
+        const entries = new Map(repositories.get(location.repository));
+        if (value === "default") {
+          entries.delete(location.path);
+        } else {
+          entries.set(location.path, value);
+        }
+        if (entries.size === 0) {
+          repositories.delete(location.repository);
+        } else {
+          repositories.set(location.repository, entries);
+        }
       }
+      const overrides = { files, repositories };
       this.write(overrides);
       return overrides;
     });
@@ -172,12 +202,19 @@ export class ToggleStateFile implements ToggleStateStore {
     if (content._tag === "ok") {
       return parseState(this.path, content.value);
     }
-    return content.error.code === "ENOENT" ? ok(new Map()) : content;
+    return content.error.code === "ENOENT" ? ok(emptyOverrides()) : content;
   }
 
   private write(overrides: ToggleOverrides): void {
-    const entries = [...overrides].toSorted(([left], [right]) => left.localeCompare(right));
-    const state = { version: STATE_VERSION, overrides: Object.fromEntries(entries) };
+    const state = {
+      version: STATE_VERSION,
+      files: sorted(overrides.files),
+      repositories: Object.fromEntries(
+        [...overrides.repositories]
+          .toSorted(([left], [right]) => left.localeCompare(right))
+          .map(([repository, entries]) => [repository, sorted(entries)]),
+      ),
+    };
     mkdirSync(dirname(this.path), { recursive: true });
     const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
     try {
@@ -234,40 +271,52 @@ function parseState(path: string, content: string): ToggleStateResult {
   if (!isRecord(state) || typeof state.version !== "number") {
     return err(new ToggleStateMalformed(path, undefined));
   }
-  const format = stateVersionFormat(state.version);
-  if (format === "overrides") {
-    return parseOverrides(path, state.overrides, (entry) => entry);
-  }
-  if (format === "migrate-enabled-resources") {
-    return parseOverrides(path, state.resources, migrateEnabledResource);
-  }
-  if (format === "drop-name-keyed-state") {
-    return ok(new Map());
-  }
-  if (format === "too-new") {
+  if (state.version > STATE_VERSION) {
     return err(new ToggleStateTooNew(path, state.version));
   }
-  return err(new ToggleStateMalformed(path, undefined));
+  if (Number.isInteger(state.version) && state.version < 4) {
+    return ok(emptyOverrides());
+  }
+  if (state.version === 7) {
+    return parsePolicy(path, state);
+  }
+  if (state.version !== 4 && state.version !== 5 && state.version !== 6) {
+    return err(new ToggleStateMalformed(path, undefined));
+  }
+  return migrateLegacyState(
+    path,
+    state.version,
+    state.version === 6 ? state.overrides : state.resources,
+  );
 }
 
-type StateVersionFormat =
-  | "overrides"
-  | "migrate-enabled-resources"
-  | "drop-name-keyed-state"
-  | "too-new"
-  | "malformed";
-
-function stateVersionFormat(version: number): StateVersionFormat {
-  if (version === STATE_VERSION) {
-    return "overrides";
+/** Convert old absolute choices into the shared policy without writing the state file. */
+function migrateLegacyState(path: string, version: number, entries: unknown): ToggleStateResult {
+  if (!isRecord(entries)) {
+    return err(new ToggleStateMalformed(path, undefined));
   }
-  if (version > STATE_VERSION) {
-    return "too-new";
+  const files = new Map<ResourcePath, ToggleValue>();
+  const repositories = new Map<string, Map<string, ToggleValue>>();
+  const locator = new RepositoryLocator();
+  // Stable lexical order breaks child/child conflicts; a main checkout always wins.
+  for (const [key, entry] of Object.entries(entries).toSorted(([a], [b]) => a.localeCompare(b))) {
+    const id = parseResourcePath(key);
+    const value = version === 6 ? entry : migrateEnabledResource(entry);
+    if (!(id && isToggleValue(value))) {
+      return err(new ToggleStateMalformed(path, key));
+    }
+    const location = isGlobalResourcePath(id) ? undefined : locator.locate(id);
+    if (location === undefined) {
+      files.set(id, value);
+      continue;
+    }
+    const repository = repositories.get(location.repository) ?? new Map<string, ToggleValue>();
+    if (location.main || !repository.has(location.path)) {
+      repository.set(location.path, value);
+    }
+    repositories.set(location.repository, repository);
   }
-  if (version === 4 || version === 5) {
-    return "migrate-enabled-resources";
-  }
-  return version < 4 ? "drop-name-keyed-state" : "malformed";
+  return ok({ files, repositories });
 }
 
 function migrateEnabledResource(entry: unknown): ToggleValue | undefined {
@@ -277,26 +326,91 @@ function migrateEnabledResource(entry: unknown): ToggleValue | undefined {
   return entry.enabled ? "enabled" : "disabled";
 }
 
-function parseOverrides(
+function parsePolicy(path: string, state: Record<string, unknown>): ToggleStateResult {
+  const files = parseFileOverrides(path, state.files);
+  if (files._tag === "err") {
+    return files;
+  }
+  const repositories = parseRepositoryOverrides(path, state.repositories);
+  if (repositories._tag === "err") {
+    return repositories;
+  }
+  return ok({ files: files.value, repositories: repositories.value });
+}
+
+function parseFileOverrides(
   path: string,
   entries: unknown,
-  toValue: (entry: unknown) => unknown,
-): ToggleStateResult {
+): Result<Map<ResourcePath, ToggleValue>, ToggleStateMalformed> {
   if (!isRecord(entries)) {
     return err(new ToggleStateMalformed(path, undefined));
   }
-  const overrides = new Map<ResourcePath, ToggleValue>();
-  for (const [key, entry] of Object.entries(entries)) {
+  const files = new Map<ResourcePath, ToggleValue>();
+  for (const [key, value] of Object.entries(entries)) {
     const id = parseResourcePath(key);
-    const value = toValue(entry);
-    if (!(id && isToggleValue(value))) {
+    // Two spellings of one path (such as a trailing slash) would otherwise silently drop one.
+    if (!(id && isToggleValue(value)) || files.has(id)) {
       return err(new ToggleStateMalformed(path, key));
     }
-    overrides.set(id, value);
+    files.set(id, value);
   }
-  return ok(overrides);
+  return ok(files);
+}
+
+function parseRepositoryOverrides(
+  path: string,
+  entries: unknown,
+): Result<Map<string, Map<string, ToggleValue>>, ToggleStateMalformed> {
+  if (!isRecord(entries)) {
+    return err(new ToggleStateMalformed(path, undefined));
+  }
+  const repositories = new Map<string, Map<string, ToggleValue>>();
+  for (const [repository, resources] of Object.entries(entries)) {
+    const id = parseResourcePath(repository);
+    // Two spellings of one repository would otherwise silently drop one policy.
+    if (!id || !isRecord(resources) || repositories.has(id)) {
+      return err(new ToggleStateMalformed(path, repository));
+    }
+    const parsed = parseRelativeOverrides(path, resources);
+    if (parsed._tag === "err") {
+      return parsed;
+    }
+    repositories.set(id, parsed.value);
+  }
+  return ok(repositories);
+}
+
+function parseRelativeOverrides(
+  path: string,
+  entries: Record<string, unknown>,
+): Result<Map<string, ToggleValue>, ToggleStateMalformed> {
+  const resources = new Map<string, ToggleValue>();
+  for (const [key, value] of Object.entries(entries)) {
+    // A trailing slash names the same repository path as its bare spelling.
+    const relativePath = key.replace(/\/+$/u, "");
+    if (!validRelativePath(relativePath) || !isToggleValue(value) || resources.has(relativePath)) {
+      return err(new ToggleStateMalformed(path, key));
+    }
+    resources.set(relativePath, value);
+  }
+  return ok(resources);
+}
+
+function validRelativePath(path: string): boolean {
+  return (
+    path !== "" &&
+    path !== "." &&
+    !isAbsolute(path) &&
+    !path.includes("\0") &&
+    normalize(path) === path &&
+    path !== ".." &&
+    !path.startsWith("../")
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+const sorted = (entries: ReadonlyMap<string, ToggleValue>): Record<string, ToggleValue> =>
+  Object.fromEntries([...entries].toSorted(([left], [right]) => left.localeCompare(right)));

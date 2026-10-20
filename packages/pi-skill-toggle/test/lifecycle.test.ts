@@ -8,6 +8,7 @@ import type {
   ExtensionUIContext,
   Skill,
 } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { testTui, testTheme, testKeybindings } from "../../../test-support/pi-tui";
 import skillToggle, { registerSkillToggle } from "../index";
@@ -44,18 +45,51 @@ const temporaryDirectories: string[] = [];
 type CommandOptions = Parameters<ToggleRegistration["registerCommand"]>[1];
 type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
 
-async function selectFirstDialogItem(factory: DialogFactory): Promise<string[]> {
+async function selectFirstDialogItem(factory: DialogFactory, width = 120): Promise<string[]> {
   initTheme();
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
   component.handleInput?.(" ");
   component.invalidate();
-  return component.render(120);
+  return component.render(width);
+}
+
+async function driveDialog(
+  factory: DialogFactory,
+  keys: readonly string[],
+  width = 120,
+): Promise<{ readonly closed: boolean; readonly rendered: string[] }> {
+  initTheme();
+  let closed = false;
+  const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
+    closed = true;
+  });
+  for (const key of keys) {
+    component.handleInput?.(key);
+  }
+  return { closed, rendered: component.render(width) };
+}
+
+const ESCAPE = "\u001b";
+const DOWN = "\u001b[B";
+const SGR = new RegExp(String.raw`${ESCAPE}\[[0-9;]*m`, "gu");
+
+/** Rendered lines without color codes, as the user reads them. */
+function plain(lines: readonly string[]): string[] {
+  return lines.map((line) => line.replaceAll(SGR, ""));
+}
+
+/** Lines describing menu keys: every key hint mentions Esc. */
+function hintLines(lines: readonly string[]): string[] {
+  return plain(lines).filter((line) => /\bEsc\b/u.test(line));
 }
 
 function overrides(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleOverrides {
-  return new Map(
-    Object.entries(entries).map(([path, value]) => [resourcePathId(path, cwd), value]),
-  );
+  return {
+    files: new Map(
+      Object.entries(entries).map(([path, value]) => [resourcePathId(path, cwd), value]),
+    ),
+    repositories: new Map(),
+  };
 }
 
 function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleStateStore & {
@@ -243,7 +277,7 @@ describe("extension lifecycle", () => {
 
     expect(opened).toBe(false);
     expect(testHarness.notifications).toStrictEqual([
-      "Could not load Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged, and the model cannot read instruction or skill files until it is fixed.",
+      "Could not load Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged. Recognized reads of loaded instructions and skills are blocked until it is fixed.",
     ]);
   });
 
@@ -289,19 +323,30 @@ describe("extension lifecycle", () => {
     ]);
   });
 
-  test("shows manual-only skills as read-only rows", async () => {
-    const store = storeWith();
+  test("shows manual-only skills as read-only rows even with a stale enabled override", async () => {
+    const store = storeWith({ [skillPath]: "enabled" });
     let rendered: string[] = [];
 
     await harness(store).runCommand("", {
       promptOptions: { cwd, skills: [{ ...research, disableModelInvocation: true }] },
       custom: async (factory) => {
-        rendered = await selectFirstDialogItem(factory);
+        rendered = await selectFirstDialogItem(factory, 60);
       },
     });
 
     expect(store.writes).toStrictEqual([]);
-    expect(rendered.join("\n")).toContain("manual only");
+    expect(rendered.find((line) => line.includes("[global skill] research"))).toContain(
+      "manual only",
+    );
+    expect(rendered.join("\n")).toContain("Manual only (read-only)");
+  });
+
+  test("source-authored manual-only policy wins over persisted enables in the prompt", async () => {
+    const manual = { ...research, disableModelInvocation: true };
+    const testHarness = harness(storeWith({ [skillPath]: "enabled" }));
+    const systemPromptOptions = { cwd, sections: {}, skills: [manual] };
+    await testHarness.emit("before_agent_start", { systemPrompt: "base", systemPromptOptions });
+    expect(systemPromptOptions.skills).toStrictEqual([]);
   });
 
   test("contributes trusted project skills and hides them until enabled", async () => {
@@ -436,5 +481,162 @@ describe("extension lifecycle", () => {
     await testHarness.emit("before_agent_start", event);
     expect(testHarness.notifications).toHaveLength(2);
     expect(testHarness.notifications[1]).toContain("prompt was left unchanged");
+  });
+
+  test("Esc with search text clears the search and keeps the menu open", async () => {
+    const store = storeWith();
+    let result = { closed: true, rendered: [] as string[] };
+
+    await harness(store).runCommand("", {
+      custom: async (factory) => {
+        result = await driveDialog(factory, ["z", "z", "z", ESCAPE]);
+      },
+    });
+
+    expect(result.closed).toBe(false);
+    expect(result.rendered.join("\n")).not.toContain("No matching");
+    expect(result.rendered.join("\n")).not.toContain("zzz");
+    expect(result.rendered.find((line) => line.includes("[global skill] research"))).toContain(
+      "enabled",
+    );
+    expect(store.writes).toStrictEqual([]);
+  });
+
+  test("the menu shows one accurate key hint and keeps other list hints", async () => {
+    const many = Array.from({ length: 25 }, (_, index): Skill => {
+      const path = join(getAgentDir(), `skills/hint-${String(index).padStart(2, "0")}/SKILL.md`);
+      return {
+        ...research,
+        name: `hint-${index}`,
+        filePath: path,
+        baseDir: dirname(path),
+        sourceInfo: { ...research.sourceInfo, path },
+      };
+    });
+    const screens: (readonly [string, string[]])[] = [];
+
+    for (const [name, keys] of [
+      ["open", []],
+      ["search", ["h"]],
+      ["empty", ["z", "z", "z"]],
+      ["cleared", ["z", "z", "z", ESCAPE]],
+    ] as const) {
+      await harness(storeWith()).runCommand("", {
+        promptOptions: { cwd, skills: many },
+        custom: async (factory) => {
+          initTheme();
+          const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
+            throw new Error("menu closed unexpectedly");
+          });
+          for (const key of keys) {
+            component.handleInput?.(key);
+          }
+          screens.push([name, component.render(120)]);
+          for (const width of [1, 8, 20, 40, 60, 120]) {
+            const lines = component.render(width);
+            expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+          }
+        },
+      });
+    }
+
+    for (const [name, rendered] of screens) {
+      const text = plain(rendered).join("\n");
+      expect({ name, hints: hintLines(rendered) }).toStrictEqual({
+        name,
+        hints: [
+          "  Enter toggle · Esc clear search, then close · type to search · Space toggle (empty search)",
+        ],
+      });
+      expect({ name, stale: text.includes("Esc to cancel") }).toStrictEqual({ name, stale: false });
+      expect({ name, stale: text.includes("Enter/Space to change") }).toStrictEqual({
+        name,
+        stale: false,
+      });
+    }
+    const byName = new Map(screens.map(([name, rendered]) => [name, plain(rendered).join("\n")]));
+    // SettingsList's own scroll and empty-result hints pass through unchanged.
+    expect(byName.get("open")).toContain("  (1/25)");
+    expect(byName.get("cleared")).toContain("  (1/25)");
+    expect(byName.get("empty")).toContain("  No matching settings");
+    expect(byName.get("open")).not.toContain("No matching settings");
+  });
+
+  test("Esc with an empty search closes the menu without writing", async () => {
+    const store = storeWith();
+    const closed: boolean[] = [];
+
+    await harness(store).runCommand("", {
+      custom: async (factory) => {
+        const dialog = await driveDialog(factory, [ESCAPE]);
+        closed.push(dialog.closed);
+      },
+    });
+    await harness(store).runCommand("", {
+      custom: async (factory) => {
+        const dialog = await driveDialog(factory, ["z", "z", "z", ESCAPE, ESCAPE]);
+        closed.push(dialog.closed);
+      },
+    });
+
+    expect(closed).toStrictEqual([true, true]);
+    expect(store.writes).toStrictEqual([]);
+  });
+
+  test("a failed save restores every row to the persisted policy", async () => {
+    let rendered: string[] = [];
+    const testHarness = harness({
+      load: () => ok(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
+      set: () => failure("update"),
+    });
+
+    await testHarness.runCommand("", {
+      promptOptions: { cwd, skills: [research, deploy] },
+      custom: async (factory) => {
+        ({ rendered } = await driveDialog(factory, [" ", DOWN, " "]));
+      },
+    });
+
+    expect(rendered.find((line) => line.includes("[global skill] research"))).toContain("disabled");
+    expect(rendered.find((line) => line.includes("[project skill] deploy"))).toContain("enabled");
+    expect(testHarness.notifications).toHaveLength(1);
+  });
+
+  test("menu scope follows the persistence rule, shown once per row", async () => {
+    const home = mkdtempSync(join(tmpdir(), "pi-skill-toggle-home-"));
+    temporaryDirectories.push(home);
+    mkdirSync(join(home, ".git"));
+    vi.stubEnv("HOME", home);
+    const homePath = join(home, ".agents", "skills", "notes", "SKILL.md");
+    const homeSkill: Skill = {
+      ...research,
+      name: "notes",
+      filePath: homePath,
+      baseDir: dirname(homePath),
+      sourceInfo: { path: homePath, source: "local", scope: "project", origin: "top-level" },
+    };
+    const repo = projectWithSkill();
+    mkdirSync(join(repo.directory, ".git"));
+    const repoSkill: Skill = {
+      ...repo.skill,
+      sourceInfo: { ...repo.skill.sourceInfo, scope: "project" },
+    };
+    const descriptions: string[] = [];
+
+    for (const skill of [homeSkill, repoSkill]) {
+      await harness(storeWith()).runCommand("", {
+        promptOptions: { cwd, skills: [skill] },
+        custom: async (factory) => {
+          const dialog = await driveDialog(factory, []);
+          descriptions.push(dialog.rendered.join("\n"));
+        },
+      });
+    }
+
+    const [homeText = "", repoText = ""] = descriptions;
+    expect(homeText).toContain("Project skill · this path only");
+    expect(homeText).not.toContain("repository-wide");
+    expect(repoText).toContain("Project skill · repository-wide (all worktrees)");
+    expect(repoText.split("repository-wide")).toHaveLength(2);
   });
 });

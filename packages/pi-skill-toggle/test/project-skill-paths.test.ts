@@ -230,8 +230,8 @@ describe("discoverProjectSkillPaths", () => {
       exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
     };
     const store: ToggleStateStore = {
-      load: () => ok(new Map()),
-      set: () => ok(new Map()),
+      load: () => ok({ files: new Map(), repositories: new Map() }),
+      set: () => ok({ files: new Map(), repositories: new Map() }),
     };
     registerSkillToggle(piDouble, store);
     const discover = requiredDiscover(handlers);

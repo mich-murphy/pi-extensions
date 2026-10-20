@@ -42,7 +42,14 @@ function testContext() {
   return { directory, statePath, writeState, resourceFile, store: new ToggleStateFile(statePath) };
 }
 
-function overrides(result: ToggleStateResult): ToggleOverrides {
+function overrides(result: ToggleStateResult): ToggleOverrides["files"] {
+  if (result._tag === "err") {
+    throw new Error(result.error.message, { cause: result.error });
+  }
+  return result.value.files;
+}
+
+function failureOrValue(result: ToggleStateResult): ToggleOverrides {
   if (result._tag === "err") {
     throw new Error(result.error.message, { cause: result.error });
   }
@@ -84,7 +91,7 @@ describe("toggleStateFile", () => {
     ]);
     expect(overrides(new ToggleStateFile(context.statePath).load())).toStrictEqual(saved);
     expect(readFileSync(context.statePath, "utf8")).toBe(
-      `${JSON.stringify({ version: 6, overrides: { [first]: "disabled", [second]: "enabled" } }, null, 2)}\n`,
+      `${JSON.stringify({ version: 7, files: { [first]: "disabled", [second]: "enabled" }, repositories: {} }, null, 2)}\n`,
     );
     expect(statSync(context.statePath).mode & 0o777).toBe(0o600);
   });
@@ -135,7 +142,7 @@ describe("toggleStateFile", () => {
     const loop = join(context.directory, "loop");
     symlinkSync("loop", loop);
     const unverifiable = resourcePathId(join(loop, "SKILL.md"), context.directory);
-    context.writeState({ version: 6, overrides: { [unverifiable]: "enabled" } });
+    context.writeState({ version: 7, repositories: {}, files: { [unverifiable]: "enabled" } });
 
     const saved = overrides(context.store.set(accessible, "disabled"));
 
@@ -144,13 +151,14 @@ describe("toggleStateFile", () => {
       [accessible, "disabled"],
     ]);
     expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
-      version: 6,
-      overrides: { [accessible]: "disabled", [unverifiable]: "enabled" },
+      version: 7,
+      repositories: {},
+      files: { [accessible]: "disabled", [unverifiable]: "enabled" },
     });
   });
 
   test.each([4, 5])(
-    "reads version %i state and rewrites it as version 6 on the next update",
+    "reads version %i state and rewrites it as version 7 on the next update",
     (version) => {
       const context = testContext();
       const disabled = context.resourceFile("disabled");
@@ -164,14 +172,15 @@ describe("toggleStateFile", () => {
 
       overrides(context.store.set(disabled, "default"));
       expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
-        version: 6,
-        overrides: {},
+        version: 7,
+        repositories: {},
+        files: {},
       });
     },
   );
 
   test.each([4, 5])(
-    "keeps enabled version %i entries when rewriting them as version 6",
+    "keeps enabled version %i entries when rewriting them as version 7",
     (version) => {
       const context = testContext();
       const disabled = context.resourceFile("disabled");
@@ -191,8 +200,9 @@ describe("toggleStateFile", () => {
 
       overrides(context.store.set(disabled, "default"));
       expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
-        version: 6,
-        overrides: { [enabled]: "enabled" },
+        version: 7,
+        repositories: {},
+        files: { [enabled]: "enabled" },
       });
     },
   );
@@ -210,8 +220,9 @@ describe("toggleStateFile", () => {
       const enabled = context.resourceFile("enabled");
       overrides(context.store.set(enabled, "enabled"));
       expect(JSON.parse(readFileSync(context.statePath, "utf8"))).toStrictEqual({
-        version: 6,
-        overrides: { [enabled]: "enabled" },
+        version: 7,
+        repositories: {},
+        files: { [enabled]: "enabled" },
       });
     },
   );
@@ -230,17 +241,29 @@ describe("toggleStateFile", () => {
     ["no version", {}, ToggleStateMalformed],
     ["string version", { version: "6", overrides: {} }, ToggleStateMalformed],
     ["missing overrides", { version: 6 }, ToggleStateMalformed],
-    ["array overrides", { version: 6, overrides: [] }, ToggleStateMalformed],
+    ["array overrides", { version: 7, repositories: {}, files: [] }, ToggleStateMalformed],
     ["fractional version", { version: 4.5, overrides: {} }, ToggleStateMalformed],
-    ["newer version", { version: 7, overrides: {} }, ToggleStateTooNew],
-    ["unknown value", { version: 6, overrides: { "/skill": "sometimes" } }, ToggleStateMalformed],
-    ["null value", { version: 6, overrides: { "/skill": null } }, ToggleStateMalformed],
+    ["newer version", { version: 8, overrides: {} }, ToggleStateTooNew],
     [
-      "relative path",
-      { version: 6, overrides: { "relative/SKILL.md": "enabled" } },
+      "unknown value",
+      { version: 7, repositories: {}, files: { "/skill": "sometimes" } },
       ToggleStateMalformed,
     ],
-    ["NUL in path", { version: 6, overrides: { "/a\u0000b": "enabled" } }, ToggleStateMalformed],
+    [
+      "null value",
+      { version: 7, repositories: {}, files: { "/skill": null } },
+      ToggleStateMalformed,
+    ],
+    [
+      "relative path",
+      { version: 7, repositories: {}, files: { "relative/SKILL.md": "enabled" } },
+      ToggleStateMalformed,
+    ],
+    [
+      "NUL in path",
+      { version: 7, repositories: {}, files: { "/a\u0000b": "enabled" } },
+      ToggleStateMalformed,
+    ],
     ["null v5 entry", { version: 5, resources: { "/skill": null } }, ToggleStateMalformed],
     [
       "bad v5 flag",
@@ -270,14 +293,65 @@ describe("toggleStateFile", () => {
       `Pi skill-toggle state at ${context.statePath} is not valid JSON. Fix the file, or remove it to reset all toggles.`,
     );
     expect(messageFor({ version: 9, overrides: {} })).toBe(
-      `Pi skill-toggle state at ${context.statePath} was written by a newer pi-skill-toggle (state version 9; this version reads up to 6). Update pi-skill-toggle, or remove the file to reset all toggles.`,
+      `Pi skill-toggle state at ${context.statePath} was written by a newer pi-skill-toggle (state version 9; this version reads up to 7). Update pi-skill-toggle, or remove the file to reset all toggles.`,
     );
-    expect(messageFor({ version: 6, overrides: { "/skill": "sometimes" } })).toBe(
+    expect(messageFor({ version: 7, repositories: {}, files: { "/skill": "sometimes" } })).toBe(
       `Pi skill-toggle state at ${context.statePath} has an invalid entry for /skill. Fix or remove that entry, or remove the file to reset all toggles.`,
     );
     expect(messageFor({ version: 6 })).toBe(
       `Pi skill-toggle state at ${context.statePath} does not have the expected structure. Fix the file, or remove it to reset all toggles.`,
     );
+  });
+
+  test.each<readonly [string, Record<string, unknown>, string]>([
+    [
+      "absolute file paths",
+      { files: { "/x/SKILL.md": "enabled", "/x/./SKILL.md": "disabled" }, repositories: {} },
+      "/x/./SKILL.md",
+    ],
+    [
+      "repository keys",
+      {
+        files: {},
+        repositories: { "/x/.git": { "a.md": "enabled" }, "/x/.git/": { "b.md": "disabled" } },
+      },
+      "/x/.git/",
+    ],
+    [
+      "repository-relative paths",
+      {
+        files: {},
+        repositories: { "/x/.git": { "AGENTS.md": "enabled", "AGENTS.md/": "disabled" } },
+      },
+      "AGENTS.md/",
+    ],
+  ])("reports duplicate %s after normalization instead of keeping one", (_kind, policy, key) => {
+    const context = testContext();
+    context.writeState({ version: 7, ...policy });
+    const before = readFileSync(context.statePath, "utf8");
+
+    const failure = failureOf(context.store.load());
+    expect(failure).toBeInstanceOf(ToggleStateMalformed);
+    expect(failure).toMatchObject({ entry: key });
+    expect(failure.message).toContain(`has an invalid entry for ${key}.`);
+    expect(failureOf(context.store.set(context.resourceFile("skill"), "disabled"))).toBeInstanceOf(
+      ToggleStateMalformed,
+    );
+    expect(readFileSync(context.statePath, "utf8")).toBe(before);
+  });
+
+  test("accepts a lone trailing-slash repository path as its bare spelling", () => {
+    const context = testContext();
+    context.writeState({
+      version: 7,
+      files: {},
+      repositories: { "/x/.git/": { "nested/AGENTS.md/": "disabled" } },
+    });
+
+    const loaded = failureOrValue(context.store.load());
+    expect([...loaded.repositories]).toStrictEqual([
+      ["/x/.git", new Map([["nested/AGENTS.md", "disabled"]])],
+    ]);
   });
 
   test("surfaces unreadable state instead of treating it as empty", () => {

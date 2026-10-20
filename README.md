@@ -25,6 +25,7 @@ pi -e ./packages/pi-caffeinate/index.ts
 ```
 
 For isolated CLI interaction checks of web-tools native authentication, use [the verification skill](.agents/skills/verify-pi-web-tools/SKILL.md); it drives real Pi with synthetic credentials and retains evidence without touching your normal profile or calling providers.
+For skill-toggle menu, worktree policy, and read-guard checks, use [the skill-toggle verification skill](.agents/skills/verify-pi-skill-toggle/SKILL.md).
 
 Pi supplies its core packages to extensions at runtime. Keep those packages in `peerDependencies`; third-party runtime packages belong in the owning workspace's `dependencies`.
 

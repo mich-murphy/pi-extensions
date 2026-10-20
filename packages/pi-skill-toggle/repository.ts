@@ -15,12 +15,8 @@ type Worktree = { readonly root: string; readonly repository: string; readonly m
 
 /**
  * Find the Git worktree and repository that hold a path by reading `.git` entries directly.
- *
- * Lookups are cached per directory and never refreshed, so create one locator per evaluation.
  */
 export class RepositoryLocator {
-  private readonly worktrees = new Map<string, Worktree | undefined>();
-
   /** The repository location of an absolute path, or undefined outside a Git worktree. */
   locate(path: string): RepositoryLocation | undefined {
     const worktree = this.worktreeOf(dirname(path));
@@ -39,18 +35,30 @@ export class RepositoryLocator {
   }
 
   private worktreeOf(directory: string): Worktree | undefined {
-    if (this.worktrees.has(directory)) {
-      return this.worktrees.get(directory);
+    for (let current = directory; ; current = dirname(current)) {
+      const worktree = gitWorktreeAt(current);
+      if (worktree !== undefined) {
+        return worktree;
+      }
+      if (dirname(current) === current) {
+        return undefined;
+      }
     }
-    const parent = dirname(directory);
-    const worktree =
-      gitWorktreeAt(directory) ?? (parent === directory ? undefined : this.worktreeOf(parent));
-    this.worktrees.set(directory, worktree);
-    return worktree;
   }
 }
 
-/** A main checkout has a `.git` folder; a linked worktree has a `.git` file naming its Git folder. */
+/**
+ * Classify the `.git` entry of one directory.
+ *
+ * - A main checkout normally has a `.git` folder, which is the repository's common Git directory.
+ * - A linked worktree has a `.git` file whose `gitdir:` names its private Git folder; that folder's
+ *   `commondir` points at the shared common Git directory.
+ * - A separate-git-dir main checkout also has a `.git` file, but its `gitdir:` names the common Git
+ *   directory itself, which has no `commondir`.
+ *
+ * A `gitdir:` naming a missing folder (a pruned or moved worktree) is not a checkout at all, so it
+ * can never act as a main checkout or lend its stale path as repository identity.
+ */
 function gitWorktreeAt(directory: string): Worktree | undefined {
   const entry = join(directory, ".git");
   const kind = entryKind(entry);
@@ -65,10 +73,13 @@ function gitWorktreeAt(directory: string): Worktree | undefined {
     return undefined;
   }
   const worktreeGitDirectory = resolve(directory, gitDirectory.trim());
+  if (entryKind(worktreeGitDirectory) !== "directory") {
+    return undefined;
+  }
   const commonDirectory = readText(join(worktreeGitDirectory, "commondir"))?.trim();
   return {
     root: directory,
-    main: false,
+    main: commonDirectory === undefined || commonDirectory === "",
     repository: canonical(
       commonDirectory === undefined || commonDirectory === ""
         ? worktreeGitDirectory

@@ -5,7 +5,7 @@ import type { BuildSystemPromptOptions, Skill } from "@earendil-works/pi-coding-
 import { assert, describe, expect, test } from "vitest";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
-import { defaultToggleValue, toggleResources, toggleValue } from "../resources";
+import { defaultToggleValue, ResourcePolicy, toggleResources } from "../resources";
 
 function skill(name: string, filePath: string, sourceInfo: Readonly<Skill["sourceInfo"]>): Skill {
   return {
@@ -197,7 +197,14 @@ describe("toggleResources", () => {
     expect(defaultToggleValue(projectSkill)).toBe("disabled");
     expect(defaultToggleValue({ kind: "skill", origin: "global" })).toBe("enabled");
     expect(defaultToggleValue({ kind: "instruction", origin: "project" })).toBe("enabled");
-    expect(toggleValue(new Map(), instruction)).toBe("enabled");
-    expect(toggleValue(new Map([[instruction.id, "disabled"]]), instruction)).toBe("disabled");
+    expect(
+      new ResourcePolicy({ files: new Map(), repositories: new Map() }).value(instruction),
+    ).toBe("enabled");
+    expect(
+      new ResourcePolicy({
+        files: new Map([[instruction.id, "disabled"]]),
+        repositories: new Map(),
+      }).value(instruction),
+    ).toBe("disabled");
   });
 });

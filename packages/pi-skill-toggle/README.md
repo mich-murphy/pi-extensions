@@ -1,169 +1,195 @@
 # Pi Skill Toggle
 
-Controls which user-managed instruction files and skills Pi advertises to the
-model, and stops the model from reading the ones that are disabled.
+Controls which user-managed instructions and skills Pi advertises to the model,
+and guards supported reads of disabled resources. It does not remove files or
+provide strict context isolation.
 
 ## Command
 
-Run `/skill-toggle` to open one settings list. Project skills start disabled and
-must be enabled from this list before Pi advertises them to the model. Changes
-apply immediately and persist across projects and sessions.
+Run `/skill-toggle` in Pi's interactive terminal. Select a row and press Enter
+to toggle `enabled` / `disabled`; Space also toggles when search is empty. Type
+to search. Esc clears a nonempty search; with an empty search it closes the
+menu. Choices save immediately; closing does not undo them. Project skills start
+disabled; instructions and global skills start enabled. One hint line at the
+bottom summarizes these keys: `Enter toggle · Esc clear search, then close
+· type to search · Space toggle (empty search)`.
 
-Resources are ordered by hierarchy:
+The list groups global instructions, global skills, project/inherited
+instructions, then project skills. Rows show their origin and kind;
+the selected row's description shows its discovery path and one scope line,
+such as `Project skill · repository-wide (all worktrees)`. Global resources,
+resources outside Git, and project resources under global skill roots show
+`this path only`, matching how the choice is saved. A skill with
+`disable-model-invocation: true` is a read-only `manual only` row, not something
+the toggle can enable automatically.
 
-1. Global instructions
-2. Global skills
-3. Project and inherited instructions
-4. Project skills
+### Resources
 
-Each row is labelled `[global]` or `[project]`. Origin affects ordering and
-explanation only. Every editable instruction uses `enabled` or `disabled`, and
-every editable skill uses the same values.
+The menu includes user-managed resources Pi loaded. It also lists tracked
+`AGENTS.override.md`, `AGENTS.md` / `AGENTS.MD`, and `CLAUDE.md` / `CLAUDE.MD`
+files elsewhere in the current Git worktree. These nested instructions are
+labelled by repository-relative path. Pi does not add them to the prompt; their
+toggles control supported reads.
 
-Pi may load `AGENTS.override.md`, `AGENTS.md`, or `CLAUDE.md`. The extension
-shows whichever files Pi loaded, plus every such file tracked in the current Git
-worktree that Pi did not load, such as `web/agent/AGENTS.md`. Those nested rows
-are labelled with their path from the worktree root. Pi never puts them in the
-prompt, so toggling one only decides whether the model may read it. The menu
-includes only user-managed global and project resources. Pi already discovers the working directory's `.pi/skills`,
-ancestor `.agents/skills`, configured skill paths, and global skill roots. The
-extension leaves those native paths and winners alone, including explicit Pi
-exclusions, and supplements them with ancestor `.pi/skills`, `.claude/skills`,
-and `.codex/skills` through the Git root. A supplemental skill never displaces a
-same-named native winner. Names already loaded through CLI or SDK additional
-skill paths are reserved too, without making those temporary skills toggle rows.
-When supplemental harness directories contain the same skill name, the first
-copy wins without a startup collision warning. Unique
-skills from later directories are still loaded. Malformed skills are skipped
-rather than reported as extension loading errors. Projects outside a Git
-worktree are limited to the working directory so a parent user's skills are not
-mistaken for project skills. Missing configured packages are never installed
-merely to inspect native winners.
+Pi's native discovery, configured skill paths, exclusions, and same-name winners
+are preserved. The extension supplements project discovery with ancestor
+`.pi/skills` and working-directory/ancestor `.claude/skills` and `.codex/skills`,
+through the Git root. Pi already discovers working-directory `.pi/skills`,
+ancestor `.agents/skills`, and global roots. Supplemental discovery requires
+project trust and, outside Git, stays within the working directory.
 
-Project-scoped skills may also live elsewhere when project settings configure
-their directory. Package, internal, unrelated extension-provided, and temporary
-CLI skills remain outside the toggle's scope.
+Supplemental skills never displace native or temporary CLI/SDK skill names.
+Among supplemental copies, the first discovered name wins; unique later skills
+still load. Malformed supplemental skills are skipped, and missing configured
+packages are not installed merely to inspect native winners. Project settings
+may configure skills outside conventional roots. Package, internal, unrelated
+extension-provided, and temporary CLI/SDK skills are outside the toggle's scope.
 
-A skill that declares `disable-model-invocation: true` already requires
-explicit invocation, so it appears as a read-only `manual only` row.
+## Scope and reads
 
-## Blocking reads
+One policy resolver supplies the menu value, prompt filtering, and read guard:
 
-Removing a resource from the prompt does not stop a model from finding the file
-and reading it. The extension also refuses tool calls that would read a
-disabled resource:
+- **Repository resources:** one choice for a repository-relative path across
+  every worktree of the same repository, including linked worktrees elsewhere.
+  Repository identity is the canonical common Git directory. There are no
+  worktree-specific overrides.
+- **Global resources and resources outside Git:** choices use their absolute
+  discovery paths, even when global configuration itself is in Git.
+- **Instructions:** only the instruction's own path and repository equivalents
+  are protected. Disabling `AGENTS.md` does not disable `web/AGENTS.md`.
+- **Skills:** protection covers the actual directory containing `SKILL.md` and
+  its descendants, including references and scripts, under configured or nested
+  roots too. Separately loaded nested skills own their scope and follow their
+  own policy and manual invocation, rather than an outer skill's policy;
+  independently loaded standalone Markdown skills likewise own only their file.
+  Repository-equivalent directories share policy. Matching folder or skill
+  names in unrelated roots or repositories do not share policy.
 
-- **`read`, in every session.** The refusal names the resource and says it is
-  disabled in `/skill-toggle`.
-- **`bash`, in subagent sessions only.** A command is refused when it prints
-  the content of a disabled resource: a literal file argument of a reader such
-  as `cat`, `head`, `tail`, `sed -n`, `awk`, `nl`, `grep`, or `rg`; the list of a
-  `for` loop whose body runs such a reader; an input redirect; or a path in an
-  inline Python, Node, Perl, or Ruby script that calls a file-reading API. The
-  check follows `cd`, subshells, `bash -c`, command substitutions, and wrappers
-  such as `env` and `timeout`. The refusal names the disabled files, so the
-  subagent can run the command again without them.
+Disabled resources are omitted from subsequent prompt construction. Supported
+model tool calls are also refused with a message naming the disabled resource:
 
-The `bash` check errs towards allowing commands. It never refuses listing
-(`find`, `ls`, `rg --files`, `grep -l`), counting (`wc`, `grep -c`), editing
-(`sed -i`, `perl -pi`, redirects), copying, or Git commands, and it skips
-anything it cannot resolve without running the shell, such as variables, globs,
-and computed paths. Main sessions keep unrestricted `bash`, so maintaining
-instructions and skills by hand keeps working. `edit`, `write`, `grep`, `find`,
-and `ls` are never checked.
+- **`read`, in all sessions.** Paths are resolved from the tool's working
+  directory, with Pi-style `@` and `~` handling.
+- **`bash`, only in subagent sessions.** This is a best-effort check for known
+  literal content readers such as `cat`, `head`, `tail`, `sed`, `awk`, `grep`,
+  and `rg`, including their input redirects. Simple `for` loops are recognized
+  only when a reader takes the exact loop variable, such as `cat "$f"`.
+  Supported shell wrappers, literal shell scripts, and substitutions are
+  inspected in their command's directory. Literal `cd` targets support `--`,
+  `-L`, and `-P`; uncertain directory changes stop relative-path resolution.
+  This is not a general shell interpreter or an inline Python/Node/Perl/Ruby
+  file-read detector.
 
-A session is a subagent session when its header records a parent session id,
-which is what `@gotgenes/pi-subagents` writes. Pi's own `/new` and `/fork`
-record the parent's session file path instead, so those stay main sessions.
+A subagent session has a parent session id in its header, as written by
+`@gotgenes/pi-subagents`. Pi's `/new` and `/fork` record a parent session file
+path instead, so they remain main sessions for this check.
 
-Paths match by location, not content:
+Explicit `/skill:name` invocation lets that loaded skill's files remain readable
+for the rest of the current session. This exception is session-local, does not
+change saved policy, and is not inherited by subagents. Source-level manual-only
+skills still require explicit invocation. User `@file` attachments and `!`
+commands are not checked.
 
-- A disabled skill blocks its whole folder, including `references/` and
-  scripts, under any `.agents/skills`, `.claude/skills`, `.codex/skills`,
-  `.pi/skills`, or agent-directory `skills` root. The skill is matched by folder
-  name, so a copy in another worktree is blocked too. A skill enabled anywhere
-  keeps that name readable.
-- A disabled instruction blocks its own path and the same path from the
-  worktree root in every worktree of the same repository, including linked
-  worktrees outside the checkout. A nested `AGENTS.md` at a different path stays
-  readable unless it is disabled itself.
+### Limitations
 
-A skill the user invokes with `/skill:name` stays readable for the rest of that
-session, so its references and scripts can be loaded; subagents do not inherit
-this. `@file` attachments and `!` commands come from the user and are never
-checked.
+This is a prompt and supported-read control, **not a security boundary**:
+
+- Main-session `bash` is unrestricted. `edit`, `write`, `grep`, `find`, and `ls`
+  tools are unaffected in every session.
+- The shell check skips unsupported or unresolvable reads, including computed
+  paths, globs, general variable expansion, expanding heredocs, and non-shell
+  interpreter scripts. Git and network access are unrestricted; listing,
+  counting, editing, and copying forms are not treated as content readers.
+  Search tools and other commands can still expose content.
+- Inline interpreter code is not inspected: `python -c`, `node -e`, `perl -e`,
+  and `ruby -e` reads, as well as interpreter heredocs, are not detected.
+- Loop variables are tracked only when a reader uses them directly. Copying one
+  into another variable (`g=$f; cat "$g"`) is not tracked, and a temporary
+  assignment to the loop variable (`f=x cmd`) makes that binding unknown for
+  the rest of the loop body.
+- Paths are compared by on-disk identity as well as lexically. A read through a
+  symlink, or through a differently cased name on a case-insensitive file
+  system such as default macOS APFS, is blocked when it reaches a protected
+  file. On case-sensitive file systems, a distinct `agents.md` beside
+  `AGENTS.md` stays readable. Persisted choices for files that are not loaded
+  and not present on disk still match only their exact path.
+- Shell analysis is approximate: it can miss reads or refuse commands that would
+  not actually print a resource. Disabling a resource does not erase existing
+  conversation context, earlier tool output, or copies obtained elsewhere.
 
 ## State
 
-Only choices that differ from the default are stored: disabled global resources
-and enabled project skills. They live in `~/.pi/agent/pi-skill-toggle.json`, or
-the agent directory selected by Pi's configuration, keyed by absolute discovery
-path so projects and same-named skills never collide:
+Choices differing from the default live in `~/.pi/agent/pi-skill-toggle.json`
+(or Pi's selected agent directory). Version 7 separates absolute file choices
+from repository policy:
 
 ```json
 {
-  "version": 6,
-  "overrides": {
-    "/Users/me/.pi/agent/skills/research/SKILL.md": "disabled",
-    "/work/project/.agents/skills/deploy/SKILL.md": "enabled"
+  "version": 7,
+  "files": {
+    "/Users/me/.pi/agent/skills/research/SKILL.md": "disabled"
+  },
+  "repositories": {
+    "/work/project/.git": {
+      ".agents/skills/deploy/SKILL.md": "enabled",
+      "AGENTS.md": "disabled"
+    }
   }
 }
 ```
 
-Loading only reads the file. A toggle re-reads the file, changes one entry,
-drops entries whose path no longer exists, and replaces the file atomically, so
-toggles made in other Pi sessions are kept and a reader never sees a partial
-file. There is no lock: if two sessions toggle in the same instant, the last
-write wins.
+Two spellings of one key that normalize to the same path, such as `/x/.git` and
+`/x/.git/`, are reported as a malformed entry rather than silently merged.
 
-Version 4 and 5 files are read as they are and rewritten as version 6 by the
-next toggle. Older, name-keyed state is ignored.
+Each toggle re-reads state, changes one choice, and atomically replaces the file.
+Returning a resource to its default removes its explicit choice. Definitely
+missing absolute-file entries are pruned; repository policy is retained even
+when a checkout or resource is absent. Unrelated choices are preserved. There is
+no lock: simultaneous updates can overwrite one another; the last write wins.
 
-An override applies to every worktree of its repository. A resource without its
-own override takes the override of the same path from the worktree root in
-another worktree, preferring the main checkout's. Toggling a row in a linked
-worktree stores an explicit override for that worktree, even when the value
-matches the default, so it is not replaced by the inherited one.
+### Upgrading to version 7
 
-## Pi versions
+Version 7 is a breaking change to toggle behavior and the state format:
 
-Pi 0.86 and newer hand each run a private, mutable copy of the prompt options.
-The extension removes hidden resources from that copy and Pi renders the prompt,
-so prompt caching and section diffing keep working. If another extension
-replaces the whole system prompt, Pi sends that text and toggles do not apply
-to it.
+- **Choices are repository-wide.** A choice for a repository resource applies in
+  every worktree of that repository. Earlier versions kept a separate choice per
+  checkout path.
+- **Conflicts resolve on migration.** Versions 4, 5, and 6 migrate in memory.
+  Recognizable repository paths become shared repository choices. When
+  worktrees disagree, the main checkout's choice wins; otherwise the lexically
+  first absolute path wins. Paths in pruned or moved worktrees whose Git folder
+  no longer exists are outside Git and stay absolute-file choices.
+- **The next toggle discards the losing values.** Loading never rewrites the
+  file, but the next successful toggle saves version 7 and permanently drops the
+  losing per-worktree values. Back up the file first to keep them.
+- **Older releases refuse version 7.** An earlier pi-skill-toggle reports the
+  file as written by a newer version instead of resetting it. Update the
+  extension, or remove the file to reset all toggles.
 
-Pi 0.85 exposes only the rendered prompt. There the extension replaces the exact
-project-context and skills sections and returns the new text. Pi has discovered
-`.agents/skills` natively since 0.54, so the supplemental discovery rules above
-also avoid duplicate native paths on the supported 0.85 release.
-`hideResources` in `prompt-filter.ts` holds both prompt strategies; its legacy
-half can be deleted once Pi 0.85 support is dropped.
+Name-keyed state from versions 1 to 3 is ignored.
 
-## Failure behavior
+## Compatibility and failures
 
-The prompt is touched only when a loaded resource is hidden. If state cannot be
-loaded, the prompt remains unchanged, every instruction and skill is treated as
-disabled for reads, and the error is shown once until it changes or clears. A failed toggle restores the row and is never half-written.
-On Pi 0.85 and older, a section that cannot be matched exactly is reported
-instead of silently claiming success.
+Pi 0.86+ provides private mutable prompt options; the extension filters those so
+Pi's prompt rendering, caching, and section diffing keep working. Pi 0.85 uses
+exact rendered-section replacement without mutating live options. An unmatched
+legacy section is reported. If another extension replaces the entire system
+prompt, its replacement can bypass this filtering.
+
+Invalid JSON, malformed policy, a newer unsupported version, or filesystem
+errors are reported rather than silently resetting choices. On a load failure,
+the prompt is left unchanged; the read guard treats known loaded resources as
+disabled, subject to the manual-invocation exception and the tool limitations
+above. This does not guarantee that all instruction or skill content is blocked.
+A failed save leaves the previous policy and displayed values in place. Repeated
+identical state errors are reported once until the error changes or clears.
 
 ## Maintainer invariants
 
-- Never edit an instruction file or `SKILL.md`.
-- Never override source-level `disable-model-invocation`.
-- Preserve manual `/skill:name` invocation, `@file`, and `!` commands.
-- Check `bash` only in subagent sessions, and refuse a command only when its
-  literal text shows it prints a disabled resource.
-- Never check `edit`, `write`, `grep`, `find`, or `ls`.
-- Treat every resource as disabled for reads when state cannot be loaded.
-- Reserve every native skill name and contribute only deduplicated supplemental project files.
-- Keep global resources before project resources in the menu.
-- Identify resources by path, never by display or project name.
-- Treat a `temporary` skill as a project skill only when this extension
-  contributed its path.
-- Never mutate prompt options on Pi 0.85. They are Pi's live objects.
-- Return a replacement prompt only on Pi 0.85, and only when a
-  resource is hidden.
-- Keep project skills model-hidden until the user enables them.
-- Preserve unrelated state during updates and cleanup.
+- Never edit resource contents or override source-level manual-only behavior.
+- Use the same repository/absolute-path policy for menu, prompt, and reads; never
+  identify resources by display name or infer unrelated copies from folder names.
+- Keep manual invocation and user attachments/commands working; never broaden
+  shell guarding to main sessions or guard `edit`, `write`, `grep`, `find`, or `ls`.
+- Preserve native discovery winners and exclusions, global-first menu ordering,
+  unrelated saved choices, and project-skills-disabled defaults.
