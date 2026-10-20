@@ -1,7 +1,7 @@
 # pi-web-tools verification map
 
-This maintained map covers baseline behavior and synthetic native authentication in real Pi
-1.1.0. Start each journey with fresh scratch state through the helper; never
+This maintained map covers baseline behavior and synthetic native authentication in the
+checkout's pinned Pi devDependency. Start each journey with fresh scratch state through the helper; never
 drive a shared instance.
 
 ## Features

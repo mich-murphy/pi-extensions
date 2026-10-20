@@ -1,6 +1,6 @@
 ---
 name: verify-pi-web-tools
-description: Verify pi-web-tools native login/logout, registration, model catalog, reload, and invalid configuration in an isolated real Pi 1.1.0 terminal UI without real credentials or provider calls.
+description: Verify pi-web-tools native login/logout, registration, model catalog, reload, and invalid configuration in an isolated real terminal UI of the checkout's pinned Pi devDependency without real credentials or provider calls.
 ---
 
 # Verify pi-web-tools
@@ -18,7 +18,13 @@ the documented development setup), run:
 .agents/skills/verify-pi-web-tools/scripts/verify.py startup
 ```
 
-Requires Python 3, Node, tmux, and installed Pi **1.1.0**. The executable
+Requires Python 3, Node, tmux, and the checkout's installed dependencies. Pi is
+**the checkout's pinned Pi devDependency**: the helper reads the expected
+version of `@earendil-works/pi-coding-agent` from the root `package.json`,
+requires `node_modules/@earendil-works/pi-coding-agent/package.json` to match it,
+runs that package's `bin.pi` entry with `node`, and imports the SDK from the
+package's own entry. A Renovate bump therefore needs no script edit. A global
+`pi` on PATH is noted in the doctor output but never run. The executable
 resolves the checkout from its own location, so it also works from another cwd.
 It creates a private tmux socket, scratch HOME, `PI_CODING_AGENT_DIR`, temporary
 directory, and empty cwd under `/tmp`. Concurrent runs do not share state.
@@ -27,12 +33,13 @@ The exact Pi argv is saved in `launch.json`. It uses `env -i` with only scratch
 paths, PATH, TERM, offline/version-check/telemetry controls, and:
 
 ```text
-pi --no-extensions -e <checkout>/packages/pi-web-tools/index.ts
+node <checkout>/node_modules/@earendil-works/pi-coding-agent/<bin.pi>
+  --no-extensions -e <checkout>/packages/pi-web-tools/index.ts
   --no-mcp --no-skills --no-prompt-templates --no-context-files --no-themes
   --no-approve --offline --no-session --verbose --tui-mode regular
 ```
 
-Pi 1.1.0 explicitly permits `-e` with `--no-extensions`; the latter disables
+Pi explicitly permits `-e` with `--no-extensions`; the latter disables
 discovered, configured, and built-in extensions. Empty scratch settings declare
 no packages and disable cache warming. No real user settings, credentials,
 context, global MCP, skills, or prompts are loaded. Ready means the real
@@ -41,8 +48,10 @@ not merely that a process exists.
 
 ## Doctor
 
-The helper checks version, startup extension identity/errors, and the owned tmux
-pane (`doctor.txt`). A read-only public SDK second view loads the **same sole
+The helper checks the version against the pinned devDependency, startup
+extension identity/errors, and the owned tmux pane. `doctor.txt` (also printed)
+records the version, the exact Pi command, the SDK entry, and any global `pi`
+that was noted but not run. A read-only public SDK second view loads the **same sole
 extension** with discovery disabled, enumerates all operation models and tool
 descriptions, and records zero skills/prompts/context in `catalog-doctor.json`.
 It never calls `prompt()`, reads real provider secrets, or executes a tool. This
