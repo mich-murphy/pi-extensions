@@ -70,6 +70,7 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
 "$H" commands --evidence "$E"
 "$H" metadata --evidence "$E"
 "$H" live --evidence "$E"
+"$H" cache --evidence "$E"
 ```
 
 - `catalog`: actual `pi --list-models claude-sdk`; all five advertised IDs required.
@@ -86,6 +87,13 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
   journeys, then runs the existing **unfiltered** `npm run test:claude-sdk-upgrade`.
   The gate covers streaming text, deferred `contract_probe`, coding `read`, and
   every advertised model's actual resolution/limits. It must pass in full.
+- `cache`: same allowance pre-check, then `scripts/cache-probe.ts` (via jiti)
+  drives real multi-turn sessions through the production runner in the owned
+  package snapshot and asserts cache read shares, suffix-only writes, no hidden
+  side requests, cross-session preamble and fan-out reuse. See
+  [cache](features/cache.md). When a check fails, re-run the probe with
+  `PI_CLAUDE_SDK_CACHE_DIAGNOSTICS=1` or
+  `PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE=<path>` to see breakpoints and miss causes.
 
 For the actual merge proof, use a **fresh** evidence directory and run:
 
@@ -100,7 +108,7 @@ printf 'verification exit=%s; evidence=%s\n' "$RESULT" "$E"
 
 Run without shell `set -e`, or use a cleanup trap so a nonzero result cannot skip
 cleanup. Exit 0 means requested journeys passed; 2 means blocked; 1 means failed.
-Only `all` exit 0 with **doctor, catalog, status, usage, metadata, live all passed**
+Only `all` exit 0 with **doctor, catalog, status, usage, metadata, live, cache all passed**
 satisfies the merge gate. A single feature's exit 0 is only that feature's proof.
 Unexpected API/schema/protocol errors remain failures, not automatic skips.
 
@@ -127,7 +135,8 @@ the checkout. This is not a mock: same source snapshot, SDK, CLI, subscription,
 and gate command; only cwd/state/attestation destination differ. This verifies
 explicit CLI extension loading, not package installation or a user's existing
 TUI configuration. Do not claim the `/model` picker, keyboard UI, installation,
-images, cancellation, or cache diagnostics were covered by this seed map.
+images, cancellation, or cache diagnostics output were covered by this seed map
+(`cache` proves live cache reuse, not the diagnostics).
 
 Before/after driving, compare `git status --short` against the starting state;
 this checkout may already have unrelated changes. No runtime, tests, package

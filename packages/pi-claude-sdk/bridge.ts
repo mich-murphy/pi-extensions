@@ -22,6 +22,10 @@ export type TokenUsage = {
   readonly output: number;
   readonly cacheRead: number;
   readonly cacheWrite: number;
+  /** Subset of `cacheWrite` written with 1-hour retention, when the API reports the split. */
+  readonly cacheWrite1h?: number;
+  /** Subset of `cacheWrite` written with 5-minute retention, when the API reports the split. */
+  readonly cacheWrite5m?: number;
 };
 
 /** A JSON value its holder cannot mutate. */
@@ -109,9 +113,13 @@ class AssistantMessageWriter {
         return false;
       }
       case "usage": {
-        const { input, output, cacheRead, cacheWrite } = event.usage;
+        const { input, output, cacheRead, cacheWrite, cacheWrite1h } = event.usage;
         const totalTokens = input + output + cacheRead + cacheWrite;
-        Object.assign(this.output.usage, event.usage, { totalTokens });
+        Object.assign(
+          this.output.usage,
+          { input, output, cacheRead, cacheWrite, totalTokens },
+          cacheWrite1h === undefined ? {} : { cacheWrite1h },
+        );
         calculateCost(this.model, this.output.usage);
         return false;
       }

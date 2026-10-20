@@ -13,6 +13,12 @@ const usageSchema = Schema.Struct({
   output_tokens: tokenCountSchema,
   cache_read_input_tokens: tokenCountSchema,
   cache_creation_input_tokens: tokenCountSchema,
+  cache_creation: lenientOptional(
+    Schema.Struct({
+      ephemeral_5m_input_tokens: tokenCountSchema,
+      ephemeral_1h_input_tokens: tokenCountSchema,
+    }),
+  ),
 });
 const modelCallSchema = Schema.Struct({
   model: lenientOptional(Schema.NonEmptyString),
@@ -256,11 +262,28 @@ export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkPr
  * @returns Complete counts where each reported value replaces the previous one.
  */
 export function applyUsage(previous: TokenUsage | undefined, reported: ReportedUsage): TokenUsage {
+  const prior = previous ?? NO_USAGE;
   return {
-    input: reported.input_tokens ?? previous?.input ?? 0,
-    output: reported.output_tokens ?? previous?.output ?? 0,
-    cacheRead: reported.cache_read_input_tokens ?? previous?.cacheRead ?? 0,
-    cacheWrite: reported.cache_creation_input_tokens ?? previous?.cacheWrite ?? 0,
+    input: reported.input_tokens ?? prior.input,
+    output: reported.output_tokens ?? prior.output,
+    cacheRead: reported.cache_read_input_tokens ?? prior.cacheRead,
+    cacheWrite: reported.cache_creation_input_tokens ?? prior.cacheWrite,
+    ...cacheWriteSplit(reported.cache_creation ?? {}, prior),
+  };
+}
+
+const NO_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+/** The 1-hour/5-minute split of cache writes, keeping earlier values the report omits. */
+function cacheWriteSplit(
+  creation: NonNullable<ReportedUsage["cache_creation"]>,
+  prior: TokenUsage,
+): Pick<TokenUsage, "cacheWrite1h" | "cacheWrite5m"> {
+  const cacheWrite1h = creation.ephemeral_1h_input_tokens ?? prior.cacheWrite1h;
+  const cacheWrite5m = creation.ephemeral_5m_input_tokens ?? prior.cacheWrite5m;
+  return {
+    ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
+    ...(cacheWrite5m === undefined ? {} : { cacheWrite5m }),
   };
 }
 

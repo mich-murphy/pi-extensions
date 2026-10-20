@@ -55,14 +55,15 @@ describe("cache diagnostics", () => {
     expect(secondDiagnostic?.type).toBe("request");
     assert(secondDiagnostic?.type === "request", "missing request diagnostic");
     expect(secondDiagnostic.commonPrefixBlocks).toBe(first.promptBlocks.length - 1);
-    expect(secondDiagnostic.breakpointBlock).toBe(second.cacheBreakpoint);
+    expect(secondDiagnostic.breakpoints).toStrictEqual(second.cacheBreakpoints);
+    expect(secondDiagnostic.prefixChange).toBe("appended");
     expect(secondDiagnostic.commonPrefixCharacters).toBeGreaterThan(100_000);
     expect(secondDiagnostic.imageBase64Characters).toBe(16_000);
     expect(JSON.stringify(secondDiagnostic)).not.toContain("stable build output");
     expect(JSON.stringify(secondDiagnostic)).not.toContain("cGl4ZWxz");
 
-    const firstWire = await drain(buildPromptStream(first.promptBlocks, first.cacheBreakpoint));
-    const secondWire = await drain(buildPromptStream(second.promptBlocks, second.cacheBreakpoint));
+    const firstWire = await drain(buildPromptStream(first.promptBlocks, first.cacheBreakpoints));
+    const secondWire = await drain(buildPromptStream(second.promptBlocks, second.cacheBreakpoints));
     const firstContent = sdkContentRecords(firstWire[0]);
     const secondContent = sdkContentRecords(secondWire[0]);
     const sharedPrefix = secondContent
@@ -80,7 +81,10 @@ describe("cache diagnostics", () => {
         events.push(event);
       }),
     );
-    const prompt = { promptBlocks: [textBlock("stable"), textBlock("first")], cacheBreakpoint: 0 };
+    const prompt = {
+      promptBlocks: [textBlock("stable"), textBlock("first")],
+      cacheBreakpoints: [0],
+    };
 
     tracker("claude-sdk/sonnet", prompt);
     tracker("claude-sdk/sonnet", prompt);
@@ -109,7 +113,7 @@ describe("cache diagnostics", () => {
     );
     const recordUsage = tracker("claude-sdk/sonnet", {
       promptBlocks: [textBlock("x".repeat(100_000))],
-      cacheBreakpoint: 0,
+      cacheBreakpoints: [0],
     });
     recordUsage({ input: 94_337, output: 100, cacheRead: 27_165, cacheWrite: 0 });
 
@@ -124,7 +128,7 @@ describe("cache diagnostics", () => {
   it.effect("measures the gap between requests with the Clock in scope", () =>
     Effect.gen(function* () {
       const events: CacheDiagnostic[] = [];
-      const prompt = { promptBlocks: [textBlock("stable")], cacheBreakpoint: 0 };
+      const prompt = { promptBlocks: [textBlock("stable")], cacheBreakpoints: [0] };
 
       const tracker = yield* createCacheDiagnosticTracker((event) => {
         events.push(event);
@@ -137,4 +141,77 @@ describe("cache diagnostics", () => {
       expect(events[1]).toMatchObject({ type: "request", turn: 2, msSincePreviousRequest: 5000 });
     }),
   );
+
+  it.effect("classifies prefix changes and the likely cause of a low cache read", () =>
+    Effect.gen(function* () {
+      const events: CacheDiagnostic[] = [];
+      const tracker = yield* createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      });
+      const base = {
+        promptBlocks: [textBlock("system"), textBlock("x".repeat(8000)), textBlock("continue")],
+        cacheBreakpoints: [0, 1],
+        toolDescription: "tools",
+      };
+      const otherTools = { ...base, toolDescription: "other tools" };
+      const otherSystem = {
+        ...otherTools,
+        promptBlocks: [textBlock("changed"), ...base.promptBlocks.slice(1)],
+      };
+      const miss = { input: 3000, output: 1, cacheRead: 0, cacheWrite: 0 };
+
+      tracker("m", base)(miss);
+      yield* TestClock.adjust("2 hours");
+      tracker("m", base)(miss);
+      tracker("m", otherTools)(miss);
+      tracker("m", otherSystem)(miss);
+      tracker("m", otherSystem, { reasoning: "high" })(miss);
+      tracker("m", otherSystem, { reasoning: "high", ttl: "none" })(miss);
+      tracker("m", otherSystem, { reasoning: "high" })({ ...miss, input: 10 });
+      tracker("other", otherSystem, { reasoning: "high" })({ ...miss, cacheRead: 9000 });
+
+      expect(
+        events.flatMap((event) => (event.type === "request" ? [event.prefixChange] : [])),
+      ).toStrictEqual([
+        "first",
+        "appended",
+        "tools-changed",
+        "system-changed",
+        "reasoning-changed",
+        "appended",
+        "appended",
+        "model-changed",
+      ]);
+      expect(
+        events.flatMap((event) => (event.type === "usage" ? [event.likelyMissCause] : [])),
+      ).toStrictEqual([
+        "first",
+        "ttl-expired",
+        "prefix-changed",
+        "prefix-changed",
+        "prefix-changed",
+        "caching-disabled",
+        "below-minimum",
+        undefined,
+      ]);
+      expect(events[2]).toMatchObject({ type: "request", ttl: "5m", breakpoints: [0, 1] });
+    }),
+  );
+
+  test("attributes a low read to the lookback window when no breakpoint reaches the previous write", () => {
+    const events: CacheDiagnostic[] = [];
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
+    const entries = Array.from({ length: 30 }, (_, index) => textBlock(`entry ${index}`));
+    tracker("m", { promptBlocks: [textBlock("system"), textBlock("tail")], cacheBreakpoints: [1] });
+    tracker("m", {
+      promptBlocks: [textBlock("system"), textBlock("tail"), ...entries],
+      cacheBreakpoints: [31],
+    })({ input: 5000, output: 1, cacheRead: 0, cacheWrite: 0 });
+
+    expect(events.at(-1)).toMatchObject({ type: "usage", likelyMissCause: "lookback" });
+  });
 });

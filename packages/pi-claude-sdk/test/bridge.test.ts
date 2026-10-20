@@ -219,3 +219,26 @@ describe("provider failures", () => {
     expect(message.errorMessage).not.toContain("adapter defect");
   });
 });
+
+describe("cache usage", () => {
+  test("forwards the 1h cache-write split to Pi usage without the 5m diagnostic field", async () => {
+    const events = await piEvents([
+      {
+        type: "usage",
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 5,
+          cacheWrite1h: 5,
+          cacheWrite5m: 0,
+        },
+      },
+      { type: "done", reason: "stop" },
+    ]);
+
+    const { message } = terminalOf(events);
+    expect(message.usage).toMatchObject({ cacheWrite: 5, cacheWrite1h: 5, totalTokens: 7 });
+    expect(message.usage).not.toHaveProperty("cacheWrite5m");
+  });
+});

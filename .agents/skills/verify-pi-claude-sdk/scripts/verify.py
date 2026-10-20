@@ -35,7 +35,7 @@ def stop(p):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'all', 'cleanup'])
+    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'cache', 'all', 'cleanup'])
     ap.add_argument('--evidence', required=True, type=Path)
     a = ap.parse_args()
     evidence = a.evidence.resolve()
@@ -155,7 +155,13 @@ def main():
             (dest / 'node_modules').symlink_to(ROOT / 'node_modules', target_is_directory=True)
         return dest
 
-    actions = ['doctor', 'catalog', 'commands', 'metadata', 'live'] if a.action == 'all' else [a.action]
+    def allowance_ok():
+        rpc_commands()  # Refresh allowance immediately before any prompt.
+        usage = (evidence / 'usage-notification.txt').read_text()
+        allowances = [float(x) for x in re.findall(r': ([0-9.]+)% remaining', usage)]
+        return 'Extra usage: disabled' in usage and bool(allowances) and min(allowances) > 0
+
+    actions = ['doctor', 'catalog', 'commands', 'metadata', 'live', 'cache'] if a.action == 'all' else [a.action]
     for action in actions:
         try:
             if action == 'doctor':
@@ -180,10 +186,7 @@ def main():
                 assert re.search(r'Tests\s+1 passed', output), 'metadata test did not run'
                 record('metadata', 'passed', 'real SDK supportedModels metadata only; filtered run does NOT attest live gate')
             elif action == 'live':
-                rpc_commands()  # Refresh allowance immediately before any prompt.
-                usage = (evidence / 'usage-notification.txt').read_text()
-                allowances = [float(x) for x in re.findall(r': ([0-9.]+)% remaining', usage)]
-                if 'Extra usage: disabled' not in usage or not allowances or min(allowances) <= 0:
+                if not allowance_ok():
                     record('live', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
                     continue
                 # User path beyond protocol tests: actual Pi text response, then read-only tool execution.
@@ -203,6 +206,24 @@ def main():
                 run('upgrade-gate', ['npm', 'run', 'test:claude-sdk-upgrade'], cwd=gate, timeout=1200)
                 shutil.copy2(gate / 'packages/pi-claude-sdk/sdk-release-contract.json', evidence / 'sdk-release-contract.json')
                 record('live', 'passed', 'Pi text/read journeys and complete unfiltered upgrade gate passed in disposable copy')
+            elif action == 'cache':
+                if not allowance_ok():
+                    record('cache', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
+                    continue
+                # Same owned source snapshot as the gate; production runner, default env, no proxy.
+                gate = copy_gate()
+                probe = [str(ROOT / 'node_modules/.bin/jiti'), str(Path(__file__).resolve().parent / 'cache-probe.ts'),
+                         '--package', str(gate / 'packages/pi-claude-sdk')]
+                try:
+                    run('cache-probe', probe, cwd=gate, timeout=900)
+                except AssertionError:
+                    if (evidence / 'cache-probe.exit').read_text().strip() != '2':
+                        raise
+                    record('cache', 'blocked', 'probe hit auth/usage limit; see cache-probe.stdout')
+                    continue
+                report = json.loads((evidence / 'cache-probe.stdout').read_text())
+                assert report.get('status') == 'passed', report.get('error') or report.get('checks')
+                record('cache', 'passed', 'live cache checks passed: ' + ', '.join(report['checks']))
         except Exception as exc:
             record(action, 'failed', str(exc))
     return 1 if any(x['status'] == 'failed' for x in results.values()) else (2 if any(x['status'] == 'blocked' for x in results.values()) else 0)

@@ -23,13 +23,19 @@ export type AgentRequest = {
   readonly systemPrompt: string;
   /** Stable prompt blocks in wire order. */
   readonly promptBlocks: readonly PromptBlock[];
-  /** Index of the prompt block that ends the cacheable prefix. */
-  readonly cacheBreakpoint: number | undefined;
+  /** Ascending, unique indexes of the prompt blocks that end a cacheable prefix. */
+  readonly cacheBreakpoints: readonly number[];
   /** Per-turn deferred Pi tool catalog. */
   readonly toolDescription: string;
   /** Pi tool names allowed during this turn. */
   readonly toolNames: ReadonlySet<string>;
 };
+
+/** Most `cache_control` blocks Anthropic accepts in one request. */
+export const MAX_CACHE_BREAKPOINTS = 4;
+
+/** Wire content blocks Anthropic searches backwards from a breakpoint for an earlier cache entry. */
+export const CACHE_LOOKBACK_BLOCKS = 20;
 
 const BRIDGE_INSTRUCTIONS = [
   "You are the model inside Pi Coding Agent. Pi, not the Claude Agent SDK, owns conversation lifecycle and tool execution.",
@@ -41,7 +47,9 @@ const BRIDGE_INSTRUCTIONS = [
   "When no tool is needed, answer the user directly.",
 ].join("\n");
 
-function transcriptEntry(
+type TranscriptEntry = { readonly role: Message["role"]; readonly block: PromptBlock };
+
+function contentEntry(
   fields: object,
   content: string | readonly (TextContent | ImageContent)[],
 ): PromptBlock {
@@ -57,48 +65,106 @@ function transcriptEntry(
   return { text: JSON.stringify({ ...fields, content: serialized }), images };
 }
 
-function transcriptEntries(messages: readonly Message[]): PromptBlock[] {
-  return messages.flatMap((message) => {
-    switch (message.role) {
-      case "user": {
-        return [transcriptEntry({ role: "user" }, message.content)];
-      }
-      case "assistant": {
-        const content = message.content.flatMap((block): object[] => {
-          if (block.type === "text") {
-            return [{ type: "text", text: block.text }];
-          }
-          if (block.type !== "toolCall") {
-            return [];
-          }
-          return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
-        });
-        if (content.length === 0) {
+function entryBlocks(message: Message): PromptBlock[] {
+  switch (message.role) {
+    case "user": {
+      return [contentEntry({ role: "user" }, message.content)];
+    }
+    case "assistant": {
+      const content = message.content.flatMap((block): object[] => {
+        if (block.type === "text") {
+          return [{ type: "text", text: block.text }];
+        }
+        if (block.type !== "toolCall") {
           return [];
         }
-        return [{ text: JSON.stringify({ role: "assistant", content }), images: [] }];
-      }
-      case "toolResult": {
-        return [
-          transcriptEntry(
-            {
-              role: "toolResult",
-              toolCallId: message.toolCallId,
-              toolName: message.toolName,
-              isError: message.isError,
-            },
-            message.content,
-          ),
-        ];
-      }
-      case "system": {
+        return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
+      });
+      if (content.length === 0) {
         return [];
       }
-      default: {
-        return [];
-      }
+      return [{ text: JSON.stringify({ role: "assistant", content }), images: [] }];
     }
-  });
+    case "toolResult": {
+      const { toolCallId, toolName, isError } = message;
+      return [contentEntry({ role: "toolResult", toolCallId, toolName, isError }, message.content)];
+    }
+    case "system": {
+      // Prompt state, not conversation: replayed into the preamble and the tool catalog.
+      return [];
+    }
+    default: {
+      return [];
+    }
+  }
+}
+
+function transcriptEntries(messages: readonly Message[]): TranscriptEntry[] {
+  return messages.flatMap((message) =>
+    entryBlocks(message).map((block) => ({ role: message.role, block })),
+  );
+}
+
+function wireBlocks(block: PromptBlock): number {
+  return 1 + block.images.length;
+}
+
+/**
+ * The earliest block strictly between two breakpoints that the upper one can still reach
+ * within the lookback window, searching the newest gap wider than the window first.
+ */
+function lookbackBreakpoint(
+  wire: readonly number[],
+  breakpoints: readonly number[],
+): number | undefined {
+  for (let index = breakpoints.length - 1; index > 0; index -= 1) {
+    const lower = breakpoints[index - 1] ?? 0;
+    const upper = breakpoints[index] ?? 0;
+    let distance = 0;
+    let candidate: number | undefined;
+    for (let block = upper - 1; block > lower; block -= 1) {
+      distance += wire[block + 1] ?? 0;
+      if (distance > CACHE_LOOKBACK_BLOCKS) {
+        break;
+      }
+      candidate = block;
+    }
+    const gap = wire.slice(lower + 1, upper + 1).reduce((total, count) => total + count, 0);
+    if (gap > CACHE_LOOKBACK_BLOCKS && candidate !== undefined) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Place cache breakpoints over the preamble and transcript entries (never the closing block).
+ *
+ * The preamble lets a new session reuse the tools, system prompt and Pi instructions; the
+ * previous request's tail (the entry before the newest assistant entry) is exactly where the
+ * last turn wrote, so it is read back even when many entries were appended since; the newest
+ * entry is written for the next turn. Remaining slots split gaps wider than the lookback window.
+ */
+function placeCacheBreakpoints(
+  transcript: readonly PromptBlock[],
+  roles: readonly Message["role"][],
+): number[] {
+  if (roles.length === 0) {
+    return [0];
+  }
+  // Entry i is block i + 1, so the entry before the newest assistant entry is block i.
+  const previousTail = roles.lastIndexOf("assistant");
+  const breakpoints = [0, ...(previousTail > 0 ? [previousTail] : []), roles.length];
+  const wire = transcript.map((block) => wireBlocks(block));
+  while (breakpoints.length < MAX_CACHE_BREAKPOINTS) {
+    const extra = lookbackBreakpoint(wire, breakpoints);
+    if (extra === undefined) {
+      break;
+    }
+    breakpoints.push(extra);
+    breakpoints.sort((left, right) => left - right);
+  }
+  return breakpoints;
 }
 
 /**
@@ -107,7 +173,8 @@ function transcriptEntries(messages: readonly Message[]): PromptBlock[] {
  * Pi carries the system prompt and the tool declarations inside the transcript's
  * system messages rather than on the context, and a later system message can
  * amend either. Both are replayed to their current state here, because the Agent
- * SDK takes one prompt and one tool catalog for the whole turn.
+ * SDK takes one prompt and one tool catalog for the whole turn. A change therefore
+ * invalidates the cached prefix once; it is never encoded as a transcript entry.
  *
  * @param context - Normalized provider context for this turn.
  * @returns The request the SDK runner sends.
@@ -124,14 +191,17 @@ export function buildAgentRequest(context: TranscriptContext): AgentRequest {
     getCurrentSystemPrompt(context.messages),
     "Complete prior Pi conversation (JSONL). Each following block is one transcript entry.",
   ].join("\n\n");
+  const transcript = [{ text: preamble, images: [] }, ...entries.map((entry) => entry.block)];
   return {
     systemPrompt: BRIDGE_INSTRUCTIONS,
     promptBlocks: [
-      { text: preamble, images: [] },
-      ...entries,
+      ...transcript,
       { text: "Continue from the final conversation entry above.", images: [] },
     ],
-    cacheBreakpoint: entries.length > 0 ? entries.length : undefined,
+    cacheBreakpoints: placeCacheBreakpoints(
+      transcript,
+      entries.map((entry) => entry.role),
+    ),
     toolDescription: [
       "Request one tool from Pi. The call is deferred to Pi and this SDK process must not execute it.",
       'The "name" field must be one of the Pi tool names below, never "pi_call" (this gateway\'s own name).',
