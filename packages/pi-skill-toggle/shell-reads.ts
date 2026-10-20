@@ -2,12 +2,18 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, resolve } from "node:path";
 
 /** A shell word, and whether its text is known without running the shell. */
-type Word = { readonly text: string; readonly literal: boolean };
+type Word = {
+  readonly text: string;
+  readonly literal: boolean;
+  /** Set only for an exact `$name`, `${name}`, or double-quoted equivalent. */
+  readonly variable?: string | undefined;
+};
 
 /** One simple command. Its heredoc body is filled in once the lexer reaches the next line. */
 type Command = {
   readonly words: readonly Word[];
   readonly inputs: readonly Word[];
+  readonly substitutions: readonly string[];
   readonly heredoc: { body: string | undefined };
 };
 
@@ -131,34 +137,13 @@ const WRAPPERS: ReadonlyMap<string, { readonly options: Options; readonly skip: 
   }),
 );
 const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
-/** Inline-script options of each interpreter family. */
-const INTERPRETERS: readonly {
-  readonly name: RegExp;
-  readonly options: Options;
-  readonly script: readonly string[];
-}[] = [
-  { name: /^python[\d.]*$/u, options: { short: "cmWX", long: [] }, script: ["-c"] },
-  {
-    name: /^(?:node|bun)$/u,
-    options: { short: "epr", long: ["--eval", "--print", "--require", "--import"] },
-    script: ["-e", "--eval", "-p", "--print"],
-  },
-  { name: /^(?:perl|ruby)$/u, options: { short: "eEI", long: [] }, script: ["-e", "-E"] },
-];
-/** An inline script reads the paths it names only when it calls a file-reading API. */
-const SCRIPT_READ_CALL =
-  /\.read\(|\bread_text\(|\bread_bytes\(|\breadlines\(|\breadFile(?:Sync)?\(|\bcreateReadStream\(|\bFile\.read\(/u;
-const PATH_SHAPED = /\/|\.\w+$/u;
-const STRING_LITERAL = /(?<quote>['"`])(?<body>(?:\\.|(?!\k<quote>)[^\\\n])*)\k<quote>/gu;
-
 /**
  * List the files a shell command prints the contents of, as far as its literal text shows.
  *
- * Reports literal file arguments of content readers such as `cat`, `head`, `sed`, `grep`, and `rg`,
- * the list of a `for` loop whose body runs a reader, input redirects, and string literals in
- * inline Python, Node, Perl, or Ruby scripts that call a file-reading API. Never reports listing,
- * counting, editing, copying, or Git commands, and skips anything it cannot resolve without running
- * the shell, such as variables, globs, and command substitutions.
+ * Best-effort detection of literal reader arguments, input redirects, shell scripts, and simple
+ * `for` loops whose readers take an exact loop-variable argument. Substitutions are analyzed in
+ * their command's directory. Dynamic paths, general shell control flow, and non-shell interpreter
+ * scripts are unsupported; unresolvable reads are skipped rather than guessed.
  *
  * @param command - Shell command text, as the bash tool receives it.
  * @param cwd - Directory relative paths start from.
@@ -177,14 +162,11 @@ function analyze(source: string, cwd: string | undefined, depth: number, reads: 
   const lexer = new Lexer(source);
   lexer.lex();
   new Evaluator(cwd, depth, reads).run(lexer.items);
-  for (const inner of lexer.substitutions) {
-    analyze(inner, cwd, depth + 1, reads);
-  }
 }
 
 class Lexer {
   readonly items: Item[] = [];
-  readonly substitutions: string[] = [];
+  private substitutions: string[] = [];
   private index = 0;
   private words: Word[] = [];
   private inputs: Word[] = [];
@@ -259,11 +241,17 @@ class Lexer {
     if (this.words.length > 0 || this.inputs.length > 0) {
       this.items.push({
         kind: "command",
-        command: { words: this.words, inputs: this.inputs, heredoc: this.heredoc },
+        command: {
+          words: this.words,
+          inputs: this.inputs,
+          substitutions: this.substitutions,
+          heredoc: this.heredoc,
+        },
       });
     }
     this.words = [];
     this.inputs = [];
+    this.substitutions = [];
     this.heredoc = { body: undefined };
   }
 
@@ -292,7 +280,14 @@ class Lexer {
       text += part.text;
       literal &&= part.literal;
     }
-    return { text, literal };
+    const raw = this.source.slice(start, this.index);
+    const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+    const variable = /^\$(?:(?<bare>[A-Za-z_]\w*)|\{(?<braced>[A-Za-z_]\w*)\})$/u.exec(unquoted);
+    return {
+      text,
+      literal,
+      variable: literal ? undefined : (variable?.groups?.bare ?? variable?.groups?.braced),
+    };
   }
 
   /** Consume one piece of a word: an escape, a quoted run, an expansion, or one character. */
@@ -302,7 +297,7 @@ class Lexer {
       case "\\": {
         const text = this.source.charAt(this.index + 1);
         this.index += 2;
-        return { text, literal: true };
+        return { text: text === "\n" ? "" : text, literal: true };
       }
       case "'": {
         return this.singleQuoted();
@@ -351,7 +346,9 @@ class Lexer {
         this.index += 1;
         return { text, literal };
       }
-      if (char === "\\" && '$`"\\'.includes(this.source.charAt(this.index + 1))) {
+      if (char === "\\" && this.source.charAt(this.index + 1) === "\n") {
+        this.index += 2;
+      } else if (char === "\\" && '$`"\\'.includes(this.source.charAt(this.index + 1))) {
         text += this.source.charAt(this.index + 1);
         this.index += 2;
       } else if (char === "$") {
@@ -435,8 +432,8 @@ function home(name: string): Word {
 
 class Evaluator {
   private readonly directories: (string | undefined)[];
-  /** Lists of the enclosing `for` loops, and whether each loop's body runs a reader. */
-  private readonly loops: { readonly list: readonly Word[]; reads: boolean }[] = [];
+  /** Nested loop bindings; other loop forms have no resolvable binding. */
+  private readonly loops: { readonly variable?: string | undefined; list: readonly Word[] }[] = [];
 
   constructor(
     cwd: string | undefined,
@@ -465,22 +462,33 @@ class Evaluator {
   }
 
   private evaluate(command: Command): void {
+    for (const inner of command.substitutions) {
+      analyze(inner, this.cwd, this.depth + 1, this.reads);
+    }
     const words = this.withoutKeywords(command.words);
     if (this.loopBoundary(words)) {
       return;
     }
-    const run = unwrap(words.slice(leadingAssignments(words)));
-    const files = this.filesRead(basename(run[0]?.text ?? ""), run.slice(1), command);
+    const assignments = leadingAssignments(words);
+    // Reassignment makes a binding unknown. Also skip temporary inline assignments rather than
+    // model when their values take effect or persist (argument expansion may precede assignment).
+    for (const assignment of words.slice(0, assignments)) {
+      const name = assignment.text.slice(0, assignment.text.indexOf("="));
+      for (const loop of this.loops) {
+        if (loop.variable === name) {
+          loop.list = [];
+        }
+      }
+    }
+    const run = unwrap(words.slice(assignments));
+    if (run[0]?.literal !== true) {
+      return;
+    }
+    const files = this.filesRead(basename(run[0].text), run.slice(1), command);
     if (files === undefined) {
       return;
     }
     this.add(files);
-    // A loop's list is read only when a reader takes a variable, such as `cat "$p"`.
-    if (files.some((word) => !word.literal)) {
-      for (const loop of this.loops) {
-        loop.reads = true;
-      }
-    }
   }
 
   /** Drop leading keywords such as `if` and `do`, opening a loop for `while` and `until`. */
@@ -489,7 +497,7 @@ class Evaluator {
     const keywords = start === -1 ? words : words.slice(0, start);
     for (const keyword of keywords) {
       if (CONDITION_LOOPS.has(keyword.text)) {
-        this.loops.push({ list: [], reads: false });
+        this.loops.push({ list: [] });
       }
     }
     return start === -1 ? [] : words.slice(start);
@@ -497,22 +505,23 @@ class Evaluator {
 
   /** Open a loop at `for` and close one at `done`; returns whether the command was either. */
   private loopBoundary(words: readonly Word[]): boolean {
-    const [first, , third] = words;
+    const [first, binding, third] = words;
     if (first?.literal !== true) {
       return false;
     }
     if (first.text === "for") {
       const list = third?.literal === true && third.text === "in" ? words.slice(3) : [];
-      this.loops.push({ list, reads: false });
+      const variable =
+        binding?.literal === true && /^[A-Za-z_]\w*$/u.test(binding.text)
+          ? binding.text
+          : undefined;
+      this.loops.push({ variable, list });
       return true;
     }
     if (first.text !== "done") {
       return false;
     }
-    const loop = this.loops.pop();
-    if (loop?.reads === true) {
-      this.add(loop.list);
-    }
+    this.loops.pop();
     return true;
   }
 
@@ -533,34 +542,55 @@ class Evaluator {
       }
       return undefined;
     }
-    const interpreter = INTERPRETERS.find((family) => family.name.test(name));
-    if (interpreter !== undefined) {
-      const script = inlineScript(interpreter, args, command.heredoc.body);
-      return script !== undefined && SCRIPT_READ_CALL.test(script)
-        ? stringLiterals(script)
-        : undefined;
-    }
     const files = fileArguments(name, args);
     return files === undefined ? undefined : [...files, ...command.inputs];
   }
 
   private changeDirectory(args: readonly Word[]): void {
-    const [target] = args;
-    let next: string | undefined;
-    if (target === undefined) {
-      next = homedir();
-    } else if (target.literal && target.text !== "-") {
-      next = this.resolve(target.text);
+    let index = 0;
+    while (args[index]?.literal === true) {
+      const option = args[index]?.text ?? "";
+      if (option === "--") {
+        index += 1;
+        break;
+      }
+      if (!/^-[LP]+$/u.test(option)) {
+        break;
+      }
+      index += 1;
     }
+    const targets = args.slice(index);
+    const [target] = targets;
+    let next: string | undefined;
+    if (targets.length === 0) {
+      next = homedir();
+    } else if (
+      targets.length === 1 &&
+      target?.literal === true &&
+      target.text !== "" &&
+      target.text !== "-" &&
+      ((index > 0 && args[index - 1]?.text === "--") || !target.text.startsWith("-"))
+    ) {
+      // A relative cd in a loop can start from a different directory on each iteration.
+      next =
+        this.loops.length === 0 || isAbsolute(target.text) ? this.resolve(target.text) : undefined;
+    }
+    // Unknown options, dynamic targets, and extra operands invalidate relative resolution.
     this.directories[this.directories.length - 1] = next;
   }
 
   private add(words: readonly Word[]): void {
     for (const word of words) {
-      if (word.literal && word.text !== "" && !word.text.startsWith("-")) {
-        const path = this.resolve(word.text);
-        if (path !== undefined) {
-          this.reads.add(path);
+      const binding =
+        word.variable === undefined
+          ? undefined
+          : this.loops.findLast((loop) => loop.variable === word.variable);
+      for (const file of binding?.list ?? [word]) {
+        if (file.literal && file.text !== "" && !file.text.startsWith("-")) {
+          const path = this.resolve(file.text);
+          if (path !== undefined) {
+            this.reads.add(path);
+          }
         }
       }
     }
@@ -718,31 +748,4 @@ function shellScript(args: readonly Word[], heredoc: string | undefined): string
     return script?.literal === true ? script.text : undefined;
   }
   return parsed.positionals.length === 0 ? heredoc : undefined;
-}
-
-function inlineScript(
-  interpreter: (typeof INTERPRETERS)[number],
-  args: readonly Word[],
-  heredoc: string | undefined,
-): string | undefined {
-  const parsed = parseArguments(args, interpreter.options);
-  if (parsed.flags.has("-i")) {
-    return undefined;
-  }
-  const inline = interpreter.script
-    .map((option) => parsed.values.get(option))
-    .find((script) => script !== undefined);
-  if (inline !== undefined) {
-    return inline;
-  }
-  const [first] = parsed.positionals;
-  return first === undefined || first.text === "-" ? heredoc : undefined;
-}
-
-/** String literals shaped like file paths: containing a `/` or ending in a file extension. */
-function stringLiterals(script: string): readonly Word[] {
-  return [...script.matchAll(STRING_LITERAL)].flatMap((match) => {
-    const text = match.groups?.body ?? "";
-    return PATH_SHAPED.test(text) ? [{ text, literal: true }] : [];
-  });
 }

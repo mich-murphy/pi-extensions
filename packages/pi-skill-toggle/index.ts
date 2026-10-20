@@ -7,21 +7,23 @@ import type {
   InputSource,
 } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { Container, SettingsList, Text } from "@earendil-works/pi-tui";
-import type { SettingItem } from "@earendil-works/pi-tui";
 import {
-  disabledResourceMatcher,
-  effectiveOverrides,
-  INSTRUCTION_FILE_NAMES,
-  toolPath,
-} from "./guard";
+  Container,
+  getKeybindings,
+  Input,
+  SettingsList,
+  Text,
+  truncateToWidth,
+} from "@earendil-works/pi-tui";
+import type { SettingItem } from "@earendil-works/pi-tui";
+import { disabledResourceMatcher, INSTRUCTION_FILE_NAMES, toolPath } from "./guard";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { hideResources } from "./prompt-filter";
 import type { PromptFilterEvent } from "./prompt-filter";
 import { RepositoryLocator } from "./repository";
 import { resourcePathId } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
-import { defaultToggleValue, isToggleValue, toggleResources, toggleValue } from "./resources";
+import { defaultToggleValue, isToggleValue, ResourcePolicy, toggleResources } from "./resources";
 import type { ToggleOverrides, ToggleResource } from "./resources";
 import { pathsReadByCommand } from "./shell-reads";
 import { ToggleStateFile } from "./state";
@@ -123,7 +125,7 @@ export function isSubagentSession(ctx: Pick<GuardContext, "sessionManager">): bo
 }
 
 const STATE_FAILURE_CONSEQUENCE = {
-  load: "The prompt was left unchanged, and the model cannot read instruction or skill files until it is fixed.",
+  load: "The prompt was left unchanged. Recognized reads of loaded instructions and skills are blocked until it is fixed.",
   update: "The toggle was not saved.",
 } as const;
 
@@ -190,10 +192,10 @@ class SkillToggle {
     if (!loaded) {
       return undefined;
     }
-    const { overrides } = effectiveOverrides(loaded, resources);
+    const policy = new ResourcePolicy(loaded);
     const hidden = new Set<ResourcePath>(
       resources
-        .filter((resource) => toggleValue(overrides, resource) === "disabled")
+        .filter((resource) => policy.value(resource) === "disabled")
         .map((resource) => resource.id),
     );
     if (hidden.size === 0) {
@@ -226,11 +228,9 @@ class SkillToggle {
       return undefined;
     }
     const loaded = this.overridesFrom("load", this.store.load(), ctx);
-    const overrides =
-      loaded === undefined ? undefined : effectiveOverrides(loaded, this.resources).overrides;
     const matcher = disabledResourceMatcher(
       this.resources,
-      overrides,
+      loaded,
       isSubagentSession(ctx) ? new Set() : this.manualSkills,
     );
     const blocked = [
@@ -289,7 +289,7 @@ class SkillToggle {
     if (!loaded) {
       return;
     }
-    let effective = effectiveOverrides(loaded, resources);
+    let policy = new ResourcePolicy(loaded);
 
     const resourcesById = new Map<string, ToggleResource>(
       resources.map((resource) => [resource.id, resource]),
@@ -297,11 +297,11 @@ class SkillToggle {
     // Rows without `values` cannot be changed, which keeps manual-only skills read-only.
     const items = resources.map<SettingItem>((resource) => ({
       id: resource.id,
-      label: `[${resource.origin}] ${resource.label}`,
-      description: resource.description,
+      label: `[${resource.origin} ${resource.kind}] ${resource.label}`,
+      description: menuDescription(resource, policy),
       ...(resource.editability === "editable"
         ? {
-            currentValue: toggleValue(effective.overrides, resource),
+            currentValue: policy.value(resource),
             values: ["enabled", "disabled"],
           }
         : { currentValue: "manual only" }),
@@ -312,50 +312,81 @@ class SkillToggle {
         new DynamicBorder((text: string) => theme.fg("accent", text));
       const title = new Text("", 1, 0);
       const help = new Text("", 1, 0);
+      const scope = new Text("", 1, 0);
       const updateText = (): void => {
         title.setText(theme.fg("accent", theme.bold("Skill Toggle")));
-        help.setText(theme.fg("dim", "enter/space toggle · type to search · esc close"));
+        scope.setText(
+          theme.fg("dim", "Saved immediately · repository choices affect all worktrees"),
+        );
+        help.setText(
+          theme.fg(
+            "dim",
+            "Enter toggle · Space toggle (empty search) · type to search · Esc clear search, then close",
+          ),
+        );
       };
-      const list = new SettingsList(
-        items,
-        Math.min(items.length + 2, 20),
-        getSettingsListTheme(),
-        (id, value) => {
-          const resource = resourcesById.get(id);
-          if (!(resource && isToggleValue(value))) {
-            return;
+      const save = (id: string, value: string): void => {
+        const resource = resourcesById.get(id);
+        if (!(resource && isToggleValue(value))) {
+          return;
+        }
+        const stored = value === defaultToggleValue(resource) ? "default" : value;
+        const saved = this.overridesFrom(
+          "update",
+          this.store.set(resource.id, stored, resource.origin),
+          ctx,
+        );
+        if (saved) {
+          policy = new ResourcePolicy(saved);
+        }
+        // A save can change equivalent rows too. Never display the optimistic SettingsList value.
+        for (const [index, row] of resources.entries()) {
+          const item = items[index];
+          if (item !== undefined && row.editability === "editable") {
+            item.currentValue = policy.value(row);
           }
-          // A worktree row that inherits another worktree's toggle keeps an explicit value,
-          // so returning it to the default still overrides the inherited one.
-          const stored =
-            value === defaultToggleValue(resource) && !effective.inherited.has(resource.id)
-              ? "default"
-              : value;
-          const saved = this.overridesFrom("update", this.store.set(resource.id, stored), ctx);
-          if (saved) {
-            effective = effectiveOverrides(saved, resources);
-          } else {
-            list.updateValue(id, toggleValue(effective.overrides, resource));
-          }
-        },
-        () => {
-          done(undefined);
-        },
-        { enableSearch: true },
-      );
+        }
+      };
+      const createList = (): SettingsList =>
+        new SettingsList(
+          items,
+          Math.min(items.length + 2, 20),
+          getSettingsListTheme(),
+          save,
+          () => {
+            done(undefined);
+          },
+          { enableSearch: true },
+        );
+      const search = new SearchQueryMirror();
+      let list = createList();
       const container = new Container();
-      for (const child of [accentBorder(), title, list, help, accentBorder()]) {
-        container.addChild(child);
-      }
+      const assemble = (): void => {
+        container.clear();
+        for (const child of [accentBorder(), title, scope, list, help, accentBorder()]) {
+          container.addChild(child);
+        }
+      };
+      assemble();
       updateText();
       return {
-        render: (width: number) => container.render(width),
+        // Older SettingsList versions can overrun very narrow widths; constrain every line.
+        render: (width: number) =>
+          container.render(Math.max(width, 10)).map((line) => truncateToWidth(line, width)),
         invalidate: () => {
           updateText();
           container.invalidate();
         },
         handleInput: (data: string) => {
-          list.handleInput(data);
+          // SettingsList cancels on Esc even mid-search and keeps its query private, so clear a
+          // nonempty query by replacing the list; an empty query lets SettingsList cancel (close).
+          if (search.cancelClears(data)) {
+            list = createList();
+            assemble();
+          } else {
+            search.handleInput(data);
+            list.handleInput(data);
+          }
           tui.requestRender();
         },
       };
@@ -420,7 +451,7 @@ class SkillToggle {
         kind: "instruction",
         origin: "project",
         label: relative(root, id),
-        description: `project instruction\n${id}`,
+        description: id,
         editability: "editable",
       }));
   }
@@ -453,4 +484,43 @@ function withNestedInstructions(
   return index === -1
     ? [...loaded, ...nested]
     : [...loaded.slice(0, index), ...nested, ...loaded.slice(index)];
+}
+
+/**
+ * Mirror of SettingsList's private search query.
+ *
+ * Routes keys exactly as SettingsList 1.1 does: selection, confirm, cancel, and Space with an
+ * empty query never reach its search input; everything else does.
+ */
+class SearchQueryMirror {
+  private input = new Input();
+
+  /** Whether a cancel key should clear a nonempty query; if so, the mirror is cleared too. */
+  cancelClears(data: string): boolean {
+    if (!getKeybindings().matches(data, "tui.select.cancel") || this.input.getValue() === "") {
+      return false;
+    }
+    this.input = new Input();
+    return true;
+  }
+
+  handleInput(data: string): void {
+    const kb = getKeybindings();
+    const listKey = (
+      ["tui.select.up", "tui.select.down", "tui.select.confirm", "tui.select.cancel"] as const
+    ).some((binding) => kb.matches(data, binding));
+    if (!listKey && !(data === " " && this.input.getValue() === "")) {
+      this.input.handleInput(data);
+    }
+  }
+}
+
+/** Discovery details plus one scope line derived from the policy rule used for persistence. */
+function menuDescription(resource: ToggleResource, policy: ResourcePolicy): string {
+  const origin = resource.origin === "global" ? "Global" : "Project";
+  const scope = policy.repositoryWide(resource)
+    ? "repository-wide (all worktrees)"
+    : "this path only";
+  const manual = resource.editability === "manual-only" ? " · Manual only (read-only)" : "";
+  return `${resource.description}\n${origin} ${resource.kind} · ${scope}${manual}`;
 }

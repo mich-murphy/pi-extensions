@@ -27,6 +27,18 @@ describe("pathsReadByCommand reports content reads", () => {
     ["cat /abs/path/AGENTS.md", ["/abs/path/AGENTS.md"]],
     ["cat ./x/../AGENTS.md", ["/repo/AGENTS.md"]],
     ["cd web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd -- web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd -L web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd -P -- web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd -LP web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ['cd web && echo "$(cat AGENTS.md)"', ["/repo/web/AGENTS.md"]],
+    [
+      '(cd web; echo "$(cat AGENTS.md)"); cat AGENTS.md',
+      ["/repo/AGENTS.md", "/repo/web/AGENTS.md"],
+    ],
+    ["cd web && echo `cat AGENTS.md`", ["/repo/web/AGENTS.md"]],
+    ["cd web && diff <(cat AGENTS.md) public.txt", ["/repo/web/AGENTS.md", "/repo/web/public.txt"]],
+    [`cd web && bash -c 'echo "$(cat AGENTS.md)"'`, ["/repo/web/AGENTS.md"]],
     ["(cd web; cat AGENTS.md); cat AGENTS.md", ["/repo/AGENTS.md", "/repo/web/AGENTS.md"]],
     ["git status && cat AGENTS.md | head", ["/repo/AGENTS.md"]],
     ["env LC_ALL=C cat AGENTS.md", ["/repo/AGENTS.md"]],
@@ -41,17 +53,12 @@ describe("pathsReadByCommand reports content reads", () => {
       "for f in AGENTS.md x/SKILL.md\ndo\n  sed -n '1,80p' \"$f\"\ndone",
       ["/repo/AGENTS.md", "/repo/x/SKILL.md"],
     ],
-    ["python3 -c \"print(open('AGENTS.md').read())\"", ["/repo/AGENTS.md"]],
-    [
-      "python3 - <<'PY'\nfrom pathlib import Path\nprint(Path('.agents/skills/x/SKILL.md').read_text())\nPY",
-      ["/repo/.agents/skills/x/SKILL.md"],
-    ],
-    [
-      "node -e \"console.log(require('fs').readFileSync('AGENTS.md','utf8'))\"",
-      ["/repo/AGENTS.md"],
-    ],
     ["cat ~/.agents/skills/x/SKILL.md", [join(homedir(), ".agents/skills/x/SKILL.md")]],
     ["cat $HOME/AGENTS.md", [join(homedir(), "AGENTS.md")]],
+    ["cat AGEN\\\nTS.md", ["/repo/AGENTS.md"]],
+    ['cat "AGEN\\\nTS.md"', ["/repo/AGENTS.md"]],
+    ['for p in AGENTS.md; do cat "${p}"; done', ["/repo/AGENTS.md"]],
+    ["for p in AGENTS.md; do cat $p; done", ["/repo/AGENTS.md"]],
   ])("%s", (command, expected) => {
     expect(reads(command)).toStrictEqual(expected.toSorted());
   });
@@ -101,7 +108,74 @@ describe("pathsReadByCommand ignores commands that print no file content", () =>
     expect(reads(command)).toStrictEqual([]);
   });
 
-  test("a heredoc body is data unless it feeds a shell or interpreter", () => {
+  test.each([
+    "python3 -c \"print(open('AGENTS.md').read())\"",
+    "python3 -c \"print(open('public.txt').read()); print('AGENTS.md')\"",
+    "python3 - <<'PY'\nfrom pathlib import Path\nprint(Path('AGENTS.md').read_text())\nPY",
+    "node -e \"console.log(require('fs').readFileSync('AGENTS.md','utf8'))\"",
+    "node -e \"require('fs').readFileSync('public.txt'); console.log('AGENTS.md')\"",
+    "perl -e \"print 'AGENTS.md'; read(X, Y, 1)\"",
+    "ruby -e \"puts File.read('public.txt'); puts 'AGENTS.md'\"",
+  ])("intentionally unsupported interpreter script: %s", (command) => {
+    expect(reads(command)).toStrictEqual([]);
+  });
+
+  test.each([
+    'for p in AGENTS.md; do cat "$q"; done',
+    'for p in AGENTS.md; do cat "$p/public.txt"; done',
+    'for p in AGENTS.md; do cat "${p:-public.txt}"; done',
+    'for p in AGENTS.md; do cat "$(echo public.txt)"; done',
+    "cd --unknown web && cat AGENTS.md",
+    "cd web extra && cat AGENTS.md",
+    "cd - && cat AGENTS.md",
+    "cd -- - && cat AGENTS.md",
+    'for p in public.txt AGENTS.md; do cd web; cat "$p"; done',
+    'cd "$DIR" && echo "$(cat AGENTS.md)"',
+  ])("skips unresolved paths: %s", (command) => {
+    expect(reads(command)).toStrictEqual([]);
+  });
+
+  test.each([
+    'for p in AGENTS.md; do for q in public.txt; do cat "$q"; done; done',
+    'for p in AGENTS.md; do for p in public.txt; do cat "$p"; done; done',
+    "for p in AGENTS.md; do while test true; do cat public.txt; done; done",
+  ])("does not confuse enclosing loop bindings: %s", (command) => {
+    expect(reads(command)).toStrictEqual(["/repo/public.txt"]);
+  });
+
+  test.each([
+    'for p in AGENTS.md; do p=public.txt; cat "$p"; done',
+    'for p in AGENTS.md; do p="$OTHER"; cat "$p"; done',
+    'for p in AGENTS.md; do p=public.txt cat "$p"; cat "$p"; done',
+    'for p in AGENTS.md; do for q in public.txt; do p=public.txt; done; cat "$p"; done',
+  ])("skips a reassigned or temporarily shadowed loop binding: %s", (command) => {
+    expect(reads(command)).toStrictEqual([]);
+  });
+
+  // Documented limitation (README "Limitations"): the shell check is fail-open here. Inline
+  // interpreter code is not inspected, a loop value copied into another variable is not
+  // tracked, and a temporary `name=value cmd` assignment makes that loop binding unknown for
+  // the rest of the body. These pins catch accidental changes in either direction.
+  test.each([
+    "python3 -c \"print(open('AGENTS.md').read())\"",
+    "node -e \"console.log(require('fs').readFileSync('AGENTS.md','utf8'))\"",
+    "perl -e 'open(F, \"AGENTS.md\"); print <F>'",
+    "ruby -e 'puts File.read(\"AGENTS.md\")'",
+    'for f in AGENTS.md; do g=$f; cat "$g"; done',
+    'for f in AGENTS.md; do g="$f"; cat "$g"; done',
+    'for f in AGENTS.md; do f=x true; cat "$f"; done',
+    'for f in AGENTS.md; do f=x cat "$f"; done',
+  ])("documented unsupported form is not detected: %s", (command) => {
+    expect(reads(command)).toStrictEqual([]);
+  });
+
+  test("assignment to another variable leaves the loop binding usable", () => {
+    expect(reads('for p in AGENTS.md; do q=public.txt; cat "$p"; done')).toStrictEqual([
+      "/repo/AGENTS.md",
+    ]);
+  });
+
+  test("a heredoc body is data unless it feeds a shell", () => {
     expect(reads("cat <<EOF\nAGENTS.md\nEOF")).toStrictEqual([]);
     expect(reads("bash <<EOF\ncat AGENTS.md\nEOF")).toStrictEqual(["/repo/AGENTS.md"]);
   });

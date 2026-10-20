@@ -2,14 +2,81 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, SourceInfo } from "@earendil-works/pi-coding-agent";
+import { RepositoryLocator } from "./repository";
+import type { RepositoryLocation } from "./repository";
 import { pathIsInsideOrEqual, resourcePathId } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
 
 /** Whether Pi advertises a resource to the model. */
 export type ToggleValue = "enabled" | "disabled";
 
-/** User choices that differ from a resource's default, keyed by resource path. */
-export type ToggleOverrides = ReadonlyMap<ResourcePath, ToggleValue>;
+/** Explicit choices: discovery paths for global/outside files, repository-relative paths otherwise. */
+export type ToggleOverrides = {
+  readonly files: ReadonlyMap<ResourcePath, ToggleValue>;
+  readonly repositories: ReadonlyMap<string, ReadonlyMap<string, ToggleValue>>;
+};
+
+/** An empty policy, with no explicit choices. */
+export function emptyOverrides(): ToggleOverrides {
+  return { files: new Map(), repositories: new Map() };
+}
+
+/** Known global discovery paths stay absolute even when the user's configuration is in Git. */
+export function isGlobalResourcePath(path: string): boolean {
+  return (
+    pathIsInsideOrEqual(path, getAgentDir()) ||
+    pathIsInsideOrEqual(path, join(homedir(), ".agents", "skills"))
+  );
+}
+
+/** One policy resolver for the menu, prompt, and file guard. Create afresh after each load/save. */
+export class ResourcePolicy {
+  private readonly locator = new RepositoryLocator();
+  /** Only this evaluation's lookups; fresh policies observe subsequent Git layout changes. */
+  private readonly locations = new Map<string, RepositoryLocation | undefined>();
+
+  constructor(readonly overrides: ToggleOverrides) {}
+
+  /** Explicit choice for a loaded resource or an as-yet unloaded instruction/skill. */
+  override(path: ResourcePath, origin?: ToggleResource["origin"]): ToggleValue | undefined {
+    const location = this.location(path, origin);
+    return location === undefined
+      ? this.overrides.files.get(path)
+      : this.overrides.repositories.get(location.repository)?.get(location.path);
+  }
+
+  /** Compare discovery paths using the same scope rule as explicit policy lookup. */
+  sameResource(left: string, right: ResourcePath, origin: ToggleResource["origin"]): boolean {
+    const a = this.location(left, origin);
+    const b = this.location(right, origin);
+    return a !== undefined && b !== undefined
+      ? a.repository === b.repository && a.path === b.path
+      : left === right;
+  }
+
+  /** Whether a choice is shared by every worktree, by the same rule persistence uses. */
+  repositoryWide(resource: Pick<ToggleResource, "id" | "origin">): boolean {
+    return this.location(resource.id, resource.origin) !== undefined;
+  }
+
+  private location(path: string, origin?: ToggleResource["origin"]) {
+    // Check scope before using the path cache: global discovery paths never acquire repo identity.
+    if (origin === "global" || isGlobalResourcePath(path)) {
+      return undefined;
+    }
+    if (!this.locations.has(path)) {
+      this.locations.set(path, this.locator.locate(path));
+    }
+    return this.locations.get(path);
+  }
+
+  /** Source-authored manual-only skills are never automatically available. */
+  value(resource: ToggleResource): ToggleValue {
+    return resource.editability === "manual-only"
+      ? "disabled"
+      : (this.override(resource.id, resource.origin) ?? defaultToggleValue(resource));
+  }
+}
 
 /** A user-managed instruction file or skill that appears in the toggle menu. */
 export type ToggleResource = {
@@ -33,11 +100,6 @@ export function defaultToggleValue(resource: Pick<ToggleResource, "kind" | "orig
   return resource.kind === "skill" && resource.origin === "project" ? "disabled" : "enabled";
 }
 
-/** Resolve a resource's override or its default. */
-export function toggleValue(overrides: ToggleOverrides, resource: ToggleResource): ToggleValue {
-  return overrides.get(resource.id) ?? defaultToggleValue(resource);
-}
-
 /**
  * Extract user-managed resources from Pi's prompt options in menu order.
  *
@@ -54,20 +116,22 @@ export function toggleResources(
   const agentDirectory = resourcePathId(getAgentDir(), cwd);
   const globalSkillRoots = [join(agentDirectory, "skills"), join(homedir(), ".agents", "skills")];
 
+  const locator = new RepositoryLocator();
   const instructions = (options.contextFiles ?? []).flatMap<ToggleResource>((file) => {
     const id = resourcePathId(file.path, cwd);
     const origin = instructionOrigin({ parent: dirname(id), agentDirectory, cwd });
     if (!origin) {
       return [];
     }
-    const description = `${origin} instruction\n${id}`;
+    const location = origin === "project" ? locator.locate(id) : undefined;
     return [
       {
         id,
         kind: "instruction",
         origin,
-        label: basename(id),
-        description,
+        label: location?.path ?? basename(id),
+        // The menu appends kind, origin, and policy scope; keep only the discovery path here.
+        description: id,
         editability: "editable",
       },
     ];
