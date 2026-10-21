@@ -214,6 +214,43 @@ describe("SDK stream messages", () => {
   });
 });
 
+describe("subscription rate-limit messages", () => {
+  test.each([1_792_548_000, 1_792_548_000.5, 8_640_000_000_000])(
+    "converts a representable epoch reset from seconds to milliseconds (%s)",
+    (resetsAt) => {
+      expect(
+        parsed({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt } }),
+      ).toStrictEqual({ type: "usage_limit", resetsAt: resetsAt * 1000 });
+    },
+  );
+
+  test.each([
+    undefined,
+    null,
+    "1792548000",
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_VALUE,
+    8_640_000_000_001,
+  ])("ignores an invalid or unrepresentable reset without a protocol error (%s)", (resetsAt) => {
+    expect(
+      parsed({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt } }),
+    ).toStrictEqual({ type: "usage_limit", resetsAt: undefined });
+  });
+
+  test.each([undefined, null, "private payload", {}, { status: 7 }, { status: "future_status" }])(
+    "ignores malformed or unknown rate-limit information (%j)",
+    (rate_limit_info) => {
+      expect(parsed({ type: "rate_limit_event", rate_limit_info })).toStrictEqual({
+        type: "usage_limit",
+        resetsAt: undefined,
+      });
+    },
+  );
+});
+
 describe("usage accumulation", () => {
   test("replaces each reported count and keeps the rest, treating null like an omitted count", () => {
     const started = applyUsage(undefined, { input_tokens: 12, cache_read_input_tokens: 4 });

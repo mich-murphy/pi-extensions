@@ -11,7 +11,12 @@ import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import { models } from "../models";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
-import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
+import type {
+  ModelObservation,
+  RunnerOptions,
+  RunSdkQuery,
+  UsageLimitObservation,
+} from "../sdk/runner";
 import {
   contextFixture,
   deliverToolUses,
@@ -577,6 +582,225 @@ describe("model observation", () => {
 
     expect(events).toStrictEqual([{ type: "done", reason: "stop" }]);
     expect(observations).toStrictEqual([]);
+  });
+});
+
+async function observeUsageLimits(...messages: readonly unknown[]) {
+  const observations: UsageLimitObservation[] = [];
+  const events = await runTurn(queryWith([], ...messages), requestFixture(), {
+    usageLimitObserver: (observation) => {
+      observations.push(observation);
+    },
+  });
+  return { events, observations };
+}
+
+function rateLimitEvent(info: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
+}
+
+const usageLimitResult = resultMessage({ is_error: true, terminal_reason: "blocking_limit" });
+
+async function* usageLimitEnding(
+  ending: "eof" | "iterate" | "protocol" | "cancelled",
+  controller: AbortController,
+) {
+  if (ending === "iterate") {
+    throw new Error("private iteration failure");
+  }
+  if (ending === "protocol") {
+    yield { type: "result" };
+  }
+  if (ending === "cancelled") {
+    controller.abort();
+  }
+}
+
+function throwUsageObserver(): void {
+  throw new Error("private observer failure");
+}
+
+async function rejectUsageObserver(): Promise<void> {
+  throw new Error("private observer rejection");
+}
+
+describe("usage limit observation", () => {
+  test("reports the rejected window's reset time in milliseconds when the turn fails on it", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "allowed_warning", resetsAt: 1_792_540_000 }),
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000, rateLimitType: "five_hour" }),
+      usageLimitResult,
+    );
+
+    expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
+  });
+
+  test("reports a reset carried by a rate-limit API error", async () => {
+    const usage = { input_tokens: 0, output_tokens: 0 };
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      { type: "assistant", message: { usage }, error: "rate_limit" },
+      resultMessage({ is_error: true }),
+    );
+
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
+  });
+
+  test.each([
+    ["no rate-limit event", []],
+    ["a rejection without a reset time", [rateLimitEvent({ status: "rejected" })]],
+    ["only a warning", [rateLimitEvent({ status: "allowed_warning", resetsAt: 1_792_548_000 })]],
+    ["a malformed event", [{ type: "rate_limit_event", rate_limit_info: "full" }]],
+  ])("reports nothing for %s", async (_name, preamble) => {
+    const { events, observations } = await observeUsageLimits(...preamble, usageLimitResult);
+
+    expect(failureOf(events)).toMatchObject({ category: "usage-limit" });
+    expect(observations).toStrictEqual([]);
+  });
+
+  test.each([
+    ["another failure", [resultMessage({ is_error: true, terminal_reason: "prompt_too_long" })]],
+    ["success", [resultMessage()]],
+    [
+      "authentication overriding a usage limit",
+      [
+        { type: "assistant", message: { usage: {} }, error: "authentication_failed" },
+        usageLimitResult,
+      ],
+    ],
+  ])("reports nothing for %s", async (_name, ending) => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      ...ending,
+    );
+
+    expect(observations).toStrictEqual([]);
+  });
+
+  test.each([
+    ["rapid-refill terminal", "rapid_refill_breaker", "unknown", true],
+    ["billing API error", undefined, "billing_error", true],
+    ["explicit usage limit over generic API error", "blocking_limit", "invalid_request", true],
+    ["context limit over earlier rate limit", "prompt_too_long", "rate_limit", false],
+    ["cancellation over earlier rate limit", "aborted_streaming", "rate_limit", false],
+    ["authentication over explicit usage limit", "blocking_limit", "oauth_org_not_allowed", false],
+    ["unclassified terminal", undefined, "unknown", false],
+  ])("uses effective error classification: %s", async (_name, terminalReason, apiError, notify) => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      { type: "assistant", message: { usage: {} }, error: apiError },
+      resultMessage({ is_error: true, terminal_reason: terminalReason }),
+    );
+    expect(observations).toHaveLength(Number(notify));
+    expect(observations.every(({ resetsAt }) => resetsAt === 1_792_548_000_000)).toBe(true);
+  });
+
+  test.each(["eof", "iterate", "protocol", "cancelled"] as const)(
+    "does not notify when a rejected window is followed by %s instead of a usage-limit result",
+    async (ending) => {
+      const observations: UsageLimitObservation[] = [];
+      const controller = new AbortController();
+      const events = await runTurn(
+        async function* () {
+          yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
+          yield* usageLimitEnding(ending, controller);
+        },
+        requestFixture(),
+        {
+          signal: controller.signal,
+          usageLimitObserver: (observation) => {
+            observations.push(observation);
+          },
+        },
+      );
+      expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
+      expect(observations).toStrictEqual([]);
+    },
+  );
+
+  test("uses the latest reported rejected reset", async () => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_549_000 }),
+      usageLimitResult,
+    );
+
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_549_000_000 }]);
+  });
+
+  test.each([
+    ["allowed", { status: "allowed", resetsAt: 1_792_550_000 }],
+    ["warning", { status: "allowed_warning", resetsAt: 1_792_550_000 }],
+    ["missing reset", { status: "rejected" }],
+    ["invalid reset", { status: "rejected", resetsAt: Number.MAX_VALUE }],
+    ["unknown status", { status: "future_status", resetsAt: 1_792_550_000 }],
+    ["malformed update", {}],
+  ])("clears stale reset metadata after %s", async (_name, info) => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      rateLimitEvent(info),
+      usageLimitResult,
+    );
+    expect(observations).toStrictEqual([]);
+  });
+
+  test.each([
+    ["throws", throwUsageObserver],
+    ["rejects", rejectUsageObserver],
+  ] as const)(
+    "isolates an observer that %s and still closes the query",
+    async (_name, usageLimitObserver) => {
+      let closed = false;
+      let signal: AbortSignal | undefined;
+      const events = await runTurn(
+        (params) => {
+          signal = params.options?.abortController?.signal;
+          return (async function* () {
+            try {
+              yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
+              yield usageLimitResult;
+              throw new Error("must not read after result");
+            } finally {
+              closed = true;
+            }
+          })();
+        },
+        requestFixture(),
+        {
+          usageLimitObserver,
+        },
+      );
+      expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+      expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
+      expect(closed).toBe(true);
+      expect(signal?.aborted).toBe(true);
+    },
+  );
+
+  test("notifies before yielding the failure and does not retain reset times across queries", async () => {
+    const order: string[] = [];
+    const queries = [
+      [rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }), usageLimitResult],
+      [usageLimitResult],
+    ];
+    const runner = createClaudeAgentSdkRunner({
+      async *runSdkQuery() {
+        const messages = queries.shift();
+        assert(messages);
+        yield* messages;
+      },
+      usageLimitObserver: () => {
+        order.push("notice");
+      },
+    });
+    for (let turn = 0; turn < 2; turn += 1) {
+      for await (const event of runner(requestFixture(), sonnet)) {
+        order.push(event.type);
+      }
+    }
+
+    expect(order).toStrictEqual(["notice", "failed", "failed"]);
   });
 });
 

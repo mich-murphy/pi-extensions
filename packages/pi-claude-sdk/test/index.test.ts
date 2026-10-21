@@ -10,7 +10,7 @@ import skillToggle from "../../pi-skill-toggle/index";
 import vimMode from "../../pi-vim/index";
 import webToolsExtension from "../../pi-web-tools/index";
 import type { ClaudeHandlers, ClaudeEvents } from "../index";
-import registerClaudeSdkProvider from "../index";
+import registerClaudeSdkProvider, { USAGE_LIMIT_CHANNEL, usageLimitPublisher } from "../index";
 
 function loadExtension() {
   const handlers: Partial<ClaudeHandlers> = {};
@@ -24,6 +24,7 @@ function loadExtension() {
     registerProvider: (name: string, config: ProviderConfig) => {
       providers.set(name, config);
     },
+    events: { emit: () => undefined },
   };
   registerClaudeSdkProvider(piMock);
   const noUI = { hasUI: false, ui: { notify: () => undefined } };
@@ -74,6 +75,26 @@ describe("extension entry point", () => {
       expect(model).not.toHaveProperty("sdkModel");
       expect(model).not.toHaveProperty("canonicalModel");
     }
+  });
+});
+
+describe("usage limit notices", () => {
+  test("publishes the reset time on the shared usage-limit channel", () => {
+    const emitted: { channel: string; data: unknown }[] = [];
+    const publish = usageLimitPublisher({
+      emit: (channel, data) => {
+        emitted.push({ channel, data });
+      },
+    });
+
+    publish({ resetsAt: 1_792_548_000_000 });
+
+    expect(emitted).toStrictEqual([
+      {
+        channel: USAGE_LIMIT_CHANNEL,
+        data: { provider: "claude-sdk", resetsAt: 1_792_548_000_000 },
+      },
+    ]);
   });
 });
 

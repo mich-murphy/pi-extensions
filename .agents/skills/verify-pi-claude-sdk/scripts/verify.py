@@ -35,7 +35,7 @@ def stop(p):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'recovery', 'offline-recovery', 'cache', 'all', 'cleanup'])
+    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'recovery', 'offline-recovery', 'usage-limit', 'cache', 'all', 'cleanup'])
     ap.add_argument('--evidence', required=True, type=Path)
     ap.add_argument('--approve-recovery-live', action='store_true', help='reviewed approval for bounded recovery model prompts (required by live/all/recovery)')
     ap.add_argument('--recovery-case', choices=['both', 'missing-arguments', 'offline-parser'], default='both', help='filtered recovery evidence never satisfies the full merge gate')
@@ -206,7 +206,7 @@ def main():
         record('recovery-approval', 'blocked', 'review harness then explicitly pass --approve-recovery-live')
         return 2
 
-    actions = ['doctor', 'catalog', 'commands', 'metadata', 'live', 'cache'] if a.action == 'all' else [a.action]
+    actions = ['doctor', 'catalog', 'commands', 'metadata', 'usage-limit', 'live', 'cache'] if a.action == 'all' else [a.action]
     for action in actions:
         try:
             if action == 'doctor':
@@ -259,6 +259,21 @@ def main():
                 recovery()
             elif action == 'offline-recovery':
                 recovery_probe('offline-parser')
+            elif action == 'usage-limit':
+                gate = copy_gate()
+                owned = scratch / 'work/usage-limit'
+                owned.mkdir(mode=0o700)
+                home = owned / 'home'
+                home.mkdir(mode=0o700)
+                offline_env = {k: env[k] for k in ['PATH', 'TMPDIR', 'LANG', 'LC_ALL'] if k in env}
+                offline_env.update(HOME=str(home), PI_CODING_AGENT_DIR=str(home / 'agent'),
+                                   PI_OFFLINE='1', PI_SKIP_VERSION_CHECK='1', PI_TELEMETRY='0')
+                probe = [str(ROOT / 'node_modules/.bin/jiti'), str(Path(__file__).resolve().parent / 'usage-limit-probe.ts'),
+                         '--package', str(gate / 'packages/pi-claude-sdk'), '--work', str(owned)]
+                run('usage-limit-probe', probe, cwd=owned, timeout=120, child_env=offline_env)
+                report = json.loads((evidence / 'usage-limit-probe.stdout').read_text())
+                assert report.get('status') == 'passed', 'usage-limit proof incomplete'
+                record('usage-limit', 'passed', 'OFFLINE synthetic SDK boundary; production registration/parser/runner/bridge + pinned Pi session and event bus; not live provider/SDK CLI proof')
             elif action == 'cache':
                 if not allowance_ok():
                     record('cache', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
