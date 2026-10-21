@@ -48,8 +48,11 @@ export type RunnerOptions = {
   readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
   /** Receives the model usage observed on a terminal SDK result. */
   readonly modelObserver?: (observation: ModelObservation) => void;
-  /** Receives the reset time when a turn fails on a subscription usage limit that reported one. */
-  readonly usageLimitObserver?: (limit: UsageLimitObservation) => void;
+  /**
+   * Receives the reset time when a turn fails on a subscription usage limit that reported one.
+   * A throw or rejection is ignored: notifying listeners never changes the turn's outcome.
+   */
+  readonly usageLimitObserver?: (limit: UsageLimitObservation) => void | Promise<void>;
 };
 
 /** A subscription usage limit that ended a turn. */
@@ -557,7 +560,11 @@ function reportUsageLimit(
     terminal.error._tag === "SdkResultError" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
   ) {
-    observer?.({ resetsAt });
+    try {
+      observer?.({ resetsAt })?.catch(() => undefined);
+    } catch {
+      // Ignored as documented on `usageLimitObserver`.
+    }
   }
 }
 

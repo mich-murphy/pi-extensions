@@ -202,15 +202,11 @@ const decodeRateLimit = Schema.decodeUnknownOption(
 function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
   // Claude Code reports resetsAt in epoch seconds.
-  return Result.succeed(
-    {
-      type: "usage_limit",
-      resetsAt:
-        info?.status === "rejected" && info.resetsAt !== undefined
-          ? info.resetsAt * 1000
-          : undefined,
-    },
-  );
+  return Result.succeed({
+    type: "usage_limit",
+    resetsAt:
+      info?.status === "rejected" && info.resetsAt !== undefined ? info.resetsAt * 1000 : undefined,
+  });
 }
 
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([

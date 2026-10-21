@@ -681,9 +681,22 @@ describe("usage limit observation", () => {
     expect(observations).toStrictEqual([]);
   });
 
-  test.each(["throw", "reject"] as const)(
-    "isolates an observer that %ss and still closes the query",
-    async (mode) => {
+  test.each([
+    [
+      "throws",
+      (): void => {
+        throw new Error("private observer failure");
+      },
+    ],
+    [
+      "rejects",
+      async (): Promise<void> => {
+        throw new Error("private observer rejection");
+      },
+    ],
+  ])(
+    "isolates an observer that %s and still closes the query",
+    async (_mode, usageLimitObserver) => {
       let closed = false;
       let signal: AbortSignal | undefined;
       const events = await runTurn(
@@ -700,12 +713,7 @@ describe("usage limit observation", () => {
           })();
         },
         requestFixture(),
-        {
-          usageLimitObserver: () => {
-            if (mode === "throw") throw new Error("private observer failure");
-            return Promise.reject(new Error("private observer rejection"));
-          },
-        },
+        { usageLimitObserver },
       );
       expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
       expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
