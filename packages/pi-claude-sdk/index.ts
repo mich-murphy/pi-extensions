@@ -25,6 +25,7 @@ import {
   inspectClaudeSdkVersions,
 } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
+import { blockValidationRecovery, validationRecoveryTool } from "./validation-recovery";
 
 /** Event data consumed by the provider's safety hooks. */
 export type ClaudeEvents = {
@@ -54,7 +55,7 @@ export type ClaudeHandlers = {
 };
 
 /** Pi registration capabilities consumed by the provider. */
-export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand"> & {
+export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand" | "registerTool"> & {
   readonly registerProvider: (name: string, config: ProviderConfig) => void;
   readonly on: {
     (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): unknown;
@@ -118,6 +119,10 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
     return undefined;
   });
   pi.on("tool_call", (event) => {
+    const recovery = blockValidationRecovery(event.toolName, event.input);
+    if (recovery) {
+      return recovery;
+    }
     if (!isToolCallEventType("bash", event)) {
       return undefined;
     }
@@ -157,8 +162,10 @@ function registerProvider(pi: ClaudeRegistration, runClaudeAgentSdk: AgentSdkRun
 
 /** Register the Claude Agent SDK provider and bash-output safety hooks. */
 export default function registerClaudeSdkProvider(pi: ClaudeRegistration): void {
+  pi.registerTool(validationRecoveryTool);
   const observedModels = new Map<string, string>();
   const runClaudeAgentSdk = createClaudeAgentSdkRunner({
+    validationRecovery: "pi-tool-loop",
     cacheDiagnostics: Effect.runSync(
       cacheDiagnosticsTracker(parseCacheDiagnosticsMode(process.env)),
     ),

@@ -10,7 +10,7 @@ and no hidden side request resends the transcript.
 - `steady-suffix-write`: session A turns 2-3 write < 1500 cache tokens (suffix only).
 - `no-side-requests`: every turn's `result.usage` prompt tokens equal the sum of
   `modelUsage` input + cache read + cache creation, with exactly one model key
-  (catches the session-title request regression).
+  and `num_turns == 1` (catches both session-title and same-model retry regressions).
 - `cross-session-preamble`: session B (new first message, same system prompt and
   tools) reads >= 70% on turn 1 (needs the preamble breakpoint).
 - `fanout-read-share`: session C with 25 tool results per turn reads >= 60% on
@@ -36,7 +36,7 @@ disabled extra usage (the same pre-check `live` uses runs first).
   reasoning low; `--model` overrides when run by hand). About seven short turns.
 - **Observe:** `cache-probe.stdout` is one JSON object: per-turn Pi usage
   (`input`, `output`, `cacheRead`, `cacheWrite`, optional `cacheWrite1h`), raw
-  `result.usage`, `modelUsage` sums/keys, read shares, and every check with its
+  `result.usage`, SDK `numTurns`, `modelUsage` sums/keys, read shares, and every check with its
   value and threshold. `cache-probe.stderr` has a per-turn progress line.
 - **Result:** probe exit 0 -> `passed`; 1 -> `failed`; 2 -> `blocked`
   (authentication/usage-limit). Recorded in `cache-results.json`.
@@ -55,6 +55,9 @@ Diagnostics never log prompt content.
 
 - Cache behaviour for other models, images, compaction, mid-session system or
   tool changes, or TTL expiry; those belong to the synthetic simulator tests.
+- Every HTTP request: `num_turns` is an SDK continuation indicator and some helper
+  requests are excluded from SDK accounting. The checks detect covered main-loop
+  retries and query-pipeline side requests, not all possible network traffic.
 - Exact token counts: thresholds are shares, because server-side accounting and
   the CLI-injected environment message (~600 uncached tokens) vary.
 - Diagnostics output itself, the TUI, or package installation.

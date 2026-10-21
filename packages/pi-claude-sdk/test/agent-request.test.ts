@@ -131,6 +131,10 @@ describe("agent request construction", () => {
     );
 
     expect(request.systemPrompt).toContain("You are the model inside Pi Coding Agent");
+    expect(request.systemPrompt).toContain('Every gateway call must include an "arguments" object');
+    expect(request.systemPrompt).toContain('never alongside "name"');
+    expect(request.toolDescription).toContain('The "arguments" object is required');
+    expect(request.toolDescription).toContain("never at the gateway's top level");
     expect(request.systemPrompt).not.toContain("Repository rule: run tests.");
     expect(request.systemPrompt).not.toContain("You are Claude Code");
     expect(request.promptBlocks[0]?.text).toContain(

@@ -1,25 +1,11 @@
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { PostToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { assert, describe, expect, test } from "vitest";
 import { createDeferredCallCapture, createDeferredPiCallTool } from "../sdk/deferred-tools";
-import type { InvalidDeferredCallLimitError } from "../sdk/errors";
 import { deliverToolUse, deliverToolUses } from "./fixtures";
 
 function captureFor(...toolNames: readonly string[]) {
-  const limitErrors: Readonly<InvalidDeferredCallLimitError>[] = [];
-  const capture = createDeferredCallCapture(new Set(toolNames), (error) => {
-    limitErrors.push(error);
-  });
-  return { capture, limitErrors };
-}
-
-function denial(reason: string) {
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: reason,
-    },
-  };
+  return { capture: createDeferredCallCapture(new Set(toolNames)) };
 }
 
 describe("deferred tool capture", () => {
@@ -54,19 +40,38 @@ describe("deferred tool capture", () => {
     ]);
   });
 
-  test("denies any tool other than the pi_call gateway", async () => {
+  test("hands unexpected SDK tools to Pi as nonexecuting correction calls", async () => {
     const { capture } = captureFor("read");
+    const output = await deliverToolUse(capture.hook, { id: "bad", toolName: "Bash", input: {} });
+    expect(output).toMatchObject({ hookSpecificOutput: { permissionDecision: "defer" } });
+    expect(capture.calls).toMatchObject([
+      {
+        id: "bad",
+        name: "pi_claude_sdk_validation_error",
+        arguments: { error: "unexpected_sdk_tool" },
+      },
+    ]);
+    expect(capture.unexpectedToolCalls).toBe(1);
+    expect(capture.hookDeniedCalls).toBe(0);
+  });
+
+  test("preserves JSON values and backslash strings without rewriting shell escapes", async () => {
+    const { capture } = captureFor("bash");
+    const argumentsObject = {
+      command: String.raw`find . -type f \( -name '*.json' -o -name '*.ts' \) | head -20`,
+      nested: { list: [null, true, 12.5, { path: String.raw`C:\tmp\fixture` }] },
+    };
 
     const output = await deliverToolUse(capture.hook, {
-      id: "toolu_2",
-      input: { command: "ls" },
-      toolName: "Bash",
+      id: "backslashes",
+      input: { name: "bash", arguments: argumentsObject },
     });
 
-    expect(output).toStrictEqual(
-      denial("Only the Pi deferred-tool gateway is available, not Bash."),
-    );
-    expect(capture.calls).toStrictEqual([]);
+    expect(output).toMatchObject({ hookSpecificOutput: { permissionDecision: "defer" } });
+    expect(capture.calls).toStrictEqual([
+      { id: "backslashes", name: "bash", arguments: argumentsObject },
+    ]);
+    expect(capture.hookDeniedCalls).toBe(0);
   });
 
   test("ignores hook events other than PreToolUse", async () => {
@@ -85,6 +90,19 @@ describe("deferred tool capture", () => {
     const output = await capture.hook(input, undefined, { signal: new AbortController().signal });
 
     expect(output).toStrictEqual({});
+    expect(capture.hookDeniedCalls).toBe(0);
+  });
+
+  test("notifies the runner when the SDK executes the fallback so it can abort hidden retries", async () => {
+    let fallbacks = 0;
+    const gateway = createDeferredPiCallTool("available tools", () => {
+      fallbacks += 1;
+    });
+
+    const result = await gateway.handler({ name: "read", arguments: {} }, undefined);
+
+    expect(fallbacks).toBe(1);
+    expect(result.isError).toBe(true);
   });
 
   test("fails loudly instead of faking a successful defer when the SDK invokes the MCP gateway directly", async () => {
@@ -161,34 +179,115 @@ describe("deferred tool validation", () => {
           'Invalid Pi tool call: "arguments" must be an object matching "<missing>"\'s input schema.',
       },
     ],
-  ])("denies (not fatally) %s", async (_case, { toolNames, toolInput, reason }) => {
-    const { capture, limitErrors } = captureFor(...toolNames);
+  ])("defers a nonexecuting correction for %s", async (_case, { toolNames, toolInput }) => {
+    const { capture } = captureFor(...toolNames);
 
     const output = await deliverToolUse(capture.hook, { id: "toolu_bad", input: toolInput });
 
-    expect(output).toStrictEqual(denial(reason));
-    expect(capture.calls).toStrictEqual([]);
-    expect(limitErrors).toStrictEqual([]);
+    expect(output).toMatchObject({ hookSpecificOutput: { permissionDecision: "defer" } });
+    expect(capture.calls).toMatchObject([
+      {
+        id: "toolu_bad",
+        name: "pi_claude_sdk_validation_error",
+        arguments: { error: "invalid_gateway_input" },
+      },
+    ]);
   });
+});
 
-  test("tolerates three invalid calls, then reports the fourth exactly once and keeps denying", async () => {
-    const { capture, limitErrors } = captureFor("read");
-    const invalid = { name: "pi_call", arguments: {} };
+// Real SDK MCP server only: no query(), CLI process, prompt, network or credentials.
+describe("deferred gateway at the offline SDK MCP boundary", () => {
+  test("lists the Zod JSON schema and validates escaped/nested arguments without rewriting them", async () => {
+    const gateway = createDeferredPiCallTool("offline test catalog");
+    const handlerInputs: unknown[] = [];
+    const observedGateway: typeof gateway = {
+      ...gateway,
+      handler: async (input, extra) => {
+        handlerInputs.push(input);
+        return gateway.handler(input, extra);
+      },
+    };
+    const server = createSdkMcpServer({ name: "pi", tools: [observedGateway] });
+    let receive: ((message: unknown) => void) | undefined;
+    const transport: Parameters<typeof server.instance.connect>[0] = {
+      start: async () => {
+        // This transport is entirely in-process; there is nothing to start.
+      },
+      close: async () => {
+        receive = undefined;
+      },
+      send: async (message) => {
+        receive?.(message);
+      },
+    };
+    let id = 0;
+    const request = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      const response = Promise.withResolvers<unknown>();
+      receive = response.resolve;
+      transport.onmessage?.({ jsonrpc: "2.0", id: ++id, method, params });
+      return response.promise;
+    };
 
-    await deliverToolUses(
-      capture.hook,
-      ["bad_1", "bad_2", "bad_3"].map((id) => ({ id, input: invalid })),
-    );
-    expect(capture.limitError).toBeUndefined();
+    await server.instance.connect(transport);
+    try {
+      const listed = await request("tools/list", {});
+      expect(listed).toMatchObject({
+        result: {
+          tools: [
+            {
+              name: "pi_call",
+              inputSchema: {
+                type: "object",
+                required: ["name", "arguments"],
+                properties: {
+                  name: { type: "string" },
+                  arguments: {
+                    type: "object",
+                    additionalProperties: { $ref: expect.any(String) as unknown },
+                  },
+                },
+                definitions: {
+                  __schema0: { anyOf: expect.arrayContaining([{ type: "string" }]) as unknown },
+                },
+              },
+            },
+          ],
+        },
+      });
 
-    await deliverToolUse(capture.hook, { id: "bad_4", input: invalid });
-    const fifth = await deliverToolUse(capture.hook, { id: "bad_5", input: invalid });
+      const input = {
+        name: "bash",
+        arguments: {
+          command: String.raw`find . -type f \( -name '*.json' -o -name '*.ts' \) | head -20`,
+          nested: { values: [null, false, 0, { path: String.raw`C:\tmp\fixture` }] },
+        },
+      };
+      const called = await request("tools/call", { name: "pi_call", arguments: input });
+      // The schema accepted the input. Production's fail-closed handler, not
+      // an MCP validation error, generated this result. No Pi tool was executed.
+      expect(handlerInputs).toStrictEqual([input]);
+      expect(called).toMatchObject({
+        result: {
+          isError: true,
+          content: [{ type: "text", text: expect.stringContaining("not honored") as unknown }],
+        },
+      });
 
-    expect(limitErrors).toHaveLength(1);
-    expect(capture.limitError).toBe(limitErrors[0]);
-    expect(capture.limitError?._tag).toBe("InvalidDeferredCallLimitError");
-    expect(capture.limitError?.attempts).toBe(4);
-    expect(capture.limitError?.message).toContain("invalid Pi tool requests");
-    expect(fifth).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny" } });
+      const invalid = await request("tools/call", {
+        name: "pi_call",
+        arguments: { name: "bash", arguments: [] },
+      });
+      expect(invalid).toMatchObject({
+        result: {
+          isError: true,
+          content: [
+            { type: "text", text: expect.stringContaining("Input validation error") as unknown },
+          ],
+        },
+      });
+      expect(handlerInputs).toStrictEqual([input]);
+    } finally {
+      await server.instance.close();
+    }
   });
 });

@@ -40,7 +40,30 @@ async function collect(
   options: RunnerOptions = {},
   streamOptions?: SimpleStreamOptions,
 ): Promise<readonly BridgeEvent[]> {
-  return drain(createClaudeAgentSdkRunner(options)(agentRequest, probeModel, streamOptions));
+  const runSdkQuery = options.runSdkQuery ?? query;
+  const results: unknown[] = [];
+  async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
+    for await (const message of runSdkQuery(params)) {
+      if (isTerminalResult(message)) {
+        results.push(message);
+      }
+      yield message;
+    }
+  }
+  const events = await drain(
+    createClaudeAgentSdkRunner({ ...options, runSdkQuery: observedQuery })(
+      agentRequest,
+      probeModel,
+      streamOptions,
+    ),
+  );
+  if (events.at(-1)?.type === "failed") {
+    return events;
+  }
+  expect(results, "each controlled probe must finish in one SDK model round-trip").toMatchObject([
+    { num_turns: 1 },
+  ]);
+  return events;
 }
 
 function textOf(events: readonly BridgeEvent[]): string {
@@ -58,6 +81,8 @@ function request(prompt: string, toolNames: readonly string[] = []): AgentReques
     toolNames: new Set(toolNames),
   });
 }
+
+const isTerminalResult = Schema.is(Schema.Struct({ type: Schema.Literal("result") }));
 
 const isStopReasonDeferred = Schema.is(
   Schema.Struct({ type: Schema.Literal("result"), stop_reason: Schema.Literal("tool_deferred") }),
@@ -197,6 +222,27 @@ describe("installed Claude Agent SDK live contract", () => {
     expect(readEvents.at(-1)).toMatchObject({
       type: "tool_calls",
       calls: [{ name: "read", arguments: { path: "package.json" } }],
+    });
+    const legacyHaiku = models.find((entry) => entry.id === "claude-4.5-haiku");
+    assert(legacyHaiku !== undefined, "missing legacy Haiku model");
+    const command = String.raw`find . -type f \( -name '*.ts' -o -name '*.md' \) -print`;
+    const bashRequest = request(
+      `Request the bash Pi tool exactly once with this exact command: ${JSON.stringify(command)}. Do not execute it or answer with text.`,
+      ["bash"],
+    );
+    const bashEvents = await collect(
+      {
+        ...bashRequest,
+        toolDescription:
+          'Available Pi tools: [{"name":"bash","description":"Run a shell command","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}]',
+      },
+      modelFixture(legacyHaiku),
+      {},
+      { reasoning: "medium" },
+    );
+    expect(bashEvents.at(-1)).toMatchObject({
+      type: "tool_calls",
+      calls: [{ name: "bash", arguments: { command } }],
     });
     verified.add("deferred-tool-call");
   });

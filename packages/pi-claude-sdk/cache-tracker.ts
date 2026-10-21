@@ -3,13 +3,17 @@ import { Clock, Effect } from "effect";
 import { CACHE_LOOKBACK_BLOCKS } from "./agent-request";
 import type { AgentRequest, PromptBlock } from "./agent-request";
 import type { TokenUsage } from "./bridge";
+import { minimumCacheableTokensFor } from "./models";
 import type { CacheTtl } from "./sdk/prompt-stream";
+import type { QueryDiagnostics } from "./sdk/query-diagnostics";
 
 /** Safe request metadata emitted by cache diagnostics. */
 export type CacheRequestDiagnostic = {
   readonly type: "request";
   readonly turn: number;
   readonly model: string;
+  /** Documented minimum for the requested model; omitted for unknown/custom routing. */
+  readonly minimumCacheableTokens?: number;
   readonly reasoning?: string;
   readonly ttl: CacheTtl;
   readonly blocks: number;
@@ -36,11 +40,19 @@ export type CacheRequestDiagnostic = {
   readonly msSincePreviousRequest?: number;
 };
 
-/** Safe usage metadata emitted by cache diagnostics. */
+/**
+ * Safe usage metadata emitted by cache diagnostics. Counts retain authoritative cumulative
+ * main-loop result.usage (all model round-trips in this SDK turn), or the last streamed
+ * report if no result usage was available. They are never divided by numTurns. Side-model
+ * query-pipeline totals are reported separately in query.models, not added to these counts.
+ */
 export type CacheUsageDiagnostic = {
   readonly type: "usage";
   readonly turn: number;
   readonly promptTokens: number;
+  readonly query?: QueryDiagnostics;
+  /** Minimum for the observed model when available, otherwise the requested model. */
+  readonly minimumCacheableTokens?: number;
   readonly cacheReadPercent: number;
   readonly possibleCollapse: boolean;
   /** Characters shared with the previous request's prompt, which cache could have served. */
@@ -55,17 +67,31 @@ export type CacheUsageDiagnostic = {
     | "lookback";
 } & TokenUsage;
 
-/** Safe cache diagnostic record. */
-export type CacheDiagnostic = CacheRequestDiagnostic | CacheUsageDiagnostic;
+/** Query outcome without any SDK usage report; no zero usage is invented. */
+export type CacheQueryDiagnostic = {
+  readonly type: "query";
+  readonly turn: number;
+  readonly query: QueryDiagnostics;
+};
 
-/** Records one outgoing prompt and returns the recorder for that turn's final usage. */
+/** Safe cache diagnostic record. */
+export type CacheDiagnostic = CacheRequestDiagnostic | CacheUsageDiagnostic | CacheQueryDiagnostic;
+
+/** Safe query metadata used to interpret the final usage, never raw SDK payloads. */
+export type CacheUsageMetadata = {
+  /** Concrete main-conversation model observed by the SDK, preferred over moving aliases. */
+  readonly observedModel?: string;
+  readonly query?: QueryDiagnostics;
+};
+
+/** Records one outgoing prompt and returns its usage/outcome recorder, including failed turns. */
 export type CacheDiagnosticTracker = (
   model: string,
   request: Pick<AgentRequest, "promptBlocks" | "cacheBreakpoints"> & {
     readonly toolDescription?: string;
   },
   settings?: { readonly ttl?: CacheTtl; readonly reasoning?: string | undefined },
-) => (usage: TokenUsage) => void;
+) => (usage: TokenUsage | undefined, metadata?: CacheUsageMetadata) => void;
 
 type PrefixChange = CacheRequestDiagnostic["prefixChange"];
 type MissCause = NonNullable<CacheUsageDiagnostic["likelyMissCause"]>;
@@ -92,12 +118,10 @@ type MissContext = {
   readonly msSincePreviousRequest: number | undefined;
   readonly lookbackExceeded: boolean;
   readonly expectedReusableCharacters: number;
+  readonly model: string;
 };
 
 const TTL_MS: Readonly<Record<CacheTtl, number>> = { none: 0, "5m": 300_000, "1h": 3_600_000 };
-
-/** Smallest prefix Anthropic caches for most models. */
-const MINIMUM_CACHEABLE_TOKENS = 1024;
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -160,11 +184,25 @@ function reachesPreviousWrite(previous: RequestState, current: RequestState, com
     );
 }
 
-function likelyMissCause(context: MissContext, promptTokens: number): MissCause | undefined {
+function likelyMissCause(
+  context: MissContext,
+  usage: TokenUsage,
+  promptTokens: number,
+  minimumCacheableTokens: number | undefined,
+): MissCause | undefined {
   if (context.ttl === "none") {
     return "caching-disabled";
   }
-  if (promptTokens < MINIMUM_CACHEABLE_TOKENS) {
+  // Total reported prompt tokens are an upper bound on any cacheable prefix, not a
+  // token estimate for a breakpoint. Zero usage is not evidence of a short prompt;
+  // actual cache activity also wins over a possibly stale model table.
+  if (
+    minimumCacheableTokens !== undefined &&
+    promptTokens > 0 &&
+    promptTokens < minimumCacheableTokens &&
+    usage.cacheRead === 0 &&
+    usage.cacheWrite === 0
+  ) {
     return "below-minimum";
   }
   if (context.prefixChange === "first") {
@@ -183,15 +221,22 @@ function usageDiagnostic(
   turn: number,
   usage: TokenUsage,
   context: MissContext,
+  metadata: CacheUsageMetadata = {},
 ): CacheUsageDiagnostic {
   const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+  const minimumCacheableTokens = minimumCacheableTokensFor(metadata.observedModel ?? context.model);
   const cacheReadShare = promptTokens === 0 ? 0 : usage.cacheRead / promptTokens;
-  const cause = cacheReadShare < 0.5 ? likelyMissCause(context, promptTokens) : undefined;
+  const cause =
+    cacheReadShare < 0.5
+      ? likelyMissCause(context, usage, promptTokens, minimumCacheableTokens)
+      : undefined;
   return {
     type: "usage",
     turn,
     ...usage,
+    ...(metadata.query === undefined ? {} : { query: metadata.query }),
     promptTokens,
+    ...(minimumCacheableTokens === undefined ? {} : { minimumCacheableTokens }),
     cacheReadPercent: Math.round(cacheReadShare * 10_000) / 100,
     possibleCollapse: promptTokens >= 20_000 && cacheReadShare < 0.5,
     expectedReusableCharacters: context.expectedReusableCharacters,
@@ -221,11 +266,19 @@ function trackWith(
 ): CacheDiagnosticTracker {
   let turn = 0;
   let previous: RequestState | undefined;
+  const emit = (diagnostic: CacheDiagnostic): void => {
+    try {
+      sink(diagnostic);
+    } catch {
+      // Opt-in diagnostics must never fail a production turn, even if its destination fails.
+    }
+  };
 
   return (model, request, settings = {}) => {
     turn += 1;
     const requestTurn = turn;
     const ttl = settings.ttl ?? "5m";
+    const minimumCacheableTokens = minimumCacheableTokensFor(model);
     const current: RequestState = {
       model,
       reasoning: settings.reasoning,
@@ -248,10 +301,11 @@ function trackWith(
     const prefixChange = classify(previous, current, divergence);
     const msSincePreviousRequest = previous === undefined ? undefined : current.at - previous.at;
     const lastBreakpoint = breakpoints.at(-1);
-    sink({
+    emit({
       type: "request",
       turn,
       model,
+      ...(minimumCacheableTokens === undefined ? {} : { minimumCacheableTokens }),
       ...(settings.reasoning === undefined ? {} : { reasoning: settings.reasoning }),
       ttl,
       blocks: blocks.length,
@@ -272,6 +326,7 @@ function trackWith(
       ...(msSincePreviousRequest === undefined ? {} : { msSincePreviousRequest }),
     });
     const context: MissContext = {
+      model,
       ttl,
       prefixChange,
       msSincePreviousRequest,
@@ -282,8 +337,12 @@ function trackWith(
       expectedReusableCharacters: commonPrefixCharacters,
     };
     previous = current;
-    return (usage) => {
-      sink(usageDiagnostic(requestTurn, usage, context));
+    return (usage, metadata) => {
+      if (usage !== undefined) {
+        emit(usageDiagnostic(requestTurn, usage, context, metadata));
+      } else if (metadata?.query !== undefined) {
+        emit({ type: "query", turn: requestTurn, query: metadata.query });
+      }
     };
   };
 }

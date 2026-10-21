@@ -17,6 +17,7 @@ function loadExtension() {
   const providers = new Map<string, ProviderConfig>();
   const piMock = {
     registerCommand: () => undefined,
+    registerTool: () => undefined,
     on: <K extends keyof ClaudeHandlers>(name: K, handler: ClaudeHandlers[K]) => {
       handlers[name] = handler;
     },

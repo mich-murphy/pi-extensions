@@ -221,6 +221,21 @@ describe("provider failures", () => {
 });
 
 describe("cache usage", () => {
+  test("clears an earlier 1h split when authoritative usage no longer supplies it", async () => {
+    const events = await piEvents([
+      {
+        type: "usage",
+        usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 3, cacheWrite1h: 3 },
+      },
+      { type: "usage", usage: { input: 2, output: 2, cacheRead: 0, cacheWrite: 10 } },
+      { type: "done", reason: "stop" },
+    ]);
+
+    const { message } = terminalOf(events);
+    expect(message.usage).toMatchObject({ cacheWrite: 10, totalTokens: 14 });
+    expect(message.usage).not.toHaveProperty("cacheWrite1h");
+  });
+
   test("forwards the 1h cache-write split to Pi usage without the 5m diagnostic field", async () => {
     const events = await piEvents([
       {

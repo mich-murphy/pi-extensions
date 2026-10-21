@@ -18,6 +18,8 @@ import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } fro
 import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
 import type { CacheTtl } from "./prompt-stream";
+import { queryDiagnostics } from "./query-diagnostics";
+import { effectiveResultCategory } from "./result-failure";
 import { subscriptionEnvironment } from "./subscription-environment";
 
 /** Injectable Claude Agent SDK query function used by the runner and its tests. */
@@ -38,6 +40,10 @@ export type ModelObservation = {
 /** Runner collaborators. Each falls back to production behaviour. */
 export type RunnerOptions = {
   readonly runSdkQuery?: RunSdkQuery;
+  /** Opt in only with the reserved validation-error tool and fail-safe guard installed. */
+  readonly validationRecovery?: "pi-tool-loop";
+  /** Injectable in-process MCP server factory; defaults to the installed SDK. */
+  readonly createMcpServer?: typeof createSdkMcpServer;
   readonly sdkEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
   /** Receives the model usage observed on a terminal SDK result. */
@@ -46,7 +52,7 @@ export type RunnerOptions = {
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 type Collaborators = RunnerOptions &
-  Required<Pick<RunnerOptions, "runSdkQuery" | "sdkEnvironment">>;
+  Required<Pick<RunnerOptions, "runSdkQuery" | "sdkEnvironment" | "createMcpServer">>;
 
 function failed(error: SdkRunError): BridgeEvent {
   return { type: "failed", error };
@@ -61,13 +67,63 @@ type Turn = {
 type QueryWiring = {
   readonly abortController: AbortController;
   readonly hook: HookCallback;
+  readonly batchHook: HookCallback;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly ttl: CacheTtl;
+  readonly onFallback: () => void;
+  readonly createMcpServer: typeof createSdkMcpServer;
 };
+
+/** Local contract failures outrank SDK cancellation caused by our own abort. */
+type QueryCapture = {
+  readonly deferred: DeferredCallCapture;
+  readonly fallbackCalls: number;
+  readonly error: SdkRunError | undefined;
+  readonly onFallback: () => void;
+};
+
+function createQueryCapture(
+  toolNames: ReadonlySet<string>,
+  controller: AbortController,
+  validationRecovery: RunnerOptions["validationRecovery"],
+): QueryCapture {
+  const deferred = createDeferredCallCapture(toolNames);
+  let fallbackCalls = 0;
+  let fallbackError: SdkResultError | undefined;
+  return {
+    deferred,
+    get fallbackCalls() {
+      return fallbackCalls;
+    },
+    get error() {
+      return (
+        fallbackError ??
+        (validationRecovery === undefined &&
+        deferred.invalidGatewayCalls + deferred.unexpectedToolCalls > 0
+          ? new SdkResultError({
+              terminalReason: "tool_deferred_unavailable",
+              category: "tool-contract",
+            })
+          : undefined)
+      );
+    },
+    onFallback: () => {
+      fallbackCalls += 1;
+      fallbackError ??= new SdkResultError({
+        terminalReason: "tool_deferred_unavailable",
+        category: "tool-contract",
+      });
+      controller.abort(fallbackError);
+    },
+  };
+}
 
 const thinkingBudgets = { minimal: 1024, low: 2048, medium: 8192, high: 16_384 } as const;
 
 const SESSION_TITLE = "Pi Coding Agent turn";
+// Pi owns the outer loop, but SDK validation errors can retry before our hook runs.
+// One is unsafe for clean deferral; this is a last-resort bound, not a normal turn budget.
+const MAX_SDK_TURNS_PER_QUERY = 8;
 
 function reasoningOptions({
   model,
@@ -99,13 +155,13 @@ function reasoningOptions({
 
 function queryParameters(
   turn: Turn,
-  { abortController, hook, env, ttl }: QueryWiring,
+  { abortController, hook, batchHook, env, ttl, onFallback, createMcpServer }: QueryWiring,
 ): SdkQueryParameters {
   const { request, model } = turn;
-  const server = createSdkMcpServer({
+  const server = createMcpServer({
     name: "pi",
     version: "0.1.0",
-    tools: [createDeferredPiCallTool(request.toolDescription)],
+    tools: [createDeferredPiCallTool(request.toolDescription, onFallback)],
     alwaysLoad: true,
   });
   return {
@@ -117,6 +173,7 @@ function queryParameters(
       ...reasoningOptions(turn),
       includePartialMessages: true,
       persistSession: false,
+      maxTurns: MAX_SDK_TURNS_PER_QUERY,
       // A fixed title skips Claude Code's per-query session-titling request, which would
       // otherwise resend the whole transcript uncached on every stateless Pi turn.
       title: SESSION_TITLE,
@@ -125,7 +182,7 @@ function queryParameters(
       tools: [],
       mcpServers: { pi: server },
       env: { ...env },
-      hooks: { PreToolUse: [{ hooks: [hook] }] },
+      hooks: { PreToolUse: [{ hooks: [hook] }], PostToolBatch: [{ hooks: [batchHook] }] },
     },
   };
 }
@@ -134,6 +191,7 @@ function terminalEvent(
   result: TurnResult | undefined,
   calls: readonly DeferredCall[],
   apiError: string | undefined,
+  batchStopped = false,
 ): BridgeEvent {
   if (!result) {
     return failed(new SdkMissingResultError());
@@ -146,9 +204,20 @@ function terminalEvent(
         : new SdkResultError({ terminalReason, category, apiError }),
     );
   }
-  const deferred = result.terminalReason === "tool_deferred";
+  if (batchStopped && calls.length === 0) {
+    return failed(
+      new SdkProtocolError({
+        messageType: "result",
+        detail: "stopped batch had no recoverable calls",
+      }),
+    );
+  }
+  const deferred =
+    result.stopReason === "stop" &&
+    (result.terminalReason === "tool_deferred" ||
+      (batchStopped && result.terminalReason === "hook_stopped"));
   if (deferred && calls.length === 0) {
-    const detail = "terminal_reason was tool_deferred but the PreToolUse hook captured no calls";
+    const detail = "tool handoff terminal result captured no calls";
     return failed(new SdkProtocolError({ messageType: "result", detail }));
   }
   if (!deferred && calls.length > 0) {
@@ -163,9 +232,28 @@ type QueryProgress = {
   readonly observedModel: string | undefined;
   readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
   readonly apiError: string | undefined;
+  readonly assistantToolUses: number;
+  readonly modelRequests: number;
+  readonly modelRequestIds: ReadonlySet<string>;
+  readonly errorToolResults: number;
+  readonly maxAssistantToolUses: number;
 };
 
 type QueryOutcome = Result.Result<QueryProgress, SdkRunError>;
+
+/** Request ids stay query-local; raw numTurns can also count tool-result messages. */
+function modelRequestProgress(
+  progress: QueryProgress,
+  start: Extract<SdkMessage, { type: "usage" }>["modelRequestStart"],
+): Pick<QueryProgress, "modelRequests" | "modelRequestIds"> {
+  const id = start?.id;
+  const started = start !== undefined && (id === undefined || !progress.modelRequestIds.has(id));
+  const ids = new Set(progress.modelRequestIds);
+  if (id !== undefined) {
+    ids.add(id);
+  }
+  return { modelRequests: progress.modelRequests + (started ? 1 : 0), modelRequestIds: ids };
+}
 
 function advance(
   progress: QueryProgress,
@@ -179,9 +267,24 @@ function advance(
     case "usage": {
       const usage = applyUsage(progress.usage, message.usage);
       const observedModel = progress.observedModel ?? message.model;
-      const apiError = progress.apiError ?? message.apiError;
+      // Authentication must not be hidden by an earlier transient rate-limit error.
+      const apiError =
+        effectiveResultCategory("provider", message.apiError) === "authentication"
+          ? message.apiError
+          : (progress.apiError ?? message.apiError);
       return {
-        progress: { ...progress, usage, observedModel, apiError },
+        progress: {
+          ...progress,
+          ...modelRequestProgress(progress, message.modelRequestStart),
+          usage,
+          observedModel,
+          apiError,
+          assistantToolUses: progress.assistantToolUses + (message.assistantToolUses ?? 0),
+          maxAssistantToolUses: Math.max(
+            progress.maxAssistantToolUses,
+            message.assistantToolUses ?? 0,
+          ),
+        },
         event: { type: "usage", usage },
       };
     }
@@ -189,7 +292,7 @@ function advance(
       if (message.usage === undefined) {
         return { progress: { ...progress, result: message }, event: undefined };
       }
-      const usage = applyUsage(progress.usage, message.usage);
+      const usage = applyUsage(progress.usage, message.usage, "turn");
       const unchanged =
         progress.usage !== undefined &&
         progress.usage.input === usage.input &&
@@ -200,6 +303,15 @@ function advance(
       return {
         progress: { ...progress, usage, result: message },
         event: unchanged ? undefined : { type: "usage", usage },
+      };
+    }
+    case "tool_results": {
+      return {
+        progress: {
+          ...progress,
+          errorToolResults: progress.errorToolResults + message.errorToolResults,
+        },
+        event: undefined,
       };
     }
     case "ignored": {
@@ -213,31 +325,36 @@ function advance(
 
 type QueryStep =
   | { readonly _tag: "event"; readonly event: BridgeEvent }
-  | { readonly _tag: "end"; readonly outcome: QueryOutcome };
+  | { readonly _tag: "end"; readonly outcome: QueryOutcome; readonly progress: QueryProgress };
 
 const initialProgress = (): QueryProgress => ({
   usage: undefined,
   observedModel: undefined,
   result: undefined,
   apiError: undefined,
+  assistantToolUses: 0,
+  modelRequests: 0,
+  modelRequestIds: new Set(),
+  errorToolResults: 0,
+  maxAssistantToolUses: 0,
 });
 
-function ended(outcome: QueryOutcome): QueryStep {
-  return { _tag: "end", outcome };
+function ended(outcome: QueryOutcome, progress: QueryProgress): QueryStep {
+  return { _tag: "end", outcome, progress };
 }
 
 function settle(
-  capture: DeferredCallCapture,
+  capture: QueryCapture,
   progress: QueryProgress,
   callerSignal: AbortSignal | undefined,
 ): QueryStep {
-  if (capture.limitError) {
-    return ended(Result.fail(capture.limitError));
+  if (capture.error) {
+    return ended(Result.fail(capture.error), progress);
   }
-  if (callerSignal?.aborted === true && progress.result?.result._tag === "completed") {
-    return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)));
+  if (callerSignal?.aborted === true && progress.result?.result._tag !== "failed") {
+    return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)), progress);
   }
-  return ended(Result.succeed(progress));
+  return ended(Result.succeed(progress), progress);
 }
 
 /**
@@ -250,22 +367,22 @@ type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted"
 const HALTED: QueryItem = { _tag: "Halted" };
 
 function step(
-  capture: DeferredCallCapture,
+  capture: QueryCapture,
   callerSignal: AbortSignal | undefined,
 ): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
   return (progress, item) => {
     if (item._tag === "Halted") {
       return [progress, [settle(capture, progress, callerSignal)]];
     }
-    if (capture.limitError) {
-      return [progress, [ended(Result.fail(capture.limitError))]];
+    if (capture.error) {
+      return [progress, [ended(Result.fail(capture.error), progress)]];
     }
     if (Result.isFailure(item)) {
-      return [progress, [ended(Result.fail(item.failure))]];
+      return [progress, [ended(Result.fail(item.failure), progress)]];
     }
     const parsed = parseSdkMessage(item.success);
     if (Result.isFailure(parsed)) {
-      return [progress, [ended(Result.fail(parsed.failure))]];
+      return [progress, [ended(Result.fail(parsed.failure), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
@@ -310,7 +427,7 @@ function abortOnClose(
 
 function querySteps(
   messages: AsyncIterable<unknown>,
-  capture: DeferredCallCapture,
+  capture: QueryCapture,
   abortController: AbortController,
   turn: Turn,
 ): Stream.Stream<QueryStep> {
@@ -327,13 +444,9 @@ function querySteps(
   );
 }
 
-function iterationFailure(
-  capture: DeferredCallCapture,
-  signal: AbortSignal,
-  error: unknown,
-): SdkRunError {
-  if (capture.limitError) {
-    return capture.limitError;
+function iterationFailure(capture: QueryCapture, signal: AbortSignal, error: unknown): SdkRunError {
+  if (capture.error) {
+    return capture.error;
   }
   return signal.aborted
     ? SdkQueryError.cancelled("iterate", error)
@@ -363,18 +476,16 @@ function turnAbortController(
 type TurnObservers = {
   readonly selector: string;
   readonly modelObserver: RunnerOptions["modelObserver"];
-  readonly recordUsage: ((usage: TokenUsage) => void) | undefined;
+  readonly recordUsage: ReturnType<CacheDiagnosticTracker> | undefined;
 };
 
 function conclude(
   outcome: QueryOutcome,
-  capture: DeferredCallCapture,
+  progress: QueryProgress,
+  capture: QueryCapture,
   { selector, modelObserver, recordUsage }: TurnObservers,
 ): BridgeEvent {
-  if (Result.isFailure(outcome)) {
-    return failed(outcome.failure);
-  }
-  const { usage, observedModel, result, apiError } = outcome.success;
+  const { usage, observedModel, result, apiError } = progress;
   if (result !== undefined && observedModel !== undefined) {
     modelObserver?.({
       selector,
@@ -383,15 +494,52 @@ function conclude(
       maxOutputTokens: maxOutputTokensFor(result.modelUsage, observedModel),
     });
   }
-  const terminal = terminalEvent(result?.result, capture.calls, apiError);
-  if (terminal.type !== "failed" && usage) {
-    recordUsage?.(usage);
-  }
-  return terminal;
+  const terminal = Result.isFailure(outcome)
+    ? failed(outcome.failure)
+    : terminalEvent(
+        result?.result,
+        capture.deferred.calls,
+        apiError,
+        capture.deferred.batchStopped,
+      );
+  const checkedTerminal =
+    terminal.type !== "failed" && progress.modelRequests > 1
+      ? failed(
+          new SdkProtocolError({
+            messageType: "result",
+            detail: "SDK performed an internal model continuation; Pi owns recovery",
+          }),
+        )
+      : terminal;
+  recordUsage?.(usage, {
+    ...(observedModel === undefined ? {} : { observedModel }),
+    query: queryDiagnostics({
+      outcome: checkedTerminal.type === "failed" ? "failed" : "completed",
+      ...(result?.numTurns === undefined ? {} : { numTurns: result.numTurns }),
+      modelUsage: result?.modelUsage ?? {},
+      ...(apiError === undefined ? {} : { apiError }),
+      modelRequests: progress.modelRequests,
+      assistantToolUses: progress.assistantToolUses,
+      maxAssistantToolUses: progress.maxAssistantToolUses,
+      errorToolResults: progress.errorToolResults,
+      hookDeniedCalls: capture.deferred.hookDeniedCalls,
+      invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
+      unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
+      fallbackCalls: capture.fallbackCalls,
+    }),
+  });
+  return checkedTerminal;
 }
 
 const runTurn = Effect.fnUntraced(function* (
-  { runSdkQuery, sdkEnvironment, cacheDiagnostics, modelObserver }: Collaborators,
+  {
+    runSdkQuery,
+    sdkEnvironment,
+    cacheDiagnostics,
+    modelObserver,
+    createMcpServer,
+    validationRecovery,
+  }: Collaborators,
   turn: Turn,
 ): Effect.fn.Return<Stream.Stream<BridgeEvent>, never, Scope.Scope> {
   const { model, options } = turn;
@@ -411,9 +559,7 @@ const runTurn = Effect.fnUntraced(function* (
   }
   const request = applied.success;
   const appliedTurn = { ...turn, request };
-  const capture = createDeferredCallCapture(request.toolNames, (limitError) => {
-    abortController.abort(limitError);
-  });
+  const capture = createQueryCapture(request.toolNames, abortController, validationRecovery);
   const ttl = cacheTtlFor(
     options?.cacheRetention,
     options?.env?.PI_CACHE_RETENTION ?? sdkEnvironment.PI_CACHE_RETENTION,
@@ -427,22 +573,32 @@ const runTurn = Effect.fnUntraced(function* (
       runSdkQuery(
         queryParameters(appliedTurn, {
           abortController,
-          hook: capture.hook,
+          hook: capture.deferred.hook,
+          batchHook: capture.deferred.batchHook,
+          onFallback: capture.onFallback,
+          createMcpServer,
           env: sdkEnvironment,
           ttl,
         }),
       ),
     catch: (error) => SdkQueryError.fromCause("start", error),
   });
-  if (Result.isFailure(started)) {
-    return Stream.succeed(failed(started.failure));
-  }
   const observers = { selector: sdkModelSelectorFor(model.id), modelObserver, recordUsage };
+  if (Result.isFailure(started)) {
+    return Stream.succeed(
+      conclude(
+        Result.fail(capture.error ?? started.failure),
+        initialProgress(),
+        capture,
+        observers,
+      ),
+    );
+  }
   return querySteps(started.success, capture, abortController, appliedTurn).pipe(
     Stream.map((queryStep) =>
       queryStep._tag === "event"
         ? queryStep.event
-        : conclude(queryStep.outcome, capture, observers),
+        : conclude(queryStep.outcome, queryStep.progress, capture, observers),
     ),
   );
 });
@@ -451,6 +607,7 @@ const runTurn = Effect.fnUntraced(function* (
 export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSdkRun {
   const collaborators: Collaborators = {
     runSdkQuery: query,
+    createMcpServer: createSdkMcpServer,
     sdkEnvironment: subscriptionEnvironment(),
     ...options,
   };

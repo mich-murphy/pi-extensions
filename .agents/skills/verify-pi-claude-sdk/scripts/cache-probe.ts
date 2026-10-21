@@ -65,6 +65,7 @@ type RawModelUsage = Record<
 type RawResult = {
   readonly isError: boolean;
   readonly subtype: unknown;
+  readonly numTurns: number | undefined;
   readonly usage: RawUsage | undefined;
   readonly modelUsage: RawModelUsage;
 };
@@ -77,6 +78,7 @@ type TurnRecord = {
   readonly promptTokens: number;
   readonly readShare: number;
   readonly resultPromptTokens: number | undefined;
+  readonly numTurns: number | undefined;
   readonly modelUsagePromptTokens: number;
   readonly modelUsageKeys: readonly string[];
   readonly resultUsage: RawUsage | undefined;
@@ -157,6 +159,7 @@ function isResult(message: unknown): message is {
   type: "result";
   is_error?: boolean;
   subtype?: unknown;
+  num_turns?: number;
   usage?: RawUsage;
   modelUsage?: RawModelUsage;
 } {
@@ -174,6 +177,7 @@ const runSdkQuery: RunSdkQuery = (params) =>
         lastResult = {
           isError: message.is_error ?? false,
           subtype: message.subtype,
+          numTurns: message.num_turns,
           usage: message.usage,
           modelUsage: message.modelUsage ?? {},
         };
@@ -248,6 +252,7 @@ async function runTurn(
         : (raw.input_tokens ?? 0) +
           (raw.cache_read_input_tokens ?? 0) +
           (raw.cache_creation_input_tokens ?? 0),
+    numTurns: observed?.numTurns,
     modelUsagePromptTokens: Object.values(modelUsage).reduce(
       (sum, value) =>
         sum +
@@ -352,16 +357,18 @@ try {
     "no-side-requests": check(
       turns.every(
         (turn) =>
+          turn.numTurns === 1 &&
           turn.modelUsageKeys.length === 1 &&
           turn.resultPromptTokens === turn.modelUsagePromptTokens,
       ),
       turns.map((turn) => ({
         turn: `${turn.session}${turn.turn}`,
         resultPrompt: turn.resultPromptTokens,
+        numTurns: turn.numTurns,
         modelUsagePrompt: turn.modelUsagePromptTokens,
         models: turn.modelUsageKeys,
       })),
-      "result.usage prompt == sum(modelUsage prompt) with exactly one model, every turn",
+      "num_turns == 1 and result.usage prompt == sum(modelUsage prompt) with exactly one model, every turn",
     ),
     "cross-session-preamble": check(
       (sessionB[0]?.readShare ?? 0) >= 0.7,

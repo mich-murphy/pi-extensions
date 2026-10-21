@@ -69,8 +69,9 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
 "$H" catalog --evidence "$E"
 "$H" commands --evidence "$E"
 "$H" metadata --evidence "$E"
-"$H" live --evidence "$E"
+"$H" live --evidence "$E" --approve-recovery-live
 "$H" cache --evidence "$E"
+"$H" recovery --evidence "$E" --approve-recovery-live
 ```
 
 - `catalog`: actual `pi --list-models claude-sdk`; all five advertised IDs required.
@@ -87,6 +88,17 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
   journeys, then runs the existing **unfiltered** `npm run test:claude-sdk-upgrade`.
   The gate covers streaming text, deferred `contract_probe`, coding `read`, and
   every advertised model's actual resolution/limits. It must pass in full.
+- `recovery`: reviewed, bounded actual SDK + Pi durable-loop acceptance. See
+  [recovery](features/recovery.md). Requires explicit `--approve-recovery-live`
+  after source review and refreshes allowance before prompting. A deterministic
+  public-hook missing-arguments injection is labeled separately from the required
+  OFFLINE synthetic Messages transport with the actual SDK/CLI parser; **both**
+  must pass. Natural live malformed generation is not claimed. The separate
+  `offline-recovery` action runs only that credential-free parser fixture. Forced
+  output truncation was unsuitable and is not repeated. API/protocol errors fail.
+  `live` includes this action after the baseline gate, so `all` cannot pass
+  without it; `live`/`all`/`recovery` without approval block up front before any
+  generation (including the later all/cache branch).
 - `cache`: same allowance pre-check, then `scripts/cache-probe.ts` (via jiti)
   drives real multi-turn sessions through the production runner in the owned
   package snapshot and asserts cache read shares, suffix-only writes, no hidden
@@ -100,7 +112,7 @@ For the actual merge proof, use a **fresh** evidence directory and run:
 ```sh
 E="$(mktemp -d /tmp/pi-claude-sdk-proof-XXXXXX)"
 "$H" launch --evidence "$E"
-"$H" all --evidence "$E"
+"$H" all --evidence "$E" --approve-recovery-live
 RESULT=$?
 "$H" cleanup --evidence "$E"
 printf 'verification exit=%s; evidence=%s\n' "$RESULT" "$E"
@@ -108,7 +120,7 @@ printf 'verification exit=%s; evidence=%s\n' "$RESULT" "$E"
 
 Run without shell `set -e`, or use a cleanup trap so a nonzero result cannot skip
 cleanup. Exit 0 means requested journeys passed; 2 means blocked; 1 means failed.
-Only `all` exit 0 with **doctor, catalog, status, usage, metadata, live, cache all passed**
+Only `all` exit 0 with **doctor, catalog, status, usage, metadata, live, recovery, cache all passed**
 satisfies the merge gate. A single feature's exit 0 is only that feature's proof.
 Unexpected API/schema/protocol errors remain failures, not automatic skips.
 
@@ -120,6 +132,10 @@ per-action `*-results.json` survive cleanup. Evidence can include subscription
 allowances and local paths: review before sharing; never publish auth data.
 Only controlled prompts and an owned fixture are used. No credential reads,
 logins, arbitrary model prompts, or raw SDK event capture are needed.
+
+Recovery uses the pinned Pi SDK agent loop and owned on-disk sessions, not the
+CLI RPC client, to observe the public SDK hook boundary without raw logging.
+It does not attest the CLI approval UI.
 
 User path proof requires both action and resulting state: catalog IDs; slash
 command plus notification; text prompt plus exact response; model-issued `read`
