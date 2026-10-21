@@ -560,10 +560,12 @@ function reportUsageLimit(
     terminal.error._tag === "SdkResultError" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
   ) {
+    // Recovery notifications are best effort: a subscriber must not replace the actual failure
+    // or prevent query cleanup. Observe async rejections too, without delaying the terminal event.
     try {
-      observer?.({ resetsAt })?.catch(() => undefined);
+      void Promise.resolve(observer?.({ resetsAt })).catch(() => undefined);
     } catch {
-      // Ignored as documented on `usageLimitObserver`.
+      // Do not expose observer exceptions or payloads in provider diagnostics.
     }
   }
 }

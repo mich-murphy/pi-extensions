@@ -601,6 +601,29 @@ function rateLimitEvent(info: Readonly<Record<string, unknown>>): Record<string,
 
 const usageLimitResult = resultMessage({ is_error: true, terminal_reason: "blocking_limit" });
 
+async function* usageLimitEnding(
+  ending: "eof" | "iterate" | "protocol" | "cancelled",
+  controller: AbortController,
+) {
+  if (ending === "iterate") {
+    throw new Error("private iteration failure");
+  }
+  if (ending === "protocol") {
+    yield { type: "result" };
+  }
+  if (ending === "cancelled") {
+    controller.abort();
+  }
+}
+
+function throwUsageObserver(): void {
+  throw new Error("private observer failure");
+}
+
+async function rejectUsageObserver(): Promise<void> {
+  throw new Error("private observer rejection");
+}
+
 describe("usage limit observation", () => {
   test("reports the rejected window's reset time in milliseconds when the turn fails on it", async () => {
     const { events, observations } = await observeUsageLimits(
@@ -655,6 +678,47 @@ describe("usage limit observation", () => {
     expect(observations).toStrictEqual([]);
   });
 
+  test.each([
+    ["rapid-refill terminal", "rapid_refill_breaker", "unknown", true],
+    ["billing API error", undefined, "billing_error", true],
+    ["explicit usage limit over generic API error", "blocking_limit", "invalid_request", true],
+    ["context limit over earlier rate limit", "prompt_too_long", "rate_limit", false],
+    ["cancellation over earlier rate limit", "aborted_streaming", "rate_limit", false],
+    ["authentication over explicit usage limit", "blocking_limit", "oauth_org_not_allowed", false],
+    ["unclassified terminal", undefined, "unknown", false],
+  ])("uses effective error classification: %s", async (_name, terminalReason, apiError, notify) => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      { type: "assistant", message: { usage: {} }, error: apiError },
+      resultMessage({ is_error: true, terminal_reason: terminalReason }),
+    );
+    expect(observations).toHaveLength(Number(notify));
+    expect(observations.every(({ resetsAt }) => resetsAt === 1_792_548_000_000)).toBe(true);
+  });
+
+  test.each(["eof", "iterate", "protocol", "cancelled"] as const)(
+    "does not notify when a rejected window is followed by %s instead of a usage-limit result",
+    async (ending) => {
+      const observations: UsageLimitObservation[] = [];
+      const controller = new AbortController();
+      const events = await runTurn(
+        async function* () {
+          yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
+          yield* usageLimitEnding(ending, controller);
+        },
+        requestFixture(),
+        {
+          signal: controller.signal,
+          usageLimitObserver: (observation) => {
+            observations.push(observation);
+          },
+        },
+      );
+      expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
+      expect(observations).toStrictEqual([]);
+    },
+  );
+
   test("uses the latest reported rejected reset", async () => {
     const { observations } = await observeUsageLimits(
       rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
@@ -682,21 +746,11 @@ describe("usage limit observation", () => {
   });
 
   test.each([
-    [
-      "throws",
-      (): void => {
-        throw new Error("private observer failure");
-      },
-    ],
-    [
-      "rejects",
-      async (): Promise<void> => {
-        throw new Error("private observer rejection");
-      },
-    ],
-  ])(
+    ["throws", throwUsageObserver],
+    ["rejects", rejectUsageObserver],
+  ] as const)(
     "isolates an observer that %s and still closes the query",
-    async (_mode, usageLimitObserver) => {
+    async (_name, usageLimitObserver) => {
       let closed = false;
       let signal: AbortSignal | undefined;
       const events = await runTurn(
@@ -713,7 +767,9 @@ describe("usage limit observation", () => {
           })();
         },
         requestFixture(),
-        { usageLimitObserver },
+        {
+          usageLimitObserver,
+        },
       );
       expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
       expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
