@@ -5,12 +5,13 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 ## Packages
 
 - `pi-claude-sdk` routes Claude model turns through the official Claude Agent SDK.
+- `pi-auto-resume` continues a session automatically when a provider's usage limit resets.
 - `pi-caffeinate` keeps macOS awake while Pi is working.
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
 
-Pi loads all five extensions from the root package manifest. Install the repository with:
+Pi loads all six extensions from the root package manifest. Install the repository with:
 
 ```sh
 pi install git:github.com/mich-murphy/pi-extensions
