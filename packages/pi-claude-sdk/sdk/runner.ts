@@ -48,6 +48,14 @@ export type RunnerOptions = {
   readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
   /** Receives the model usage observed on a terminal SDK result. */
   readonly modelObserver?: (observation: ModelObservation) => void;
+  /** Receives the reset time when a turn fails on a subscription usage limit that reported one. */
+  readonly usageLimitObserver?: (limit: UsageLimitObservation) => void;
+};
+
+/** A subscription usage limit that ended a turn. */
+export type UsageLimitObservation = {
+  /** When the rejected window reopens, in epoch milliseconds. */
+  readonly resetsAt: number;
 };
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
@@ -232,6 +240,7 @@ type QueryProgress = {
   readonly observedModel: string | undefined;
   readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
   readonly apiError: string | undefined;
+  readonly usageLimitResetsAt: number | undefined;
   readonly assistantToolUses: number;
   readonly modelRequests: number;
   readonly modelRequestIds: ReadonlySet<string>;
@@ -314,6 +323,9 @@ function advance(
         event: undefined,
       };
     }
+    case "usage_limit": {
+      return { progress: { ...progress, usageLimitResetsAt: message.resetsAt }, event: undefined };
+    }
     case "ignored": {
       return { progress, event: undefined };
     }
@@ -332,6 +344,7 @@ const initialProgress = (): QueryProgress => ({
   observedModel: undefined,
   result: undefined,
   apiError: undefined,
+  usageLimitResetsAt: undefined,
   assistantToolUses: 0,
   modelRequests: 0,
   modelRequestIds: new Set(),
@@ -476,6 +489,7 @@ function turnAbortController(
 type TurnObservers = {
   readonly selector: string;
   readonly modelObserver: RunnerOptions["modelObserver"];
+  readonly usageLimitObserver: RunnerOptions["usageLimitObserver"];
   readonly recordUsage: ReturnType<CacheDiagnosticTracker> | undefined;
 };
 
@@ -483,7 +497,7 @@ function conclude(
   outcome: QueryOutcome,
   progress: QueryProgress,
   capture: QueryCapture,
-  { selector, modelObserver, recordUsage }: TurnObservers,
+  { selector, modelObserver, usageLimitObserver, recordUsage }: TurnObservers,
 ): BridgeEvent {
   const { usage, observedModel, result, apiError } = progress;
   if (result !== undefined && observedModel !== undefined) {
@@ -511,6 +525,7 @@ function conclude(
           }),
         )
       : terminal;
+  reportUsageLimit(checkedTerminal, progress.usageLimitResetsAt, usageLimitObserver);
   recordUsage?.(usage, {
     ...(observedModel === undefined ? {} : { observedModel }),
     query: queryDiagnostics({
@@ -531,12 +546,28 @@ function conclude(
   return checkedTerminal;
 }
 
+function reportUsageLimit(
+  terminal: BridgeEvent,
+  resetsAt: number | undefined,
+  observer: RunnerOptions["usageLimitObserver"],
+): void {
+  if (
+    resetsAt !== undefined &&
+    terminal.type === "failed" &&
+    terminal.error._tag === "SdkResultError" &&
+    effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
+  ) {
+    observer?.({ resetsAt });
+  }
+}
+
 const runTurn = Effect.fnUntraced(function* (
   {
     runSdkQuery,
     sdkEnvironment,
     cacheDiagnostics,
     modelObserver,
+    usageLimitObserver,
     createMcpServer,
     validationRecovery,
   }: Collaborators,
@@ -583,7 +614,12 @@ const runTurn = Effect.fnUntraced(function* (
       ),
     catch: (error) => SdkQueryError.fromCause("start", error),
   });
-  const observers = { selector: sdkModelSelectorFor(model.id), modelObserver, recordUsage };
+  const observers = {
+    selector: sdkModelSelectorFor(model.id),
+    modelObserver,
+    usageLimitObserver,
+    recordUsage,
+  };
   if (Result.isFailure(started)) {
     return Stream.succeed(
       conclude(

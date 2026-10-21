@@ -25,6 +25,7 @@ import {
   inspectClaudeSdkVersions,
 } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
+import type { UsageLimitObservation } from "./sdk/runner";
 import { blockValidationRecovery, validationRecoveryTool } from "./validation-recovery";
 
 /** Event data consumed by the provider's safety hooks. */
@@ -54,8 +55,38 @@ export type ClaudeHandlers = {
   }[K];
 };
 
+/**
+ * Event-bus channel announcing a usage limit with a known reset, for recovery extensions such as
+ * pi-auto-resume. The payload is {@link UsageLimitNotice}.
+ */
+export const USAGE_LIMIT_CHANNEL = "usage-limit";
+
+/** Payload published on {@link USAGE_LIMIT_CHANNEL} before the failed turn ends. */
+type UsageLimitNotice = {
+  /** Pi provider whose request hit the limit. */
+  readonly provider: "claude-sdk";
+  /** When the limit resets, in epoch milliseconds. */
+  readonly resetsAt: number;
+};
+
+/**
+ * Publish each observed usage limit on Pi's event bus.
+ *
+ * @param events - Pi's inter-extension event bus.
+ * @returns A runner observer that emits a {@link UsageLimitNotice}.
+ */
+export function usageLimitPublisher(
+  events: Pick<ExtensionAPI["events"], "emit">,
+): (limit: UsageLimitObservation) => void {
+  return ({ resetsAt }) => {
+    const notice: UsageLimitNotice = { provider: "claude-sdk", resetsAt };
+    events.emit(USAGE_LIMIT_CHANNEL, notice);
+  };
+}
+
 /** Pi registration capabilities consumed by the provider. */
 export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand" | "registerTool"> & {
+  readonly events: Pick<ExtensionAPI["events"], "emit">;
   readonly registerProvider: (name: string, config: ProviderConfig) => void;
   readonly on: {
     (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): unknown;
@@ -172,6 +203,7 @@ export default function registerClaudeSdkProvider(pi: ClaudeRegistration): void 
     modelObserver: (observation) => {
       observedModels.set(observation.selector, observation.canonicalModel);
     },
+    usageLimitObserver: usageLimitPublisher(pi.events),
   });
   const commands = createCommandRunner(commandLayer);
   pi.on("session_shutdown", async () => {

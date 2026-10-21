@@ -11,7 +11,12 @@ import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import { models } from "../models";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
-import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
+import type {
+  ModelObservation,
+  RunnerOptions,
+  RunSdkQuery,
+  UsageLimitObservation,
+} from "../sdk/runner";
 import {
   contextFixture,
   deliverToolUses,
@@ -576,6 +581,67 @@ describe("model observation", () => {
     const { events, observations } = await observeModels(resultMessage());
 
     expect(events).toStrictEqual([{ type: "done", reason: "stop" }]);
+    expect(observations).toStrictEqual([]);
+  });
+});
+
+async function observeUsageLimits(...messages: readonly unknown[]) {
+  const observations: UsageLimitObservation[] = [];
+  const events = await runTurn(queryWith([], ...messages), requestFixture(), {
+    usageLimitObserver: (observation) => {
+      observations.push(observation);
+    },
+  });
+  return { events, observations };
+}
+
+function rateLimitEvent(info: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
+}
+
+const usageLimitResult = resultMessage({ is_error: true, terminal_reason: "blocking_limit" });
+
+describe("usage limit observation", () => {
+  test("reports the rejected window's reset time in milliseconds when the turn fails on it", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "allowed_warning", resetsAt: 1_792_540_000 }),
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000, rateLimitType: "five_hour" }),
+      usageLimitResult,
+    );
+
+    expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
+  });
+
+  test("reports a reset carried by a rate-limit API error", async () => {
+    const usage = { input_tokens: 0, output_tokens: 0 };
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      { type: "assistant", message: { usage }, error: "rate_limit" },
+      resultMessage({ is_error: true }),
+    );
+
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
+  });
+
+  test.each([
+    ["no rate-limit event", []],
+    ["a rejection without a reset time", [rateLimitEvent({ status: "rejected" })]],
+    ["only a warning", [rateLimitEvent({ status: "allowed_warning", resetsAt: 1_792_548_000 })]],
+    ["a malformed event", [{ type: "rate_limit_event", rate_limit_info: "full" }]],
+  ])("reports nothing for %s", async (_name, preamble) => {
+    const { events, observations } = await observeUsageLimits(...preamble, usageLimitResult);
+
+    expect(failureOf(events)).toMatchObject({ category: "usage-limit" });
+    expect(observations).toStrictEqual([]);
+  });
+
+  test("reports nothing when the turn fails for another reason", async () => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      resultMessage({ is_error: true, terminal_reason: "prompt_too_long" }),
+    );
+
     expect(observations).toStrictEqual([]);
   });
 });
