@@ -69,6 +69,7 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
 "$H" catalog --evidence "$E"
 "$H" commands --evidence "$E"
 "$H" metadata --evidence "$E"
+"$H" usage-limit --evidence "$E"
 "$H" live --evidence "$E" --approve-recovery-live
 "$H" cache --evidence "$E"
 "$H" recovery --evidence "$E" --approve-recovery-live
@@ -99,6 +100,11 @@ by logging in during verification. Repeat doctor whenever anything looks wrong.
   `live` includes this action after the baseline gate, so `all` cannot pass
   without it; `live`/`all`/`recovery` without approval block up front before any
   generation (including the later all/cache branch).
+- `usage-limit`: credential-free **OFFLINE synthetic SDK-message fixture**, using
+  the unchanged production extension/parser/runner/bridge and pinned Pi session
+  event bus. Proves reset conversion, notice-before-failure, absent notices and
+  observer isolation. See [usage-limit](features/usage-limit.md); not live quota
+  or real SDK/CLI rate-limit-message generation proof. Required by `all`.
 - `cache`: same allowance pre-check, then `scripts/cache-probe.ts` (via jiti)
   drives real multi-turn sessions through the production runner in the owned
   package snapshot and asserts cache read shares, suffix-only writes, no hidden
@@ -120,7 +126,7 @@ printf 'verification exit=%s; evidence=%s\n' "$RESULT" "$E"
 
 Run without shell `set -e`, or use a cleanup trap so a nonzero result cannot skip
 cleanup. Exit 0 means requested journeys passed; 2 means blocked; 1 means failed.
-Only `all` exit 0 with **doctor, catalog, status, usage, metadata, live, recovery, cache all passed**
+Only `all` exit 0 with **doctor, catalog, status, usage, metadata, usage-limit, live, recovery, cache all passed**
 satisfies the merge gate. A single feature's exit 0 is only that feature's proof.
 Unexpected API/schema/protocol errors remain failures, not automatic skips.
 

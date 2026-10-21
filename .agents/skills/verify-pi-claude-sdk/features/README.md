@@ -36,5 +36,8 @@ A filtered live test cannot update/replace the full live attestation requirement
   and the full live SDK upgrade gate across all selectors.
 - [Recover invalid tool input](recovery.md): real SDK hooks, Pi durable errors,
   corrected pure-tool execution, and no internal model continuation.
+- [Publish usage-limit resets](usage-limit.md): offline synthetic SDK messages
+  through production registration/parser/runner/bridge and pinned Pi event bus;
+  explicitly not live quota exhaustion or SDK/CLI message-generation proof.
 - [Reuse the prompt cache](cache.md): live multi-turn cache read shares, no
   hidden side requests, cross-session and fan-out reuse.

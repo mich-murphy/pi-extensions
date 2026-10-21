@@ -83,6 +83,11 @@ export type SdkMessage =
     }
   | { readonly type: "tool_results"; readonly errorToolResults: number }
   | {
+      readonly type: "usage_limit";
+      /** When the rejected subscription window reopens, in epoch milliseconds. */
+      readonly resetsAt: number | undefined;
+    }
+  | {
       readonly type: "result";
       readonly result: TurnResult;
       /** Authoritative cumulative main-loop totals across model round-trips in this turn. */
@@ -180,6 +185,30 @@ function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = fals
   ).length;
 }
 
+// Every rate-limit update replaces recovery metadata, including malformed/unknown updates.
+// Never retain an earlier rejected window after the SDK changes its rate-limit information.
+const decodeRateLimit = Schema.decodeUnknownOption(
+  Schema.Struct({
+    rate_limit_info: Schema.Struct({
+      status: Schema.String,
+      // Bound seconds to JavaScript's Date range before converting to milliseconds.
+      resetsAt: lenientOptional(
+        Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(8_640_000_000_000)),
+      ),
+    }),
+  }),
+);
+
+function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
+  const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
+  // Claude Code reports resetsAt in epoch seconds.
+  return Result.succeed({
+    type: "usage_limit",
+    resetsAt:
+      info?.status === "rejected" && info.resetsAt !== undefined ? info.resetsAt * 1000 : undefined,
+  });
+}
+
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
     "stream_event.content_block_delta.text_delta",
@@ -255,6 +284,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
       },
     ),
   ],
+  ["rate_limit_event", rateLimitMessage],
   [
     "result",
     messageParser(resultSchema, (result) => {
