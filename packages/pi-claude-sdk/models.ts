@@ -41,6 +41,8 @@ export type SdkModelConfig = {
    * environment/policy. The live upgrade gate asserts the actual resolution.
    */
   readonly canonicalModel: string;
+  /** Minimum cacheable prefix for this model on Anthropic's first-party API. */
+  readonly minimumCacheableTokens: number;
 } & ChatModelConfig;
 
 /** Models exposed by the official Claude Agent SDK provider. */
@@ -50,6 +52,7 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Sonnet 5.5 (official Agent SDK)",
     sdkModel: "sonnet",
     canonicalModel: "claude-sonnet-5-5",
+    minimumCacheableTokens: 512,
     reasoning: true,
     thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
@@ -62,6 +65,7 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Opus 5.5 (official Agent SDK)",
     sdkModel: "opus",
     canonicalModel: "claude-opus-5-5",
+    minimumCacheableTokens: 512,
     reasoning: true,
     thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
@@ -74,6 +78,7 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Fable 5.1 (official Agent SDK)",
     sdkModel: "fable",
     canonicalModel: "claude-fable-5-1",
+    minimumCacheableTokens: 512,
     reasoning: true,
     thinkingLevelMap: fableEffortLevels,
     input: ["text", "image"],
@@ -87,6 +92,7 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Haiku 5.5 (official Agent SDK)",
     sdkModel: "haiku",
     canonicalModel: "claude-haiku-5-5",
+    minimumCacheableTokens: 512,
     reasoning: true,
     thinkingLevelMap: adaptiveEffortLevels,
     input: ["text", "image"],
@@ -99,6 +105,7 @@ export const models: readonly SdkModelConfig[] = [
     name: "Claude Haiku 4.5 (official Agent SDK)",
     sdkModel: "claude-haiku-4-5",
     canonicalModel: "claude-haiku-4-5",
+    minimumCacheableTokens: 4096,
     reasoning: true,
     input: ["text", "image"],
     cost: subscriptionCost,
@@ -117,6 +124,7 @@ export const models: readonly SdkModelConfig[] = [
 export function providerModel({
   sdkModel: _sdkModel,
   canonicalModel: _canonicalModel,
+  minimumCacheableTokens: _minimumCacheableTokens,
   ...model
 }: SdkModelConfig): ChatModelConfig {
   return model;
@@ -144,6 +152,53 @@ export function sdkModelSelectorFor(piModelId: string): string {
  */
 export function undatedModelId(modelId: string): string {
   return modelId.replace(DATE_SUFFIX, "");
+}
+
+/**
+ * First-party minima for other concrete models accepted by custom SDK model routing.
+ * Registered models keep theirs next to their limits above. Do not infer a minimum from
+ * a family or version range: even adjacent Opus releases have different thresholds.
+ * Source: https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations
+ * (checked 2026-10-20); the SDK's installed model catalog does not expose cache minima.
+ */
+const otherCacheMinimums: Readonly<Record<string, number>> = {
+  "claude-fable-5": 512,
+  "claude-mythos-5": 512,
+  "claude-mythos-5-1": 512,
+  "claude-opus-5": 512,
+  "claude-mythos-preview": 2048,
+  "claude-opus-4-7": 2048,
+  "claude-opus-4-5": 4096,
+  "claude-opus-4-6": 4096,
+  "claude-opus-4-8": 1024,
+  "claude-sonnet-5": 1024,
+  "claude-sonnet-4-6": 1024,
+  "claude-sonnet-4-5": 1024,
+  "claude-opus-4-1": 1024,
+  "claude-opus-4": 1024,
+  "claude-sonnet-4": 1024,
+  "claude-3-5-haiku": 2048,
+};
+
+/**
+ * Resolve a documented minimum without guessing for unknown/custom models.
+ *
+ * Accepts this provider's advertised IDs, SDK aliases, and concrete IDs (including dated
+ * snapshots). Moving aliases use the installed table's expected resolution; a caller with
+ * an observed concrete model should prefer that ID, even when it is unknown to the table.
+ *
+ * @param modelId - Requested or observed model, optionally qualified with `claude-sdk/`.
+ * @returns Minimum prefix tokens, or undefined when the model is not documented here.
+ */
+export function minimumCacheableTokensFor(modelId: string): number | undefined {
+  const id = undatedModelId(modelId.replace(/^claude-sdk\//u, ""));
+  const registered = models.find(
+    (model) => model.id === id || model.sdkModel === id || model.canonicalModel === id,
+  );
+  return (
+    registered?.minimumCacheableTokens ??
+    (Object.hasOwn(otherCacheMinimums, id) ? otherCacheMinimums[id] : undefined)
+  );
 }
 
 /**

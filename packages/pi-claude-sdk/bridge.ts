@@ -120,6 +120,9 @@ class AssistantMessageWriter {
           { input, output, cacheRead, cacheWrite, totalTokens },
           cacheWrite1h === undefined ? {} : { cacheWrite1h },
         );
+        if (cacheWrite1h === undefined) {
+          delete this.output.usage.cacheWrite1h;
+        }
         calculateCost(this.model, this.output.usage);
         return false;
       }

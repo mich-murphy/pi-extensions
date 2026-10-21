@@ -66,6 +66,7 @@ describe("SDK stream messages", () => {
     const message = { model: "claude-fable-5-1", usage };
 
     expect(parsed(streamEvent({ type: "message_start", message }))).toStrictEqual({
+      modelRequestStart: {},
       type: "usage",
       model: "claude-fable-5-1",
       usage,
@@ -91,6 +92,53 @@ describe("SDK stream messages", () => {
       model: "claude-fable-5-1",
       usage,
     });
+  });
+
+  test("counts complete assistant tool-use blocks without retaining their payloads", () => {
+    const message = parsed({
+      type: "assistant",
+      message: {
+        usage,
+        content: [
+          { type: "text", text: "private text" },
+          { type: "tool_use", id: "private id", name: "private name", input: { secret: true } },
+          { type: "tool_use" },
+          null,
+        ],
+      },
+    });
+    expect(message).toStrictEqual({ type: "usage", usage, assistantToolUses: 2 });
+    expect(JSON.stringify(message)).not.toContain("private");
+    expect(parsed({ type: "assistant", message: { usage, content: "malformed" } })).toStrictEqual({
+      type: "usage",
+      usage,
+    });
+  });
+
+  test("counts user error tool_result blocks but ignores free-form and structured tool output", () => {
+    const message = parsed({
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            is_error: true,
+            content: "private error",
+            tool_use_id: "private id",
+          },
+          { type: "tool_result", is_error: true },
+          { type: "tool_result", is_error: "true" },
+          { type: "tool_result", is_error: false },
+          { type: "text", text: "private text" },
+          null,
+        ],
+      },
+      tool_use_result: { secret: "private output" },
+    });
+    expect(message).toStrictEqual({ type: "tool_results", errorToolResults: 2 });
+    for (const content of [null, 7, "private text", [{ type: "tool_result", is_error: false }]]) {
+      expect(parsed({ type: "user", message: { content } })).toStrictEqual({ type: "ignored" });
+    }
   });
 
   test("treats a missing or non-string model as unobserved without failing the turn", () => {
@@ -200,6 +248,28 @@ describe("usage accumulation", () => {
     ).toMatchObject({ type: "usage", usage: { output_tokens: 1 } });
   });
 
+  test("does not inherit a per-call cache-write split into cumulative terminal totals", () => {
+    const lastCall = applyUsage(undefined, {
+      cache_creation_input_tokens: 3,
+      cache_creation: { ephemeral_1h_input_tokens: 3, ephemeral_5m_input_tokens: 0 },
+    });
+    const terminal = applyUsage(lastCall, { cache_creation_input_tokens: 10 }, "turn");
+
+    expect(terminal.cacheWrite).toBe(10);
+    expect(terminal).not.toHaveProperty("cacheWrite1h");
+    expect(terminal).not.toHaveProperty("cacheWrite5m");
+    expect(
+      applyUsage(
+        lastCall,
+        {
+          cache_creation_input_tokens: 10,
+          cache_creation: { ephemeral_1h_input_tokens: 7, ephemeral_5m_input_tokens: 3 },
+        },
+        "turn",
+      ),
+    ).toMatchObject({ cacheWrite: 10, cacheWrite1h: 7, cacheWrite5m: 3 });
+  });
+
   test("accepts the null counts the API sends on message_delta", () => {
     const message = parsed(
       streamEvent({ type: "message_delta", usage: { input_tokens: null, output_tokens: 9 } }),
@@ -227,6 +297,52 @@ describe("terminal SDK result", () => {
       _tag: "completed",
       stopReason: expected,
       terminalReason,
+    });
+  });
+
+  test("reads optional round-trips and per-model prompt counts leniently", () => {
+    expect(
+      parsed(
+        resultMessage({
+          num_turns: 3,
+          modelUsage: {
+            sonnet: { inputTokens: 1, cacheReadInputTokens: 2, cacheCreationInputTokens: 3 },
+          },
+        }),
+      ),
+    ).toMatchObject({
+      type: "result",
+      numTurns: 3,
+      modelUsage: {
+        sonnet: {
+          inputTokens: 1,
+          cacheReadInputTokens: 2,
+          cacheCreationInputTokens: 3,
+        },
+      },
+    });
+    for (const num_turns of [-1, 1.5, "private", null, Infinity]) {
+      expect(parsed(resultMessage({ num_turns }))).not.toHaveProperty("numTurns");
+    }
+    expect(
+      parsed(
+        resultMessage({
+          modelUsage: {
+            sonnet: {
+              inputTokens: "private",
+              cacheReadInputTokens: -1,
+              cacheCreationInputTokens: Infinity,
+              contextWindow: 200_000,
+            },
+            broken: "private",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      modelUsage: {
+        sonnet: { contextWindow: 200_000 },
+        broken: {},
+      },
     });
   });
 

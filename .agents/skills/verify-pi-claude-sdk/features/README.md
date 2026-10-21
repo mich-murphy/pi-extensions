@@ -8,7 +8,8 @@ single-model success cannot stand in for full catalog and live gate coverage.
 
 - Follow Launch and Doctor in [SKILL.md](../SKILL.md), from this checkout.
 - `H` names the executable helper and `E` an owned, fresh `/tmp` proof directory.
-- Use isolated `PI_CODING_AGENT_DIR`, scratch cwd, and `--no-session` throughout.
+- Use isolated `PI_CODING_AGENT_DIR` and scratch cwd throughout. CLI journeys use
+  `--no-session`; recovery alone persists owned SDK-loop sessions to prove durability.
 - Use existing Claude subscription authentication only. Never log in or read tokens.
 - No billing: model prompts require paid extra usage disabled and usable allowance.
 
@@ -33,5 +34,7 @@ A filtered live test cannot update/replace the full live attestation requirement
 - [Inspect subscription allowance](usage.md): actual usage command without a prompt.
 - [Chat and use Pi tools](live.md): actual Pi text/read journeys, real SDK metadata,
   and the full live SDK upgrade gate across all selectors.
+- [Recover invalid tool input](recovery.md): real SDK hooks, Pi durable errors,
+  corrected pure-tool execution, and no internal model continuation.
 - [Reuse the prompt cache](cache.md): live multi-turn cache read shares, no
   hidden side requests, cross-session and fan-out reuse.

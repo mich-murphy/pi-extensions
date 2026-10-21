@@ -1,10 +1,9 @@
-import type { HookCallback, HookJSONOutput } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { DeferredCall } from "../bridge";
-import { InvalidDeferredCallError, InvalidDeferredCallLimitError } from "./errors";
-
-const MAX_INVALID_PI_CALLS = 3;
+import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
+import { InvalidDeferredCallError } from "./errors";
 
 const PI_CALL_INPUT_SCHEMA = {
   name: z
@@ -29,7 +28,11 @@ function parseDeferredCall(
   input: unknown,
 ): Omit<DeferredCall, "id"> | InvalidDeferredCallError {
   const requested = requestedCallSchema.parse(input);
-  if (availableTools.has(requested.name) && requested.arguments) {
+  if (
+    requested.name !== VALIDATION_ERROR_TOOL &&
+    availableTools.has(requested.name) &&
+    requested.arguments
+  ) {
     return { name: requested.name, arguments: requested.arguments };
   }
   const sample = [...availableTools].slice(0, 5).join(", ");
@@ -49,16 +52,6 @@ function parseDeferredCall(
   });
 }
 
-function deny(reason: string): HookJSONOutput {
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: reason,
-    },
-  };
-}
-
 const DEFERRED_PI_CALL_HANDLER = async () => ({
   content: [
     {
@@ -73,73 +66,104 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
  * Create the in-process MCP gateway exposed to the Claude Agent SDK.
  *
  * @param description - Per-turn Pi tool catalog included in the gateway description.
+ * @param onFallback - Stops the query if the SDK fails to honor permission deferral.
  * @returns The SDK MCP tool definition.
  */
-export function createDeferredPiCallTool(description: string) {
-  return tool("pi_call", description, PI_CALL_INPUT_SCHEMA, DEFERRED_PI_CALL_HANDLER);
+export function createDeferredPiCallTool(description: string, onFallback?: () => void) {
+  return tool("pi_call", description, PI_CALL_INPUT_SCHEMA, async () => {
+    onFallback?.();
+    return DEFERRED_PI_CALL_HANDLER();
+  });
 }
 
-/** One turn's record of the Pi tool calls the model requested through the gateway. */
+/** One turn's tool handoff. Rejections target the reserved Pi-owned error tool.
+ * Its guard/throw path persists an isError result and continues Pi's outer loop.
+ * No invalid input is ever replaced by executable arguments for a real tool.
+ */
 export type DeferredCallCapture = {
-  /** SDK `PreToolUse` callback that defers valid gateway calls and denies everything else. */
   readonly hook: HookCallback;
-  /** Set once the model exceeded the invalid-call limit; the turn must fail with it. */
-  readonly limitError: Readonly<InvalidDeferredCallLimitError> | undefined;
-  /** Valid calls in arrival order, deduplicated by tool-use id. */
+  readonly batchHook: HookCallback;
+  readonly batchStopped: boolean;
+
   readonly calls: readonly DeferredCall[];
+  readonly hookDeniedCalls: number;
+  readonly invalidGatewayCalls: number;
+  readonly unexpectedToolCalls: number;
 };
 
-/**
- * Create the per-turn capture behind the `pi_call` gateway.
- *
- * A denied invalid call does not end the SDK query, so the model can correct
- * itself within the turn. The capture tolerates three invalid calls and reports
- * the fourth through `onLimitExceeded`.
- *
- * @param availableTools - Pi tool names available during this turn.
- * @param onLimitExceeded - Receives the limit error exactly when it first trips.
- * @returns The hook to install plus the calls it captures.
+/** Capture valid and invalid calls without asking the SDK model to recover.
+ * PostToolBatch is the official boundary after *all* tools resolve and before
+ * the next model request, including validation failures that skip PreToolUse.
+ * Its continue:false output stops the SDK loop; only a clean terminal result
+ * can authorize the handoff. Tool-result prose is never inspected.
  */
 export function createDeferredCallCapture(
   availableTools: ReadonlySet<string>,
-  onLimitExceeded: (error: Readonly<InvalidDeferredCallLimitError>) => void,
 ): DeferredCallCapture {
   const calls = new Map<string, DeferredCall>();
   let invalidCalls = 0;
-  let limitError: InvalidDeferredCallLimitError | undefined;
+  let unexpectedToolCalls = 0;
+  let batchStopped = false;
+
+  const capture = (id: string, toolName: string, input: unknown, preToolUse: boolean): void => {
+    if (calls.has(id)) {
+      return;
+    }
+    const parsed =
+      toolName === "mcp__pi__pi_call" ? parseDeferredCall(availableTools, input) : undefined;
+    if (preToolUse && parsed && !(parsed instanceof InvalidDeferredCallError)) {
+      calls.set(id, { id, ...parsed });
+      return;
+    }
+    if (parsed) {
+      invalidCalls += 1;
+    } else {
+      unexpectedToolCalls += 1;
+    }
+    calls.set(id, {
+      id,
+      name: VALIDATION_ERROR_TOOL,
+      arguments: {
+        error: parsed ? "invalid_gateway_input" : "unexpected_sdk_tool",
+      },
+    });
+  };
 
   const hook: HookCallback = async (input) => {
     if (input.hook_event_name !== "PreToolUse") {
       return {};
     }
-    if (input.tool_name !== "mcp__pi__pi_call") {
-      return deny(`Only the Pi deferred-tool gateway is available, not ${input.tool_name}.`);
-    }
-    const parsed = parseDeferredCall(availableTools, input.tool_input);
-    if (parsed instanceof InvalidDeferredCallError) {
-      invalidCalls += 1;
-      if (invalidCalls > MAX_INVALID_PI_CALLS && !limitError) {
-        limitError = new InvalidDeferredCallLimitError({
-          attempts: invalidCalls,
-          lastError: parsed,
-        });
-        onLimitExceeded(limitError);
-      }
-      return deny(parsed.message);
-    }
-    if (!calls.has(input.tool_use_id)) {
-      calls.set(input.tool_use_id, { id: input.tool_use_id, ...parsed });
-    }
+    capture(input.tool_use_id, input.tool_name, input.tool_input, true);
     return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" } };
   };
-
+  const batchHook: HookCallback = async (input) => {
+    if (input.hook_event_name !== "PostToolBatch") {
+      return {};
+    }
+    // Keep PreToolUse arrival order and append uncaptured entries in batch order.
+    // A batch entry is evidence of resolution, NEVER permission deferral: even
+    // structurally valid input must not become an executable real call here.
+    for (const call of input.tool_calls) {
+      capture(call.tool_use_id, call.tool_name, call.tool_input, false);
+    }
+    batchStopped = true;
+    return { continue: false, stopReason: "Pi owns tool execution and validation recovery." };
+  };
   return {
     hook,
-    get limitError() {
-      return limitError;
+    batchHook,
+    get batchStopped() {
+      return batchStopped;
     },
     get calls() {
       return [...calls.values()];
+    },
+    hookDeniedCalls: 0,
+    get invalidGatewayCalls() {
+      return invalidCalls;
+    },
+    get unexpectedToolCalls() {
+      return unexpectedToolCalls;
     },
   };
 }

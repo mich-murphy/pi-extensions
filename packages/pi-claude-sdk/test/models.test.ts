@@ -1,6 +1,6 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
-import { formatModelStatus, models } from "../models";
+import { formatModelStatus, minimumCacheableTokensFor, models, providerModel } from "../models";
 import { modelFixture } from "./fixtures";
 
 describe("model table", () => {
@@ -48,6 +48,64 @@ describe("model table", () => {
     expect(models.length).toBeGreaterThan(0);
     for (const model of models) {
       expect(model.input).toStrictEqual(["text", "image"]);
+    }
+  });
+});
+
+describe("cache minimum model metadata", () => {
+  test.each([
+    ["claude-5.5-sonnet", "sonnet", "claude-sonnet-5-5", 512],
+    ["claude-5.5-opus", "opus", "claude-opus-5-5", 512],
+    ["claude-5.1-fable", "fable", "claude-fable-5-1", 512],
+    ["claude-5.5-haiku", "haiku", "claude-haiku-5-5", 512],
+    ["claude-4.5-haiku", "claude-haiku-4-5", "claude-haiku-4-5", 4096],
+  ] as const)(
+    "resolves %s by advertised ID, selector and concrete snapshot",
+    (id, alias, canonical, minimum) => {
+      const entry = models.find((model) => model.id === id);
+      expect(entry?.minimumCacheableTokens).toBe(minimum);
+      for (const name of [id, alias, canonical, `${canonical}-20261001`]) {
+        expect(minimumCacheableTokensFor(name)).toBe(minimum);
+        expect(minimumCacheableTokensFor(`claude-sdk/${name}`)).toBe(minimum);
+      }
+    },
+  );
+
+  test.each([
+    ["claude-sonnet-4-5-20250929", 1024],
+    ["claude-opus-4-5", 4096],
+    ["claude-opus-4-6", 4096],
+    ["claude-opus-4-7", 2048],
+    ["claude-opus-4-8", 1024],
+    ["claude-opus-5", 512],
+    ["claude-3-5-haiku-20241022", 2048],
+  ] as const)(
+    "preserves documented nonuniform minimum for custom concrete model %s",
+    (id, minimum) => {
+      expect(minimumCacheableTokensFor(id)).toBe(minimum);
+    },
+  );
+
+  test.each([
+    "custom",
+    "claude-haiku-6",
+    "claude-opus-4-9",
+    "claude-sonnet-5-5-custom",
+    "anthropic/claude-haiku-4-5",
+    "toString",
+    "constructor",
+    "__proto__",
+  ])("does not guess a minimum for %s", (id) => {
+    expect(minimumCacheableTokensFor(id)).toBeUndefined();
+  });
+
+  test("does not leak SDK-only cache or routing metadata into Pi registration", () => {
+    for (const entry of models) {
+      const registration = providerModel(entry);
+      expect(registration).not.toHaveProperty("minimumCacheableTokens");
+      expect(registration).not.toHaveProperty("sdkModel");
+      expect(registration).not.toHaveProperty("canonicalModel");
+      expect(registration).toMatchObject({ id: entry.id, contextWindow: entry.contextWindow });
     }
   });
 });

@@ -160,14 +160,14 @@ describe("cache diagnostics", () => {
       };
       const miss = { input: 3000, output: 1, cacheRead: 0, cacheWrite: 0 };
 
-      tracker("m", base)(miss);
+      tracker("claude-sdk/sonnet", base)(miss);
       yield* TestClock.adjust("2 hours");
-      tracker("m", base)(miss);
-      tracker("m", otherTools)(miss);
-      tracker("m", otherSystem)(miss);
-      tracker("m", otherSystem, { reasoning: "high" })(miss);
-      tracker("m", otherSystem, { reasoning: "high", ttl: "none" })(miss);
-      tracker("m", otherSystem, { reasoning: "high" })({ ...miss, input: 10 });
+      tracker("claude-sdk/sonnet", base)(miss);
+      tracker("claude-sdk/sonnet", otherTools)(miss);
+      tracker("claude-sdk/sonnet", otherSystem)(miss);
+      tracker("claude-sdk/sonnet", otherSystem, { reasoning: "high" })(miss);
+      tracker("claude-sdk/sonnet", otherSystem, { reasoning: "high", ttl: "none" })(miss);
+      tracker("claude-sdk/sonnet", otherSystem, { reasoning: "high" })({ ...miss, input: 10 });
       tracker("other", otherSystem, { reasoning: "high" })({ ...miss, cacheRead: 9000 });
 
       expect(
@@ -198,6 +198,135 @@ describe("cache diagnostics", () => {
     }),
   );
 
+  test.each([
+    ["claude-sdk/claude-4.5-haiku", 3961, 4096, "below-minimum"],
+    ["claude-sdk/claude-4.5-haiku", 4095, 4096, "below-minimum"],
+    ["claude-sdk/claude-4.5-haiku", 4096, 4096, "first"],
+    ["claude-sdk/claude-5.5-haiku", 511, 512, "below-minimum"],
+    ["claude-sdk/claude-5.5-haiku", 512, 512, "first"],
+    ["claude-sdk/claude-5.5-sonnet", 800, 512, "first"],
+    ["claude-sonnet-4-5", 1023, 1024, "below-minimum"],
+    ["claude-sonnet-4-5", 1024, 1024, "first"],
+    ["claude-opus-4-7", 2047, 2048, "below-minimum"],
+    ["claude-opus-4-7", 2048, 2048, "first"],
+    ["custom", 10, undefined, "first"],
+  ] as const)(
+    "uses the model minimum for %s with %i prompt tokens",
+    (model, input, minimum, cause) => {
+      const events: CacheDiagnostic[] = [];
+      const tracker = Effect.runSync(
+        createCacheDiagnosticTracker((event) => {
+          events.push(event);
+        }),
+      );
+      tracker(model, { promptBlocks: [textBlock("not a token estimate")], cacheBreakpoints: [0] })({
+        input,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+      });
+      expect(events[1]).toMatchObject({
+        type: "usage",
+        promptTokens: input,
+        likelyMissCause: cause,
+      });
+      for (const event of events) {
+        assert(event.type !== "query");
+        expect(event.minimumCacheableTokens).toBe(minimum);
+        expect(Object.hasOwn(event, "minimumCacheableTokens")).toBe(minimum !== undefined);
+      }
+    },
+  );
+
+  test.each([
+    ["claude-haiku-4-5-20251001", 4096, "below-minimum"],
+    ["claude-haiku-5-5", 512, "first"],
+    ["future-custom-model", undefined, "first"],
+  ] as const)(
+    "prefers observed model %s over the requested moving alias",
+    (observedModel, minimum, cause) => {
+      const events: CacheDiagnostic[] = [];
+      const tracker = Effect.runSync(
+        createCacheDiagnosticTracker((event) => {
+          events.push(event);
+        }),
+      );
+      tracker("claude-sdk/haiku", { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [0] })(
+        { input: 1000, output: 1, cacheRead: 0, cacheWrite: 0 },
+        { observedModel },
+      );
+      expect(events[0]).toHaveProperty("minimumCacheableTokens", 512);
+      expect(events[1]).toMatchObject({ type: "usage", likelyMissCause: cause });
+      const usage = events[1];
+      assert(usage?.type === "usage", "missing usage diagnostic");
+      expect(usage.minimumCacheableTokens).toBe(minimum);
+      expect(Object.hasOwn(usage, "minimumCacheableTokens")).toBe(minimum !== undefined);
+    },
+  );
+
+  test.each([
+    { input: 0, output: 1, cacheRead: 0, cacheWrite: 0 },
+    { input: 500, output: 1, cacheRead: 1, cacheWrite: 0 },
+    { input: 500, output: 1, cacheRead: 0, cacheWrite: 1 },
+  ])(
+    "does not infer below-minimum from zero usage or contradict actual cache activity: %j",
+    (usage) => {
+      const events: CacheDiagnostic[] = [];
+      const tracker = Effect.runSync(
+        createCacheDiagnosticTracker((event) => {
+          events.push(event);
+        }),
+      );
+      tracker("claude-sdk/claude-4.5-haiku", {
+        promptBlocks: [textBlock("prompt")],
+        cacheBreakpoints: [0],
+      })(usage);
+      expect(events[1]).toMatchObject({ type: "usage", likelyMissCause: "first" });
+    },
+  );
+
+  test("disabled caching takes precedence over the model minimum", () => {
+    const events: CacheDiagnostic[] = [];
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
+    tracker(
+      "claude-sdk/claude-4.5-haiku",
+      { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [] },
+      { ttl: "none" },
+    )({ input: 100, output: 1, cacheRead: 0, cacheWrite: 0 });
+    expect(events[1]).toMatchObject({ type: "usage", likelyMissCause: "caching-disabled" });
+  });
+
+  test("captures each turn's model even if final usage arrives after a later request", () => {
+    const events: CacheDiagnostic[] = [];
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker((event) => {
+        events.push(event);
+      }),
+    );
+    const prompt = { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [0] };
+    const first = tracker("claude-sdk/claude-4.5-haiku", prompt);
+    const second = tracker("claude-sdk/claude-5.5-haiku", prompt);
+    const usage = { input: 1000, output: 1, cacheRead: 0, cacheWrite: 0 };
+    second(usage);
+    first(usage);
+    expect(events[2]).toMatchObject({
+      type: "usage",
+      turn: 2,
+      minimumCacheableTokens: 512,
+      likelyMissCause: "prefix-changed",
+    });
+    expect(events[3]).toMatchObject({
+      type: "usage",
+      turn: 1,
+      minimumCacheableTokens: 4096,
+      likelyMissCause: "below-minimum",
+    });
+  });
+
   test("attributes a low read to the lookback window when no breakpoint reaches the previous write", () => {
     const events: CacheDiagnostic[] = [];
     const tracker = Effect.runSync(
@@ -213,5 +342,48 @@ describe("cache diagnostics", () => {
     })({ input: 5000, output: 1, cacheRead: 0, cacheWrite: 0 });
 
     expect(events.at(-1)).toMatchObject({ type: "usage", likelyMissCause: "lookback" });
+  });
+});
+
+describe("query diagnostic records", () => {
+  const query = {
+    outcome: "failed" as const,
+    models: [],
+    modelEntriesOmitted: 0,
+    assistantToolUses: 0,
+    maxAssistantToolUses: 0,
+    errorToolResults: 0,
+    hookDeniedCalls: 0,
+    invalidGatewayCalls: 0,
+    unexpectedToolCalls: 0,
+    fallbackCalls: 0,
+  };
+  test("correlates no-usage outcomes with their request and does not invent zero counts", () => {
+    const records: CacheDiagnostic[] = [];
+    const tracker = Effect.runSync(createCacheDiagnosticTracker((record) => records.push(record)));
+    const record = tracker("sonnet", {
+      promptBlocks: [textBlock("fixture")],
+      cacheBreakpoints: [],
+    });
+    record(undefined, { query });
+    expect(records.at(-1)).toStrictEqual({ type: "query", turn: 1, query });
+    expect(records.at(-1)).not.toHaveProperty("input");
+    record(undefined);
+    expect(records).toHaveLength(2);
+  });
+  test("an unavailable diagnostic sink cannot fail the request or usage/outcome record", () => {
+    const tracker = Effect.runSync(
+      createCacheDiagnosticTracker(() => {
+        throw new Error("private sink error");
+      }),
+    );
+    expect(() => {
+      const record = tracker("sonnet", {
+        promptBlocks: [textBlock("fixture")],
+        cacheBreakpoints: [],
+      });
+      record({ input: 5, output: 1, cacheRead: 0, cacheWrite: 0 }, { query });
+      record(undefined, { query });
+    }).not.toThrow();
   });
 });

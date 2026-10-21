@@ -293,7 +293,7 @@ describe("public terminal failure privacy", () => {
     expect(message.errorMessage).toContain("unexpected SDK error");
   });
 
-  test("invalid-tool limit summaries do not copy model-supplied names", async () => {
+  test("unprotected invalid-tool failures do not copy model-supplied names", async () => {
     const lines = captureDiagnostics();
     const message = await turn(async function* (params) {
       await deliverToolUses(
@@ -306,7 +306,7 @@ describe("public terminal failure privacy", () => {
       yield resultMessage();
     });
     safeError(message, lines);
-    expect(message.errorMessage).toContain("invalid Pi tool requests");
+    expect(message.errorMessage).toContain("could not hand the requested Pi tool call back to Pi");
   });
 });
 

@@ -1,4 +1,5 @@
 import { once } from "node:events";
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Effect } from "effect";
 import { assert, describe, expect, test } from "vitest";
@@ -14,6 +15,7 @@ import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner
 import {
   contextFixture,
   deliverToolUses,
+  deliverToolUse,
   drain,
   installedHook,
   modelFixture,
@@ -35,12 +37,49 @@ const DEFERRED = resultMessage({ stop_reason: "tool_deferred" });
 const READ_PACKAGE = { name: "read", arguments: { path: "package.json" } };
 const INVALID_CALL = { name: "pi_call", arguments: {} };
 
+type FallbackEnding = "clean-result" | "clean-eof" | "rejection";
+type QueryFailure = "start" | "iterate" | "protocol" | "missing-result";
+
+async function* fallbackEnding(ending: FallbackEnding, params: SdkQueryParameters) {
+  if (ending === "clean-result") {
+    yield DEFERRED;
+  }
+  if (ending === "rejection") {
+    params.options?.abortController?.signal.throwIfAborted();
+  }
+}
+
+function failingQuery(failure: QueryFailure): RunSdkQuery {
+  return () => {
+    if (failure === "start") {
+      throw new Error("private start error");
+    }
+    return (async function* () {
+      if (failure === "iterate") {
+        throw new Error("private iteration error");
+      }
+      if (failure === "protocol") {
+        yield streamEvent({ type: "message_delta", usage: { input_tokens: "private usage" } });
+      }
+      if (failure === "missing-result") {
+        yield { type: "system", private: "ignored" };
+      }
+    })();
+  };
+}
+
 async function runTurn(
   runSdkQuery: RunSdkQuery,
   request: AgentRequest = requestFixture(),
   options: SimpleStreamOptions & RunnerOptions = {},
 ): Promise<BridgeEvent[]> {
-  return drain(createClaudeAgentSdkRunner({ ...options, runSdkQuery })(request, sonnet, options));
+  return drain(
+    createClaudeAgentSdkRunner({ validationRecovery: "pi-tool-loop", ...options, runSdkQuery })(
+      request,
+      sonnet,
+      options,
+    ),
+  );
 }
 
 function toolUses(toolInputs: readonly unknown[]): ToolUse[] {
@@ -129,8 +168,12 @@ async function runAllowing(
 }
 
 async function diagnose(...messages: readonly unknown[]): Promise<CacheDiagnostic[]> {
+  return diagnoseQuery(queryWith([], ...messages));
+}
+
+async function diagnoseQuery(runSdkQuery: RunSdkQuery): Promise<CacheDiagnostic[]> {
   const diagnostics: CacheDiagnostic[] = [];
-  await runTurn(queryWith([], ...messages), requestFixture({ cacheBreakpoints: [0] }), {
+  await runTurn(runSdkQuery, requestFixture({ cacheBreakpoints: [0] }), {
     cacheDiagnostics: Effect.runSync(
       createCacheDiagnosticTracker((diagnostic) => {
         diagnostics.push(diagnostic);
@@ -164,7 +207,7 @@ describe("SDK query parameters", () => {
     });
     expect(options?.resume).toBeUndefined();
     expect(options?.sessionId).toBeUndefined();
-    expect(options?.maxTurns).toBeUndefined();
+    expect(options?.maxTurns).toBe(8);
     assert(options?.mcpServers !== undefined, "test setup: SDK query has no MCP servers");
     expect(Object.keys(options.mcpServers)).toStrictEqual(["pi"]);
   });
@@ -323,6 +366,61 @@ describe("turn streaming", () => {
     ]);
   });
 
+  test("clears per-call cache splits from cumulative diagnostics and Pi usage when terminal split is absent", async () => {
+    const diagnostics: CacheDiagnostic[] = [];
+    const run = createClaudeAgentSdkRunner({
+      runSdkQuery: queryWith(
+        [],
+        streamEvent({
+          type: "message_start",
+          message: {
+            usage: {
+              input_tokens: 10,
+              cache_creation_input_tokens: 7,
+              cache_creation: { ephemeral_1h_input_tokens: 7, ephemeral_5m_input_tokens: 0 },
+            },
+          },
+        }),
+        streamEvent({
+          type: "message_start",
+          message: {
+            usage: {
+              input_tokens: 20,
+              cache_creation_input_tokens: 3,
+              cache_creation: { ephemeral_1h_input_tokens: 3, ephemeral_5m_input_tokens: 0 },
+            },
+          },
+        }),
+        resultMessage({
+          num_turns: 2,
+          usage: { input_tokens: 30, cache_creation_input_tokens: 10 },
+        }),
+      ),
+      cacheDiagnostics: Effect.runSync(
+        createCacheDiagnosticTracker((record) => diagnostics.push(record)),
+      ),
+    });
+    const events = await drain(
+      createAgentSdkStream({
+        model: sonnet,
+        context: contextFixture({ messages: [] }),
+        options: {},
+        run,
+      }),
+    );
+    const terminal = events.at(-1);
+    assert(terminal?.type === "error");
+    expect(terminal.error.usage).toMatchObject({ input: 30, cacheWrite: 10 });
+    expect(terminal.error.usage).not.toHaveProperty("cacheWrite1h");
+    expect(diagnostics.at(-1)).toMatchObject({
+      type: "usage",
+      cacheWrite: 10,
+      query: { numTurns: 2 },
+    });
+    expect(diagnostics.at(-1)).not.toHaveProperty("cacheWrite1h");
+    expect(diagnostics.at(-1)).not.toHaveProperty("cacheWrite5m");
+  });
+
   test("reconciles authoritative terminal usage before completion without double-counting SDK rounds", async () => {
     const events = await runTurn(
       queryWith(
@@ -345,7 +443,7 @@ describe("turn streaming", () => {
       type: "usage",
       usage: { input: 14, output: 5, cacheRead: 3, cacheWrite: 1 },
     });
-    expect(events.at(-1)).toStrictEqual({ type: "done", reason: "stop" });
+    expect(events.at(-1)).toMatchObject({ type: "failed", error: { _tag: "SdkProtocolError" } });
   });
 
   test("does not repeat terminal usage that matches the last streamed totals", async () => {
@@ -483,6 +581,89 @@ describe("model observation", () => {
 });
 
 describe("deferred tool calls", () => {
+  test.each(["clean-result", "clean-eof", "rejection"] as const)(
+    "fails closed and aborts if the SDK executes the MCP fallback (%s)",
+    async (ending) => {
+      let fallback: (() => Promise<unknown>) | undefined;
+      const createMcpServer: typeof createSdkMcpServer = (options) => {
+        const gateway = options.tools?.[0];
+        assert(gateway !== undefined);
+        fallback = async () => gateway.handler(READ_PACKAGE, undefined);
+        return createSdkMcpServer(options);
+      };
+      const records: CacheDiagnostic[] = [];
+      {
+        const events = await runTurn(
+          async function* fakeQuery(params) {
+            await deliverToolUses(installedHook(params), toolUses([READ_PACKAGE]));
+            assert(fallback !== undefined);
+            await fallback();
+            expect(params.options?.abortController?.signal.aborted).toBe(true);
+            yield* fallbackEnding(ending, params);
+          },
+          requestFixture(),
+          {
+            createMcpServer,
+            cacheDiagnostics: Effect.runSync(
+              createCacheDiagnosticTracker((record) => records.push(record)),
+            ),
+          },
+        );
+        expect(failureOf(events)).toMatchObject({
+          _tag: "SdkResultError",
+          terminalReason: "tool_deferred_unavailable",
+          category: "tool-contract",
+        });
+        expect(records.at(-1)).toMatchObject({
+          type: "query",
+          query: { outcome: "failed", fallbackCalls: 1 },
+        });
+      }
+    },
+  );
+
+  test("keeps fallback contract failure ahead of pending correction calls", async () => {
+    let fallback: (() => Promise<unknown>) | undefined;
+    const events = await runTurn(
+      async function* (params) {
+        await deliverToolUses(
+          installedHook(params),
+          toolUses([INVALID_CALL, INVALID_CALL, INVALID_CALL, INVALID_CALL]),
+        );
+        assert(fallback !== undefined);
+        await fallback();
+        yield DEFERRED;
+      },
+      requestFixture(),
+      {
+        createMcpServer: (options) => {
+          const gateway = options.tools?.[0];
+          assert(gateway !== undefined);
+          fallback = async () => gateway.handler(READ_PACKAGE, undefined);
+          return createSdkMcpServer(options);
+        },
+      },
+    );
+    expect(failureOf(events)._tag).toBe("SdkResultError");
+  });
+
+  test("reports the SDK safety cap as a turn-limit failure without releasing captured calls", async () => {
+    const error = failureOf(
+      await runTurn(
+        queryWith(
+          [READ_PACKAGE],
+          resultMessage({ is_error: true, terminal_reason: "max_turns", num_turns: 8 }),
+        ),
+      ),
+    );
+
+    expect(error).toMatchObject({
+      _tag: "SdkResultError",
+      terminalReason: "max_turns",
+      category: "turn-limit",
+    });
+  });
+
   test("yields every hook-captured tool call once the SDK result confirms a clean defer", async () => {
     const second = { name: "read", arguments: { path: "README.md" } };
 
@@ -506,67 +687,43 @@ describe("deferred tool calls", () => {
     await expect(runAllowing("write", "write", DEFERRED)).resolves.toStrictEqual([
       { type: "tool_calls", calls: [{ id: "toolu_0", name: "write", arguments: {} }] },
     ]);
-    await expect(runAllowing("read", "write", resultMessage())).resolves.toStrictEqual([
-      { type: "done", reason: "stop" },
+    const invalid = await runAllowing("read", "write", DEFERRED);
+    expect(invalid).toMatchObject([
+      { type: "tool_calls", calls: [{ name: "pi_claude_sdk_validation_error" }] },
     ]);
   });
 
-  test("lets the model retry after an invalid pi_call within the same query instead of ending the turn", async () => {
-    const events = await runTurn(
-      queryWith(
-        [INVALID_CALL, READ_PACKAGE],
-        resultMessage({ stop_reason: null, terminal_reason: "tool_deferred" }),
-      ),
-    );
-
-    expect(events).toStrictEqual([
-      { type: "tool_calls", calls: [{ id: "toolu_1", ...READ_PACKAGE }] },
+  test("preserves invalid and valid siblings as separate Pi calls without SDK retries", async () => {
+    const events = await runTurn(queryWith([INVALID_CALL, READ_PACKAGE], DEFERRED));
+    expect(events).toMatchObject([
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "toolu_0",
+            name: "pi_claude_sdk_validation_error",
+            arguments: { error: "invalid_gateway_input" },
+          },
+          { id: "toolu_1", ...READ_PACKAGE },
+        ],
+      },
     ]);
   });
 
-  test("tolerates exactly three invalid attempts, whether or not a valid call follows", async () => {
-    const invalid = [INVALID_CALL, INVALID_CALL, INVALID_CALL];
-    const completed = resultMessage({ terminal_reason: "completed" });
-
-    await expect(runTurn(queryWith([...invalid, READ_PACKAGE], DEFERRED))).resolves.toStrictEqual([
-      { type: "tool_calls", calls: [{ id: "toolu_3", ...READ_PACKAGE }] },
-    ]);
-    await expect(runTurn(queryWith(invalid, completed))).resolves.toStrictEqual([
-      { type: "done", reason: "stop" },
-    ]);
-  });
-
-  test("aborts the query at the fourth invalid attempt and fails even if a valid call and clean result follow", async () => {
-    let abortReason: unknown;
-    const inputs = [INVALID_CALL, INVALID_CALL, INVALID_CALL, INVALID_CALL, READ_PACKAGE];
-
-    const events = await runTurn(async function* fakeQuery(params) {
-      await deliverToolUses(installedHook(params), toolUses(inputs));
-      abortReason = params.options?.abortController?.signal.reason;
-      yield textDelta("still talking");
-      yield DEFERRED;
+  test("does not release correction calls from a rejected SDK query", async () => {
+    const events = await runTurn(async function* (params) {
+      await deliverToolUse(installedHook(params), { id: "bad", input: INVALID_CALL });
+      yield { type: "system" };
+      throw new Error("private failure");
     });
-
-    const error = failureOf(events);
-    expect(error._tag).toBe("InvalidDeferredCallLimitError");
-    expect(error.message).toContain("invalid Pi tool requests");
-    expect(abortReason).toBe(error);
-  });
-
-  test("reports the invalid-call limit when the aborted SDK query rejects", async () => {
-    const events = await runTurn(async function* fakeQuery(params) {
-      yield* queryWith([INVALID_CALL, INVALID_CALL, INVALID_CALL, INVALID_CALL])(params);
-      throw new Error("This operation was aborted");
-    });
-
-    expect(failureOf(events)._tag).toBe("InvalidDeferredCallLimitError");
+    expect(failureOf(events)._tag).toBe("SdkQueryError");
   });
 
   test("rejects tool_deferred when the hook captured no Pi call", async () => {
     const error = failureOf(await runTurn(queryWith([], DEFERRED)));
 
     expect(error._tag).toBe("SdkProtocolError");
-    expect(error.message).toContain("PreToolUse hook captured no calls");
+    expect(error.message).toContain("tool handoff terminal result captured no calls");
   });
 
   test("rejects a captured Pi call unless the result confirms tool_deferred", async () => {
@@ -652,6 +809,27 @@ describe("turn failures", () => {
     expect(error.error.message).toBe("Claude Code authentication failed; run `claude` to sign in");
   });
 
+  test.each([
+    ["rate_limit", "authentication_failed"],
+    ["authentication_failed", "rate_limit"],
+    ["cloud_credential_error", "server_error"],
+  ])("keeps authentication ahead of transient errors %s then %s", async (first, second) => {
+    const events = await runTurn(
+      queryWith(
+        [],
+        ...[first, second].map((error) => ({
+          type: "assistant",
+          message: { usage: {} },
+          error,
+        })),
+        resultMessage({ is_error: true }),
+      ),
+    );
+    const terminal = events.at(-1);
+    assert(terminal?.type === "failed");
+    expect(terminal.error.message).toContain("authentication failed");
+  });
+
   test("reports a query that cannot start", async () => {
     const error = failureOf(
       await runTurn(() => {
@@ -733,7 +911,37 @@ describe("SDK query cancellation", () => {
     });
   });
 
-  test("keeps the invalid-call limit ahead of cancellation and a clean result", async () => {
+  test("reports cancellation, not a missing result, on clean aborted EOF", async () => {
+    const controller = new AbortController();
+    const events = await runTurn(
+      async function* fakeQuery() {
+        controller.abort("private reason");
+        yield textDelta("partial");
+      },
+      requestFixture(),
+      { signal: controller.signal },
+    );
+    expect(failureOf(events.slice(1))).toMatchObject({
+      _tag: "SdkQueryError",
+      operation: "iterate",
+      reason: { _tag: "Cancelled" },
+    });
+  });
+
+  test("keeps an explicit failed terminal result ahead of caller cancellation", async () => {
+    const controller = new AbortController();
+    const events = await runTurn(
+      async function* fakeQuery() {
+        controller.abort("private reason");
+        yield resultMessage({ is_error: true, terminal_reason: "blocking_limit" });
+      },
+      requestFixture(),
+      { signal: controller.signal },
+    );
+    expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+  });
+
+  test("keeps cancellation ahead of pending correction calls", async () => {
     const controller = new AbortController();
     const events = await runTurn(
       async function* fakeQuery(params) {
@@ -748,7 +956,7 @@ describe("SDK query cancellation", () => {
       { signal: controller.signal },
     );
 
-    expect(failureOf(events)._tag).toBe("InvalidDeferredCallLimitError");
+    expect(failureOf(events)._tag).toBe("SdkQueryError");
   });
 
   test("forwards cancellation during iteration and ends Pi with one aborted event", async () => {
@@ -811,10 +1019,167 @@ describe("cache diagnostics", () => {
     ]);
   });
 
-  test("records no usage for a failed turn", async () => {
-    const diagnostics = await diagnose(usage, resultMessage({ is_error: true }));
+  test("records internal round-trips, side-model totals and error results without any payloads", async () => {
+    const diagnostics = await diagnoseQuery(async function* fakeQuery(params) {
+      const hook = installedHook(params);
+      await deliverToolUse(hook, { id: "private denied id", input: INVALID_CALL });
+      await deliverToolUse(hook, {
+        id: "private top id",
+        toolName: "private tool",
+        input: { secret: true },
+      });
+      yield streamEvent({
+        type: "content_block_start",
+        content_block: { type: "tool_use", name: "private tool" },
+      });
+      yield {
+        type: "assistant",
+        message: {
+          usage: { input_tokens: 5 },
+          content: [
+            { type: "tool_use", name: "private name", input: { secret: true } },
+            { type: "tool_use", name: "private name2", input: {} },
+          ],
+        },
+        error: "rate_limit",
+      };
+      yield {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              is_error: true,
+              content: "private error",
+              tool_use_id: "private id",
+            },
+            { type: "tool_result", is_error: false, content: "private success" },
+          ],
+        },
+        tool_use_result: { private: "output" },
+      };
+      yield {
+        type: "assistant",
+        message: {
+          usage: { input_tokens: 8 },
+          content: [{ type: "tool_use", input: { private: true } }],
+        },
+        error: "authentication_failed",
+      };
+      yield resultMessage({
+        num_turns: 3,
+        usage: { input_tokens: 20, cache_read_input_tokens: 100 },
+        modelUsage: {
+          sonnet: { inputTokens: 20, cacheReadInputTokens: 100, cacheCreationInputTokens: 0 },
+          "private custom routing": {
+            inputTokens: 7,
+            cacheReadInputTokens: 8,
+            cacheCreationInputTokens: 9,
+          },
+        },
+      });
+    });
+    expect(diagnostics.at(-1)).toMatchObject({
+      type: "usage",
+      input: 20,
+      cacheRead: 100,
+      promptTokens: 120,
+      query: {
+        outcome: "failed",
+        numTurns: 3,
+        models: [
+          { model: "sonnet", promptTokens: 120 },
+          { model: "unknown-2", promptTokens: 24 },
+        ],
+        apiError: "authentication_failed",
+        assistantToolUses: 3,
+        maxAssistantToolUses: 2,
+        errorToolResults: 1,
+        hookDeniedCalls: 0,
+        invalidGatewayCalls: 1,
+        unexpectedToolCalls: 1,
+        fallbackCalls: 0,
+      },
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain("private");
+  });
 
-    expect(diagnostics.map((diagnostic) => diagnostic.type)).toStrictEqual(["request"]);
+  test.each(["start", "iterate", "protocol", "missing-result"] as const)(
+    "records safe diagnostics even when failure at %s has no usage",
+    async (failure) => {
+      const diagnostics = await diagnoseQuery(failingQuery(failure));
+      expect(diagnostics).toMatchObject([
+        { type: "request" },
+        { type: "query", query: { outcome: "failed" } },
+      ]);
+      expect(JSON.stringify(diagnostics)).not.toContain("private");
+    },
+  );
+
+  test("records last reported partial usage when iteration fails without fabricating a terminal result", async () => {
+    const diagnostics = await diagnoseQuery(async function* () {
+      yield usage;
+      throw new Error("private iteration error");
+    });
+    expect(diagnostics.at(-1)).toMatchObject({
+      type: "usage",
+      input: 5,
+      cacheRead: 95,
+      query: { outcome: "failed" },
+    });
+    expect(diagnostics.at(-1)).not.toHaveProperty("query.numTurns");
+  });
+
+  test("malformed optional query metadata cannot fail an otherwise valid turn", async () => {
+    const diagnostics = await diagnose(
+      resultMessage({
+        num_turns: "private",
+        modelUsage: {
+          "private model": {
+            inputTokens: -1,
+            cacheReadInputTokens: "private count",
+            cacheCreationInputTokens: null,
+            canonicalModel: { private: true },
+          },
+        },
+        usage: { input_tokens: 12 },
+      }),
+    );
+    expect(diagnostics.at(-1)).toMatchObject({
+      type: "usage",
+      input: 12,
+      query: {
+        outcome: "completed",
+        models: [{ model: "unknown-1" }],
+      },
+    });
+    expect(diagnostics.at(-1)).not.toHaveProperty("query.numTurns");
+    expect(JSON.stringify(diagnostics)).not.toContain("private");
+  });
+
+  test("records safe usage for failed terminals, preserving the authoritative cumulative total", async () => {
+    const diagnostics = await diagnose(
+      usage,
+      resultMessage({
+        is_error: true,
+        num_turns: 3,
+        usage: { input_tokens: 15, cache_read_input_tokens: 285, output_tokens: 6 },
+        errors: ["private failure text"],
+      }),
+    );
+
+    expect(diagnostics).toMatchObject([
+      { type: "request" },
+      {
+        type: "usage",
+        input: 15,
+        cacheRead: 285,
+        output: 6,
+        promptTokens: 300,
+        query: { outcome: "failed", numTurns: 3 },
+      },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private failure");
   });
 });
 

@@ -25,8 +25,12 @@ const modelCallSchema = Schema.Struct({
   usage: usageSchema,
 });
 
+const diagnosticTokenCount = lenientOptional(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)));
 const modelUsageEntrySchema = withFallback(
   Schema.Struct({
+    inputTokens: diagnosticTokenCount,
+    cacheReadInputTokens: diagnosticTokenCount,
+    cacheCreationInputTokens: diagnosticTokenCount,
     canonicalModel: lenientOptional(Schema.String),
     contextWindow: lenientOptional(Schema.Int.check(Schema.isGreaterThan(0))),
     maxOutputTokens: lenientOptional(Schema.Int.check(Schema.isGreaterThan(0))),
@@ -44,6 +48,7 @@ const resultSchema = Schema.Struct({
   subtype: lenientOptional(Schema.String),
   usage: Schema.optional(usageSchema),
   modelUsage: Schema.optional(modelUsageSchema),
+  num_turns: lenientOptional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
 /** Token counts from one API usage object. Absent counts keep their previous value. */
@@ -71,13 +76,20 @@ export type SdkMessage =
       readonly model?: string;
       /** Typed API error (such as `authentication_failed`) an assistant message reported. */
       readonly apiError?: string;
+      /** Complete assistant tool_use blocks, not partial streaming blocks. */
+      readonly assistantToolUses?: number;
+      /** Main-loop message_start only; identifiers stay local and are never diagnostics. */
+      readonly modelRequestStart?: { readonly id?: string };
     }
+  | { readonly type: "tool_results"; readonly errorToolResults: number }
   | {
       readonly type: "result";
       readonly result: TurnResult;
-      /** Authoritative main-loop totals for this turn, when the SDK reports them. */
+      /** Authoritative cumulative main-loop totals across model round-trips in this turn. */
       readonly usage?: ReportedUsage;
       readonly modelUsage: ModelUsage;
+      /** Model round-trips within this turn; not the number of Pi turns. */
+      readonly numTurns?: number;
     }
   | { readonly type: "ignored" };
 
@@ -156,6 +168,18 @@ function usageMessage(
   });
 }
 
+/** Inspect only discriminants, never content, arguments, ids, or tool output payloads. */
+function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = false): number {
+  return blocks.filter(
+    (block) =>
+      typeof block === "object" &&
+      block !== null &&
+      "type" in block &&
+      block.type === type &&
+      (!errorsOnly || ("is_error" in block && block.is_error === true)),
+  ).length;
+}
+
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
     "stream_event.content_block_delta.text_delta",
@@ -178,8 +202,16 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
   [
     "stream_event.message_start",
     messageParser(
-      Schema.Struct({ event: Schema.Struct({ message: modelCallSchema }) }),
-      ({ event }) => usageMessage(event.message, undefined),
+      Schema.Struct({
+        event: Schema.Struct({
+          message: Schema.Struct({ ...modelCallSchema.fields, id: lenientOptional(Schema.String) }),
+        }),
+      }),
+      ({ event }) =>
+        Result.map(usageMessage(event.message, undefined), (message) => ({
+          ...message,
+          modelRequestStart: event.message.id === undefined ? {} : { id: event.message.id },
+        })),
     ),
   ],
   [
@@ -191,8 +223,36 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
   [
     "assistant",
     messageParser(
-      Schema.Struct({ message: modelCallSchema, error: lenientOptional(Schema.String) }),
-      ({ message, error }) => usageMessage(message, error),
+      Schema.Struct({
+        message: Schema.Struct({
+          ...modelCallSchema.fields,
+          content: lenientOptional(Schema.Array(Schema.Unknown)),
+        }),
+        error: lenientOptional(Schema.String),
+      }),
+      ({ message, error }) =>
+        Result.map(usageMessage(message, error), (parsed) => ({
+          ...parsed,
+          ...(message.content === undefined
+            ? {}
+            : { assistantToolUses: countBlocks(message.content, "tool_use") }),
+        })),
+    ),
+  ],
+  [
+    "user",
+    messageParser(
+      Schema.Struct({
+        message: lenientOptional(
+          Schema.Struct({ content: lenientOptional(Schema.Array(Schema.Unknown)) }),
+        ),
+      }),
+      ({ message }) => {
+        const errorToolResults = countBlocks(message?.content ?? [], "tool_result", true);
+        return Result.succeed(
+          errorToolResults === 0 ? { type: "ignored" } : { type: "tool_results", errorToolResults },
+        );
+      },
     ),
   ],
   [
@@ -206,6 +266,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
             result: turn,
             ...(result.usage === undefined ? {} : { usage: result.usage }),
             modelUsage: result.modelUsage ?? {},
+            ...(result.num_turns === undefined ? {} : { numTurns: result.num_turns }),
           });
     }),
   ],
@@ -259,16 +320,21 @@ export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkPr
  *
  * @param previous - Counts accumulated so far this turn.
  * @param reported - Counts from the newest usage report.
+ * @param scope - Terminal turn totals must not inherit a per-call cache-write split.
  * @returns Complete counts where each reported value replaces the previous one.
  */
-export function applyUsage(previous: TokenUsage | undefined, reported: ReportedUsage): TokenUsage {
+export function applyUsage(
+  previous: TokenUsage | undefined,
+  reported: ReportedUsage,
+  scope: "call" | "turn" = "call",
+): TokenUsage {
   const prior = previous ?? NO_USAGE;
   return {
     input: reported.input_tokens ?? prior.input,
     output: reported.output_tokens ?? prior.output,
     cacheRead: reported.cache_read_input_tokens ?? prior.cacheRead,
     cacheWrite: reported.cache_creation_input_tokens ?? prior.cacheWrite,
-    ...cacheWriteSplit(reported.cache_creation ?? {}, prior),
+    ...cacheWriteSplit(reported.cache_creation ?? {}, scope === "turn" ? NO_USAGE : prior),
   };
 }
 

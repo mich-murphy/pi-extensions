@@ -35,8 +35,10 @@ def stop(p):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'cache', 'all', 'cleanup'])
+    ap.add_argument('action', choices=['launch', 'doctor', 'catalog', 'commands', 'metadata', 'live', 'recovery', 'offline-recovery', 'cache', 'all', 'cleanup'])
     ap.add_argument('--evidence', required=True, type=Path)
+    ap.add_argument('--approve-recovery-live', action='store_true', help='reviewed approval for bounded recovery model prompts (required by live/all/recovery)')
+    ap.add_argument('--recovery-case', choices=['both', 'missing-arguments', 'offline-parser'], default='both', help='filtered recovery evidence never satisfies the full merge gate')
     a = ap.parse_args()
     evidence = a.evidence.resolve()
     if evidence.is_relative_to(ROOT) or not str(evidence).startswith(('/tmp/', '/private/tmp/')):
@@ -80,10 +82,10 @@ def main():
         (evidence / f'{a.action}-results.json').write_text(json.dumps(results, indent=2))
         print(f'{status.upper()} {name}: {reason}')
 
-    def run(name, cmd, cwd=None, timeout=180):
+    def run(name, cmd, cwd=None, timeout=180, child_env=None):
         (evidence / f'{name}.command.json').write_text(json.dumps({'argv': cmd, 'cwd': str(cwd or scratch / 'work'), 'isolatedAgentDir': env['PI_CODING_AGENT_DIR']}, indent=2))
         with (evidence / f'{name}.stdout').open('wb') as out, (evidence / f'{name}.stderr').open('wb') as err:
-            p = subprocess.Popen(cmd, cwd=cwd or scratch / 'work', env=env, stdout=out, stderr=err, start_new_session=True)
+            p = subprocess.Popen(cmd, cwd=cwd or scratch / 'work', env=env if child_env is None else child_env, stdout=out, stderr=err, start_new_session=True)
             (evidence / f'{name}.pid').write_text(str(p.pid))
             try:
                 rc = p.wait(timeout=timeout)
@@ -161,6 +163,49 @@ def main():
         allowances = [float(x) for x in re.findall(r': ([0-9.]+)% remaining', usage)]
         return 'Extra usage: disabled' in usage and bool(allowances) and min(allowances) > 0
 
+    def recovery_probe(case):
+        gate = copy_gate()
+        owned = scratch / ('work/recovery-' + case)
+        owned.mkdir(mode=0o700)
+        probe_env = None
+        if case == 'offline-parser':
+            home = owned / 'home'
+            home.mkdir(mode=0o700)
+            # Separate process: no real HOME/auth/provider variables can reach the fixture.
+            probe_env = {k: env[k] for k in ['PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME'] if k in env}
+            probe_env.update(HOME=str(home), PI_CODING_AGENT_DIR=str(home / 'agent'),
+                             PI_OFFLINE='1', PI_SKIP_VERSION_CHECK='1', PI_TELEMETRY='0',
+                             PI_CLAUDE_SDK_OFFLINE_PARSER='1', ANTHROPIC_API_KEY='pi-offline-parser-dummy-key',
+                             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1', DISABLE_TELEMETRY='1',
+                             DISABLE_ERROR_REPORTING='1', DISABLE_AUTOUPDATER='1')
+        probe = [str(ROOT / 'node_modules/.bin/jiti'), str(Path(__file__).resolve().parent / 'recovery-probe.ts'),
+                 '--package', str(gate / 'packages/pi-claude-sdk'), '--work', str(owned), '--case', case]
+        if case == 'missing-arguments':
+            probe.append('--review-approved')
+        name = 'recovery-' + case
+        run(name, probe, cwd=owned, timeout=240, child_env=probe_env)
+        report = json.loads((evidence / (name + '.stdout')).read_text())
+        assert report.get('status') == 'passed', 'recovery proof incomplete'
+        record(name, 'passed', 'OFFLINE synthetic Messages transport with actual SDK/CLI parser and durable Pi recovery' if case == 'offline-parser' else 'LIVE subscription public-hook input fault injection with durable Pi recovery')
+
+    def recovery():
+        if not allowance_ok():
+            record('recovery', 'blocked', 'require refreshed positive allowance and extra usage disabled')
+            return
+        if a.recovery_case != 'offline-parser':
+            recovery_probe('missing-arguments')
+        if a.recovery_case != 'missing-arguments':
+            recovery_probe('offline-parser')
+        if a.recovery_case != 'both':
+            record('recovery', 'blocked', 'filtered proof does not satisfy compositional recovery acceptance')
+            return
+        record('recovery', 'passed', 'live fault-injected SDK/Pi correction plus OFFLINE real SDK/CLI malformed-parser correction; not natural live malformed generation')
+
+    # Fail before ANY generation, including the later cache branch in all.
+    if a.action in ['all', 'live', 'recovery'] and not a.approve_recovery_live:
+        record('recovery-approval', 'blocked', 'review harness then explicitly pass --approve-recovery-live')
+        return 2
+
     actions = ['doctor', 'catalog', 'commands', 'metadata', 'live', 'cache'] if a.action == 'all' else [a.action]
     for action in actions:
         try:
@@ -186,6 +231,9 @@ def main():
                 assert re.search(r'Tests\s+1 passed', output), 'metadata test did not run'
                 record('metadata', 'passed', 'real SDK supportedModels metadata only; filtered run does NOT attest live gate')
             elif action == 'live':
+                if not a.approve_recovery_live:
+                    record('recovery', 'blocked', 'review recovery harness and pass --approve-recovery-live for live/all')
+                    continue
                 if not allowance_ok():
                     record('live', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
                     continue
@@ -206,6 +254,11 @@ def main():
                 run('upgrade-gate', ['npm', 'run', 'test:claude-sdk-upgrade'], cwd=gate, timeout=1200)
                 shutil.copy2(gate / 'packages/pi-claude-sdk/sdk-release-contract.json', evidence / 'sdk-release-contract.json')
                 record('live', 'passed', 'Pi text/read journeys and complete unfiltered upgrade gate passed in disposable copy')
+                recovery()
+            elif action == 'recovery':
+                recovery()
+            elif action == 'offline-recovery':
+                recovery_probe('offline-parser')
             elif action == 'cache':
                 if not allowance_ok():
                     record('cache', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
