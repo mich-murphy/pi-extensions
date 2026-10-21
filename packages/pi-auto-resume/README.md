@@ -20,7 +20,9 @@ five hours away, the extension:
    transcript and hidden from the model.
 
 A resumed turn that hits a new limit with a new reset time waits again. A new
-prompt or `/auto-resume off` cancels the wait.
+prompt, any newly started agent run (including one started by another extension),
+session tree navigation, or `/auto-resume off` cancels the wait. Session replacement,
+reload, and shutdown also discard it.
 
 Everything else is left to Pi: a limit with no reset time, a reset more than
 five hours away, and connection or capacity errors, which Pi's own retry
@@ -36,3 +38,24 @@ These modes exit as soon as Pi settles, so the extension never waits there.
 Print mode writes `Usage limit resets at <ISO time>` to stderr, and JSON mode
 records an `auto-resume` custom entry with `{ resetsAt }`, which appears as an
 `entry_appended` event.
+
+## Notice correlation
+
+Notices are consumed at settlement and cleared at each agent/turn start, so a
+retry or the next main request cannot reuse a previous request's notice. When a
+notice names a provider, it must match the final failed assistant message.
+Malformed or out-of-range dates are ignored in every mode.
+
+The event has no request/session ID. A nested or concurrent call to the same
+provider can therefore still be ambiguous if its notice arrives during the final
+main request. Exact correlation would require a richer provider event contract;
+the extension does not infer usage limits from error text.
+
+## Verification
+
+Ask Pi to run the `verify-pi-auto-resume` skill, or open
+[the skill instructions](../../.agents/skills/verify-pi-auto-resume/SKILL.md).
+Follow that skill's invocation instructions for its
+[verification runner](../../.agents/skills/verify-pi-auto-resume/scripts/verify.py).
+The harness uses the checkout-pinned Pi runtime and a synthetic offline provider;
+it does not require subscription credentials or live provider requests.

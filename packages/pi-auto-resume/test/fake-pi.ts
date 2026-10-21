@@ -144,6 +144,13 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui") {
     },
     startRun: () => {
       handler("agent_start")({ type: "agent_start" });
+      handler("turn_start")({ type: "turn_start" });
+    },
+    startTurn: () => {
+      handler("turn_start")({ type: "turn_start" });
+    },
+    navigateTree: () => {
+      handler("session_tree")({ type: "session_tree" });
     },
     settle: (outcome: "completed" | "aborted" | "error", contextEntries: ProjectedSessionEntry[]) =>
       handler("agent_before_settle")(

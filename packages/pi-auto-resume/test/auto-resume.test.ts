@@ -124,6 +124,47 @@ describe("leaving the failure to the user", () => {
     expect(pi.timerCount()).toBe(0);
   });
 
+  test("a nested tool-call limit does not contaminate the next main reply", () => {
+    const pi = harness();
+    pi.startRun();
+    // The first main response called a tool, which made a nested SDK request.
+    pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
+    // Pi starts the next main model/tool turn without another agent_start.
+    pi.startTurn();
+    expect(
+      pi.settle("error", [
+        assistantEntry("tools", "toolUse"),
+        assistantEntry("connection-error", "error"),
+      ]),
+    ).toBeUndefined();
+    expect(pi.timerCount()).toBe(0);
+    expect(pi.notifications).toStrictEqual([]);
+  });
+
+  test("a notice from another provider does not authorize omitting the failure", () => {
+    const pi = harness();
+    expect(failOnUsageLimit(pi, { provider: "other", resetsAt: RESETS_AT })).toBeUndefined();
+    expect(pi.timerCount()).toBe(0);
+  });
+
+  test("a retry cannot reuse the failed request's notice", () => {
+    const pi = harness();
+    pi.startRun();
+    pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
+    // Pi retries before agent_before_settle; each retry emits agent_start.
+    pi.startRun();
+    expect(pi.settle("error", [assistantEntry("retry-error", "error")])).toBeUndefined();
+    expect(pi.timerCount()).toBe(0);
+    expect(pi.notifications).toStrictEqual([]);
+  });
+
+  test("consumes a notice only once", () => {
+    const pi = harness();
+    failOnUsageLimit(pi);
+    expect(pi.settle("error", [assistantEntry("other-error", "error")])).toBeUndefined();
+    expect(pi.timerCount()).toBe(1);
+  });
+
   test("ignores a reset published in an earlier run", () => {
     const pi = harness();
     pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: RESETS_AT });
@@ -137,6 +178,7 @@ describe("leaving the failure to the user", () => {
     ["aborted", [assistantEntry("a1", "aborted")]],
     ["error", [userEntry("u1")]],
     ["error", [assistantEntry("a1", "stop"), userEntry("u2")]],
+    ["error", [assistantEntry("a1", "error"), userEntry("u2")]],
   ] as const)("does nothing when the run ended %s without a failed reply", (outcome, entries) => {
     const pi = harness();
     pi.startRun();
@@ -179,6 +221,35 @@ describe("cancelling a scheduled resume", () => {
     expect(pi.notifications).toStrictEqual([]);
   });
 
+  test("a turn started by another extension cancels the old wait", () => {
+    const pi = harness();
+    failOnUsageLimit(pi);
+    pi.input("extension");
+    pi.startRun();
+    expect(pi.timerCount()).toBe(0);
+    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    pi.advanceTo(RESETS_AT);
+    expect(pi.sent).toStrictEqual([]);
+    // A new usage failure gets precisely one fresh timer, not an orphan interval.
+    failOnUsageLimit(pi, { resetsAt: RESETS_AT + MINUTE });
+    expect(pi.timerCount()).toBe(1);
+    pi.advanceTo(RESETS_AT + MINUTE);
+    expect(pi.sent).toHaveLength(1);
+    expect(pi.timerCount()).toBe(0);
+  });
+
+  test("tree navigation cancels the wait and any unconsumed notice", () => {
+    const pi = harness();
+    failOnUsageLimit(pi);
+    pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
+    pi.navigateTree();
+    expect(pi.timerCount()).toBe(0);
+    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.settle("error", [assistantEntry("old-error", "error")])).toBeUndefined();
+    pi.advanceTo(RESETS_AT);
+    expect(pi.sent).toStrictEqual([]);
+  });
+
   test("session shutdown stops the timer", () => {
     const pi = harness();
     failOnUsageLimit(pi);
@@ -187,6 +258,9 @@ describe("cancelling a scheduled resume", () => {
     pi.shutdown();
 
     expect(pi.timerCount()).toBe(0);
+    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    pi.advanceTo(RESETS_AT);
+    expect(pi.sent).toStrictEqual([]);
   });
 });
 
@@ -279,4 +353,27 @@ describe("print and JSON modes", () => {
     ]);
     expect(pi.stderr).toStrictEqual([]);
   });
+});
+
+describe("malformed reset dates", () => {
+  test.each(["tui", "rpc", "print", "json"] as const)(
+    "rejects invalid dates in %s mode",
+    (mode) => {
+      const pi = harness(mode);
+      for (const resetsAt of [
+        Number.NaN,
+        Infinity,
+        -Infinity,
+        8.64e15 + 1,
+        -8.64e15 - 1,
+        Number.MAX_VALUE,
+      ]) {
+        expect(failOnUsageLimit(pi, { resetsAt })).toBeUndefined();
+      }
+      expect(pi.timerCount()).toBe(0);
+      expect(pi.notifications).toStrictEqual([]);
+      expect(pi.stderr).toStrictEqual([]);
+      expect(pi.appended).toStrictEqual([]);
+    },
+  );
 });

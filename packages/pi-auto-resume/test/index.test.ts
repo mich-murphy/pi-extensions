@@ -26,6 +26,27 @@ describe("extension factory", () => {
     expect(pi.sent).toHaveLength(1);
   });
 
+  test("tears down real intervals on tree navigation and shutdown", () => {
+    vi.useFakeTimers({ now: 0 });
+    const pi = fakePi();
+    autoResume(pi.pi);
+    const schedule = () => {
+      pi.startRun();
+      pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: 2 * CHECK_INTERVAL_MS });
+      pi.settle("error", [assistantEntry("a1", "error")]);
+      expect(vi.getTimerCount()).toBe(1);
+    };
+    schedule();
+    pi.navigateTree();
+    expect(vi.getTimerCount()).toBe(0);
+    schedule();
+    pi.shutdown();
+    pi.shutdown();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(10 * CHECK_INTERVAL_MS);
+    expect(pi.sent).toHaveLength(0);
+  });
+
   test("prints the reset time on stderr in print mode", () => {
     const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const pi = fakePi("print");

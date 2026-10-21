@@ -51,6 +51,8 @@ export type AutoResumeContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
 /** Lifecycle callbacks consumed by auto-resume. */
 export type AutoResumeHandlers = {
   agent_start: (event: { readonly type: "agent_start" }) => void;
+  turn_start: (event: { readonly type: "turn_start" }) => void;
+  session_tree: (event: { readonly type: "session_tree" }) => void;
   agent_before_settle: (
     event: Pick<AgentBeforeSettleEvent, "type" | "outcome" | "context">,
     ctx: AutoResumeContext,
@@ -72,6 +74,8 @@ export type AutoResumeRegistration = Pick<ExtensionAPI, "sendMessage" | "appendE
   ) => void;
   readonly on: {
     (name: "agent_start", handler: AutoResumeHandlers["agent_start"]): unknown;
+    (name: "turn_start", handler: AutoResumeHandlers["turn_start"]): unknown;
+    (name: "session_tree", handler: AutoResumeHandlers["session_tree"]): unknown;
     (name: "agent_before_settle", handler: AutoResumeHandlers["agent_before_settle"]): unknown;
     (name: "input", handler: AutoResumeHandlers["input"]): unknown;
     (name: "context", handler: AutoResumeHandlers["context"]): unknown;
@@ -102,17 +106,23 @@ function readResetsAt(data: unknown): number | undefined {
     return undefined;
   }
   const { resetsAt } = data;
-  return typeof resetsAt === "number" && Number.isFinite(resetsAt) ? resetsAt : undefined;
+  return typeof resetsAt === "number" && Number.isFinite(new Date(resetsAt).getTime())
+    ? resetsAt
+    : undefined;
 }
 
 /** The session entry of the run's failed assistant message, when the run ended on one. */
-function failedAttemptId(event: Pick<AgentBeforeSettleEvent, "context">): string | undefined {
+function failedAttemptId(
+  event: Pick<AgentBeforeSettleEvent, "context">,
+  provider: string | undefined,
+): string | undefined {
   const last = event.context.contextEntries.findLast(
-    ({ sourceEntry }) => sourceEntry.type === "message" && sourceEntry.message.role === "assistant",
+    ({ sourceEntry }) => sourceEntry.type === "message" || sourceEntry.type === "custom_message",
   )?.sourceEntry;
   return last?.type === "message" &&
     last.message.role === "assistant" &&
-    last.message.stopReason === "error"
+    last.message.stopReason === "error" &&
+    (provider === undefined || last.message.provider === provider)
     ? last.id
     : undefined;
 }
@@ -143,8 +153,8 @@ export function registerAutoResume(
 ): void {
   const { now, every, formatTime, writeStderr } = dependencies;
   let enabled = true;
-  // Reset time published during the current run, consumed when the run settles.
-  let published: number | undefined;
+  // Notice published during the current model/tool turn, consumed at final settlement.
+  let published: { resetsAt: number; provider: string | undefined } | undefined;
   let wait: Wait | undefined;
 
   const cancel = (): void => {
@@ -174,6 +184,7 @@ export function registerAutoResume(
   };
 
   const startWait = (resetsAt: number, ctx: AutoResumeContext): void => {
+    cancel();
     const time = formatTime(resetsAt);
     ctx.ui.notify(`Usage limit reached. Pi will continue automatically at ${time}.`, "warning");
     ctx.ui.setWidget(AUTO_RESUME_TYPE, (_tui, theme) => {
@@ -196,22 +207,44 @@ export function registerAutoResume(
   };
 
   pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
-    published = readResetsAt(data);
+    const resetsAt = readResetsAt(data);
+    const provider =
+      typeof data === "object" &&
+      data !== null &&
+      "provider" in data &&
+      typeof data.provider === "string"
+        ? data.provider
+        : undefined;
+    published = resetsAt === undefined ? undefined : { resetsAt, provider };
   });
 
   pi.registerMessageRenderer(AUTO_RESUME_TYPE, renderMarker);
 
   pi.on("agent_start", () => {
+    cancel();
+    published = undefined;
+  });
+
+  // A low-level run can contain multiple model/tool turns. A nested provider call in
+  // tools must not donate its notice to the next main request's unrelated failure.
+  pi.on("turn_start", () => {
+    published = undefined;
+  });
+
+  pi.on("session_tree", () => {
+    cancel();
     published = undefined;
   });
 
   pi.on("agent_before_settle", (event, ctx) => {
-    const resetsAt = published;
+    const notice = published;
     published = undefined;
-    const targetId = event.outcome === "error" ? failedAttemptId(event) : undefined;
-    if (resetsAt === undefined || targetId === undefined) {
+    const targetId =
+      event.outcome === "error" ? failedAttemptId(event, notice?.provider) : undefined;
+    if (notice === undefined || targetId === undefined) {
       return undefined;
     }
+    const { resetsAt } = notice;
     if (ctx.mode === "print" || ctx.mode === "json") {
       report(resetsAt, ctx);
       return undefined;
@@ -240,8 +273,8 @@ export function registerAutoResume(
   });
 
   pi.on("session_shutdown", () => {
-    wait?.stop();
-    wait = undefined;
+    cancel();
+    published = undefined;
   });
 
   pi.registerCommand(AUTO_RESUME_TYPE, {
