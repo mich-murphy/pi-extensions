@@ -636,13 +636,107 @@ describe("usage limit observation", () => {
     expect(observations).toStrictEqual([]);
   });
 
-  test("reports nothing when the turn fails for another reason", async () => {
+  test.each([
+    ["another failure", [resultMessage({ is_error: true, terminal_reason: "prompt_too_long" })]],
+    ["success", [resultMessage()]],
+    [
+      "authentication overriding a usage limit",
+      [
+        { type: "assistant", message: { usage: {} }, error: "authentication_failed" },
+        usageLimitResult,
+      ],
+    ],
+  ])("reports nothing for %s", async (_name, ending) => {
     const { observations } = await observeUsageLimits(
       rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
-      resultMessage({ is_error: true, terminal_reason: "prompt_too_long" }),
+      ...ending,
     );
 
     expect(observations).toStrictEqual([]);
+  });
+
+  test("uses the latest reported rejected reset", async () => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_549_000 }),
+      usageLimitResult,
+    );
+
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_549_000_000 }]);
+  });
+
+  test.each([
+    ["allowed", { status: "allowed", resetsAt: 1_792_550_000 }],
+    ["warning", { status: "allowed_warning", resetsAt: 1_792_550_000 }],
+    ["missing reset", { status: "rejected" }],
+    ["invalid reset", { status: "rejected", resetsAt: Number.MAX_VALUE }],
+    ["unknown status", { status: "future_status", resetsAt: 1_792_550_000 }],
+    ["malformed update", {}],
+  ])("clears stale reset metadata after %s", async (_name, info) => {
+    const { observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      rateLimitEvent(info),
+      usageLimitResult,
+    );
+    expect(observations).toStrictEqual([]);
+  });
+
+  test.each(["throw", "reject"] as const)(
+    "isolates an observer that %ss and still closes the query",
+    async (mode) => {
+      let closed = false;
+      let signal: AbortSignal | undefined;
+      const events = await runTurn(
+        (params) => {
+          signal = params.options?.abortController?.signal;
+          return (async function* () {
+            try {
+              yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
+              yield usageLimitResult;
+              throw new Error("must not read after result");
+            } finally {
+              closed = true;
+            }
+          })();
+        },
+        requestFixture(),
+        {
+          usageLimitObserver: () => {
+            if (mode === "throw") throw new Error("private observer failure");
+            return Promise.reject(new Error("private observer rejection"));
+          },
+        },
+      );
+      expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+      expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
+      expect(closed).toBe(true);
+      expect(signal?.aborted).toBe(true);
+    },
+  );
+
+  test("notifies before yielding the failure and does not retain reset times across queries", async () => {
+    const order: string[] = [];
+    const queries = [
+      [rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }), usageLimitResult],
+      [usageLimitResult],
+    ];
+    const runner = createClaudeAgentSdkRunner({
+      async *runSdkQuery() {
+        const messages = queries.shift();
+        assert(messages);
+        yield* messages;
+      },
+      usageLimitObserver: () => {
+        order.push("notice");
+      },
+    });
+    for (let turn = 0; turn < 2; turn += 1) {
+      for await (const event of runner(requestFixture(), sonnet)) {
+        order.push(event.type);
+      }
+    }
+
+    expect(order).toStrictEqual(["notice", "failed", "failed"]);
   });
 });
 
