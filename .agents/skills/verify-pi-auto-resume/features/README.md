@@ -19,6 +19,8 @@ public Pi extension lifecycle. Run `scripts/verify.py all` from this skill.
 | Past or more than five hours | `past`, `far` | No widget or extra request after interval |
 | Notice provider mismatch | `mismatch` | Unrelated provider notice does not schedule |
 | Invalid JavaScript Date range | `date` | No extension exception, widget, or extra request |
+| Transient failure retry | `transient`: `Connection error.` failure, then success, with `autoResume.transient.delaysMinutes` of `[0.05]` | "Provider error" warning and waiting widget; second request at least 59 seconds later without the failed attempt or marker; rendered marker and canned reply |
+| Aborted run is not retried | `aborted`: Escape during a pending `Connection error.` reply | `Operation aborted`, no widget, exactly one request after the interval |
 | One-shot print | `print` | ISO reset report on stderr, failure exit, exactly one request, timely exit |
 | One-shot JSON | `json` | Parseable JSONL, `entry_appended` custom reset entry matching fixture timestamp, exactly one request |
 | Cleanup | Every run including assertion failures | Dedicated server stopped, owned pane PIDs and descendants exited, scratch removed |

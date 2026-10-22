@@ -1,6 +1,6 @@
 ---
 name: verify-pi-auto-resume
-description: Verify pi-auto-resume after provider or lifecycle changes using checkout-pinned Pi CLI, isolated real tmux TUI, print and JSON modes, and synthetic usage limits. Offline only; no real credentials or provider calls; includes a real minute-long resume timer.
+description: Verify pi-auto-resume after provider or lifecycle changes using checkout-pinned Pi CLI, isolated real tmux TUI, print and JSON modes, synthetic usage limits and transient failures. Offline only; no real credentials or provider calls; includes a real minute-long resume timer.
 ---
 
 # Verify pi-auto-resume
@@ -29,7 +29,11 @@ and tools are disabled. Only the package under test and
 
 The fixture registers a synthetic model with a non-network URL and a dummy key.
 It records complete model requests, emits the documented `usage-limit` event
-bus payload, and returns canned assistant errors/success. It never delegates to
+bus payload, and returns canned assistant errors/success. The `transient` and
+`aborted` scenarios publish no notice and fail with `Connection error.`; the
+`aborted` reply stays pending until Escape aborts it. Settings set
+`autoResume.transient.delaysMinutes` to `[0.05]`, so the transient wait is due
+before the first real 60-second check. It never delegates to
 another provider, executes tools, or uses network transports. **Do not replace
 this fixture with a subscription model or real credentials.** `--offline`
 disables automatic network activity, not arbitrary network calls; this is not an
@@ -80,7 +84,8 @@ server before removing its scratch directory; never kill tmux by process name.
 This proves the extension's public integration with Pi, not Claude SDK's real
 limit parsing or provider retry behavior. The fixture publishes the event itself;
 no live provider or transport is tested. Real sleep/wake, OS clock jumps, the
-exact five-hour boundary, malformed payload permutations, repeated limits after
+exact five-hour boundary, transient backoff beyond the first attempt and its
+caps, the Claude Agent SDK message list, malformed payload permutations, repeated limits after
 resume, busy-at-reset, fork/tree/resume navigation, and RPC are not covered.
 Negative TUI cases are observed beyond a real interval, but cannot prove the
 absence of an invisible dormant timer; they prove no widget or extra request.
