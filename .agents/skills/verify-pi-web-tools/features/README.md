@@ -10,6 +10,8 @@ drive a shared instance.
   usable editor.
 - [Native authentication](native-auth.md): synthetic native login, cancellation,
   logout with environment fallback, credential lifecycle and reload identity.
+- [Subagent child credentials](subagent-child.md): replayed parent providers
+  in a pi-subagents-style child session; a pinned pre-fix copy must collide.
 - [Model catalog](model-catalog.md): interactive selector plus all-operation
   catalog; no web-tools dummy models.
 - [Reload and invalid configuration](configuration.md): reload and safe visible

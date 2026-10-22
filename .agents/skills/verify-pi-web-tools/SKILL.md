@@ -96,6 +96,16 @@ environment fallback to remain configured after logout. Run:
 .agents/skills/verify-pi-web-tools/scripts/verify.py native-auth
 ```
 
+[Subagent child](features/subagent-child.md) runs are SDK-only: no terminal
+is launched. They replay parent providers onto pi-subagents-style child
+sessions and also run a pinned pre-fix copy that must collide. Run:
+
+```sh
+.agents/skills/verify-pi-web-tools/scripts/verify.py subagent-child
+```
+
+They retain `subagent-child-*.json`, the probe, and `subagent-child-summary.json`.
+
 `storage-metadata.json` records isolated file paths, sizes, and permission bits;
 auth summaries retain only type and synthetic-value equality.
 No live calls, paid calls, browser login, or tool executions occur. `--offline`
@@ -126,6 +136,8 @@ server before removing that scratch directory.
 `./scripts/verify.py startup` runs launch → doctor → model/reload → evidence →
 cleanup. `./scripts/verify.py invalid-config` runs the negative configuration
 variant. `./scripts/verify.py native-auth` runs the synthetic native auth lifecycle.
+`./scripts/verify.py subagent-child` runs the replayed child-session journey
+and its pre-fix negative.
 All modes exit nonzero on unmet assertions, print the retained evidence
 location, and leave failure evidence intact. Resolve these paths relative to
 this skill directory when not at the repo root.
