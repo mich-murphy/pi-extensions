@@ -404,11 +404,10 @@ class SkillToggle {
       return undefined;
     }
     const names = blocked.join(", ");
+    const it = blocked.length === 1 ? "it" : "them";
     return {
       block: true,
-      reason: shell
-        ? `This command reads ${names}, which the user disabled in /skill-toggle. Run it without ${blocked.length === 1 ? "that file" : "those files"}.`
-        : `${names} is disabled in /skill-toggle, so it cannot be read.`,
+      reason: `${shell ? `This command reads ${names}, which the user disabled` : `The user disabled ${names}`} in /skill-toggle on purpose. Continue without ${it}, do not retry ${it} with any path or tool, and ask the user to re-enable ${it} only if you truly need ${it}.`,
     };
   }
 

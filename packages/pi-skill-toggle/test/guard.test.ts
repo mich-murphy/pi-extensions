@@ -476,7 +476,8 @@ describe("skill-toggle guard", () => {
       guard.start([deploySkill(main)], [join(main, "AGENTS.md")]);
       expect(guard.call("read", { path: "agents.md" })).toMatchObject({
         block: true,
-        reason: "AGENTS.md is disabled in /skill-toggle, so it cannot be read.",
+        reason:
+          "The user disabled AGENTS.md in /skill-toggle on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you truly need it.",
       });
       expect(
         guard.call("bash", { command: "cat .AGENTS/skills/x/../deploy/SKILL.md" }, subagent),
@@ -517,7 +518,8 @@ describe("skill-toggle guard", () => {
         guard.call("read", { path: join(worktree, ".agents/skills/deploy/SKILL.md") }),
       ).toMatchObject({
         block: true,
-        reason: 'skill "deploy" is disabled in /skill-toggle, so it cannot be read.',
+        reason:
+          'The user disabled skill "deploy" in /skill-toggle on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you truly need it.',
       });
       expect(guard.call("read", { path: "web/AGENTS.md" })).toBeUndefined();
       expect(guard.call("read", { path: "README.md" }, subagent)).toBeUndefined();
@@ -583,7 +585,7 @@ describe("skill-toggle guard", () => {
       ).toStrictEqual({
         block: true,
         reason:
-          'This command reads AGENTS.md, skill "deploy", which the user disabled in /skill-toggle. Run it without those files.',
+          'This command reads AGENTS.md, skill "deploy", which the user disabled in /skill-toggle on purpose. Continue without them, do not retry them with any path or tool, and ask the user to re-enable them only if you truly need them.',
       });
       for (const command of [
         "cat web/AGENTS.md",
