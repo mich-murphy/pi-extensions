@@ -30,6 +30,41 @@ function usable(value: string | undefined): value is string {
   );
 }
 
+/** Module instances share only globalThis; a subagent child loads its own instance. */
+const ORIGINS = Symbol.for("pi-web-tools.native-auth-origins.v1");
+
+function origins(): WeakMap<Provider, ModelRegistry> | undefined {
+  const existing: unknown = Reflect.get(globalThis, ORIGINS);
+  if (existing instanceof WeakMap) {
+    return existing;
+  }
+  if (existing !== undefined) {
+    return undefined;
+  }
+  const map = new WeakMap<Provider, ModelRegistry>();
+  return Reflect.set(globalThis, ORIGINS, map) ? map : undefined;
+}
+
+function inherited(registry: ModelRegistry, id: string): boolean {
+  const native = registry.getRegisteredNativeProvider(id);
+  if (native === undefined) {
+    return false;
+  }
+  const origin = origins()?.get(native);
+  return origin !== undefined && origin !== registry;
+}
+
+function collides(
+  registry: ModelRegistry,
+  owned: Map<string, Provider> | undefined,
+  id: string,
+): boolean {
+  if (owned === undefined) {
+    return registry.getProvider(id) !== undefined && !inherited(registry, id);
+  }
+  return !owned.has(id) || registry.getRegisteredNativeProvider(id) !== owned.get(id);
+}
+
 /** Register from session_start only: the public registry must already be live. */
 export function createWebAuthentication(): {
   readonly register: (pi: Pick<ExtensionAPI, "registerProvider">, registry: ModelRegistry) => void;
@@ -45,12 +80,7 @@ export function createWebAuthentication(): {
       const owned = ownership.get(registry);
       // Preflight every id before making any changes, including repeat registrations.
       for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
-        if (
-          (owned !== undefined &&
-            (!owned.has(metadata.id) ||
-              registry.getRegisteredNativeProvider(metadata.id) !== owned.get(metadata.id))) ||
-          (owned === undefined && registry.getProvider(metadata.id) !== undefined)
-        ) {
+        if (collides(registry, owned, metadata.id)) {
           throw new Error("Web tools authentication provider collision");
         }
       }
@@ -115,6 +145,7 @@ export function createWebAuthentication(): {
             },
           },
         };
+        origins()?.set(native, registry);
         pi.registerProvider(native);
         registrations.set(metadata.id, native);
       }

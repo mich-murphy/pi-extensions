@@ -5,7 +5,8 @@ import { Effect, Redacted, Result } from "effect";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { createWebAuthentication, WEB_AUTH_PROVIDERS } from "../authentication";
-import { nativeAuthFixture } from "./native-auth-fixture";
+import type { SearchProviderName } from "../types";
+import { inheritingChild, nativeAuthFixture } from "./native-auth-fixture";
 
 async function fixture(key?: string) {
   const {
@@ -276,6 +277,62 @@ describe("public native web authentication", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  test("subagent child registry resolves credentials after inheriting the parent's providers", async () => {
+    vi.stubEnv("EXA_API_KEY", "");
+    vi.stubEnv("PARALLEL_API_KEY", "");
+    vi.stubEnv("BRAVE_API_KEY", "ambient-synthetic");
+    const parent = await nativeAuthFixture({
+      initial: { "pi-web-tools-exa": { type: "api_key", key: "stored-synthetic" } },
+    });
+    const child = await inheritingChild(parent);
+    child.authentication.register(child.pi, child.registry);
+    const resolve = async (owner: typeof parent, provider: SearchProviderName) =>
+      Effect.runPromise(
+        Effect.result(owner.authentication.resolverFor(owner.registry).resolve(provider)),
+      );
+    for (const owner of [child, parent]) {
+      const stored = await resolve(owner, "exa");
+      assert(Result.isSuccess(stored));
+      assert(stored.success !== undefined);
+      expect(Redacted.value(stored.success)).toBe("stored-synthetic");
+      const ambient = await resolve(owner, "brave");
+      assert(Result.isSuccess(ambient));
+      assert(ambient.success !== undefined);
+      expect(Redacted.value(ambient.success)).toBe("ambient-synthetic");
+      await expect(resolve(owner, "parallel")).resolves.toStrictEqual(Result.succeed(undefined));
+    }
+    child.authentication.unregister(
+      { unregisterProvider: child.registry.unregisterProvider.bind(child.registry) },
+      child.registry,
+    );
+    for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
+      expect(child.registry.getProvider(metadata.id)).toBeUndefined();
+      expect(parent.registry.getRegisteredNativeProvider(metadata.id)?.name).toBe(metadata.label);
+    }
+    const afterChild = await resolve(parent, "exa");
+    assert(Result.isSuccess(afterChild));
+    assert(afterChild.success !== undefined);
+    expect(Redacted.value(afterChild.success)).toBe("stored-synthetic");
+  });
+
+  test("subagent child still rejects a foreign provider with a web tools ID", async () => {
+    const parent = await nativeAuthFixture();
+    const native = parent.registry.getRegisteredNativeProvider("pi-web-tools-parallel");
+    assert(native !== undefined);
+    parent.registry.registerProvider({ ...native, name: "Foreign" });
+    const child = await inheritingChild(parent);
+    const register = vi.spyOn(child.pi, "registerProvider");
+    expect(() => {
+      child.authentication.register(child.pi, child.registry);
+    }).toThrow("collision");
+    expect(register).not.toHaveBeenCalled();
+    const outcome = await Effect.runPromise(
+      Effect.result(child.authentication.resolverFor(child.registry).resolve("exa")),
+    );
+    assert(Result.isFailure(outcome));
+    expect(outcome.failure.reason).toBe("incompatible");
   });
 
   test("Pi command timeout fails safely", async () => {
