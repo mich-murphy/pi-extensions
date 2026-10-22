@@ -43,8 +43,9 @@ Preconditions:
   5. after the state file disables `research`, read `research` again.
 - **Expected.** `toolOutcomes` in `report.json`, in order: blocked, blocked,
   allowed, allowed, allowed (main `bash` is unguarded), blocked. Each refusal
-  text names the skill, e.g. `skill "legacy-notes" is disabled in
-  /skill-toggle, so it cannot be read.` Nine requests (one follow-up per tool
+  text names the skill, e.g. `The user disabled skill "legacy-notes" in
+  /skill-toggle on purpose. Continue without it, do not retry it...`; the report
+  fails a refusal without `do not retry`. Nine requests (one follow-up per tool
   turn), and `--strict` still sees no system patch.
 
 ## Gotchas

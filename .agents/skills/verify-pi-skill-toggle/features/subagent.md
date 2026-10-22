@@ -40,7 +40,8 @@ Preconditions:
   and the child run those calls. Prompt 3 closes.
 - **Expected.** Child `toolOutcomes`: allowed, blocked, blocked, blocked (the
   last refusal reads `This command reads skill "legacy-notes", which the user
-  disabled in /skill-toggle...`). Parent: 4 requests, 100% reuse. Child: at least
+  disabled in /skill-toggle on purpose...`; every refusal must say
+  `do not retry`). Parent: 4 requests, 100% reuse. Child: at least
   2 requests, 100% reuse after its first. Requests are split by the `sessionId`
   the recorder logs; the first request is the parent's.
 - **Evidence.** `report.json` holds `childRequestRows`, `summary.child` (reuse,

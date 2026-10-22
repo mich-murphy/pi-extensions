@@ -332,7 +332,8 @@ def analyse_run(run_dir, steady_min, strict=False):
             o = outcomes[i] if i < len(outcomes) else {}
             checks.append({'name': f"{label}: {'allowed' if allowed else 'blocked'}",
                            'passed': o.get('tool') == tool and o.get('target', '').endswith(SKILL_FILES[skill])
-                           and o.get('allowed') == allowed})
+                           and o.get('allowed') == allowed
+                           and (allowed or 'do not retry' in o.get('text', ''))})
     if meta['scenario'] == 'subagent':
         checks.append({'name': 'child requests recorded', 'passed': len(children) >= 2})
         checks.append({'name': f'child reuse >= {steady_min}% after its request 1',
