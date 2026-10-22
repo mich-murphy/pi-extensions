@@ -7,6 +7,23 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream } from "../../../../node_modules/@earendil-works/pi-ai/dist/index.js";
 import type { AssistantMessage } from "../../../../node_modules/@earendil-works/pi-ai/dist/index.js";
 
+const FAILURES: Partial<Record<string, string>> = {
+  transient: "Connection error.",
+  aborted: "Connection error.",
+};
+
+async function untilAborted(signal: AbortSignal | undefined): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 15_000);
+    if (signal?.aborted === true) {
+      resolve();
+    }
+    signal?.addEventListener("abort", () => {
+      resolve();
+    });
+  });
+}
+
 export default function synthetic(pi: ExtensionAPI): void {
   pi.registerCommand("fixture-work", {
     description: "Start synthetic extension work",
@@ -60,7 +77,8 @@ export default function synthetic(pi: ExtensionAPI): void {
         }
         appendFileSync(record, `${JSON.stringify(payload)}\n`);
         const first = index === 1;
-        if (first && scenario !== "error" && scenario !== "plain") {
+        const unlimited = ["error", "plain", "transient", "aborted"];
+        if (first && !unlimited.includes(scenario)) {
           let publishedReset: unknown = resetsAt;
           if (scenario === "invalid") {
             publishedReset = "tomorrow";
@@ -95,10 +113,17 @@ export default function synthetic(pi: ExtensionAPI): void {
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
           },
           stopReason: failed ? "error" : "stop",
-          ...(failed ? { errorMessage: "Synthetic terminal failure" } : {}),
+          ...(failed ? { errorMessage: FAILURES[scenario] ?? "Synthetic terminal failure" } : {}),
         };
         stream.push({ type: "start", partial: { ...message, stopReason: "pending", content: [] } });
-        if (failed) {
+        if (failed && scenario === "aborted") {
+          await untilAborted(options?.signal);
+          stream.push({
+            type: "error",
+            reason: "aborted",
+            error: { ...message, stopReason: "aborted" },
+          });
+        } else if (failed) {
           stream.push({ type: "error", reason: "error", error: message });
         } else {
           stream.push({ type: "text_start", contentIndex: 0, partial: message });

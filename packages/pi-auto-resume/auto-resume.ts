@@ -1,3 +1,5 @@
+import { isContextOverflow, isRetryableAssistantError } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type {
   AgentBeforeSettleEvent,
   BoundaryResult,
@@ -28,6 +30,31 @@ export const MAX_WAIT_MS = 5 * 60 * 60 * 1000;
 /** How often the wall clock is compared with the reset time while waiting. */
 export const CHECK_INTERVAL_MS = 60 * 1000;
 
+const MINUTE_MS = 60 * 1000;
+
+/** Claude Agent SDK failures that {@link isRetryableAssistantError} does not recognise. */
+const TRANSIENT_ERROR_MESSAGES: ReadonlySet<string> = new Set([
+  "Claude Agent SDK: the query failed; retry or check Claude Code status",
+  "Claude Agent SDK: could not start the query (unexpected SDK error)",
+]);
+
+/** `autoResume.transient` settings: backoff after transient provider or network failures. */
+export type TransientSettings = {
+  readonly enabled: boolean;
+  /** Wait before each attempt; the last delay repeats. */
+  readonly delaysMinutes: readonly number[];
+  readonly maxAttempts: number;
+  /** No attempt is scheduled later than this long after the first failure. */
+  readonly windowMinutes: number;
+};
+
+export const DEFAULT_TRANSIENT_SETTINGS: TransientSettings = {
+  enabled: true,
+  delaysMinutes: [1, 2, 5, 10, 15],
+  maxAttempts: 8,
+  windowMinutes: 120,
+};
+
 /** Theme colours the widget and marker use. */
 export type ThemeColors = Pick<Theme, "fg">;
 
@@ -43,6 +70,7 @@ export type MarkerRenderer = (
 
 /** Context fields auto-resume reads from Pi. */
 export type AutoResumeContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
+  readonly model?: { readonly contextWindow: number } | undefined;
   readonly ui: Pick<ExtensionContext["ui"], "notify"> & {
     readonly setWidget: (key: string, content: WidgetFactory | undefined) => void;
   };
@@ -64,6 +92,7 @@ export type AutoResumeHandlers = {
 
 /** Pi capabilities consumed by auto-resume. */
 export type AutoResumeRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"> & {
+  readonly getSettings: () => object;
   readonly registerMessageRenderer: (customType: string, renderer: MarkerRenderer) => void;
   readonly events: Pick<ExtensionAPI["events"], "on">;
   readonly registerCommand: (
@@ -95,11 +124,83 @@ export type AutoResumeDependencies = {
   readonly writeStderr: (line: string) => void;
 };
 
-type Wait = {
+type WaitPlan = {
   readonly resetsAt: number;
+  readonly reason: "usage-limit" | "transient";
+  readonly attempt: number;
+};
+
+type Wait = WaitPlan & {
   readonly ctx: AutoResumeContext;
   readonly stop: () => void;
 };
+
+type Streak = { readonly attempts: number; readonly firstFailureAt: number };
+
+function isPositive(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isRecord(value: unknown): value is object {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function field(record: object, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
+}
+
+const INVALID = Symbol("invalid");
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isInteger(value) && isPositive(value);
+}
+
+function isDelays(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.length > 0 && value.every((delay) => isPositive(delay));
+}
+
+function pick<T>(
+  record: object,
+  key: keyof TransientSettings,
+  valid: (value: unknown) => value is T,
+): T | typeof INVALID {
+  const value = field(record, key) ?? DEFAULT_TRANSIENT_SETTINGS[key];
+  return valid(value) ? value : INVALID;
+}
+
+/**
+ * Read `autoResume.transient` from Pi's merged settings.
+ *
+ * @returns The settings over the defaults, or `undefined` when they are malformed.
+ */
+export function readTransientSettings(settings: object): TransientSettings | undefined {
+  const autoResume = field(settings, "autoResume") ?? {};
+  const transient = isRecord(autoResume) ? (field(autoResume, "transient") ?? {}) : null;
+  if (!isRecord(transient)) {
+    return undefined;
+  }
+  const enabled = pick(transient, "enabled", isBoolean);
+  const delaysMinutes = pick(transient, "delaysMinutes", isDelays);
+  const maxAttempts = pick(transient, "maxAttempts", isCount);
+  const windowMinutes = pick(transient, "windowMinutes", isPositive);
+  return enabled === INVALID ||
+    delaysMinutes === INVALID ||
+    maxAttempts === INVALID ||
+    windowMinutes === INVALID
+    ? undefined
+    : { enabled, delaysMinutes, maxAttempts, windowMinutes };
+}
+
+function isTransientFailure(message: AssistantMessage, contextWindow?: number): boolean {
+  return (
+    (isRetryableAssistantError(message) && !isContextOverflow(message, contextWindow)) ||
+    TRANSIENT_ERROR_MESSAGES.has(message.errorMessage ?? "")
+  );
+}
 
 function readResetsAt(data: unknown): number | undefined {
   if (typeof data !== "object" || data === null || !("resetsAt" in data)) {
@@ -111,20 +212,22 @@ function readResetsAt(data: unknown): number | undefined {
     : undefined;
 }
 
-/** The session entry of the run's failed assistant message, when the run ended on one. */
-function failedAttemptId(
+/** The run's failed assistant message and its session entry, when the run ended on one. */
+function failedAttempt(
   event: Pick<AgentBeforeSettleEvent, "context">,
-  provider: string | undefined,
-): string | undefined {
+): { readonly id: string; readonly message: AssistantMessage } | undefined {
   const last = event.context.contextEntries.findLast(
     ({ sourceEntry }) => sourceEntry.type === "message" || sourceEntry.type === "custom_message",
   )?.sourceEntry;
   return last?.type === "message" &&
     last.message.role === "assistant" &&
-    last.message.stopReason === "error" &&
-    (provider === undefined || last.message.provider === provider)
-    ? last.id
+    last.message.stopReason === "error"
+    ? { id: last.id, message: last.message }
     : undefined;
+}
+
+function omit(targetId: string): BoundaryResult {
+  return { entries: [{ type: "context_edit", targetId, replacement: null }] };
 }
 
 const renderMarker: MarkerRenderer = (message, _options, theme) =>
@@ -156,6 +259,8 @@ export function registerAutoResume(
   // Notice published during the current model/tool turn, consumed at final settlement.
   let published: { resetsAt: number; provider: string | undefined } | undefined;
   let wait: Wait | undefined;
+  let streak: Streak | undefined;
+  let warnedAboutSettings = false;
 
   const cancel = (): void => {
     if (wait === undefined) {
@@ -171,31 +276,35 @@ export function registerAutoResume(
     if (wait === undefined || now() < wait.resetsAt || !wait.ctx.isIdle()) {
       return;
     }
-    const time = formatTime(wait.resetsAt);
+    const { reason, attempt, resetsAt } = wait;
+    const content =
+      reason === "usage-limit"
+        ? `Auto-resumed after the usage limit reset at ${formatTime(resetsAt)}`
+        : `Auto-resumed after a transient provider error (attempt ${String(attempt)})`;
     cancel();
-    pi.sendMessage(
-      {
-        customType: AUTO_RESUME_TYPE,
-        content: `Auto-resumed after the usage limit reset at ${time}`,
-        display: true,
-      },
-      { triggerTurn: true },
-    );
+    pi.sendMessage({ customType: AUTO_RESUME_TYPE, content, display: true }, { triggerTurn: true });
   };
 
-  const startWait = (resetsAt: number, ctx: AutoResumeContext): void => {
+  const startWait = (plan: WaitPlan, ctx: AutoResumeContext): void => {
     cancel();
-    const time = formatTime(resetsAt);
-    ctx.ui.notify(`Usage limit reached. Pi will continue automatically at ${time}.`, "warning");
+    const time = formatTime(plan.resetsAt);
+    const [notice, label] =
+      plan.reason === "usage-limit"
+        ? [`Usage limit reached. Pi will continue automatically at ${time}.`, "Usage limit reached"]
+        : [
+            `Provider error. Pi will retry automatically at ${time} (attempt ${String(plan.attempt)}).`,
+            `Provider error · attempt ${String(plan.attempt)}`,
+          ];
+    ctx.ui.notify(notice, "warning");
     ctx.ui.setWidget(AUTO_RESUME_TYPE, (_tui, theme) => {
-      const reason = theme.fg("muted", `Usage limit reached · auto-resume at ${time} · `);
+      const reason = theme.fg("muted", `${label} · auto-resume at ${time} · `);
       return new Text(
         `${theme.fg("warning", "⏸ ")}${reason}${theme.fg("dim", "/auto-resume off to cancel")}`,
         1,
         0,
       );
     });
-    wait = { resetsAt, ctx, stop: every(CHECK_INTERVAL_MS, resume) };
+    wait = { ...plan, ctx, stop: every(CHECK_INTERVAL_MS, resume) };
   };
 
   const report = (resetsAt: number, ctx: AutoResumeContext): void => {
@@ -204,6 +313,69 @@ export function registerAutoResume(
     } else {
       writeStderr(`Usage limit resets at ${new Date(resetsAt).toISOString()}`);
     }
+  };
+
+  const transientSettings = (ctx: AutoResumeContext): TransientSettings => {
+    const settings = readTransientSettings(pi.getSettings());
+    if (settings !== undefined) {
+      return settings;
+    }
+    if (!warnedAboutSettings) {
+      warnedAboutSettings = true;
+      ctx.ui.notify("Invalid autoResume.transient settings; using the defaults.", "warning");
+    }
+    return DEFAULT_TRANSIENT_SETTINGS;
+  };
+
+  const afterUsageLimit = (
+    resetsAt: number,
+    targetId: string,
+    ctx: AutoResumeContext,
+  ): BoundaryResult | undefined => {
+    if (ctx.mode === "print" || ctx.mode === "json") {
+      report(resetsAt, ctx);
+      return undefined;
+    }
+    const delay = resetsAt - now();
+    if (!enabled || delay <= 0 || delay > MAX_WAIT_MS) {
+      return undefined;
+    }
+    startWait({ resetsAt, reason: "usage-limit", attempt: 0 }, ctx);
+    return omit(targetId);
+  };
+
+  const afterTransientFailure = (
+    failed: { readonly id: string; readonly message: AssistantMessage },
+    ctx: AutoResumeContext,
+  ): BoundaryResult | undefined => {
+    if (
+      !enabled ||
+      (ctx.mode !== "tui" && ctx.mode !== "rpc") ||
+      !isTransientFailure(failed.message, ctx.model?.contextWindow)
+    ) {
+      return undefined;
+    }
+    const settings = transientSettings(ctx);
+    if (!settings.enabled) {
+      return undefined;
+    }
+    const current = now();
+    const attempt = (streak?.attempts ?? 0) + 1;
+    const firstFailureAt = streak?.firstFailureAt ?? current;
+    const { delaysMinutes, maxAttempts, windowMinutes } = settings;
+    const delayMinutes = delaysMinutes[Math.min(attempt, delaysMinutes.length) - 1] ?? 0;
+    const resetsAt = current + delayMinutes * MINUTE_MS;
+    if (attempt > maxAttempts || resetsAt > firstFailureAt + windowMinutes * MINUTE_MS) {
+      streak = undefined;
+      ctx.ui.notify(
+        `Provider error persists after ${String(attempt - 1)} automatic retries. Send a message to continue.`,
+        "warning",
+      );
+      return undefined;
+    }
+    streak = { attempts: attempt, firstFailureAt };
+    startWait({ resetsAt, reason: "transient", attempt }, ctx);
+    return omit(failed.id);
   };
 
   pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
@@ -239,26 +411,28 @@ export function registerAutoResume(
   pi.on("agent_before_settle", (event, ctx) => {
     const notice = published;
     published = undefined;
-    const targetId =
-      event.outcome === "error" ? failedAttemptId(event, notice?.provider) : undefined;
-    if (notice === undefined || targetId === undefined) {
+    if (event.outcome === "completed") {
+      streak = undefined;
       return undefined;
     }
-    const { resetsAt } = notice;
-    if (ctx.mode === "print" || ctx.mode === "json") {
-      report(resetsAt, ctx);
+    const failed = event.outcome === "error" ? failedAttempt(event) : undefined;
+    if (failed === undefined) {
       return undefined;
     }
-    const delay = resetsAt - now();
-    if (!enabled || delay <= 0 || delay > MAX_WAIT_MS) {
-      return undefined;
+    if (notice === undefined) {
+      return afterTransientFailure(failed, ctx);
     }
-    startWait(resetsAt, ctx);
-    return { entries: [{ type: "context_edit", targetId, replacement: null }] };
+    return notice.provider === undefined || failed.message.provider === notice.provider
+      ? afterUsageLimit(notice.resetsAt, failed.id, ctx)
+      : undefined;
   });
 
   pi.on("input", (event, ctx) => {
-    if (wait !== undefined && event.source !== "extension") {
+    if (event.source === "extension") {
+      return { action: "continue" };
+    }
+    streak = undefined;
+    if (wait !== undefined) {
       cancel();
       ctx.ui.notify("Auto-resume cancelled: your new prompt takes over.", "info");
     }
@@ -278,7 +452,8 @@ export function registerAutoResume(
   });
 
   pi.registerCommand(AUTO_RESUME_TYPE, {
-    description: "Turn automatic resume after usage limits on or off for this session",
+    description:
+      "Turn automatic resume after usage limits and transient provider errors on or off for this session",
     getArgumentCompletions: (prefix) =>
       ["on", "off"]
         .filter((value) => value.startsWith(prefix))

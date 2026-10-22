@@ -37,7 +37,8 @@ def main():
             (state / part).mkdir(parents=True)
         (state / "agent/settings.json").write_text(json.dumps({
             "packages": [], "cacheWarming": "off", "theme": "dark",
-            "retry": {"enabled": False}, "compaction": {"enabled": False}}))
+            "retry": {"enabled": False}, "compaction": {"enabled": False},
+            "autoResume": {"transient": {"delaysMinutes": [0.05]}}}))
         env = {"HOME": str(state / "home"), "PI_CODING_AGENT_DIR": str(state / "agent"),
                "TMPDIR": str(state / "tmp"), "PATH": os.environ["PATH"], "TERM": "xterm-256color",
                "NODE_DISABLE_COMPILE_CACHE": "1", "PI_OFFLINE": "1", "PI_SKIP_VERSION_CHECK": "1",
@@ -112,7 +113,7 @@ def main():
                 assert any(x.get("customType") == "auto-resume" and x["data"]["resetsAt"] == records(mode)[0]["resetsAt"] for x in entries)
             cases[mode] = {"returncode": proc.returncode, "requests": 1}
         scenarios = {"resume": "limit", "off": "limit", "prompt": "limit", "new": "limit",
-                     "reload": "limit", "extensionwork": "limit", "extensionuser": "limit", **{x: x for x in ["plain", "success", "error", "missing", "invalid", "nan", "past", "far", "mismatch", "date"]}}
+                     "reload": "limit", "extensionwork": "limit", "extensionuser": "limit", **{x: x for x in ["plain", "success", "error", "missing", "invalid", "nan", "past", "far", "mismatch", "date", "transient", "aborted"]}}
         deadlines = []
         for name, scenario in scenarios.items():
             state, env = setup(name, scenario)
@@ -134,7 +135,17 @@ def main():
             assert len(records(name)) == 1, name
             time.sleep(.5)
             deadlines.append(time.monotonic() + 64)
-            if scenario == "limit":
+            if scenario == "aborted":
+                actions.append({"case": name, "at": time.time(), "input": "<Escape>"})
+                t("send-keys", "-t", name, "Escape")
+                end = time.monotonic() + 10
+                while "Working" in capture(name, "aborting") and time.monotonic() < end:
+                    time.sleep(.2)
+                time.sleep(1)
+            if scenario == "transient":
+                wait(name, "waiting", "/auto-resume off to cancel")
+                assert "Provider error" in capture(name, "waiting"), name
+            elif scenario == "limit":
                 wait(name, "waiting", "/auto-resume off to cancel")
                 if name == "off":
                     send(name, "/auto-resume off")
@@ -156,7 +167,7 @@ def main():
         for name in scenarios:
             text = capture(name, "final")
             rows = records(name)
-            expected_count = 2 if name in ["resume", "prompt", "extensionwork", "extensionuser"] else 1
+            expected_count = 2 if name in ["resume", "prompt", "extensionwork", "extensionuser", "transient"] else 1
             assert len(rows) == expected_count, f"{name}: expected {expected_count} requests, got {len(rows)}"
             assert "/auto-resume off to cancel" not in text, name
             if name == "resume":
@@ -167,6 +178,14 @@ def main():
                 assert "Auto-resumed" not in serialized and '"customType": "auto-resume"' not in serialized
                 assert "fixture task" in serialized
                 assert "Auto-resumed after the usage limit reset" in text and "FIXTURE_OK_2" in text
+            if name == "transient":
+                assert rows[1]["at"] - rows[0]["at"] >= 59000
+                serialized = json.dumps(rows[1]["messages"])
+                assert "FAILED_ATTEMPT_SENTINEL" not in serialized and "Auto-resumed" not in serialized
+                assert "fixture task" in serialized
+                assert "Auto-resumed after a transient provider error (attempt 1)" in text and "FIXTURE_OK_2" in text
+            if name == "aborted":
+                assert "FIXTURE_OK" not in text and "Auto-resumed" not in text, name
             cases[name] = {"requests": len(rows), "observedBeyondTimer": True}
         result["status"] = "passed"
     except Exception as error:

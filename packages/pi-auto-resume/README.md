@@ -1,6 +1,7 @@
 # Pi Auto Resume
 
-Continues a session automatically when a provider's usage limit resets. It is
+Continues a session automatically when a provider's usage limit resets, or
+after a transient provider or network failure outlasts Pi's own retries. It is
 on by default; `/auto-resume off` turns it off for the current session,
 `/auto-resume on` turns it back on, and `/auto-resume` alone toggles it.
 
@@ -24,17 +25,67 @@ prompt, any newly started agent run (including one started by another extension)
 session tree navigation, or `/auto-resume off` cancels the wait. Session replacement,
 reload, and shutdown also discard it.
 
-Everything else is left to Pi: a limit with no reset time, a reset more than
-five hours away, and connection or capacity errors, which Pi's own retry
-settings handle. The extension never probes the provider, and the wait is kept
-in memory only, so it ends with the Pi process.
+Everything else is left to the user: a limit with no reset time or a reset more
+than five hours away. The extension never probes the provider, and the wait is
+kept in memory only, so it ends with the Pi process.
 
 Comparing the wall clock, rather than sleeping for the whole wait, keeps the
 resume on time when the machine sleeps; it does not keep the machine awake.
 
+## Transient failures
+
+Pi retries connection and capacity errors itself. When a run still ends on a
+failed reply after those retries, with no usage-limit notice, the extension
+retries the turn with backoff using the same widget, context omission and
+cancellation as a usage-limit wait. A failure counts as transient when
+`isRetryableAssistantError` from `@earendil-works/pi-ai` matches it and it is not
+a context overflow, or when it is one of two Claude Agent SDK failures that
+classifier does not recognise:
+
+- `Claude Agent SDK: the query failed; retry or check Claude Code status`
+- `Claude Agent SDK: could not start the query (unexpected SDK error)`
+
+Aborted runs (Esc, or subagents stopped on interrupt), authentication and
+invalid-request errors, context overflow and unrecognised errors are not
+retried. Transient retries run only in the TUI and RPC modes.
+
+The waits are 1, 2, 5, 10 and 15 minutes, then 15 minutes for each later
+attempt. Retrying stops after 8 attempts or once the next attempt would start
+more than 120 minutes after the first failure, whichever comes first. Pi then
+shows one warning and leaves the session to you. A completed run or a prompt of
+your own resets the count. A usage-limit notice replaces a pending transient
+wait, and only one wait exists at a time.
+
+Because the wall clock is checked once a minute, a wait shorter than a minute
+resumes at the next check.
+
+### Settings
+
+Set `autoResume.transient` in Pi's settings. Every field is optional:
+
+```json
+{
+  "autoResume": {
+    "transient": {
+      "enabled": true,
+      "delaysMinutes": [1, 2, 5, 10, 15],
+      "maxAttempts": 8,
+      "windowMinutes": 120
+    }
+  }
+}
+```
+
+Delays and the window must be positive and may be fractional. `maxAttempts` must
+be a positive integer. If any field is invalid, Pi warns once and uses the
+defaults. Settings are reread at each failure. `enabled: false` turns off
+transient retries only. `/auto-resume off` turns off both kinds of wait for the
+session.
+
 ## Print and JSON modes
 
-These modes exit as soon as Pi settles, so the extension never waits there.
+These modes exit as soon as Pi settles, so the extension never waits there and
+never retries transient failures.
 Print mode writes `Usage limit resets at <ISO time>` to stderr, and JSON mode
 records an `auto-resume` custom entry with `{ resetsAt }`, which appears as an
 `entry_appended` event.

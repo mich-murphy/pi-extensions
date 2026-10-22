@@ -27,6 +27,7 @@ function renderText(component: Component): string {
 export function assistantEntry(
   id: string,
   stopReason: AssistantMessage["stopReason"],
+  errorMessage?: string,
 ): ProjectedSessionEntry {
   const message: AssistantMessage = {
     role: "assistant",
@@ -44,6 +45,7 @@ export function assistantEntry(
     },
     stopReason,
     timestamp: 0,
+    ...(errorMessage === undefined ? {} : { errorMessage }),
   };
   return {
     sourceEntry: { type: "message", id, parentId: null, timestamp: "", message },
@@ -61,7 +63,7 @@ export function userEntry(id: string): ProjectedSessionEntry {
 }
 
 /** Pi double that captures registrations and replays events with a fake context and clock. */
-export function fakePi(mode: ExtensionContext["mode"] = "tui") {
+export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
   const handlers: Partial<AutoResumeHandlers> = {};
   const channels = new Map<string, (data: unknown) => void>();
   const commands = new Map<string, Command>();
@@ -75,8 +77,11 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui") {
   let clock = 0;
   let idle = true;
 
+  let currentSettings = settings;
+
   const ctx = {
     mode,
+    model: { contextWindow: 200_000 },
     isIdle: () => idle,
     ui: {
       notify: (message: string, level?: string) => {
@@ -102,6 +107,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui") {
         return () => channels.delete(channel);
       },
     },
+    getSettings: () => structuredClone(currentSettings),
     sendMessage: (message, options) => {
       sent.push({ message, options });
     },
@@ -189,6 +195,9 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui") {
     },
     setIdle: (value: boolean) => {
       idle = value;
+    },
+    setSettings: (value: object) => {
+      currentSettings = value;
     },
     widgetText: (key: string) => {
       const widget = widgets.get(key);
