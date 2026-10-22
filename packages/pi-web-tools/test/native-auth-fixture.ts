@@ -30,3 +30,29 @@ export async function nativeAuthFixture(
   }
   return { storage, runtime, registry, authentication, pi };
 }
+
+export async function inheritingChild(parent: {
+  readonly storage: AuthStorage;
+  readonly registry: ModelRegistry;
+}) {
+  const runtime = await ModelRuntime.create({
+    credentials: parent.storage,
+    modelsPath: null,
+    refreshOnCreate: false,
+  });
+  const registry = new ModelRegistry(runtime);
+  for (const id of parent.registry.getRegisteredProviderIds()) {
+    const native = parent.registry.getRegisteredNativeProvider(id);
+    const config = parent.registry.getRegisteredProviderConfig(id);
+    if (native !== undefined) {
+      registry.registerProvider(native);
+    } else if (config !== undefined) {
+      registry.registerProvider(id, config);
+    }
+  }
+  const authentication = createWebAuthentication();
+  const pi: Pick<ExtensionAPI, "registerProvider"> = {
+    registerProvider: registry.registerProvider.bind(registry),
+  };
+  return { storage: parent.storage, runtime, registry, authentication, pi };
+}
