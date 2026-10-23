@@ -33,6 +33,7 @@ def main():
     session = "verify"
     counter = 0
     failure = None
+    root_mode = False
 
     def save(name, data):
         (evidence / name).write_text(json.dumps(data, indent=2) + "\n")
@@ -102,7 +103,14 @@ def main():
         assert "terminology-" in pane, "Completion must offer terminology-* commands\n" + pane
         assert not re.search(r"/terms|terms-", pane), "Legacy terms commands must not be offered\n" + pane
         key("Escape")
-        key("C-u")
+        if root_mode:
+            # The bundled Vim editor enters Normal mode and moves left on Escape.
+            # Clear the complete line via real Vim keys, then return to Insert.
+            key("0")
+            key("D")
+            key("i")
+        else:
+            key("C-u")
 
     def status(label):
         command("/terminology-status")
@@ -289,6 +297,7 @@ export default function(pi: any) {
         record("fixture-state", "restore known healthy state in disposable profile only")
         state.write_bytes(restored)
         argv = [str(REPO) if arg == str(PACKAGE / "index.ts") else arg for arg in argv]
+        root_mode = True
         launch("root-package")
         wait("root-package-loaded", ["pi-terminology", "pi-claude-sdk", "pi-auto-resume",
                                      "pi-caffeinate", "pi-skill-toggle", "pi-vim", "pi-web-tools"])

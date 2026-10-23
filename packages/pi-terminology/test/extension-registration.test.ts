@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { loadCatalogue } from "../catalogue";
 import piTerminology from "../index";
@@ -9,9 +9,19 @@ describe("terminology extension registration", () => {
     const manifest: unknown = JSON.parse(
       readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
     );
-    expect(manifest).toMatchObject({
-      pi: { extensions: expect.arrayContaining(["./packages/pi-terminology/index.ts"]) },
-    });
+    const entries = [
+      "./packages/pi-claude-sdk/index.ts",
+      "./packages/pi-auto-resume/index.ts",
+      "./packages/pi-caffeinate/index.ts",
+      "./packages/pi-skill-toggle/index.ts",
+      "./packages/pi-terminology/index.ts",
+      "./packages/pi-vim/index.ts",
+      "./packages/pi-web-tools/index.ts",
+    ];
+    expect(manifest).toMatchObject({ pi: { extensions: entries } });
+    expect(entries.every((path) => existsSync(new URL(`../../../${path}`, import.meta.url)))).toBe(
+      true,
+    );
     expect(loadCatalogue().policy.measured).toBe(false);
   });
   test("registers commands and raw input lifecycle handlers without activating globally", () => {
