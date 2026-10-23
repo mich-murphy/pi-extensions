@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "kind": "offline-optimizer-source-compatibility",
+  "measured": false,
+  "accepted": false,
+  "promotable": false,
+  "freshInference": false,
+  "nativeCalls": 0,
+  "activationPerformed": false,
+  "globalSettingsChanged": false,
+  "serializedFitSha256": "81154dd0738a4020a5a3c7db1445369821e278dfe7409c744e64798f660d2e17",
+  "combinedObservationsHash": "96ec0fba84c596884b99310193792400965d5ce120e4b9957dee6c142d59481c",
+  "orderedIdsHash": "79d08dbac6afa4bebd7d7a3c9420709c224c1b0878ccbc23271ae445409ecfc0",
+  "files": {
+    "originalFitter": {
+      "path": "evals/repair/source/recall-aggregate-calibration.ts.txt",
+      "sha256": "fcb229525aefbc1ee1e20ccf1793c50ef1155d1cd981a26e33be7554211edf81"
+    },
+    "currentFitter": {
+      "path": "recall-aggregate-calibration.ts",
+      "sha256": "dc6ecf5e445f65023e2a870d11dec94c17291291b775cbf9a764ccb4f889d7b5"
+    },
+    "compatibilityRule": {
+      "path": "scripts/command-rename-compatibility.ts",
+      "sha256": "8815028056a04d5f74d7a339aa7372a3434a807ed5e3d81073b6cd9373c2ff2f"
+    },
+    "publisher": {
+      "path": "scripts/publish-repair-preview.ts",
+      "sha256": "02d3391967324162bb8cde0d91d30601b44b719ee3b388b8cf2ae89d9f64d52b"
+    },
+    "historicalPublication": {
+      "path": "evals/repair/preview/command-rename/publication.json",
+      "sha256": "5a777e862930ca71ca39a436ca3a8d28e08b127b2bed482dff7e3b5f2d92d1aa"
+    },
+    "nativeResult": {
+      "path": "evals/repair/continuation/result.json",
+      "sha256": "f2a3eb6719faa203d312d3a434c60325d8eaefb7038b6f8979152bac62ae9911"
+    },
+    "completion": {
+      "path": "evals/repair/continuation/combined-completion.json.txt",
+      "sha256": "439049efc6f4a3b16651d3319bc4b80a0a3bfb20d2b3efc2f78e7d19f3b0e675"
+    },
+    "report": {
+      "path": "evals/repair/continuation/report.json.txt",
+      "sha256": "257fa6f502b3b7553bec891779d9c203772cb999de499ee875c214aab703577f"
+    },
+    "dataset": {
+      "path": "evals/recall/calibration-consensus.json.txt",
+      "sha256": "a476109e901b90f9f1aa8904f09072ed173170884a521a3a494211d893ebb8f6"
+    },
+    "originalObservations": {
+      "path": "evals/repair/development-observations.jsonl",
+      "sha256": "31a96f2f967e5c36cc18a3f0786f0436401a267509b98b7db8a82e7c1ce63b57"
+    },
+    "continuationObservations": {
+      "path": "evals/repair/continuation/observations.jsonl",
+      "sha256": "df83a774551a150bbeb95c9722d77133ff865f253b46cacefca5beaeb42cb061"
+    },
+    "fitSeal": {
+      "path": "evals/repair/continuation/fit-seal.json.txt",
+      "sha256": "f0e71c90bb8837beac12d4010779b0388b2d41a3beaddf053e9cacd78480126e"
+    },
+    "previewPolicy": {
+      "path": "glossary/preview-policy.json",
+      "sha256": "6a5e4890a6fd5eaf37ca686f8b533ff1685bb1b405067042837fc2dd9aa000ca"
+    }
+  }
+}

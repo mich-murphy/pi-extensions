@@ -1,6 +1,30 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
+import { runInNewContext } from "node:vm";
 import { describe, expect, test } from "vitest";
+import { computeRealPromptMetrics } from "../real-prompt-metrics";
 import type { RealPromptDataset, RealPromptLabel } from "../real-prompt-metrics";
 import { fitAggregateRecall } from "../recall-aggregate-calibration";
+
+const archivedSource = readFileSync(
+  new URL("../evals/repair/source/recall-aggregate-calibration.ts.txt", import.meta.url),
+  "utf8",
+);
+const archivedFit: unknown = runInNewContext(
+  `${stripTypeScriptTypes(
+    archivedSource
+      .replaceAll(/^import[\s\S]*?from "\.\/real-prompt-metrics";\n/gmu, "")
+      .replace("export function fitAggregateRecall", "function fitAggregateRecall"),
+  )}\nfitAggregateRecall;`,
+  { computeRealPromptMetrics },
+);
+function reference(data: RealPromptDataset): unknown {
+  if (typeof archivedFit !== "function") {
+    throw new TypeError("Missing archived reference fitter.");
+  }
+  return Reflect.apply(archivedFit, undefined, [data]);
+}
 
 type Row = { labels: RealPromptLabel[]; scores: number[]; named?: string[]; suppressed?: string[] };
 function fixture(ids: string[], rows: Row[], repeats = 1): RealPromptDataset {
@@ -45,7 +69,62 @@ function inRange(threshold: number) {
   return threshold >= 0.8 && threshold <= 0.99;
 }
 
+function boundaryMatrix(seed: number) {
+  const ids = ["f", "d", "b", "a", "e", "c"];
+  const labels: RealPromptLabel[] = ["positive", "positive", "ambiguous", "negative", "negative"];
+  const scores = [
+    0,
+    1,
+    ...Array.from({ length: 20 }, (_, grid) => (80 + grid) / 100).flatMap((threshold) => [
+      threshold - Number.EPSILON,
+      threshold,
+      threshold + Number.EPSILON,
+    ]),
+  ];
+  const rows = Array.from({ length: 42 }, (_row, r): Row => ({
+    labels: ids.map((_, c) => labels[(r * 7 + c * 11 + seed) % labels.length] ?? "negative"),
+    scores: ids.map((_, c) => scores[(r * 3 + c * 5 + seed) % scores.length] ?? 0),
+    named: ids.filter((_, c) => (r + c + seed) % 9 === 0),
+    suppressed: ids.filter((_, c) => (r * 3 + c + seed) % 11 === 0),
+  }));
+  return fixture(ids, rows, (seed % 2) + 1);
+}
+
 describe("development-only aggregate displayed calibration", () => {
+  test.each([0, 1, 2, 3])(
+    "matches the frozen straight-search reference across cap, label and grid boundaries (seed %i)",
+    (seed) => {
+      expect(createHash("sha256").update(archivedSource).digest("hex")).toBe(
+        "fcb229525aefbc1ee1e20ccf1793c50ef1155d1cd981a26e33be7554211edf81",
+      );
+      const data = boundaryMatrix(seed);
+      const before = JSON.stringify(data);
+      expect(JSON.stringify(fitAggregateRecall(data))).toBe(JSON.stringify(reference(data)));
+      expect(JSON.stringify(data)).toBe(before);
+    },
+  );
+
+  test("matches the reference on empty classes, score plateaus and displacement by ambiguous hits", () => {
+    const ids = ["z", "e", "d", "c", "b", "a"];
+    const rows: Row[] = [
+      { labels: [], scores: [] },
+      { labels: ["positive", "positive"], scores: [0.89, 0.9] },
+      { labels: ["positive", "positive", "positive"], scores: [0.8, 0.8, 0.8] },
+      {
+        labels: ["positive", "positive", "positive", "ambiguous", "ambiguous", "ambiguous"],
+        scores: [1, 1, 1, 1, 1, 1],
+      },
+      { labels: ["positive"], scores: [0.99, 0.99, 0.99, 0.99], named: ["c"] },
+      { labels: ["positive"], scores: [0.99, 0.99, 0.99, 0.99], suppressed: ["c"] },
+    ];
+    for (const data of [
+      fixture(ids, rows),
+      fixture(["empty"], copies(2, { labels: [], scores: [] })),
+    ]) {
+      expect(JSON.stringify(fitAggregateRecall(data))).toBe(JSON.stringify(reference(data)));
+    }
+  });
+
   test("allows class precision below .9 when aggregate precision and every recall floor pass", () => {
     const data = fixture(
       ["a", "b"],

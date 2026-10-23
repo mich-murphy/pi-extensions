@@ -73,6 +73,13 @@ function compileData(data: RealPromptDataset) {
   const requiredTp = positiveTotals.map((total) => Math.ceil(total * 0.7 - 1e-10));
   const rows = data.observations.map((row) => {
     const labels = need(gold.get(row.id)).labels;
+    const eligible = ids.map((id, c) =>
+      GRID.map(
+        (threshold) =>
+          !row.alreadyNamed.includes(id) &&
+          need(need(row.probabilities[id])[need(variants[c])]) >= threshold,
+      ),
+    );
     return {
       // 1 = TP, -1 = FP, 0 = ambiguous. Named gold is always FP if emitted.
       kind: ids.map((id) => {
@@ -82,13 +89,9 @@ function compileData(data: RealPromptDataset) {
         }
         return Number(label.label === "positive");
       }),
-      eligible: ids.map((id, c) =>
-        GRID.map(
-          (threshold) =>
-            !row.alreadyNamed.includes(id) &&
-            need(need(row.probabilities[id])[need(variants[c])]) >= threshold,
-        ),
-      ),
+      eligible,
+      active: eligible.flatMap((flags, c) => (flags[0] === true ? [c] : [])),
+      lastEligible: eligible.map((flags) => flags.lastIndexOf(true)),
     };
   });
   return { ids, variants, n, totalPositive, requiredTp, rows };
@@ -133,7 +136,10 @@ function coordinateBase(state: number[], c: number, compiled: Compiled) {
   const base = empty(compiled.n);
   const others = compiled.rows.map((row) => {
     const visible: number[] = [];
-    for (let k = 0; k < compiled.n && visible.length < 3; k++) {
+    for (const k of row.active) {
+      if (visible.length === 3) {
+        break;
+      }
       if (k !== c && need(row.eligible[k])[need(state[k])] === true) {
         visible.push(k);
         add(base, row.kind, k, 1);
@@ -144,24 +150,35 @@ function coordinateBase(state: number[], c: number, compiled: Compiled) {
   return { base, others };
 }
 
-function coordinateCounts(
+function coordinateRanks(
   c: number,
-  grid: number,
   compiled: Compiled,
   cache: ReturnType<typeof coordinateBase>,
-): Counts {
-  const counts = { tp: [...cache.base.tp], fp: [...cache.base.fp] };
+): Rank[] {
+  const deltas = GRID.map(() => empty(compiled.n));
   for (let r = 0; r < compiled.rows.length; r++) {
     const row = need(compiled.rows[r]);
     const visible = need(cache.others[r]);
-    if (need(row.eligible[c])[grid] === true && (visible.length < 3 || c < need(visible[2]))) {
-      add(counts, row.kind, c, 1);
+    const last = need(row.lastEligible[c]);
+    if (last >= 0 && (visible.length < 3 || c < need(visible[2]))) {
+      const delta = need(deltas[last]);
+      add(delta, row.kind, c, 1);
       if (visible.length === 3) {
-        add(counts, row.kind, need(visible[2]), -1);
+        add(delta, row.kind, need(visible[2]), -1);
       }
     }
   }
-  return counts;
+  const counts = { tp: [...cache.base.tp], fp: [...cache.base.fp] };
+  const ranks: Rank[] = [];
+  for (let grid = GRID.length - 1; grid >= 0; grid--) {
+    const delta = need(deltas[grid]);
+    for (let k = 0; k < compiled.n; k++) {
+      counts.tp[k] = need(counts.tp[k]) + need(delta.tp[k]);
+      counts.fp[k] = need(counts.fp[k]) + need(delta.fp[k]);
+    }
+    ranks[grid] = rank(counts, compiled);
+  }
+  return ranks;
 }
 
 function winsCoordinateTie(grid: number, winner: number, order: number) {
@@ -175,10 +192,11 @@ function winsCoordinateTie(grid: number, winner: number, order: number) {
 
 function coordinate(state: number[], c: number, compiled: Compiled) {
   const cache = coordinateBase(state, c, compiled);
+  const ranks = coordinateRanks(c, compiled, cache);
   let winner = need(state[c]);
   let winnerRank: Rank | undefined;
   for (let grid = 0; grid < GRID.length; grid++) {
-    const candidateRank = rank(coordinateCounts(c, grid, compiled, cache), compiled);
+    const candidateRank = need(ranks[grid]);
     const order = winnerRank === undefined ? -1 : compare(candidateRank, winnerRank);
     if (winsCoordinateTie(grid, winner, order)) {
       winner = grid;
