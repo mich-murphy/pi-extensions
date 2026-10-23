@@ -24,8 +24,11 @@ export function promptTooLarge(prompt: string): boolean {
 
 export function suppressAlreadyNamed(prompt: string, catalogue: Catalogue): ReadonlySet<string> {
   const negationRemoved = prompt.replaceAll(NEGATED_SPAN, " ");
-  const unquotedAffirmative = negationRemoved.replaceAll(QUOTED_TEXT, " ");
-  const normalizedPrompt = normalizeForSearch(unquotedAffirmative);
+  // Naming a term in a current request already makes a vocabulary reminder
+  // redundant, including requests to avoid it (e.g. accidental complexity).
+  // Quoted and historical context still does not establish current familiarity.
+  const unquotedCurrent = prompt.replaceAll(QUOTED_TEXT, " ");
+  const normalizedPrompt = normalizeForSearch(unquotedCurrent);
   const suppressed = new Set<string>();
   for (const concept of catalogue.concepts) {
     const classifierAliases =
@@ -34,7 +37,7 @@ export function suppressAlreadyNamed(prompt: string, catalogue: Catalogue): Read
     if (
       labels.some(
         (label) =>
-          affirmativelyContainsLabel(normalizedPrompt, unquotedAffirmative, label) ||
+          affirmativelyContainsLabel(normalizedPrompt, unquotedCurrent, label) ||
           affirmativelyQuotesLabel(negationRemoved, label),
       )
     ) {

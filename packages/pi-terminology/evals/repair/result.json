@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "status": "development-interrupted-operator-timeout",
+  "developmentOnly": true,
+  "measured": false,
+  "accepted": false,
+  "promotable": false,
+  "nativeCollectionComplete": false,
+  "developmentFit": "not-run-incomplete-matrix",
+  "previewArtifactAvailable": false,
+  "productionPolicyMeasured": false,
+  "acceptanceExecuted": false,
+  "termination": {
+    "cause": "Operator invoked the foreground collection with a 300-second terminal timeout; it killed the process between completed attempts. This was not a provider failure.",
+    "timeoutSeconds": 300,
+    "originalProcessPid": 57765,
+    "originalProcessAbsent": true,
+    "staleOwnedLockArchivedAndRemoved": true,
+    "receiptPreserved": true,
+    "retryOrResumePerformed": false
+  },
+  "calls": {
+    "original": 1012,
+    "plannedDevelopment": 612,
+    "repairSucceeded": 416,
+    "repairFailed": 0,
+    "repairReservedUnsettled": 0,
+    "unattemptedDevelopment": 196,
+    "consumedReplay": 0,
+    "repeats": 0,
+    "total": 1428,
+    "remainingUnder1800": 372
+  },
+  "budget": {
+    "capNanos": 5000000000,
+    "repairReservedNanos": 1145044992,
+    "totalReservedNanos": 3930587136,
+    "repairObservedTariffNanos": 212476152,
+    "totalObservedTariffNanos": 721713888,
+    "otherCostNanos": 0,
+    "estimateIsInvoice": false,
+    "repairInputTokens": 5058956,
+    "repairOutputTokens": 458848
+  },
+  "latency": {
+    "definition": "Native matcher and durable successful settlement, excluding pre-attempt source validation",
+    "medianMs": 381.0,
+    "maxMs": 8584
+  },
+  "continuation": {
+    "authorized": false,
+    "requiresExplicitUserApproval": true,
+    "unattemptedDevelopmentCalls": 196,
+    "possibleLaterConsumedReplayAndRepeatCalls": 174,
+    "maximumResultingAttempts": 1798,
+    "maximumResultingReservationsNanos": 4949016576,
+    "constraints": "Separate append-only continuation receipt; preserve the burned original receipt, source/profile/questions/data/order and all 416 successes; no repeated completed calls; no fresh acceptance; same $5/1800 total cap. No continuation implemented or dispatched."
+  },
+  "sourceManifestSha256": "4a07741fb9da25dac785c8886fec28fd77666fd332bf7316ae469e2ae3213c8f",
+  "artifacts": {
+    "development-receipt.json.txt": "6a7fc0a3333ba34d6eba6f82e34f24d4647dac16bd56fa3878794d4500684413",
+    "development-observations.jsonl": "31a96f2f967e5c36cc18a3f0786f0436401a267509b98b7db8a82e7c1ce63b57",
+    "development-ledger.json.txt": "0af92d91eefb0bef263d04d96686980ba5fabea10afd56c31248e04e2c40af67",
+    "operator-manifest.json.txt": "2a3c21d900cca4f2e166a8cdf6b7b9ba945a6daa7733a20d7698caac5634616d",
+    "preflight.json.txt": "34a054dbd257bb639ed91505c61e0aa97caddd6b5b6cab59b5917bc8967b31b4",
+    "compiled-profile.json.txt": "f040489636671087c7c4d0ededc22eebbd5938e71dccfaa1553dcd56cd983756"
+  }
+}

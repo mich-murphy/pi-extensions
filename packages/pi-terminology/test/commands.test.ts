@@ -125,7 +125,7 @@ describe("terminology commands", () => {
     const extension = new TerminologyExtension(badUsage.store);
     await extension.approve("extra", badUsage.ctx);
     expect(badUsage.notices.at(-1)).toStrictEqual({
-      message: "Usage: /terms-approve",
+      message: "Usage: /terminology-approve",
       type: "error",
     });
 

@@ -1,8 +1,167 @@
 # Pi terminology extension handoff
 
-## Status and ownership
+## Current continuation snapshot — 23 October 2026
 
-Implementation is authorized in `/Users/mm/dev/pi-extensions/packages/pi-terminology`,
+**Start here.** The historical status below predates the 51-concept expansion
+and must not be used as current policy, budget, model, or activation authority.
+The [package README](../../packages/pi-terminology/README.md) describes the current
+runtime; the experiment reports bind the evidence that actually ran.
+
+- **Glossary:** 51 source-backed concepts, up from ten. Definitions, references,
+  aliases and recognition criteria remain separate. `/terminology` browsing works
+  without credentials or inference.
+- **Runtime:** pinned Pi 1.3.0 and native TypeSafe `jev-1.13.0`. The expanded
+  production policy is **`measured: false`**; automatic reminders are disabled.
+  The user has now authorized adding it to the root manifest so the workspace
+  package autoloads it, plus a PR and merge once all checks/reviews are green.
+  Loading is not preview consent: no paid calls, persistent preview activation,
+  measured-policy promotion or global settings change is authorized.
+- **Expansion experiment:** closed at 359 attempts without acceptance. Its
+  allowance and consumed receipts are separate from the recall/repair ledger.
+- **Recall development:** 1,012 successful calls (400 pilot + 612 calibration).
+  The selected profile reached 98.68% displayed scored precision and 87.77%
+  recall, but failed the 70% recall floor for low coupling, refactoring and
+  separation of concerns. No fresh acceptance followed. See
+  [recall results](../../packages/pi-terminology/evals/recall/results.md).
+- **Recognition repair:** only those three recognizers were changed, retaining
+  all 51 canonical meanings and the other 48 recognizers. The original collection
+  stopped at 416/612 requests after a foreground timeout. The user then explicitly
+  approved **only the 196 never-attempted requests**: all 196 succeeded under a
+  new append-only receipt, completing a new combined 612-observation proof.
+  The original interrupted phase and all prior evidence remain unchanged. The
+  combined fit passes development: **90.55% scored displayed precision, 96.31%
+  recall**, with every concept above the 70% recall floor. No fresh acceptance or
+  consumed replay followed. Later preview packaging is a separate zero-call step.
+  See the
+  [continuation result](../../packages/pi-terminology/evals/repair/continuation/results.md).
+  Important weaknesses remain: refactoring precision **46.15%**, low coupling
+  **63.33%**, and conservative aggregate precision **88.06%**. This is not a
+  fully reliable or production-validated recognizer.
+- **Preview:** **ready for personal testing**, with the actual 51-cutoff artifact
+  bundled by a zero-call publisher. It remains off by default, unvalidated,
+  session-only and requires explicit confirmation plus a finite allowance.
+  Actual-artifact pinned Pi 1.3.0 TUI verification passed at normal/narrow widths,
+  including allowance exhaustion, restart/off, mutation and unchanged model
+  context, with zero real provider calls. This is not new classifier validation.
+  See [preview instructions](../../packages/pi-terminology/evals/repair/preview/README.md).
+- **Command rename:** the eight-command family was renamed from `/terms*` to
+  `/terminology*` (e.g. `/terminology-status`, `/terminology-preview on 5`), with
+  no legacy aliases. Current `index.ts`/`ui.ts` are an exact UI command-name-only
+  transform of the original archives; native evidence, models, catalogue,
+  thresholds and allowances are unchanged. The new preview policy was published
+  with zero calls (SHA `6a5e4890a6fd5eaf37ca686f8b533ff1685bb1b405067042837fc2dd9aa000ca`);
+  the old one is kept as `command-rename/previous-preview-policy.json.txt`. The
+  original contract/diagnostic still reports source drift by design. The new
+  **verify-pi-terminology skill passed both real-TUI journeys**, including SDK
+  discovery of all eight commands without legacy aliases, narrow-screen consent,
+  state safety and preview exhaustion, with zero real provider/fetch calls. Verifier:
+  `python3 .agents/skills/verify-pi-terminology/scripts/verify.py doctor`, then
+  `... drive --feature all` (isolated pinned Pi, no real calls). See
+  [command-rename scope](../../packages/pi-terminology/evals/repair/preview/command-rename/README.md).
+- **Shared recall/repair budget:** **1,624 settled successful attempts**;
+  **$4.470079488** conservative reservations and **$0.821852976** published-tariff
+  usage estimate, **not an invoice**. The cap remains $5 / 1,800 attempts.
+  The continuation added $0.100139088 estimated usage and $0.539492352 reserved.
+  The later 174 consumed replay/repeat calls are **not authorized or executed**.
+  Unused allowance is not permission to replay a burned receipt. Paid work is
+  stopped; the owned supervisor and child exited, and the ledger lock is released.
+
+### Immediate next actions
+
+1. Preserve the completed continuation's new combined proof and source archive,
+   as well as the original interrupted receipt, observations and ledger prefix.
+   Both paid receipts are consumed; no retry, resume or reset is authorized.
+2. The extension loads with the root package; the user can run `/terminology-preview on 5`,
+   then confirm to start a small session-only trial. The zero-call publisher has
+   verified both source generations, complete native observations and the sealed
+   fit. No further user approval is needed for implementation, tests or offline
+   UI work. Do not stop to ask for those; only interactive consent, additional
+   paid evaluation or persistent/global activation requires the user.
+3. Obtain separately recorded approval before any replay or fresh validation.
+   Consumed replay is diagnostic, not acceptance. Do not promote the development
+   candidate or assume natural/private-request precision from this aggregate fit.
+4. Keep the low per-concept precision and ambiguous-hit limitations visible.
+   Preserve all concepts and reference labels; do not drop difficult categories,
+   reinterpret gates or open unused acceptance content to rescue development.
+   See the [recovery proposal and outcome](../research/terminology-repair-recovery.md).
+
+The approved objective is **90% aggregate empirically scored displayed precision**,
+85% aggregate recall and 70% minimum recall per concept, with separate private and
+synthetic precision gates, adequate real-positive support and positive private
+usefulness gain for acceptance. It is not 90% precision per concept, a Jev
+probability cutoff, or a statistical guarantee. Score the actual three-visible-name
+widget; report uncapped selection and ambiguous exposure separately. Labels are
+agent-reviewed judgements, not human ground truth.
+
+### Verification in this review
+
+At the start of this review, all **562 package tests across 37 files passed** with
+`npm test -- packages/pi-terminology --maxWorkers=1`. A default parallel package
+run had two load-sensitive test timeouts (`expansion-diagnostic.test.ts` and
+`recall-eval.test.ts`) and cleanup races; do not describe that run as passing.
+The baseline full coverage run passed 2,063 tests with two existing skips across
+102 files. The added read-only `scripts/diagnose-repair-recovery.ts` and its 13 tests
+bring the final result to **2,076 passing tests with two existing skips across
+103 files**, with one worker (statements 92.70%, branches 88.82%, lines 92.66%).
+Formatting, lint, TypeScript, Fallow and Markdown also passed. An intermediate
+full rerun under heavy host load timed out; the final longer-lived run passed
+without weakening test assertions or gates. See the recovery proposal for commands
+and the distinction between public evidence checks and live dispatch readiness.
+
+After the user approved the 196-call continuation, the final full offline gate
+passed **2,108 tests with two existing skips across 105 files**, with coverage
+92.73% statements / 88.70% branches / 92.70% lines, plus formatting, lint,
+TypeScript, Fallow and Markdown. The new native evidence tests independently
+reproduce the full combined fit, and all 30 receipt-bound source hashes still
+match. The 196 approved Jev calls are the only new native inference; no private
+acceptance request was dispatched. See the continuation README for retained logs.
+
+Subsequent preview publication adds 14 offline tests: the full serialized suite
+passes **2,122 tests with two existing skips across 106 files**. The actual bundled
+candidate passed the isolated pinned-Pi TUI verifier with zero real provider calls;
+selected evidence and the publication hashes are under `evals/repair/preview/`.
+An independent medium-effort review found no blockers. Formatting, lint, TypeScript,
+Fallow and Markdown remain required; do not weaken gates or run another paid batch.
+
+The command rename adds nine offline tests. Final serialized coverage now passes
+**2,131 tests with two existing skips across 107 files**: 92.73% statements,
+88.70% branches and 92.69% lines. Lint, TypeScript and Fallow pass without weakened
+gates. The verification skill's doctor and both actual-artifact TUI journeys pass;
+results are under `evals/repair/preview/command-rename/`. No provider calls, global
+configuration changes or activation occurred during this work.
+
+Keep the sizeable existing uncommitted work and immutable evidence intact; do not
+commit or reset it without instruction.
+
+### PR and authorized root enablement
+
+PR #91 (`feat/pi-terminology-preview`) contains only the terminology work, rebased
+onto current `main`; the earlier auto-resume branch's commits are not duplicated.
+The user authorized PR creation, medium-effort review, monitoring and merge only
+once all checks/review conditions are green, and then explicitly asked to enable
+the extension in that PR. The root manifest now lists all seven extensions;
+this does not enable paid preview calls or a measured policy.
+
+The real `verify-pi-terminology` skill passed both journeys again, including a
+whole-root-package launch from an unrelated scratch cwd with the bundled Vim
+editor. Browser/status worked with zero classifier/model/network activity; the
+actual-preview journey made zero real provider/fetch calls. Retained proof is
+under `evals/repair/preview/root-autoload/`. Read-only medium-effort review approved
+runtime/compatibility scope at `3081895`, conditioned on Linux CI green and keeping
+preview opt-in. Local canonical `npm run check` passed 2,179 tests with two existing
+skips across 108 files after incorporating current main. Linux CI exposed shared
+CPU contention in offline refits/CLI startup; CI now serializes test files without
+changing assertions, test/provider timeouts or coverage gates. Do not merge until
+that final CI run and all review conditions are green.
+
+## Historical status and ownership — superseded snapshot
+
+The following records the earlier six-concept screen and original design. Its
+`measured: true`, Pi 1.1, budget and suggested-work statements are historical,
+not the current state or a fresh authorization. Current user instructions govern
+agent model/effort choices.
+
+Implementation was authorized in `/Users/mm/dev/pi-extensions/packages/pi-terminology`,
 on `feat/pi-terminology`, based on `origin/main` at `ebd9ebd`. Unrelated untracked
 web-tools documentation is preserved. The developer approved the fresh-context
 implement/review/fix loop, full gates at each stage, final acceptance verification,

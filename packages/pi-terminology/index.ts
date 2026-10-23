@@ -5,17 +5,20 @@ import type {
   ExtensionContext,
   ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
-import { Key } from "@earendil-works/pi-tui";
+import { Key, truncateToWidth } from "@earendil-works/pi-tui";
 import { loadCatalogue } from "./catalogue";
 import { extractClassifierText } from "./classifier-request";
 import { escapeForDisplay } from "./display";
 import { matchWithNativeClassifier } from "./native-matcher";
 import type { NativeClassifierRegistry } from "./native-matcher";
+import { loadPreviewPolicy, PREVIEW_CALL_BOUND_USD, previewRequestFits } from "./preview-policy";
+import type { PreviewAvailability, PreviewPolicy } from "./preview-policy";
 import { findProjectGlossary, readApprovedProjectGlossary } from "./project";
 import { nextCooldown, promptTooLarge, selectMatches, suppressAlreadyNamed } from "./selection";
 import { TerminologyStateStore } from "./state";
 import type { Catalogue, Match, Policy } from "./types";
-import { clearReminder, createTerminologyBrowser, showReminder } from "./ui";
+import { clearReminder, createTerminologyBrowser, renderReminder, showReminder } from "./ui";
+import { stableHash } from "./validation";
 
 export type InputEvent = {
   readonly text: string;
@@ -68,37 +71,49 @@ const AUTH_PREFLIGHT_MS = 10_000;
 
 export default function piTerminology(pi: TerminologyAPI): void {
   const extension = new TerminologyExtension(new TerminologyStateStore());
-  pi.registerCommand("terms", {
+  pi.registerCommand("terminology", {
     description: "Browse source-backed terminology entries",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.browse(args, ctx);
     },
   });
-  pi.registerCommand("terms-approve", {
+  pi.registerCommand("terminology-preview", {
+    description: "Explicitly enable bounded, unmeasured experimental terminology reminders",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.preview(args, ctx);
+    },
+  });
+  pi.registerCommand("terminology-status", {
+    description: "Explain terminology catalogue, policy and authentication readiness",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      extension.status(args, ctx);
+    },
+  });
+  pi.registerCommand("terminology-approve", {
     description: "Approve reading this repository's .pi/terminology.json",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.approve(args, ctx);
     },
   });
-  pi.registerCommand("terms-auth-refresh", {
+  pi.registerCommand("terminology-auth-refresh", {
     description: "Refresh terminology classifier authentication for this TUI session",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.refreshAuth(args, ctx);
     },
   });
-  pi.registerCommand("terms-hide", {
+  pi.registerCommand("terminology-hide", {
     description: "Persistently hide a terminology reminder by concept ID",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.hide(args, ctx);
     },
   });
-  pi.registerCommand("terms-restore", {
+  pi.registerCommand("terminology-restore", {
     description: "Restore a persistently hidden terminology reminder by concept ID",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.restore(args, ctx);
     },
   });
-  pi.registerCommand("terms-dismiss", {
+  pi.registerCommand("terminology-dismiss", {
     description: "Dismiss a terminology reminder by concept ID for this session",
     handler: async (args: string, ctx: TerminologyCommandContext) => {
       await extension.dismiss(args, ctx);
@@ -122,6 +137,10 @@ export default function piTerminology(pi: TerminologyAPI): void {
 }
 
 export class TerminologyExtension {
+  private previewPolicy: PreviewPolicy | undefined;
+  private previewRemaining = 0;
+  private readonly previewCooldowns = new Map<string, number>();
+  private previewEpoch = 0;
   private generation = 0;
   private authEpoch = 0;
   private running: Promise<void> = Promise.resolve();
@@ -134,6 +153,9 @@ export class TerminologyExtension {
   constructor(
     private readonly store: TerminologyStateStore,
     private readonly loader?: CatalogueLoader,
+    private readonly previewLoader: (
+      catalogue: Catalogue,
+    ) => PreviewAvailability = loadPreviewPolicy,
   ) {}
 
   sessionStart(ctx: TerminologyContext): void {
@@ -143,13 +165,17 @@ export class TerminologyExtension {
     this.sessionDismissed.clear();
     this.sessionNotices.clear();
     this.lastMatches = [];
-    if (ctx.mode === "tui") {
+    if (ctx.mode === "tui" && ctx.hasUI) {
       clearReminder(ctx.ui);
       void this.preflightAuth(ctx, this.authEpoch);
     }
   }
 
   cancelAll(): void {
+    this.previewPolicy = undefined;
+    this.previewRemaining = 0;
+    this.previewCooldowns.clear();
+    this.previewEpoch += 1;
     this.generation += 1;
     this.authEpoch += 1;
     for (const abort of this.aborts.values()) {
@@ -174,9 +200,161 @@ export class TerminologyExtension {
     );
   }
 
+  status(args: string, ctx: TerminologyCommandContext): void {
+    if (args.trim().length > 0) {
+      ctx.ui.notify("Usage: /terminology-status", "error");
+      return;
+    }
+    const loaded = this.load(ctx);
+    const configured = ctx.modelRegistry.getProviderAuthStatus("typesafe").configured;
+    ctx.ui.notify(
+      [
+        `Terminology: ${String(loaded.catalogue.concepts.length)} concepts; ${String(loaded.catalogue.recognition.length)} recognizers.`,
+        `Reminder policy: ${loaded.policy.measured ? "measured" : "unmeasured; automatic reminders disabled"}.`,
+        `Mode: ${ctx.mode}; automatic reminders require interactive TUI input.`,
+        `TypeSafe credentials: ${configured ? "configured" : "not configured"}; TUI authentication: ${this.nativeAuthReady ? "ready" : "not ready"}.`,
+        this.previewStatus(loaded.catalogue, ctx),
+        "Browse with /terminology. Use /terminology-auth-refresh after changing credentials.",
+      ].join("\n"),
+      "info",
+    );
+  }
+
+  private previewStatus(catalogue: Catalogue, ctx: TerminologyContext): string {
+    const available = this.previewLoader(catalogue);
+    if (
+      this.previewPolicy !== undefined &&
+      (!available.ok || stableHash(available.policy) !== stableHash(this.previewPolicy))
+    ) {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+    }
+    const policy = available.ok ? available.policy : undefined;
+    return [
+      `Experimental preview: ${this.previewPolicy === undefined || this.previewRemaining === 0 ? "off" : "on"}; calls remaining: ${this.previewRemaining}; model: typesafe/jev-1.13.0.`,
+      `Readiness: ${ctx.mode === "tui" && ctx.hasUI && this.nativeAuthReady && ctx.modelRegistry.getProviderAuthStatus("typesafe").configured ? "ready" : "not ready"}; ${available.ok ? "candidate available (unmeasured, not validated, not promotable)" : available.reason}`,
+      ...(policy === undefined
+        ? []
+        : [
+            `Profile: ${policy.profileHash}; cutoffs: ${JSON.stringify(policy.conceptThresholds)}; gaps: ${policy.gaps.join("; ")}`,
+          ]),
+    ].join("\n");
+  }
+
+  async preview(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    const words = args.trim().split(/\s+/u);
+    if (words[0] === "off" && words.length === 1) {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+      ctx.ui.notify("Experimental terminology preview off; pending work cancelled.", "info");
+      return;
+    }
+    if ((words[0] === "status" || words[0] === "") && words.length === 1) {
+      ctx.ui.notify(this.previewStatus(this.load(ctx).catalogue, ctx), "info");
+      return;
+    }
+    const allowance = words.length === 1 ? 20 : Number(words[1]);
+    if (
+      words[0] !== "on" ||
+      words.length > 2 ||
+      !Number.isInteger(allowance) ||
+      allowance < 1 ||
+      allowance > 100
+    ) {
+      ctx.ui.notify(
+        "Usage: /terminology-preview [on [max-calls: 1–100, default 20]|off|status]",
+        "error",
+      );
+      return;
+    }
+    await this.enablePreview(allowance, ctx);
+  }
+
+  private async enablePreview(allowance: number, ctx: TerminologyCommandContext): Promise<void> {
+    if (
+      ctx.mode !== "tui" ||
+      !ctx.hasUI ||
+      !this.nativeAuthReady ||
+      !ctx.modelRegistry.getProviderAuthStatus("typesafe").configured
+    ) {
+      ctx.ui.notify(
+        "Preview requires interactive TUI and configured, ready native TypeSafe authentication. See /terminology-status.",
+        "warning",
+      );
+      return;
+    }
+    try {
+      this.store.load();
+    } catch {
+      ctx.ui.notify(
+        "Preview disabled: terminology state is unreadable; existing bytes preserved.",
+        "warning",
+      );
+      return;
+    }
+    const loaded = this.load(ctx);
+    const available = this.previewLoader(loaded.catalogue);
+    if (!available.ok) {
+      ctx.ui.notify(available.reason, "warning");
+      return;
+    }
+    const epoch = ++this.previewEpoch;
+    const session = ctx.sessionManager.getSessionId();
+    const cwd = ctx.cwd;
+    const confirmed = await ctx.ui.confirm(
+      "Enable EXPERIMENTAL terminology preview?",
+      [
+        `Sends current request text to TypeSafe jev-1.13.0: ${allowance} attempts (failures count).`,
+        `Total ≤ $${(Math.ceil(allowance * PREVIEW_CALL_BOUND_USD * 10_000) / 10_000).toFixed(4)}; main Pi model usage additional.`,
+        "Published-tariff estimate, not invoice; unvalidated.",
+        "No retries; 5s deadline; session only; no context injection.",
+        `Gaps (${available.policy.gaps.length}): ${available.policy.gaps
+          .slice(0, 2)
+          .map((gap) => truncateToWidth(escapeForDisplay(gap), 25))
+          .join("; ")}`,
+        "/terminology-preview status: all gaps; /terminology-preview off: stop.",
+      ].join("\n"),
+    );
+    if (
+      !confirmed ||
+      epoch !== this.previewEpoch ||
+      session !== ctx.sessionManager.getSessionId() ||
+      cwd !== ctx.cwd
+    ) {
+      return;
+    }
+    try {
+      this.store.load();
+    } catch {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+      ctx.ui.notify(
+        "Preview not enabled: terminology state became unreadable; existing bytes preserved.",
+        "warning",
+      );
+      return;
+    }
+    const current = this.previewLoader(this.load(ctx).catalogue);
+    if (!current.ok || stableHash(current.policy) !== stableHash(available.policy)) {
+      ctx.ui.notify("Preview candidate changed during confirmation; not enabled.", "warning");
+      return;
+    }
+    this.cancelAll();
+    this.previewPolicy = available.policy;
+    this.previewRemaining = allowance;
+    this.sessionNotices.delete("preview-exhausted");
+    ctx.ui.notify(
+      "EXPERIMENTAL unmeasured terminology preview enabled. /terminology-preview off stops it; /terminology-preview status shows the allowance.",
+      "warning",
+    );
+  }
+
   async approve(args: string, ctx: TerminologyCommandContext): Promise<void> {
     if (args.trim().length > 0) {
-      ctx.ui.notify("Usage: /terms-approve", "error");
+      ctx.ui.notify("Usage: /terminology-approve", "error");
       return;
     }
     const candidate = findProjectGlossary(ctx.cwd);
@@ -188,7 +366,7 @@ export class TerminologyExtension {
       return;
     }
     if (!ctx.hasUI) {
-      ctx.ui.notify("/terms-approve requires an interactive or RPC UI.", "error");
+      ctx.ui.notify("/terminology-approve requires an interactive or RPC UI.", "error");
       return;
     }
     const approved = await ctx.ui.confirm(
@@ -205,7 +383,7 @@ export class TerminologyExtension {
 
   async refreshAuth(args: string, ctx: TerminologyCommandContext): Promise<void> {
     if (args.trim().length > 0) {
-      ctx.ui.notify("Usage: /terms-auth-refresh", "error");
+      ctx.ui.notify("Usage: /terminology-auth-refresh", "error");
       return;
     }
     if (ctx.mode !== "tui") {
@@ -225,20 +403,20 @@ export class TerminologyExtension {
   async hide(args: string, ctx: TerminologyCommandContext): Promise<void> {
     const conceptId = args.trim();
     if (conceptId.length === 0) {
-      ctx.ui.notify("Usage: /terms-hide <concept-id>", "error");
+      ctx.ui.notify("Usage: /terminology-hide <concept-id>", "error");
       return;
     }
     this.store.hideConcept(conceptId);
     this.lastMatches = this.lastMatches.filter((match) => match.concept.id !== conceptId);
     if (ctx.mode === "tui") {
-      showReminder(ctx.ui, this.lastMatches);
+      this.showCurrentReminder(ctx);
     }
   }
 
   async restore(args: string, ctx: TerminologyCommandContext): Promise<void> {
     const conceptId = args.trim();
     if (conceptId.length === 0) {
-      ctx.ui.notify("Usage: /terms-restore <concept-id>", "error");
+      ctx.ui.notify("Usage: /terminology-restore <concept-id>", "error");
       return;
     }
     this.store.restoreConcept(conceptId);
@@ -248,18 +426,18 @@ export class TerminologyExtension {
   async dismiss(args: string, ctx: TerminologyCommandContext): Promise<void> {
     const conceptId = args.trim();
     if (conceptId.length === 0) {
-      ctx.ui.notify("Usage: /terms-dismiss <concept-id>", "error");
+      ctx.ui.notify("Usage: /terminology-dismiss <concept-id>", "error");
       return;
     }
     this.sessionDismissed.add(conceptId);
     this.lastMatches = this.lastMatches.filter((match) => match.concept.id !== conceptId);
     if (ctx.mode === "tui") {
-      showReminder(ctx.ui, this.lastMatches);
+      this.showCurrentReminder(ctx);
     }
   }
 
   input(event: InputEvent, ctx: TerminologyContext): InputResult {
-    if (ctx.mode !== "tui" || event.text.trim().startsWith("/")) {
+    if (ctx.mode !== "tui" || !ctx.hasUI || event.text.trim().startsWith("/")) {
       return { action: "continue" };
     }
     const task = this.startModelBoundInput(event.text, ctx);
@@ -277,7 +455,18 @@ export class TerminologyExtension {
     this.running = this.running
       .catch(() => undefined)
       .then(async () => {
-        await this.runMatch(task, ctx);
+        try {
+          await this.runMatch(task, ctx);
+        } catch {
+          this.noticeIfCurrent(
+            task,
+            ctx,
+            "runtime-failure",
+            "Terminology could not complete this reminder. Check /terminology-status and the Pi agent directory's pi-terminology.json; existing state has not been reset.",
+            "warning",
+          );
+          this.clearIfCurrent(task, ctx);
+        }
         return undefined;
       });
     void this.running.catch(() => undefined);
@@ -308,11 +497,115 @@ export class TerminologyExtension {
       return;
     }
     const loaded = this.load(ctx);
-    if (!this.canClassify(task, ctx, loaded.policy)) {
+    // Corrupt state must never permit preview, even with a custom catalogue loader.
+    try {
+      this.store.load();
+    } catch {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+      ctx.ui.notify(
+        "Terminology state unreadable; preview disabled and existing bytes preserved.",
+        "warning",
+      );
       return;
     }
-    const result = await this.classifyBeforeDeadline(task, ctx, loaded);
+    let effective = loaded;
+    if (this.previewPolicy !== undefined) {
+      if (!this.validateAndReservePreviewAttempt(task, ctx, loaded.catalogue)) {
+        return;
+      }
+      effective = {
+        ...loaded,
+        policy: {
+          ...loaded.policy,
+          threshold: 1,
+          conceptThresholds: this.previewPolicy.conceptThresholds,
+        },
+      };
+    } else if (!this.canClassify(task, ctx, loaded.policy)) {
+      return;
+    }
+    const activePreview = this.previewPolicy;
+    const result = await this.classifyBeforeDeadline(task, ctx, effective);
+    if (this.isExpiredTask(task, ctx)) {
+      return;
+    }
+    if (activePreview !== undefined) {
+      // Awaiting native work is a trust boundary: the artifact, runtime sources,
+      // or catalogue may have changed while this already-reserved call ran.
+      const current = this.previewLoader(this.load(ctx).catalogue);
+      if (
+        this.previewPolicy === undefined ||
+        !current.ok ||
+        stableHash(current.policy) !== stableHash(activePreview)
+      ) {
+        this.cancelAll();
+        this.lastMatches = [];
+        clearReminder(ctx.ui);
+        ctx.ui.notify(
+          "Experimental preview disabled: candidate changed or unavailable while classification was pending. The attempt remains consumed.",
+          "warning",
+        );
+        return;
+      }
+    }
     this.handleMatchResult(task, ctx, loaded.catalogue, result);
+  }
+
+  private validateAndReservePreviewAttempt(
+    task: ScheduledPrompt,
+    ctx: TerminologyContext,
+    catalogue: Catalogue,
+  ): boolean {
+    const available = this.previewLoader(catalogue);
+    if (!available.ok || stableHash(available.policy) !== stableHash(this.previewPolicy)) {
+      this.cancelAll();
+      clearReminder(ctx.ui);
+      ctx.ui.notify("Experimental preview disabled: candidate changed or unavailable.", "warning");
+      return false;
+    }
+    if (!this.nativeAuthReady || !ctx.modelRegistry.getProviderAuthStatus("typesafe").configured) {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+      ctx.ui.notify(
+        "Experimental preview disabled: native TypeSafe readiness was lost.",
+        "warning",
+      );
+      return false;
+    }
+    if (this.previewRemaining <= 0) {
+      this.notice(
+        ctx,
+        "preview-exhausted",
+        "Experimental preview allowance exhausted; no more calls. Explicitly confirm /terminology-preview on to allow more.",
+        "warning",
+      );
+      return false;
+    }
+    if (!previewRequestFits(catalogue, task.prompt)) {
+      this.clearIfCurrent(task, ctx);
+      this.noticeIfCurrent(
+        task,
+        ctx,
+        "preview-request-too-large",
+        "Experimental preview skipped: the complete classifier request exceeds the 63 KiB safety limit. No preview call or allowance debit; your normal prompt is unchanged.",
+        "warning",
+      );
+      return false;
+    }
+    // Reserve before the attempt: failures, cancellation and timeouts are never refunded.
+    this.previewRemaining -= 1;
+    if (this.previewRemaining === 0) {
+      this.notice(
+        ctx,
+        "preview-exhausted",
+        "Experimental preview allowance exhausted after this attempt; no more calls without explicit confirmation.",
+        "warning",
+      );
+    }
+    return true;
   }
 
   private isExpiredTask(task: ScheduledPrompt, ctx: TerminologyContext): boolean {
@@ -337,6 +630,13 @@ export class TerminologyExtension {
 
   private canClassify(task: ScheduledPrompt, ctx: TerminologyContext, policy: Policy): boolean {
     if (!policy.measured) {
+      this.noticeIfCurrent(
+        task,
+        ctx,
+        "policy-unmeasured",
+        "Terminology automatic reminders are disabled because this catalogue has no accepted measured policy. Browse all entries with /terminology; inspect readiness with /terminology-status.",
+        "info",
+      );
       this.clearIfCurrent(task, ctx);
       return false;
     }
@@ -347,7 +647,7 @@ export class TerminologyExtension {
       task,
       ctx,
       "typesafe-auth",
-      "Terminology reminders need TypeSafe auth. Browse glossary entries with /terms.",
+      "Terminology reminders need TypeSafe auth. Browse glossary entries with /terminology.",
       "warning",
     );
     this.clearIfCurrent(task, ctx);
@@ -387,27 +687,71 @@ export class TerminologyExtension {
     matches: readonly Match[],
   ): void {
     const state = this.store.load();
-    const selected = selectMatches(
+    const candidates = selectMatches(
       matches,
-      { ...state, dismissedConceptIds: this.sessionDismissed },
+      {
+        ...state,
+        dismissedConceptIds: this.sessionDismissed,
+        cooldowns:
+          this.previewPolicy === undefined
+            ? state.cooldowns
+            : new Map([...state.cooldowns, ...this.previewCooldowns]),
+      },
       Date.now(),
       suppressAlreadyNamed(extractClassifierText(catalogue, task.prompt), catalogue),
     );
     if (!this.isCurrent(task, ctx)) {
       return;
     }
+    const selected = this.previewPolicy === undefined ? candidates : candidates.slice(0, 3);
     this.lastMatches = selected;
     for (const match of selected) {
-      this.store.setCooldown(match.concept.id, nextCooldown(Date.now()));
+      if (this.previewPolicy === undefined) {
+        this.store.setCooldown(match.concept.id, nextCooldown(Date.now()));
+      } else {
+        this.previewCooldowns.set(match.concept.id, nextCooldown(Date.now()));
+      }
     }
-    showReminder(ctx.ui, selected);
+    this.showCurrentReminder(ctx);
+  }
+
+  private showCurrentReminder(ctx: TerminologyContext): void {
+    if (this.previewPolicy !== undefined && this.lastMatches.length > 0) {
+      ctx.ui.setWidget(
+        "pi-terminology",
+        renderReminder(this.lastMatches).map((line) => `EXPERIMENTAL (unmeasured): ${line}`),
+        { placement: "aboveEditor" },
+      );
+    } else {
+      showReminder(ctx.ui, this.lastMatches);
+    }
   }
 
   private load(ctx: LoaderContext): LoadedCatalogue {
     if (this.loader !== undefined) {
       return this.loader(ctx);
     }
-    const state = this.store.load();
+    let state: ReturnType<TerminologyStateStore["load"]>;
+    try {
+      state = this.store.load();
+    } catch {
+      this.cancelAll();
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+      // Keep the glossary available without discarding approvals, preferences or
+      // corrupt bytes. Do not read project files or classify until state is fixed.
+      this.notice(
+        ctx,
+        "state-unreadable",
+        "Terminology state could not be read. Bundled browsing remains available, but project glossaries and automatic reminders are disabled. Repair pi-terminology.json in your Pi agent directory; it has not been overwritten.",
+        "warning",
+      );
+      const core = loadCatalogue();
+      return {
+        catalogue: core.catalogue,
+        policy: { ...core.policy, measured: false },
+      };
+    }
     const candidate = findProjectGlossary(ctx.cwd);
     let projectText: string | undefined;
     try {
@@ -507,7 +851,7 @@ export class TerminologyExtension {
         this.notice(
           ctx,
           "typesafe-auth",
-          "Terminology reminders need TypeSafe auth. Browse glossary entries with /terms.",
+          "Terminology reminders need TypeSafe auth. Browse glossary entries with /terminology.",
           "warning",
         );
       }

@@ -1,0 +1,74 @@
+{
+  "catalogue.ts": {
+    "sha256": "4e8481b288711fe337b28550c25fe26b79955cda2441dad28be099555513d420",
+    "archive": "source/catalogue.ts.txt"
+  },
+  "index.ts": {
+    "sha256": "b43c73bb483e049b66cdb5fef11d13541e0f8bddb170e806b81983b995b46447",
+    "archive": "source/index.ts.txt"
+  },
+  "ui.ts": {
+    "sha256": "9ca6a9954dc0b29616f669ab8763d48fc648c9edb14e4625dad9d4e8e3417a59",
+    "archive": "source/ui.ts.txt"
+  },
+  "state.ts": {
+    "sha256": "42f9bb53db27eef3ce8597d90299654e94a7288523161da2fe1ba0c80852f522",
+    "archive": "source/state.ts.txt"
+  },
+  "types.ts": {
+    "sha256": "1820f94865fb3a40d62d2ed24e1e5231d1bd5e969f7e425c962ebd52ffa8cf67",
+    "archive": "source/types.ts.txt"
+  },
+  "eval-metrics.ts": {
+    "sha256": "85a751c8b3bc1ad8f0b7ddecfa64969e53cd42dab04775d38e8d8501b63184bd",
+    "archive": "source/eval-metrics.ts.txt"
+  },
+  "classifier-request.ts": {
+    "sha256": "bae99cd734c0709346bb83da5b92ba5f92a0618cc65c6082d9551d04143ec4d4",
+    "archive": "source/classifier-request.ts.txt"
+  },
+  "native-matcher.ts": {
+    "sha256": "463fe1e78a173b628bb3a8d2bb063bd4940d9482c30134637095b2e662a855e1",
+    "archive": "source/native-matcher.ts.txt"
+  },
+  "selection.ts": {
+    "sha256": "548029ea466dd2514d871cb227f69f843821cd24816a5cc1d80d223834c7e4f2",
+    "archive": "source/selection.ts.txt"
+  },
+  "real-prompt-metrics.ts": {
+    "sha256": "eeead9a142ab6135be07b6afca5ad1be04db489add5194f4df0ba250a1380f82",
+    "archive": "source/real-prompt-metrics.ts.txt"
+  },
+  "validation.ts": {
+    "sha256": "edc9b43f4c35267dc39241d862990dfb9be3cf6ed9093e5fb16db95e23c516e7",
+    "archive": "source/validation.ts.txt"
+  },
+  "eval-budget.ts": {
+    "sha256": "ff088695a72111568e44249fdce84ec4909297425d1b4edf67221771f1f031a1",
+    "archive": "source/eval-budget.ts.txt"
+  },
+  "scripts/evaluate.ts": {
+    "sha256": "d77de904a4d19b1ec1415971052a2da55d0027fbebf441b0e2fe53936a409ae4",
+    "archive": "source/scripts/evaluate.ts.txt"
+  },
+  "scripts/evaluate-expansion.ts": {
+    "sha256": "334ebbc9bf50b4397c13acafa46fd9f8eb2240ef572a2f73f836cd986051b7e8",
+    "archive": "source/scripts/evaluate-expansion.ts.txt"
+  },
+  "glossary/core.json": {
+    "sha256": "28740a110b7fdab7f5be28d57adb105aded426504969df06c735a06ca7945ab1",
+    "archive": "source/glossary/core.json.txt"
+  },
+  "glossary/policy.json": {
+    "sha256": "6545bb16f8cc5e5e15c6bfcafac1b28bb66d4dd2fadd3d9036fcbf6c6f31cc69",
+    "archive": "source/glossary/policy.json.txt"
+  },
+  "evals/production/core.json": {
+    "sha256": "3247ed281a08a06f0c07c4753d2f30abdb5c54998fbe2aadce89770fc4efb357",
+    "archive": "source/evals/production/core.json.txt"
+  },
+  "evals/production/policy.json": {
+    "sha256": "ad6eff4a99ee336937e5b661a1712bd61089765b5e5bcd85b1bf5de3d4d0979b",
+    "archive": "source/evals/production/policy.json.txt"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "status": "diagnostic-only; not accepted for automatic reminders",
+  "acceptanceBlockedBy": "Normalized private duplicate rejected before any original verification dispatch; receipt preserved.",
+  "diagnosticCompleted": true,
+  "cleanAcceptance": false,
+  "policyWritten": false,
+  "experimentAttempts": 359,
+  "developmentAttempts": 120,
+  "diagnosticAttempts": 239,
+  "uniqueDiagnosticPrompts": 227,
+  "syntheticPrompts": 148,
+  "privatePrompts": 79,
+  "repeatCalls": 12,
+  "privateUsefulPrompts": {
+    "expandedTuned": 4,
+    "oldTenSubset": 6,
+    "gain": -2,
+    "newConceptTruePositives": 0
+  },
+  "selectedGroupSizes": {
+    "zero": 138,
+    "one": 77,
+    "two": 9,
+    "three": 3,
+    "moreThanThree": 0
+  },
+  "failedSyntheticRecallConcepts": [
+    "core:ablation-study",
+    "core:debugging-by-bisection",
+    "core:low-coupling",
+    "core:make-illegal-states-unrepresentable",
+    "core:refactoring",
+    "core:test-isolation",
+    "core:value-object"
+  ],
+  "totalTokens": {
+    "input": 4252549,
+    "output": 395977
+  },
+  "budget": {
+    "capUsd": 1,
+    "conservativeReservedUsd": 0.988151808,
+    "usageEstimateUsd": 0.178607058,
+    "isProviderInvoice": false
+  },
+  "uiEvidenceDirectory": "/tmp/pi-terminology-evidence-y3kgydwi",
+  "publishedArtifacts": {
+    "manifest.json": "38540f82fcb42bcb9b2cde16cba4ac41e987d3d16fd2b6a24f3073ae7f6f833b",
+    "frozen-cutoffs.json": "3645ef7055df76ac69c8339fcf3078721f5bdf45c50cc89735390c5b7e3cd24b",
+    "development-report.json.txt": "4e6fc9fd45009ae9b3119fde4ad8e5b7d27a64cf2434d334cbc510d75886072e",
+    "development-observations.json.txt": "6264b4041cdaa180e0ad7e3edd082f30234b3ecd676c072807abcb2590e9089e",
+    "diagnostic-report.json.txt": "134b4face2e115636c4df0ed2f242eaa89561930e6fd501b12bfb38a4930c826",
+    "diagnostic-receipt.json.txt": "3b1748ae7b349c2b6720ad97cd7e837f2951c5d57ebdfb6902f162f2790ef5b2",
+    "heldout-synthetic-consensus.json.txt": "4035af7572ea020260f24980e8705c7e76ad29d650e7e214d28358cc3565f999",
+    "synthetic-observations.jsonl": "34f3e2c6b5545cd927cb4976b3a782b7a38a55b9579070433cc846e4f96c460a",
+    "ui-report.json": "f2ef5757ad45684151ab62c33c34d516410f24689cae3e2e3ef78e641e7b710a"
+  },
+  "privacy": "Only invented public-safe synthetic prompts/observations and aggregates are published. Private prompt files, labels, per-request observations, sampling provenance and original durable ledgers/receipts stay outside Git. Eligible private request text was sent to TypeSafe during the approved native diagnostic; local storage is not a claim of provider isolation.",
+  "limitations": [
+    "Agent reference labels, not human-reviewed truth.",
+    "Recent sparse, correlated private sample; only one agreed unnamed new-concept opportunity.",
+    "Empty preference/cooldown state measures opportunity rather than actual daily exposure.",
+    "Old-ten subset uses same 51-question probabilities, not an independent old-ten request.",
+    "No causal improvement in coding outcomes or human learning measured.",
+    "Development cutoffs must not be retuned on these diagnostic answers and relabelled as fresh evidence."
+  ]
+}

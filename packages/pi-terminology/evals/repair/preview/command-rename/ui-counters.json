@@ -1,0 +1,9 @@
+{
+  "guardInstallations": 3,
+  "slashClassifierCalls": 0,
+  "interceptedFakeClassifierCalls": 2,
+  "offlineSyntheticInputs": 3,
+  "realProviderRequests": 0,
+  "fetchCalls": 0,
+  "nativeInferenceVerified": false
+}

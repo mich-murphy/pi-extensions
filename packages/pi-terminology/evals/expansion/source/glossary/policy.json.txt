@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "model": "jev-1.13.0",
+  "catalogueHash": "5d5de1dc5bec2aa14cc92fa6e4a5ebffec7d7c5ae7ddbad06e29ec7929a6d95b",
+  "criteriaHash": "0bae6086bff3f38b33e691fff4398675f3f76a326cd6ea375ab156d99a5121e6",
+  "fixtureHash": "pending",
+  "threshold": 1,
+  "precisionTarget": 0.9,
+  "measuredDisplayedPrecision": 0,
+  "measured": false
+}

@@ -1,0 +1,30 @@
+{
+  "viewports": {
+    "normal": "180x50",
+    "narrow": "60x28"
+  },
+  "commandPrefix": "/terminology",
+  "legacyCommandsAbsent": true,
+  "warnings": [
+    "Narrow 60x28 metadata is only as strong as the passed list; a failure invalidates both viewports."
+  ],
+  "result": "passed",
+  "artifactSource": "actual-bundled-artifact",
+  "native": false,
+  "passed": [
+    "actual-bundled-artifact: cancel, invalid 0/101, keypress enable 2, browse/status/idle preserve 2, off, restart off, mutation fail-closed",
+    "confirmation warning and cost visible at 180x50 and 60x28",
+    "OFFLINE fake journey: actual TUI inputs -> three experimental labels, next three via ephemeral cooldown, allowance 2->1->0, third primary reply without third classify; no context injection",
+    "fake env only, isolated empty auth store, first-loaded guard; no native inference or fetch calls"
+  ],
+  "failure": null,
+  "scratchRemoved": true,
+  "limitations": [
+    "UI only: fake authentication readiness is not native inference verification.",
+    "Only allowlisted synthetic inputs reach the local offline recorder; no real LLM or TypeSafe HTTP calls.",
+    "Widget and exhaustion journey uses intercepted fabricated classifier results, NOT precision or native-classification evidence.",
+    "Default mode: missing artifact skips candidate/fake-input tests and exits WAITING; never fabricates an artifact.",
+    "Explicit --synthetic-ui-fixture creates a clearly marked scratch-only fake artifact; never candidate, native, or paid evidence.",
+    "Original 199-pane verifier/evidence untouched; final proof requires frozen source and actual artifact."
+  ]
+}

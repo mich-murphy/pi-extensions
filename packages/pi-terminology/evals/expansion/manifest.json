@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "development": [
+    {
+      "name": "development-consensus",
+      "kind": "synthetic",
+      "file": "/Users/mm/dev/pi-extensions/packages/pi-terminology/evals/expansion/development-consensus.json",
+      "sha256": "2cee3e59cde0eeeccea5bb1cc351558577c8ba4d8c4c41bab00a15e37f43ad40",
+      "records": 120
+    }
+  ],
+  "heldout": [
+    {
+      "name": "heldout-synthetic-consensus",
+      "kind": "synthetic",
+      "file": "/Users/mm/.pi/agent/pi-terminology/expansion-2026-10-22/fixtures/heldout-synthetic-consensus.json",
+      "sha256": "4035af7572ea020260f24980e8705c7e76ad29d650e7e214d28358cc3565f999",
+      "records": 148
+    },
+    {
+      "name": "heldout-private-consensus",
+      "kind": "private",
+      "file": "/Users/mm/.pi/agent/pi-terminology/expansion-2026-10-22/fixtures/heldout-private-consensus.json",
+      "sha256": "c16ae3ffbceffec8e7ea9d354afcdc0de9f02da019a7c1346423b9eccead0376",
+      "records": 80
+    }
+  ],
+  "repeats": [
+    "held-work-test-driven-development-1",
+    "held-work-test-driven-development-2",
+    "held-work-refactoring-1",
+    "held-work-refactoring-2",
+    "held-work-design-by-contract-1",
+    "held-work-design-by-contract-2",
+    "held-work-mutation-testing-1",
+    "held-work-mutation-testing-2",
+    "held-work-ubiquitous-language-1",
+    "held-work-ubiquitous-language-2",
+    "held-work-property-based-testing-1",
+    "held-work-property-based-testing-2"
+  ]
+}

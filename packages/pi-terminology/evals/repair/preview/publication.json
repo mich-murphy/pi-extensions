@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "status": "manual-experimental-preview-published-not-activated",
+  "artifact": "glossary/preview-policy.json",
+  "artifactSha256": "0e58d1498ec6ab4620476fad4175891bdead6853d4a952ce0a6b34e1c67f9afb",
+  "publisher": "scripts/publish-repair-preview.ts",
+  "publisherSha256": "1ab136c0fba4fdbdcdd58ee4deeb47991316c39c554ba18ff04d72465dc89034",
+  "nativeResultSha256": "f2a3eb6719faa203d312d3a434c60325d8eaefb7038b6f8979152bac62ae9911",
+  "completionSha256": "439049efc6f4a3b16651d3319bc4b80a0a3bfb20d2b3efc2f78e7d19f3b0e675",
+  "reportSha256": "257fa6f502b3b7553bec891779d9c203772cb999de499ee875c214aab703577f",
+  "concepts": 51,
+  "measured": false,
+  "accepted": false,
+  "promotable": false,
+  "activationPerformed": false,
+  "rootAutoloadChanged": false,
+  "globalSettingsChanged": false,
+  "publicationProviderCalls": 0,
+  "uiEvidenceKind": "actual-bundled-artifact-offline-intercepted-classifier-only",
+  "uiRealProviderRequests": 0,
+  "uiFetchCalls": 0,
+  "uiInterceptedClassifierCalls": 2,
+  "uiSyntheticInputs": 3,
+  "evidenceDirectory": "/tmp/pi-preview-evidence-jctbcvi3",
+  "artifacts": {
+    "ui-result.json": "53fb89ccd7c6c9bec0681242d607e213d101c67d6fdd035b4626c7a0668e1868",
+    "ui-counters.json": "08ab43dbfeb7dd854c1747ce2b7764b2b792e0ff981c16c6b1d8934cbc0376fb",
+    "ui-safety.json": "22485005109e890e37a317af90774c41f1fc918b8d86ff9f6bd54b197ac38d96",
+    "ui-artifact.json": "8fd679e77d153390ff17ea6c7d286e356e7cd73e559e0bea7d9848122782d4b6",
+    "ui-confirm-180x50.txt": "adf91ed8cf146edae12363d9c80a67f42f14555ebe1c39eacbce71d350afde75",
+    "ui-confirm-60x28.txt": "b70a317730c39d2193c1c604c5f04528d0f13bf41e482ee19ff84c7c26137af7"
+  }
+}
