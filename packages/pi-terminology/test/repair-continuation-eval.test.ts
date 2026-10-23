@@ -15,16 +15,11 @@ import {
 import { json } from "../scripts/recall-contract";
 
 const pkg = resolve("packages/pi-terminology");
-// Historical source snapshots enter through the filesystem I/O seam, not a mocked diagnostic
-// or relaxed source guard. Both paths are public archives whose hashes the real contract checks.
-// The CURRENT-runtime test leaves this seam untouched and must still reject the renamed source.
-function historicalSourceReads() {
+// Historical fixtures must pass the unmodified paid-native source guard using its original bytes.
+function historicalSourceReads(sources = ["index.ts", "ui.ts", "recall-aggregate-calibration.ts"]) {
   const originalRead = fs.readFileSync;
   const paths = new Map(
-    ["index.ts", "ui.ts"].map((path) => [
-      join(pkg, path),
-      join(pkg, "evals/repair/source", `${path}.txt`),
-    ]),
+    sources.map((path) => [join(pkg, path), join(pkg, "evals/repair/source", `${path}.txt`)]),
   );
   vi.spyOn(fs, "readFileSync").mockImplementation((path, options) =>
     originalRead(typeof path === "string" ? (paths.get(resolve(path)) ?? path) : path, options),
@@ -291,6 +286,17 @@ describe("append-only 196-request continuation", () => {
     await expect(s.run(s.options)).rejects.toThrow("burned continuation receipt");
     expect(s.matcher).toHaveBeenCalledTimes(196);
   }, 120_000);
+  test("the optimized fitter alone blocks paid continuation before credentials, calls or receipt writes", async () => {
+    const s = await setup(false);
+    historicalSourceReads(["index.ts", "ui.ts"]);
+    await expect(runRepairContinuation({ ...s.options, dryRun: true })).rejects.toThrow(
+      "Original frozen source drift.",
+    );
+    await expect(runRepairContinuation(s.options)).rejects.toThrow("Original frozen source drift.");
+    expect(s.createRegistry).not.toHaveBeenCalled();
+    expect(s.matcher).not.toHaveBeenCalled();
+    await expect(readdir(s.continuation)).resolves.not.toContain("receipt.json");
+  });
   test("CURRENT renamed runtime is blocked after historical filesystem fixtures have been restored", async () => {
     const s = await setup(false);
     await expect(runRepairContinuation({ ...s.options, dryRun: true })).rejects.toThrow(

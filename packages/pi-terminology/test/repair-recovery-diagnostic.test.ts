@@ -14,10 +14,7 @@ const digest = (text: string) => createHash("sha256").update(text).digest("hex")
 const parse = <T>(text: string) =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Fixed public fixtures are deliberately mutated by these boundary tests.
   JSON.parse(text) as T;
-// The interrupted native run froze index.ts/ui.ts before the terms->terminology command rename.
-// Historical fixtures read those two sources from the byte-verified native archive so the unit tests
-// keep exercising the original contract; the CURRENT renamed runtime is asserted separately below.
-const historicalSources = new Set(["index.ts", "ui.ts"]);
+const historicalSources = new Set(["index.ts", "ui.ts", "recall-aggregate-calibration.ts"]);
 const historical = (path: string) =>
   read(historicalSources.has(path) ? `${directory}source/${path}.txt` : path);
 function reader(overrides: Record<string, string> = {}) {
@@ -122,7 +119,11 @@ describe("offline interrupted-repair recovery diagnostic", () => {
   test("blocks the CURRENT renamed runtime against the original native source contract", () => {
     const result = diagnoseRepairRecovery((path) => read(path));
     expect(result.status).toBe("blocked-source-drift");
-    expect(result.sourceDrift).toStrictEqual(["index.ts", "ui.ts"]);
+    expect(result.sourceDrift).toStrictEqual([
+      "index.ts",
+      "ui.ts",
+      "recall-aggregate-calibration.ts",
+    ]);
     expect(result.authorized).toBe(false);
     expect(result.blockers).toHaveLength(3);
   });
@@ -226,7 +227,7 @@ describe("offline interrupted-repair recovery diagnostic", () => {
     expect(parse<unknown>(blocked.stdout)).toMatchObject({
       status: "blocked-source-drift",
       authorized: false,
-      sourceDrift: ["index.ts", "ui.ts"],
+      sourceDrift: ["index.ts", "ui.ts", "recall-aggregate-calibration.ts"],
     });
     const refused = run("--dispatch");
     expect(refused.status).toBe(1);
