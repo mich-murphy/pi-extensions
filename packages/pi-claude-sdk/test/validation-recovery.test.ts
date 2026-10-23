@@ -33,7 +33,12 @@ import {
   streamEvent,
 } from "./fixtures";
 
-async function postBatch(params: Parameters<RunSdkQuery>[0], input: unknown, id = "bad") {
+async function postBatch(
+  params: Parameters<RunSdkQuery>[0],
+  input: unknown,
+  id = "bad",
+  name = "read",
+) {
   const hook: HookCallback | undefined = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
   assert(hook);
   const event: PostToolBatchHookInput = {
@@ -41,9 +46,77 @@ async function postBatch(params: Parameters<RunSdkQuery>[0], input: unknown, id 
     transcript_path: "/dev/null",
     cwd: "/",
     hook_event_name: "PostToolBatch",
-    tool_calls: [{ tool_name: "mcp__pi__pi_call", tool_use_id: id, tool_input: input }],
+    tool_calls: [{ tool_name: `mcp__pi__${name}`, tool_use_id: id, tool_input: input }],
   };
   return hook(event, undefined, { signal: new AbortController().signal });
+}
+
+function rejectionToolName(path: string): string {
+  return path === "unhooked-valid" ? "dangerous" : "read";
+}
+
+async function* rejectedTurn(params: Parameters<RunSdkQuery>[0], path: string): AsyncGenerator {
+  // Deterministic SDK boundary simulation, NOT evidence of the real CLI's
+  // malformed-JSON path. Public PostToolBatch supplies tool_input: unknown.
+  let input: unknown = {};
+  if (path === "pre-hook-validation") {
+    input = "unparseable input";
+  }
+  if (path === "unhooked-valid") {
+    await deliverToolUse(installedHook(params), {
+      id: "sibling",
+      input: { name: "read", arguments: { path: "fixture" } },
+    });
+  }
+  yield {
+    type: "assistant",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: { input_tokens: 10, output_tokens: 2 },
+      content: [
+        {
+          type: "tool_use",
+          id: "bad",
+          name: `mcp__pi__${rejectionToolName(path)}`,
+          input,
+        },
+      ],
+    },
+  };
+  if (path === "missing-arguments") {
+    const decision = await deliverToolUse(installedHook(params), {
+      id: "bad",
+      toolName: "mcp__pi__read",
+      input,
+    });
+    assert.deepEqual(decision, {
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" },
+    });
+  }
+  if (path === "pre-hook-validation") {
+    yield {
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bad",
+            is_error: true,
+            content: "untrusted SDK error text is not used for control",
+          },
+        ],
+      },
+    };
+  }
+  const stopped = await postBatch(params, input, "bad", rejectionToolName(path));
+  expect(stopped).toMatchObject({ continue: false });
+  // A cooperative SDK must stop here rather than perform another model round.
+  yield resultMessage({
+    terminal_reason: "hook_stopped",
+    stop_reason: "tool_use",
+    num_turns: path === "pre-hook-validation" ? 2 : 1,
+    usage: { input_tokens: 10, output_tokens: 2 },
+  });
 }
 
 describe("Pi-owned validation recovery", () => {
@@ -79,59 +152,7 @@ describe("Pi-owned validation recovery", () => {
               },
             });
             if (queries === 1) {
-              // Deterministic SDK boundary simulation, NOT evidence of the real CLI's
-              // malformed-JSON path. Public PostToolBatch supplies tool_input: unknown.
-              let input: unknown = "unparseable input";
-              if (path === "missing-arguments") {
-                input = { name: "read" };
-              }
-              if (path === "unhooked-valid") {
-                input = { name: "dangerous", arguments: {} };
-              }
-              if (path === "unhooked-valid") {
-                await deliverToolUse(installedHook(params), {
-                  id: "sibling",
-                  input: { name: "read", arguments: { path: "fixture" } },
-                });
-              }
-              yield {
-                type: "assistant",
-                message: {
-                  model: "claude-sonnet-5-5",
-                  usage: { input_tokens: 10, output_tokens: 2 },
-                  content: [{ type: "tool_use", id: "bad", name: "mcp__pi__pi_call", input }],
-                },
-              };
-              if (path === "missing-arguments") {
-                const decision = await deliverToolUse(installedHook(params), { id: "bad", input });
-                expect(decision).toMatchObject({
-                  hookSpecificOutput: { permissionDecision: "defer" },
-                });
-              }
-              if (path === "pre-hook-validation") {
-                yield {
-                  type: "user",
-                  message: {
-                    content: [
-                      {
-                        type: "tool_result",
-                        tool_use_id: "bad",
-                        is_error: true,
-                        content: "untrusted SDK error text is not used for control",
-                      },
-                    ],
-                  },
-                };
-              }
-              const stopped = await postBatch(params, input);
-              expect(stopped).toMatchObject({ continue: false });
-              // A cooperative SDK must stop here rather than perform another model round.
-              yield resultMessage({
-                terminal_reason: "hook_stopped",
-                stop_reason: "tool_use",
-                num_turns: path === "pre-hook-validation" ? 2 : 1,
-                usage: { input_tokens: 10, output_tokens: 2 },
-              });
+              yield* rejectedTurn(params, path);
             } else if (queries === 2) {
               await deliverToolUse(installedHook(params), {
                 id: "corrected",
@@ -221,6 +242,13 @@ describe("Pi-owned validation recovery", () => {
         )) {
           expect(record).toMatchObject({ query: { modelRequests: 1 } });
         }
+        let rejectionKind = "invalid_tool_input";
+        if (path === "unhooked-valid") {
+          rejectionKind = "uncaptured_tool_batch";
+        }
+        if (path === "pre-hook-validation") {
+          rejectionKind = "sdk_input_rejected";
+        }
         const rejection = messages.find((m) => m.role === "toolResult" && m.toolCallId === "bad");
         expect(rejection).toMatchObject({
           role: "toolResult",
@@ -230,7 +258,9 @@ describe("Pi-owned validation recovery", () => {
               type: "text",
               text: inactive
                 ? `Tool ${VALIDATION_ERROR_TOOL} not found`
-                : validationRecoveryReason({}),
+                : validationRecoveryReason({
+                    error: rejectionKind,
+                  }),
             },
           ],
         });
@@ -250,7 +280,9 @@ describe("Pi-owned validation recovery", () => {
                 type: "toolCall",
                 id: "bad",
                 name: VALIDATION_ERROR_TOOL,
-                arguments: { error: "invalid_gateway_input" },
+                arguments: {
+                  error: rejectionKind,
+                },
               },
             ]) as unknown,
           }),

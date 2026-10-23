@@ -37,7 +37,7 @@ and needs no usage lookup. No installs, auth reads, logins or auth changes.
 
 Haiku 4.5, reasoning disabled, at most three Pi queries, a 180-second deadline and
 a pure `contract_probe` tool. No shell/file/model tools are exposed. Only the first
-public `PreToolUse` gateway input is replaced with a missing-arguments object;
+public `PreToolUse` selected-tool input is replaced with a missing-required-value object;
 this is labeled **fault-injected**, not natural malformed-JSON evidence. The real
 SDK still handles deferral and produces its own terminal result. Later SDK
 messages and inputs pass unchanged; Pi executes only the corrected pure tool.
@@ -58,7 +58,7 @@ request bodies without logging/decoding them, and emits synthetic Messages SSE:
    **not** a max_tokens stop or a truncated transport stream. The actual installed
    SDK/bundled CLI must generate its parse failure, skip `PreToolUse`, deliver the
    error batch to the production hook and honor `continue:false`.
-2. A valid corrected gateway call, deferred by the real CLI's PreToolUse path.
+2. A valid corrected per-tool call, deferred by the real CLI's PreToolUse path.
 3. A fixed final text marker after Pi's pure corrected executor runs exactly once.
 
 No fake SDK messages, hook events or SDK/client event mutation are involved. The
@@ -107,3 +107,15 @@ separate live subscription Pi correction. It does **not** claim natural Anthropi
 malformed generation, arbitrary malformed JSON, interactive approval UI,
 installation, images, compaction or cancellation. Only fresh full all exit0 on
 the final snapshot satisfies the provider merge gate.
+
+## Per-tool offline regression suite
+
+`npm test -- packages/pi-claude-sdk/test/sdk-offline-siblings.test.ts` runs the
+composed production path with the actual pinned SDK/CLI, temporary empty HOME,
+dummy credentials and macOS OS-enforced non-loopback outbound-network blocking.
+It covers two valid siblings, required-field rejection, actual malformed JSON,
+durable reopen before correction, cancellation and a deliberately replaced
+invalid terminal message. Each Pi turn must emit exactly one terminal event;
+invalid turns execute no real tool, and each corrected pure call executes once.
+This suite skips outside macOS rather than claiming unisolated acceptance.
+It does not replace the separately authorized live merge gate above.

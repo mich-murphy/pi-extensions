@@ -33,6 +33,8 @@ export type QueryDiagnostics = {
   /** Captured rejection categories; no requested names or hook messages are retained. */
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;
+  readonly uncapturedBatchCalls?: number;
+  readonly sdkRejectedCalls?: number;
   readonly fallbackCalls: number;
 };
 

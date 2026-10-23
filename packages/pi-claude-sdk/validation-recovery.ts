@@ -6,14 +6,30 @@ export const VALIDATION_ERROR_TOOL = "pi_claude_sdk_validation_error";
 
 /** Value-free, bounded correction text shared by the tool and its fail-safe guard. */
 export function validationRecoveryReason(input: unknown): string {
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "error" in input &&
+    input.error === "uncaptured_tool_batch"
+  ) {
+    return "Tool did not execute: the SDK resolved it without Pi permission deferral. Request the declared tool again; Pi owns execution.";
+  }
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "error" in input &&
+    input.error === "sdk_input_rejected"
+  ) {
+    return "SDK input was rejected before Pi permission deferral, possibly during JSON parsing. No tool executed. Request a declared tool with valid JSON parameters matching its schema.";
+  }
   const unexpected =
     typeof input === "object" &&
     input !== null &&
     "error" in input &&
     input.error === "unexpected_sdk_tool";
   return unexpected
-    ? "Rejected SDK tool did not execute. Use only pi_call with an available Pi tool's exact name and an arguments object."
-    : "Invalid pi_call did not execute: supply an available Pi tool's exact name and the required arguments object matching its schema ({} only for a parameterless tool). Never request the gateway or validation-error tool as the target.";
+    ? "Rejected SDK tool did not execute. Use only a declared MCP tool with parameters matching its schema."
+    : "Rejected tool input did not execute: invoke a declared MCP tool directly with parameters matching its schema. Do not request the validation-error tool.";
 }
 
 /** Blocks even a later replacement of the reserved tool before its executor runs. */
@@ -31,7 +47,7 @@ export const validationRecoveryTool: ToolDefinition = {
   name: VALIDATION_ERROR_TOOL,
   label: "Rejected SDK tool call",
   description:
-    "Provider-owned validation error. Do not request this tool; correct the rejected pi_call using the available tool catalog.",
+    "Provider-owned validation error. Do not request this tool; correct the rejected tool call using the available tool catalog.",
   exposure: "model-only",
   annotations: {
     readOnlyHint: true,
@@ -41,7 +57,12 @@ export const validationRecoveryTool: ToolDefinition = {
   },
   prepareLoadout: () => ({ hiddenDeclarations: [VALIDATION_ERROR_TOOL] }),
   parameters: Type.Object({
-    error: Type.Union([Type.Literal("invalid_gateway_input"), Type.Literal("unexpected_sdk_tool")]),
+    error: Type.Union([
+      Type.Literal("invalid_tool_input"),
+      Type.Literal("unexpected_sdk_tool"),
+      Type.Literal("uncaptured_tool_batch"),
+      Type.Literal("sdk_input_rejected"),
+    ]),
   }),
   async execute(_id, input) {
     throw new Error(validationRecoveryReason(input));

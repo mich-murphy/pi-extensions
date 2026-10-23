@@ -1,56 +1,9 @@
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
-import { tool } from "@anthropic-ai/claude-agent-sdk";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import type { DeferredCall } from "../bridge";
 import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
-import { InvalidDeferredCallError } from "./errors";
-
-const PI_CALL_INPUT_SCHEMA = {
-  name: z
-    .string()
-    .describe(
-      'Exact Pi tool name from the available-tools catalog; never "pi_call" itself, which is this gateway\'s own name',
-    ),
-  arguments: z
-    .record(z.string(), z.json())
-    .describe("Arguments matching that Pi tool's input schema"),
-};
-
-const requestedCallSchema = z
-  .object({
-    name: z.string().catch(""),
-    arguments: PI_CALL_INPUT_SCHEMA.arguments.optional().catch(undefined),
-  })
-  .catch({ name: "", arguments: undefined });
-
-function parseDeferredCall(
-  availableTools: ReadonlySet<string>,
-  input: unknown,
-): Omit<DeferredCall, "id"> | InvalidDeferredCallError {
-  const requested = requestedCallSchema.parse(input);
-  if (
-    requested.name !== VALIDATION_ERROR_TOOL &&
-    availableTools.has(requested.name) &&
-    requested.arguments
-  ) {
-    return { name: requested.name, arguments: requested.arguments };
-  }
-  const sample = [...availableTools].slice(0, 5).join(", ");
-  const tools = sample || "(no Pi tools are available this turn)";
-  const name = requested.name || "<missing>";
-  let reason: string;
-  if (requested.name === "pi_call") {
-    reason = `"pi_call" is this gateway's own name, not a Pi tool; do not pass it as the "name" field. Pass the target Pi tool's name instead, e.g. ${tools}.`;
-  } else if (requested.arguments) {
-    reason = `"${name}" is not a recognized Pi tool. Available tools: ${tools}.`;
-  } else {
-    reason = `"arguments" must be an object matching "${name}"'s input schema.`;
-  }
-  return new InvalidDeferredCallError({
-    requestedName: requested.name,
-    reason: `Invalid Pi tool call: ${reason}`,
-  });
-}
+import type { CatalogTool } from "./tool-catalog";
 
 const DEFERRED_PI_CALL_HANDLER = async () => ({
   content: [
@@ -62,18 +15,19 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
   isError: true,
 });
 
-/**
- * Create the in-process MCP gateway exposed to the Claude Agent SDK.
- *
- * @param description - Per-turn Pi tool catalog included in the gateway description.
- * @param onFallback - Stops the query if the SDK fails to honor permission deferral.
- * @returns The SDK MCP tool definition.
- */
-export function createDeferredPiCallTool(description: string, onFallback?: () => void) {
-  return tool("pi_call", description, PI_CALL_INPUT_SCHEMA, async () => {
-    onFallback?.();
-    return DEFERRED_PI_CALL_HANDLER();
-  });
+export function createDeferredPiTools(catalog: readonly CatalogTool[], onFallback?: () => void) {
+  return catalog.map(({ declaration, mcpName, schema }) => ({
+    name: mcpName,
+    description:
+      mcpName === declaration.name
+        ? declaration.description
+        : `Pi tool ${JSON.stringify(declaration.name)}. ${declaration.description}`,
+    inputSchema: schema,
+    handler: async () => {
+      onFallback?.();
+      return DEFERRED_PI_CALL_HANDLER();
+    },
+  }));
 }
 
 /** One turn's tool handoff. Rejections target the reserved Pi-owned error tool.
@@ -89,6 +43,8 @@ export type DeferredCallCapture = {
   readonly hookDeniedCalls: number;
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;
+  readonly uncapturedBatchCalls: number;
+  readonly sdkRejectedCalls: number;
 };
 
 /** Capture valid and invalid calls without asking the SDK model to recover.
@@ -97,36 +53,58 @@ export type DeferredCallCapture = {
  * Its continue:false output stops the SDK loop; only a clean terminal result
  * can authorize the handoff. Tool-result prose is never inspected.
  */
-export function createDeferredCallCapture(
-  availableTools: ReadonlySet<string>,
-): DeferredCallCapture {
+export function createDeferredCallCapture(catalog: readonly CatalogTool[]): DeferredCallCapture {
   const calls = new Map<string, DeferredCall>();
   let invalidCalls = 0;
   let unexpectedToolCalls = 0;
   let batchStopped = false;
+  let lifecycleCalls = 0;
+  let sdkRejectedCalls = 0;
 
   const capture = (id: string, toolName: string, input: unknown, preToolUse: boolean): void => {
     if (calls.has(id)) {
       return;
     }
-    const parsed =
-      toolName === "mcp__pi__pi_call" ? parseDeferredCall(availableTools, input) : undefined;
-    if (preToolUse && parsed && !(parsed instanceof InvalidDeferredCallError)) {
-      calls.set(id, { id, ...parsed });
-      return;
-    }
-    if (parsed) {
-      invalidCalls += 1;
+    const selected = catalog.find((entry) => entry.sdkName === toolName);
+    let reason:
+      | "unexpected_sdk_tool"
+      | "invalid_tool_input"
+      | "uncaptured_tool_batch"
+      | "sdk_input_rejected" = "unexpected_sdk_tool";
+    if (selected) {
+      reason = "invalid_tool_input";
+      try {
+        if (typeof input === "object" && input !== null && !Array.isArray(input)) {
+          const args = z.record(z.string(), z.json()).parse(
+            validateToolArguments(selected.declaration, {
+              type: "toolCall",
+              id,
+              name: selected.declaration.name,
+              arguments: z.record(z.string(), z.json()).parse(input),
+            }),
+          );
+          selected.schema.parse(args);
+          if (preToolUse) {
+            calls.set(id, { id, name: selected.declaration.name, arguments: args });
+            return;
+          }
+          reason = "uncaptured_tool_batch";
+        }
+      } catch {
+        reason = "invalid_tool_input";
+      }
+      if (reason === "uncaptured_tool_batch") {
+        lifecycleCalls += 1;
+      } else if (preToolUse) {
+        invalidCalls += 1;
+      } else {
+        reason = "sdk_input_rejected";
+        sdkRejectedCalls += 1;
+      }
     } else {
       unexpectedToolCalls += 1;
     }
-    calls.set(id, {
-      id,
-      name: VALIDATION_ERROR_TOOL,
-      arguments: {
-        error: parsed ? "invalid_gateway_input" : "unexpected_sdk_tool",
-      },
-    });
+    calls.set(id, { id, name: VALIDATION_ERROR_TOOL, arguments: { error: reason } });
   };
 
   const hook: HookCallback = async (input) => {
@@ -159,6 +137,12 @@ export function createDeferredCallCapture(
       return [...calls.values()];
     },
     hookDeniedCalls: 0,
+    get sdkRejectedCalls() {
+      return sdkRejectedCalls;
+    },
+    get uncapturedBatchCalls() {
+      return lifecycleCalls;
+    },
     get invalidGatewayCalls() {
       return invalidCalls;
     },

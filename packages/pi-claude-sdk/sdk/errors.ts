@@ -223,9 +223,19 @@ export class SdkInstrumentationError extends Schema.TaggedError<SdkInstrumentati
   }
 }
 
+export class SdkToolContractError extends Schema.TaggedError<SdkToolContractError>()(
+  "SdkToolContractError",
+  { reason: Schema.Literals(["naming", "schema"]) },
+) {
+  override get message(): string {
+    return `Pi tool catalog cannot be advertised faithfully (${this.reason})`;
+  }
+}
+
 /** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
   | SdkInstrumentationError
+  | SdkToolContractError
   | InvalidDeferredCallLimitError
   | SdkMissingResultError
   | SdkProtocolError
