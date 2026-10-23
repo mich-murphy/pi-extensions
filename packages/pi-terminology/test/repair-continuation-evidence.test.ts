@@ -191,6 +191,9 @@ describe("native append-only continuation evidence", () => {
     );
     const report = await load("report.json.txt");
     const fit = fitAggregateRecall(dataset(rows, all, Object.keys(profile.questions)));
+    expect(createHash("sha256").update(JSON.stringify(fit)).digest("hex")).toBe(
+      "81154dd0738a4020a5a3c7db1445369821e278dfe7409c744e64798f660d2e17",
+    );
     expect(report).toMatchObject(fit);
     expect(report).toMatchObject({
       native: true,

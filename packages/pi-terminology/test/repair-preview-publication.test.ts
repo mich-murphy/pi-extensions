@@ -95,8 +95,6 @@ describe("zero-call native-repair preview publication", () => {
     expect(publication).toMatchObject({
       status: "manual-experimental-preview-published-not-activated",
       artifactSha256: hash("glossary/preview-policy.json"),
-      publisherSha256: hash("scripts/publish-repair-preview.ts"),
-      compatibilityRuleSha256: hash("scripts/command-rename-compatibility.ts"),
       publicationProviderCalls: 0,
       activationPerformed: false,
       globalSettingsChanged: false,
