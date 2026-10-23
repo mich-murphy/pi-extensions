@@ -46,8 +46,11 @@ private tmux socket under `/tmp`, with no real keys and no network.
 Default preview uses the actual bundled artifact. `--synthetic-ui-fixture` is a
 scratch-only fake and is never native or paid evidence. Neither verifies native inference.
 
-The command-only journey also installs a throwing fetch/model-registry guard;
-its counters must show no classifier calls, model inputs or network calls.
+The command-only journey also loads the whole root package from an unrelated
+scratch cwd, verifies all seven extensions and the terminology browser/status,
+and drives the bundled Vim editor with real keys. It installs a throwing
+fetch/model-registry guard; counters must show no classifier calls, model inputs
+or network calls. Local auth preflight is allowed; it is not a classifier call.
 Both journeys use only their owned tmux server and remove the disposable profile.
 
 Evidence directories (`/tmp/pi-terminology-evidence-*`, `/tmp/pi-preview-evidence-*`)

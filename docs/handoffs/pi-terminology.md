@@ -133,6 +133,27 @@ configuration changes or activation occurred during this work.
 Keep the sizeable existing uncommitted work and immutable evidence intact; do not
 commit or reset it without instruction.
 
+### PR and authorized root enablement
+
+PR #91 (`feat/pi-terminology-preview`) contains only the terminology work, rebased
+onto current `main`; the earlier auto-resume branch's commits are not duplicated.
+The user authorized PR creation, medium-effort review, monitoring and merge only
+once all checks/review conditions are green, and then explicitly asked to enable
+the extension in that PR. The root manifest now lists all seven extensions;
+this does not enable paid preview calls or a measured policy.
+
+The real `verify-pi-terminology` skill passed both journeys again, including a
+whole-root-package launch from an unrelated scratch cwd with the bundled Vim
+editor. Browser/status worked with zero classifier/model/network activity; the
+actual-preview journey made zero real provider/fetch calls. Retained proof is
+under `evals/repair/preview/root-autoload/`. Read-only medium-effort review approved
+runtime/compatibility scope at `3081895`, conditioned on Linux CI green and keeping
+preview opt-in. Local canonical `npm run check` passed 2,179 tests with two existing
+skips across 108 files after incorporating current main. Linux CI exposed shared
+CPU contention in offline refits/CLI startup; CI now serializes test files without
+changing assertions, test/provider timeouts or coverage gates. Do not merge until
+that final CI run and all review conditions are green.
+
 ## Historical status and ownership — superseded snapshot
 
 The following records the earlier six-concept screen and original design. Its

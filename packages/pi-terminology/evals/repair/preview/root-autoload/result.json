@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "passed-root-autoload-and-opt-in-preview-ui",
+  "native": false,
+  "rootAutoloadEnabled": true,
+  "measured": false,
+  "previewActivatedInUserProfile": false,
+  "rootJourneyClassifierCalls": 0,
+  "realProviderRequests": 0,
+  "fetchCalls": 0,
+  "interceptedFakePreviewClassifierCalls": 2,
+  "commandEvidence": "/tmp/pi-terminology-evidence-tdjqzyfd",
+  "previewEvidence": "/tmp/pi-preview-evidence-lxp6grel",
+  "previewArtifactSha256": "6a5e4890a6fd5eaf37ca686f8b533ff1685bb1b405067042837fc2dd9aa000ca",
+  "rootManifestSha256": "1bfc0489daf8866e5bec92fb96587c0aa5e1e54dae83d654dd4038d23296f799",
+  "artifacts": {
+    "commands-result.json": "4508ec79dc9d2409b0f4f8138ae19c4fa704a155c9005be37321fb241a98c99f",
+    "commands-counters.json": "7ba968124c6750643e7cbb6591be5580021022d047b7fc1fe388f95750162471",
+    "commands-catalog.json": "531e927435fb71d9a7606cc5df47b73456ddef2c1cb728a42dce061ff7019a7f",
+    "root-manifest.json": "41b5847bf669e3fe071e84978ea5595a7b8ed5c7c73c51712e9a7a192d4d92db",
+    "commands-source-hashes.json": "2e0647af58c51a4521b7b8f20e3e8ad9d3e576eeb862fb4becd79b020893ed5c",
+    "root-loaded.txt": "ebc62a078c67055156e8befd7d88791020713670948a4753d86c098eb0281e6b",
+    "root-status.txt": "a630aa6131828976e13d3d6c4fb4aa2077538733242246952dcc92d54613384c",
+    "root-browser.txt": "a3a4c4c14fdf18a616ab739b50556e36055a76e3249adfd832b501fc930c3103",
+    "preview-result.json": "6b020c53ae5768b5c1b1e485611befc0b71e52f6b41e1ffdc00197f0b1adfa53",
+    "preview-counters.json": "08ab43dbfeb7dd854c1747ce2b7764b2b792e0ff981c16c6b1d8934cbc0376fb",
+    "preview-artifact.json": "bcb1dc98b8dbbb92b842895837035eb9ee120de60cb849c90fcfea7142d5cf03",
+    "preview-safety.json": "22485005109e890e37a317af90774c41f1fc918b8d86ff9f6bd54b197ac38d96"
+  }
+}

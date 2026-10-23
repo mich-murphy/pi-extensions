@@ -196,7 +196,8 @@ validated and verified in the actual Pi TUI. It is **off by default**; nothing w
 activated or globally installed. Load the extension as above, then use
 `/terminology-preview on 5` and confirm to try five session-only attempts (conservative
 published-tariff estimate at most $0.0138, main-model usage additional).
-See [preview instructions and verification](evals/repair/preview/README.md).
+See [preview instructions and verification](evals/repair/preview/README.md) and
+[whole-root-package verification](evals/repair/preview/root-autoload/README.md).
 
 The completed development fit passes its numerical gates (90.55% scored displayed
 precision, 96.31% recall), **not fresh acceptance**. Refactoring precision is only
