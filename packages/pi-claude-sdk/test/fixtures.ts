@@ -4,7 +4,7 @@ import type {
   PreToolUseHookInput,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { normalizeContext } from "@earendil-works/pi-ai";
+import { Type, normalizeContext } from "@earendil-works/pi-ai";
 import type {
   Context,
   Message,
@@ -166,6 +166,11 @@ export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequ
     cacheBreakpoints: [],
     toolDescription: "stable tools",
     toolNames: new Set(["read"]),
+    tools: [...(overrides.toolNames ?? ["read"])].map((name) => ({
+      name,
+      description: name,
+      parameters: name === "read" ? Type.Object({ path: Type.String() }) : Type.Object({}),
+    })),
     ...overrides,
   };
 }
@@ -174,9 +179,9 @@ export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequ
 export type ToolUse = {
   /** SDK tool-use identifier. */
   readonly id: string;
-  /** Raw model-supplied tool input. */
+  /** Selected-tool parameters, or a test target with name and arguments. */
   readonly input: unknown;
-  /** SDK tool name, the Pi gateway by default. */
+  /** Explicit SDK tool name; otherwise derived from the test target. */
   readonly toolName?: string;
 };
 
@@ -189,16 +194,24 @@ export type ToolUse = {
  */
 export async function deliverToolUse(
   hook: HookCallback,
-  { id, input, toolName = "mcp__pi__pi_call" }: ToolUse,
+  { id, input, toolName }: ToolUse,
 ): Promise<HookJSONOutput> {
+  const targeted =
+    typeof input === "object" &&
+    input !== null &&
+    "name" in input &&
+    typeof input.name === "string";
+  const directName = toolName ?? (targeted ? `mcp__pi__${String(input.name)}` : "mcp__pi__read");
+  const directInput =
+    toolName === undefined && targeted && "arguments" in input ? input.arguments : input;
   const hookInput = {
     session_id: "test-session",
     transcript_path: "/dev/null",
     cwd: "/",
     hook_event_name: "PreToolUse",
-    tool_name: toolName,
+    tool_name: directName,
     tool_use_id: id,
-    tool_input: input,
+    tool_input: directInput,
   } satisfies PreToolUseHookInput;
   return hook(hookInput, id, { signal: new AbortController().signal });
 }

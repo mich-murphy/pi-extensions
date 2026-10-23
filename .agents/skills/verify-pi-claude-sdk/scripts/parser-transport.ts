@@ -63,16 +63,14 @@ export async function startParserTransport() {
           content_block: {
             type: "tool_use",
             id: `offline-tool-${requests}`,
-            name: "mcp__pi__pi_call",
+            name: "mcp__pi__contract_probe",
             input: {},
           },
         });
         // A complete tool-use response with invalid JSON, NOT max_tokens or stream truncation.
         // The bundled CLI, not this fixture/harness, must generate its parse error and marker.
         const partial =
-          requests === 1
-            ? '{"name":"contract_probe","arguments":INVALID_JSON}'
-            : JSON.stringify({ name: "contract_probe", arguments: { value: "corrected" } });
+          requests === 1 ? '{"value":INVALID_JSON}' : JSON.stringify({ value: "corrected" });
         if (requests === 1) {
           invalidJsonResponses += 1;
         }

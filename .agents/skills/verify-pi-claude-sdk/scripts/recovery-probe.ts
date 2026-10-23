@@ -128,9 +128,9 @@ async function journey() {
     const preHook: HookCallback = async (input, id, options) => {
       if (input.hook_event_name === "PreToolUse") {
         seen.add(input.tool_use_id);
-        if (!offline && first && injected === 0 && input.tool_name === "mcp__pi__pi_call") {
+        if (!offline && first && injected === 0 && input.tool_name === "mcp__pi__contract_probe") {
           injected += 1;
-          return pre({ ...input, tool_input: { name: "contract_probe" } }, id, options);
+          return pre({ ...input, tool_input: {} }, id, options);
         }
       }
       return pre(input, id, options);

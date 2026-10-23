@@ -9,9 +9,15 @@ import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
 import { sdkModelSelectorFor, undatedModelId } from "../models";
-import { createDeferredCallCapture, createDeferredPiCallTool } from "./deferred-tools";
+import { createDeferredCallCapture, createDeferredPiTools } from "./deferred-tools";
 import type { DeferredCallCapture } from "./deferred-tools";
-import { SdkMissingResultError, SdkProtocolError, SdkQueryError, SdkResultError } from "./errors";
+import {
+  SdkMissingResultError,
+  SdkProtocolError,
+  SdkQueryError,
+  SdkResultError,
+  SdkToolContractError,
+} from "./errors";
 import type { SdkRunError } from "./errors";
 import { instrumentEvent, instrumentRequest } from "./instrumentation";
 import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "./messages";
@@ -21,6 +27,8 @@ import type { CacheTtl } from "./prompt-stream";
 import { queryDiagnostics } from "./query-diagnostics";
 import { effectiveResultCategory } from "./result-failure";
 import { subscriptionEnvironment } from "./subscription-environment";
+import { compileToolCatalog } from "./tool-catalog";
+import type { CatalogTool } from "./tool-catalog";
 
 /** Injectable Claude Agent SDK query function used by the runner and its tests. */
 export type RunSdkQuery = (params: Readonly<Parameters<typeof query>[0]>) => AsyncIterable<unknown>;
@@ -83,6 +91,7 @@ type QueryWiring = {
   readonly ttl: CacheTtl;
   readonly onFallback: () => void;
   readonly createMcpServer: typeof createSdkMcpServer;
+  readonly catalog: readonly CatalogTool[];
 };
 
 /** Local contract failures outrank SDK cancellation caused by our own abort. */
@@ -94,11 +103,11 @@ type QueryCapture = {
 };
 
 function createQueryCapture(
-  toolNames: ReadonlySet<string>,
+  catalog: readonly CatalogTool[],
   controller: AbortController,
   validationRecovery: RunnerOptions["validationRecovery"],
 ): QueryCapture {
-  const deferred = createDeferredCallCapture(toolNames);
+  const deferred = createDeferredCallCapture(catalog);
   let fallbackCalls = 0;
   let fallbackError: SdkResultError | undefined;
   return {
@@ -110,7 +119,11 @@ function createQueryCapture(
       return (
         fallbackError ??
         (validationRecovery === undefined &&
-        deferred.invalidGatewayCalls + deferred.unexpectedToolCalls > 0
+        deferred.invalidGatewayCalls +
+          deferred.unexpectedToolCalls +
+          deferred.uncapturedBatchCalls +
+          deferred.sdkRejectedCalls >
+          0
           ? new SdkResultError({
               terminalReason: "tool_deferred_unavailable",
               category: "tool-contract",
@@ -166,15 +179,26 @@ function reasoningOptions({
 
 function queryParameters(
   turn: Turn,
-  { abortController, hook, batchHook, env, ttl, onFallback, createMcpServer }: QueryWiring,
+  { abortController, hook, batchHook, env, ttl, onFallback, createMcpServer, catalog }: QueryWiring,
 ): SdkQueryParameters {
   const { request, model } = turn;
   const server = createMcpServer({
     name: "pi",
     version: "0.1.0",
-    tools: [createDeferredPiCallTool(request.toolDescription, onFallback)],
+    tools: [],
     alwaysLoad: true,
   });
+  for (const definition of createDeferredPiTools(catalog, onFallback)) {
+    server.instance.registerTool(
+      definition.name,
+      {
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+        _meta: { "anthropic/alwaysLoad": true },
+      },
+      definition.handler,
+    );
+  }
   return {
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
@@ -543,6 +567,8 @@ function conclude(
       hookDeniedCalls: capture.deferred.hookDeniedCalls,
       invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
       unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
+      uncapturedBatchCalls: capture.deferred.uncapturedBatchCalls,
+      sdkRejectedCalls: capture.deferred.sdkRejectedCalls,
       fallbackCalls: capture.fallbackCalls,
     }),
   });
@@ -599,7 +625,18 @@ const runTurn = Effect.fnUntraced(function* (
   }
   const request = applied.success;
   const appliedTurn = { ...turn, request };
-  const capture = createQueryCapture(request.toolNames, abortController, validationRecovery);
+  const compiled = Result.try({
+    try: () => compileToolCatalog(request.tools),
+    catch: (error) =>
+      error instanceof SdkToolContractError
+        ? error
+        : new SdkToolContractError({ reason: "schema" }),
+  });
+  if (Result.isFailure(compiled)) {
+    return Stream.succeed(failed(compiled.failure));
+  }
+  const catalog = compiled.success;
+  const capture = createQueryCapture(catalog, abortController, validationRecovery);
   const ttl = cacheTtlFor(
     options?.cacheRetention,
     options?.env?.PI_CACHE_RETENTION ?? sdkEnvironment.PI_CACHE_RETENTION,
@@ -617,6 +654,7 @@ const runTurn = Effect.fnUntraced(function* (
           batchHook: capture.deferred.batchHook,
           onFallback: capture.onFallback,
           createMcpServer,
+          catalog,
           env: sdkEnvironment,
           ttl,
         }),

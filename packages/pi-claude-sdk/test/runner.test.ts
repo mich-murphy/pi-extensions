@@ -167,7 +167,7 @@ async function runAllowing(
   ...messages: readonly unknown[]
 ): Promise<BridgeEvent[]> {
   return runTurn(
-    queryWith([{ name: toolName, arguments: {} }], ...messages),
+    queryWith([{ name: toolName, arguments: { path: "fixture" } }], ...messages),
     requestFixture({ toolNames: new Set([allowed]) }),
   );
 }
@@ -810,10 +810,24 @@ describe("deferred tool calls", () => {
     async (ending) => {
       let fallback: (() => Promise<unknown>) | undefined;
       const createMcpServer: typeof createSdkMcpServer = (options) => {
-        const gateway = options.tools?.[0];
-        assert(gateway !== undefined);
-        fallback = async () => gateway.handler(READ_PACKAGE, undefined);
-        return createSdkMcpServer(options);
+        const server = createSdkMcpServer(options);
+        const register = server.instance.registerTool.bind(server.instance);
+        server.instance.registerTool = (name, config, handler) => {
+          fallback = async () =>
+            handler(
+              { path: "package.json" },
+              {
+                signal: new AbortController().signal,
+                requestId: "fixture",
+                sendNotification: async () => undefined,
+                sendRequest: async () => {
+                  throw new Error("unused");
+                },
+              },
+            );
+          return register(name, config, handler);
+        };
+        return server;
       };
       const records: CacheDiagnostic[] = [];
       {
@@ -861,10 +875,24 @@ describe("deferred tool calls", () => {
       requestFixture(),
       {
         createMcpServer: (options) => {
-          const gateway = options.tools?.[0];
-          assert(gateway !== undefined);
-          fallback = async () => gateway.handler(READ_PACKAGE, undefined);
-          return createSdkMcpServer(options);
+          const server = createSdkMcpServer(options);
+          const register = server.instance.registerTool.bind(server.instance);
+          server.instance.registerTool = (name, config, handler) => {
+            fallback = async () =>
+              handler(
+                { path: "package.json" },
+                {
+                  signal: new AbortController().signal,
+                  requestId: "fixture",
+                  sendNotification: async () => undefined,
+                  sendRequest: async () => {
+                    throw new Error("unused");
+                  },
+                },
+              );
+            return register(name, config, handler);
+          };
+          return server;
         },
       },
     );
@@ -904,12 +932,18 @@ describe("deferred tool calls", () => {
     ]);
   });
 
-  test("keeps each turn's allowed-tool set independent even though the MCP schema and handler are shared module singletons", async () => {
+  test("keeps each turn's declared catalog independent", async () => {
     await expect(runAllowing("read", "read", DEFERRED)).resolves.toStrictEqual([
-      { type: "tool_calls", calls: [{ id: "toolu_0", name: "read", arguments: {} }] },
+      {
+        type: "tool_calls",
+        calls: [{ id: "toolu_0", name: "read", arguments: { path: "fixture" } }],
+      },
     ]);
     await expect(runAllowing("write", "write", DEFERRED)).resolves.toStrictEqual([
-      { type: "tool_calls", calls: [{ id: "toolu_0", name: "write", arguments: {} }] },
+      {
+        type: "tool_calls",
+        calls: [{ id: "toolu_0", name: "write", arguments: { path: "fixture" } }],
+      },
     ]);
     const invalid = await runAllowing("read", "write", DEFERRED);
     expect(invalid).toMatchObject([
@@ -926,7 +960,7 @@ describe("deferred tool calls", () => {
           {
             id: "toolu_0",
             name: "pi_claude_sdk_validation_error",
-            arguments: { error: "invalid_gateway_input" },
+            arguments: { error: "unexpected_sdk_tool" },
           },
           { id: "toolu_1", ...READ_PACKAGE },
         ],
@@ -1320,8 +1354,8 @@ describe("cache diagnostics", () => {
         maxAssistantToolUses: 2,
         errorToolResults: 1,
         hookDeniedCalls: 0,
-        invalidGatewayCalls: 1,
-        unexpectedToolCalls: 1,
+        invalidGatewayCalls: 0,
+        unexpectedToolCalls: 2,
         fallbackCalls: 0,
       },
     });

@@ -8,6 +8,7 @@ import {
   SdkProviderDefect,
   SdkQueryError,
   SdkResultError,
+  SdkToolContractError,
 } from "../sdk/errors";
 import {
   diagnoseSdkRunError,
@@ -60,6 +61,22 @@ describe("claude SDK failure diagnostics", () => {
   ] as const)("classifies %s as %s", (error, expectedKind) => {
     expect(diagnoseSdkRunError(error).kind).toBe(expectedKind);
   });
+
+  test.each(["naming", "schema"] as const)(
+    "catalog %s failures have bounded value-free diagnostics",
+    (reason) => {
+      const error = new SdkToolContractError({ reason });
+      expect(diagnoseSdkRunError(error)).toStrictEqual({
+        schemaVersion: 1,
+        kind: "tool-contract",
+        errorTag: "SdkToolContractError",
+        toolContract: reason,
+      });
+      expect(formatSdkRunError(error)).toBe(
+        `Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (${reason})`,
+      );
+    },
+  );
 
   test("emits structured routing fields without the provider message or cause", () => {
     const error = SdkQueryError.fromCause(

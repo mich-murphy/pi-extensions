@@ -28,6 +28,7 @@ export type SdkFailureDiagnostic = {
   readonly operation?: SdkQueryError["operation"];
   /** SDK terminal reason when a result supplied one. */
   readonly terminalReason?: string;
+  readonly toolContract?: "naming" | "schema";
 };
 
 const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] = [
@@ -59,6 +60,7 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
     case "SdkProtocolError": {
       return "protocol";
     }
+    case "SdkToolContractError":
     case "InvalidDeferredCallLimitError": {
       return "tool-contract";
     }
@@ -92,6 +94,7 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     schemaVersion: 1,
     kind: failureKind(error),
     errorTag: error._tag,
+    ...(error._tag === "SdkToolContractError" ? { toolContract: error.reason } : {}),
     ...(error._tag === "SdkQueryError" ? { operation: error.operation } : {}),
     ...(error._tag === "SdkResultError" && error.terminalReason !== undefined
       ? { terminalReason: safeTerminalReason(error.terminalReason) }

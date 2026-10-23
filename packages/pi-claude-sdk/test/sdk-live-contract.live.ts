@@ -74,10 +74,24 @@ function request(prompt: string, toolNames: readonly string[] = []): AgentReques
   return requestFixture({
     systemPrompt: "You are a live protocol contract probe. Follow the user request exactly.",
     promptBlocks: [textBlock(prompt)],
-    toolDescription:
-      toolNames.length === 0
-        ? "No Pi tools are available."
-        : 'Available Pi tools: [{"name":"contract_probe","description":"Complete the live deferred-tool contract probe","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}]',
+    tools: toolNames.map((name) => {
+      let field = "value";
+      if (name === "read") {
+        field = "path";
+      }
+      if (name === "bash") {
+        field = "command";
+      }
+      return {
+        name,
+        description: `Live ${name} contract`,
+        parameters: {
+          type: "object",
+          properties: { [field]: { type: "string" } },
+          required: [field],
+        },
+      };
+    }),
     toolNames: new Set(toolNames),
   });
 }

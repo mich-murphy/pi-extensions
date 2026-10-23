@@ -111,7 +111,7 @@ describe("conversation serialization", () => {
 });
 
 describe("agent request construction", () => {
-  test("builds an honest Pi system prompt and a catalog for the deferred tool gateway", () => {
+  test("builds an honest Pi system prompt and a structured declared-tool catalog", () => {
     const request = buildAgentRequest(
       contextFixture({
         systemPrompt: "Repository rule: run tests.",
@@ -131,10 +131,8 @@ describe("agent request construction", () => {
     );
 
     expect(request.systemPrompt).toContain("You are the model inside Pi Coding Agent");
-    expect(request.systemPrompt).toContain('Every gateway call must include an "arguments" object');
-    expect(request.systemPrompt).toContain('never alongside "name"');
-    expect(request.toolDescription).toContain('The "arguments" object is required');
-    expect(request.toolDescription).toContain("never at the gateway's top level");
+    expect(request.systemPrompt).toContain("invoke its declared mcp__pi__ tool directly");
+    expect(request.tools).toMatchObject([{ name: "read", parameters: { required: ["path"] } }]);
     expect(request.systemPrompt).not.toContain("Repository rule: run tests.");
     expect(request.systemPrompt).not.toContain("You are Claude Code");
     expect(request.promptBlocks[0]?.text).toContain(
@@ -258,7 +256,7 @@ describe("prompt and tools replayed from the transcript", () => {
     );
 
     expect(request.toolNames).toStrictEqual(new Set());
-    expect(request.toolDescription).toContain("Available Pi tools: []");
+    expect(request.toolDescription).toBe("[]");
   });
 });
 
