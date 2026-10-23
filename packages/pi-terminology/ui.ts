@@ -23,7 +23,7 @@ export function renderReminder(matches: readonly Match[]): string[] {
   const shown = matches.slice(0, MAX_VISIBLE_TERMS).map((match) => match.concept.label);
   const more = matches.length > shown.length ? ` +${matches.length - shown.length} more` : "";
   return [
-    `Terms: ${shown.join(", ")}${more}. Ctrl+Shift+T or /terms for details; /terms-hide <id> hides one.`,
+    `Terms: ${shown.join(", ")}${more}. Ctrl+Shift+T or /terminology for details; /terminology-hide <id> hides one.`,
   ];
 }
 
@@ -51,6 +51,7 @@ class TerminologyBrowser implements Component {
     placeholder: "label, alias, domain, source",
   });
   private selected = 0;
+  private detailOffset = 0;
   private readonly history: string[] = [];
 
   constructor(
@@ -77,6 +78,19 @@ class TerminologyBrowser implements Component {
       this.escape();
       return;
     }
+    if (matchesKey(data, Key.ctrl("down")) || matchesKey(data, Key.ctrl("up"))) {
+      this.detailOffset = Math.max(
+        0,
+        this.detailOffset + (matchesKey(data, Key.ctrl("down")) ? 1 : -1),
+      );
+      this.requestRender();
+      return;
+    }
+    if (matchesKey(data, Key.ctrl("end")) || matchesKey(data, Key.ctrl("home"))) {
+      this.detailOffset = matchesKey(data, Key.ctrl("end")) ? Number.MAX_SAFE_INTEGER : 0;
+      this.requestRender();
+      return;
+    }
     if (matchesKey(data, Key.up)) {
       this.move(-1);
       return;
@@ -98,6 +112,7 @@ class TerminologyBrowser implements Component {
       return;
     }
     this.input.handleInput(data);
+    this.detailOffset = 0;
     this.selected = Math.min(this.selected, Math.max(0, this.matches().length - 1));
     this.requestRender();
   }
@@ -112,7 +127,7 @@ class TerminologyBrowser implements Component {
       ...this.renderCurrent(width),
       ...this.renderList(matches, width),
       ...this.renderDetails(selected, width),
-      truncateToWidth("↑/↓ move  Enter/→ related  Esc back/clear/close  q searches", width),
+      truncateToWidth("↑/↓ move  Ctrl+↑/↓ details  Enter/→ related  Esc back/clear/close", width),
     ];
   }
 
@@ -162,9 +177,20 @@ class TerminologyBrowser implements Component {
     if (concept === undefined) {
       return [];
     }
-    return detailLines(concept, this.currentMatches)
-      .flatMap((line) => wrapTextWithAnsi(line, width))
-      .slice(0, DETAIL_ROWS);
+    const lines = detailLines(concept, this.currentMatches).flatMap((line) =>
+      wrapTextWithAnsi(line, width),
+    );
+    this.detailOffset = Math.min(this.detailOffset, Math.max(0, lines.length - DETAIL_ROWS));
+    const window = lines.slice(this.detailOffset, this.detailOffset + DETAIL_ROWS);
+    return lines.length <= DETAIL_ROWS
+      ? window
+      : [
+          truncateToWidth(
+            `Details ${String(this.detailOffset + 1)}–${String(this.detailOffset + window.length)} of ${String(lines.length)} · Ctrl+Home/End first/last`,
+            width,
+          ),
+          ...window,
+        ];
   }
 
   private matches(): readonly Concept[] {
@@ -176,6 +202,7 @@ class TerminologyBrowser implements Component {
   }
 
   private move(delta: number): void {
+    this.detailOffset = 0;
     const count = this.matches().length;
     if (count === 0) {
       this.selected = 0;
@@ -193,6 +220,7 @@ class TerminologyBrowser implements Component {
     if (nextIndex < 0) {
       return;
     }
+    this.detailOffset = 0;
     this.history.push(this.input.getValue());
     this.input.setValue("");
     this.selected = nextIndex;
@@ -200,6 +228,7 @@ class TerminologyBrowser implements Component {
   }
 
   private escape(): void {
+    this.detailOffset = 0;
     if (this.input.getValue().length > 0) {
       this.input.setValue("");
       this.selected = 0;

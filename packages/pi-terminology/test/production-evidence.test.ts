@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { criteriaHash, isPolicy, loadCatalogue } from "../catalogue";
+import { criteriaHash, isPolicy } from "../catalogue";
 import { JEV_MODEL_ID } from "../classifier-request";
 import { computeRealPromptMetrics } from "../real-prompt-metrics";
 import type { RealPromptGold, RealPromptObservation } from "../real-prompt-metrics";
-import { stableHash } from "../validation";
+import { composeGlossaries, parseGlossary, stableHash } from "../validation";
+import { expectOk } from "./helpers";
 
 const directory = new URL("../evals/production/", import.meta.url);
 const manifestBytes = readFileSync(new URL("manifest.json", directory));
@@ -19,7 +20,18 @@ const observations = readFileSync(new URL("synthetic-observations.jsonl", direct
     const value: unknown = JSON.parse(line);
     return observation(value);
   });
-const loaded = loadCatalogue();
+// This evidence measured the archived ten-concept catalogue, not the expanded
+// runtime. Never reinterpret consumed observations as approval for new terms.
+const archivedCatalogue = expectOk(
+  composeGlossaries([
+    expectOk(parseGlossary(readJSON("core.json"), "archived production", "core")),
+  ]),
+);
+const archivedPolicy = readJSON("policy.json");
+if (!isPolicy(archivedPolicy, archivedCatalogue)) {
+  throw new Error("Invalid archived production policy.");
+}
+const loaded = { ok: true, catalogue: archivedCatalogue, policy: archivedPolicy };
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 function readJSON(name: string): unknown {
@@ -141,7 +153,7 @@ describe("committed production evidence (offline only)", () => {
   test.each(entries(property(manifest, "protocol", "sourceHashes")))(
     "preserves frozen production source %s",
     (path, expected) => {
-      expect(sha(readFileSync(new URL(`../${path}`, import.meta.url)))).toBe(expected);
+      expect(sha(readFileSync(new URL(`source/${path}.txt`, directory)))).toBe(expected);
     },
   );
 

@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "kind": "recognition-repair-development-source-freeze-not-acceptance",
+  "sources": [
+    {
+      "path": "catalogue.ts",
+      "archive": "source/catalogue.ts.txt",
+      "sha256": "4e8481b288711fe337b28550c25fe26b79955cda2441dad28be099555513d420"
+    },
+    {
+      "path": "index.ts",
+      "archive": "source/index.ts.txt",
+      "sha256": "6f5803081d67f8bd462f5701844d75447f126bf52929be14d25dd91d55973411"
+    },
+    {
+      "path": "ui.ts",
+      "archive": "source/ui.ts.txt",
+      "sha256": "9ca6a9954dc0b29616f669ab8763d48fc648c9edb14e4625dad9d4e8e3417a59"
+    },
+    {
+      "path": "state.ts",
+      "archive": "source/state.ts.txt",
+      "sha256": "42f9bb53db27eef3ce8597d90299654e94a7288523161da2fe1ba0c80852f522"
+    },
+    {
+      "path": "types.ts",
+      "archive": "source/types.ts.txt",
+      "sha256": "1820f94865fb3a40d62d2ed24e1e5231d1bd5e969f7e425c962ebd52ffa8cf67"
+    },
+    {
+      "path": "display.ts",
+      "archive": "source/display.ts.txt",
+      "sha256": "aca311fda79e93052128d6a8601aef60d8f611d72de2c7a3624e42c4a825bfce"
+    },
+    {
+      "path": "classifier-request.ts",
+      "archive": "source/classifier-request.ts.txt",
+      "sha256": "bae99cd734c0709346bb83da5b92ba5f92a0618cc65c6082d9551d04143ec4d4"
+    },
+    {
+      "path": "native-matcher.ts",
+      "archive": "source/native-matcher.ts.txt",
+      "sha256": "463fe1e78a173b628bb3a8d2bb063bd4940d9482c30134637095b2e662a855e1"
+    },
+    {
+      "path": "selection.ts",
+      "archive": "source/selection.ts.txt",
+      "sha256": "548029ea466dd2514d871cb227f69f843821cd24816a5cc1d80d223834c7e4f2"
+    },
+    {
+      "path": "validation.ts",
+      "archive": "source/validation.ts.txt",
+      "sha256": "edc9b43f4c35267dc39241d862990dfb9be3cf6ed9093e5fb16db95e23c516e7"
+    },
+    {
+      "path": "eval-budget.ts",
+      "archive": "source/eval-budget.ts.txt",
+      "sha256": "ff088695a72111568e44249fdce84ec4909297425d1b4edf67221771f1f031a1"
+    },
+    {
+      "path": "recall-budget.ts",
+      "archive": "source/recall-budget.ts.txt",
+      "sha256": "dba2de53fa6137b653b4737855f0dca96f57b313635a0ef3b46eeaec7f802afb"
+    },
+    {
+      "path": "real-prompt-metrics.ts",
+      "archive": "source/real-prompt-metrics.ts.txt",
+      "sha256": "eeead9a142ab6135be07b6afca5ad1be04db489add5194f4df0ba250a1380f82"
+    },
+    {
+      "path": "eval-metrics.ts",
+      "archive": "source/eval-metrics.ts.txt",
+      "sha256": "85a751c8b3bc1ad8f0b7ddecfa64969e53cd42dab04775d38e8d8501b63184bd"
+    },
+    {
+      "path": "recall-aggregate-calibration.ts",
+      "archive": "source/recall-aggregate-calibration.ts.txt",
+      "sha256": "fcb229525aefbc1ee1e20ccf1793c50ef1155d1cd981a26e33be7554211edf81"
+    },
+    {
+      "path": "preview-policy.ts",
+      "archive": "source/preview-policy.ts.txt",
+      "sha256": "e9d0311a02151a08a17fc9dda461644501f7e7b7430d3d7584f335fc2992d82a"
+    },
+    {
+      "path": "scripts/evaluate.ts",
+      "archive": "source/scripts/evaluate.ts.txt",
+      "sha256": "d77de904a4d19b1ec1415971052a2da55d0027fbebf441b0e2fe53936a409ae4"
+    },
+    {
+      "path": "scripts/recall-contract.ts",
+      "archive": "source/scripts/recall-contract.ts.txt",
+      "sha256": "d8e30f674fa2dd5345b4dfa32ac84d80dbfcedf52f39c7827e35f01a905ee738"
+    },
+    {
+      "path": "scripts/recall-scoring.ts",
+      "archive": "source/scripts/recall-scoring.ts.txt",
+      "sha256": "a3bcd4816bb892e0dadd0efe869bc69f463047e89ecb6eefe6e79aaa7823b611"
+    },
+    {
+      "path": "scripts/evaluate-repair.ts",
+      "archive": "source/scripts/evaluate-repair.ts.txt",
+      "sha256": "4402bddbc4ac59f979e0debb1c90222a78801e1f907e1ad23f32110a74d5d23b"
+    },
+    {
+      "path": "scripts/repair-contract.ts",
+      "archive": "source/scripts/repair-contract.ts.txt",
+      "sha256": "e0b11e05ab55f9c8fb788726848f3b8203914e001bc92a4d731fde574b6f2e47"
+    },
+    {
+      "path": "evals/repair/recognition-core.json",
+      "archive": "source/evals/repair/recognition-core.json.txt",
+      "sha256": "bdc30977310ec5861d5ba53f36f7c89d6a00bab026e0b598b7da56a5a7e63a65"
+    },
+    {
+      "path": "evals/repair/authorization.json",
+      "archive": "source/evals/repair/authorization.json.txt",
+      "sha256": "507da2b60c4990d41c7a5b0b43b19d6a28d4d79f299a0bf72f30f17b703ef450"
+    },
+    {
+      "path": "evals/recall/authorization.json",
+      "archive": "source/evals/recall/authorization.json.txt",
+      "sha256": "beee0b2cb429415150c161191703b2af5b34549e480b421b0fc60d0658fb6b2f"
+    },
+    {
+      "path": "evals/recall/source-manifest.json.txt",
+      "archive": "source/evals/recall/source-manifest.json.txt.txt",
+      "sha256": "30803396c99a7fc3a7357e5e5e5293098818b467104d3d4e8cf30daa5e07acd9"
+    },
+    {
+      "path": "evals/recall/development-ledger.json.txt",
+      "archive": "source/evals/recall/development-ledger.json.txt.txt",
+      "sha256": "272d9e60ad7d15ad540522f4ba0bb47b4411d71bcc26f579ff3787eb0f1067db"
+    }
+  ]
+}

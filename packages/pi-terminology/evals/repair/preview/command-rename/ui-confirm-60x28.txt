@@ -1,0 +1,28 @@
+ consumed agent-reviewed public development.; Conservative
+ precision 88.06%; 18 ambiguous displayed hits.;
+ Natural/private-request performance, stability and
+ usefulness remain unmeasured.
+ Browse with /terminology. Use /terminology-auth-refresh
+ after changing credentials.
+
+────────────────────────────────────────────────────────────
+
+ Enable EXPERIMENTAL terminology preview?
+ Sends current request text to TypeSafe jev-1.13.0: 2
+ attempts (failures count).
+ Total ≤ $0.0056; main Pi model usage additional.
+ Published-tariff estimate, not invoice; unvalidated.
+ No retries; 5s deadline; session only; no context
+ injection.
+ Gaps (5): Refactoring P46%; Low coupling P63%
+ /terminology-preview status: all gaps;
+ /terminology-preview off: stop.
+
+ → Yes
+   No
+
+ ↑↓ navigate  enter select  escape/ctrl+c cancel
+
+────────────────────────────────────────────────────────────
+/private/tmp/pi-preview-owned-2wpd1pjy/cwd
+0.0%/0                                               unknown

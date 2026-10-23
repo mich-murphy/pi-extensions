@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "status": "native-development-continuation-complete-feasible-not-acceptance",
+  "developmentOnly": true,
+  "measured": false,
+  "accepted": false,
+  "promotable": false,
+  "nativeCollectionComplete": true,
+  "originalPhaseRemainsInterrupted": true,
+  "replayAuthorized": false,
+  "consumedReplayExecuted": false,
+  "acceptanceExecuted": false,
+  "previewArtifactAvailable": false,
+  "servingModelAttested": false,
+  "modelRequested": "jev-1.13.0",
+  "calls": {
+    "before": 1428,
+    "originalRepair": 416,
+    "newSucceeded": 196,
+    "newFailed": 0,
+    "newReserved": 0,
+    "combinedDevelopment": 612,
+    "total": 1624
+  },
+  "budget": {
+    "sharedCapNanos": 5000000000,
+    "maximumTotalAttempts": 1800,
+    "newReservedNanos": 539492352,
+    "totalReservedNanos": 4470079488,
+    "newObservedTariffNanos": 100139088,
+    "totalObservedTariffNanos": 821852976,
+    "estimateIsInvoice": false,
+    "newInputTokens": 2384264,
+    "newOutputTokens": 216188
+  },
+  "development": {
+    "feasible": true,
+    "overall": {
+      "tp": 575,
+      "fp": 60,
+      "fn": 22,
+      "ambiguousHits": 18,
+      "redundantReminderFp": 0,
+      "overSuppressedFn": 0,
+      "precision": 0.905511811023622,
+      "conservativePrecision": 0.8805513016845329,
+      "recall": 0.9631490787269682
+    },
+    "macroRecall": 0.976398438163144,
+    "minimumConceptRecall": 0.7142857142857143,
+    "gaps": [],
+    "sourceLabels": "agent-reviewed consumed public development, not human ground truth"
+  },
+  "processOwnership": {
+    "supervisorPid": 16266,
+    "childPid": 16267,
+    "startedAtUtc": "2026-10-23T01:04:44.906153+00:00",
+    "finishedAtUtc": "2026-10-23T01:06:03.335529+00:00",
+    "exitCode": 0,
+    "retryPerformed": false,
+    "foregroundTimeout": null,
+    "elapsedSeconds": 78.429
+  },
+  "latency": {
+    "definition": "native matcher plus durable successful settlement, excluding pre-attempt source validation",
+    "medianMs": 297,
+    "maxMs": 673
+  },
+  "artifacts": {
+    "receipt.json.txt": "5f2af6f52f8f313d99948dc8c052c880e79a0b64576511ea6d7d7de0872762f9",
+    "source-manifest.json.txt": "9e6c7683473fe44544bce2d6371018e1eea9b92693f87c2f47d0daa3ba3e58bb",
+    "combined-completion.json.txt": "439049efc6f4a3b16651d3319bc4b80a0a3bfb20d2b3efc2f78e7d19f3b0e675",
+    "observations.jsonl": "df83a774551a150bbeb95c9722d77133ff865f253b46cacefca5beaeb42cb061",
+    "report.json.txt": "257fa6f502b3b7553bec891779d9c203772cb999de499ee875c214aab703577f",
+    "fit-seal.json.txt": "f0e71c90bb8837beac12d4010779b0388b2d41a3beaddf053e9cacd78480126e",
+    "preflight.json.txt": "389658412507cb21ffcd141da6695312013805471d7e2c6a6a81388bffbf5ada",
+    "process.json.txt": "63b49493baf10f026cc2b8b4835bef684785b49df9cfa7edd2859d202d182e68",
+    "child.json.txt": "63f91453a8e54fa7a8131950575789197bde319101b5fdd630fdc7cf44cfb7fa",
+    "exit.json.txt": "fd63d4c74754d7551ef1e554e568e94c0818a628a6c21b2bbdd09e48c634ecbf",
+    "supervisor.py.txt": "02299581c69cfe3e626512ed6c272c675d1b324886adfc0ab5731eafcc4fee3b",
+    "development-ledger.json.txt": "0358f5055b55ed235006d32fc1a20fd70072052179944d90daa3f4fa6c57d8d3",
+    "authorization.json": "bdeb1cdeca169c5429ab4fc16dcb48b002ce88d13cb7168f027c638638fe9bae"
+  }
+}

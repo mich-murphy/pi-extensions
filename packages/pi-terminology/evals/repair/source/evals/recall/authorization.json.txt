@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "status": "approved-new-experiment-not-global-activation",
+  "approvedAtUtc": "2026-10-22",
+  "userApproval": "yes go ahead",
+  "capNanos": 5000000000,
+  "maximumAttempts": 1800,
+  "automaticRetries": 0,
+  "model": "jev-1.13.0",
+  "precisionTarget": 0.9,
+  "overallRecallTarget": 0.85,
+  "privateRecallTarget": 0.85,
+  "perConceptSyntheticRecallTarget": 0.7,
+  "minimumFreshSyntheticPositivesPerConcept": 10,
+  "minimumDistinctPrivatePositivePrompts": 20,
+  "positivePrivateUsefulPromptGainRequired": true,
+  "existingExperimentAttemptsNotReused": 359,
+  "samplingSeed": 2026102202
+}

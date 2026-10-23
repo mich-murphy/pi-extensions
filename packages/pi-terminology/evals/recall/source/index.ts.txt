@@ -1,0 +1,608 @@
+import type { Model } from "@earendil-works/pi-ai";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+  ExtensionUIContext,
+} from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
+import { loadCatalogue } from "./catalogue";
+import { extractClassifierText } from "./classifier-request";
+import { escapeForDisplay } from "./display";
+import { matchWithNativeClassifier } from "./native-matcher";
+import type { NativeClassifierRegistry } from "./native-matcher";
+import { findProjectGlossary, readApprovedProjectGlossary } from "./project";
+import { nextCooldown, promptTooLarge, selectMatches, suppressAlreadyNamed } from "./selection";
+import { TerminologyStateStore } from "./state";
+import type { Catalogue, Match, Policy } from "./types";
+import { clearReminder, createTerminologyBrowser, showReminder } from "./ui";
+
+export type InputEvent = {
+  readonly text: string;
+  readonly source: "interactive" | "rpc" | "extension";
+  readonly images?: readonly unknown[];
+};
+export type InputResult = { readonly action: "continue" };
+export type ModelRegistry = ExtensionContext["modelRegistry"];
+export type TerminologyModelRegistry = Pick<
+  ModelRegistry,
+  "getProviderAuthStatus" | "getApiKeyAndHeaders"
+> &
+  NativeClassifierRegistry;
+export type SessionManager = Pick<ExtensionContext["sessionManager"], "getSessionId">;
+export type TerminologyUI = {
+  readonly notify: ExtensionUIContext["notify"];
+  readonly setWidget: ExtensionUIContext["setWidget"];
+};
+export type TerminologyContext = Pick<ExtensionContext, "cwd" | "mode" | "hasUI"> & {
+  readonly modelRegistry: TerminologyModelRegistry;
+  readonly sessionManager: SessionManager;
+  readonly ui: TerminologyUI;
+};
+export type TerminologyCommandContext = Pick<ExtensionCommandContext, "cwd" | "mode" | "hasUI"> & {
+  readonly modelRegistry: TerminologyModelRegistry;
+  readonly sessionManager: SessionManager;
+  readonly ui: TerminologyUI & Pick<ExtensionUIContext, "confirm" | "custom">;
+};
+export type TerminologyAPI = Pick<ExtensionAPI, "on" | "registerCommand" | "registerShortcut">;
+
+type ScheduledPrompt = {
+  readonly generation: number;
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly prompt: string;
+  readonly expiresAt: number;
+  readonly abort: AbortController;
+};
+
+export type LoadedCatalogue = {
+  readonly catalogue: Catalogue;
+  readonly policy: Policy;
+};
+
+export type LoaderContext = Pick<TerminologyContext, "cwd" | "ui">;
+export type CatalogueLoader = (ctx: LoaderContext) => LoadedCatalogue;
+
+const TOTAL_DEADLINE_MS = 5000;
+const AUTH_PREFLIGHT_MS = 10_000;
+
+export default function piTerminology(pi: TerminologyAPI): void {
+  const extension = new TerminologyExtension(new TerminologyStateStore());
+  pi.registerCommand("terms", {
+    description: "Browse source-backed terminology entries",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.browse(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-status", {
+    description: "Explain terminology catalogue, policy and authentication readiness",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      extension.status(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-approve", {
+    description: "Approve reading this repository's .pi/terminology.json",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.approve(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-auth-refresh", {
+    description: "Refresh terminology classifier authentication for this TUI session",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.refreshAuth(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-hide", {
+    description: "Persistently hide a terminology reminder by concept ID",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.hide(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-restore", {
+    description: "Restore a persistently hidden terminology reminder by concept ID",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.restore(args, ctx);
+    },
+  });
+  pi.registerCommand("terms-dismiss", {
+    description: "Dismiss a terminology reminder by concept ID for this session",
+    handler: async (args: string, ctx: TerminologyCommandContext) => {
+      await extension.dismiss(args, ctx);
+    },
+  });
+  pi.registerShortcut(Key.ctrlShift("t"), {
+    description: "Open terminology browser",
+    handler: async (ctx: TerminologyCommandContext) => {
+      await extension.browse("", ctx);
+    },
+  });
+  pi.on("session_start", (_event: unknown, ctx: TerminologyContext) => {
+    extension.sessionStart(ctx);
+  });
+  pi.on("session_shutdown", () => {
+    extension.cancelAll();
+  });
+  pi.on("input", (event: InputEvent, ctx: TerminologyContext): InputResult =>
+    extension.input(event, ctx),
+  );
+}
+
+export class TerminologyExtension {
+  private generation = 0;
+  private authEpoch = 0;
+  private running: Promise<void> = Promise.resolve();
+  private readonly aborts = new Map<string, AbortController>();
+  private readonly sessionDismissed = new Set<string>();
+  private readonly sessionNotices = new Set<string>();
+  private nativeAuthReady = false;
+  private lastMatches: readonly Match[] = [];
+
+  constructor(
+    private readonly store: TerminologyStateStore,
+    private readonly loader?: CatalogueLoader,
+  ) {}
+
+  sessionStart(ctx: TerminologyContext): void {
+    this.cancelAll();
+    this.authEpoch += 1;
+    this.nativeAuthReady = false;
+    this.sessionDismissed.clear();
+    this.sessionNotices.clear();
+    this.lastMatches = [];
+    if (ctx.mode === "tui") {
+      clearReminder(ctx.ui);
+      void this.preflightAuth(ctx, this.authEpoch);
+    }
+  }
+
+  cancelAll(): void {
+    this.generation += 1;
+    this.authEpoch += 1;
+    for (const abort of this.aborts.values()) {
+      abort.abort();
+    }
+    this.aborts.clear();
+  }
+
+  async browse(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    const loaded = this.load(ctx);
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify(
+        "Terminology browsing is available in TUI mode. Automatic reminders remain disabled outside TUI.",
+        "info",
+      );
+      return;
+    }
+    await ctx.ui.custom((tui, _theme, _keybindings, done) =>
+      createTerminologyBrowser(tui, loaded.catalogue, args, this.lastMatches, () => {
+        done(undefined);
+      }),
+    );
+  }
+
+  status(args: string, ctx: TerminologyCommandContext): void {
+    if (args.trim().length > 0) {
+      ctx.ui.notify("Usage: /terms-status", "error");
+      return;
+    }
+    const loaded = this.load(ctx);
+    const configured = ctx.modelRegistry.getProviderAuthStatus("typesafe").configured;
+    ctx.ui.notify(
+      [
+        `Terminology: ${String(loaded.catalogue.concepts.length)} concepts; ${String(loaded.catalogue.recognition.length)} recognizers.`,
+        `Reminder policy: ${loaded.policy.measured ? "measured" : "unmeasured; automatic reminders disabled"}.`,
+        `Mode: ${ctx.mode}; automatic reminders require interactive TUI input.`,
+        `TypeSafe credentials: ${configured ? "configured" : "not configured"}; TUI authentication: ${this.nativeAuthReady ? "ready" : "not ready"}.`,
+        "Browse with /terms. Use /terms-auth-refresh after changing credentials.",
+      ].join("\n"),
+      "info",
+    );
+  }
+
+  async approve(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    if (args.trim().length > 0) {
+      ctx.ui.notify("Usage: /terms-approve", "error");
+      return;
+    }
+    const candidate = findProjectGlossary(ctx.cwd);
+    if (candidate === undefined) {
+      ctx.ui.notify(
+        "No .pi/terminology.json was found for this repository or current directory.",
+        "info",
+      );
+      return;
+    }
+    if (!ctx.hasUI) {
+      ctx.ui.notify("/terms-approve requires an interactive or RPC UI.", "error");
+      return;
+    }
+    const approved = await ctx.ui.confirm(
+      "Approve terminology glossary?",
+      `Read ${escapeForDisplay(candidate.canonicalPath)} for terminology entries?`,
+    );
+    if (!approved) {
+      ctx.ui.notify("Terminology glossary was not approved.", "info");
+      return;
+    }
+    this.store.approveGlossary(candidate.canonicalPath);
+    ctx.ui.notify("Terminology glossary approved.", "info");
+  }
+
+  async refreshAuth(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    if (args.trim().length > 0) {
+      ctx.ui.notify("Usage: /terms-auth-refresh", "error");
+      return;
+    }
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify("Terminology auth refresh is only needed in TUI mode.", "info");
+      return;
+    }
+    this.authEpoch += 1;
+    await this.preflightAuth(ctx, this.authEpoch);
+    ctx.ui.notify(
+      this.nativeAuthReady
+        ? "Terminology classifier authentication is ready."
+        : "Terminology classifier authentication is not ready.",
+      this.nativeAuthReady ? "info" : "warning",
+    );
+  }
+
+  async hide(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    const conceptId = args.trim();
+    if (conceptId.length === 0) {
+      ctx.ui.notify("Usage: /terms-hide <concept-id>", "error");
+      return;
+    }
+    this.store.hideConcept(conceptId);
+    this.lastMatches = this.lastMatches.filter((match) => match.concept.id !== conceptId);
+    if (ctx.mode === "tui") {
+      showReminder(ctx.ui, this.lastMatches);
+    }
+  }
+
+  async restore(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    const conceptId = args.trim();
+    if (conceptId.length === 0) {
+      ctx.ui.notify("Usage: /terms-restore <concept-id>", "error");
+      return;
+    }
+    this.store.restoreConcept(conceptId);
+    ctx.ui.notify(`Restored ${conceptId}.`, "info");
+  }
+
+  async dismiss(args: string, ctx: TerminologyCommandContext): Promise<void> {
+    const conceptId = args.trim();
+    if (conceptId.length === 0) {
+      ctx.ui.notify("Usage: /terms-dismiss <concept-id>", "error");
+      return;
+    }
+    this.sessionDismissed.add(conceptId);
+    this.lastMatches = this.lastMatches.filter((match) => match.concept.id !== conceptId);
+    if (ctx.mode === "tui") {
+      showReminder(ctx.ui, this.lastMatches);
+    }
+  }
+
+  input(event: InputEvent, ctx: TerminologyContext): InputResult {
+    if (ctx.mode !== "tui" || event.text.trim().startsWith("/")) {
+      return { action: "continue" };
+    }
+    const task = this.startModelBoundInput(event.text, ctx);
+    if (event.source !== "interactive") {
+      return { action: "continue" };
+    }
+    if (
+      (event.images !== undefined && event.images.length > 0) ||
+      task.prompt.length === 0 ||
+      promptTooLarge(task.prompt)
+    ) {
+      this.clearIfCurrent(task, ctx);
+      return { action: "continue" };
+    }
+    this.running = this.running
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await this.runMatch(task, ctx);
+        } catch {
+          this.noticeIfCurrent(
+            task,
+            ctx,
+            "runtime-failure",
+            "Terminology could not complete this reminder. Check /terms-status and the Pi agent directory's pi-terminology.json; existing state has not been reset.",
+            "warning",
+          );
+          this.clearIfCurrent(task, ctx);
+        }
+        return undefined;
+      });
+    void this.running.catch(() => undefined);
+    return { action: "continue" };
+  }
+
+  private startModelBoundInput(prompt: string, ctx: TerminologyContext): ScheduledPrompt {
+    const generation = this.generation + 1;
+    this.generation = generation;
+    const sessionId = ctx.sessionManager.getSessionId();
+    this.aborts.get(sessionId)?.abort();
+    const abort = new AbortController();
+    this.aborts.set(sessionId, abort);
+    this.lastMatches = [];
+    clearReminder(ctx.ui);
+    return {
+      generation,
+      sessionId,
+      cwd: ctx.cwd,
+      prompt,
+      expiresAt: Date.now() + TOTAL_DEADLINE_MS,
+      abort,
+    };
+  }
+
+  private async runMatch(task: ScheduledPrompt, ctx: TerminologyContext): Promise<void> {
+    if (this.isExpiredTask(task, ctx)) {
+      return;
+    }
+    const loaded = this.load(ctx);
+    if (!this.canClassify(task, ctx, loaded.policy)) {
+      return;
+    }
+    const result = await this.classifyBeforeDeadline(task, ctx, loaded);
+    this.handleMatchResult(task, ctx, loaded.catalogue, result);
+  }
+
+  private isExpiredTask(task: ScheduledPrompt, ctx: TerminologyContext): boolean {
+    return !this.isCurrent(task, ctx) || Date.now() >= task.expiresAt;
+  }
+
+  private handleMatchResult(
+    task: ScheduledPrompt,
+    ctx: TerminologyContext,
+    catalogue: Catalogue,
+    result: Awaited<ReturnType<typeof matchWithNativeClassifier>> | undefined,
+  ): void {
+    if (result === undefined || this.isExpiredTask(task, ctx)) {
+      return;
+    }
+    if (!result.ok) {
+      this.clearIfCurrent(task, ctx);
+      return;
+    }
+    this.renderSelectedMatches(task, ctx, catalogue, result.value.matches);
+  }
+
+  private canClassify(task: ScheduledPrompt, ctx: TerminologyContext, policy: Policy): boolean {
+    if (!policy.measured) {
+      this.noticeIfCurrent(
+        task,
+        ctx,
+        "policy-unmeasured",
+        "Terminology automatic reminders are disabled because this catalogue has no accepted measured policy. Browse all entries with /terms; inspect readiness with /terms-status.",
+        "info",
+      );
+      this.clearIfCurrent(task, ctx);
+      return false;
+    }
+    if (this.nativeAuthReady) {
+      return true;
+    }
+    this.noticeIfCurrent(
+      task,
+      ctx,
+      "typesafe-auth",
+      "Terminology reminders need TypeSafe auth. Browse glossary entries with /terms.",
+      "warning",
+    );
+    this.clearIfCurrent(task, ctx);
+    return false;
+  }
+
+  private async classifyBeforeDeadline(
+    task: ScheduledPrompt,
+    ctx: TerminologyContext,
+    loaded: LoadedCatalogue,
+  ): Promise<Awaited<ReturnType<typeof matchWithNativeClassifier>> | undefined> {
+    const remaining = task.expiresAt - Date.now();
+    if (remaining <= 0) {
+      return undefined;
+    }
+    const deadline = setTimeout(() => {
+      task.abort.abort();
+    }, remaining);
+    try {
+      return await matchWithNativeClassifier(
+        ctx.modelRegistry,
+        loaded.catalogue,
+        task.prompt,
+        loaded.policy.threshold,
+        task.abort.signal,
+        loaded.policy.conceptThresholds,
+      );
+    } finally {
+      clearTimeout(deadline);
+    }
+  }
+
+  private renderSelectedMatches(
+    task: ScheduledPrompt,
+    ctx: TerminologyContext,
+    catalogue: Catalogue,
+    matches: readonly Match[],
+  ): void {
+    const state = this.store.load();
+    const selected = selectMatches(
+      matches,
+      { ...state, dismissedConceptIds: this.sessionDismissed },
+      Date.now(),
+      suppressAlreadyNamed(extractClassifierText(catalogue, task.prompt), catalogue),
+    );
+    if (!this.isCurrent(task, ctx)) {
+      return;
+    }
+    this.lastMatches = selected;
+    for (const match of selected) {
+      this.store.setCooldown(match.concept.id, nextCooldown(Date.now()));
+    }
+    showReminder(ctx.ui, selected);
+  }
+
+  private load(ctx: LoaderContext): LoadedCatalogue {
+    if (this.loader !== undefined) {
+      return this.loader(ctx);
+    }
+    let state: ReturnType<TerminologyStateStore["load"]>;
+    try {
+      state = this.store.load();
+    } catch {
+      // Keep the glossary available without discarding approvals, preferences or
+      // corrupt bytes. Do not read project files or classify until state is fixed.
+      this.notice(
+        ctx,
+        "state-unreadable",
+        "Terminology state could not be read. Bundled browsing remains available, but project glossaries and automatic reminders are disabled. Repair pi-terminology.json in your Pi agent directory; it has not been overwritten.",
+        "warning",
+      );
+      const core = loadCatalogue();
+      return {
+        catalogue: core.catalogue,
+        policy: { ...core.policy, measured: false },
+      };
+    }
+    const candidate = findProjectGlossary(ctx.cwd);
+    let projectText: string | undefined;
+    try {
+      projectText =
+        candidate === undefined
+          ? undefined
+          : readApprovedProjectGlossary(candidate, state.approvedGlossaries);
+    } catch {
+      this.notice(
+        ctx,
+        "project-io",
+        "Could not read the approved project terminology glossary; using the bundled core glossary.",
+        "warning",
+      );
+    }
+    const loaded = loadCatalogue(projectText);
+    if (!loaded.ok) {
+      this.notice(ctx, `catalogue:${loaded.error}`, loaded.error, "error");
+      return { catalogue: loaded.catalogue, policy: loaded.policy };
+    }
+    if (loaded.warning !== undefined) {
+      this.notice(ctx, `catalogue:${loaded.warning}`, loaded.warning, "warning");
+    }
+    return { catalogue: loaded.catalogue, policy: loaded.policy };
+  }
+
+  private isCurrent(task: ScheduledPrompt, ctx: TerminologyContext): boolean {
+    return (
+      !task.abort.signal.aborted &&
+      task.generation === this.generation &&
+      task.sessionId === ctx.sessionManager.getSessionId() &&
+      task.cwd === ctx.cwd
+    );
+  }
+
+  private clearIfCurrent(task: ScheduledPrompt, ctx: TerminologyContext): void {
+    if (this.isCurrent(task, ctx)) {
+      this.lastMatches = [];
+      clearReminder(ctx.ui);
+    }
+  }
+
+  private noticeIfCurrent(
+    task: ScheduledPrompt,
+    ctx: TerminologyContext,
+    key: string,
+    message: string,
+    type: "info" | "warning" | "error",
+  ): void {
+    if (this.isCurrent(task, ctx)) {
+      this.notice(ctx, key, message, type);
+    }
+  }
+
+  private notice(
+    ctx: Pick<TerminologyContext, "ui">,
+    key: string,
+    message: string,
+    type: "info" | "warning" | "error",
+  ): void {
+    if (!this.sessionNotices.has(key)) {
+      this.sessionNotices.add(key);
+      ctx.ui.notify(message, type);
+    }
+  }
+
+  private async preflightAuth(ctx: TerminologyContext, epoch: number): Promise<void> {
+    this.nativeAuthReady = false;
+    if (ctx.mode !== "tui") {
+      return;
+    }
+    const sessionId = ctx.sessionManager.getSessionId();
+    const cwd = ctx.cwd;
+    const model = ctx.modelRegistry.findOfType("classifier", "typesafe", "jev-latest");
+    if (model === undefined) {
+      return;
+    }
+    const timeout = AbortSignal.timeout(AUTH_PREFLIGHT_MS);
+    try {
+      const result = await Promise.race([
+        ctx.modelRegistry.getApiKeyAndHeaders(asChatModel(model)),
+        new Promise<undefined>((resolve) => {
+          timeout.addEventListener(
+            "abort",
+            () => {
+              resolve(undefined);
+            },
+            { once: true },
+          );
+        }),
+      ]);
+      if (this.isCurrentAuth(ctx, epoch, sessionId, cwd)) {
+        this.nativeAuthReady = result?.ok === true && result.apiKey !== undefined;
+      }
+    } catch {
+      if (this.isCurrentAuth(ctx, epoch, sessionId, cwd)) {
+        this.notice(
+          ctx,
+          "typesafe-auth",
+          "Terminology reminders need TypeSafe auth. Browse glossary entries with /terms.",
+          "warning",
+        );
+      }
+    }
+  }
+
+  private isCurrentAuth(
+    ctx: TerminologyContext,
+    epoch: number,
+    sessionId: string,
+    cwd: string,
+  ): boolean {
+    return (
+      epoch === this.authEpoch && sessionId === ctx.sessionManager.getSessionId() && cwd === ctx.cwd
+    );
+  }
+}
+
+function asChatModel(model: ReturnType<NativeClassifierRegistry["findOfType"]>): Model<string> {
+  if (model === undefined) {
+    throw new Error("Classifier model is unavailable.");
+  }
+  return {
+    id: model.id,
+    name: model.name,
+    api: model.api,
+    provider: model.provider,
+    baseUrl: model.baseUrl,
+    input: model.input,
+    cost: model.cost,
+    ...(model.headers === undefined ? {} : { headers: model.headers }),
+    ...(model.inputLimits === undefined ? {} : { inputLimits: model.inputLimits }),
+    type: "chat",
+    reasoning: false,
+    contextWindow: model.contextWindow,
+    maxTokens: 1,
+  };
+}

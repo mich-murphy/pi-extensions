@@ -1,0 +1,48 @@
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+
+checkout = Path('/Users/mm/dev/pi-extensions')
+root = Path.home() / '.pi/agent/pi-terminology/recall-2026-10-22'
+directory = root / 'repair/continuation'
+command = ['node', '--import', 'jiti/register', 'packages/pi-terminology/scripts/evaluate-repair-continuation.ts', '--manifest', str(root / 'repair/manifest.json'), '--authorization', str(directory / 'authorization.json')]
+os.umask(0o077)
+
+def stamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def record(name, value):
+    with open(directory / name, 'x', encoding='utf-8') as stream:
+        stream.write(json.dumps(value, indent=2) + '\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+preflight_path = Path('/tmp/pi-terminology-continuation-dry-run.json')
+preflight_bytes = preflight_path.read_bytes()
+preflight = json.loads(preflight_bytes)
+assert preflight['dryRun'] is True and preflight['planned'] == 196
+assert preflight['budget']['attempts'] == 1428 and preflight['budget']['projectedNanos'] == 4470079488
+for group in ['originalSources', 'continuationSources']:
+    for path, expected in preflight['binding'][group].items():
+        actual = hashlib.sha256((checkout / 'packages/pi-terminology' / path).read_bytes()).hexdigest()
+        assert actual == expected, 'Source changed after successful preflight'
+assert not (directory / 'receipt.json').exists(), 'Consumed continuation receipt'
+assert not (root / 'ledger.json.lock').exists(), 'Existing ledger owner'
+record('process.json', {'schemaVersion': 1, 'supervisorPid': os.getpid(), 'startedAtUtc': stamp(), 'cwd': str(checkout), 'command': command, 'preflightSha256': hashlib.sha256(preflight_bytes).hexdigest(), 'supervisorSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'maximumNewCalls': 196, 'automaticRetries': 0, 'foregroundTimeout': None})
+with open(directory / 'cli-output.json', 'x', encoding='utf-8') as output, open(directory / 'cli-stderr.log', 'x', encoding='utf-8') as errors:
+    child = subprocess.Popen(command, cwd=checkout, stdin=subprocess.DEVNULL, stdout=output, stderr=errors, start_new_session=True)
+    record('child.json', {'pid': child.pid, 'supervisorPid': os.getpid(), 'startedAtUtc': stamp()})
+    code = child.wait()
+    output.flush()
+    errors.flush()
+    os.fsync(output.fileno())
+    os.fsync(errors.fileno())
+record('exit.json', {'exitCode': code, 'finishedAtUtc': stamp(), 'childPid': child.pid, 'supervisorPid': os.getpid(), 'retryPerformed': False})

@@ -1,0 +1,58 @@
+"""Offline consumed-development search; no inference, promotion or durable phase mutation."""
+from pathlib import Path
+import json, math, random, os
+r=Path.home()/'.pi/agent/pi-terminology/recall-2026-10-22'
+ns={};src=(r/'offline-aggregate-frontier.py').read_text().split("p=r/'offline-aggregate-frontier.json'")[0];exec(compile(src,'offline-aggregate-frontier.py','exec'),ns)
+rows,obs,ids,counts,old=map(ns.get,['rows','obs','ids','counts','old'])
+n=sum(counts.values());need=[math.ceil(.7*counts[i]-1e-10) for i in ids]
+TP=[];FP=[];AMB=[];E=[]
+for i in ids:
+ tp=fp=am=0;es=[0]*20
+ for j,row in enumerate(rows):
+  bit=1<<j;label=row['labels'][i];o=obs[row['id']]
+  if label=='positive' and i not in row['named']:tp|=bit
+  elif label=='negative' or i in row['named']:fp|=bit
+  else:am|=bit
+  if i not in o['alreadyNamed']:
+   for k,t in enumerate(range(80,100)):
+    if o['probabilities'][i]['native']>=t/100:es[k]|=bit
+ TP.append(tp);FP.append(fp);AMB.append(am);E.append(es)
+def evaluate(ts):
+ one=two=three=0;tp=fp=am=gap=0;per=[]
+ for k,t in enumerate(ts):
+  elig=E[k][t-80];vis=elig&~three
+  p=(vis&TP[k]).bit_count();f=(vis&FP[k]).bit_count();a=(vis&AMB[k]).bit_count()
+  tp+=p;fp+=f;am+=a;gap+=max(0,need[k]-p);per.append((p,f,a))
+  three|=two&elig;two|=one&elig;one|=elig
+ return tp,fp,am,gap,per
+def objective(ev,hard):
+ tp,fp,am,gap,_=ev
+ return ((gap if hard else 0),max(0,9*fp-tp),max(0,math.ceil(.85*n)-tp),-tp,fp,am)
+oldts=[round(old[i]*100) for i in ids]
+base=evaluate(oldts);assert base[:3]==(524,7,19),base[:3]
+seeds=[oldts]+[[round(ts[i]*100) for i in ids] for _,ts in ns['states'].values()]
+rng=random.Random(2026102204)
+for _ in range(9):seeds.append([round(rng.choice(ns['options'][i])['t']*100) for i in ids])
+results={}
+for hard in (True,False):
+ best=None
+ for s,seed in enumerate(seeds):
+  ts=seed[:];ev=evaluate(ts);score=objective(ev,hard)
+  for sweep in range(12):
+   changed=False;order=list(range(len(ids)));rng.shuffle(order)
+   for k in order:
+    oldt=ts[k];bestt=oldt;bv=ev;bo=score
+    for t in range(80,100):
+     if t==oldt:continue
+     ts[k]=t;v=evaluate(ts);obj=objective(v,hard)
+     if obj<bo:bestt,bv,bo=t,v,obj
+    ts[k]=bestt
+    if bestt!=oldt:changed=True;ev,score=bv,bo
+   if not changed:break
+  if best is None or score<best[0]:best=(score,ts[:],ev)
+ score,ts,ev=best;tp,fp,am,gap,per=ev
+ results['allConceptRecallFloors' if hard else 'aggregateOnly']={'precision':tp/(tp+fp),'recall':tp/n,'conservativePrecision':tp/(tp+fp+am),'tp':tp,'fp':fp,'fn':n-tp,'ambiguousHits':am,'sumPerConceptMissingTP':gap,'perConceptRecallFailures':{i:{'tp':v[0],'positives':counts[i],'recall':v[0]/counts[i]} for i,v in zip(ids,per) if v[0]<math.ceil(.7*counts[i]-1e-10)},'thresholds':{i:t/100 for i,t in zip(ids,ts)},'perConcept':{i:{'tp':v[0],'fp':v[1],'ambiguousHits':v[2],'recall':v[0]/counts[i],'precision':v[0]/(v[0]+v[1]) if v[0]+v[1] else None} for i,v in zip(ids,per)}}
+result={'developmentOnly':True,'promotable':False,'exhaustiveGlobalSearch':False,'method':'12 deterministic starts, coordinate grid 0.80..0.99, 12 sweeps max; first3 canonical IDs; fixed seed2026102204','rawGridDP':{'minimumFPsForAllRecallFloors':65,'statesAt65and66FP':[{ 'tp':p,'fp':f,'precision':p/(p+f),'recall':p/n} for f,(p,_) in sorted(ns['states'].items())],'noRawFeasible90Precision':not bool(ns['feasible'])},'results':results}
+p=r/'offline-visible-search.json';fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+with os.fdopen(fd,'w') as f:json.dump(result,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+print(json.dumps({**{k:v for k,v in result.items() if k!='results'},'results':{k:{x:y for x,y in v.items() if x not in ['thresholds','perConcept']} for k,v in results.items()}},indent=2))

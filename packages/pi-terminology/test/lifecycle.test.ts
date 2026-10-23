@@ -193,7 +193,7 @@ describe("terminology lifecycle", () => {
     ).toStrictEqual({ action: "continue" });
     const tui = extensionFixture();
     tui.extension.input({ text: "use terms", source: "rpc" }, tui.ctx);
-    tui.extension.input({ text: "/terms", source: "interactive" }, tui.ctx);
+    tui.extension.input({ text: "/terminology", source: "interactive" }, tui.ctx);
     tui.extension.input(
       { text: "describe screenshot", source: "interactive", images: [{}] },
       tui.ctx,

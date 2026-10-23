@@ -1,0 +1,4006 @@
+{
+  "schemaVersion": 1,
+  "otherCostNanos": 0,
+  "attempts": [
+    {
+      "recordId": "pilot/baseline/pilot-0001/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:40.050Z",
+      "inputTokens": 11835,
+      "outputTokens": 1103,
+      "observedNanos": 497070,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0002/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:40.487Z",
+      "inputTokens": 11835,
+      "outputTokens": 1103,
+      "observedNanos": 497070,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0003/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:40.774Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0004/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:41.071Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0005/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:41.361Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0006/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:41.670Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0007/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:42.016Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0008/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:42.287Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0009/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:42.564Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0010/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:42.840Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0011/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:43.159Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0012/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:43.456Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0013/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:43.727Z",
+      "inputTokens": 11825,
+      "outputTokens": 1103,
+      "observedNanos": 496650,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0014/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:44.001Z",
+      "inputTokens": 11825,
+      "outputTokens": 1103,
+      "observedNanos": 496650,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0015/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:44.318Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0016/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:44.597Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0017/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:44.868Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0018/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:45.165Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0019/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:45.453Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0020/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:45.740Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0021/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:46.032Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0022/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:46.330Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0023/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:46.588Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0024/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:46.860Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0025/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:47.160Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0026/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:47.597Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0027/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:47.920Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0028/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:48.362Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0029/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:48.726Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0030/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:49.232Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0031/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:49.838Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0032/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:50.388Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0033/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:50.929Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0034/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:51.399Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0035/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:51.680Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0036/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:52.001Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0037/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:52.284Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0038/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:52.575Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0039/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:52.926Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0040/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:53.210Z",
+      "inputTokens": 11831,
+      "outputTokens": 1103,
+      "observedNanos": 496902,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0041/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:53.485Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0042/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:53.765Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0043/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:54.059Z",
+      "inputTokens": 11825,
+      "outputTokens": 1103,
+      "observedNanos": 496650,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0044/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:54.321Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0045/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:54.628Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0046/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:54.921Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0047/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:55.191Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0048/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:55.471Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0049/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:55.772Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0050/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:56.061Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0051/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:56.320Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0052/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:56.603Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0053/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:56.902Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0054/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:57.229Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0055/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:57.507Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0056/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:57.970Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0057/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:58.240Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0058/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:58.516Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0059/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:58.812Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0060/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:59.108Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0061/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:59.396Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0062/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:59.706Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0063/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:25:59.973Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0064/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:00.244Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0065/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:00.527Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0066/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:00.821Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0067/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:01.112Z",
+      "inputTokens": 11835,
+      "outputTokens": 1103,
+      "observedNanos": 497070,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0068/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:01.391Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0069/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:01.666Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0070/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:01.967Z",
+      "inputTokens": 11807,
+      "outputTokens": 1103,
+      "observedNanos": 495894,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0071/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:02.241Z",
+      "inputTokens": 11825,
+      "outputTokens": 1103,
+      "observedNanos": 496650,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0072/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:02.502Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0073/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:02.784Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0074/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:03.125Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0075/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:03.408Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0076/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:03.930Z",
+      "inputTokens": 11831,
+      "outputTokens": 1103,
+      "observedNanos": 496902,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0077/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:04.307Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0078/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:04.776Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0079/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:05.221Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0080/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:05.548Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0081/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:05.830Z",
+      "inputTokens": 11835,
+      "outputTokens": 1103,
+      "observedNanos": 497070,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0082/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:06.197Z",
+      "inputTokens": 11839,
+      "outputTokens": 1103,
+      "observedNanos": 497238,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0083/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:06.774Z",
+      "inputTokens": 11833,
+      "outputTokens": 1103,
+      "observedNanos": 496986,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0084/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:07.623Z",
+      "inputTokens": 11829,
+      "outputTokens": 1103,
+      "observedNanos": 496818,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0085/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:08.301Z",
+      "inputTokens": 11827,
+      "outputTokens": 1103,
+      "observedNanos": 496734,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0086/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:09.077Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0087/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:09.450Z",
+      "inputTokens": 11829,
+      "outputTokens": 1103,
+      "observedNanos": 496818,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0088/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:09.870Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0089/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:10.425Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0090/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:10.773Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0091/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:11.083Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0092/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:11.372Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0093/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:11.756Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0094/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:12.106Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0095/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:12.629Z",
+      "inputTokens": 11831,
+      "outputTokens": 1103,
+      "observedNanos": 496902,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0096/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:13.045Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0097/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:13.325Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0098/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:13.602Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0099/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:13.893Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0100/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:14.172Z",
+      "inputTokens": 11803,
+      "outputTokens": 1103,
+      "observedNanos": 495726,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0101/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:14.449Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0102/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:14.775Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0103/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:15.100Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0104/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:15.388Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0105/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:15.671Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0106/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:15.974Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0107/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:16.310Z",
+      "inputTokens": 11803,
+      "outputTokens": 1103,
+      "observedNanos": 495726,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0108/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:16.612Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0109/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:16.914Z",
+      "inputTokens": 11805,
+      "outputTokens": 1103,
+      "observedNanos": 495810,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0110/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:17.199Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0111/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:17.544Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0112/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:17.844Z",
+      "inputTokens": 11803,
+      "outputTokens": 1103,
+      "observedNanos": 495726,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0113/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:18.137Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0114/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:18.422Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0115/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:18.730Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0116/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:19.019Z",
+      "inputTokens": 11803,
+      "outputTokens": 1103,
+      "observedNanos": 495726,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0117/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:19.311Z",
+      "inputTokens": 11823,
+      "outputTokens": 1103,
+      "observedNanos": 496566,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0118/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:19.574Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0119/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:19.862Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0120/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:20.148Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0121/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:20.423Z",
+      "inputTokens": 11807,
+      "outputTokens": 1103,
+      "observedNanos": 495894,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0122/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:20.699Z",
+      "inputTokens": 11807,
+      "outputTokens": 1103,
+      "observedNanos": 495894,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0123/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:20.996Z",
+      "inputTokens": 11805,
+      "outputTokens": 1103,
+      "observedNanos": 495810,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0124/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:21.287Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0125/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:21.559Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0126/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:21.843Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0127/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:22.139Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0128/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:22.431Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0129/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:22.718Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0130/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:23.024Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0131/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:23.328Z",
+      "inputTokens": 11807,
+      "outputTokens": 1103,
+      "observedNanos": 495894,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0132/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:23.618Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0133/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:23.916Z",
+      "inputTokens": 11829,
+      "outputTokens": 1103,
+      "observedNanos": 496818,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0134/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:24.222Z",
+      "inputTokens": 11845,
+      "outputTokens": 1103,
+      "observedNanos": 497490,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0135/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:24.511Z",
+      "inputTokens": 11819,
+      "outputTokens": 1103,
+      "observedNanos": 496398,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0136/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:24.801Z",
+      "inputTokens": 11817,
+      "outputTokens": 1103,
+      "observedNanos": 496314,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0137/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:25.110Z",
+      "inputTokens": 11813,
+      "outputTokens": 1103,
+      "observedNanos": 496146,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0138/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:25.412Z",
+      "inputTokens": 11811,
+      "outputTokens": 1103,
+      "observedNanos": 496062,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0139/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:25.690Z",
+      "inputTokens": 11815,
+      "outputTokens": 1103,
+      "observedNanos": 496230,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0140/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:26.058Z",
+      "inputTokens": 11803,
+      "outputTokens": 1103,
+      "observedNanos": 495726,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0141/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:26.330Z",
+      "inputTokens": 11809,
+      "outputTokens": 1103,
+      "observedNanos": 495978,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0142/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:26.629Z",
+      "inputTokens": 11841,
+      "outputTokens": 1103,
+      "observedNanos": 497322,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0143/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:26.910Z",
+      "inputTokens": 11855,
+      "outputTokens": 1103,
+      "observedNanos": 497910,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0144/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:27.227Z",
+      "inputTokens": 11847,
+      "outputTokens": 1103,
+      "observedNanos": 497574,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0145/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:27.503Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0146/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:27.778Z",
+      "inputTokens": 11831,
+      "outputTokens": 1103,
+      "observedNanos": 496902,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0147/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:28.107Z",
+      "inputTokens": 11825,
+      "outputTokens": 1103,
+      "observedNanos": 496650,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0148/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:28.392Z",
+      "inputTokens": 11837,
+      "outputTokens": 1103,
+      "observedNanos": 497154,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0149/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:28.759Z",
+      "inputTokens": 11945,
+      "outputTokens": 1103,
+      "observedNanos": 501690,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0150/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:29.100Z",
+      "inputTokens": 11935,
+      "outputTokens": 1103,
+      "observedNanos": 501270,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0151/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:29.438Z",
+      "inputTokens": 11923,
+      "outputTokens": 1103,
+      "observedNanos": 500766,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0152/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:29.719Z",
+      "inputTokens": 11941,
+      "outputTokens": 1103,
+      "observedNanos": 501522,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0153/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:30.060Z",
+      "inputTokens": 11929,
+      "outputTokens": 1103,
+      "observedNanos": 501018,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0154/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:30.352Z",
+      "inputTokens": 11953,
+      "outputTokens": 1103,
+      "observedNanos": 502026,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0155/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:30.630Z",
+      "inputTokens": 11949,
+      "outputTokens": 1103,
+      "observedNanos": 501858,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0156/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:30.917Z",
+      "inputTokens": 11925,
+      "outputTokens": 1103,
+      "observedNanos": 500850,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0157/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:31.224Z",
+      "inputTokens": 11939,
+      "outputTokens": 1103,
+      "observedNanos": 501438,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0158/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:31.498Z",
+      "inputTokens": 11945,
+      "outputTokens": 1103,
+      "observedNanos": 501690,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0159/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:31.803Z",
+      "inputTokens": 11939,
+      "outputTokens": 1103,
+      "observedNanos": 501438,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0160/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:32.118Z",
+      "inputTokens": 11951,
+      "outputTokens": 1103,
+      "observedNanos": 501942,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0161/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:32.394Z",
+      "inputTokens": 11953,
+      "outputTokens": 1103,
+      "observedNanos": 502026,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0162/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:32.685Z",
+      "inputTokens": 11943,
+      "outputTokens": 1103,
+      "observedNanos": 501606,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0163/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:32.963Z",
+      "inputTokens": 11945,
+      "outputTokens": 1103,
+      "observedNanos": 501690,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0164/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:33.261Z",
+      "inputTokens": 11951,
+      "outputTokens": 1103,
+      "observedNanos": 501942,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0165/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:33.544Z",
+      "inputTokens": 11953,
+      "outputTokens": 1103,
+      "observedNanos": 502026,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0166/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:33.825Z",
+      "inputTokens": 11929,
+      "outputTokens": 1103,
+      "observedNanos": 501018,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0167/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:34.114Z",
+      "inputTokens": 11941,
+      "outputTokens": 1103,
+      "observedNanos": 501522,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0168/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:34.392Z",
+      "inputTokens": 11945,
+      "outputTokens": 1103,
+      "observedNanos": 501690,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0169/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:34.710Z",
+      "inputTokens": 11933,
+      "outputTokens": 1103,
+      "observedNanos": 501186,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0170/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:35.036Z",
+      "inputTokens": 11935,
+      "outputTokens": 1103,
+      "observedNanos": 501270,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0171/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:35.314Z",
+      "inputTokens": 11935,
+      "outputTokens": 1103,
+      "observedNanos": 501270,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0172/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:35.616Z",
+      "inputTokens": 11937,
+      "outputTokens": 1103,
+      "observedNanos": 501354,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0173/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:35.912Z",
+      "inputTokens": 11929,
+      "outputTokens": 1103,
+      "observedNanos": 501018,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0174/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:36.217Z",
+      "inputTokens": 11949,
+      "outputTokens": 1103,
+      "observedNanos": 501858,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0175/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:36.545Z",
+      "inputTokens": 11911,
+      "outputTokens": 1103,
+      "observedNanos": 500262,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0176/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:36.863Z",
+      "inputTokens": 11935,
+      "outputTokens": 1103,
+      "observedNanos": 501270,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0177/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:37.195Z",
+      "inputTokens": 11923,
+      "outputTokens": 1103,
+      "observedNanos": 500766,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0178/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:37.472Z",
+      "inputTokens": 11911,
+      "outputTokens": 1103,
+      "observedNanos": 500262,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0179/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:37.775Z",
+      "inputTokens": 11951,
+      "outputTokens": 1103,
+      "observedNanos": 501942,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0180/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:38.080Z",
+      "inputTokens": 11943,
+      "outputTokens": 1103,
+      "observedNanos": 501606,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0181/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:38.382Z",
+      "inputTokens": 11939,
+      "outputTokens": 1103,
+      "observedNanos": 501438,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0182/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:38.652Z",
+      "inputTokens": 11941,
+      "outputTokens": 1103,
+      "observedNanos": 501522,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0183/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:38.958Z",
+      "inputTokens": 11927,
+      "outputTokens": 1103,
+      "observedNanos": 500934,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0184/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:39.257Z",
+      "inputTokens": 11929,
+      "outputTokens": 1103,
+      "observedNanos": 501018,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0185/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:39.549Z",
+      "inputTokens": 11949,
+      "outputTokens": 1103,
+      "observedNanos": 501858,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0186/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:39.826Z",
+      "inputTokens": 11961,
+      "outputTokens": 1103,
+      "observedNanos": 502362,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0187/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:40.116Z",
+      "inputTokens": 11927,
+      "outputTokens": 1103,
+      "observedNanos": 500934,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0188/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:40.388Z",
+      "inputTokens": 11969,
+      "outputTokens": 1103,
+      "observedNanos": 502698,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0189/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:40.674Z",
+      "inputTokens": 11977,
+      "outputTokens": 1103,
+      "observedNanos": 503034,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0190/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:40.950Z",
+      "inputTokens": 11951,
+      "outputTokens": 1103,
+      "observedNanos": 501942,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0191/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:41.250Z",
+      "inputTokens": 11933,
+      "outputTokens": 1103,
+      "observedNanos": 501186,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0192/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:41.556Z",
+      "inputTokens": 11949,
+      "outputTokens": 1103,
+      "observedNanos": 501858,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0193/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:41.831Z",
+      "inputTokens": 11943,
+      "outputTokens": 1103,
+      "observedNanos": 501606,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0194/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:42.136Z",
+      "inputTokens": 11949,
+      "outputTokens": 1103,
+      "observedNanos": 501858,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0195/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:42.428Z",
+      "inputTokens": 11915,
+      "outputTokens": 1103,
+      "observedNanos": 500430,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0196/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:42.725Z",
+      "inputTokens": 11925,
+      "outputTokens": 1103,
+      "observedNanos": 500850,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0197/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:43.007Z",
+      "inputTokens": 11955,
+      "outputTokens": 1103,
+      "observedNanos": 502110,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0198/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:43.303Z",
+      "inputTokens": 11923,
+      "outputTokens": 1103,
+      "observedNanos": 500766,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0199/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:43.613Z",
+      "inputTokens": 11947,
+      "outputTokens": 1103,
+      "observedNanos": 501774,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/baseline/pilot-0200/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:43.893Z",
+      "inputTokens": 11821,
+      "outputTokens": 1103,
+      "observedNanos": 496482,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0001/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:44.363Z",
+      "inputTokens": 12027,
+      "outputTokens": 1103,
+      "observedNanos": 505134,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0002/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:44.649Z",
+      "inputTokens": 12027,
+      "outputTokens": 1103,
+      "observedNanos": 505134,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0003/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:45.150Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0004/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:45.432Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0005/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:45.733Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0006/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:46.029Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0007/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:46.300Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0008/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:46.576Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0009/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:46.865Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0010/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:47.168Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0011/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:47.455Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0012/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:47.715Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0013/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:47.981Z",
+      "inputTokens": 12017,
+      "outputTokens": 1103,
+      "observedNanos": 504714,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0014/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:48.312Z",
+      "inputTokens": 12017,
+      "outputTokens": 1103,
+      "observedNanos": 504714,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0015/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:48.616Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0016/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:48.889Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0017/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:49.202Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0018/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:49.474Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0019/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:49.763Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0020/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:50.087Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0021/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:50.388Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0022/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:50.677Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0023/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:50.960Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0024/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:51.270Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0025/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:51.575Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0026/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:51.851Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0027/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:52.153Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0028/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:52.414Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0029/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:52.695Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0030/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:52.977Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0031/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:53.268Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0032/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:53.571Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0033/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:53.895Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0034/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:54.184Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0035/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:54.462Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0036/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:54.742Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0037/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:55.045Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0038/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:55.321Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0039/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:55.673Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0040/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:55.968Z",
+      "inputTokens": 12023,
+      "outputTokens": 1103,
+      "observedNanos": 504966,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0041/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:56.552Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0042/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:56.849Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0043/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:57.157Z",
+      "inputTokens": 12017,
+      "outputTokens": 1103,
+      "observedNanos": 504714,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0044/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:57.424Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0045/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:57.724Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0046/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:57.994Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0047/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:58.283Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0048/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:58.585Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0049/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:58.922Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0050/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:59.227Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0051/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:59.500Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0052/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:26:59.760Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0053/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:00.054Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0054/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:00.342Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0055/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:00.636Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0056/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:00.914Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0057/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:01.219Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0058/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:01.515Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0059/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:01.817Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0060/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:02.104Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0061/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:02.387Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0062/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:02.667Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0063/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:03.227Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0064/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:03.592Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0065/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:03.868Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0066/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:04.185Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0067/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:04.476Z",
+      "inputTokens": 12027,
+      "outputTokens": 1103,
+      "observedNanos": 505134,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0068/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:04.759Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0069/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:05.068Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0070/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:05.356Z",
+      "inputTokens": 11999,
+      "outputTokens": 1103,
+      "observedNanos": 503958,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0071/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:05.642Z",
+      "inputTokens": 12017,
+      "outputTokens": 1103,
+      "observedNanos": 504714,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0072/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:05.917Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0073/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:06.214Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0074/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:06.471Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0075/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:06.758Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0076/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:07.086Z",
+      "inputTokens": 12023,
+      "outputTokens": 1103,
+      "observedNanos": 504966,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0077/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:07.351Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0078/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:07.620Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0079/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:07.897Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0080/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:08.205Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0081/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:08.489Z",
+      "inputTokens": 12027,
+      "outputTokens": 1103,
+      "observedNanos": 505134,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0082/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:08.766Z",
+      "inputTokens": 12031,
+      "outputTokens": 1103,
+      "observedNanos": 505302,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0083/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:09.059Z",
+      "inputTokens": 12025,
+      "outputTokens": 1103,
+      "observedNanos": 505050,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0084/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:09.337Z",
+      "inputTokens": 12021,
+      "outputTokens": 1103,
+      "observedNanos": 504882,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0085/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:09.620Z",
+      "inputTokens": 12019,
+      "outputTokens": 1103,
+      "observedNanos": 504798,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0086/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:09.879Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0087/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:10.167Z",
+      "inputTokens": 12021,
+      "outputTokens": 1103,
+      "observedNanos": 504882,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0088/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:10.458Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0089/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:10.768Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0090/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:11.074Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0091/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:11.378Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0092/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:11.653Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0093/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:11.929Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0094/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:12.234Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0095/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:12.528Z",
+      "inputTokens": 12023,
+      "outputTokens": 1103,
+      "observedNanos": 504966,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0096/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:12.799Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0097/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:13.095Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0098/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:13.391Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0099/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:13.671Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0100/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:13.948Z",
+      "inputTokens": 11995,
+      "outputTokens": 1103,
+      "observedNanos": 503790,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0101/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:14.255Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0102/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:14.536Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0103/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:14.811Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0104/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:15.135Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0105/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:15.469Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0106/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:15.743Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0107/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:16.272Z",
+      "inputTokens": 11995,
+      "outputTokens": 1103,
+      "observedNanos": 503790,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0108/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:16.559Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0109/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:16.814Z",
+      "inputTokens": 11997,
+      "outputTokens": 1103,
+      "observedNanos": 503874,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0110/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:17.095Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0111/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:17.368Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0112/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:17.696Z",
+      "inputTokens": 11995,
+      "outputTokens": 1103,
+      "observedNanos": 503790,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0113/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:17.998Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0114/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:18.271Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0115/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:18.552Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0116/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:18.831Z",
+      "inputTokens": 11995,
+      "outputTokens": 1103,
+      "observedNanos": 503790,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0117/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:19.111Z",
+      "inputTokens": 12015,
+      "outputTokens": 1103,
+      "observedNanos": 504630,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0118/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:19.376Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0119/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:19.655Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0120/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:19.954Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0121/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:20.248Z",
+      "inputTokens": 11999,
+      "outputTokens": 1103,
+      "observedNanos": 503958,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0122/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:20.522Z",
+      "inputTokens": 11999,
+      "outputTokens": 1103,
+      "observedNanos": 503958,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0123/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:20.791Z",
+      "inputTokens": 11997,
+      "outputTokens": 1103,
+      "observedNanos": 503874,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0124/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:21.107Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0125/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:21.394Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0126/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:21.658Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0127/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:21.941Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0128/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:22.206Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0129/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:22.491Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0130/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:22.777Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0131/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:23.040Z",
+      "inputTokens": 11999,
+      "outputTokens": 1103,
+      "observedNanos": 503958,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0132/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:23.352Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0133/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:23.652Z",
+      "inputTokens": 12021,
+      "outputTokens": 1103,
+      "observedNanos": 504882,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0134/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:23.904Z",
+      "inputTokens": 12037,
+      "outputTokens": 1103,
+      "observedNanos": 505554,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0135/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:24.171Z",
+      "inputTokens": 12011,
+      "outputTokens": 1103,
+      "observedNanos": 504462,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0136/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:24.444Z",
+      "inputTokens": 12009,
+      "outputTokens": 1103,
+      "observedNanos": 504378,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0137/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:24.737Z",
+      "inputTokens": 12005,
+      "outputTokens": 1103,
+      "observedNanos": 504210,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0138/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:25.038Z",
+      "inputTokens": 12003,
+      "outputTokens": 1103,
+      "observedNanos": 504126,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0139/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:25.309Z",
+      "inputTokens": 12007,
+      "outputTokens": 1103,
+      "observedNanos": 504294,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0140/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:25.569Z",
+      "inputTokens": 11995,
+      "outputTokens": 1103,
+      "observedNanos": 503790,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0141/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:25.823Z",
+      "inputTokens": 12001,
+      "outputTokens": 1103,
+      "observedNanos": 504042,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0142/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:26.094Z",
+      "inputTokens": 12033,
+      "outputTokens": 1103,
+      "observedNanos": 505386,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0143/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:26.341Z",
+      "inputTokens": 12047,
+      "outputTokens": 1103,
+      "observedNanos": 505974,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0144/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:26.605Z",
+      "inputTokens": 12039,
+      "outputTokens": 1103,
+      "observedNanos": 505638,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0145/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:26.863Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0146/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:27.145Z",
+      "inputTokens": 12023,
+      "outputTokens": 1103,
+      "observedNanos": 504966,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0147/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:27.452Z",
+      "inputTokens": 12017,
+      "outputTokens": 1103,
+      "observedNanos": 504714,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0148/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:27.740Z",
+      "inputTokens": 12029,
+      "outputTokens": 1103,
+      "observedNanos": 505218,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0149/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:28.030Z",
+      "inputTokens": 12137,
+      "outputTokens": 1103,
+      "observedNanos": 509754,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0150/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:28.331Z",
+      "inputTokens": 12127,
+      "outputTokens": 1103,
+      "observedNanos": 509334,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0151/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:28.582Z",
+      "inputTokens": 12115,
+      "outputTokens": 1103,
+      "observedNanos": 508830,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0152/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:28.839Z",
+      "inputTokens": 12133,
+      "outputTokens": 1103,
+      "observedNanos": 509586,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0153/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:29.122Z",
+      "inputTokens": 12121,
+      "outputTokens": 1103,
+      "observedNanos": 509082,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0154/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:29.403Z",
+      "inputTokens": 12145,
+      "outputTokens": 1103,
+      "observedNanos": 510090,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0155/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:29.657Z",
+      "inputTokens": 12141,
+      "outputTokens": 1103,
+      "observedNanos": 509922,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0156/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:29.919Z",
+      "inputTokens": 12117,
+      "outputTokens": 1103,
+      "observedNanos": 508914,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0157/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:30.180Z",
+      "inputTokens": 12131,
+      "outputTokens": 1103,
+      "observedNanos": 509502,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0158/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:30.431Z",
+      "inputTokens": 12137,
+      "outputTokens": 1103,
+      "observedNanos": 509754,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0159/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:30.706Z",
+      "inputTokens": 12131,
+      "outputTokens": 1103,
+      "observedNanos": 509502,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0160/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:30.967Z",
+      "inputTokens": 12143,
+      "outputTokens": 1103,
+      "observedNanos": 510006,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0161/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:31.292Z",
+      "inputTokens": 12145,
+      "outputTokens": 1103,
+      "observedNanos": 510090,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0162/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:31.579Z",
+      "inputTokens": 12135,
+      "outputTokens": 1103,
+      "observedNanos": 509670,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0163/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:31.877Z",
+      "inputTokens": 12137,
+      "outputTokens": 1103,
+      "observedNanos": 509754,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0164/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:32.145Z",
+      "inputTokens": 12143,
+      "outputTokens": 1103,
+      "observedNanos": 510006,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0165/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:32.403Z",
+      "inputTokens": 12145,
+      "outputTokens": 1103,
+      "observedNanos": 510090,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0166/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:32.662Z",
+      "inputTokens": 12121,
+      "outputTokens": 1103,
+      "observedNanos": 509082,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0167/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:32.938Z",
+      "inputTokens": 12133,
+      "outputTokens": 1103,
+      "observedNanos": 509586,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0168/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:33.212Z",
+      "inputTokens": 12137,
+      "outputTokens": 1103,
+      "observedNanos": 509754,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0169/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:33.471Z",
+      "inputTokens": 12125,
+      "outputTokens": 1103,
+      "observedNanos": 509250,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0170/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:33.737Z",
+      "inputTokens": 12127,
+      "outputTokens": 1103,
+      "observedNanos": 509334,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0171/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:34.001Z",
+      "inputTokens": 12127,
+      "outputTokens": 1103,
+      "observedNanos": 509334,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0172/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:34.292Z",
+      "inputTokens": 12129,
+      "outputTokens": 1103,
+      "observedNanos": 509418,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0173/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:34.585Z",
+      "inputTokens": 12121,
+      "outputTokens": 1103,
+      "observedNanos": 509082,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0174/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:34.859Z",
+      "inputTokens": 12141,
+      "outputTokens": 1103,
+      "observedNanos": 509922,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0175/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:35.156Z",
+      "inputTokens": 12103,
+      "outputTokens": 1103,
+      "observedNanos": 508326,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0176/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:35.438Z",
+      "inputTokens": 12127,
+      "outputTokens": 1103,
+      "observedNanos": 509334,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0177/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:35.696Z",
+      "inputTokens": 12115,
+      "outputTokens": 1103,
+      "observedNanos": 508830,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0178/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:35.964Z",
+      "inputTokens": 12103,
+      "outputTokens": 1103,
+      "observedNanos": 508326,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0179/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:36.241Z",
+      "inputTokens": 12143,
+      "outputTokens": 1103,
+      "observedNanos": 510006,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0180/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:36.540Z",
+      "inputTokens": 12135,
+      "outputTokens": 1103,
+      "observedNanos": 509670,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0181/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:36.796Z",
+      "inputTokens": 12131,
+      "outputTokens": 1103,
+      "observedNanos": 509502,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0182/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:37.050Z",
+      "inputTokens": 12133,
+      "outputTokens": 1103,
+      "observedNanos": 509586,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0183/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:37.358Z",
+      "inputTokens": 12119,
+      "outputTokens": 1103,
+      "observedNanos": 508998,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0184/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:37.633Z",
+      "inputTokens": 12121,
+      "outputTokens": 1103,
+      "observedNanos": 509082,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0185/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:37.892Z",
+      "inputTokens": 12141,
+      "outputTokens": 1103,
+      "observedNanos": 509922,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0186/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:38.158Z",
+      "inputTokens": 12153,
+      "outputTokens": 1103,
+      "observedNanos": 510426,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0187/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:38.453Z",
+      "inputTokens": 12119,
+      "outputTokens": 1103,
+      "observedNanos": 508998,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0188/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:38.712Z",
+      "inputTokens": 12161,
+      "outputTokens": 1103,
+      "observedNanos": 510762,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0189/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:38.970Z",
+      "inputTokens": 12169,
+      "outputTokens": 1103,
+      "observedNanos": 511098,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0190/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:39.273Z",
+      "inputTokens": 12143,
+      "outputTokens": 1103,
+      "observedNanos": 510006,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0191/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:39.535Z",
+      "inputTokens": 12125,
+      "outputTokens": 1103,
+      "observedNanos": 509250,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0192/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:39.793Z",
+      "inputTokens": 12141,
+      "outputTokens": 1103,
+      "observedNanos": 509922,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0193/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:40.068Z",
+      "inputTokens": 12135,
+      "outputTokens": 1103,
+      "observedNanos": 509670,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0194/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:40.359Z",
+      "inputTokens": 12141,
+      "outputTokens": 1103,
+      "observedNanos": 509922,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0195/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:40.620Z",
+      "inputTokens": 12107,
+      "outputTokens": 1103,
+      "observedNanos": 508494,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0196/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:40.876Z",
+      "inputTokens": 12117,
+      "outputTokens": 1103,
+      "observedNanos": 508914,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0197/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:41.155Z",
+      "inputTokens": 12147,
+      "outputTokens": 1103,
+      "observedNanos": 510174,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0198/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:41.418Z",
+      "inputTokens": 12115,
+      "outputTokens": 1103,
+      "observedNanos": 508830,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0199/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:41.725Z",
+      "inputTokens": 12139,
+      "outputTokens": 1103,
+      "observedNanos": 509838,
+      "nativeCostUsd": 0
+    },
+    {
+      "recordId": "pilot/semanticRepair/pilot-0200/0",
+      "reservedNanos": 2752512,
+      "status": "succeeded",
+      "startedAt": "2026-10-22T13:27:42.011Z",
+      "inputTokens": 12013,
+      "outputTokens": 1103,
+      "observedNanos": 504546,
+      "nativeCostUsd": 0
+    }
+  ]
+}

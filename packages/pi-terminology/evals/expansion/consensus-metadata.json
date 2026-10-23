@@ -1,0 +1,1021 @@
+{
+  "schemaVersion": 1,
+  "labelProvenance": "Author C and independent reviewer E labels are agent judgments, NOT human-authored or human-adjudicated gold. Independent E labels were frozen before author-label comparison; neither label set derives from model answers.",
+  "independentLabelSha256": "987e9083befbdecdd73ad942e3bf83088712ef22c013758e2508bbd4ccd9f0f4",
+  "consensusRule": "Positive only when both labels are positive; ambiguous if either ambiguous or labels disagree; otherwise negative. Named union restricted to agreed positives.",
+  "datasets": {
+    "development": {
+      "name": "development-consensus",
+      "kind": "development",
+      "sha256": "2cee3e59cde0eeeccea5bb1cc351558577c8ba4d8c4c41bab00a15e37f43ad40",
+      "records": 120,
+      "assignments": {
+        "positive": 194,
+        "negative": 5891,
+        "ambiguous": 35
+      },
+      "positiveRecords": 66,
+      "ambiguousRecords": 29,
+      "namedAssignments": 5,
+      "labelDisagreementCells": 34,
+      "labelDisagreementsByConcept": {
+        "core:delta-debugging": 2,
+        "core:refactoring": 13,
+        "core:regression-testing": 1,
+        "core:information-hiding": 5,
+        "core:separation-of-concerns": 1,
+        "core:differential-testing": 4,
+        "core:low-coupling": 3,
+        "core:bounded-context": 3,
+        "core:separation-of-duties": 1,
+        "core:smoke-test": 1
+      },
+      "perConceptDenominators": {
+        "core:test-driven-development": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:refactoring": {
+          "positive": 7,
+          "unnamedPositive": 6,
+          "negative": 100,
+          "ambiguous": 13
+        },
+        "core:design-by-contract": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:mutation-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:ubiquitous-language": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:property-based-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:accidental-complexity": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:dead-code": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:smoke-test": {
+          "positive": 4,
+          "unnamedPositive": 3,
+          "negative": 115,
+          "ambiguous": 1
+        },
+        "core:separation-of-duties": {
+          "positive": 6,
+          "unnamedPositive": 6,
+          "negative": 113,
+          "ambiguous": 1
+        },
+        "core:deep-module": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:information-hiding": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 112,
+          "ambiguous": 5
+        },
+        "core:make-illegal-states-unrepresentable": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 116,
+          "ambiguous": 1
+        },
+        "core:parse-dont-validate": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:branded-types": {
+          "positive": 4,
+          "unnamedPositive": 3,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:functional-core-imperative-shell": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:design-it-twice": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:characterization-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:differential-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 113,
+          "ambiguous": 4
+        },
+        "core:change-detector-test": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:test-isolation": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:hermetic-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:idempotency": {
+          "positive": 4,
+          "unnamedPositive": 3,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:blast-radius": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:ablation-study": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:progressive-disclosure": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:dry": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:yagni": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:orthogonality": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:high-cohesion": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:low-coupling": {
+          "positive": 9,
+          "unnamedPositive": 9,
+          "negative": 108,
+          "ambiguous": 3
+        },
+        "core:value-object": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:regression-testing": {
+          "positive": 5,
+          "unnamedPositive": 5,
+          "negative": 114,
+          "ambiguous": 1
+        },
+        "core:contract-testing": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:fuzzing": {
+          "positive": 8,
+          "unnamedPositive": 8,
+          "negative": 112,
+          "ambiguous": 0
+        },
+        "core:debugging-by-bisection": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:optimistic-concurrency-control": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:expand-contract-migration": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:least-privilege": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:diataxis": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:anticorruption-layer": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:metamorphic-testing": {
+          "positive": 5,
+          "unnamedPositive": 5,
+          "negative": 115,
+          "ambiguous": 0
+        },
+        "core:delta-debugging": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 114,
+          "ambiguous": 2
+        },
+        "core:bounded-context": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 114,
+          "ambiguous": 3
+        },
+        "core:separation-of-concerns": {
+          "positive": 10,
+          "unnamedPositive": 10,
+          "negative": 109,
+          "ambiguous": 1
+        },
+        "core:backpressure": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:exponential-backoff-with-jitter": {
+          "positive": 4,
+          "unnamedPositive": 3,
+          "negative": 116,
+          "ambiguous": 0
+        },
+        "core:circuit-breaker": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:canary-deployment": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:reconciliation-loop": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        },
+        "core:blinded-evaluation": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 117,
+          "ambiguous": 0
+        }
+      },
+      "authorSourceSha256": "58af2b8273f49bee880964000ced4f1a05824f1bcf7f9be2b64cba9e7c4723a4"
+    },
+    "heldout-synthetic": {
+      "name": "heldout-synthetic-consensus",
+      "kind": "synthetic",
+      "sha256": "4035af7572ea020260f24980e8705c7e76ad29d650e7e214d28358cc3565f999",
+      "records": 148,
+      "assignments": {
+        "positive": 138,
+        "negative": 7381,
+        "ambiguous": 29
+      },
+      "positiveRecords": 113,
+      "ambiguousRecords": 21,
+      "namedAssignments": 5,
+      "labelDisagreementCells": 27,
+      "labelDisagreementsByConcept": {
+        "core:delta-debugging": 1,
+        "core:metamorphic-testing": 1,
+        "core:refactoring": 8,
+        "core:information-hiding": 6,
+        "core:low-coupling": 5,
+        "core:separation-of-concerns": 1,
+        "core:differential-testing": 2,
+        "core:bounded-context": 3
+      },
+      "perConceptDenominators": {
+        "core:test-driven-development": {
+          "positive": 4,
+          "unnamedPositive": 3,
+          "negative": 144,
+          "ambiguous": 0
+        },
+        "core:refactoring": {
+          "positive": 9,
+          "unnamedPositive": 9,
+          "negative": 131,
+          "ambiguous": 8
+        },
+        "core:design-by-contract": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:mutation-testing": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:ubiquitous-language": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:property-based-testing": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:accidental-complexity": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:dead-code": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:smoke-test": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:separation-of-duties": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:deep-module": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:information-hiding": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 140,
+          "ambiguous": 6
+        },
+        "core:make-illegal-states-unrepresentable": {
+          "positive": 4,
+          "unnamedPositive": 4,
+          "negative": 142,
+          "ambiguous": 2
+        },
+        "core:parse-dont-validate": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:branded-types": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:functional-core-imperative-shell": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:design-it-twice": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:characterization-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:differential-testing": {
+          "positive": 3,
+          "unnamedPositive": 2,
+          "negative": 143,
+          "ambiguous": 2
+        },
+        "core:change-detector-test": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:test-isolation": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:hermetic-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:idempotency": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:blast-radius": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:ablation-study": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:progressive-disclosure": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:dry": {
+          "positive": 3,
+          "unnamedPositive": 2,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:yagni": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:orthogonality": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:high-cohesion": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:low-coupling": {
+          "positive": 6,
+          "unnamedPositive": 6,
+          "negative": 137,
+          "ambiguous": 5
+        },
+        "core:value-object": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:regression-testing": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:contract-testing": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:fuzzing": {
+          "positive": 5,
+          "unnamedPositive": 5,
+          "negative": 143,
+          "ambiguous": 0
+        },
+        "core:debugging-by-bisection": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:optimistic-concurrency-control": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:expand-contract-migration": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:least-privilege": {
+          "positive": 3,
+          "unnamedPositive": 2,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:diataxis": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:anticorruption-layer": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:metamorphic-testing": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 144,
+          "ambiguous": 1
+        },
+        "core:delta-debugging": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 145,
+          "ambiguous": 1
+        },
+        "core:bounded-context": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 143,
+          "ambiguous": 3
+        },
+        "core:separation-of-concerns": {
+          "positive": 8,
+          "unnamedPositive": 8,
+          "negative": 139,
+          "ambiguous": 1
+        },
+        "core:backpressure": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:exponential-backoff-with-jitter": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:circuit-breaker": {
+          "positive": 3,
+          "unnamedPositive": 2,
+          "negative": 145,
+          "ambiguous": 0
+        },
+        "core:canary-deployment": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:reconciliation-loop": {
+          "positive": 2,
+          "unnamedPositive": 2,
+          "negative": 146,
+          "ambiguous": 0
+        },
+        "core:blinded-evaluation": {
+          "positive": 3,
+          "unnamedPositive": 3,
+          "negative": 145,
+          "ambiguous": 0
+        }
+      },
+      "authorSourceSha256": "dbc1ef4baa56fa439a086661b6456933819a7545ec682b690ddd8aa642a5480b"
+    },
+    "heldout-private": {
+      "name": "heldout-private-consensus",
+      "kind": "private",
+      "sha256": "c16ae3ffbceffec8e7ea9d354afcdc0de9f02da019a7c1346423b9eccead0376",
+      "records": 80,
+      "assignments": {
+        "negative": 4044,
+        "ambiguous": 23,
+        "positive": 13
+      },
+      "positiveRecords": 9,
+      "ambiguousRecords": 19,
+      "namedAssignments": 3,
+      "labelDisagreementCells": 18,
+      "labelDisagreementsByConcept": {
+        "core:regression-testing": 6,
+        "core:dead-code": 2,
+        "core:separation-of-duties": 2,
+        "core:blast-radius": 2,
+        "core:progressive-disclosure": 2,
+        "core:accidental-complexity": 2,
+        "core:design-it-twice": 1,
+        "core:expand-contract-migration": 1
+      },
+      "perConceptDenominators": {
+        "core:test-driven-development": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:refactoring": {
+          "positive": 1,
+          "unnamedPositive": 1,
+          "negative": 79,
+          "ambiguous": 0
+        },
+        "core:design-by-contract": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:mutation-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:ubiquitous-language": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:property-based-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:accidental-complexity": {
+          "positive": 4,
+          "unnamedPositive": 1,
+          "negative": 73,
+          "ambiguous": 3
+        },
+        "core:dead-code": {
+          "positive": 1,
+          "unnamedPositive": 1,
+          "negative": 77,
+          "ambiguous": 2
+        },
+        "core:smoke-test": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:separation-of-duties": {
+          "positive": 6,
+          "unnamedPositive": 6,
+          "negative": 71,
+          "ambiguous": 3
+        },
+        "core:deep-module": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:information-hiding": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:make-illegal-states-unrepresentable": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:parse-dont-validate": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:branded-types": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:functional-core-imperative-shell": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:design-it-twice": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 79,
+          "ambiguous": 1
+        },
+        "core:characterization-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:differential-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:change-detector-test": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:test-isolation": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:hermetic-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:idempotency": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:blast-radius": {
+          "positive": 1,
+          "unnamedPositive": 1,
+          "negative": 77,
+          "ambiguous": 2
+        },
+        "core:ablation-study": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:progressive-disclosure": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 78,
+          "ambiguous": 2
+        },
+        "core:dry": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 79,
+          "ambiguous": 1
+        },
+        "core:yagni": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:orthogonality": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:high-cohesion": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:low-coupling": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:value-object": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:regression-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 72,
+          "ambiguous": 8
+        },
+        "core:contract-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:fuzzing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:debugging-by-bisection": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:optimistic-concurrency-control": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:expand-contract-migration": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 79,
+          "ambiguous": 1
+        },
+        "core:least-privilege": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:diataxis": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:anticorruption-layer": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:metamorphic-testing": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:delta-debugging": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:bounded-context": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:separation-of-concerns": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:backpressure": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:exponential-backoff-with-jitter": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:circuit-breaker": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:canary-deployment": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:reconciliation-loop": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        },
+        "core:blinded-evaluation": {
+          "positive": 0,
+          "unnamedPositive": 0,
+          "negative": 80,
+          "ambiguous": 0
+        }
+      },
+      "authorSourceSha256": "8cc64b4ac3e88965c340bc1e7bfcd2ee678527721ab388afbda88c044cd1d828"
+    }
+  },
+  "developmentUnnamedPositiveMinimum": 3,
+  "developmentUnnamedPositiveGateGaps": {},
+  "evaluationCommitment": {
+    "uniqueRecords": 348,
+    "repeatRecords": 12,
+    "totalRequests": 360,
+    "repeatSelectionRule": "First 12 synthetic consensus records in fixture order, fixed before any answers. Repeat IDs remain only in private manifest."
+  },
+  "privacy": "No private fixture IDs, prompt text, source locations, or repeat IDs are published here."
+}

@@ -1,0 +1,1674 @@
+{
+  "developmentOnly": true,
+  "promotable": false,
+  "exhaustive": false,
+  "searchMethod": "deterministic-8-start-12-sweep-coordinate-precomputed-eligibility",
+  "tieBreak": "equal objective: nearest .895 grid center, then lower; equal multistarts retain earlier unless closer to center",
+  "status": "feasible-development-candidate",
+  "feasible": true,
+  "coverageGaps": [],
+  "gaps": [],
+  "thresholds": {
+    "core:ablation-study": 0.96,
+    "core:accidental-complexity": 0.91,
+    "core:anticorruption-layer": 0.89,
+    "core:backpressure": 0.89,
+    "core:blast-radius": 0.86,
+    "core:blinded-evaluation": 0.89,
+    "core:bounded-context": 0.89,
+    "core:branded-types": 0.89,
+    "core:canary-deployment": 0.89,
+    "core:change-detector-test": 0.83,
+    "core:characterization-testing": 0.89,
+    "core:circuit-breaker": 0.89,
+    "core:contract-testing": 0.89,
+    "core:dead-code": 0.93,
+    "core:debugging-by-bisection": 0.89,
+    "core:deep-module": 0.89,
+    "core:delta-debugging": 0.89,
+    "core:design-by-contract": 0.89,
+    "core:design-it-twice": 0.89,
+    "core:diataxis": 0.89,
+    "core:differential-testing": 0.84,
+    "core:dry": 0.94,
+    "core:expand-contract-migration": 0.89,
+    "core:exponential-backoff-with-jitter": 0.89,
+    "core:functional-core-imperative-shell": 0.89,
+    "core:fuzzing": 0.82,
+    "core:hermetic-testing": 0.82,
+    "core:high-cohesion": 0.93,
+    "core:idempotency": 0.89,
+    "core:information-hiding": 0.94,
+    "core:least-privilege": 0.89,
+    "core:low-coupling": 0.84,
+    "core:make-illegal-states-unrepresentable": 0.89,
+    "core:metamorphic-testing": 0.8,
+    "core:mutation-testing": 0.89,
+    "core:optimistic-concurrency-control": 0.89,
+    "core:orthogonality": 0.96,
+    "core:parse-dont-validate": 0.82,
+    "core:progressive-disclosure": 0.89,
+    "core:property-based-testing": 0.85,
+    "core:reconciliation-loop": 0.89,
+    "core:refactoring": 0.8,
+    "core:regression-testing": 0.97,
+    "core:separation-of-concerns": 0.86,
+    "core:separation-of-duties": 0.89,
+    "core:smoke-test": 0.82,
+    "core:test-driven-development": 0.82,
+    "core:test-isolation": 0.89,
+    "core:ubiquitous-language": 0.87,
+    "core:value-object": 0.89,
+    "core:yagni": 0.89
+  },
+  "metrics": {
+    "split": "tuning",
+    "prompts": 612,
+    "attempts": 612,
+    "overall": {
+      "tp": 575,
+      "fp": 60,
+      "fn": 22,
+      "ambiguousHits": 18,
+      "redundantReminderFp": 0,
+      "overSuppressedFn": 0,
+      "precision": 0.905511811023622,
+      "conservativePrecision": 0.8805513016845329,
+      "recall": 0.9631490787269682
+    },
+    "perConcept": {
+      "core:ablation-study": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:accidental-complexity": {
+        "tp": 10,
+        "fp": 1,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.9090909090909091,
+        "conservativePrecision": 0.9090909090909091,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 1,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.9090909090909091,
+          "conservativePrecision": 0.9090909090909091,
+          "recall": 1,
+          "precisionWilson95": [
+            0.6226353745137962,
+            0.9837682477371741
+          ],
+          "conservativePrecisionWilson95": [
+            0.6226353745137962,
+            0.9837682477371741
+          ]
+        }
+      },
+      "core:anticorruption-layer": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:backpressure": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:blast-radius": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:blinded-evaluation": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:bounded-context": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 6,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 0.625,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 6,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 0.625,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.3864064709793481,
+            0.815190174452472
+          ]
+        }
+      },
+      "core:branded-types": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:canary-deployment": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:change-detector-test": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:characterization-testing": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:circuit-breaker": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:contract-testing": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:dead-code": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:debugging-by-bisection": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:deep-module": {
+        "tp": 10,
+        "fp": 1,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.9090909090909091,
+        "conservativePrecision": 0.9090909090909091,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 1,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.9090909090909091,
+          "conservativePrecision": 0.9090909090909091,
+          "recall": 1,
+          "precisionWilson95": [
+            0.6226353745137962,
+            0.9837682477371741
+          ],
+          "conservativePrecisionWilson95": [
+            0.6226353745137962,
+            0.9837682477371741
+          ]
+        }
+      },
+      "core:delta-debugging": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:design-by-contract": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:design-it-twice": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:diataxis": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:differential-testing": {
+        "tp": 19,
+        "fp": 3,
+        "fn": 2,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.8636363636363636,
+        "conservativePrecision": 0.8636363636363636,
+        "recall": 0.9047619047619048,
+        "distinctUnnamedPositivePrompts": 21,
+        "distinctPromptEvidence": {
+          "tp": 19,
+          "fp": 3,
+          "fn": 2,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.8636363636363636,
+          "conservativePrecision": 0.8636363636363636,
+          "recall": 0.9047619047619048,
+          "precisionWilson95": [
+            0.6666458812053,
+            0.9525108273576373
+          ],
+          "conservativePrecisionWilson95": [
+            0.6666458812053,
+            0.9525108273576373
+          ]
+        }
+      },
+      "core:dry": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:expand-contract-migration": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:exponential-backoff-with-jitter": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:functional-core-imperative-shell": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:fuzzing": {
+        "tp": 15,
+        "fp": 0,
+        "fn": 6,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 0.7142857142857143,
+        "distinctUnnamedPositivePrompts": 21,
+        "distinctPromptEvidence": {
+          "tp": 15,
+          "fp": 0,
+          "fn": 6,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.7142857142857143,
+          "precisionWilson95": [
+            0.7961107336956521,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7961107336956521,
+            1
+          ]
+        }
+      },
+      "core:hermetic-testing": {
+        "tp": 10,
+        "fp": 3,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.7692307692307693,
+        "conservativePrecision": 0.7692307692307693,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 3,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.7692307692307693,
+          "conservativePrecision": 0.7692307692307693,
+          "recall": 1,
+          "precisionWilson95": [
+            0.49743126004873084,
+            0.918206209075343
+          ],
+          "conservativePrecisionWilson95": [
+            0.49743126004873084,
+            0.918206209075343
+          ]
+        }
+      },
+      "core:high-cohesion": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 1,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 0.9090909090909091,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 1,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 0.9090909090909091,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.6226353745137962,
+            0.9837682477371741
+          ]
+        }
+      },
+      "core:idempotency": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:information-hiding": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:least-privilege": {
+        "tp": 11,
+        "fp": 1,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.9166666666666666,
+        "conservativePrecision": 0.9166666666666666,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 1,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.9166666666666666,
+          "conservativePrecision": 0.9166666666666666,
+          "recall": 1,
+          "precisionWilson95": [
+            0.6461140782014047,
+            0.9851352905492264
+          ],
+          "conservativePrecisionWilson95": [
+            0.6461140782014047,
+            0.9851352905492264
+          ]
+        }
+      },
+      "core:low-coupling": {
+        "tp": 19,
+        "fp": 11,
+        "fn": 0,
+        "ambiguousHits": 2,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.6333333333333333,
+        "conservativePrecision": 0.59375,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 19,
+        "distinctPromptEvidence": {
+          "tp": 19,
+          "fp": 11,
+          "fn": 0,
+          "ambiguousHits": 2,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.6333333333333333,
+          "conservativePrecision": 0.59375,
+          "recall": 1,
+          "precisionWilson95": [
+            0.45513246433604937,
+            0.7812629779598231
+          ],
+          "conservativePrecisionWilson95": [
+            0.4225972657298823,
+            0.744805975196862
+          ]
+        }
+      },
+      "core:make-illegal-states-unrepresentable": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 4,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 0.7333333333333333,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 4,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 0.7333333333333333,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.4804911034231324,
+            0.8910272389681718
+          ]
+        }
+      },
+      "core:metamorphic-testing": {
+        "tp": 13,
+        "fp": 1,
+        "fn": 0,
+        "ambiguousHits": 1,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.9285714285714286,
+        "conservativePrecision": 0.8666666666666667,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 13,
+        "distinctPromptEvidence": {
+          "tp": 13,
+          "fp": 1,
+          "fn": 0,
+          "ambiguousHits": 1,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.9285714285714286,
+          "conservativePrecision": 0.8666666666666667,
+          "recall": 1,
+          "precisionWilson95": [
+            0.6853073044604219,
+            0.9872781138877085
+          ],
+          "conservativePrecisionWilson95": [
+            0.6211750079348376,
+            0.9626395301086407
+          ]
+        }
+      },
+      "core:mutation-testing": {
+        "tp": 8,
+        "fp": 0,
+        "fn": 3,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 0.7272727272727273,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 3,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.7272727272727273,
+          "precisionWilson95": [
+            0.6755843804891231,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.6755843804891231,
+            1
+          ]
+        }
+      },
+      "core:optimistic-concurrency-control": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:orthogonality": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:parse-dont-validate": {
+        "tp": 9,
+        "fp": 2,
+        "fn": 1,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.8181818181818182,
+        "conservativePrecision": 0.8181818181818182,
+        "recall": 0.9,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 9,
+          "fp": 2,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.8181818181818182,
+          "conservativePrecision": 0.8181818181818182,
+          "recall": 0.9,
+          "precisionWilson95": [
+            0.5230138624217553,
+            0.9486333993289995
+          ],
+          "conservativePrecisionWilson95": [
+            0.5230138624217553,
+            0.9486333993289995
+          ]
+        }
+      },
+      "core:progressive-disclosure": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:property-based-testing": {
+        "tp": 9,
+        "fp": 0,
+        "fn": 1,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 0.9,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.9,
+          "precisionWilson95": [
+            0.7008472464490407,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7008472464490407,
+            1
+          ]
+        }
+      },
+      "core:reconciliation-loop": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:refactoring": {
+        "tp": 24,
+        "fp": 28,
+        "fn": 8,
+        "ambiguousHits": 1,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.46153846153846156,
+        "conservativePrecision": 0.4528301886792453,
+        "recall": 0.75,
+        "distinctUnnamedPositivePrompts": 32,
+        "distinctPromptEvidence": {
+          "tp": 24,
+          "fp": 28,
+          "fn": 8,
+          "ambiguousHits": 1,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.46153846153846156,
+          "conservativePrecision": 0.4528301886792453,
+          "recall": 0.75,
+          "precisionWilson95": [
+            0.3334025986239788,
+            0.5949662160231659
+          ],
+          "conservativePrecisionWilson95": [
+            0.3265736816014746,
+            0.585462573535608
+          ]
+        }
+      },
+      "core:regression-testing": {
+        "tp": 12,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 12,
+        "distinctPromptEvidence": {
+          "tp": 12,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7574992425007574,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7574992425007574,
+            1
+          ]
+        }
+      },
+      "core:separation-of-concerns": {
+        "tp": 25,
+        "fp": 3,
+        "fn": 0,
+        "ambiguousHits": 2,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.8928571428571429,
+        "conservativePrecision": 0.8333333333333334,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 25,
+        "distinctPromptEvidence": {
+          "tp": 25,
+          "fp": 3,
+          "fn": 0,
+          "ambiguousHits": 2,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.8928571428571429,
+          "conservativePrecision": 0.8333333333333334,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7280377463234293,
+            0.9628823079452005
+          ],
+          "conservativePrecisionWilson95": [
+            0.6643529481431982,
+            0.9266356575964831
+          ]
+        }
+      },
+      "core:separation-of-duties": {
+        "tp": 12,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 1,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 0.9230769230769231,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 12,
+        "distinctPromptEvidence": {
+          "tp": 12,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 1,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 0.9230769230769231,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7574992425007574,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.6668546607175265,
+            0.9862899336203037
+          ]
+        }
+      },
+      "core:smoke-test": {
+        "tp": 10,
+        "fp": 6,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 0.625,
+        "conservativePrecision": 0.625,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 6,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 0.625,
+          "conservativePrecision": 0.625,
+          "recall": 1,
+          "precisionWilson95": [
+            0.3864064709793481,
+            0.815190174452472
+          ],
+          "conservativePrecisionWilson95": [
+            0.3864064709793481,
+            0.815190174452472
+          ]
+        }
+      },
+      "core:test-driven-development": {
+        "tp": 9,
+        "fp": 0,
+        "fn": 1,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 0.9,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 1,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 0.9,
+          "precisionWilson95": [
+            0.7008472464490407,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7008472464490407,
+            1
+          ]
+        }
+      },
+      "core:test-isolation": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      },
+      "core:ubiquitous-language": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:value-object": {
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 10,
+        "distinctPromptEvidence": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7224598312333834,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7224598312333834,
+            1
+          ]
+        }
+      },
+      "core:yagni": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 0,
+        "ambiguousHits": 0,
+        "redundantReminderFp": 0,
+        "overSuppressedFn": 0,
+        "precision": 1,
+        "conservativePrecision": 1,
+        "recall": 1,
+        "distinctUnnamedPositivePrompts": 11,
+        "distinctPromptEvidence": {
+          "tp": 11,
+          "fp": 0,
+          "fn": 0,
+          "ambiguousHits": 0,
+          "redundantReminderFp": 0,
+          "overSuppressedFn": 0,
+          "precision": 1,
+          "conservativePrecision": 1,
+          "recall": 1,
+          "precisionWilson95": [
+            0.7411599827511859,
+            1
+          ],
+          "conservativePrecisionWilson95": [
+            0.7411599827511859,
+            1
+          ]
+        }
+      }
+    },
+    "uncertainty": "Wilson intervals are descriptive per-concept, distinct-prompt intervals for any-repeat hits. Repeats are not independent samples. Ten positive prompts and meeting the chosen empirical precision target are minimum tuning evidence, not a precision guarantee; intervals do not account for dependent prompts or variant/threshold selection. Confirm on untouched heldout data."
+  },
+  "candidatesEvaluated": 21420,
+  "limitation": "Bounded heuristic; failure is not mathematical proof of infeasibility. No native phase may advance failed calibration.",
+  "native": true,
+  "measured": false,
+  "accepted": false,
+  "metricStatus": "consumed-development-only-combined-continuation",
+  "stopPaidReplay": false,
+  "replayAuthorized": false,
+  "acceptanceExecuted": false,
+  "previewArtifactAvailable": false
+}

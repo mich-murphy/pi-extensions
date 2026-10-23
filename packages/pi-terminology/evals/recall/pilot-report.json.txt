@@ -1,0 +1,949 @@
+{
+  "selected": "semanticRepair",
+  "ranking": {
+    "baseline": {
+      "precision": 0.96875,
+      "recall": 0.8078175895765473,
+      "fp": 8,
+      "tp": 248,
+      "fn": 59,
+      "gaps": [],
+      "candidateGaps": [],
+      "candidateThresholds": {
+        "core:ablation-study": 0.85,
+        "core:accidental-complexity": 0.89,
+        "core:anticorruption-layer": 0.89,
+        "core:backpressure": 0.89,
+        "core:blast-radius": 0.94,
+        "core:blinded-evaluation": 0.88,
+        "core:bounded-context": 0.87,
+        "core:branded-types": 0.89,
+        "core:canary-deployment": 0.89,
+        "core:change-detector-test": 0.84,
+        "core:characterization-testing": 0.84,
+        "core:circuit-breaker": 0.89,
+        "core:contract-testing": 0.88,
+        "core:dead-code": 0.89,
+        "core:debugging-by-bisection": 0.88,
+        "core:deep-module": 0.93,
+        "core:delta-debugging": 0.89,
+        "core:design-by-contract": 0.88,
+        "core:design-it-twice": 0.88,
+        "core:diataxis": 0.88,
+        "core:differential-testing": 0.89,
+        "core:dry": 0.96,
+        "core:expand-contract-migration": 0.89,
+        "core:exponential-backoff-with-jitter": 0.89,
+        "core:functional-core-imperative-shell": 0.94,
+        "core:fuzzing": 0.84,
+        "core:hermetic-testing": 0.91,
+        "core:high-cohesion": 0.97,
+        "core:idempotency": 0.86,
+        "core:information-hiding": 0.87,
+        "core:least-privilege": 0.94,
+        "core:low-coupling": 0.97,
+        "core:make-illegal-states-unrepresentable": 0.8,
+        "core:metamorphic-testing": 0.82,
+        "core:mutation-testing": 0.86,
+        "core:optimistic-concurrency-control": 0.89,
+        "core:orthogonality": 0.96,
+        "core:parse-dont-validate": 0.86,
+        "core:progressive-disclosure": 0.89,
+        "core:property-based-testing": 0.86,
+        "core:reconciliation-loop": 0.9,
+        "core:refactoring": 0.95,
+        "core:regression-testing": 0.96,
+        "core:separation-of-concerns": 0.92,
+        "core:separation-of-duties": 0.93,
+        "core:smoke-test": 0.88,
+        "core:test-driven-development": 0.85,
+        "core:test-isolation": 0.89,
+        "core:ubiquitous-language": 0.89,
+        "core:value-object": 0.89,
+        "core:yagni": 0.89
+      },
+      "eligible": true
+    },
+    "semanticRepair": {
+      "precision": 0.9659090909090909,
+      "recall": 0.8306188925081434,
+      "fp": 9,
+      "tp": 255,
+      "fn": 52,
+      "gaps": [],
+      "candidateGaps": [],
+      "candidateThresholds": {
+        "core:ablation-study": 0.88,
+        "core:accidental-complexity": 0.89,
+        "core:anticorruption-layer": 0.89,
+        "core:backpressure": 0.89,
+        "core:blast-radius": 0.94,
+        "core:blinded-evaluation": 0.88,
+        "core:bounded-context": 0.88,
+        "core:branded-types": 0.89,
+        "core:canary-deployment": 0.89,
+        "core:change-detector-test": 0.84,
+        "core:characterization-testing": 0.85,
+        "core:circuit-breaker": 0.89,
+        "core:contract-testing": 0.88,
+        "core:dead-code": 0.89,
+        "core:debugging-by-bisection": 0.88,
+        "core:deep-module": 0.93,
+        "core:delta-debugging": 0.89,
+        "core:design-by-contract": 0.88,
+        "core:design-it-twice": 0.88,
+        "core:diataxis": 0.88,
+        "core:differential-testing": 0.89,
+        "core:dry": 0.96,
+        "core:expand-contract-migration": 0.89,
+        "core:exponential-backoff-with-jitter": 0.88,
+        "core:functional-core-imperative-shell": 0.94,
+        "core:fuzzing": 0.83,
+        "core:hermetic-testing": 0.91,
+        "core:high-cohesion": 0.97,
+        "core:idempotency": 0.86,
+        "core:information-hiding": 0.88,
+        "core:least-privilege": 0.94,
+        "core:low-coupling": 0.97,
+        "core:make-illegal-states-unrepresentable": 0.83,
+        "core:metamorphic-testing": 0.81,
+        "core:mutation-testing": 0.86,
+        "core:optimistic-concurrency-control": 0.89,
+        "core:orthogonality": 0.96,
+        "core:parse-dont-validate": 0.87,
+        "core:progressive-disclosure": 0.89,
+        "core:property-based-testing": 0.87,
+        "core:reconciliation-loop": 0.9,
+        "core:refactoring": 0.97,
+        "core:regression-testing": 0.96,
+        "core:separation-of-concerns": 0.9,
+        "core:separation-of-duties": 0.93,
+        "core:smoke-test": 0.89,
+        "core:test-driven-development": 0.85,
+        "core:test-isolation": 0.89,
+        "core:ubiquitous-language": 0.87,
+        "core:value-object": 0.88,
+        "core:yagni": 0.89
+      },
+      "eligible": true
+    }
+  },
+  "questionSemantics": {
+    "baseline": {
+      "core:ablation-study": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"ablation study\" in the user's current request? \"ablation study\" here means: Asks to remove or disable a specified component and compare performance with and without it while holding other conditions comparable to isolate its contribution. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies ablation study: Asks to remove or disable a specified component and compare performance with and without it while holding other conditions comparable to isolate its contribution.",
+          "false": "The current request does not ask for ablation study. Cases that are not ablation study: Ordinary comparative experiments, multiple simultaneous changes without isolation, alternative complete designs, or hiding candidate names from a judge without component removal. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:accidental-complexity": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"accidental complexity\" (also called essential vs accidental complexity, KISS) in the user's current request? \"accidental complexity\" here means: Asks to keep a real change simple, avoid or remove unnecessary moving parts, effort or indirection in how a current need is met, or to justify existing or proposed complexity (e.g. 'keep it simple', 'no complete redesign', 'far too much work for this', 'is this more complicated than necessary'). Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies accidental complexity: Asks to keep a real change simple, avoid or remove unnecessary moving parts, effort or indirection in how a current need is met, or to justify existing or proposed complexity (e.g. 'keep it simple', 'no complete redesign', 'far too much work for this', 'is this more complicated than necessary').",
+          "false": "The current request does not ask for accidental complexity. Cases that are not accidental complexity: Hypothetical or illustrative examples; questioning whether the whole design or approach is wrong (a redesign question); dropping a capability that is not needed (YAGNI); deleting unused code (dead code); quality audits that merely list complexity among many criteria; performance tuning."
+        }
+      },
+      "core:anticorruption-layer": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"anticorruption layer\" (also called anti-corruption layer) in the user's current request? \"anticorruption layer\" here means: Asks to put semantic translation between a legacy or external system model and a new domain model so the external concepts do not dictate the new domain’s design. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies anticorruption layer: Asks to put semantic translation between a legacy or external system model and a new domain model so the external concepts do not dictate the new domain’s design.",
+          "false": "The current request does not ask for anticorruption layer. Cases that are not anticorruption layer: A generic adapter, serialization or protocol conversion without differing semantic models, or bidirectional synchronization alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:backpressure": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"backpressure\" in the user's current request? \"backpressure\" here means: Asks to make upstream production slow, pause or limit admission in response to downstream demand or capacity so work does not accumulate without bound. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies backpressure: Asks to make upstream production slow, pause or limit admission in response to downstream demand or capacity so work does not accumulate without bound.",
+          "false": "The current request does not ask for backpressure. Cases that are not backpressure: Bounded worker concurrency with an unbounded input queue, buffering alone, a fixed global rate limit unrelated to downstream capacity, or retry delays alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:blast-radius": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"blast radius\" in the user's current request? \"blast radius\" here means: Asks to investigate how far a real change or failure can affect consumers, persisted formats, sessions or operational behavior beyond edited code. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies blast radius: Asks to investigate how far a real change or failure can affect consumers, persisted formats, sessions or operational behavior beyond edited code.",
+          "false": "The current request does not ask for blast radius. Cases that are not blast radius: A caller list without assessing effects, a generic code search, merely minimizing edited lines, or permission to change every impacted component. This is an investigation of scope, not a claim of proven damage. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:blinded-evaluation": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"blinded evaluation\" in the user's current request? \"blinded evaluation\" here means: Asks to conceal candidate identities, authorship or experimental conditions from evaluators judging actual outputs to reduce identity-driven bias. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies blinded evaluation: Asks to conceal candidate identities, authorship or experimental conditions from evaluators judging actual outputs to reduce identity-driven bias.",
+          "false": "The current request does not ask for blinded evaluation. Cases that are not blinded evaluation: Different-family judges alone, independent reviewers who see identities, removing a component to assess contribution without concealment, or merely anonymizing the eventual report after judgment. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:bounded-context": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"bounded context\" in the user's current request? \"bounded context\" here means: Asks to define explicit scopes in which a domain model and its terms have consistent meanings, allowing different models or meanings outside those scopes. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies bounded context: Asks to define explicit scopes in which a domain model and its terms have consistent meanings, allowing different models or meanings outside those scopes.",
+          "false": "The current request does not ask for bounded context. Cases that are not bounded context: Service or repository boundaries alone, a globally shared vocabulary without distinct model scopes, or a generic module split. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:branded-types": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"branded types\" in the user's current request? \"branded types\" here means: Asks to introduce a type-level distinction between values with the same underlying representation but different semantic roles to prevent accidental interchange. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies branded types: Asks to introduce a type-level distinction between values with the same underlying representation but different semantic roles to prevent accidental interchange.",
+          "false": "The current request does not ask for branded types. Cases that are not branded types: Renaming variables, validating string syntax alone, runtime authorization, or general discriminated-state variants without semantic same-representation distinctions. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:canary-deployment": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"canary deployment\" in the user's current request? \"canary deployment\" here means: Asks to expose a new release to a limited part of production, evaluate results against rollout criteria, and use that evidence to continue or halt expansion. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies canary deployment: Asks to expose a new release to a limited part of production, evaluate results against rollout criteria, and use that evidence to continue or halt expansion.",
+          "false": "The current request does not ask for canary deployment. Cases that are not canary deployment: A staging test, a smoke test after full rollout, or a gradual rollout with no evaluation deciding continuation. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:change-detector-test": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"change-detector test\" in the user's current request? \"change-detector test\" here means: Asks to identify or replace a test that mirrors implementation details and breaks on implementation changes without independently asserting required behavior; the request must establish that dependency, not merely dislike mocks. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies change-detector test: Asks to identify or replace a test that mirrors implementation details and breaks on implementation changes without independently asserting required behavior; the request must establish that dependency, not merely dislike mocks.",
+          "false": "The current request does not ask for change-detector test. Cases that are not change-detector test: Generic requests for behavior-focused tests, mocks or snapshots alone, or interaction assertions whose sequence is required behavior. Do not infer this diagnosis without evidence that the test merely reproduces implementation information. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:characterization-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"characterization testing\" in the user's current request? \"characterization testing\" here means: Asks to capture what existing software actually does in tests before changing or understanding it, treating observed behavior as the baseline rather than assuming correctness. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies characterization testing: Asks to capture what existing software actually does in tests before changing or understanding it, treating observed behavior as the baseline rather than assuming correctness.",
+          "false": "The current request does not ask for characterization testing. Cases that are not characterization testing: Tests derived solely from a new specification, generic regression checks without capturing unknown current behavior, or certifying current output as correct. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:circuit-breaker": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"circuit breaker\" in the user's current request? \"circuit breaker\" here means: Asks to temporarily stop calls to a failing dependency once failures reach a threshold and test recovery before resuming normal calls. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies circuit breaker: Asks to temporarily stop calls to a failing dependency once failures reach a threshold and test recovery before resuming normal calls.",
+          "false": "The current request does not ask for circuit breaker. Cases that are not circuit breaker: Retrying each call with longer delays, per-call timeouts alone, permanent feature disablement, or limiting producer throughput according to downstream demand. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:contract-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"contract testing\" in the user's current request? \"contract testing\" here means: Asks to verify a service double against the real external service for the same consumer-relied-on interactions so the double does not drift from service behavior. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies contract testing: Asks to verify a service double against the real external service for the same consumer-relied-on interactions so the double does not drift from service behavior.",
+          "false": "The current request does not ask for contract testing. Cases that are not contract testing: Preconditions and postconditions inside code, a schema check alone, mock-only tests without real-service consistency checks, or comparing two production implementations without a service-double compatibility purpose. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:dead-code": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"dead code\" (also called remove dead code, unused code) in the user's current request? \"dead code\" here means: Asks to find or remove code, configuration, installed files, services or infrastructure definitions that are no longer used, including leftovers of software that was removed or replaced. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": {
+            "what": "Asks to find or remove code, configuration, installed files, services or infrastructure definitions that are no longer used, including leftovers of software that was removed or replaced.",
+            "not_for": "Cleaning up git branches, worktrees, PRs or build artefacts; asking why something exists (Chesterton's fence); avoiding a not-yet-built feature (YAGNI); silencing warnings."
+          },
+          "false": {
+            "what": "The current request is outside dead code.",
+            "examples": "Cleaning up git branches, worktrees, PRs or build artefacts; asking why something exists (Chesterton's fence); avoiding a not-yet-built feature (YAGNI); silencing warnings."
+          }
+        }
+      },
+      "core:debugging-by-bisection": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"debugging by bisection\" in the user's current request? \"debugging by bisection\" here means: Asks to locate a behavior-changing revision by repeatedly testing intermediate revisions between known good and bad (or otherwise contrasting) endpoints. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies debugging by bisection: Asks to locate a behavior-changing revision by repeatedly testing intermediate revisions between known good and bad (or otherwise contrasting) endpoints.",
+          "false": "The current request does not ask for debugging by bisection. Cases that are not debugging by bisection: Reading history, testing commits sequentially, reducing a failing input instead of searching revisions, or using intermediate revisions without contrasting endpoints. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:deep-module": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"deep module\" in the user's current request? \"deep module\" here means: Asks to hide substantial coordination or functionality behind an interface callers can use without understanding the internal machinery. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies deep module: Asks to hide substantial coordination or functionality behind an interface callers can use without understanding the internal machinery.",
+          "false": "The current request does not ask for deep module. Cases that are not deep module: A large implementation, a thin forwarding wrapper, fewer files, or hiding a changing representation alone without interface simplification. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:delta-debugging": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"delta debugging\" in the user's current request? \"delta debugging\" here means: Asks to automate shrinking failure-inducing input, configuration or other material by testing reduced candidates and retaining the failure. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies delta debugging: Asks to automate shrinking failure-inducing input, configuration or other material by testing reduced candidates and retaining the failure.",
+          "false": "The current request does not ask for delta debugging. Cases that are not delta debugging: Requesting a small reproduction without automated reduction, manually deleting arbitrary code, or searching revision history rather than reducing failure-inducing material. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:design-by-contract": {
+        "type": "noul",
+        "instructions": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements.",
+          "false": "No explicit caller preconditions, routine postconditions and state invariants or responsibilities are requested. Ordinary input validation, schema compatibility, or an isolated assertion alone do not match."
+        }
+      },
+      "core:design-it-twice": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"design it twice\" in the user's current request? \"design it twice\" here means: Asks to explore substantially different candidate designs or interfaces and compare realistic uses and trade-offs before choosing one. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies design it twice: Asks to explore substantially different candidate designs or interfaces and compare realistic uses and trade-offs before choosing one.",
+          "false": "The current request does not ask for design it twice. Cases that are not design it twice: Two reviewers of one design, independent implementation checking, retrying execution, or an implement-review-fix loop without alternative designs. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:diataxis": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"Diátaxis\" in the user's current request? \"Diátaxis\" here means: Asks to organize actual documentation by reader needs into tutorials, task-oriented how-to guides, reference and explanation, or explicitly distinguish these forms when restructuring it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies Diátaxis: Asks to organize actual documentation by reader needs into tutorials, task-oriented how-to guides, reference and explanation, or explicitly distinguish these forms when restructuring it.",
+          "false": "The current request does not ask for Diátaxis. Cases that are not Diátaxis: Concise prose, diagrams, arbitrary document categories, or demanding all four forms inside every single document. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:differential-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"differential testing\" in the user's current request? \"differential testing\" here means: Asks to run the same inputs through multiple implementations or versions expected to agree and investigate output disagreements. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies differential testing: Asks to run the same inputs through multiple implementations or versions expected to agree and investigate output disagreements.",
+          "false": "The current request does not ask for differential testing. Cases that are not differential testing: Comparing intentionally different specifications, comparing performance alone, deliberately mutating production code to assess tests, or checking relationships within one implementation instead of cross-implementation agreement. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:dry": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"DRY\" (also called Don't Repeat Yourself) in the user's current request? \"DRY\" here means: Asks to replace independently maintained duplicate representations of the same system knowledge with one authoritative representation and derive dependent artifacts from it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies DRY: Asks to replace independently maintained duplicate representations of the same system knowledge with one authoritative representation and derive dependent artifacts from it.",
+          "false": "The current request does not ask for DRY. Cases that are not DRY: Similar-looking code representing different knowledge, extracting a helper solely for visual similarity, or generic cleanup without duplicated knowledge. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:expand-contract-migration": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"expand-contract migration\" (also called parallel change) in the user's current request? \"expand-contract migration\" here means: Asks to introduce a compatible new interface or schema alongside the old one, migrate consumers, then remove the old form after migration. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies expand-contract migration: Asks to introduce a compatible new interface or schema alongside the old one, migrate consumers, then remove the old form after migration.",
+          "false": "The current request does not ask for expand-contract migration. Cases that are not expand-contract migration: A one-shot rename, migrating all callers atomically without transitional compatibility, or gradual deployment alone without old/new interface coexistence. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:exponential-backoff-with-jitter": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"exponential backoff with jitter\" in the user's current request? \"exponential backoff with jitter\" here means: Asks to use exponentially increasing retry delays together with randomized timing to spread retries for real failing work. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies exponential backoff with jitter: Asks to use exponentially increasing retry delays together with randomized timing to spread retries for real failing work.",
+          "false": "The current request does not ask for exponential backoff with jitter. Cases that are not exponential backoff with jitter: Exponential delays without randomness, fixed random delays without growth, immediate retries, or assuming timing alone makes repeated effects safe. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:functional-core-imperative-shell": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"functional core, imperative shell\" in the user's current request? \"functional core, imperative shell\" here means: Asks to separate pure decisions or transformations from I/O and side effects, keeping effects in an outer coordinator so the decision logic runs on values. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies functional core, imperative shell: Asks to separate pure decisions or transformations from I/O and side effects, keeping effects in an outer coordinator so the decision logic runs on values.",
+          "false": "The current request does not ask for functional core, imperative shell. Cases that are not functional core, imperative shell: Merely separating controller and service files, mocking I/O without moving effects out of decision logic, or a purity claim despite hidden global reads. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:fuzzing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"fuzzing\" (also called fuzz testing) in the user's current request? \"fuzzing\" here means: Asks to automatically generate or mutate test inputs and exercise software with failure checks to seek crashes or other defects. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies fuzzing: Asks to automatically generate or mutate test inputs and exercise software with failure checks to seek crashes or other defects.",
+          "false": "The current request does not ask for fuzzing. Cases that are not fuzzing: Mutating production code to assess tests, hand-picked examples only, or random performance/load traffic without failure detection. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:hermetic-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"hermetic testing\" in the user's current request? \"hermetic testing\" here means: Asks to make tests self-contained by supplying controlled fixtures and disposable dependencies instead of depending on a developer profile, shared remote service or other uncontrolled outside state. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies hermetic testing: Asks to make tests self-contained by supplying controlled fixtures and disposable dependencies instead of depending on a developer profile, shared remote service or other uncontrolled outside state.",
+          "false": "The current request does not ask for hermetic testing. Cases that are not hermetic testing: A container label alone, one mocked request with other uncontrolled dependencies, offline operation alone, or fresh per-test state without control of external assumptions. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:high-cohesion": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"high cohesion\" in the user's current request? \"high cohesion\" here means: Asks to regroup module responsibilities or concepts around what belongs together so each module has a coherent purpose. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies high cohesion: Asks to regroup module responsibilities or concepts around what belongs together so each module has a coherent purpose.",
+          "false": "The current request does not ask for high cohesion. Cases that are not high cohesion: Small modules or one public method alone, reducing cross-module dependencies alone, or assigning separate reviewers to people or agents. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:idempotency": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"idempotency\" (also called idempotence) in the user's current request? \"idempotency\" here means: Asks to ensure repeating or retrying an operation has the same intended effect as one execution, such as preventing a retried create from creating a second logical resource. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies idempotency: Asks to ensure repeating or retrying an operation has the same intended effect as one execution, such as preventing a retried create from creating a second logical resource.",
+          "false": "The current request does not ask for idempotency. Cases that are not idempotency: Retry delays alone, identical response text, exactly-once delivery claims without repeated-effect requirements, or merely suppressing an obsolete UI result. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:information-hiding": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"information hiding\" in the user's current request? \"information hiding\" here means: Asks to conceal a specific change-prone design decision or representation behind module operations so clients no longer depend on it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies information hiding: Asks to conceal a specific change-prone design decision or representation behind module operations so clients no longer depend on it.",
+          "false": "The current request does not ask for information hiding. Cases that are not information hiding: Private-field syntax, secret management, or a generic request to simplify an interface without identifying a decision or representation to conceal. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:least-privilege": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"least privilege\" in the user's current request? \"least privilege\" here means: Asks to restrict a user, process or credential to only permissions and resources needed for its assigned function. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies least privilege: Asks to restrict a user, process or credential to only permissions and resources needed for its assigned function.",
+          "false": "The current request does not ask for least privilege. Cases that are not least privilege: Dividing approval duties among actors, generic role names without reducing authority, or removing unused code rather than limiting privileges. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:low-coupling": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"low coupling\" (also called loose coupling) in the user's current request? \"low coupling\" here means: Asks to reduce dependencies or required knowledge between modules so one can be understood or changed without learning the other’s internals. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies low coupling: Asks to reduce dependencies or required knowledge between modules so one can be understood or changed without learning the other’s internals.",
+          "false": "The current request does not ask for low coupling. Cases that are not low coupling: Zero-dependency absolutism, moving code into more files without reducing relationships, or grouping responsibilities within a module without changing inter-module dependencies. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:make-illegal-states-unrepresentable": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"make illegal states unrepresentable\" in the user's current request? \"make illegal states unrepresentable\" here means: Asks to replace a permissive representation with types or variants that exclude specified invalid combinations from construction. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies make illegal states unrepresentable: Asks to replace a permissive representation with types or variants that exclude specified invalid combinations from construction.",
+          "false": "The current request does not ask for make illegal states unrepresentable. Cases that are not make illegal states unrepresentable: Runtime checks on the same permissive representation, unchecked casts, generic better typing, or distinguishing two IDs without invalid state combinations. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:metamorphic-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"metamorphic testing\" in the user's current request? \"metamorphic testing\" here means: Asks to test a specified expected relationship between outputs of related executions, such as transforming an input and checking the corresponding output relationship. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies metamorphic testing: Asks to test a specified expected relationship between outputs of related executions, such as transforming an input and checking the corresponding output relationship.",
+          "false": "The current request does not ask for metamorphic testing. Cases that are not metamorphic testing: Arbitrary repeated runs, cross-implementation agreement alone, generated inputs with a single-run property only, or comparing performance with and without a component. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:mutation-testing": {
+        "type": "noul",
+        "instructions": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior.",
+          "false": "No deliberate production-code changes to assess test detection are requested. Implementation edits, changing test inputs, fuzzing, or coverage measurement alone do not match."
+        }
+      },
+      "core:optimistic-concurrency-control": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"optimistic concurrency control\" (also called OCC) in the user's current request? \"optimistic concurrency control\" here means: Asks to allow concurrent edits or transactions but validate relevant shared state or a version before committing a write, rejecting or retrying conflicts. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies optimistic concurrency control: Asks to allow concurrent edits or transactions but validate relevant shared state or a version before committing a write, rejecting or retrying conflicts.",
+          "false": "The current request does not ask for optimistic concurrency control. Cases that are not optimistic concurrency control: Suppressing an obsolete UI response, serializing all work under a lock, retries without shared-write validation, or deduplicating repeated requests alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:orthogonality": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"orthogonality\" in the user's current request? \"orthogonality\" here means: Asks to make distinct aspects vary independently so changing one no longer forces unrelated changes in another. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies orthogonality: Asks to make distinct aspects vary independently so changing one no longer forces unrelated changes in another.",
+          "false": "The current request does not ask for orthogonality. Cases that are not orthogonality: Separate files alone, merely reducing dependency counts, grouping related responsibilities, or generic separation without an independent-variation requirement. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:parse-dont-validate": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"parse, don't validate\" in the user's current request? \"parse, don't validate\" here means: Asks to transform external or weakly structured input into a stronger domain representation once, preserving established invariants for downstream code. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies parse, don't validate: Asks to transform external or weakly structured input into a stronger domain representation once, preserving established invariants for downstream code.",
+          "false": "The current request does not ask for parse, don't validate. Cases that are not parse, don't validate: A Boolean validator discarding its evidence, an unchecked cast, routine format parsing without a stronger invariant, or redesigning internal state variants alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:progressive-disclosure": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"progressive disclosure\" in the user's current request? \"progressive disclosure\" here means: Asks to show essential information or options first and reveal secondary detail only when relevant or explicitly requested. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies progressive disclosure: Asks to show essential information or options first and reveal secondary detail only when relevant or explicitly requested.",
+          "false": "The current request does not ask for progressive disclosure. Cases that are not progressive disclosure: Hiding essential prerequisites, mandatory sequential steps alone, deleting details entirely, or shortening prose without on-demand access to secondary detail. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:property-based-testing": {
+        "type": "noul",
+        "instructions": "`prompt` requests testing general correctness properties over generated inputs from a domain. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests testing general correctness properties over generated inputs from a domain.",
+          "false": "No tests of general correctness properties over generated inputs are requested. Hand-picked examples only, random performance runs without correctness properties, or production-code mutation alone without generated-property tests do not match."
+        }
+      },
+      "core:reconciliation-loop": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"reconciliation loop\" in the user's current request? \"reconciliation loop\" here means: Asks to repeatedly compare desired and observed state and take corrective action toward convergence when they differ. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies reconciliation loop: Asks to repeatedly compare desired and observed state and take corrective action toward convergence when they differ.",
+          "false": "The current request does not ask for reconciliation loop. Cases that are not reconciliation loop: Reporting drift without acting, polling status alone, a one-off comparison and manual fix, or blindly retrying an operation without comparing desired and actual state. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:refactoring": {
+        "type": "noul",
+        "instructions": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements.",
+          "false": "No behavior-preserving internal code change is requested. Adding behavior, fixing user-visible behavior, changing external contracts, or documentation-only naming conventions alone do not match."
+        }
+      },
+      "core:regression-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"regression testing\" in the user's current request? \"regression testing\" here means: Asks to check that previously working behavior still works after a change and detect unintended damage to it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies regression testing: Asks to check that previously working behavior still works after a change and detect unintended damage to it.",
+          "false": "The current request does not ask for regression testing. Cases that are not regression testing: Testing only a new feature, running tests without a stated existing-behavior protection purpose, or only checking that a deployment starts and dependencies are reachable. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:separation-of-concerns": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"separation of concerns\" in the user's current request? \"separation of concerns\" here means: Asks to separate distinct aspects of actual software work so each can be reasoned about independently, such as distinguishing infrastructure provisioning from deployment automation. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies separation of concerns: Asks to separate distinct aspects of actual software work so each can be reasoned about independently, such as distinguishing infrastructure provisioning from deployment automation.",
+          "false": "The current request does not ask for separation of concerns. Cases that are not separation of concerns: Separating maker and checker actors, splitting files without distinct concerns, or vague requests to make code cleaner without identifying aspects to separate. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:separation-of-duties": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"separation of duties\" (also called maker-checker, four-eyes principle) in the user's current request? \"separation of duties\" here means: Asks that work produced by one agent or person be checked or approved by a different agent or person, including a coordinator validating subagents' work, a fresh reviewer, or implement-review-fix loops. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it."
+      },
+      "core:smoke-test": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"smoke test\" (also called post-deployment smoke test, build verification test) in the user's current request? \"smoke test\" here means: After a change is merged or deployed, asks to confirm it is live and that the system works or behaves as expected in the target environment (e.g. 'PR merged, make sure everything is live', 'confirm nothing broke after deploying'). Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it."
+      },
+      "core:test-driven-development": {
+        "type": "noul",
+        "instructions": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case.",
+          "false": "No failing-test-first, pass, then refactor cycle is requested. Tests after implementation, rerunning tests, or test additions alone do not match."
+        }
+      },
+      "core:test-isolation": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"test isolation\" in the user's current request? \"test isolation\" here means: Asks to give tests independent state or clean up effects so one test cannot change another’s outcome, including order-independent or individually runnable tests. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies test isolation: Asks to give tests independent state or clean up effects so one test cannot change another’s outcome, including order-independent or individually runnable tests.",
+          "false": "The current request does not ask for test isolation. Cases that are not test isolation: Serial execution alone, substituting a collaborator alone, or controlling external environment assumptions without addressing cross-test state or effects. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:ubiquitous-language": {
+        "type": "noul",
+        "instructions": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model.",
+          "false": "No shared precise domain-model vocabulary for developers and domain experts is requested. Naming conventions, technical abbreviations, or an unrelated glossary alone do not match."
+        }
+      },
+      "core:value-object": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"value object\" in the user's current request? \"value object\" here means: Asks to model a domain concept by its constituent values with equality based on those values rather than persistent identity, normally preventing mutation of those values. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies value object: Asks to model a domain concept by its constituent values with equality based on those values rather than persistent identity, normally preventing mutation of those values.",
+          "false": "The current request does not ask for value object. Cases that are not value object: An immutable entity that still has persistent identity, a DTO alone, or branded IDs whose purpose is distinguishing identities rather than value equality. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:yagni": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"YAGNI\" (also called You Aren’t Gonna Need It) in the user's current request? \"YAGNI\" here means: Asks to defer or remove a proposed capability or extension point because it serves only speculative future needs rather than a concrete current requirement. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies YAGNI: Asks to defer or remove a proposed capability or extension point because it serves only speculative future needs rather than a concrete current requirement.",
+          "false": "The current request does not ask for YAGNI. Cases that are not YAGNI: Removing unused existing code, reducing implementation indirection while retaining a current capability, neglecting tests or refactoring, or deferring a capability with a current requirement merely because it is difficult. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      }
+    },
+    "semanticRepair": {
+      "core:ablation-study": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"ablation study\" in the user's current request? \"ablation study\" here means: Asks to remove or disable a specified component and compare performance with and without it while holding other conditions comparable to isolate its contribution. Compatible additional practices, such as blinding the evaluator, do not negate this component-removal comparison. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies ablation study: Asks to remove or disable a specified component and compare performance with and without it while holding other conditions comparable to isolate its contribution. Compatible additional practices, such as blinding the evaluator, do not negate this component-removal comparison.",
+          "false": "The current request does not ask for ablation study. Cases that are not ablation study: Ordinary comparative experiments, multiple simultaneous changes without isolation, alternative complete designs, or hiding candidate names from a judge without component removal. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:accidental-complexity": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"accidental complexity\" (also called essential vs accidental complexity, KISS) in the user's current request? \"accidental complexity\" here means: Asks to keep a real change simple, avoid or remove unnecessary moving parts, effort or indirection in how a current need is met, or to justify existing or proposed complexity (e.g. 'keep it simple', 'no complete redesign', 'far too much work for this', 'is this more complicated than necessary'). Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies accidental complexity: Asks to keep a real change simple, avoid or remove unnecessary moving parts, effort or indirection in how a current need is met, or to justify existing or proposed complexity (e.g. 'keep it simple', 'no complete redesign', 'far too much work for this', 'is this more complicated than necessary').",
+          "false": "The current request does not ask for accidental complexity. Cases that are not accidental complexity: Hypothetical or illustrative examples; questioning whether the whole design or approach is wrong (a redesign question); dropping a capability that is not needed (YAGNI); deleting unused code (dead code); quality audits that merely list complexity among many criteria; performance tuning."
+        }
+      },
+      "core:anticorruption-layer": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"anticorruption layer\" (also called anti-corruption layer) in the user's current request? \"anticorruption layer\" here means: Asks to put semantic translation between a legacy or external system model and a new domain model so the external concepts do not dictate the new domain’s design. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies anticorruption layer: Asks to put semantic translation between a legacy or external system model and a new domain model so the external concepts do not dictate the new domain’s design.",
+          "false": "The current request does not ask for anticorruption layer. Cases that are not anticorruption layer: A generic adapter, serialization or protocol conversion without differing semantic models, or bidirectional synchronization alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:backpressure": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"backpressure\" in the user's current request? \"backpressure\" here means: Asks to make upstream production slow, pause or limit admission in response to downstream demand or capacity so work does not accumulate without bound. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies backpressure: Asks to make upstream production slow, pause or limit admission in response to downstream demand or capacity so work does not accumulate without bound.",
+          "false": "The current request does not ask for backpressure. Cases that are not backpressure: Bounded worker concurrency with an unbounded input queue, buffering alone, a fixed global rate limit unrelated to downstream capacity, or retry delays alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:blast-radius": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"blast radius\" in the user's current request? \"blast radius\" here means: Asks to investigate how far a real change or failure can affect consumers, persisted formats, sessions or operational behavior beyond edited code. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies blast radius: Asks to investigate how far a real change or failure can affect consumers, persisted formats, sessions or operational behavior beyond edited code.",
+          "false": "The current request does not ask for blast radius. Cases that are not blast radius: A caller list without assessing effects, a generic code search, merely minimizing edited lines, or permission to change every impacted component. This is an investigation of scope, not a claim of proven damage. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:blinded-evaluation": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"blinded evaluation\" in the user's current request? \"blinded evaluation\" here means: Asks to conceal candidate identities, authorship or experimental conditions from evaluators judging actual outputs to reduce identity-driven bias. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies blinded evaluation: Asks to conceal candidate identities, authorship or experimental conditions from evaluators judging actual outputs to reduce identity-driven bias.",
+          "false": "The current request does not ask for blinded evaluation. Cases that are not blinded evaluation: Different-family judges alone, independent reviewers who see identities, removing a component to assess contribution without concealment, or merely anonymizing the eventual report after judgment. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:bounded-context": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"bounded context\" in the user's current request? \"bounded context\" here means: Asks to define explicit scopes in which a domain model and its terms have consistent meanings, allowing different models or meanings outside those scopes. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies bounded context: Asks to define explicit scopes in which a domain model and its terms have consistent meanings, allowing different models or meanings outside those scopes.",
+          "false": "The current request does not ask for bounded context. Cases that are not bounded context: Service or repository boundaries alone, a globally shared vocabulary without distinct model scopes, or a generic module split. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:branded-types": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"branded types\" in the user's current request? \"branded types\" here means: Asks to introduce a type-level distinction between values with the same underlying representation but different semantic roles to prevent accidental interchange. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies branded types: Asks to introduce a type-level distinction between values with the same underlying representation but different semantic roles to prevent accidental interchange.",
+          "false": "The current request does not ask for branded types. Cases that are not branded types: Renaming variables, validating string syntax alone, runtime authorization, or general discriminated-state variants without semantic same-representation distinctions. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:canary-deployment": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"canary deployment\" in the user's current request? \"canary deployment\" here means: Asks to expose a new release to a limited part of production, evaluate results against rollout criteria, and use that evidence to continue or halt expansion. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies canary deployment: Asks to expose a new release to a limited part of production, evaluate results against rollout criteria, and use that evidence to continue or halt expansion.",
+          "false": "The current request does not ask for canary deployment. Cases that are not canary deployment: A staging test, a smoke test after full rollout, or a gradual rollout with no evaluation deciding continuation. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:change-detector-test": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"change-detector test\" in the user's current request? \"change-detector test\" here means: Asks to identify or replace a test that mirrors implementation details and breaks on implementation changes without independently asserting required behavior; the request must establish that dependency, not merely dislike mocks. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies change-detector test: Asks to identify or replace a test that mirrors implementation details and breaks on implementation changes without independently asserting required behavior; the request must establish that dependency, not merely dislike mocks.",
+          "false": "The current request does not ask for change-detector test. Cases that are not change-detector test: Generic requests for behavior-focused tests, mocks or snapshots alone, or interaction assertions whose sequence is required behavior. Do not infer this diagnosis without evidence that the test merely reproduces implementation information. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:characterization-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"characterization testing\" in the user's current request? \"characterization testing\" here means: Asks to capture what existing software actually does in tests before changing or understanding it, treating observed behavior as the baseline rather than assuming correctness. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies characterization testing: Asks to capture what existing software actually does in tests before changing or understanding it, treating observed behavior as the baseline rather than assuming correctness.",
+          "false": "The current request does not ask for characterization testing. Cases that are not characterization testing: Tests derived solely from a new specification, generic regression checks without capturing unknown current behavior, or certifying current output as correct. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:circuit-breaker": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"circuit breaker\" in the user's current request? \"circuit breaker\" here means: Asks to temporarily stop calls to a failing dependency once failures reach a threshold and test recovery before resuming normal calls. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies circuit breaker: Asks to temporarily stop calls to a failing dependency once failures reach a threshold and test recovery before resuming normal calls.",
+          "false": "The current request does not ask for circuit breaker. Cases that are not circuit breaker: Retrying each call with longer delays, per-call timeouts alone, permanent feature disablement, or limiting producer throughput according to downstream demand. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:contract-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"contract testing\" in the user's current request? \"contract testing\" here means: Asks to verify a service double against the real external service for the same consumer-relied-on interactions so the double does not drift from service behavior. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies contract testing: Asks to verify a service double against the real external service for the same consumer-relied-on interactions so the double does not drift from service behavior.",
+          "false": "The current request does not ask for contract testing. Cases that are not contract testing: Preconditions and postconditions inside code, a schema check alone, mock-only tests without real-service consistency checks, or comparing two production implementations without a service-double compatibility purpose. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:dead-code": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"dead code\" (also called remove dead code, unused code) in the user's current request? \"dead code\" here means: Asks to find or remove code, configuration, installed files, services or infrastructure definitions that are no longer used, including leftovers of software that was removed or replaced. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": {
+            "what": "Asks to find or remove code, configuration, installed files, services or infrastructure definitions that are no longer used, including leftovers of software that was removed or replaced.",
+            "not_for": "Cleaning up git branches, worktrees, PRs or build artefacts; asking why something exists (Chesterton's fence); avoiding a not-yet-built feature (YAGNI); silencing warnings."
+          },
+          "false": {
+            "what": "The current request is outside dead code.",
+            "examples": "Cleaning up git branches, worktrees, PRs or build artefacts; asking why something exists (Chesterton's fence); avoiding a not-yet-built feature (YAGNI); silencing warnings."
+          }
+        }
+      },
+      "core:debugging-by-bisection": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"debugging by bisection\" in the user's current request? \"debugging by bisection\" here means: Asks to locate a behavior-changing revision by repeatedly testing intermediate revisions between known good and bad (or otherwise contrasting) endpoints. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies debugging by bisection: Asks to locate a behavior-changing revision by repeatedly testing intermediate revisions between known good and bad (or otherwise contrasting) endpoints.",
+          "false": "The current request does not ask for debugging by bisection. Cases that are not debugging by bisection: Reading history, testing commits sequentially, reducing a failing input instead of searching revisions, or using intermediate revisions without contrasting endpoints. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:deep-module": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"deep module\" in the user's current request? \"deep module\" here means: Asks to hide substantial coordination or functionality behind an interface callers can use without understanding the internal machinery. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies deep module: Asks to hide substantial coordination or functionality behind an interface callers can use without understanding the internal machinery.",
+          "false": "The current request does not ask for deep module. Cases that are not deep module: A large implementation, a thin forwarding wrapper, fewer files, or hiding a changing representation alone without interface simplification. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:delta-debugging": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"delta debugging\" in the user's current request? \"delta debugging\" here means: Asks to automate shrinking failure-inducing input, configuration or other material by testing reduced candidates and retaining the failure. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies delta debugging: Asks to automate shrinking failure-inducing input, configuration or other material by testing reduced candidates and retaining the failure.",
+          "false": "The current request does not ask for delta debugging. Cases that are not delta debugging: Requesting a small reproduction without automated reduction, manually deleting arbitrary code, or searching revision history rather than reducing failure-inducing material. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:design-by-contract": {
+        "type": "noul",
+        "instructions": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests explicit caller preconditions, routine postconditions and persistent state invariants or responsibilities between software elements.",
+          "false": "No explicit caller preconditions, routine postconditions and state invariants or responsibilities are requested. Ordinary input validation, schema compatibility, or an isolated assertion alone do not match."
+        }
+      },
+      "core:design-it-twice": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"design it twice\" in the user's current request? \"design it twice\" here means: Asks to explore substantially different candidate designs or interfaces and compare realistic uses and trade-offs before choosing one. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies design it twice: Asks to explore substantially different candidate designs or interfaces and compare realistic uses and trade-offs before choosing one.",
+          "false": "The current request does not ask for design it twice. Cases that are not design it twice: Two reviewers of one design, independent implementation checking, retrying execution, or an implement-review-fix loop without alternative designs. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:diataxis": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"Diátaxis\" in the user's current request? \"Diátaxis\" here means: Asks to organize actual documentation by reader needs into tutorials, task-oriented how-to guides, reference and explanation, or explicitly distinguish these forms when restructuring it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies Diátaxis: Asks to organize actual documentation by reader needs into tutorials, task-oriented how-to guides, reference and explanation, or explicitly distinguish these forms when restructuring it.",
+          "false": "The current request does not ask for Diátaxis. Cases that are not Diátaxis: Concise prose, diagrams, arbitrary document categories, or demanding all four forms inside every single document. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:differential-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"differential testing\" in the user's current request? \"differential testing\" here means: Asks to run the same inputs through multiple implementations or versions expected to agree and investigate output disagreements. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies differential testing: Asks to run the same inputs through multiple implementations or versions expected to agree and investigate output disagreements.",
+          "false": "The current request does not ask for differential testing. Cases that are not differential testing: Comparing intentionally different specifications, comparing performance alone, deliberately mutating production code to assess tests, or checking relationships within one implementation instead of cross-implementation agreement. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:dry": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"DRY\" (also called Don't Repeat Yourself) in the user's current request? \"DRY\" here means: Asks to replace independently maintained duplicate representations of the same system knowledge with one authoritative representation and derive dependent artifacts from it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies DRY: Asks to replace independently maintained duplicate representations of the same system knowledge with one authoritative representation and derive dependent artifacts from it.",
+          "false": "The current request does not ask for DRY. Cases that are not DRY: Similar-looking code representing different knowledge, extracting a helper solely for visual similarity, or generic cleanup without duplicated knowledge. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:expand-contract-migration": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"expand-contract migration\" (also called parallel change) in the user's current request? \"expand-contract migration\" here means: Asks to introduce a compatible new interface or schema alongside the old one, migrate consumers, then remove the old form after migration. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies expand-contract migration: Asks to introduce a compatible new interface or schema alongside the old one, migrate consumers, then remove the old form after migration.",
+          "false": "The current request does not ask for expand-contract migration. Cases that are not expand-contract migration: A one-shot rename, migrating all callers atomically without transitional compatibility, or gradual deployment alone without old/new interface coexistence. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:exponential-backoff-with-jitter": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"exponential backoff with jitter\" in the user's current request? \"exponential backoff with jitter\" here means: Asks to use exponentially increasing retry delays together with randomized timing to spread retries for real failing work. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies exponential backoff with jitter: Asks to use exponentially increasing retry delays together with randomized timing to spread retries for real failing work.",
+          "false": "The current request does not ask for exponential backoff with jitter. Cases that are not exponential backoff with jitter: Exponential delays without randomness, fixed random delays without growth, immediate retries, or assuming timing alone makes repeated effects safe. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:functional-core-imperative-shell": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"functional core, imperative shell\" in the user's current request? \"functional core, imperative shell\" here means: Asks to separate pure decisions or transformations from I/O and side effects, keeping effects in an outer coordinator so the decision logic runs on values. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies functional core, imperative shell: Asks to separate pure decisions or transformations from I/O and side effects, keeping effects in an outer coordinator so the decision logic runs on values.",
+          "false": "The current request does not ask for functional core, imperative shell. Cases that are not functional core, imperative shell: Merely separating controller and service files, mocking I/O without moving effects out of decision logic, or a purity claim despite hidden global reads. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:fuzzing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"fuzzing\" (also called fuzz testing) in the user's current request? \"fuzzing\" here means: Asks to automatically generate or mutate test inputs and exercise software with failure checks to seek crashes or other defects. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies fuzzing: Asks to automatically generate or mutate test inputs and exercise software with failure checks to seek crashes or other defects.",
+          "false": "The current request does not ask for fuzzing. Cases that are not fuzzing: Mutating production code to assess tests, hand-picked examples only, or random performance/load traffic without failure detection. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:hermetic-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"hermetic testing\" in the user's current request? \"hermetic testing\" here means: Asks to make tests self-contained by supplying controlled fixtures and disposable dependencies instead of depending on a developer profile, shared remote service or other uncontrolled outside state. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies hermetic testing: Asks to make tests self-contained by supplying controlled fixtures and disposable dependencies instead of depending on a developer profile, shared remote service or other uncontrolled outside state.",
+          "false": "The current request does not ask for hermetic testing. Cases that are not hermetic testing: A container label alone, one mocked request with other uncontrolled dependencies, offline operation alone, or fresh per-test state without control of external assumptions. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:high-cohesion": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"high cohesion\" in the user's current request? \"high cohesion\" here means: Asks to regroup module responsibilities or concepts around what belongs together so each module has a coherent purpose. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies high cohesion: Asks to regroup module responsibilities or concepts around what belongs together so each module has a coherent purpose.",
+          "false": "The current request does not ask for high cohesion. Cases that are not high cohesion: Small modules or one public method alone, reducing cross-module dependencies alone, or assigning separate reviewers to people or agents. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:idempotency": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"idempotency\" (also called idempotence) in the user's current request? \"idempotency\" here means: Asks to ensure repeating or retrying an operation has the same intended effect as one execution, such as preventing a retried create from creating a second logical resource. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies idempotency: Asks to ensure repeating or retrying an operation has the same intended effect as one execution, such as preventing a retried create from creating a second logical resource.",
+          "false": "The current request does not ask for idempotency. Cases that are not idempotency: Retry delays alone, identical response text, exactly-once delivery claims without repeated-effect requirements, or merely suppressing an obsolete UI result. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:information-hiding": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"information hiding\" in the user's current request? \"information hiding\" here means: Asks to conceal a specific change-prone design decision or representation behind module operations so clients no longer depend on it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies information hiding: Asks to conceal a specific change-prone design decision or representation behind module operations so clients no longer depend on it.",
+          "false": "The current request does not ask for information hiding. Cases that are not information hiding: Private-field syntax, secret management, or a generic request to simplify an interface without identifying a decision or representation to conceal. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:least-privilege": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"least privilege\" in the user's current request? \"least privilege\" here means: Asks to restrict a user, process or credential to only permissions and resources needed for its assigned function. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies least privilege: Asks to restrict a user, process or credential to only permissions and resources needed for its assigned function.",
+          "false": "The current request does not ask for least privilege. Cases that are not least privilege: Dividing approval duties among actors, generic role names without reducing authority, or removing unused code rather than limiting privileges. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:low-coupling": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"low coupling\" (also called loose coupling) in the user's current request? \"low coupling\" here means: Asks to reduce, limit or prevent unnecessary dependencies or required knowledge between modules so one can be understood or changed without learning the other’s internals, including in a new design. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies low coupling: Asks to reduce, limit or prevent unnecessary dependencies or required knowledge between modules so one can be understood or changed without learning the other’s internals, including in a new design.",
+          "false": "The current request does not ask for low coupling. Cases that are not low coupling: Zero-dependency absolutism, moving code into more files without reducing or limiting relationships, or grouping responsibilities within a module without changing inter-module dependencies. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:make-illegal-states-unrepresentable": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"make illegal states unrepresentable\" in the user's current request? \"make illegal states unrepresentable\" here means: Asks to design a new representation or replace a permissive one with types, variants or constrained construction that exclude specified invalid combinations from construction. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies make illegal states unrepresentable: Asks to design a new representation or replace a permissive one with types, variants or constrained construction that exclude specified invalid combinations from construction.",
+          "false": "The current request does not ask for make illegal states unrepresentable. Cases that are not make illegal states unrepresentable: Runtime checks on the same permissive representation, unchecked casts, generic better typing, or distinguishing two IDs without invalid state combinations. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:metamorphic-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"metamorphic testing\" in the user's current request? \"metamorphic testing\" here means: Asks to test a specified expected relationship between outputs of related executions, such as transforming an input and checking the corresponding output relationship. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies metamorphic testing: Asks to test a specified expected relationship between outputs of related executions, such as transforming an input and checking the corresponding output relationship.",
+          "false": "The current request does not ask for metamorphic testing. Cases that are not metamorphic testing: Arbitrary repeated runs, cross-implementation agreement alone, generated inputs with a single-run property only, or comparing performance with and without a component. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:mutation-testing": {
+        "type": "noul",
+        "instructions": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests deliberate changes to production code to assess whether tests detect the changed behavior.",
+          "false": "No deliberate production-code changes to assess test detection are requested. Implementation edits, changing test inputs, fuzzing, or coverage measurement alone do not match."
+        }
+      },
+      "core:optimistic-concurrency-control": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"optimistic concurrency control\" (also called OCC) in the user's current request? \"optimistic concurrency control\" here means: Asks to allow concurrent edits or transactions but validate relevant shared state or a version before committing a write, rejecting or retrying conflicts. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies optimistic concurrency control: Asks to allow concurrent edits or transactions but validate relevant shared state or a version before committing a write, rejecting or retrying conflicts.",
+          "false": "The current request does not ask for optimistic concurrency control. Cases that are not optimistic concurrency control: Suppressing an obsolete UI response, serializing all work under a lock, retries without shared-write validation, or deduplicating repeated requests alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:orthogonality": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"orthogonality\" in the user's current request? \"orthogonality\" here means: Asks to make distinct aspects vary independently so changing one no longer forces unrelated changes in another. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies orthogonality: Asks to make distinct aspects vary independently so changing one no longer forces unrelated changes in another.",
+          "false": "The current request does not ask for orthogonality. Cases that are not orthogonality: Separate files alone, merely reducing dependency counts, grouping related responsibilities, or generic separation without an independent-variation requirement. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:parse-dont-validate": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"parse, don't validate\" in the user's current request? \"parse, don't validate\" here means: Asks to transform external or weakly structured input into a stronger domain representation once, preserving established invariants for downstream code. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies parse, don't validate: Asks to transform external or weakly structured input into a stronger domain representation once, preserving established invariants for downstream code.",
+          "false": "The current request does not ask for parse, don't validate. Cases that are not parse, don't validate: A Boolean validator discarding its evidence, an unchecked cast, routine format parsing without a stronger invariant, or redesigning internal state variants alone. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:progressive-disclosure": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"progressive disclosure\" in the user's current request? \"progressive disclosure\" here means: Asks to show essential information or options first and reveal secondary detail only when relevant or explicitly requested. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies progressive disclosure: Asks to show essential information or options first and reveal secondary detail only when relevant or explicitly requested.",
+          "false": "The current request does not ask for progressive disclosure. Cases that are not progressive disclosure: Hiding essential prerequisites, mandatory sequential steps alone, deleting details entirely, or shortening prose without on-demand access to secondary detail. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:property-based-testing": {
+        "type": "noul",
+        "instructions": "`prompt` requests testing general correctness properties over generated inputs from a domain. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests testing general correctness properties over generated inputs from a domain.",
+          "false": "No tests of general correctness properties over generated inputs are requested. Hand-picked examples only, random performance runs without correctness properties, or production-code mutation alone without generated-property tests do not match."
+        }
+      },
+      "core:reconciliation-loop": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"reconciliation loop\" in the user's current request? \"reconciliation loop\" here means: Asks to repeatedly compare desired and observed state and take corrective action toward convergence when they differ. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies reconciliation loop: Asks to repeatedly compare desired and observed state and take corrective action toward convergence when they differ.",
+          "false": "The current request does not ask for reconciliation loop. Cases that are not reconciliation loop: Reporting drift without acting, polling status alone, a one-off comparison and manual fix, or blindly retrying an operation without comparing desired and actual state. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:refactoring": {
+        "type": "noul",
+        "instructions": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements. A distinct behavior-preserving restructuring or cleanup step also matches within a larger request that adds a feature or fixes behavior; removing code established to be unreachable or unused can be such a step. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests changes to software's internal code structure to improve readability, design or duplication while preserving observable behavior, including actual renaming of code elements. A distinct behavior-preserving restructuring or cleanup step also matches within a larger request that adds a feature or fixes behavior; removing code established to be unreachable or unused can be such a step.",
+          "false": "No behavior-preserving internal code change is requested. Adding behavior, fixing user-visible behavior, or changing external contracts alone does not match, but does not exclude a distinct behavior-preserving internal restructuring step in the same request. Documentation-only naming conventions alone do not match."
+        }
+      },
+      "core:regression-testing": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"regression testing\" in the user's current request? \"regression testing\" here means: Asks to check that previously working behavior still works after a change and detect unintended damage to it. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies regression testing: Asks to check that previously working behavior still works after a change and detect unintended damage to it.",
+          "false": "The current request does not ask for regression testing. Cases that are not regression testing: Testing only a new feature, running tests without a stated existing-behavior protection purpose, or only checking that a deployment starts and dependencies are reachable. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:separation-of-concerns": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"separation of concerns\" in the user's current request? \"separation of concerns\" here means: Asks to separate distinct aspects of actual software work so each can be reasoned about independently, such as distinguishing infrastructure provisioning from deployment automation. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies separation of concerns: Asks to separate distinct aspects of actual software work so each can be reasoned about independently, such as distinguishing infrastructure provisioning from deployment automation.",
+          "false": "The current request does not ask for separation of concerns. Cases that are not separation of concerns: Separating maker and checker actors, splitting files without distinct concerns, or vague requests to make code cleaner without identifying aspects to separate. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:separation-of-duties": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"separation of duties\" (also called maker-checker, four-eyes principle) in the user's current request? \"separation of duties\" here means: Asks that work produced by one agent or person be checked or approved by a different agent or person, including a coordinator validating subagents' work, a fresh reviewer, or implement-review-fix loops. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it."
+      },
+      "core:smoke-test": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"smoke test\" (also called post-deployment smoke test, build verification test) in the user's current request? \"smoke test\" here means: After a change is merged or deployed, asks to confirm it is live and that the system works or behaves as expected in the target environment (e.g. 'PR merged, make sure everything is live', 'confirm nothing broke after deploying'). Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it."
+      },
+      "core:test-driven-development": {
+        "type": "noul",
+        "instructions": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests an automated failing test first, implementation sufficient to pass it, then refactoring before the next case.",
+          "false": "No failing-test-first, pass, then refactor cycle is requested. Tests after implementation, rerunning tests, or test additions alone do not match."
+        }
+      },
+      "core:test-isolation": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"test isolation\" in the user's current request? \"test isolation\" here means: Asks to give tests independent state or clean up effects so one test cannot change another’s outcome, including order-independent or individually runnable tests. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies test isolation: Asks to give tests independent state or clean up effects so one test cannot change another’s outcome, including order-independent or individually runnable tests.",
+          "false": "The current request does not ask for test isolation. Cases that are not test isolation: Serial execution alone, substituting a collaborator alone, or controlling external environment assumptions without addressing cross-test state or effects. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:ubiquitous-language": {
+        "type": "noul",
+        "instructions": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "`prompt` requests that developers and domain experts use a shared precise vocabulary for the domain model.",
+          "false": "No shared precise domain-model vocabulary for developers and domain experts is requested. Naming conventions, technical abbreviations, or an unrelated glossary alone do not match."
+        }
+      },
+      "core:value-object": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"value object\" in the user's current request? \"value object\" here means: Asks to model a domain concept by its constituent values with equality based on those values rather than persistent identity, with immutability supporting but not required for value-based equality. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies value object: Asks to model a domain concept by its constituent values with equality based on those values rather than persistent identity, with immutability supporting but not required for value-based equality.",
+          "false": "The current request does not ask for value object. Cases that are not value object: An immutable entity that still has persistent identity, a DTO alone, or branded IDs whose purpose is distinguishing identities rather than value equality. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      },
+      "core:yagni": {
+        "type": "noul",
+        "instructions": "Does `user_prompt_to_coding_agent` ask for, or clearly apply, the software practice \"YAGNI\" (also called You Aren’t Gonna Need It) in the user's current request? \"YAGNI\" here means: Asks to defer or remove a proposed capability or extension point because it serves only speculative future needs rather than a concrete current requirement. Judge only a request for current, real work. Hypothetical or illustrative examples, questions about what a term means, and research about a practice are not requests for it.",
+        "criteria": {
+          "true": "The current request asks for or clearly applies YAGNI: Asks to defer or remove a proposed capability or extension point because it serves only speculative future needs rather than a concrete current requirement.",
+          "false": "The current request does not ask for YAGNI. Cases that are not YAGNI: Removing unused existing code, reducing implementation indirection while retaining a current capability, neglecting tests or refactoring, or deferring a capability with a current requirement merely because it is difficult. Exclude negated approaches, quoted instructions and historical descriptions unless the current user affirmatively requests this work."
+        }
+      }
+    }
+  }
+}

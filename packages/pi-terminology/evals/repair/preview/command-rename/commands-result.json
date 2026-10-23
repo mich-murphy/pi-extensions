@@ -1,0 +1,27 @@
+{
+  "viewports": {
+    "normal": "180x50",
+    "narrow": "60x28"
+  },
+  "commandPrefix": "/terminology",
+  "legacyCommandsAbsent": true,
+  "warnings": [
+    "Narrow 60x28 metadata is only as strong as the passed list; a failure invalidates both viewports."
+  ],
+  "result": "passed",
+  "passed": [
+    "41 new canonical queries: positive counts, exact ID, domain and source title",
+    "all 8 actually published new aliases",
+    "real arrow navigation, Enter related, Escape back/clear/close, resize 60x28",
+    "all 41 new concepts also at 60x28: domain and Ctrl+End source title",
+    "hide/restore commands persist across fresh processes; status preserves preference bytes",
+    "invalid JSON: warning, disabled status, built-in 51 browser; exact bad bytes untouched"
+  ],
+  "failure": null,
+  "scratchRemoved": true,
+  "limitations": [
+    "No model prompts, classifier evaluation or HTTP traffic capture.",
+    "No held-out fixtures read; offline CLI plus allowlisted credential-free profile.",
+    "Source visibility verified via real Ctrl+End; narrow checks include source and Ctrl+Home reset."
+  ]
+}

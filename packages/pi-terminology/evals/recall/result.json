@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "status": "development-blocked",
+  "model": "jev-1.13.0",
+  "promoted": false,
+  "runtimeMeasured": false,
+  "activationChanged": false,
+  "acceptedTargets": {
+    "scoredDisplayedPrecision": 0.9,
+    "overallRecall": 0.85,
+    "privateRecall": 0.85,
+    "everyConceptSyntheticRecall": 0.7,
+    "distinctSyntheticPositivesPerConcept": 10,
+    "distinctPrivatePositivePrompts": 20,
+    "privateUsefulPromptGain": "positive"
+  },
+  "nativeCollection": {
+    "attempts": 1012,
+    "successful": 1012,
+    "failed": 0,
+    "retries": 0,
+    "pilot": 400,
+    "calibration": 612,
+    "acceptance": 0,
+    "stoppedAfter": "calibration",
+    "calibrationCompletionSealIssued": false,
+    "freezeReceiptIssued": false,
+    "verificationReceiptIssued": false
+  },
+  "pilot": {
+    "selected": "semanticRepair",
+    "ranking": {
+      "baseline": {
+        "precision": 0.96875,
+        "recall": 0.8078175895765473,
+        "tp": 248,
+        "fp": 8,
+        "fn": 59,
+        "eligible": true,
+        "candidateGaps": []
+      },
+      "semanticRepair": {
+        "precision": 0.9659090909090909,
+        "recall": 0.8306188925081434,
+        "tp": 255,
+        "fp": 9,
+        "fn": 52,
+        "eligible": true,
+        "candidateGaps": []
+      }
+    }
+  },
+  "calibration": {
+    "displayed": {
+      "tp": 524,
+      "fp": 7,
+      "fn": 73,
+      "ambiguousHits": 19,
+      "redundantReminderFp": 0,
+      "overSuppressedFn": 0,
+      "precision": 0.9868173258003766,
+      "conservativePrecision": 0.9527272727272728,
+      "recall": 0.8777219430485762
+    },
+    "macro": {
+      "precision": 0.9876510200039611,
+      "recall": 0.9288633013013816
+    },
+    "widgetTruncatedPositiveAssignments": 0,
+    "gaps": [
+      "core:low-coupling: recall below 0.7",
+      "core:refactoring: recall below 0.7",
+      "core:separation-of-concerns: recall below 0.7"
+    ],
+    "failedConcepts": {
+      "core:low-coupling": {
+        "tp": 9,
+        "fp": 1,
+        "fn": 10,
+        "precision": 0.9,
+        "recall": 0.47368421052631576
+      },
+      "core:refactoring": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 30,
+        "precision": 1,
+        "recall": 0.0625
+      },
+      "core:separation-of-concerns": {
+        "tp": 17,
+        "fp": 1,
+        "fn": 8,
+        "precision": 0.9444444444444444,
+        "recall": 0.68
+      }
+    },
+    "tunerConstraintMismatch": "This historical tuner incorrectly imposes 90% precision per concept; the approved target is aggregate precision. No failed receipt is rewritten to hide this."
+  },
+  "offlineConsumedDevelopmentReplay": {
+    "acceptanceEvidence": false,
+    "promotable": false,
+    "exhaustiveVisibleGlobalSearch": false,
+    "searchMethod": "12 deterministic starts, coordinate grid 0.80..0.99, 12 sweeps max; first3 canonical IDs; fixed seed2026102204",
+    "rawGridDP": {
+      "minimumFPsForAllRecallFloors": 65,
+      "statesAt65and66FP": [
+        {
+          "tp": 548,
+          "fp": 65,
+          "precision": 0.8939641109298532,
+          "recall": 0.9179229480737019
+        },
+        {
+          "tp": 549,
+          "fp": 66,
+          "precision": 0.8926829268292683,
+          "recall": 0.9195979899497487
+        }
+      ],
+      "noRawFeasible90Precision": true
+    },
+    "actualWidgetCandidates": {
+      "allConceptRecallFloors": {
+        "precision": 0.8952536824877251,
+        "recall": 0.916247906197655,
+        "conservativePrecision": 0.8766025641025641,
+        "tp": 547,
+        "fp": 64,
+        "fn": 50,
+        "ambiguousHits": 13,
+        "sumPerConceptMissingTP": 0,
+        "perConceptRecallFailures": {}
+      },
+      "aggregateOnly": {
+        "precision": 0.9069020866773676,
+        "recall": 0.9463986599664992,
+        "conservativePrecision": 0.8828125,
+        "tp": 565,
+        "fp": 58,
+        "fn": 32,
+        "ambiguousHits": 17,
+        "sumPerConceptMissingTP": 9,
+        "perConceptRecallFailures": {
+          "core:refactoring": {
+            "tp": 14,
+            "positives": 32,
+            "recall": 0.4375
+          }
+        }
+      }
+    },
+    "interpretation": "Removing the extra per-concept precision restriction improves aggregate recall, but the aggregate-feasible candidate fails refactoring recall; the best all-class-floor candidate found fails aggregate precision. No proof of global displayed infeasibility is claimed."
+  },
+  "budget": {
+    "attemptCeiling": 1800,
+    "approvedCostNanos": 5000000000,
+    "reservedNanos": 2785542144,
+    "usageEstimateNanos": 509237736,
+    "usageEstimateIsInvoice": false,
+    "inputTokens": 12124708,
+    "outputTokens": 1116236,
+    "automaticRetries": 0,
+    "furtherCallsStopped": true
+  },
+  "latencyMs": {
+    "median": 278.0,
+    "maximum": 898,
+    "count": 1012,
+    "overFiveSeconds": 0
+  },
+  "acceptance": "Sealed fixed acceptance datasets remain undispatched and unopened to the tuning operator; independent preparation agents did inspect/label them. Abstract calibration-family exclusion metadata was exposed. No private performance or expansion-usefulness gain is claimed.",
+  "publishedArtifacts": {
+    "calibration-consensus.json.txt": "a476109e901b90f9f1aa8904f09072ed173170884a521a3a494211d893ebb8f6",
+    "calibration-observations.jsonl": "b71bb5e0a8ccd216baeb216a70e739c86f73acf76479738f6cbad4a0494f8649",
+    "calibration-receipt.json.txt": "84a41f3be7687b178c08722bfa2feaef0d9f663b153474f1ac98031afd7328e5",
+    "calibration-report.json.txt": "5cf2a4e75a63beb0b6d0abca86d5a54a0821386480a12cbd098a4d1934327f01",
+    "development-ledger.json.txt": "272d9e60ad7d15ad540522f4ba0bb47b4411d71bcc26f579ff3787eb0f1067db",
+    "offline-aggregate-frontier.json.txt": "3f3bbd597154c8d26d8e60bf934e6e4479bdd81aa976a4c7f709bf4820a683f4",
+    "offline-aggregate-frontier.py.txt": "2e51a6e7eba389dd790cbd15f065fa9e24fd6daf9d17d91de3562d3e1fc0af1e",
+    "offline-visible-search.json.txt": "cb04cfbaa9f3c17f87f3beefb16acdb722473f8da2f28317022171a160d8718e",
+    "offline-visible-search.py.txt": "5f2d0eda73d4cd7b16820a164c76c2bc66c1d854a88fc090be4a61d07b57c8b7",
+    "pilot-completion.json.txt": "6a069359c76658e7636330373f9c8dd0eceec6afc3cd8406c4fb3cdbff2a2842",
+    "pilot-ledger.json.txt": "72992f578e27e557ba71696246762642534214a153b86aa6cefcb6a05e4e012e",
+    "pilot-observations.jsonl": "6159fd10032120632d6ad46a7e21d6c2fc1b00ca4cdb4ea52efbf343dbf7dc0e",
+    "pilot-receipt.json.txt": "79bbeff69a48e5539dea9ee06a443c802a060772e03aed72ee6b845de645bc44",
+    "pilot-report.json.txt": "84a62fb516319ee74b421541aba5a0d7cadfdd3c167226bfcf52f8b5d564ed06",
+    "preparation-summary.json.txt": "b3bff99e1e8219de833a6959016245a44118f03f10ae4cd8e387fc34f3811bd1",
+    "source-manifest.json.txt": "30803396c99a7fc3a7357e5e5e5293098818b467104d3d4e8cf30daa5e07acd9",
+    "offline-source-manifest.json.txt": "793d6616164bc9d1686f3d8ab5993f38d91d9830d420227e2b8f9375673c556c",
+    "aggregate-objective-diagnostic.json.txt": "d12ea88ce31a22cc89cdd14bb0c69f9cf080b03ecb6134f0360cf90bc61aa48a"
+  },
+  "offlineObjectiveTool": {
+    "developmentOnly": true,
+    "promotable": false,
+    "nativePhaseAdvancement": false,
+    "sourceManifest": "offline-source-manifest.json.txt",
+    "diagnostic": "aggregate-objective-diagnostic.json.txt",
+    "exactDiagnosticHash": "d12ea88ce31a22cc89cdd14bb0c69f9cf080b03ecb6134f0360cf90bc61aa48a"
+  },
+  "validation": {
+    "command": "npm run check",
+    "passed": true,
+    "testFiles": 98,
+    "testsPassed": 2021,
+    "testsSkipped": 2,
+    "statementCoveragePercent": 93.13,
+    "branchCoveragePercent": 88.93,
+    "lineCoveragePercent": 93.11,
+    "gatesRelaxed": false,
+    "log": "/tmp/pi-terminology-recall-final-check.log"
+  }
+}

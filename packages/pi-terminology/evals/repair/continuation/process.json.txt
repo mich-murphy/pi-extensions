@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "supervisorPid": 16266,
+  "startedAtUtc": "2026-10-23T01:04:44.906153+00:00",
+  "cwd": "/Users/mm/dev/pi-extensions",
+  "command": [
+    "node",
+    "--import",
+    "jiti/register",
+    "packages/pi-terminology/scripts/evaluate-repair-continuation.ts",
+    "--manifest",
+    "/Users/mm/.pi/agent/pi-terminology/recall-2026-10-22/repair/manifest.json",
+    "--authorization",
+    "/Users/mm/.pi/agent/pi-terminology/recall-2026-10-22/repair/continuation/authorization.json"
+  ],
+  "preflightSha256": "389658412507cb21ffcd141da6695312013805471d7e2c6a6a81388bffbf5ada",
+  "supervisorSha256": "02299581c69cfe3e626512ed6c272c675d1b324886adfc0ab5731eafcc4fee3b",
+  "maximumNewCalls": 196,
+  "automaticRetries": 0,
+  "foregroundTimeout": null
+}

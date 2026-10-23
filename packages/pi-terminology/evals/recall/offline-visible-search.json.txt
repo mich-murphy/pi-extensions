@@ -1,0 +1,878 @@
+{
+  "developmentOnly": true,
+  "promotable": false,
+  "exhaustiveGlobalSearch": false,
+  "method": "12 deterministic starts, coordinate grid 0.80..0.99, 12 sweeps max; first3 canonical IDs; fixed seed2026102204",
+  "rawGridDP": {
+    "minimumFPsForAllRecallFloors": 65,
+    "statesAt65and66FP": [
+      {
+        "tp": 548,
+        "fp": 65,
+        "precision": 0.8939641109298532,
+        "recall": 0.9179229480737019
+      },
+      {
+        "tp": 549,
+        "fp": 66,
+        "precision": 0.8926829268292683,
+        "recall": 0.9195979899497487
+      }
+    ],
+    "noRawFeasible90Precision": true
+  },
+  "results": {
+    "allConceptRecallFloors": {
+      "precision": 0.8952536824877251,
+      "recall": 0.916247906197655,
+      "conservativePrecision": 0.8766025641025641,
+      "tp": 547,
+      "fp": 64,
+      "fn": 50,
+      "ambiguousHits": 13,
+      "sumPerConceptMissingTP": 0,
+      "perConceptRecallFailures": {},
+      "thresholds": {
+        "core:ablation-study": 0.97,
+        "core:accidental-complexity": 0.91,
+        "core:anticorruption-layer": 0.88,
+        "core:backpressure": 0.88,
+        "core:blast-radius": 0.84,
+        "core:blinded-evaluation": 0.88,
+        "core:bounded-context": 0.91,
+        "core:branded-types": 0.89,
+        "core:canary-deployment": 0.89,
+        "core:change-detector-test": 0.81,
+        "core:characterization-testing": 0.88,
+        "core:circuit-breaker": 0.89,
+        "core:contract-testing": 0.87,
+        "core:dead-code": 0.94,
+        "core:debugging-by-bisection": 0.87,
+        "core:deep-module": 0.95,
+        "core:delta-debugging": 0.88,
+        "core:design-by-contract": 0.85,
+        "core:design-it-twice": 0.87,
+        "core:diataxis": 0.86,
+        "core:differential-testing": 0.93,
+        "core:dry": 0.95,
+        "core:expand-contract-migration": 0.88,
+        "core:exponential-backoff-with-jitter": 0.87,
+        "core:functional-core-imperative-shell": 0.87,
+        "core:fuzzing": 0.81,
+        "core:hermetic-testing": 0.94,
+        "core:high-cohesion": 0.94,
+        "core:idempotency": 0.91,
+        "core:information-hiding": 0.93,
+        "core:least-privilege": 0.95,
+        "core:low-coupling": 0.96,
+        "core:make-illegal-states-unrepresentable": 0.92,
+        "core:metamorphic-testing": 0.81,
+        "core:mutation-testing": 0.84,
+        "core:optimistic-concurrency-control": 0.89,
+        "core:orthogonality": 0.96,
+        "core:parse-dont-validate": 0.84,
+        "core:progressive-disclosure": 0.88,
+        "core:property-based-testing": 0.88,
+        "core:reconciliation-loop": 0.89,
+        "core:refactoring": 0.9,
+        "core:regression-testing": 0.97,
+        "core:separation-of-concerns": 0.9,
+        "core:separation-of-duties": 0.96,
+        "core:smoke-test": 0.92,
+        "core:test-driven-development": 0.83,
+        "core:test-isolation": 0.88,
+        "core:ubiquitous-language": 0.86,
+        "core:value-object": 0.87,
+        "core:yagni": 0.88
+      },
+      "perConcept": {
+        "core:ablation-study": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:accidental-complexity": {
+          "tp": 9,
+          "fp": 1,
+          "ambiguousHits": 0,
+          "recall": 0.9,
+          "precision": 0.9
+        },
+        "core:anticorruption-layer": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:backpressure": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:blast-radius": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:blinded-evaluation": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:bounded-context": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 4,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:branded-types": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:canary-deployment": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:change-detector-test": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:characterization-testing": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:circuit-breaker": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:contract-testing": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:dead-code": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:debugging-by-bisection": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:deep-module": {
+          "tp": 9,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.9,
+          "precision": 1.0
+        },
+        "core:delta-debugging": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:design-by-contract": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:design-it-twice": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:diataxis": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:differential-testing": {
+          "tp": 15,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7142857142857143,
+          "precision": 1.0
+        },
+        "core:dry": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:expand-contract-migration": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:exponential-backoff-with-jitter": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:functional-core-imperative-shell": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:fuzzing": {
+          "tp": 15,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7142857142857143,
+          "precision": 1.0
+        },
+        "core:hermetic-testing": {
+          "tp": 8,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.8,
+          "precision": 1.0
+        },
+        "core:high-cohesion": {
+          "tp": 9,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.9,
+          "precision": 1.0
+        },
+        "core:idempotency": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:information-hiding": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:least-privilege": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.9090909090909091,
+          "precision": 1.0
+        },
+        "core:low-coupling": {
+          "tp": 14,
+          "fp": 11,
+          "ambiguousHits": 0,
+          "recall": 0.7368421052631579,
+          "precision": 0.56
+        },
+        "core:make-illegal-states-unrepresentable": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:metamorphic-testing": {
+          "tp": 13,
+          "fp": 0,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:mutation-testing": {
+          "tp": 8,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7272727272727273,
+          "precision": 1.0
+        },
+        "core:optimistic-concurrency-control": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:orthogonality": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:parse-dont-validate": {
+          "tp": 8,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.8,
+          "precision": 1.0
+        },
+        "core:progressive-disclosure": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:property-based-testing": {
+          "tp": 8,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.8,
+          "precision": 1.0
+        },
+        "core:reconciliation-loop": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:refactoring": {
+          "tp": 23,
+          "fp": 48,
+          "ambiguousHits": 1,
+          "recall": 0.71875,
+          "precision": 0.323943661971831
+        },
+        "core:regression-testing": {
+          "tp": 12,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:separation-of-concerns": {
+          "tp": 18,
+          "fp": 4,
+          "ambiguousHits": 5,
+          "recall": 0.72,
+          "precision": 0.8181818181818182
+        },
+        "core:separation-of-duties": {
+          "tp": 12,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:smoke-test": {
+          "tp": 7,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7,
+          "precision": 1.0
+        },
+        "core:test-driven-development": {
+          "tp": 9,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.9,
+          "precision": 1.0
+        },
+        "core:test-isolation": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:ubiquitous-language": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:value-object": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:yagni": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        }
+      }
+    },
+    "aggregateOnly": {
+      "precision": 0.9069020866773676,
+      "recall": 0.9463986599664992,
+      "conservativePrecision": 0.8828125,
+      "tp": 565,
+      "fp": 58,
+      "fn": 32,
+      "ambiguousHits": 17,
+      "sumPerConceptMissingTP": 9,
+      "perConceptRecallFailures": {
+        "core:refactoring": {
+          "tp": 14,
+          "positives": 32,
+          "recall": 0.4375
+        }
+      },
+      "thresholds": {
+        "core:ablation-study": 0.97,
+        "core:accidental-complexity": 0.89,
+        "core:anticorruption-layer": 0.81,
+        "core:backpressure": 0.8,
+        "core:blast-radius": 0.82,
+        "core:blinded-evaluation": 0.8,
+        "core:bounded-context": 0.88,
+        "core:branded-types": 0.84,
+        "core:canary-deployment": 0.89,
+        "core:change-detector-test": 0.8,
+        "core:characterization-testing": 0.89,
+        "core:circuit-breaker": 0.89,
+        "core:contract-testing": 0.8,
+        "core:dead-code": 0.92,
+        "core:debugging-by-bisection": 0.8,
+        "core:deep-module": 0.89,
+        "core:delta-debugging": 0.8,
+        "core:design-by-contract": 0.85,
+        "core:design-it-twice": 0.87,
+        "core:diataxis": 0.8,
+        "core:differential-testing": 0.8,
+        "core:dry": 0.94,
+        "core:expand-contract-migration": 0.88,
+        "core:exponential-backoff-with-jitter": 0.8,
+        "core:functional-core-imperative-shell": 0.87,
+        "core:fuzzing": 0.81,
+        "core:hermetic-testing": 0.83,
+        "core:high-cohesion": 0.92,
+        "core:idempotency": 0.91,
+        "core:information-hiding": 0.94,
+        "core:least-privilege": 0.88,
+        "core:low-coupling": 0.93,
+        "core:make-illegal-states-unrepresentable": 0.92,
+        "core:metamorphic-testing": 0.8,
+        "core:mutation-testing": 0.84,
+        "core:optimistic-concurrency-control": 0.89,
+        "core:orthogonality": 0.96,
+        "core:parse-dont-validate": 0.8,
+        "core:progressive-disclosure": 0.8,
+        "core:property-based-testing": 0.8,
+        "core:reconciliation-loop": 0.82,
+        "core:refactoring": 0.96,
+        "core:regression-testing": 0.97,
+        "core:separation-of-concerns": 0.86,
+        "core:separation-of-duties": 0.96,
+        "core:smoke-test": 0.8,
+        "core:test-driven-development": 0.83,
+        "core:test-isolation": 0.85,
+        "core:ubiquitous-language": 0.86,
+        "core:value-object": 0.81,
+        "core:yagni": 0.8
+      },
+      "perConcept": {
+        "core:ablation-study": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:accidental-complexity": {
+          "tp": 10,
+          "fp": 2,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.8333333333333334
+        },
+        "core:anticorruption-layer": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:backpressure": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:blast-radius": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:blinded-evaluation": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:bounded-context": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 6,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:branded-types": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:canary-deployment": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:change-detector-test": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:characterization-testing": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:circuit-breaker": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:contract-testing": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:dead-code": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:debugging-by-bisection": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:deep-module": {
+          "tp": 10,
+          "fp": 1,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.9090909090909091
+        },
+        "core:delta-debugging": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:design-by-contract": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:design-it-twice": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:diataxis": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:differential-testing": {
+          "tp": 19,
+          "fp": 4,
+          "ambiguousHits": 0,
+          "recall": 0.9047619047619048,
+          "precision": 0.8260869565217391
+        },
+        "core:dry": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:expand-contract-migration": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:exponential-backoff-with-jitter": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:functional-core-imperative-shell": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:fuzzing": {
+          "tp": 15,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7142857142857143,
+          "precision": 1.0
+        },
+        "core:hermetic-testing": {
+          "tp": 10,
+          "fp": 3,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.7692307692307693
+        },
+        "core:high-cohesion": {
+          "tp": 10,
+          "fp": 2,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 0.8333333333333334
+        },
+        "core:idempotency": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:information-hiding": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:least-privilege": {
+          "tp": 11,
+          "fp": 1,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.9166666666666666
+        },
+        "core:low-coupling": {
+          "tp": 19,
+          "fp": 20,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.48717948717948717
+        },
+        "core:make-illegal-states-unrepresentable": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:metamorphic-testing": {
+          "tp": 13,
+          "fp": 0,
+          "ambiguousHits": 1,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:mutation-testing": {
+          "tp": 8,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.7272727272727273,
+          "precision": 1.0
+        },
+        "core:optimistic-concurrency-control": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:orthogonality": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:parse-dont-validate": {
+          "tp": 10,
+          "fp": 3,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.7692307692307693
+        },
+        "core:progressive-disclosure": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:property-based-testing": {
+          "tp": 10,
+          "fp": 2,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.8333333333333334
+        },
+        "core:reconciliation-loop": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:refactoring": {
+          "tp": 14,
+          "fp": 4,
+          "ambiguousHits": 1,
+          "recall": 0.4375,
+          "precision": 0.7777777777777778
+        },
+        "core:regression-testing": {
+          "tp": 12,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:separation-of-concerns": {
+          "tp": 23,
+          "fp": 10,
+          "ambiguousHits": 7,
+          "recall": 0.92,
+          "precision": 0.696969696969697
+        },
+        "core:separation-of-duties": {
+          "tp": 12,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:smoke-test": {
+          "tp": 10,
+          "fp": 6,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 0.625
+        },
+        "core:test-driven-development": {
+          "tp": 9,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 0.9,
+          "precision": 1.0
+        },
+        "core:test-isolation": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:ubiquitous-language": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:value-object": {
+          "tp": 10,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        },
+        "core:yagni": {
+          "tp": 11,
+          "fp": 0,
+          "ambiguousHits": 0,
+          "recall": 1.0,
+          "precision": 1.0
+        }
+      }
+    }
+  }
+}

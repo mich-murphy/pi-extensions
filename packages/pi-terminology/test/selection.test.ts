@@ -59,25 +59,21 @@ describe("terminology selection", () => {
   });
 
   test.each([
-    "Do not use property-based tests; just fix docs",
     "Avoid `property-based tests` here",
     'Do not apply "property-based tests" here',
     "The note says 'property-based tests' historically",
     'The note says "use property-based tests" historically',
     "Previously we used property-based tests here",
     "We formerly called these property-based tests",
-    "Add generated correctness checks, not property-based tests",
     "The log's `property-based tests` label is just old text",
-    "Do not add a property-based test; just fix docs",
     "Avoid `property-based test` here",
     'Do not apply "property-based test" here',
     "The note says 'property-based test' historically",
     'The note says "use property-based test" historically',
     "Previously we used a property-based test here",
     "We formerly called this a property-based test",
-    "Add generated correctness checks, not a property-based test",
     "The log's `property-based test` label is just old text",
-  ])("does not suppress quoted, historical or negated PBT aliases: %s", (prompt) => {
+  ])("does not suppress quoted or historical PBT aliases: %s", (prompt) => {
     expect(suppressAlreadyNamed(prompt, loadCatalogue().catalogue)).not.toContain(
       "core:property-based-testing",
     );
@@ -114,16 +110,23 @@ describe("terminology selection", () => {
     );
   });
 
-  test("does not suppress quoted, historical or negated mentions", () => {
-    expect(suppressAlreadyNamed("Do not use TDD; just fix docs", catalogue)).not.toContain(
-      concept.id,
+  test.each([
+    "Do not use property-based tests; just fix docs",
+    "Add generated correctness checks, not property-based tests",
+    "Do not add a property-based test; just fix docs",
+    "Add generated correctness checks, not a property-based test",
+  ])("does not repeat terms explicitly named in current negative requests: %s", (prompt) => {
+    expect(suppressAlreadyNamed(prompt, loadCatalogue().catalogue)).toContain(
+      "core:property-based-testing",
     );
+  });
+
+  test("suppresses explicit negative requests but not quoted or historical context", () => {
+    expect(suppressAlreadyNamed("Do not use TDD; just fix docs", catalogue)).toContain(concept.id);
     expect(suppressAlreadyNamed("Do not use `TDD`; just fix docs", catalogue)).not.toContain(
       concept.id,
     );
-    expect(suppressAlreadyNamed("Avoid red/green/refactor here", catalogue)).not.toContain(
-      concept.id,
-    );
+    expect(suppressAlreadyNamed("Avoid red/green/refactor here", catalogue)).toContain(concept.id);
     expect(suppressAlreadyNamed("The note says 'TDD' historically", catalogue)).not.toContain(
       concept.id,
     );
@@ -136,6 +139,12 @@ describe("terminology selection", () => {
     expect(suppressAlreadyNamed("Previously we used TDD here", catalogue)).not.toContain(
       concept.id,
     );
+  });
+
+  test("suppresses the known redundant reminder for avoiding accidental complexity", () => {
+    expect(
+      suppressAlreadyNamed("Avoid accidental complexity.", loadCatalogue().catalogue),
+    ).toContain("core:accidental-complexity");
   });
 
   test("abstains when selected matches share an ambiguous label", () => {

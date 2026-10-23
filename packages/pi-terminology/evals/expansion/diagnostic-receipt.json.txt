@@ -1,0 +1,53 @@
+{
+  "evidence": {
+    "pins": {
+      "manifest.json": "38540f82fcb42bcb9b2cde16cba4ac41e987d3d16fd2b6a24f3073ae7f6f833b",
+      "verify-receipt.json": "35b4877934a0fc3867de9a705854d32135f1f7ff78b1e56d27b3b14b16bf3188",
+      "freeze.json": "3645ef7055df76ac69c8339fcf3078721f5bdf45c50cc89735390c5b7e3cd24b"
+    },
+    "sources": {
+      "catalogue.ts": "4e8481b288711fe337b28550c25fe26b79955cda2441dad28be099555513d420",
+      "index.ts": "b43c73bb483e049b66cdb5fef11d13541e0f8bddb170e806b81983b995b46447",
+      "ui.ts": "9ca6a9954dc0b29616f669ab8763d48fc648c9edb14e4625dad9d4e8e3417a59",
+      "state.ts": "42f9bb53db27eef3ce8597d90299654e94a7288523161da2fe1ba0c80852f522",
+      "types.ts": "1820f94865fb3a40d62d2ed24e1e5231d1bd5e969f7e425c962ebd52ffa8cf67",
+      "eval-metrics.ts": "85a751c8b3bc1ad8f0b7ddecfa64969e53cd42dab04775d38e8d8501b63184bd",
+      "classifier-request.ts": "bae99cd734c0709346bb83da5b92ba5f92a0618cc65c6082d9551d04143ec4d4",
+      "native-matcher.ts": "463fe1e78a173b628bb3a8d2bb063bd4940d9482c30134637095b2e662a855e1",
+      "selection.ts": "548029ea466dd2514d871cb227f69f843821cd24816a5cc1d80d223834c7e4f2",
+      "real-prompt-metrics.ts": "eeead9a142ab6135be07b6afca5ad1be04db489add5194f4df0ba250a1380f82",
+      "validation.ts": "edc9b43f4c35267dc39241d862990dfb9be3cf6ed9093e5fb16db95e23c516e7",
+      "eval-budget.ts": "ff088695a72111568e44249fdce84ec4909297425d1b4edf67221771f1f031a1",
+      "scripts/evaluate.ts": "d77de904a4d19b1ec1415971052a2da55d0027fbebf441b0e2fe53936a409ae4",
+      "scripts/evaluate-expansion.ts": "334ebbc9bf50b4397c13acafa46fd9f8eb2240ef572a2f73f836cd986051b7e8",
+      "glossary/core.json": "28740a110b7fdab7f5be28d57adb105aded426504969df06c735a06ca7945ab1",
+      "glossary/policy.json": "6545bb16f8cc5e5e15c6bfcafac1b28bb66d4dd2fadd3d9036fcbf6c6f31cc69",
+      "evals/production/core.json": "3247ed281a08a06f0c07c4753d2f30abdb5c54998fbe2aadce89770fc4efb357",
+      "evals/production/policy.json": "ad6eff4a99ee336937e5b661a1712bd61089765b5e5bcd85b1bf5de3d4d0979b"
+    },
+    "tuningSeal": "0fa96d8c240dbce39c4380ff73b43da4cbb451abe7f4c5c65c90634d196b957f",
+    "nativeLog": {
+      "path": "/Users/mm/.pi/agent/pi-terminology/expansion-2026-10-22/tune/observations.jsonl",
+      "sha256": "478401842e6fff4a77c5336d709498ec9c0a898e42e2ed9dacebb04a5285bdcd"
+    },
+    "policy": "6545bb16f8cc5e5e15c6bfcafac1b28bb66d4dd2fadd3d9036fcbf6c6f31cc69",
+    "script": "f9666d569d8911f3e744c298dd6d60a65256fd05f1197f06e28e2f5f2258cfbf",
+    "fixtureHashes": [
+      [
+        "/Users/mm/dev/pi-extensions/packages/pi-terminology/evals/expansion/development-consensus.json",
+        "2cee3e59cde0eeeccea5bb1cc351558577c8ba4d8c4c41bab00a15e37f43ad40"
+      ],
+      [
+        "/Users/mm/.pi/agent/pi-terminology/expansion-2026-10-22/fixtures/heldout-synthetic-consensus.json",
+        "4035af7572ea020260f24980e8705c7e76ad29d650e7e214d28358cc3565f999"
+      ],
+      [
+        "/Users/mm/.pi/agent/pi-terminology/expansion-2026-10-22/fixtures/heldout-private-consensus.json",
+        "c16ae3ffbceffec8e7ea9d354afcdc0de9f02da019a7c1346423b9eccead0376"
+      ]
+    ]
+  },
+  "frozenThresholdHash": "975509f094a68cc01e40bb3672f49573f0e248fc98344093aec30320fc00d9b7",
+  "plannedAttempts": 239,
+  "originalAcceptanceBlocked": true
+}
