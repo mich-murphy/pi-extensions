@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "../cache-diagnostics";
 import type { CacheDiagnosticsMode } from "../cache-diagnostics";
+import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import { SdkQueryError } from "../sdk/errors";
 import { writeSdkFailureDiagnostic } from "../sdk/failure-diagnostics";
 import { textBlock } from "./fixtures";
@@ -123,5 +124,27 @@ describe("terminal-safe diagnostic output", () => {
     expect(() => {
       emitCacheDiagnostics({ file: join(directory, "missing", "cache.jsonl") });
     }).not.toThrow();
+  });
+
+  test("a throwing write never propagates from redirected diagnostics", () => {
+    setTerminalStderr(false);
+    write.mockImplementationOnce(() => {
+      throw new Error("EPIPE");
+    });
+    expect(() => {
+      writeRedirectedDiagnostic("line\n");
+    }).not.toThrow();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  test("a throwing write is not even attempted on a terminal", () => {
+    setTerminalStderr(true);
+    write.mockImplementationOnce(() => {
+      throw new Error("EPIPE");
+    });
+    expect(() => {
+      writeRedirectedDiagnostic("line\n");
+    }).not.toThrow();
+    expect(write).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,14 @@ import type { ToolCallEventResult, ToolDefinition } from "@earendil-works/pi-cod
 /** Reserved bridge operation. Never delegates to or executes another tool. */
 export const VALIDATION_ERROR_TOOL = "pi_claude_sdk_validation_error";
 
+/** Every bounded rejection reason; the single source for the schema and replay notes. */
+export const VALIDATION_REASONS = [
+  "invalid_tool_input",
+  "unexpected_sdk_tool",
+  "uncaptured_tool_batch",
+  "sdk_input_rejected",
+] as const;
+
 /** Value-free, bounded correction text shared by the tool and its fail-safe guard. */
 export function validationRecoveryReason(input: unknown): string {
   if (
@@ -57,12 +65,7 @@ export const validationRecoveryTool: ToolDefinition = {
   },
   prepareLoadout: () => ({ hiddenDeclarations: [VALIDATION_ERROR_TOOL] }),
   parameters: Type.Object({
-    error: Type.Union([
-      Type.Literal("invalid_tool_input"),
-      Type.Literal("unexpected_sdk_tool"),
-      Type.Literal("uncaptured_tool_batch"),
-      Type.Literal("sdk_input_rejected"),
-    ]),
+    error: Type.Union(VALIDATION_REASONS.map((reason) => Type.Literal(reason))),
   }),
   async execute(_id, input) {
     throw new Error(validationRecoveryReason(input));

@@ -6,7 +6,8 @@ import type {
   Tool,
   TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { VALIDATION_ERROR_TOOL } from "./validation-recovery";
+import { sdkToolName } from "./sdk/tool-catalog";
+import { VALIDATION_ERROR_TOOL, VALIDATION_REASONS } from "./validation-recovery";
 
 /** Image bytes extracted from a stable JSONL transcript entry. */
 export type ImageAttachment = {
@@ -73,6 +74,22 @@ function contentEntry(
   return { text: JSON.stringify({ ...fields, content: serialized }), images };
 }
 
+const REJECTION_REASONS: ReadonlySet<string> = new Set(VALIDATION_REASONS);
+
+/**
+ * Neutral stand-in for a rejected tool request. Replaying the reserved call as a toolCall
+ * would teach the model to imitate it, so only a known literal reason is ever echoed.
+ */
+function rejectionNote(args: unknown): object {
+  const value =
+    typeof args === "object" && args !== null && "error" in args ? args.error : undefined;
+  const reason = typeof value === "string" && REJECTION_REASONS.has(value) ? value : "unknown";
+  return {
+    type: "text",
+    text: `[Rejected tool request: nothing executed (${reason}). Only declared mcp__pi__ tools can run.]`,
+  };
+}
+
 function entryBlocks(message: Message): PromptBlock[] {
   switch (message.role) {
     case "user": {
@@ -86,7 +103,17 @@ function entryBlocks(message: Message): PromptBlock[] {
         if (block.type !== "toolCall") {
           return [];
         }
-        return [{ type: "toolCall", id: block.id, name: block.name, arguments: block.arguments }];
+        if (block.name === VALIDATION_ERROR_TOOL) {
+          return [rejectionNote(block.arguments)];
+        }
+        return [
+          {
+            type: "toolCall",
+            id: block.id,
+            name: sdkToolName(block.name),
+            arguments: block.arguments,
+          },
+        ];
       });
       if (content.length === 0) {
         return [];
@@ -95,7 +122,16 @@ function entryBlocks(message: Message): PromptBlock[] {
     }
     case "toolResult": {
       const { toolCallId, toolName, isError } = message;
-      return [contentEntry({ role: "toolResult", toolCallId, toolName, isError }, message.content)];
+      if (toolName === VALIDATION_ERROR_TOOL) {
+        // Replaced by the note on the assistant entry that made the call.
+        return [];
+      }
+      return [
+        contentEntry(
+          { role: "toolResult", toolCallId, toolName: sdkToolName(toolName), isError },
+          message.content,
+        ),
+      ];
     }
     case "system": {
       // Prompt state, not conversation: replayed into the preamble and the tool catalog.

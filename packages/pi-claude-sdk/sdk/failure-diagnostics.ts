@@ -12,6 +12,8 @@ export type SdkFailureKind =
   | "network"
   | "protocol"
   | "provider"
+  | "rate-limit"
+  | "server-error"
   | "timeout"
   | "tool-contract"
   | "usage-limit";
@@ -74,13 +76,15 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
       const category = effectiveResultCategory(error.category, error.apiError);
       return category === "authentication" ||
         category === "usage-limit" ||
+        category === "rate-limit" ||
+        category === "server-error" ||
         category === "cancelled" ||
         category === "tool-contract"
         ? category
         : "provider";
     }
     case "SdkMissingResultError": {
-      return textKind(error.message);
+      return "provider";
     }
     default: {
       return absurd(error);
