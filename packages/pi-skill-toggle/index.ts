@@ -6,19 +6,12 @@ import type {
   ExtensionUIContext,
   InputSource,
 } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import {
-  Container,
-  getKeybindings,
-  Input,
-  SettingsList,
-  Text,
-  truncateToWidth,
-} from "@earendil-works/pi-tui";
-import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { cacheDebugSink, runRecord, usageRecord } from "./cache-debug";
 import type { DebugSink } from "./cache-debug";
 import { disabledResourceMatcher, INSTRUCTION_FILE_NAMES, toolPath } from "./guard";
+import { readInstructionHeading } from "./instruction-heading";
+import { createContextMenu } from "./menu";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { planPrompt, promptSnapshot } from "./prompt-epoch";
 import type { ModelRef, SessionProjection, TranscriptMessage } from "./prompt-epoch";
@@ -28,7 +21,7 @@ import { promptResources, skillReader } from "./prompt-view";
 import { RepositoryLocator } from "./repository";
 import { resourcePathId } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
-import { defaultToggleValue, isToggleValue, ResourcePolicy, toggleResources } from "./resources";
+import { defaultToggleValue, ResourcePolicy, toggleResources } from "./resources";
 import type { ToggleOverrides, ToggleResource } from "./resources";
 import { registerSession, sessionPolicy, unregisterSession } from "./session-registry";
 import type { SessionPolicy, SessionResource } from "./session-registry";
@@ -453,96 +446,33 @@ class SkillToggle {
     const resourcesById = new Map<string, ToggleResource>(
       resources.map((resource) => [resource.id, resource]),
     );
-    // Rows without `values` cannot be changed, which keeps manual-only skills read-only.
-    const items = resources.map<SettingItem>((resource) => ({
-      id: resource.id,
-      label: `[${resource.origin} ${resource.kind}] ${resource.label}`,
-      description: menuDescription(resource, policy),
-      ...(resource.editability === "editable"
-        ? {
-            currentValue: policy.value(resource),
-            values: ["enabled", "disabled"],
+    await ctx.ui.custom((tui, theme, keybindings, done) =>
+      createContextMenu({
+        resources,
+        policy: () => policy,
+        save: (id, value) => {
+          const resource = resourcesById.get(id);
+          if (resource === undefined) {
+            return;
           }
-        : { currentValue: "manual only" }),
-    }));
-
-    await ctx.ui.custom((tui, theme, _keybindings, done) => {
-      const accentBorder = (): DynamicBorder =>
-        new DynamicBorder((text: string) => theme.fg("accent", text));
-      const title = new Text("", 1, 0);
-      const scope = new Text("", 1, 0);
-      const updateText = (): void => {
-        title.setText(theme.fg("accent", theme.bold("Skill Toggle")));
-        scope.setText(
-          theme.fg("dim", "Saved immediately · repository choices affect all worktrees"),
-        );
-      };
-      const save = (id: string, value: string): void => {
-        const resource = resourcesById.get(id);
-        if (!(resource && isToggleValue(value))) {
-          return;
-        }
-        const stored = value === defaultToggleValue(resource) ? "default" : value;
-        const saved = this.overridesFrom(
-          "update",
-          this.store.set(resource.id, stored, resource.origin),
-          ctx,
-        );
-        if (saved) {
-          policy = new ResourcePolicy(saved);
-        }
-        // A save can change equivalent rows too. Never display the optimistic SettingsList value.
-        for (const [index, row] of resources.entries()) {
-          const item = items[index];
-          if (item !== undefined && row.editability === "editable") {
-            item.currentValue = policy.value(row);
+          const stored = value === defaultToggleValue(resource) ? "default" : value;
+          const saved = this.overridesFrom(
+            "update",
+            this.store.set(resource.id, stored, resource.origin),
+            ctx,
+          );
+          if (saved !== undefined) {
+            policy = new ResourcePolicy(saved);
           }
-        }
-      };
-      const createList = (): SettingsList =>
-        new SettingsList(
-          items,
-          Math.min(items.length + 2, 20),
-          menuListTheme(),
-          save,
-          () => {
-            done(undefined);
-          },
-          { enableSearch: true },
-        );
-      const search = new SearchQueryMirror();
-      let list = createList();
-      const container = new Container();
-      const assemble = (): void => {
-        container.clear();
-        for (const child of [accentBorder(), title, scope, list, accentBorder()]) {
-          container.addChild(child);
-        }
-      };
-      assemble();
-      updateText();
-      return {
-        // Older SettingsList versions can overrun very narrow widths; constrain every line.
-        render: (width: number) =>
-          container.render(Math.max(width, 10)).map((line) => truncateToWidth(line, width)),
-        invalidate: () => {
-          updateText();
-          container.invalidate();
         },
-        handleInput: (data: string) => {
-          // SettingsList cancels on Esc even mid-search and keeps its query private, so clear a
-          // nonempty query by replacing the list; an empty query lets SettingsList cancel (close).
-          if (search.cancelClears(data)) {
-            list = createList();
-            assemble();
-          } else {
-            search.handleInput(data);
-            list.handleInput(data);
-          }
-          tui.requestRender();
+        tui,
+        theme,
+        keybindings,
+        done: () => {
+          done(undefined);
         },
-      };
-    });
+      }),
+    );
   }
 
   /** The registered policy of this subagent's parent session, if it runs in this process. */
@@ -674,24 +604,27 @@ class SkillToggle {
       return [];
     }
     const known = new Set(loaded.map((resource) => resource.id));
-    return [
+    const paths = [
       ...new Set(
         stdout
           .split("\0")
           .filter((path) => INSTRUCTION_FILE_NAMES.has(basename(path)))
           .map((path) => resourcePathId(path, root)),
       ),
-    ]
-      .filter((id) => !known.has(id))
-      .toSorted()
-      .map<ToggleResource>((id) => ({
-        id,
-        kind: "instruction",
-        origin: "project",
-        label: relative(root, id),
-        description: id,
-        editability: "editable",
-      }));
+    ];
+    return Promise.all(
+      paths
+        .filter((id) => !known.has(id))
+        .toSorted()
+        .map(async (id): Promise<ToggleResource> => ({
+          id,
+          kind: "instruction",
+          origin: "project",
+          label: relative(root, id),
+          description: await readInstructionHeading(id),
+          editability: "editable",
+        })),
+    );
   }
 
   private overridesFrom(
@@ -748,62 +681,4 @@ function withNestedInstructions(
   return index === -1
     ? [...loaded, ...nested]
     : [...loaded.slice(0, index), ...nested, ...loaded.slice(index)];
-}
-
-/**
- * Mirror of SettingsList's private search query.
- *
- * Routes keys exactly as SettingsList 1.1 does: selection, confirm, cancel, and Space with an
- * empty query never reach its search input; everything else does.
- */
-class SearchQueryMirror {
-  private input = new Input();
-
-  /** Whether a cancel key should clear a nonempty query; if so, the mirror is cleared too. */
-  cancelClears(data: string): boolean {
-    if (!getKeybindings().matches(data, "tui.select.cancel") || this.input.getValue() === "") {
-      return false;
-    }
-    this.input = new Input();
-    return true;
-  }
-
-  handleInput(data: string): void {
-    const kb = getKeybindings();
-    const listKey = (
-      ["tui.select.up", "tui.select.down", "tui.select.confirm", "tui.select.cancel"] as const
-    ).some((binding) => kb.matches(data, binding));
-    if (!listKey && !(data === " " && this.input.getValue() === "")) {
-      this.input.handleInput(data);
-    }
-  }
-}
-
-/**
- * SettingsList's own search-enabled hint says "Esc to cancel", but Esc first clears a nonempty
- * query here. Replace exactly that known string; every other hint (no matches, scroll position,
- * or an unknown future hint) passes through unchanged. Search is always enabled, so the
- * search-disabled hint cannot occur, and its "Esc to cancel" would be accurate if it did.
- * Enter and Esc come first so they stay visible when SettingsList truncates the hint (60 columns).
- */
-const SETTINGS_LIST_HINTS: ReadonlyMap<string, string> = new Map([
-  [
-    "  Type to search · Enter/Space to change · Esc to cancel",
-    "  Enter toggle · Esc clear search, then close · type to search · Space toggle (empty search)",
-  ],
-]);
-
-function menuListTheme(): SettingsListTheme {
-  const base = getSettingsListTheme();
-  return { ...base, hint: (text) => base.hint(SETTINGS_LIST_HINTS.get(text) ?? text) };
-}
-
-/** Discovery details plus one scope line derived from the policy rule used for persistence. */
-function menuDescription(resource: ToggleResource, policy: ResourcePolicy): string {
-  const origin = resource.origin === "global" ? "Global" : "Project";
-  const scope = policy.repositoryWide(resource)
-    ? "repository-wide (all worktrees)"
-    : "this path only";
-  const manual = resource.editability === "manual-only" ? " · Manual only (read-only)" : "";
-  return `${resource.description}\n${origin} ${resource.kind} · ${scope}${manual}`;
 }

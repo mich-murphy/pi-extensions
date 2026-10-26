@@ -20,9 +20,8 @@ EXTENSION = REPO / "packages/pi-skill-toggle/index.ts"
 # not whichever global `pi` happens to be on PATH.
 PI_PACKAGE = REPO / "node_modules/@earendil-works/pi-coding-agent"
 FEATURES = ["menu", "changes", "scope"]
-HELP = "Esc clear search, then close"
-# The single key hint replaces SettingsList's own "Esc to cancel" hint; it must never reappear.
-HINT = "Enter toggle \u00b7 " + HELP + " \u00b7 type to search \u00b7 Space toggle (empty search)"
+GROUPS = ["Global instructions", "Global skills", "Project instructions", "Project skills"]
+HINT = "Type to search \u00b7 Enter toggle \u00b7 Esc back"
 STALE_HINT = "Esc to cancel"
 
 
@@ -79,7 +78,6 @@ class Run:
         self.pids = set()
         self.session = None
         self.counter = 0
-        self.wide = True  # The full hint fits (and is asserted verbatim) only at 120 columns.
         self.results = {name: "not executed" for name in [*FEATURES, "guard"]}
         self.results["guard"] = "not executed here: no model prompts/tool calls; run scripts/model.py --scenario guard"
         self.failure = None
@@ -193,7 +191,6 @@ class Run:
 
     def launch(self, directory="main", width=120, height=45):
         self.counter += 1
-        self.wide = width >= 120
         self.session = "verify" + str(self.counter)
         argv = [*pi_command()[0], "--no-extensions", "-e", str(EXTENSION), "--no-mcp",
                 "--no-prompt-templates", "--no-themes", "--approve", "--offline",
@@ -221,15 +218,48 @@ class Run:
 
     def open(self, label):
         self.command("/skill-toggle")
-        return self.wait(label, "Skill Toggle")
+        return self.wait(label, "Auto-save: each change is saved immediately.")
+
+    def group_for(self, query):
+        if query == "verify-global":
+            return "Global skills"
+        if query in ["verify-project", "verify-manual"]:
+            return "Project skills"
+        if query in ["AGENTS.md", "web/agent/AGENTS.md", "api/CLAUDE.md"]:
+            return "Project instructions"
+        return None
+
+    def enter_group(self, group, label):
+        text = self.screen(label + "-before")
+        rows = self.menu_lines(text)
+        if rows[0].strip().startswith(group):
+            return text
+        if rows[0].strip() != "Context":
+            self.key("C-u")
+            self.key("Escape")
+        self.select_unfiltered(group, "", label + "-selected")
+        self.key("Enter")
+        text = self.screen(label)
+        assert self.menu_lines(text)[0].strip().startswith(group), text
+        return text
 
     def filter(self, query, label):
+        group = self.group_for(query)
+        if group is not None:
+            self.enter_group(group, label + "-group")
         self.key("C-u")
         self.type(query)
         return self.screen(label)
 
+    def inspect(self, label, value, artifact):
+        text = self.filter(label, artifact)
+        self.row(text, label, value)
+        self.single_hint(text)
+        return text
+
     def row(self, text, label, value):
-        lines = [line for line in text.splitlines() if label in line and value in line]
+        value = {"enabled": "On", "disabled": "Off", "manual only": "Manual only"}.get(value, value)
+        lines = [line for line in self.menu_lines(text) if label in line and value in line]
         assert lines, f"Expected row {label!r} with {value!r}:\n{text}"
         return lines[0]
 
@@ -261,13 +291,6 @@ class Run:
         assert not any(str(self.scratch / "linked") in key or str(self.scratch / "main") in key for key in files), state
         return state
 
-    def scope_line(self, text, expected):
-        """The selected row's description carries exactly one scope line (old duplicate is gone)."""
-        lines = [line.strip() for line in text.splitlines()]
-        assert expected in lines, f"Expected scope line {expected!r}:\n{text}"
-        assert "Repository-wide: all worktrees" not in text, "Duplicated legacy scope line"
-        return expected
-
     def clear_search(self, label, query, hidden):
         """Esc on a nonempty query must clear it and keep the menu open (not close)."""
         before = self.screen(label + "-before")
@@ -276,41 +299,47 @@ class Run:
         assert not any(hidden in line for line in rows), f"Query was not filtering:\n{before}"
         self.key("Escape")
         text = self.screen(label)
-        assert "Skill Toggle" in text, "Esc with an active search closed the menu instead of clearing it"
+        assert any(self.menu_lines(text)[0].strip().startswith(group) for group in GROUPS), "Esc with an active search left its submenu"
         rows = self.menu_lines(text)
         assert not any(line.strip() == "> " + query for line in rows), f"Query still present:\n{text}"
         # Every row returns, so the filtered-out row is visible again inside the menu.
         assert any(hidden in line for line in rows), f"Search was not cleared:\n{text}"
         assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
-        if self.wide:
-            self.single_hint(text)
-        else:
-            # Truncated at narrow width, but Enter and Esc lead the hint so they stay visible.
-            assert "Enter toggle \u00b7 " + HELP in text, f"Narrow hint lost Esc:\n{text}"
+        self.single_hint(text)
         return text
 
     def single_hint(self, text):
         """Exactly one key-hint line inside the open menu, the accurate one; no 'Esc to cancel'."""
         rows = [line.strip() for line in self.menu_lines(text)]
         hints = [line for line in rows if "Esc" in line]
-        assert hints == [HINT], f"Expected exactly one hint {HINT!r}, got {hints}:\n{text}"
+        expected = HINT
+        if rows[0] == "Context":
+            expected = "Enter open \u00b7 Esc close"
+        elif any(line.startswith("> ") for line in rows):
+            expected = "Enter toggle \u00b7 Esc clear"
+        assert hints == [expected], f"Expected exactly one hint {expected!r}, got {hints}:\n{text}"
         assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
         return hints[0]
 
     def menu_lines(self, text):
         """Only the open menu's cells: Pi's startup header also lists skill names."""
         lines = text.splitlines()
-        starts = [i for i, line in enumerate(lines) if line.strip() == "Skill Toggle"]
+        starts = [i for i, line in enumerate(lines) if line.strip() == "Context" or any(line.strip().startswith(group) and (line.strip() == group or " · " in line) for group in GROUPS)]
         assert starts, f"Menu not open:\n{text}"
         region = lines[starts[-1]:]
-        ends = [i for i, line in enumerate(region) if HELP in line]
-        return region[:ends[0] + 1] if ends else region
+        end = next(i for i, line in enumerate(region) if line.startswith("────"))
+        return region[:end]
 
     def close(self, label):
         """Esc with an empty query closes the menu."""
+        rows = self.menu_lines(self.screen(label + "-before"))
+        if rows[0].strip() != "Context":
+            self.key("C-u")
+            self.key("Escape")
+            assert self.menu_lines(self.screen(label + "-back"))[0].strip() == "Context"
         self.key("Escape")
         text = self.screen(label)
-        assert "Skill Toggle" not in text, "Escape did not return to the editor"
+        assert "Auto-save: each change" not in text, "Escape did not return to the editor"
 
     def stop(self):
         self.command("/quit")
@@ -327,64 +356,43 @@ class Run:
         before = self.state_bytes()
         self.command("/skill-toggle unexpected")
         self.wait("menu-usage", "Usage: /skill-toggle")
-        text = self.open("menu-normal")
-        for label, value in [("AGENTS.md", "enabled"), ("verify-global", "enabled"),
-                             ("verify-project", "disabled"), ("verify-manual", "manual only"),
-                             ("web/agent/AGENTS.md", "enabled"), ("api/CLAUDE.md", "enabled")]:
-            self.row(text, label, value)
-        # Plain captured cells must communicate type and scope without ANSI colors.
-        for kind in ["instruction", "skill"]:
-            for scope in ["global", "project"]:
-                assert any(scope in line.lower() and kind in line.lower() for line in text.splitlines()), (scope, kind, text)
-        assert "worktree" in text.lower() or "repository" in text.lower(), "Missing repository-wide scope help"
-        for word in ["enter", "space", "search", "esc"]:
-            assert word in text.lower(), (word, text)
-        self.single_hint(text)
-        # The selected (first) row is the global instruction: one scope line, no duplicate.
-        self.scope_line(text, "Global instruction \u00b7 this path only")
-        line = self.row(text, "web/agent/AGENTS.md", "enabled")
-        assert str(self.scratch) not in line, "Instruction label must be repository relative"
-        text = self.filter("verify-project", "menu-search-match")
-        self.row(text, "verify-project", "disabled")
-        self.single_hint(text)
-        self.scope_line(text, "Project skill \u00b7 repository-wide (all worktrees)")
-        text = self.filter("web/agent/AGENTS.md", "menu-search-instruction")
-        self.scope_line(text, "Project instruction \u00b7 repository-wide (all worktrees)")
-        text = self.filter("verify-global", "menu-search-global-skill")
-        self.scope_line(text, "Global skill \u00b7 this path only")
-        text = self.filter("verify-manual", "menu-search-manual")
-        self.scope_line(text, "Project skill \u00b7 repository-wide (all worktrees) \u00b7 Manual only (read-only)")
-        assert not any("verify-global" in line and "enabled" in line for line in text.splitlines()), text
-        text = self.filter("no-such-fixture-zzzz", "menu-search-empty")
-        assert "No matching" in text, text
-        self.single_hint(text)
-        self.key("C-u")
-        self.row(self.screen("menu-search-clear"), "verify-global", "enabled")
-        self.close("menu-escape")
-        assert before == self.state_bytes(), "Navigation or Escape wrote state"
-        self.open("menu-before-resize")
-        self.action("resize", [60, 28])
-        self.tmux("resize-window", "-t", self.session, "-x", "60", "-y", "28")
-        self.wide = False
-        time.sleep(.6)
-        text = self.screen("menu-narrow")
-        self.row(text, "verify-project", "disabled")
-        self.row(text, "verify-manual", "manual only")
-        assert "Skill Toggle" in text and "esc" in text.lower(), text
-        assert STALE_HINT not in text, f"Contradictory {STALE_HINT!r} hint shown:\n{text}"
-        assert "Enter toggle \u00b7 " + HELP in text, f"Narrow hint lost Esc:\n{text}"
-        self.filter("web/agent/AGENTS.md", "menu-narrow-instruction")
-        self.row(self.screen("menu-narrow-instruction-result"), "web/agent/AGENTS.md", "enabled")
-        text = self.filter("verify-manual", "menu-narrow-manual")
-        self.row(text, "verify-manual", "manual only")
-        assert "read-only" in text.lower(), "Selected narrow manual row must explain immutability"
-        # Esc with an active query clears it and keeps the menu open; a second Esc closes.
-        self.clear_search("menu-narrow-escape-clears-search", "verify-manual", hidden="verify-global")
-        assert before == self.state_bytes(), "Esc clearing search changed state"
-        self.close("menu-narrow-escape")
-        assert before == self.state_bytes(), "Resize/search changed state"
+        for width, height, size in [(120, 45, "normal"), (60, 28, "narrow")]:
+            if width == 60:
+                self.action("resize", [width, height])
+                self.tmux("resize-window", "-t", self.session, "-x", str(width), "-y", str(height))
+                time.sleep(.6)
+            text = self.open("menu-" + size)
+            self.single_hint(text)
+            for group in GROUPS:
+                assert any(group in line for line in self.menu_lines(text)), text
+            self.row(text, "Global instructions", "Always on")
+            self.enter_group("Global instructions", "menu-" + size + "-global-instructions")
+            self.key("Enter")
+            self.key("Space")
+            text = self.screen("menu-" + size + "-global-readonly")
+            self.row(text, "AGENTS.md", "Always on")
+            assert "“Verification global" in text, text
+            self.single_hint(text)
+            for name, value in [("verify-global", "On"), ("verify-project", "Off"), ("verify-manual", "Manual only"), ("web/agent/AGENTS.md", "On"), ("api/CLAUDE.md", "On")]:
+                text = self.inspect(name, value, "menu-" + size + "-" + name.replace("/", "-"))
+                row = self.row(text, name, value)
+                assert "“Verification" in row, row
+                assert str(self.scratch) not in row, row
+                if self.group_for(name).startswith("Project"):
+                    assert "all worktrees" in self.menu_lines(text)[0], text
+                assert "Auto-save" not in "\n".join(self.menu_lines(text)), text
+            self.filter("verify-manual", "menu-" + size + "-manual-filtered")
+            self.clear_search("menu-" + size + "-escape-clears-search", "verify-manual", hidden="verify-project")
+            text = self.filter("no-such-fixture-zzzz", "menu-" + size + "-empty")
+            assert "No matches" in text, text
+            self.single_hint(text)
+            self.key("Escape")
+            text = self.screen("menu-" + size + "-empty-cleared")
+            self.row(text, "verify-project", "Off")
+            self.close("menu-" + size + "-escape")
+            assert before == self.state_bytes(), "Navigation, read-only rows, search or resize wrote state"
         self.stop()
-        self.results["menu"] = "passed: normal 120x45 and narrow 60x28, plain-text semantic labels"
+        self.results["menu"] = "passed: grouped menu, auto-save note, quoted inline source metadata, readonly globals, search/back, normal 120x45 and narrow 60x28"
 
     def changes(self):
         self.launch()
@@ -415,14 +423,14 @@ class Run:
         self.key("Enter")
         self.row(self.screen("changes-instruction-enter"), "web/agent/AGENTS.md", "disabled")
         self.policy("changes-instruction-immediate", project="enabled", instruction="disabled", global_skill="disabled")
-        self.clear_search("changes-escape-clears-search", "web/agent/AGENTS.md", hidden="verify-global")
+        self.clear_search("changes-escape-clears-search", "web/agent/AGENTS.md", hidden="api/CLAUDE.md")
         self.close("changes-escape")
         self.command("/reload")
         self.wait("changes-reload-result", "Reloaded")
         text = self.open("changes-after-reload")
         for label, value in [("verify-project", "enabled"), ("verify-global", "disabled"),
                              ("web/agent/AGENTS.md", "disabled")]:
-            self.row(text, label, value)
+            self.inspect(label, value, "changes-reloaded-" + label.replace("/", "-"))
         self.policy("changes-after-reload", project="enabled", instruction="disabled", global_skill="disabled")
         self.close("changes-reload-escape")
         self.stop()
@@ -430,13 +438,17 @@ class Run:
         text = self.open("changes-restart")
         for label, value in [("verify-project", "enabled"), ("verify-global", "disabled"),
                              ("web/agent/AGENTS.md", "disabled"), ("verify-manual", "manual only")]:
-            self.row(text, label, value)
+            self.inspect(label, value, "changes-restarted-" + label.replace("/", "-"))
         self.policy("changes-restart", project="enabled", instruction="disabled", global_skill="disabled")
         self.close("changes-restart-escape")
         self.stop()
         self.results["changes"] = "passed: Enter/Space, manual-only immutable, immediate file persistence, reload, fresh-process restart"
 
     def select_unfiltered(self, label, value, artifact):
+        group = self.group_for(label)
+        if group is not None:
+            self.enter_group(group, artifact + "-group")
+        value = {"enabled": "On", "disabled": "Off", "manual only": "Manual only"}.get(value, value)
         for _ in range(20):
             text = self.screen(artifact)
             for line in text.splitlines():
@@ -452,7 +464,7 @@ class Run:
         self.launch("linked")
         text = self.open("scope-linked-inherited")
         for label, value in [("verify-project", "enabled"), ("verify-global", "disabled"), ("web/agent/AGENTS.md", "disabled")]:
-            self.row(text, label, value)
+            self.inspect(label, value, "scope-linked-" + label.replace("/", "-"))
         self.filter("verify-project", "scope-linked-project-before")
         self.key("Enter")
         self.row(self.screen("scope-linked-project-reset"), "verify-project", "disabled")
@@ -463,20 +475,20 @@ class Run:
         self.row(self.screen("scope-linked-instruction-reset"), "web/agent/AGENTS.md", "enabled")
         state = self.policy("scope-linked-reset-immediate", global_skill="disabled")
         assert not state["repositories"].get(str(self.common)), "Reset must remove policy, not leave a worktree override"
-        self.clear_search("scope-linked-escape-clears-search", "web/agent/AGENTS.md", hidden="verify-global")
+        self.clear_search("scope-linked-escape-clears-search", "web/agent/AGENTS.md", hidden="api/CLAUDE.md")
         self.close("scope-linked-escape")
         self.stop()
         self.launch("main")
         text = self.open("scope-main-after-linked-reset")
         for label, value in [("verify-project", "disabled"), ("verify-global", "disabled"), ("web/agent/AGENTS.md", "enabled")]:
-            self.row(text, label, value)
+            self.inspect(label, value, "scope-main-" + label.replace("/", "-"))
         self.close("scope-main-escape")
         self.stop()
         self.launch("other")
         text = self.open("scope-unrelated-repository")
-        self.row(text, "verify-project", "disabled")
-        self.row(text, "verify-global", "disabled")
-        self.row(text, "web/agent/AGENTS.md", "enabled")
+        self.inspect("verify-project", "disabled", "scope-other-project")
+        self.inspect("verify-global", "disabled", "scope-other-global")
+        self.inspect("web/agent/AGENTS.md", "enabled", "scope-other-instruction")
         # Enable same relative path in another repo: it must not affect the original repository.
         self.filter("verify-project", "scope-other-project-before")
         self.key("Enter")
@@ -485,13 +497,13 @@ class Run:
         other_common = str(Path(self.git(self.scratch / "other", "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve())
         assert state["repositories"][other_common][".agents/skills/verify-project/SKILL.md"] == "enabled", state
         assert not state["repositories"].get(str(self.common)), state
-        self.clear_search("scope-other-escape-clears-search", "verify-project", hidden="verify-global")
+        self.clear_search("scope-other-escape-clears-search", "verify-project", hidden="verify-manual")
         self.close("scope-other-escape")
         self.stop()
         self.launch("main")
         text = self.open("scope-main-after-other-change")
-        self.row(text, "verify-project", "disabled")
-        self.row(text, "verify-global", "disabled")
+        self.inspect("verify-project", "disabled", "scope-final-project")
+        self.inspect("verify-global", "disabled", "scope-final-global")
         self.close("scope-main-final-escape")
         self.stop()
         self.results["scope"] = "passed: one canonical repository policy, linked reset propagates, unrelated repo isolated, globals shared"

@@ -45,9 +45,17 @@ const temporaryDirectories: string[] = [];
 type CommandOptions = Parameters<ToggleRegistration["registerCommand"]>[1];
 type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
 
-async function selectFirstDialogItem(factory: DialogFactory, width = 120): Promise<string[]> {
+async function selectFirstDialogItem(
+  factory: DialogFactory,
+  width = 120,
+  group = 1,
+): Promise<string[]> {
   initTheme();
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
+  for (let index = 0; index < group; index += 1) {
+    component.handleInput?.("\u001b[B");
+  }
+  component.handleInput?.("\r");
   component.handleInput?.(" ");
   component.invalidate();
   return component.render(width);
@@ -57,12 +65,17 @@ async function driveDialog(
   factory: DialogFactory,
   keys: readonly string[],
   width = 120,
+  group = 1,
 ): Promise<{ readonly closed: boolean; readonly rendered: string[] }> {
   initTheme();
   let closed = false;
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
     closed = true;
   });
+  for (let index = 0; index < group; index += 1) {
+    component.handleInput?.("\u001b[B");
+  }
+  component.handleInput?.("\r");
   for (const key of keys) {
     component.handleInput?.(key);
   }
@@ -300,7 +313,7 @@ describe("extension lifecycle", () => {
     await harness(global).runCommand("", { custom: selectFirstDialogItem });
     await harness(project).runCommand("", {
       promptOptions: { cwd, skills: [deploy] },
-      custom: selectFirstDialogItem,
+      custom: async (factory) => selectFirstDialogItem(factory, 120, 3),
     });
 
     expect(global.writes).toStrictEqual([[skillPath, "disabled"]]);
@@ -328,8 +341,8 @@ describe("extension lifecycle", () => {
       },
     });
 
-    expect(rendered.join("\n")).toContain("disabled");
-    expect(rendered.join("\n")).not.toContain("enabled");
+    expect(plain(rendered).join("\n")).toMatch(/research\s+Off/u);
+    expect(plain(rendered).join("\n")).not.toMatch(/research\s+On/u);
     expect(testHarness.notifications).toStrictEqual([
       "Could not update Pi skill-toggle state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe toggle was not saved.",
     ]);
@@ -347,10 +360,8 @@ describe("extension lifecycle", () => {
     });
 
     expect(store.writes).toStrictEqual([]);
-    expect(rendered.find((line) => line.includes("[global skill] research"))).toContain(
-      "manual only",
-    );
-    expect(rendered.join("\n")).toContain("Manual only (read-only)");
+    expect(plain(rendered).find((line) => line.includes("research"))).toContain("Manual only");
+    expect(plain(rendered).join("\n")).toContain("“Research primary sources”");
   });
 
   test("source-authored manual-only policy wins over persisted enables in the prompt", async () => {
@@ -508,9 +519,7 @@ describe("extension lifecycle", () => {
     expect(result.closed).toBe(false);
     expect(result.rendered.join("\n")).not.toContain("No matching");
     expect(result.rendered.join("\n")).not.toContain("zzz");
-    expect(result.rendered.find((line) => line.includes("[global skill] research"))).toContain(
-      "enabled",
-    );
+    expect(plain(result.rendered).join("\n")).toMatch(/research\s+On/u);
     expect(store.writes).toStrictEqual([]);
   });
 
@@ -525,13 +534,13 @@ describe("extension lifecycle", () => {
         sourceInfo: { ...research.sourceInfo, path },
       };
     });
-    const screens: (readonly [string, string[]])[] = [];
+    const screens: (readonly [string, string[], string])[] = [];
 
-    for (const [name, keys] of [
-      ["open", []],
-      ["search", ["h"]],
-      ["empty", ["z", "z", "z"]],
-      ["cleared", ["z", "z", "z", ESCAPE]],
+    for (const [name, keys, hint] of [
+      ["open", [], "  Type to search · Enter toggle · Esc back"],
+      ["search", ["h"], "  Enter toggle · Esc clear"],
+      ["empty", ["z", "z", "z"], "  Enter toggle · Esc clear"],
+      ["cleared", ["z", "z", "z", ESCAPE], "  Type to search · Enter toggle · Esc back"],
     ] as const) {
       await harness(storeWith()).runCommand("", {
         promptOptions: { cwd, skills: many },
@@ -540,10 +549,12 @@ describe("extension lifecycle", () => {
           const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
             throw new Error("menu closed unexpectedly");
           });
+          component.handleInput?.(DOWN);
+          component.handleInput?.("\r");
           for (const key of keys) {
             component.handleInput?.(key);
           }
-          screens.push([name, component.render(120)]);
+          screens.push([name, component.render(120), hint]);
           for (const width of [1, 8, 20, 40, 60, 120]) {
             const lines = component.render(width);
             expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
@@ -552,13 +563,11 @@ describe("extension lifecycle", () => {
       });
     }
 
-    for (const [name, rendered] of screens) {
+    for (const [name, rendered, hint] of screens) {
       const text = plain(rendered).join("\n");
       expect({ name, hints: hintLines(rendered) }).toStrictEqual({
         name,
-        hints: [
-          "  Enter toggle · Esc clear search, then close · type to search · Space toggle (empty search)",
-        ],
+        hints: [hint],
       });
       expect({ name, stale: text.includes("Esc to cancel") }).toStrictEqual({ name, stale: false });
       expect({ name, stale: text.includes("Enter/Space to change") }).toStrictEqual({
@@ -567,11 +576,10 @@ describe("extension lifecycle", () => {
       });
     }
     const byName = new Map(screens.map(([name, rendered]) => [name, plain(rendered).join("\n")]));
-    // SettingsList's own scroll and empty-result hints pass through unchanged.
     expect(byName.get("open")).toContain("  (1/25)");
     expect(byName.get("cleared")).toContain("  (1/25)");
-    expect(byName.get("empty")).toContain("  No matching settings");
-    expect(byName.get("open")).not.toContain("No matching settings");
+    expect(byName.get("empty")).toContain("  No matches");
+    expect(byName.get("open")).not.toContain("No matches");
   });
 
   test("Esc with an empty search closes the menu without writing", async () => {
@@ -580,13 +588,13 @@ describe("extension lifecycle", () => {
 
     await harness(store).runCommand("", {
       custom: async (factory) => {
-        const dialog = await driveDialog(factory, [ESCAPE]);
+        const dialog = await driveDialog(factory, [ESCAPE, ESCAPE]);
         closed.push(dialog.closed);
       },
     });
     await harness(store).runCommand("", {
       custom: async (factory) => {
-        const dialog = await driveDialog(factory, ["z", "z", "z", ESCAPE, ESCAPE]);
+        const dialog = await driveDialog(factory, ["z", "z", "z", ESCAPE, ESCAPE, ESCAPE]);
         closed.push(dialog.closed);
       },
     });
@@ -605,12 +613,13 @@ describe("extension lifecycle", () => {
     await testHarness.runCommand("", {
       promptOptions: { cwd, skills: [research, deploy] },
       custom: async (factory) => {
-        ({ rendered } = await driveDialog(factory, [" ", DOWN, " "]));
+        const global = await driveDialog(factory, [" "]);
+        expect(plain(global.rendered).join("\n")).toMatch(/research\s+Off/u);
+        ({ rendered } = await driveDialog(factory, [" "], 120, 3));
       },
     });
 
-    expect(rendered.find((line) => line.includes("[global skill] research"))).toContain("disabled");
-    expect(rendered.find((line) => line.includes("[project skill] deploy"))).toContain("enabled");
+    expect(plain(rendered).join("\n")).toMatch(/deploy\s+On/u);
     expect(testHarness.notifications).toHaveLength(1);
   });
 
@@ -639,16 +648,16 @@ describe("extension lifecycle", () => {
       await harness(storeWith()).runCommand("", {
         promptOptions: { cwd, skills: [skill] },
         custom: async (factory) => {
-          const dialog = await driveDialog(factory, []);
-          descriptions.push(dialog.rendered.join("\n"));
+          const dialog = await driveDialog(factory, [], 120, 3);
+          descriptions.push(plain(dialog.rendered).join("\n"));
         },
       });
     }
 
     const [homeText = "", repoText = ""] = descriptions;
-    expect(homeText).toContain("Project skill · this path only");
-    expect(homeText).not.toContain("repository-wide");
-    expect(repoText).toContain("Project skill · repository-wide (all worktrees)");
-    expect(repoText.split("repository-wide")).toHaveLength(2);
+    expect(homeText).toContain("Project skills · per path");
+    expect(homeText).not.toContain("all worktrees");
+    expect(repoText).toContain("Project skills · all worktrees");
+    expect(repoText.split("all worktrees")).toHaveLength(2);
   });
 });
