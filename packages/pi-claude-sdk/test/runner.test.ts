@@ -10,6 +10,7 @@ import type { BridgeEvent } from "../bridge";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import { models } from "../models";
+import { effectiveResultCategory } from "../sdk/result-failure";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type {
   ModelObservation,
@@ -1469,4 +1470,80 @@ describe("prompt cache settings", () => {
       ]);
     },
   );
+});
+
+describe("SDK isolation options", () => {
+  test("passes the exact isolation options", async () => {
+    const { options } = await capturedParameters(requestFixture());
+    assert(options !== undefined);
+    expect(options.settingSources).toStrictEqual([]);
+    expect(options.tools).toStrictEqual([]);
+    expect(options.strictMcpConfig).toBe(true);
+    expect(options.skills).toStrictEqual([]);
+    expect(options.persistSession).toBe(false);
+    expect(typeof options.title).toBe("string");
+    assert(options.mcpServers !== undefined);
+    expect(Object.keys(options.mcpServers)).toStrictEqual(["pi"]);
+  });
+});
+
+function failedOf(events: readonly BridgeEvent[]) {
+  const failed = events.filter((event) => event.type === "failed");
+  expect(failed).toHaveLength(1);
+  const [event] = failed;
+  assert(event?.type === "failed");
+  return event.error;
+}
+
+describe("rate-limit classification", () => {
+  const rateLimitError = { type: "assistant", message: { usage: {} }, error: "rate_limit" };
+
+  test("a rate_limit error without a rejected window is a transient rate-limit", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitError,
+      resultMessage({ is_error: true }),
+    );
+    const error = failedOf(events);
+    assert(error._tag === "SdkResultError");
+    expect(error).toMatchObject({ apiError: "rate_limit" });
+    expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
+    expect(error.message).toBe("Claude rate limit reached; retry shortly");
+    expect(observations).toStrictEqual([]);
+  });
+
+  test("a warning window does not turn a rate_limit error into exhaustion", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "allowed_warning", resetsAt: 1_792_548_000 }),
+      rateLimitError,
+      resultMessage({ is_error: true }),
+    );
+    const error = failedOf(events);
+    assert(error._tag === "SdkResultError");
+    expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
+    expect(observations).toStrictEqual([]);
+  });
+
+  test("a rejected window without a reset time is usage-limit but not published", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected" }),
+      rateLimitError,
+      resultMessage({ is_error: true }),
+    );
+    expect(failedOf(events)).toMatchObject({ category: "usage-limit" });
+    expect(observations).toStrictEqual([]);
+  });
+
+  test("a rejected window with a reset time is usage-limit and published", async () => {
+    const { events, observations } = await observeUsageLimits(
+      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
+      rateLimitError,
+      resultMessage({ is_error: true }),
+    );
+    const error = failedOf(events);
+    assert(error._tag === "SdkResultError");
+    expect(error).toMatchObject({ category: "usage-limit", apiError: "rate_limit" });
+    expect(effectiveResultCategory(error.category, error.apiError)).toBe("usage-limit");
+    expect(error.message).toBe("Claude usage limit reached; check subscription allowance");
+    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
+  });
 });

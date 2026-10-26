@@ -213,8 +213,14 @@ function queryParameters(
       // otherwise resend the whole transcript uncached on every stateless Pi turn.
       title: SESSION_TITLE,
       systemPrompt: request.systemPrompt,
+      // Never load user/project settings, CLAUDE.md or hooks from disk.
       settingSources: [],
+      // Pi owns every tool; the SDK gets none of its built-ins.
       tools: [],
+      // Ignore .mcp.json, user settings, plugin and agent-frontmatter MCP servers.
+      strictMcpConfig: true,
+      // Omitting skills is not "skills off"; an empty list disables them.
+      skills: [],
       mcpServers: { pi: server },
       env: { ...env },
       hooks: { PreToolUse: [{ hooks: [hook] }], PostToolBatch: [{ hooks: [batchHook] }] },
@@ -222,22 +228,33 @@ function queryParameters(
   };
 }
 
+/** Attach the query's API error to a failed result, resolving rate_limit against the window. */
+function failedResultEvent(
+  error: SdkResultError,
+  apiError: string | undefined,
+  rejectedWindow: boolean,
+): BridgeEvent {
+  if (apiError === undefined) {
+    return failed(error);
+  }
+  // A rate_limit API error is subscription exhaustion only when a rejected window was seen.
+  const exhausted = rejectedWindow && apiError === "rate_limit" && error.category === "provider";
+  const category = exhausted ? "usage-limit" : error.category;
+  return failed(new SdkResultError({ terminalReason: error.terminalReason, category, apiError }));
+}
+
 function terminalEvent(
   result: TurnResult | undefined,
   calls: readonly DeferredCall[],
   apiError: string | undefined,
   batchStopped = false,
+  rejectedWindow = false,
 ): BridgeEvent {
   if (!result) {
     return failed(new SdkMissingResultError());
   }
   if (result._tag === "failed") {
-    const { terminalReason, category } = result.error;
-    return failed(
-      apiError === undefined
-        ? result.error
-        : new SdkResultError({ terminalReason, category, apiError }),
-    );
+    return failedResultEvent(result.error, apiError, rejectedWindow);
   }
   if (batchStopped && calls.length === 0) {
     return failed(
@@ -268,6 +285,7 @@ type QueryProgress = {
   readonly result: Extract<SdkMessage, { type: "result" }> | undefined;
   readonly apiError: string | undefined;
   readonly usageLimitResetsAt: number | undefined;
+  readonly usageLimitRejected: boolean;
   readonly assistantToolUses: number;
   readonly modelRequests: number;
   readonly modelRequestIds: ReadonlySet<string>;
@@ -351,7 +369,14 @@ function advance(
       };
     }
     case "usage_limit": {
-      return { progress: { ...progress, usageLimitResetsAt: message.resetsAt }, event: undefined };
+      return {
+        progress: {
+          ...progress,
+          usageLimitResetsAt: message.resetsAt,
+          usageLimitRejected: message.rejected,
+        },
+        event: undefined,
+      };
     }
     case "ignored": {
       return { progress, event: undefined };
@@ -372,6 +397,7 @@ const initialProgress = (): QueryProgress => ({
   result: undefined,
   apiError: undefined,
   usageLimitResetsAt: undefined,
+  usageLimitRejected: false,
   assistantToolUses: 0,
   modelRequests: 0,
   modelRequestIds: new Set(),
@@ -542,6 +568,7 @@ function conclude(
         capture.deferred.calls,
         apiError,
         capture.deferred.batchStopped,
+        progress.usageLimitRejected,
       );
   const checkedTerminal =
     terminal.type !== "failed" && progress.modelRequests > 1

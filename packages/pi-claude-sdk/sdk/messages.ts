@@ -86,6 +86,8 @@ export type SdkMessage =
       readonly type: "usage_limit";
       /** When the rejected subscription window reopens, in epoch milliseconds. */
       readonly resetsAt: number | undefined;
+      /** True when the subscription window was rejected, even if no reset time was given. */
+      readonly rejected: boolean;
     }
   | {
       readonly type: "result";
@@ -204,6 +206,7 @@ function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   // Claude Code reports resetsAt in epoch seconds.
   return Result.succeed({
     type: "usage_limit",
+    rejected: info?.status === "rejected",
     resetsAt:
       info?.status === "rejected" && info.resetsAt !== undefined ? info.resetsAt * 1000 : undefined,
   });

@@ -53,4 +53,30 @@ describe("subscription environment", () => {
     expect(environment.FORCE_PROMPT_CACHING_5M).toBe("1");
     expect(environment.ANTHROPIC_BETAS).toBeUndefined();
   });
+
+  test("pins verified background-traffic switches by default and keeps explicit user values", () => {
+    const defaults = subscriptionEnvironment({});
+    expect(defaults.DISABLE_ERROR_REPORTING).toBe("1");
+    expect(defaults.DISABLE_AUTOUPDATER).toBe("1");
+    expect(defaults.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY).toBe("1");
+    expect(defaults.DISABLE_TELEMETRY).toBeUndefined();
+    expect(defaults.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBeUndefined();
+
+    const explicit = subscriptionEnvironment({
+      DISABLE_ERROR_REPORTING: "0",
+      DISABLE_AUTOUPDATER: "",
+      CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "0",
+    });
+    expect(explicit.DISABLE_ERROR_REPORTING).toBe("0");
+    expect(explicit.DISABLE_AUTOUPDATER).toBe("");
+    expect(explicit.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY).toBe("0");
+  });
+
+  test("background-traffic pins also apply under the PI_CLAUDE_SDK_CLI_CACHE=1 escape hatch", () => {
+    const environment = subscriptionEnvironment({ PI_CLAUDE_SDK_CLI_CACHE: "1" });
+    expect(environment.DISABLE_ERROR_REPORTING).toBe("1");
+    expect(environment.DISABLE_AUTOUPDATER).toBe("1");
+    expect(environment.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY).toBe("1");
+    expect(environment.DISABLE_PROMPT_CACHING).toBeUndefined();
+  });
 });

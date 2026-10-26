@@ -1,4 +1,7 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow";
+import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import { describe, expect, test } from "vitest";
 import {
   InvalidDeferredCallError,
@@ -180,5 +183,49 @@ describe("claude SDK failure diagnostics", () => {
     expect(formatSdkRunError(error)).toBe(
       "Claude Agent SDK: the query stopped before finishing (unexpected SDK error)",
     );
+  });
+});
+
+/** A failed Pi assistant message carrying the bridge's formatted text for one category. */
+function failedAssistant(
+  category: ConstructorParameters<typeof SdkResultError>[0]["category"],
+): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [],
+    api: "claude-sdk",
+    provider: "claude-sdk",
+    model: "claude-5.5-sonnet",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "error",
+    errorMessage: formatSdkRunError(new SdkResultError({ category, terminalReason: undefined })),
+    timestamp: 0,
+  };
+}
+
+describe("Pi retry compatibility", () => {
+  test.each(["rate-limit", "overloaded", "server-error"] as const)(
+    "%s is retryable",
+    (category) => {
+      expect(isRetryableAssistantError(failedAssistant(category))).toBe(true);
+    },
+  );
+
+  test.each(["usage-limit", "authentication", "context-limit"] as const)(
+    "%s is not retryable",
+    (category) => {
+      expect(isRetryableAssistantError(failedAssistant(category))).toBe(false);
+    },
+  );
+
+  test("context-limit still reads as context overflow", () => {
+    expect(isContextOverflow(failedAssistant("context-limit"))).toBe(true);
   });
 });
