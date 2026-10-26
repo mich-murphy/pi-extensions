@@ -97,29 +97,24 @@ policy directly. The helper sends only allowlisted slash commands and keyboard
 input to an owned PTY: `/skill-toggle`, its invalid-argument case, `/reload`, and
 `/quit`. Escape dismisses completion before submitting commands.
 
-Search by fixture name or repository-relative instruction path, not a fixed row
-number. Enter toggles a filtered row; Space toggles an **unfiltered** selected row
-(the helper finds its visible selection marker with arrow navigation). In Pi's
-SettingsList, Space in a nonempty search query inserts a space. Escape with a
-nonempty search query clears it and keeps the menu open; Escape with an empty
-query closes the menu. Closing never undoes changes already saved. Every close
-after a filter therefore asserts the clear step first, then closes.
+Enter opens one of the four categories. Search within it by fixture name or
+repository-relative instruction path, not a fixed resource row number. Enter
+toggles a filtered row; Space toggles an **unfiltered** selected row (the helper
+finds its visible marker with arrow navigation). Space in a nonempty query is a
+search character. Escape clears a query, backs out to Context, then closes.
+Closing never undoes changes already saved. The driver routes resource searches
+through their category and verifies the clear step independently of backing out.
 
-The menu journey captures normal **120×45** and resized **60×28** terminals.
-Assertions use plain terminal cells, not color. It checks instruction versus
-skill labels, global versus project scope, repository-relative instruction
-paths, enabled/disabled/manual-only states, selected read-only explanation,
-exactly one key-hint line, `Enter toggle · Esc clear search, then close
-· type to search · Space toggle (empty search)`, with SettingsList's contradictory `Esc to
-cancel` never shown (also after search, no-match, and Escape clearing a search;
-at 60 columns the hint is truncated after `Esc clear search, then close`, which
-must stay visible), the selected row's single scope
-line (`<Global|Project> <instruction|skill> · <repository-wide (all
-worktrees)|this path only>[ · Manual only (read-only)]`, with no duplicate legacy
-`Repository-wide: all worktrees` line), search match/empty/clear, usage feedback,
-Escape clearing an active search without closing, and Escape closing without
-writes. Row checks look only inside the open menu, because Pi's startup header
-also lists skill names.
+The menu journey repeats at **120×45** and resized **60×28**. Plain captured cells
+must show four named categories, a main-menu-only auto-save explanation,
+Always on global instructions, On / Off / Manual only states, repository-relative
+instruction paths and quoted source metadata on each resource row. Project
+submenus show all worktrees once in the heading. Enabled global instructions
+remain unchanged after Enter and Space. Search match, no matches, Escape clearing,
+back/close and invalid arguments are checked without state writes. Exactly one
+accurate hint appears: Enter open / Esc close at the root; Type to search /
+Enter toggle / Esc back in a category; Enter toggle / Esc clear with a query.
+Row assertions exclude Pi's startup resource listing.
 
 The changes and scope journeys verify actual v7 state, reload and fresh-process
 restart, linked-worktree changes propagating back to the main checkout, unrelated

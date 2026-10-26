@@ -6,22 +6,38 @@ provide strict context isolation.
 
 ## Command
 
-Run `/skill-toggle` in Pi's interactive terminal. Select a row and press Enter
-to toggle `enabled` / `disabled`; Space also toggles when search is empty. Type
-to search. Esc clears a nonempty search; with an empty search it closes the
-menu. Choices save immediately; closing does not undo them. Project skills start
-disabled; instructions and global skills start enabled. One hint line at the
-bottom summarizes these keys: `Enter toggle · Esc clear search, then close
-· type to search · Space toggle (empty search)`.
+Run `/skill-toggle` in Pi's interactive terminal. The main menu has four
+categories: global instructions, global skills, project instructions, and project
+skills. Enter opens a category. Skill and project-instruction categories show
+the number currently On. The main menu explains: **Auto-save: each change is
+saved immediately.** There is no separate Save command; closing never rolls
+back a saved choice.
 
-The list groups global instructions, global skills, project/inherited
-instructions, then project skills. Rows show their origin and kind;
-the selected row's description shows its discovery path and one scope line,
-such as `Project skill · repository-wide (all worktrees)`. Global resources,
-resources outside Git, and project resources under global skill roots show
-`this path only`, matching how the choice is saved. A skill with
-`disable-model-invocation: true` is a read-only `manual only` row, not something
-the toggle can enable automatically.
+Within a category, Enter toggles On / Off. Space also toggles when search is
+empty; otherwise it inserts a search character. Type to search names. Escape
+clears an active search, then returns to the main menu, then closes. The hint
+changes from `Type to search · Enter toggle · Esc back` to
+`Enter toggle · Esc clear` while searching. Project skills still start Off;
+instructions and global skills start On.
+
+Each resource shows its name, state and muted quoted source text on one line.
+Skills quote their actual frontmatter description, not a generated summary.
+Instructions quote their first Markdown heading, omitting absent headings and
+headings that just repeat the filename. Long names and quotations are shortened
+visually; states stay readable. Quotations collapse display whitespace and strip
+terminal control sequences without rewriting the source files. No description
+is repeated underneath the list.
+
+Project submenus show `all worktrees` once in their heading when all their
+resources have repository-wide policy. Resources outside that policy use
+`per path`; a category containing both uses `mixed scope`.
+
+Enabled global instructions are read-only **Always on** rows. An existing
+explicitly disabled global instruction stays Off: opening the menu does not
+re-enable or rewrite it. You can explicitly turn it On, after which it becomes
+read-only. Missing global instructions say **Not loaded** rather than claiming
+they are included. A skill declaring `disable-model-invocation: true` stays a
+read-only **Manual only** row, distinct from a user-disabled skill.
 
 ### Resources
 

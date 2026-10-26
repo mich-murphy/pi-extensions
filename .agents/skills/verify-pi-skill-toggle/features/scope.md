@@ -29,19 +29,19 @@ Preconditions:
   the project skill and disable the global skill and nested instruction.
 
 - **Run.** From the checkout root, execute `.agents/skills/verify-pi-skill-toggle/scripts/verify.py drive --feature scope`.
-- **Compare linked.** `scope-linked-inherited.txt` shows the three saved values
-  in a fresh process at the linked worktree.
+- **Compare linked.** `scope-linked-verify-*.txt` and the instruction capture
+  show the three saved values in their categories in a fresh linked process.
 - **Reset linked.** Enter on `verify-project` restores disabled; Enter on
   `web/agent/AGENTS.md` restores enabled. `scope-linked-*-immediate.state.json`
   proves the canonical repository entries disappear, with no worktree override.
   Escape then clears the active search (`scope-linked-escape-clears-search*.txt`)
-  before a second Escape closes; the `other` run does the same.
-- **Return main.** `scope-main-after-linked-reset.txt` shows defaults there too,
-  while the global skill remains disabled.
-- **Independent repository.** `scope-unrelated-repository.txt` starts at project
-  defaults. Enable its `verify-project` with Enter.
+  before returning to Context and closing; the `other` run does the same.
+- **Return main.** `scope-main-verify-*.txt` and the instruction capture show
+  defaults there too, while the global skill remains disabled.
+- **Independent repository.** `scope-other-project.txt` and the other category
+  captures start at project defaults. Enable its `verify-project` with Enter.
   `scope-other-immediate.state.json` records only that repository's relative-path
-  choice. `scope-main-after-other-change.txt` proves main remains disabled.
+  choice. `scope-final-project.txt` proves main remains disabled.
 - **Proof.** Read `fixture.json` for the actual common Git directory and all
   `*.state.json` snapshots for v7 `files`/`repositories`. Require successful
   `result.json` with changes and scope passed; menu and guard remain not executed
