@@ -1,0 +1,51 @@
+minimum_prek_version: "0.5.0"
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        priority: 0
+        stages: [pre-commit]
+      - id: end-of-file-fixer
+        priority: 0
+        stages: [pre-commit]
+      - id: check-merge-conflict
+        priority: 0
+        stages: [pre-commit]
+      - id: check-added-large-files
+        priority: 0
+        stages: [pre-commit]
+      - id: check-yaml
+        priority: 0
+        stages: [pre-commit]
+  - repo: local
+    hooks:
+      - id: format-check
+        name: format-check
+        entry: "npx oxfmt --check"
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json]
+        priority: 10
+        stages: [pre-commit]
+      - id: lint
+        name: lint
+        entry: "npm run lint"
+        language: system
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+        priority: 10
+        stages: [pre-commit]
+      - id: typecheck
+        name: typecheck
+        entry: "npm run typecheck"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: test
+        name: test
+        entry: "npm run test:coverage -- --no-file-parallelism"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
