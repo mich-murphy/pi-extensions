@@ -1,6 +1,0 @@
-{
-  "sandboxExec": "/usr/bin/sandbox-exec",
-  "fakeKeyOnly": true,
-  "guardLoadedFirst": true,
-  "networkPolicy": "deny network*"
-}
