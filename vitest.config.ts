@@ -14,7 +14,7 @@ export default defineConfig({
   },
   test: {
     include: ["packages/*/test/**/*.test.ts"],
-    // Sealed-matrix refits and native CLI boot tests are CPU-heavy under V8 coverage.
+    // Native CLI boot tests are CPU-heavy under V8 coverage.
     // Serialize files on shared CI runners; retain every assertion, timeout and coverage gate.
     fileParallelism: process.env.CI !== "true",
     coverage: {
