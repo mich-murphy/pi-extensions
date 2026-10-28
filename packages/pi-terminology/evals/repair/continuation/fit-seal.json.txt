@@ -1,4 +1,0 @@
-{
-  "reportHash": "257fa6f502b3b7553bec891779d9c203772cb999de499ee875c214aab703577f",
-  "completionHash": "439049efc6f4a3b16651d3319bc4b80a0a3bfb20d2b3efc2f78e7d19f3b0e675"
-}
