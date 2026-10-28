@@ -10,9 +10,10 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
 - [pi-terminology](packages/pi-terminology/README.md) provides a 51-concept source-backed glossary through `/terminology`, with an explicitly opt-in experimental reminder preview.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
+- `pi-scroll-context` shows the contextual user prompt in a compact header while browsing fullscreen history.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
 
-Pi loads all seven extensions from the root package manifest. Install the repository with:
+Pi loads these extensions from the root package manifest. Install the repository with:
 
 ```sh
 pi install git:github.com/mich-murphy/pi-extensions
