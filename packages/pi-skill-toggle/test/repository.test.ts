@@ -82,7 +82,9 @@ function repository(separate = false) {
 
 function expectOutsideGit(repo: ReturnType<typeof repository>, stale: string) {
   // Git itself no longer recognizes the stale checkout.
-  expect(() => git("-C", stale, "rev-parse", "--git-dir")).toThrow(/not a git repository/u);
+  expect(() => git("-C", stale, "rev-parse", "--git-dir")).toThrow(
+    /not a git repository|does not point to a valid repository/u,
+  );
   const locator = new RepositoryLocator();
   expect(locator.locate(join(stale, "nested/AGENTS.md"))).toBeUndefined();
   expect(locator.worktreeRoot(stale)).toBeUndefined();

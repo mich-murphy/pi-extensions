@@ -8,17 +8,15 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `pi-auto-resume` continues a session automatically when a provider's usage limit resets.
 - `pi-caffeinate` keeps macOS awake while Pi is working.
 - `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
-- [pi-terminology](packages/pi-terminology/README.md) provides a 51-concept source-backed glossary through `/terminology`, with an explicitly opt-in experimental reminder preview.
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
+- `pi-scroll-context` shows the contextual user prompt in a compact header while browsing fullscreen history.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
 
-Pi loads all seven extensions from the root package manifest. Install the repository with:
+Pi loads these extensions from the root package manifest. Install the repository with:
 
 ```sh
 pi install git:github.com/mich-murphy/pi-extensions
 ```
-
-Terminology browsing and `/terminology-status` are available when this package loads. Loading makes no classifier calls: production reminders remain unmeasured, and the experimental preview stays off until `/terminology-preview on [max-calls]` is explicitly confirmed for that session. See the [preview instructions and limitations](packages/pi-terminology/evals/repair/preview/command-rename/README.md); development results are not production acceptance.
 
 For local development:
 
@@ -30,7 +28,6 @@ pi -e ./packages/pi-caffeinate/index.ts
 
 For isolated CLI interaction checks of web-tools native authentication, use [the verification skill](.agents/skills/verify-pi-web-tools/SKILL.md); it drives real Pi with synthetic credentials and retains evidence without touching your normal profile or calling providers.
 For skill-toggle menu, worktree policy, and read-guard checks, use [the skill-toggle verification skill](.agents/skills/verify-pi-skill-toggle/SKILL.md).
-For terminology commands and bounded-preview checks, use [the terminology verification skill](.agents/skills/verify-pi-terminology/SKILL.md); its isolated real Pi journeys make no provider calls.
 
 Pi supplies its core packages to extensions at runtime. Keep those packages in `peerDependencies`; third-party runtime packages belong in the owning workspace's `dependencies`.
 
