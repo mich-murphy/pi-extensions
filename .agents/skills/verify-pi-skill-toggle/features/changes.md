@@ -14,9 +14,9 @@ skills, and see their saved choices after reload and a fresh Pi process.
 
 ## How to get to it (user POV)
 
-- Open `/skill-toggle`, search an editable resource, and press Enter.
+- Open `/skill-toggle`, enter a category, search a resource, and press Enter.
 - Clear search, navigate with arrow keys, and press Space.
-- Press Escape to clear the search, Escape again to close; run `/reload` or quit
+- Escape clears search, returns to Context, then closes. Run `/reload` or quit
   and start Pi again in the same project.
 
 ## Driving it with verify.py
@@ -39,18 +39,18 @@ Preconditions:
   `changes-instruction-enter.txt` and `changes-instruction-immediate.state.json`
   prove disabled state persisted independently of skills.
 - **Escape.** With the instruction query still active, one Escape clears the
-  search and keeps the menu open (`changes-escape-clears-search*.txt`); a second
-  Escape closes (`changes-escape.txt`).
+  search and stays in its category (`changes-escape-clears-search*.txt`); backing
+  out to Context and closing returns to the editor (`changes-escape.txt`).
 - **Reload and restart.** Run `/reload`, reopen, quit, and launch a fresh
-  process in the main fixture. `changes-after-reload.txt`, `changes-restart.txt`,
-  and their state snapshots retain all three editable choices.
+  process in the main fixture. `changes-reloaded-*.txt`, `changes-restarted-*.txt`
+  and the reload/restart state snapshots retain all three editable choices.
 - **Proof.** `side-effects.json` confirms instruction/skill contents were not
   edited; `result.json` proves cleanup. Menu-only layout/search and scope journeys
   are not executed in this mode; guard is not executed either.
 
 ## Gotchas
 
-- Escape clears an active search first, then closes; closing is not rollback,
+- Escape clears search, backs out, then closes; closing is not rollback,
   so saving must precede it.
 - Read actual state, not a notification or list callback. The driver never seeds
   or changes policy except through the real menu.

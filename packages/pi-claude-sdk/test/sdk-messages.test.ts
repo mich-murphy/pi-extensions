@@ -220,7 +220,7 @@ describe("subscription rate-limit messages", () => {
     (resetsAt) => {
       expect(
         parsed({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt } }),
-      ).toStrictEqual({ type: "usage_limit", resetsAt: resetsAt * 1000 });
+      ).toStrictEqual({ type: "usage_limit", rejected: true, resetsAt: resetsAt * 1000 });
     },
   );
 
@@ -237,7 +237,7 @@ describe("subscription rate-limit messages", () => {
   ])("ignores an invalid or unrepresentable reset without a protocol error (%s)", (resetsAt) => {
     expect(
       parsed({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt } }),
-    ).toStrictEqual({ type: "usage_limit", resetsAt: undefined });
+    ).toStrictEqual({ type: "usage_limit", rejected: true, resetsAt: undefined });
   });
 
   test.each([undefined, null, "private payload", {}, { status: 7 }, { status: "future_status" }])(
@@ -245,6 +245,7 @@ describe("subscription rate-limit messages", () => {
     (rate_limit_info) => {
       expect(parsed({ type: "rate_limit_event", rate_limit_info })).toStrictEqual({
         type: "usage_limit",
+        rejected: false,
         resetsAt: undefined,
       });
     },

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionUIContext, Skill } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, assert, describe, expect, test } from "vitest";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
 import { disabledResourceMatcher, toolPath } from "../guard";
 import { isSubagentSession, registerSkillToggle } from "../index";
@@ -678,21 +678,41 @@ describe("skill-toggle guard", () => {
             const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
               closed = true;
             });
-            for (const { expected, other, expectedPrompt, read } of [
+            assert(component.handleInput !== undefined);
+            const press = component.handleInput.bind(component);
+            press("\u001b[B");
+            press("\u001b[B");
+            press("\u001b[B");
+            press("\r");
+            for (const { expected, label, other, expectedPrompt, read } of [
               {
                 expected: "disabled",
-                other: "enabled",
+                label: "Off",
+                other: "On",
                 expectedPrompt: { systemPrompt: "base" },
                 read: true,
               },
-              { expected: "enabled", other: "disabled", expectedPrompt: undefined, read: false },
+              {
+                expected: "enabled",
+                label: "On",
+                other: "Off",
+                expectedPrompt: undefined,
+                read: false,
+              },
               {
                 expected: "disabled",
-                other: "enabled",
+                label: "Off",
+                other: "On",
                 expectedPrompt: { systemPrompt: "base" },
                 read: true,
               },
-              { expected: "enabled", other: "disabled", expectedPrompt: undefined, read: false },
+              {
+                expected: "enabled",
+                label: "On",
+                other: "Off",
+                expectedPrompt: undefined,
+                read: false,
+              },
             ]) {
               component.handleInput?.(" ");
               const saved = loadedState(store);
@@ -711,13 +731,15 @@ describe("skill-toggle guard", () => {
               }
               component.invalidate();
               const rendered = component.render(120).join("\n");
-              expect(rendered).toContain(expected);
+              expect(rendered).toContain(label);
               expect(rendered).not.toContain(other);
               for (const width of [1, 8, 20, 40, 60, 120]) {
                 expect(() => component.render(width)).not.toThrow();
               }
             }
             component.handleInput?.("d");
+            component.handleInput?.("\u001b");
+            expect(closed).toBe(false);
             component.handleInput?.("\u001b");
             expect(closed).toBe(false);
             component.handleInput?.("\u001b");
@@ -756,6 +778,9 @@ describe("skill-toggle guard", () => {
       const custom = async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
         initTheme();
         const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
+        component.handleInput?.("\u001b[B");
+        component.handleInput?.("\u001b[B");
+        component.handleInput?.("\r");
         component.handleInput?.(" ");
         component.invalidate();
         rendered = component.render(120);
@@ -769,7 +794,7 @@ describe("skill-toggle guard", () => {
       });
 
       expect(execCalls[0]?.slice(0, 4)).toStrictEqual(["-C", main, "ls-files", "-z"]);
-      expect(rendered.join("\n")).toContain("[project instruction] web/AGENTS.md");
+      expect(rendered.join("\n")).toContain("web/AGENTS.md");
       expect(rendered.join("\n")).not.toContain("README.md");
       expect(writes).toStrictEqual([[join(main, "web", "AGENTS.md"), "disabled"]]);
     });

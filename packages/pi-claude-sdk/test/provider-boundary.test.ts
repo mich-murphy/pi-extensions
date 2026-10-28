@@ -174,7 +174,7 @@ describe("public terminal failure privacy", () => {
 
   test.each([
     ["authentication_failed", "sign in", "authentication"],
-    ["rate_limit", "usage limit", "usage-limit"],
+    ["rate_limit", "rate limit", "rate-limit"],
     ["overloaded", "overloaded", "provider"],
     ["invalid_request", "check model and input", "provider"],
     ["max_output_tokens", "output limit", "provider"],

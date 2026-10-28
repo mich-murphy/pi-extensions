@@ -129,14 +129,22 @@ export type CatalogTool = {
   readonly schema: z.ZodType;
 };
 
+function mcpToolName(name: string): string {
+  return /^[a-zA-Z0-9_-]{1,55}$/u.test(name) && !name.startsWith("pi_")
+    ? name
+    : `pi_${createHash("sha256").update(name).digest("hex").slice(0, 48)}`;
+}
+
+/** SDK-declared tool name, derived from the Pi name alone (independent of the current catalog). */
+export function sdkToolName(piName: string): string {
+  return `mcp__pi__${mcpToolName(piName)}`;
+}
+
 export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool[] {
   const seen = new Set<string>();
   return tools.map((declaration) => {
     const name = declaration.name;
-    const mcpName =
-      /^[a-zA-Z0-9_-]{1,55}$/u.test(name) && !name.startsWith("pi_")
-        ? name
-        : `pi_${createHash("sha256").update(name).digest("hex").slice(0, 48)}`;
+    const mcpName = mcpToolName(name);
     if (name.length === 0 || seen.has(mcpName)) {
       throw new SdkToolContractError({ reason: "naming" });
     }
@@ -153,7 +161,7 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
       ) {
         throw new SdkToolContractError({ reason: "schema" });
       }
-      return { declaration, mcpName, sdkName: `mcp__pi__${mcpName}`, schema };
+      return { declaration, mcpName, sdkName: sdkToolName(name), schema };
     } catch {
       throw new SdkToolContractError({ reason: "schema" });
     }

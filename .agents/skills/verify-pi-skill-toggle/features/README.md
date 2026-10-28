@@ -40,10 +40,11 @@ Global/root instructions and tracked `web/agent/AGENTS.md` and `api/CLAUDE.md`
 start enabled. Main and linked directories share a Git common directory; `other`
 is an independent repository with the same fixture paths.
 
-Type to search using names/relative paths. Use Enter in filtered results. Space
-only toggles with empty search; otherwise it inserts a search character. Escape
-clears a nonempty search and keeps the menu open; with an empty search it closes.
-Closing never undoes saved changes. No ordinary prompts may be submitted.
+Enter opens a category; type names/relative paths to search within it. Enter
+toggles filtered results. Space only toggles with empty search; otherwise it
+inserts a search character. Escape clears a nonempty search, returns to Context,
+then closes. Closing never undoes saved changes. No ordinary prompts may be
+submitted.
 
 ## Proof and skip reporting
 

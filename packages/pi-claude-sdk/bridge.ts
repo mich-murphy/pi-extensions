@@ -93,6 +93,8 @@ class AssistantMessageWriter {
   readonly stream = createAssistantMessageEventStream();
   private readonly output: AssistantMessage;
   private open: TextContent | ThinkingContent | undefined;
+  /** Set once Pi's stream has received its terminal event; later events are ignored. */
+  private ended = false;
 
   constructor(
     private readonly model: Model<Api>,
@@ -103,6 +105,9 @@ class AssistantMessageWriter {
   }
 
   write(event: BridgeEvent): boolean {
+    if (this.ended) {
+      return true;
+    }
     switch (event.type) {
       case "text_delta": {
         this.append("text", event.text);
@@ -165,13 +170,33 @@ class AssistantMessageWriter {
     }
   }
 
+  /** Last resort for a pump that rejected anyway: end the stream as a provider defect if still open. */
+  abandon(cause: unknown): void {
+    this.fail(new SdkProviderDefect({ reason: "run-rejected", cause }));
+  }
+
   private fail(error: SdkTurnFailure): void {
-    this.closeOpenBlock();
+    if (this.ended) {
+      return;
+    }
+    this.ended = true;
     this.output.stopReason = this.signal?.aborted === true ? "aborted" : "error";
-    this.output.errorMessage = formatSdkRunError(error);
-    writeSdkFailureDiagnostic(error);
-    this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
-    this.stream.end();
+    try {
+      this.closeOpenBlock();
+      this.output.errorMessage = formatSdkRunError(error);
+      this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
+    } finally {
+      // `end` cannot throw and settles `result()` even if finalization above failed, so a
+      // terminal turn is never left open.
+      this.stream.end(this.output);
+    }
+    // Best effort and only after Pi's stream is finalized: a failing diagnostic must never
+    // leave the turn open.
+    try {
+      writeSdkFailureDiagnostic(error);
+    } catch {
+      // Diagnostics are non-fatal.
+    }
   }
 
   private get lastIndex(): number {
@@ -226,10 +251,17 @@ class AssistantMessageWriter {
   }
 
   private finish(reason: "stop" | "length" | "toolUse"): void {
-    this.closeOpenBlock();
+    if (this.ended) {
+      return;
+    }
+    this.ended = true;
     this.output.stopReason = reason;
-    this.stream.push({ type: "done", reason, message: this.output });
-    this.stream.end();
+    try {
+      this.closeOpenBlock();
+      this.stream.push({ type: "done", reason, message: this.output });
+    } finally {
+      this.stream.end(this.output);
+    }
   }
 }
 
@@ -253,6 +285,10 @@ export function createAgentSdkStream({
   run,
 }: AgentSdkStreamInput): AssistantMessageEventStream {
   const writer = new AssistantMessageWriter(model, options?.signal);
-  void writer.pump(() => run(buildAgentRequest(context), model, options));
+  writer
+    .pump(() => run(buildAgentRequest(context), model, options))
+    .catch((cause: unknown) => {
+      writer.abandon(cause);
+    });
   return writer.stream;
 }

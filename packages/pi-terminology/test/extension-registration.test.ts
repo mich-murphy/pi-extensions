@@ -16,6 +16,7 @@ describe("terminology extension registration", () => {
       "./packages/pi-skill-toggle/index.ts",
       "./packages/pi-terminology/index.ts",
       "./packages/pi-vim/index.ts",
+      "./packages/pi-scroll-context/index.ts",
       "./packages/pi-web-tools/index.ts",
     ];
     expect(manifest).toMatchObject({ pi: { extensions: entries } });

@@ -1,5 +1,10 @@
-import type { AssistantMessageEvent, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { describe, expect, test } from "vitest";
+import process from "node:process";
+import type {
+  AssistantMessageEvent,
+  AssistantMessageEventStream,
+  SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createAgentSdkStream } from "../bridge";
 import type { BridgeEvent } from "../bridge";
 import { SdkResultError } from "../sdk/errors";
@@ -24,6 +29,24 @@ async function piEvents(
 async function* failingRun(): AsyncGenerator<BridgeEvent> {
   yield { type: "text_delta", text: "Partial" };
   throw new Error("adapter defect");
+}
+
+/** Make Pi's stream throw when the writer pushes one terminal event type. */
+function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "error"): void {
+  const push = stream.push.bind(stream);
+  vi.spyOn(stream, "push").mockImplementation((event: AssistantMessageEvent) => {
+    if (event.type === type) {
+      throw new Error("finalization defect");
+    }
+    push(event);
+  });
+}
+
+function streamOf(event: BridgeEvent): AssistantMessageEventStream {
+  async function* run(): AsyncGenerator<BridgeEvent> {
+    yield event;
+  }
+  return createAgentSdkStream({ model: sonnet, context, options: {}, run });
 }
 
 function contentIndexes(events: readonly AssistantMessageEvent[]): number[] {
@@ -217,6 +240,103 @@ describe("provider failures", () => {
       "Claude SDK provider bug: the SDK runner failed unexpectedly",
     );
     expect(message.errorMessage).not.toContain("adapter defect");
+  });
+});
+
+describe("broken stderr", () => {
+  const stderr = process.stderr;
+  const ttyDescriptor = Object.getOwnPropertyDescriptor(stderr, "isTTY");
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (ttyDescriptor === undefined) {
+      Reflect.deleteProperty(stderr, "isTTY");
+    } else {
+      Object.defineProperty(stderr, "isTTY", ttyDescriptor);
+    }
+  });
+
+  async function drainWithBrokenStderr(run: () => AsyncIterable<BridgeEvent>) {
+    Object.defineProperty(stderr, "isTTY", { configurable: true, value: false });
+    vi.spyOn(stderr, "write").mockImplementation(() => {
+      throw new Error("EPIPE");
+    });
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", listener);
+    try {
+      const events = await drain(
+        createAgentSdkStream({ model: sonnet, context, options: {}, run }),
+      );
+      // Node reports unhandled rejections after microtasks drain; two macrotask turns
+      // deterministically cover that, without a wall-clock wait.
+      for (let turn = 0; turn < 2; turn += 1) {
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+      }
+      return { events, unhandled };
+    } finally {
+      process.off("unhandledRejection", listener);
+    }
+  }
+
+  test("a failed event still ends the stream with an error", async () => {
+    const { events, unhandled } = await drainWithBrokenStderr(async function* run() {
+      yield {
+        type: "failed",
+        error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
+      };
+    });
+    expect(terminalOf(events).reason).toBe("error");
+    expect(unhandled).toStrictEqual([]);
+  });
+
+  test("a rejecting run still ends the stream with an error", async () => {
+    const { events, unhandled } = await drainWithBrokenStderr(failingRun);
+    expect(terminalOf(events).reason).toBe("error");
+    expect(unhandled).toStrictEqual([]);
+  });
+
+  test("a run that throws synchronously still ends the stream with an error", async () => {
+    const { events, unhandled } = await drainWithBrokenStderr(() => {
+      throw new Error("sync defect");
+    });
+    expect(terminalOf(events).reason).toBe("error");
+    expect(unhandled).toStrictEqual([]);
+  });
+
+  test("a throw while pushing the error event still ends the stream and settles its result", async () => {
+    const stream = streamOf({
+      type: "failed",
+      error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
+    });
+    breakTerminalPush(stream, "error");
+    const events = await drain(stream);
+    expect(events.map((item) => item.type)).toStrictEqual(["start"]);
+    await expect(stream.result()).resolves.toMatchObject({ stopReason: "error" });
+  });
+
+  test("a throw while pushing the done event still ends the stream and settles its result", async () => {
+    const stream = streamOf({ type: "done", reason: "stop" });
+    breakTerminalPush(stream, "done");
+    const events = await drain(stream);
+    expect(events.map((item) => item.type)).toStrictEqual(["start"]);
+    await expect(stream.result()).resolves.toMatchObject({ stopReason: "stop" });
+  });
+
+  test("a done then a failed produces a single terminal event", async () => {
+    const events = await piEvents([
+      { type: "done", reason: "stop" },
+      {
+        type: "failed",
+        error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
+      },
+      { type: "text_delta", text: "late" },
+    ]);
+    expect(events.map((event) => event.type)).toStrictEqual(["start", "done"]);
   });
 });
 

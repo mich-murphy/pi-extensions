@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, SourceInfo } from "@earendil-works/pi-coding-agent";
+import { instructionHeading } from "./instruction-heading";
 import { RepositoryLocator } from "./repository";
 import type { RepositoryLocation } from "./repository";
 import { pathIsInsideOrEqual, resourcePathId } from "./resource-path";
@@ -130,8 +131,7 @@ export function toggleResources(
         kind: "instruction",
         origin,
         label: location?.path ?? basename(id),
-        // The menu appends kind, origin, and policy scope; keep only the discovery path here.
-        description: id,
+        description: instructionHeading(file.content, id),
         editability: "editable",
       },
     ];
@@ -154,7 +154,7 @@ export function toggleResources(
           kind: "skill",
           origin,
           label: skill.name.trim(),
-          description: `${skill.description.trim() || "(no description)"}\n${id}`,
+          description: skill.description,
           editability: skill.disableModelInvocation ? "manual-only" : "editable",
         },
       ];
