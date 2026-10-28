@@ -65,7 +65,7 @@ function createEditor(): CustomEditor {
   const tuiKeybindings = testKeybindings();
   const editor = editorFactory(tuiDouble, theme, tuiKeybindings);
   if (!(editor instanceof CustomEditor)) {
-    throw new Error("Vim factory returned an unsupported editor");
+    throw new TypeError("Vim factory returned an unsupported editor");
   }
   return editor;
 }
