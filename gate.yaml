@@ -1,0 +1,8 @@
+version: 1
+base: main
+profile: typescript
+prek:
+  stages: [pre-commit, pre-push]
+prepare:
+  - name: deps
+    run: [npm, ci]
