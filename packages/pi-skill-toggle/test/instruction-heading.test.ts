@@ -15,11 +15,13 @@ describe("instruction headings", () => {
 
   test.each([
     ["# Working Agreement\nBody", "Working Agreement"],
+    ["#No separator\n# Real heading", "Real heading"],
     ["\uFEFF## Agent development ##\r\nBody", "Agent development"],
     ["Working Agreement\n=================\nBody", "Working Agreement"],
     ["Working Agreement\n-----------------\nBody", "Working Agreement"],
     ["---\ntitle: frontmatter\n---\n# Source heading", "Source heading"],
     ["---\ntitle: frontmatter\n...\n# Source heading", "Source heading"],
+    ["\uFEFF---\r\ntitle: ignored\r\n---\r\n# Source heading\r\n", "Source heading"],
     ["```md\n# Example\n```\n# Real heading", "Real heading"],
     ["~~~~\n# Example\n```\n~~~~\n# Real heading", "Real heading"],
     ["<!--\n# Hidden\n-->\n# Visible", "Visible"],
