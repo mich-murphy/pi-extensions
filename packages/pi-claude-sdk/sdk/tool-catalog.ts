@@ -123,6 +123,8 @@ function canonical(value: unknown): string {
   return JSON.stringify(sortJson(normalizeSchema(value)));
 }
 
+const reportedDegraded = new Set<string>();
+
 export type CatalogTool = {
   readonly declaration: Tool;
   readonly mcpName: string;
@@ -168,9 +170,12 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
     } catch {
       // One unsupported schema must not fail every turn. Pi validates arguments itself
       // (validateToolArguments in the deferred capture), so a permissive object schema is safe.
-      writeRedirectedDiagnostic(
-        `[claude-sdk-tool-schema] unsupported schema, using permissive: ${JSON.stringify(name)}\n`,
-      );
+      if (!reportedDegraded.has(name)) {
+        reportedDegraded.add(name);
+        writeRedirectedDiagnostic(
+          `[claude-sdk-tool-schema] unsupported schema, using permissive: ${JSON.stringify(name)}\n`,
+        );
+      }
       return {
         declaration,
         mcpName,
