@@ -215,7 +215,9 @@ function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   // Claude Code reports resetsAt in epoch seconds.
   const overageReset = info?.overageResetsAt ?? info?.resetsAt;
   const overage =
-    info?.isUsingOverage === true || info?.rateLimitType === "overage"
+    // A rejected overage window refused the request, so nothing was billed to Extra Usage.
+    info?.isUsingOverage === true ||
+    (info?.rateLimitType === "overage" && info.status !== "rejected")
       ? { overage: { resetsAt: overageReset === undefined ? undefined : overageReset * 1000 } }
       : {};
   return Result.succeed({

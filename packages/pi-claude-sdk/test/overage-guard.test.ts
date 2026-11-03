@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { BridgeEvent } from "../bridge";
 import { SdkOverageError } from "../sdk/errors";
 import { diagnoseSdkRunError, formatSdkRunError } from "../sdk/failure-diagnostics";
@@ -12,14 +12,17 @@ function limit(info: unknown) {
   return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
 }
 
-async function run(messages: readonly unknown[]) {
+async function run(messages: readonly unknown[], allow: boolean) {
   let signal: AbortSignal | undefined;
   async function* query(params: Parameters<RunSdkQuery>[0]) {
     signal = params.options?.abortController?.signal;
     yield* messages;
   }
   const events = await drain(
-    createClaudeAgentSdkRunner({ runSdkQuery: query })(requestFixture(), sonnet, {}),
+    createClaudeAgentSdkRunner({
+      runSdkQuery: query,
+      sdkEnvironment: allow ? { PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE: "1" } : {},
+    })(requestFixture(), sonnet, {}),
   );
   return { events, signal };
 }
@@ -39,13 +42,8 @@ function failureTags(events: readonly BridgeEvent[]): string[] {
 describe("Extra Usage guard", () => {
   const overage = limit({ status: "allowed", isUsingOverage: true, overageResetsAt: RESET });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   test("fails the turn with a typed error and requests abort when not allowed", async () => {
-    vi.stubEnv("PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE", "");
-    const { events, signal } = await run([overage, resultMessage({})]);
+    const { events, signal } = await run([overage, resultMessage({})], false);
     const error = lastFailure(events);
     expect(error).toBeInstanceOf(SdkOverageError);
     expect(error.message).toBe(
@@ -57,17 +55,40 @@ describe("Extra Usage guard", () => {
   });
 
   test("lets the turn finish when opted in", async () => {
-    vi.stubEnv("PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE", "1");
-    const { events } = await run([overage, resultMessage({})]);
+    const { events } = await run([overage, resultMessage({})], true);
     expect(failureTags(events)).not.toContain("SdkOverageError");
   });
 
   test("a plain rejected window keeps the existing behaviour", async () => {
-    vi.stubEnv("PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE", "");
-    const { events } = await run([
-      limit({ status: "rejected", resetsAt: RESET }),
-      resultMessage({ is_error: true, terminal_reason: "blocking_limit" }),
-    ]);
+    const { events } = await run(
+      [
+        limit({ status: "rejected", resetsAt: RESET }),
+        resultMessage({ is_error: true, terminal_reason: "blocking_limit" }),
+      ],
+      false,
+    );
     expect(lastFailure(events)._tag).toBe("SdkResultError");
+  });
+
+  test.each([
+    [
+      "rejected overage window (nothing billed)",
+      { status: "rejected", rateLimitType: "overage", resetsAt: RESET },
+    ],
+    [
+      "isUsingOverage false on an allowed five_hour window",
+      { status: "allowed", rateLimitType: "five_hour", isUsingOverage: false },
+    ],
+  ])("%s is not an Extra Usage failure", async (_name, info) => {
+    const { events } = await run([limit(info), resultMessage({})], false);
+    expect(failureTags(events)).not.toContain("SdkOverageError");
+  });
+
+  test("allowed overage window fails as Extra Usage", async () => {
+    const { events } = await run(
+      [limit({ status: "allowed", rateLimitType: "overage" }), resultMessage({})],
+      false,
+    );
+    expect(failureTags(events)).toContain("SdkOverageError");
   });
 });

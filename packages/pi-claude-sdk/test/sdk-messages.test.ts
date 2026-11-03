@@ -609,4 +609,20 @@ describe("overage rate-limit decoding", () => {
       resetsAt: undefined,
     });
   });
+
+  test("a rejected overage window refused the request, so it is plain usage limit", () => {
+    expect(
+      overageEvent({ status: "rejected", rateLimitType: "overage", resetsAt: 1_792_548_000 }),
+    ).toStrictEqual({
+      type: "usage_limit",
+      rejected: true,
+      resetsAt: 1_792_548_000_000,
+    });
+  });
+
+  test("isUsingOverage wins even when the window is rejected", () => {
+    expect(overageEvent({ status: "rejected", isUsingOverage: true })).toMatchObject({
+      overage: { resetsAt: undefined },
+    });
+  });
 });
