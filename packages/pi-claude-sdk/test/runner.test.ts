@@ -1605,3 +1605,26 @@ describe("rate-limit classification", () => {
     expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
   });
 });
+
+describe("per-request output limit", () => {
+  test.each([
+    [4096, "4096"],
+    [1000.9, "1000"],
+  ])("forwards an explicit maxTokens of %s to Claude Code", async (maxTokens, expected) => {
+    const { options } = await capturedParameters(requestFixture(), sonnet, { maxTokens });
+    expect(options?.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe(expected);
+  });
+
+  test("leaves Claude Code's default output cap alone when Pi sets no maxTokens", async () => {
+    const { options } = await capturedParameters(requestFixture(), sonnet, {});
+    expect(options?.env).not.toHaveProperty("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+  });
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "ignores the non-positive or non-finite maxTokens %s",
+    async (maxTokens) => {
+      const { options } = await capturedParameters(requestFixture(), sonnet, { maxTokens });
+      expect(options?.env).not.toHaveProperty("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+    },
+  );
+});

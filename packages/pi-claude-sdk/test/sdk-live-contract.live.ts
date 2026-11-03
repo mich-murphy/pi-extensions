@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -46,6 +45,7 @@ async function collect(
   const results: unknown[] = [];
   async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
     for await (const message of runSdkQuery(params)) {
+      recordClaudeCodeVersion(message);
       if (isTerminalResult(message)) {
         results.push(message);
       }
@@ -120,6 +120,7 @@ function deferredResultOf(message: unknown): DeferredResult | undefined {
 function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery {
   return async function* observedQuery(params) {
     for await (const message of query(params)) {
+      recordClaudeCodeVersion(message);
       const deferred = deferredResultOf(message);
       if (deferred !== undefined) {
         observe(deferred);
@@ -146,10 +147,27 @@ function expectedThinkingMetadata(canonicalModel: string) {
   };
 }
 
-/** The Claude Code version the live run executed (the system CLI), not the SDK's bundle. */
+const initMessage = Schema.Struct({
+  type: Schema.Literal("system"),
+  subtype: Schema.Literal("init"),
+  claude_code_version: Schema.String,
+});
+const isInitMessage = Schema.is(initMessage);
+let observedClaudeCodeVersion: string | undefined;
+
+/** Remember the version the CLI that actually ran reports in its system/init message. */
+function recordClaudeCodeVersion(message: unknown): void {
+  if (isInitMessage(message)) {
+    observedClaudeCodeVersion = message.claude_code_version;
+  }
+}
+
+/** The Claude Code version the live run executed, as reported by that CLI, not package metadata. */
 function usedClaudeCodeVersion(): string {
-  const output = execFileSync(testClaudeExecutable(), ["--version"], { encoding: "utf8" });
-  return /\d+\.\d+\.\d+/u.exec(output)?.[0] ?? output.trim();
+  if (observedClaudeCodeVersion === undefined) {
+    throw new Error("No system/init message observed; cannot attest the Claude Code version");
+  }
+  return observedClaudeCodeVersion;
 }
 
 describe("installed Claude Agent SDK live contract", () => {
