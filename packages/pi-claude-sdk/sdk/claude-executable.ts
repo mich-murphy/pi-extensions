@@ -3,7 +3,7 @@ import { delimiter, join } from "node:path";
 import process from "node:process";
 
 /** Environment variable that points at the Claude Code executable to run. */
-export const CLAUDE_PATH_VARIABLE = "PI_CLAUDE_SDK_CLAUDE_PATH";
+const CLAUDE_PATH_VARIABLE = "PI_CLAUDE_SDK_CLAUDE_PATH";
 
 /**
  * Oldest Claude Code this provider supports. 2.1.317 is the first release that answers the
