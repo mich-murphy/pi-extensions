@@ -11,7 +11,6 @@ function diagnostic(modelUsage: ModelUsage, apiError?: string) {
     assistantToolUses: 4,
     maxAssistantToolUses: 2,
     errorToolResults: 1,
-    hookDeniedCalls: 2,
     invalidGatewayCalls: 1,
     unexpectedToolCalls: 1,
     fallbackCalls: 0,

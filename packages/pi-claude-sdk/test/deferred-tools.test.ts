@@ -136,13 +136,15 @@ describe("schema-faithful deferred tools", () => {
   });
 
   test.each(["oneOf", "$ref", "not", "patternProperties", "format", "default", "secretProperty"])(
-    "fails before advertising unsupported keyword %s",
+    "degrades only the tool with unsupported keyword %s to a permissive schema",
     (keyword) => {
-      expect(() =>
-        compileToolCatalog([
-          { ...declaration, parameters: { ...declaration.parameters, [keyword]: {} } },
-        ]),
-      ).toThrow("schema");
+      const catalog = compileToolCatalog([
+        { ...declaration, parameters: { ...declaration.parameters, [keyword]: {} } },
+        { ...declaration, name: "healthy" },
+      ]);
+      expect(catalog.map((entry) => entry.degraded === true)).toStrictEqual([true, false]);
+      expect(catalog[0]?.schema.safeParse({ anything: [1, "x"] }).success).toBe(true);
+      expect(catalog[0]?.schema.safeParse("not-an-object").success).toBe(false);
     },
   );
 
@@ -196,19 +198,18 @@ describe("schema-faithful deferred tools", () => {
     ]);
   });
 
-  test("preserves literal object data instead of normalizing it as a schema", () => {
-    expect(() =>
-      compileToolCatalog([
-        {
-          ...declaration,
-          parameters: Type.Object({
-            data: {
-              const: { $schema: "literal", type: "integer", properties: { $schema: "data" } },
-            },
-          }),
-        },
-      ]),
-    ).toThrow("schema");
+  test("preserves literal object data instead of normalizing it as a schema (degraded, not failed)", () => {
+    const [tool] = compileToolCatalog([
+      {
+        ...declaration,
+        parameters: Type.Object({
+          data: {
+            const: { $schema: "literal", type: "integer", properties: { $schema: "data" } },
+          },
+        }),
+      },
+    ]);
+    expect(tool?.degraded).toBe(true);
   });
 
   test.each([-1, 0, 2, Number.MAX_SAFE_INTEGER + 1])(

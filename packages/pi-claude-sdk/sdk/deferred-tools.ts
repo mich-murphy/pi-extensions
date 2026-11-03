@@ -40,7 +40,6 @@ export type DeferredCallCapture = {
   readonly batchStopped: boolean;
 
   readonly calls: readonly DeferredCall[];
-  readonly hookDeniedCalls: number;
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;
   readonly uncapturedBatchCalls: number;
@@ -136,7 +135,6 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     get calls() {
       return [...calls.values()];
     },
-    hookDeniedCalls: 0,
     get sdkRejectedCalls() {
       return sdkRejectedCalls;
     },

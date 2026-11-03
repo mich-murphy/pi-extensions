@@ -642,7 +642,6 @@ function conclude(
       assistantToolUses: progress.assistantToolUses,
       maxAssistantToolUses: progress.maxAssistantToolUses,
       errorToolResults: progress.errorToolResults,
-      hookDeniedCalls: capture.deferred.hookDeniedCalls,
       invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
       unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
       uncapturedBatchCalls: capture.deferred.uncapturedBatchCalls,
