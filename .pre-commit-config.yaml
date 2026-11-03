@@ -39,13 +39,13 @@ repos:
         name: typecheck
         entry: "npm run typecheck"
         language: system
+        types_or: [ts, tsx, json]
         pass_filenames: false
-        always_run: true
         stages: [pre-push]
-      - id: test
-        name: test
+      - id: coverage
+        name: coverage
         entry: "npm run test:coverage -- --no-file-parallelism"
         language: system
+        types_or: [javascript, jsx, ts, tsx, json]
         pass_filenames: false
-        always_run: true
         stages: [pre-push]
