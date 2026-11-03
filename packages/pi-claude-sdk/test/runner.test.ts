@@ -100,11 +100,12 @@ async function runTurn(
   options: SimpleStreamOptions & RunnerOptions = {},
 ): Promise<BridgeEvent[]> {
   return drain(
-    createClaudeAgentSdkRunner({ validationRecovery: "pi-tool-loop", ...options, runSdkQuery })(
-      request,
-      sonnet,
-      options,
-    ),
+    createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
+      validationRecovery: "pi-tool-loop",
+      ...options,
+      runSdkQuery,
+    })(request, sonnet, options),
   );
 }
 
@@ -135,6 +136,7 @@ async function capturedParameters(
 ): Promise<SdkQueryParameters> {
   const captured: SdkQueryParameters[] = [];
   const runner = createClaudeAgentSdkRunner({
+    claudeExecutable: "/usr/bin/claude",
     sdkEnvironment: { PATH: "/bin" },
     runSdkQuery: (params) => {
       captured.push(params);
@@ -395,6 +397,7 @@ describe("turn streaming", () => {
   test("clears per-call cache splits from cumulative diagnostics and Pi usage when terminal split is absent", async () => {
     const diagnostics: CacheDiagnostic[] = [];
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       runSdkQuery: queryWith(
         [],
         streamEvent({
@@ -806,6 +809,7 @@ describe("usage limit observation", () => {
       [usageLimitResult],
     ];
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       async *runSdkQuery() {
         const messages = queries.shift();
         assert(messages);
@@ -1278,6 +1282,7 @@ describe("SDK query cancellation", () => {
     });
     let sdkSignal: AbortSignal | undefined;
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       runSdkQuery: async function* runSdkQuery(params) {
         const signal = params.options?.abortController?.signal;
         assert(signal !== undefined, "test setup: SDK abort signal missing");

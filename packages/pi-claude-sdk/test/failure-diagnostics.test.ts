@@ -125,7 +125,7 @@ describe("claude SDK failure diagnostics", () => {
     [new AbortError("aborted"), "could not start the query (cancelled)"],
     [
       Object.assign(new Error("spawn claude ENOENT /secret/path"), { code: "ENOENT" }),
-      "could not start the query (Claude Code executable not found)",
+      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH)",
     ],
     [
       sdkRejection("Claude Code process exited with code 2\nstderr: token=abc", {
@@ -145,7 +145,7 @@ describe("claude SDK failure diagnostics", () => {
       sdkRejection("Claude Code executable not found at /secret/path", {
         errorClass: "executable_not_found",
       }),
-      "could not start the query (Claude Code executable not found)",
+      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH)",
     ],
     [
       sdkRejection("Claude Code native binary exists at /secret but failed to launch", {

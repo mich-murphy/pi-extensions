@@ -1,7 +1,13 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import process from "node:process";
 import { promisify } from "node:util";
 import { Context, Effect, Layer, Predicate, Schema } from "effect";
+import {
+  isBelowMinimumClaudeCode,
+  MIN_CLAUDE_CODE_VERSION,
+  resolveClaudeExecutable,
+} from "./sdk/claude-executable";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,9 +24,15 @@ type SemanticVersion = readonly [major: number, minor: number, patch: number];
 export type ClaudeSdkVersionStatus = {
   /** Installed Agent SDK package version. */
   readonly agentSdk: string;
-  /** Claude Code version bundled with the Agent SDK. */
-  readonly bundledClaudeCode: string;
-  /** Claude Code version resolved from the current PATH. */
+  /** Claude Code version the Agent SDK was built against. */
+  readonly expectedClaudeCode: string;
+  /** Resolved Claude Code executable, when one was found. */
+  readonly claudePath: string | undefined;
+  /** Oldest Claude Code this provider supports. */
+  readonly minimumClaudeCode: string;
+  /** Whether the installed Claude Code is older than the minimum. */
+  readonly belowMinimum: boolean;
+  /** Version of the Claude Code the provider runs. */
   readonly installedClaudeCode: string;
   /** Whether the installed Claude Code is newer than the SDK bundle. */
   readonly updateSuggested: boolean;
@@ -34,7 +46,8 @@ type InstalledVersionFailure = typeof InstalledVersionFailure.Type;
 const INSTALLED_VERSION_TIMEOUT_MS = 3000;
 
 const INSTALLED_VERSION_MESSAGES: Readonly<Record<InstalledVersionFailure, string>> = {
-  "not-installed": "Claude Code is not installed or not on PATH (claude --version failed)",
+  "not-installed":
+    "Claude Code is not installed or not on PATH (claude --version failed); install it, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH",
   "timed-out": `claude --version did not respond within ${INSTALLED_VERSION_TIMEOUT_MS / 1000}s`,
   failed: "claude --version failed",
 };
@@ -74,7 +87,7 @@ class ClaudeVersionParseError extends Schema.TaggedError<ClaudeVersionParseError
   "ClaudeVersionParseError",
   {
     /** Which version could not be parsed. */
-    source: Schema.Literals(["bundled", "installed"]),
+    source: Schema.Literals(["expected", "installed"]),
     /** The unexpected text; only its bounded first line is rendered. */
     output: Schema.String,
   },
@@ -84,7 +97,7 @@ class ClaudeVersionParseError extends Schema.TaggedError<ClaudeVersionParseError
     const firstLine = (this.output.split("\n", 1)[0] ?? "").trim().slice(0, 80);
     return this.source === "installed"
       ? `claude --version printed an unexpected version: "${firstLine}"`
-      : `The Agent SDK reports an unexpected bundled Claude Code version: "${firstLine}"`;
+      : `The Agent SDK reports an unexpected expected Claude Code version: "${firstLine}"`;
   }
 }
 
@@ -94,6 +107,8 @@ export type ClaudeSdkVersionReads = {
   readonly readSdkPackageMetadata: () => Promise<string>;
   /** Read `claude --version` output; rejections are classified by their Node error shape. */
   readonly readInstalledClaudeVersion: () => Promise<string>;
+  /** Resolve the Claude Code executable the provider runs. */
+  readonly readClaudePath?: () => string | undefined;
 };
 
 function parseSemanticVersion(input: string): SemanticVersion | undefined {
@@ -116,7 +131,11 @@ async function defaultReadSdkPackageMetadata(): Promise<string> {
 }
 
 async function defaultReadInstalledClaudeVersion(): Promise<string> {
-  const { stdout } = await execFileAsync("claude", ["--version"], {
+  const path = resolveClaudeExecutable(process.env);
+  if (path === undefined) {
+    throw Object.assign(new Error("claude not found"), { code: "ENOENT" });
+  }
+  const { stdout } = await execFileAsync(path, ["--version"], {
     encoding: "utf8",
     timeout: INSTALLED_VERSION_TIMEOUT_MS,
   });
@@ -142,6 +161,8 @@ export class ClaudeSdkVersionSources extends Context.Service<
     readonly readSdkPackageMetadata: () => Effect.Effect<string, ClaudeSdkMetadataError>;
     /** Read `claude --version` output. */
     readonly readInstalledClaudeVersion: () => Effect.Effect<string, ClaudeInstalledVersionError>;
+    /** Resolved Claude Code executable path. */
+    readonly claudePath: () => string | undefined;
   }
 >()("pi-claude-sdk/sdk-version-status/ClaudeSdkVersionSources") {
   /**
@@ -154,6 +175,7 @@ export class ClaudeSdkVersionSources extends Context.Service<
     return Layer.succeed(
       ClaudeSdkVersionSources,
       ClaudeSdkVersionSources.of({
+        claudePath: () => reads.readClaudePath?.(),
         readSdkPackageMetadata: Effect.fn("ClaudeSdkVersionSources.readSdkPackageMetadata")(
           function* () {
             return yield* Effect.tryPromise({
@@ -182,6 +204,7 @@ export class ClaudeSdkVersionSources extends Context.Service<
   static readonly layer: Layer.Layer<ClaudeSdkVersionSources> = ClaudeSdkVersionSources.fromReads({
     readSdkPackageMetadata: defaultReadSdkPackageMetadata,
     readInstalledClaudeVersion: defaultReadInstalledClaudeVersion,
+    readClaudePath: () => resolveClaudeExecutable(process.env),
   });
 }
 
@@ -196,7 +219,7 @@ function parseVersion(
 }
 
 /**
- * Inspect Agent SDK, bundled Claude Code, and installed Claude Code versions.
+ * Inspect Agent SDK, expected Claude Code, and installed Claude Code versions.
  *
  * @returns Parsed status, failing with a typed metadata, CLI, or parse error.
  */
@@ -207,11 +230,14 @@ export const inspectClaudeSdkVersions = Effect.fn("inspectClaudeSdkVersions")(fu
     Effect.mapError((cause) => new ClaudeSdkMetadataError({ cause })),
   );
   const installedOutput = yield* sources.readInstalledClaudeVersion();
-  const bundled = yield* parseVersion("bundled", metadata.claudeCodeVersion);
+  const bundled = yield* parseVersion("expected", metadata.claudeCodeVersion);
   const installed = yield* parseVersion("installed", installedOutput);
   return {
     agentSdk: metadata.version,
-    bundledClaudeCode: metadata.claudeCodeVersion,
+    expectedClaudeCode: metadata.claudeCodeVersion,
+    claudePath: sources.claudePath(),
+    minimumClaudeCode: MIN_CLAUDE_CODE_VERSION,
+    belowMinimum: isBelowMinimumClaudeCode(installed.join(".")),
     installedClaudeCode: installed.join("."),
     updateSuggested: isNewer(installed, bundled),
   } satisfies ClaudeSdkVersionStatus;
@@ -226,8 +252,10 @@ export const inspectClaudeSdkVersions = Effect.fn("inspectClaudeSdkVersions")(fu
 export function formatClaudeSdkVersionStatus(status: ClaudeSdkVersionStatus): string {
   return [
     `Agent SDK: ${status.agentSdk}`,
-    `Bundled Claude Code: ${status.bundledClaudeCode}`,
-    `Installed Claude Code: ${status.installedClaudeCode}`,
+    `Claude Code path: ${status.claudePath ?? "not found"}`,
+    `Installed Claude Code: ${status.installedClaudeCode} (minimum ${status.minimumClaudeCode})`,
+    `Claude Code expected by the Agent SDK: ${status.expectedClaudeCode}`,
+    ...(status.belowMinimum ? ["Claude Code is too old: run `claude update`."] : []),
     status.updateSuggested
       ? "The installed Claude Code is newer. Update the pinned Agent SDK and npmDepsHash."
       : "The Agent SDK bundle is not older than the installed Claude Code.",

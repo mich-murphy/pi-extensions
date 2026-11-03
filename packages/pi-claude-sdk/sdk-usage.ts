@@ -3,6 +3,7 @@ import process from "node:process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Context, Duration, Effect, Layer, Result, Schema } from "effect";
+import { resolveClaudeExecutable } from "./sdk/claude-executable";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
 const CALENDAR_DATE = String.raw`(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8])))`;
@@ -120,12 +121,21 @@ async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> 
   await once(signal, "abort");
 }
 
+function requireClaudeExecutable(): string {
+  const executable = resolveClaudeExecutable(process.env);
+  if (executable === undefined) {
+    throw new Error("claude executable not found");
+  }
+  return executable;
+}
+
 function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeUsageQuery {
   const sdkQuery = query({
     prompt: idlePrompt(abortController.signal),
     options: {
       abortController,
       cwd: process.cwd(),
+      pathToClaudeCodeExecutable: requireClaudeExecutable(),
       env: { ...subscriptionEnvironment() },
       persistSession: false,
       settingSources: [],

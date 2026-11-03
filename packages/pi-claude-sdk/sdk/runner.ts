@@ -10,6 +10,7 @@ import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
 import { sdkModelSelectorFor, undatedModelId } from "../models";
+import { resolveClaudeExecutable, tooOldClaudeCode } from "./claude-executable";
 import { createDeferredCallCapture, createDeferredPiTools } from "./deferred-tools";
 import type { DeferredCallCapture } from "./deferred-tools";
 import {
@@ -49,6 +50,8 @@ export type ModelObservation = {
 /** Runner collaborators. Each falls back to production behaviour. */
 export type RunnerOptions = {
   readonly runSdkQuery?: RunSdkQuery;
+  /** Claude Code executable to run; defaults to resolving the user's installation. */
+  readonly claudeExecutable?: string;
   /** Opt in only with the reserved validation-error tool and fail-safe guard installed. */
   readonly validationRecovery?: "pi-tool-loop";
   /** Injectable in-process MCP server factory; defaults to the installed SDK. */
@@ -86,6 +89,7 @@ type Turn = {
 
 type QueryWiring = {
   readonly cwd: string;
+  readonly executable: string;
   readonly abortController: AbortController;
   readonly hook: HookCallback;
   readonly batchHook: HookCallback;
@@ -183,6 +187,7 @@ function queryParameters(
   turn: Turn,
   {
     cwd,
+    executable,
     abortController,
     hook,
     batchHook,
@@ -193,7 +198,8 @@ function queryParameters(
     catalog,
   }: QueryWiring,
 ): SdkQueryParameters {
-  const { request, model } = turn;
+  const { request, model, options: streamOptions } = turn;
+  const maxTokens = streamOptions?.maxTokens;
   const server = createMcpServer({
     name: "pi",
     version: "0.1.0",
@@ -216,6 +222,13 @@ function queryParameters(
     options: {
       abortController,
       cwd,
+      // Always the user's installed Claude Code, never the SDK's bundled binary.
+      pathToClaudeCodeExecutable: executable,
+      // Pi owns every tool; anything outside mcp__pi__* is denied instead of prompting.
+      permissionMode: "dontAsk",
+      allowedTools: ["mcp__pi__*"],
+      // No slash-command/@file expansion or context injection into the replayed transcript.
+      verbatimPrompts: true,
       model: sdkModelSelectorFor(model.id),
       ...reasoningOptions(turn),
       includePartialMessages: true,
@@ -234,8 +247,17 @@ function queryParameters(
       // Omitting skills is not "skills off"; an empty list disables them.
       skills: [],
       mcpServers: { pi: server },
-      env: { ...env },
-      hooks: { PreToolUse: [{ hooks: [hook] }], PostToolBatch: [{ hooks: [batchHook] }] },
+      env: {
+        ...env,
+        ...(maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1
+          ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxTokens)) }
+          : {}),
+      },
+      // Fail closed if a hook throws or returns invalid output.
+      hooks: {
+        PreToolUse: [{ hooks: [hook], onFailure: "block" }],
+        PostToolBatch: [{ hooks: [batchHook], onFailure: "block" }],
+      },
     },
   };
 }
@@ -458,6 +480,15 @@ function step(
     if (Result.isFailure(item)) {
       return [progress, [ended(Result.fail(item.failure), progress)]];
     }
+    const tooOld = tooOldClaudeCode(item.success);
+    if (tooOld !== undefined) {
+      const failure = new SdkQueryError({
+        operation: "iterate",
+        reason: { _tag: "ClaudeCodeTooOld", version: tooOld },
+        cause: new Error("Claude Code is older than the supported minimum"),
+      });
+      return [progress, [ended(Result.fail(failure), progress)]];
+    }
     const parsed = parseSdkMessage(item.success);
     if (Result.isFailure(parsed)) {
       return [progress, [ended(Result.fail(parsed.failure), progress)]];
@@ -657,6 +688,7 @@ function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
 const runTurn = Effect.fnUntraced(function* (
   {
     runSdkQuery,
+    claudeExecutable,
     sdkEnvironment,
     cacheDiagnostics,
     modelObserver,
@@ -699,6 +731,18 @@ const runTurn = Effect.fnUntraced(function* (
   if (Result.isFailure(directory)) {
     return Stream.succeed(failed(directory.failure));
   }
+  const executable = claudeExecutable ?? resolveClaudeExecutable(sdkEnvironment);
+  if (executable === undefined) {
+    return Stream.succeed(
+      failed(
+        new SdkQueryError({
+          operation: "start",
+          reason: { _tag: "ExecutableNotFound" },
+          cause: new Error("claude executable not found"),
+        }),
+      ),
+    );
+  }
   const catalog = compiled.success;
   const capture = createQueryCapture(catalog, abortController, validationRecovery);
   const ttl = cacheTtlFor(
@@ -714,6 +758,7 @@ const runTurn = Effect.fnUntraced(function* (
       runSdkQuery(
         queryParameters(appliedTurn, {
           cwd: directory.success,
+          executable,
           abortController,
           hook: capture.deferred.hook,
           batchHook: capture.deferred.batchHook,

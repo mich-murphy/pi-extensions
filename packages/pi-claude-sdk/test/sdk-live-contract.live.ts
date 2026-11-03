@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -11,6 +12,7 @@ import { models, undatedModelId } from "../models";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import { subscriptionEnvironment } from "../sdk/subscription-environment";
+import { testClaudeExecutable } from "./claude-cli";
 import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 import {
   decodeReleaseContract,
@@ -144,6 +146,12 @@ function expectedThinkingMetadata(canonicalModel: string) {
   };
 }
 
+/** The Claude Code version the live run executed (the system CLI), not the SDK's bundle. */
+function usedClaudeCodeVersion(): string {
+  const output = execFileSync(testClaudeExecutable(), ["--version"], { encoding: "utf8" });
+  return /\d+\.\d+\.\d+/u.exec(output)?.[0] ?? output.trim();
+}
+
 describe("installed Claude Agent SDK live contract", () => {
   const verified = new Set<LiveContract>();
   let observedDeferredResult: DeferredResult | undefined;
@@ -155,6 +163,7 @@ describe("installed Claude Agent SDK live contract", () => {
       prompt: idlePrompt(abortController.signal),
       options: {
         abortController,
+        pathToClaudeCodeExecutable: testClaudeExecutable(),
         env: { ...subscriptionEnvironment() },
         persistSession: false,
         settingSources: [],
@@ -299,7 +308,7 @@ describe("installed Claude Agent SDK live contract", () => {
     const attestation = decodeReleaseContract({
       schemaVersion: 1,
       agentSdkVersion: installed.version,
-      bundledClaudeCodeVersion: installed.claudeCodeVersion,
+      claudeCodeVersion: usedClaudeCodeVersion(),
       verifiedAt: new Date().toISOString().replace(/\.\d+Z$/u, "Z"),
       model: "fable",
       contracts: LIVE_CONTRACTS,

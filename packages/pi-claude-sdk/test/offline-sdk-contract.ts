@@ -20,6 +20,7 @@ import {
   VALIDATION_ERROR_TOOL,
   validationRecoveryTool,
 } from "../validation-recovery";
+import { testClaudeExecutable } from "./claude-cli";
 import { modelFixture } from "./fixtures";
 
 export const offlineContractPath = fileURLToPath(import.meta.url);
@@ -216,6 +217,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
   return {
     PreToolUse: [
       {
+        ...params.options?.hooks?.PreToolUse?.[0],
         hooks: [
           async (...args: Parameters<typeof pre>) => {
             proof.preHooks += 1;
@@ -226,6 +228,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
     ],
     PostToolBatch: [
       {
+        ...params.options?.hooks?.PostToolBatch?.[0],
         hooks: [
           async (...args: Parameters<typeof batch>) => {
             proof.batches += 1;
@@ -382,6 +385,7 @@ async function runContract(): Promise<void> {
   };
   const transport = await startTransport(proof);
   const run = createClaudeAgentSdkRunner({
+    claudeExecutable: testClaudeExecutable(),
     validationRecovery: "pi-tool-loop",
     runSdkQuery: observedQuery(proof),
     cacheDiagnostics: Effect.runSync(
