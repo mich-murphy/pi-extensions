@@ -88,6 +88,8 @@ export type SdkMessage =
       readonly resetsAt: number | undefined;
       /** True when the subscription window was rejected, even if no reset time was given. */
       readonly rejected: boolean;
+      /** Present only when the event says this request is billed to Extra Usage (overage). */
+      readonly overage?: { readonly resetsAt: number | undefined };
     }
   | {
       readonly type: "result";
@@ -189,14 +191,21 @@ function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = fals
 
 // Every rate-limit update replaces recovery metadata, including malformed/unknown updates.
 // Never retain an earlier rejected window after the SDK changes its rate-limit information.
+const EpochSeconds = Schema.Finite.check(
+  Schema.isGreaterThan(0),
+  Schema.isLessThanOrEqualTo(8_640_000_000_000),
+);
+
 const decodeRateLimit = Schema.decodeUnknownOption(
   Schema.Struct({
     rate_limit_info: Schema.Struct({
       status: Schema.String,
       // Bound seconds to JavaScript's Date range before converting to milliseconds.
-      resetsAt: lenientOptional(
-        Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(8_640_000_000_000)),
-      ),
+      resetsAt: lenientOptional(EpochSeconds),
+      // Extra Usage fields are decoded leniently: unknown or malformed values read as absent.
+      rateLimitType: lenientOptional(Schema.String),
+      isUsingOverage: lenientOptional(Schema.Boolean),
+      overageResetsAt: lenientOptional(EpochSeconds),
     }),
   }),
 );
@@ -204,11 +213,17 @@ const decodeRateLimit = Schema.decodeUnknownOption(
 function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
   // Claude Code reports resetsAt in epoch seconds.
+  const overageReset = info?.overageResetsAt ?? info?.resetsAt;
+  const overage =
+    info?.isUsingOverage === true || info?.rateLimitType === "overage"
+      ? { overage: { resetsAt: overageReset === undefined ? undefined : overageReset * 1000 } }
+      : {};
   return Result.succeed({
     type: "usage_limit",
     rejected: info?.status === "rejected",
     resetsAt:
       info?.status === "rejected" && info.resetsAt !== undefined ? info.resetsAt * 1000 : undefined,
+    ...overage,
   });
 }
 

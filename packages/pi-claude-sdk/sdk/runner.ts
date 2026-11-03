@@ -15,6 +15,7 @@ import { createDeferredCallCapture, createDeferredPiTools } from "./deferred-too
 import type { DeferredCallCapture } from "./deferred-tools";
 import {
   SdkMissingResultError,
+  SdkOverageError,
   SdkProtocolError,
   SdkQueryError,
   SdkResultError,
@@ -28,7 +29,7 @@ import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
 import type { CacheTtl } from "./prompt-stream";
 import { queryDiagnostics } from "./query-diagnostics";
 import { effectiveResultCategory } from "./result-failure";
-import { subscriptionEnvironment } from "./subscription-environment";
+import { extraUsageAllowed, subscriptionEnvironment } from "./subscription-environment";
 import { compileToolCatalog } from "./tool-catalog";
 import type { CatalogTool } from "./tool-catalog";
 
@@ -492,6 +493,11 @@ function step(
     const parsed = parseSdkMessage(item.success);
     if (Result.isFailure(parsed)) {
       return [progress, [ended(Result.fail(parsed.failure), progress)]];
+    }
+    if (parsed.success.type === "usage_limit" && parsed.success.overage && !extraUsageAllowed()) {
+      // Ending the step closes the SDK stream, which aborts the query before another request.
+      const failure = new SdkOverageError({ resetsAt: parsed.success.overage.resetsAt });
+      return [progress, [ended(Result.fail(failure), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
