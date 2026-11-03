@@ -86,24 +86,27 @@ export function resolveClaudeExecutable(
   env: Readonly<Record<string, string | undefined>> = process.env,
   platform: NodeJS.Platform = process.platform,
 ): string | undefined {
-  const override = env[CLAUDE_PATH_VARIABLE]?.trim();
-  if (override !== undefined && override !== "") {
+  const override = env[CLAUDE_PATH_VARIABLE]?.trim() ?? "";
+  if (override !== "") {
     return isExecutableFile(override, platform) ? override : undefined;
   }
-  const names =
-    platform === "win32"
-      ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .filter(Boolean)
-          .map((extension) => `claude${extension.toLowerCase()}`)
-      : ["claude"];
-  for (const directory of (env.PATH ?? "").split(delimiter)) {
-    for (const name of directory ? names : []) {
-      const candidate = join(directory, name);
-      if (isExecutableFile(candidate, platform)) {
-        return candidate;
-      }
-    }
+  const names = executableNames(env, platform);
+  return (env.PATH ?? "")
+    .split(delimiter)
+    .filter(Boolean)
+    .flatMap((directory) => names.map((name) => join(directory, name)))
+    .find((candidate) => isExecutableFile(candidate, platform));
+}
+
+function executableNames(
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): readonly string[] {
+  if (platform !== "win32") {
+    return ["claude"];
   }
-  return undefined;
+  return (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter(Boolean)
+    .map((extension) => `claude${extension.toLowerCase()}`);
 }
