@@ -73,6 +73,7 @@ const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
   ExecutableLaunchFailed: {},
+  WorkingDirectoryUnavailable: {},
   ProcessExited: { exitCode: Schema.Number },
   ProcessKilled: { signal: Schema.String },
   Unclassified: {},
@@ -143,6 +144,9 @@ function describeQueryFailure(reason: SdkQueryFailureReason): string {
     }
     case "ExecutableLaunchFailed": {
       return "Claude Code is installed but could not be launched";
+    }
+    case "WorkingDirectoryUnavailable": {
+      return "session working directory is unavailable; restart Pi from an existing worktree and resume this session";
     }
     case "ProcessExited": {
       return `Claude Code exited with code ${reason.exitCode}`;

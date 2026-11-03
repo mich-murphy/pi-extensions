@@ -177,6 +177,27 @@ describe("claude SDK failure diagnostics", () => {
     expect(error.cause).toBe(cause);
   });
 
+  test("keeps working-directory failures actionable, private and non-retryable", () => {
+    const error = new SdkQueryError({
+      operation: "start",
+      reason: { _tag: "WorkingDirectoryUnavailable" },
+      cause: new Error("ENOENT /secret/network/timeout/worktree"),
+    });
+    const message = formatSdkRunError(error);
+    expect(message).toContain("restart Pi from an existing worktree and resume this session");
+    expect(message).not.toContain("/secret");
+    expect(message).not.toContain("executable not found");
+    expect(diagnoseSdkRunError(error)).toStrictEqual({
+      schemaVersion: 1,
+      kind: "provider",
+      errorTag: "SdkQueryError",
+      operation: "start",
+    });
+    expect(
+      isRetryableAssistantError({ ...failedAssistant("provider"), errorMessage: message }),
+    ).toBe(false);
+  });
+
   test("never renders the raw cause of an iteration failure", () => {
     const error = SdkQueryError.fromCause("iterate", new Error("transport disconnected: secret"));
 

@@ -130,6 +130,23 @@ equivalent durable loop). Never blindly execute returned calls or opt in for a
 consumer that lacks that guard. The extension installs these protections itself.
 Valid calls still work without this opt-in.
 
+## Deleted or unavailable worktrees
+
+Keep the worktree that Pi was started in until that Pi process exits. Changing
+folders inside a `bash` tool call does not change the parent Pi process's working
+directory. Removing that worktree can make the next SDK subprocess fail with
+`ENOENT` even when Claude Code is installed; older versions reported this as
+"Claude Code executable not found".
+
+The runner now checks its working directory before opening the SDK query and
+reports an unavailable session directory with recovery guidance. It does not
+silently choose another checkout. Exit the affected Pi process, change to an
+existing intended worktree, and open the saved session with
+`pi --session /absolute/path/to/session.jsonl`. If Pi asks about the missing
+stored working directory, confirm the intended replacement. Alternatively, use
+`pi --fork /absolute/path/to/session.jsonl` to preserve the original session and
+continue its history in a new session bound to the current worktree.
+
 ## Request instrumentation
 
 `onPayload` is awaited once before opening `query()`. Its SDK-adapted data payload is `{ promptBlocks: [{ text, images: [{ data, mediaType }] }], cacheBreakpoints }`, not HTTP JSON or SDK query options. `cacheBreakpoints` is an ascending array of at most four unique zero-based block indexes; `[]` sends no breakpoint. Return a replacement object of exactly this shape; returning `undefined` keeps the inspected object, including in-place edits. The validated applied payload drives both streaming input and cache diagnostics/fingerprints. Payloads require 1–4096 blocks, at most 100 images per block (media-type strings are limited to 256 characters; unsupported formats keep the existing text-note fallback), and at most 16 Mi characters per text/image-data string; breakpoint indexes must be in range. Unknown fields and malformed replacements fail before any SDK query with a value-free summary.
