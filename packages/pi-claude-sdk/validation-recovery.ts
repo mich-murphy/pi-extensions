@@ -10,6 +10,7 @@ export const VALIDATION_REASONS = [
   "unexpected_sdk_tool",
   "uncaptured_tool_batch",
   "sdk_input_rejected",
+  "printed_tool_call",
 ] as const;
 
 /** Value-free, bounded correction text shared by the tool and its fail-safe guard. */
@@ -29,6 +30,14 @@ export function validationRecoveryReason(input: unknown): string {
     input.error === "sdk_input_rejected"
   ) {
     return "SDK input was rejected before Pi permission deferral, possibly during JSON parsing. No tool executed. Request a declared tool with valid JSON parameters matching its schema.";
+  }
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "error" in input &&
+    input.error === "printed_tool_call"
+  ) {
+    return "Your last reply printed a tool call as text, so nothing executed. Invoke the declared mcp__pi__ tool directly instead of writing a <call> tag or JSON.";
   }
   const unexpected =
     typeof input === "object" &&

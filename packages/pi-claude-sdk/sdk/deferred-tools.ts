@@ -15,13 +15,26 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
   isError: true,
 });
 
+const MAX_PARAMETERS_CHARS = 4000;
+
+/** A degraded tool keeps a permissive schema, so the model still needs its declared parameters. */
+function parametersLine(parameters: unknown): string {
+  const json = JSON.stringify(parameters) ?? "{}";
+  const bounded =
+    json.length > MAX_PARAMETERS_CHARS
+      ? `${json.slice(0, MAX_PARAMETERS_CHARS)}…[truncated]`
+      : json;
+  return `\nParameters (JSON Schema): ${bounded}`;
+}
+
 export function createDeferredPiTools(catalog: readonly CatalogTool[], onFallback?: () => void) {
-  return catalog.map(({ declaration, mcpName, schema }) => ({
+  return catalog.map(({ declaration, mcpName, schema, degraded }) => ({
     name: mcpName,
     description:
-      mcpName === declaration.name
+      (mcpName === declaration.name
         ? declaration.description
-        : `Pi tool ${JSON.stringify(declaration.name)}. ${declaration.description}`,
+        : `Pi tool ${JSON.stringify(declaration.name)}. ${declaration.description}`) +
+      (degraded === true ? parametersLine(declaration.parameters) : ""),
     inputSchema: schema,
     handler: async () => {
       onFallback?.();
@@ -40,7 +53,6 @@ export type DeferredCallCapture = {
   readonly batchStopped: boolean;
 
   readonly calls: readonly DeferredCall[];
-  readonly hookDeniedCalls: number;
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;
   readonly uncapturedBatchCalls: number;
@@ -136,7 +148,6 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     get calls() {
       return [...calls.values()];
     },
-    hookDeniedCalls: 0,
     get sdkRejectedCalls() {
       return sdkRejectedCalls;
     },

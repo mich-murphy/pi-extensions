@@ -1412,7 +1412,6 @@ describe("cache diagnostics", () => {
         assistantToolUses: 3,
         maxAssistantToolUses: 2,
         errorToolResults: 1,
-        hookDeniedCalls: 0,
         invalidGatewayCalls: 0,
         unexpectedToolCalls: 2,
         fallbackCalls: 0,

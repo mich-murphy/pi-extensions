@@ -29,7 +29,6 @@ export type QueryDiagnostics = {
   readonly assistantToolUses: number;
   readonly maxAssistantToolUses: number;
   readonly errorToolResults: number;
-  readonly hookDeniedCalls: number;
   /** Captured rejection categories; no requested names or hook messages are retained. */
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;

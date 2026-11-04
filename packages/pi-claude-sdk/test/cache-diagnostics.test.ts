@@ -353,7 +353,6 @@ describe("query diagnostic records", () => {
     assistantToolUses: 0,
     maxAssistantToolUses: 0,
     errorToolResults: 0,
-    hookDeniedCalls: 0,
     invalidGatewayCalls: 0,
     unexpectedToolCalls: 0,
     fallbackCalls: 0,

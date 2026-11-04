@@ -1,7 +1,8 @@
+import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Tool } from "@earendil-works/pi-ai";
 import { Type, validateToolArguments } from "@earendil-works/pi-ai";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createDeferredCallCapture, createDeferredPiTools } from "../sdk/deferred-tools";
 import { compileToolCatalog } from "../sdk/tool-catalog";
 import { deliverToolUse } from "./fixtures";
@@ -136,15 +137,56 @@ describe("schema-faithful deferred tools", () => {
   });
 
   test.each(["oneOf", "$ref", "not", "patternProperties", "format", "default", "secretProperty"])(
-    "fails before advertising unsupported keyword %s",
+    "degrades only the tool with unsupported keyword %s to a permissive schema",
     (keyword) => {
-      expect(() =>
-        compileToolCatalog([
-          { ...declaration, parameters: { ...declaration.parameters, [keyword]: {} } },
-        ]),
-      ).toThrow("schema");
+      const catalog = compileToolCatalog([
+        { ...declaration, parameters: { ...declaration.parameters, [keyword]: {} } },
+        { ...declaration, name: "healthy" },
+      ]);
+      expect(catalog.map((entry) => entry.degraded === true)).toStrictEqual([true, false]);
+      expect(catalog[0]?.schema.safeParse({ anything: [1, "x"] }).success).toBe(true);
+      expect(catalog[0]?.schema.safeParse("not-an-object").success).toBe(false);
     },
   );
+
+  test("a degraded tool's description carries its bounded declared parameters", () => {
+    const parameters = { ...declaration.parameters, oneOf: [] };
+    const long = { ...declaration.parameters, oneOf: [], description: "x".repeat(5000) };
+    const [plain, big, healthy] = createDeferredPiTools(
+      compileToolCatalog([
+        { ...declaration, name: "d1", parameters },
+        { ...declaration, name: "d2", parameters: long },
+        { ...declaration, name: "ok" },
+      ]),
+    );
+    expect(plain?.description).toContain(`Parameters (JSON Schema): ${JSON.stringify(parameters)}`);
+    expect(big?.description).toContain("[truncated]");
+    expect(big?.description.length).toBeLessThan(4500 + declaration.description.length);
+    expect(healthy?.description).not.toContain("Parameters (JSON Schema)");
+  });
+
+  test("the degraded-schema diagnostic is written once per tool per process", () => {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    const isTty = process.stderr.isTTY;
+    process.stderr.isTTY = false;
+    try {
+      const tool = {
+        ...declaration,
+        name: "dedupe_once",
+        parameters: { type: "object", oneOf: [] },
+      };
+      compileToolCatalog([tool]);
+      compileToolCatalog([tool]);
+    } finally {
+      process.stderr.isTTY = isTty;
+      spy.mockRestore();
+    }
+    expect(writes.filter((line) => line.includes("dedupe_once"))).toHaveLength(1);
+  });
 
   test("Pi normalization is authoritative, including numeric strings and optional nulls", async () => {
     const tools = [
@@ -196,19 +238,18 @@ describe("schema-faithful deferred tools", () => {
     ]);
   });
 
-  test("preserves literal object data instead of normalizing it as a schema", () => {
-    expect(() =>
-      compileToolCatalog([
-        {
-          ...declaration,
-          parameters: Type.Object({
-            data: {
-              const: { $schema: "literal", type: "integer", properties: { $schema: "data" } },
-            },
-          }),
-        },
-      ]),
-    ).toThrow("schema");
+  test("preserves literal object data instead of normalizing it as a schema (degraded, not failed)", () => {
+    const [tool] = compileToolCatalog([
+      {
+        ...declaration,
+        parameters: Type.Object({
+          data: {
+            const: { $schema: "literal", type: "integer", properties: { $schema: "data" } },
+          },
+        }),
+      },
+    ]);
+    expect(tool?.degraded).toBe(true);
   });
 
   test.each([-1, 0, 2, Number.MAX_SAFE_INTEGER + 1])(
