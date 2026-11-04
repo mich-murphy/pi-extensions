@@ -1,7 +1,8 @@
 import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Tool } from "@earendil-works/pi-ai";
-import { Type, validateToolArguments } from "@earendil-works/pi-ai";
+import { validateToolArguments } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { describe, expect, test, vi } from "vitest";
 import { createDeferredCallCapture, createDeferredPiTools } from "../sdk/deferred-tools";
 import { compileToolCatalog } from "../sdk/tool-catalog";

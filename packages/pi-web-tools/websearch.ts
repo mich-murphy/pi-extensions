@@ -70,10 +70,14 @@ const WEB_SEARCH_PARAMETERS = Type.Object(
         description: `Maximum number of results (${SEARCH_MAX_RESULTS.min}-${SEARCH_MAX_RESULTS.max}). Defaults to ${SEARCH_MAX_RESULTS.default}.`,
       }),
     ),
+    // pi-ai 1.5.0's StringEnum returns a pi-schema Schema, which TypeBox's Static cannot read.
+    // Type.Unsafe keeps the same JSON ({ type: "string", enum }) and restores the literal type.
     provider: Type.Optional(
-      StringEnum([...SEARCH_PROVIDERS], {
-        description: "Optional provider override. Defaults to the configured provider chain.",
-      }),
+      Type.Unsafe<SearchProviderName>(
+        StringEnum([...SEARCH_PROVIDERS], {
+          description: "Optional provider override. Defaults to the configured provider chain.",
+        }),
+      ),
     ),
   },
   { additionalProperties: false },

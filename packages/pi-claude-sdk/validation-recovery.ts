@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
 import type { ToolCallEventResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 
 /** Reserved bridge operation. Never delegates to or executes another tool. */
 export const VALIDATION_ERROR_TOOL = "pi_claude_sdk_validation_error";

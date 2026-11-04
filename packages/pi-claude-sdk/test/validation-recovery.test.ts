@@ -6,9 +6,9 @@ import type { HookCallback, PostToolBatchHookInput } from "@anthropic-ai/claude-
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
+import { Type } from "typebox";
 import { assert, describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import { createAgentSdkStream } from "../bridge";

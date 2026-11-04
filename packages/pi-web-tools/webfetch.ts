@@ -85,10 +85,14 @@ const MIN_USABLE_TEXT_LENGTH = 160;
 const WEB_FETCH_PARAMETERS = Type.Object(
   {
     url: Type.String({ description: "The http:// or https:// URL to fetch." }),
+    // pi-ai 1.5.0's StringEnum returns a pi-schema Schema, which TypeBox's Static cannot read.
+    // Type.Unsafe keeps the same JSON ({ type: "string", enum }) and restores the literal type.
     format: Type.Optional(
-      StringEnum([...WEB_FETCH_FORMATS], {
-        description: "Return format. Defaults to markdown.",
-      }),
+      Type.Unsafe<WebFetchFormat>(
+        StringEnum([...WEB_FETCH_FORMATS], {
+          description: "Return format. Defaults to markdown.",
+        }),
+      ),
     ),
     timeout: Type.Optional(
       Type.Number({

@@ -312,7 +312,7 @@ describe("standalone toggle notes", () => {
     expect(enabled("read")).toContain("Use the read tool to load a skill's file");
     expect(enabled("bash")).toContain("Use bash to load a skill's file");
     expect(enabled("indirect")).toContain("\nLoad a skill's file when the task matches");
-    expect(enabled("read")).toContain("resolve it against the skill directory");
+    expect(enabled("read")).toContain("Resolve relative paths against the skill's directory");
   });
 
   test("picks the reader like Pi", () => {
