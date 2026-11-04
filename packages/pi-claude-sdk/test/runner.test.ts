@@ -1,8 +1,12 @@
 import { once } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Effect } from "effect";
-import { assert, describe, expect, test } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
 import { createAgentSdkStream } from "../bridge";
@@ -45,6 +49,22 @@ const INVALID_CALL = { name: "pi_call", arguments: {} };
 
 type FallbackEnding = "clean-result" | "clean-eof" | "rejection";
 type QueryFailure = "start" | "iterate" | "protocol" | "missing-result";
+type WorkingDirectoryFailure = "deleted" | "not-directory" | "cwd-throws";
+
+function unavailableWorkingDirectory(scenario: WorkingDirectoryFailure, cwd: string): () => string {
+  if (scenario === "not-directory") {
+    writeFileSync(cwd, "not a directory");
+  } else {
+    mkdirSync(cwd);
+    rmSync(cwd, { recursive: true });
+  }
+  return () => {
+    if (scenario === "cwd-throws") {
+      throw Object.assign(new Error(`uv_cwd ENOENT ${cwd}`), { code: "ENOENT" });
+    }
+    return cwd;
+  };
+}
 
 async function* fallbackEnding(ending: FallbackEnding, params: SdkQueryParameters) {
   if (ending === "clean-result") {
@@ -999,6 +1019,39 @@ describe("deferred tool calls", () => {
 });
 
 describe("turn failures", () => {
+  test.each(["deleted", "not-directory", "cwd-throws"] as const)(
+    "rejects an unavailable working directory (%s) before opening the SDK",
+    async (scenario) => {
+      const root = mkdtempSync(join(tmpdir(), "pi-sdk-cwd-"));
+      const cwd = join(root, "private-worktree");
+      const spy = vi
+        .spyOn(process, "cwd")
+        .mockImplementation(unavailableWorkingDirectory(scenario, cwd));
+      const query = vi.fn<RunSdkQuery>(queryWith([], resultMessage()));
+      try {
+        const error = failureOf(await runTurn(query));
+        expect(query).not.toHaveBeenCalled();
+        expect(error).toMatchObject({
+          _tag: "SdkQueryError",
+          operation: "start",
+          reason: { _tag: "WorkingDirectoryUnavailable" },
+        });
+        expect(error.message).toBe(
+          "could not start the query (session working directory is unavailable; restart Pi from an existing worktree and resume this session)",
+        );
+        expect(error.message).not.toContain(cwd);
+      } finally {
+        spy.mockRestore();
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("passes the existing working directory to the SDK unchanged", async () => {
+    const params = await capturedParameters(requestFixture());
+    expect(params.options?.cwd).toBe(process.cwd());
+  });
+
   test("returns an SDK result error even after the hook captured a deferred call", async () => {
     const unavailable = resultMessage({
       is_error: true,

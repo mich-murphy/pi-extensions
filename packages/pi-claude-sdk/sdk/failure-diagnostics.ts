@@ -68,6 +68,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
     }
     case "SdkQueryError": {
       const { cause, reason } = error;
+      if (reason._tag === "WorkingDirectoryUnavailable") {
+        return "provider";
+      }
       return reason._tag === "Cancelled"
         ? "cancelled"
         : textKind(cause instanceof Error ? cause.message : String(cause));

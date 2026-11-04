@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
@@ -84,6 +85,7 @@ type Turn = {
 };
 
 type QueryWiring = {
+  readonly cwd: string;
   readonly abortController: AbortController;
   readonly hook: HookCallback;
   readonly batchHook: HookCallback;
@@ -179,7 +181,17 @@ function reasoningOptions({
 
 function queryParameters(
   turn: Turn,
-  { abortController, hook, batchHook, env, ttl, onFallback, createMcpServer, catalog }: QueryWiring,
+  {
+    cwd,
+    abortController,
+    hook,
+    batchHook,
+    env,
+    ttl,
+    onFallback,
+    createMcpServer,
+    catalog,
+  }: QueryWiring,
 ): SdkQueryParameters {
   const { request, model } = turn;
   const server = createMcpServer({
@@ -203,7 +215,7 @@ function queryParameters(
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
       abortController,
-      cwd: process.cwd(),
+      cwd,
       model: sdkModelSelectorFor(model.id),
       ...reasoningOptions(turn),
       includePartialMessages: true,
@@ -623,6 +635,25 @@ function reportUsageLimit(
   }
 }
 
+/** A deleted worktree makes spawn reject with ENOENT even when Claude Code exists. */
+function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
+  return Result.try({
+    try: () => {
+      const cwd = process.cwd();
+      if (!statSync(cwd).isDirectory()) {
+        throw new Error("Session working directory is not a directory");
+      }
+      return cwd;
+    },
+    catch: (cause) =>
+      new SdkQueryError({
+        operation: "start",
+        reason: { _tag: "WorkingDirectoryUnavailable" },
+        cause,
+      }),
+  });
+}
+
 const runTurn = Effect.fnUntraced(function* (
   {
     runSdkQuery,
@@ -662,6 +693,12 @@ const runTurn = Effect.fnUntraced(function* (
   if (Result.isFailure(compiled)) {
     return Stream.succeed(failed(compiled.failure));
   }
+  // Resolve once and fail closed: choosing another checkout would change tool semantics.
+  // process.cwd() can throw, or return Node's cached path after that path was deleted.
+  const directory = queryWorkingDirectory();
+  if (Result.isFailure(directory)) {
+    return Stream.succeed(failed(directory.failure));
+  }
   const catalog = compiled.success;
   const capture = createQueryCapture(catalog, abortController, validationRecovery);
   const ttl = cacheTtlFor(
@@ -676,6 +713,7 @@ const runTurn = Effect.fnUntraced(function* (
     try: () =>
       runSdkQuery(
         queryParameters(appliedTurn, {
+          cwd: directory.success,
           abortController,
           hook: capture.deferred.hook,
           batchHook: capture.deferred.batchHook,
