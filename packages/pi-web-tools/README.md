@@ -84,6 +84,14 @@ Behavior:
 - Spills oversized output to a private temp file (0700 directory, 0600 file) so the agent can read it in chunks.
 - **Fetch rescue**: when a direct fetch hits a bot wall (401/403/429) or returns an unusable JS-only shell, the URL is retried through Exa's or Parallel's fetch infrastructure (following the search provider priority order). Rescued content is flagged in the output, since the URL is shared with that provider. Rescue only applies to the default markdown format and is disabled whenever a fetch domain allow or deny list is configured, because a remote provider cannot enforce the local policy across its redirects.
 
+### Codemode scripts
+
+Both tools declare an output schema, so codemode scripts receive structured values instead of the model-facing text.
+
+- `websearch` resolves to `{ query, provider, results }`, where each result has `title`, `url` and, when the provider supplies them, `snippet`, `published_at`, `source` and `score`.
+- `webfetch` resolves to `{ url, status, mime_type, format, bytes, content, truncated, full_output_path, via }` for text. `content` is the full page in the requested format up to 1 MiB, not the 50 KB model-facing cut; `truncated` is true only when that 1 MiB cut applied, and `full_output_path` points to the spilled file when one exists. Rescued pages set `via` and omit `status` and `mime_type`. Images resolve to `{ type: "image", data, mimeType, note }`, which codemode's `image()` accepts.
+- Failures still throw. Secrets are redacted from every string, as in the text output.
+
 ## Verification
 
 Run `npm run check` for the whole-repository gate. Deterministic tests use synthetic credentials with real Pi authentication and injected provider transport boundaries; they cover routing, login/logout changes, command failures, concurrent rotation, redaction, and lifecycle cleanup.

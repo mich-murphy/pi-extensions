@@ -19,7 +19,12 @@ import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS, WebToolsConfig 
 import type { WebToolsSettings } from "./settings";
 import { createRequestRedactor, credentialNames, withToolCredentials } from "./tool-credentials";
 import type { ToolCredentialComposition, ToolCredentialContext } from "./tool-credentials";
-import { projectFetchResult, projectProviderFetchedPage, ToolOutputStore } from "./tool-output";
+import {
+  projectFetchResult,
+  projectProviderFetchedPage,
+  ToolOutputStore,
+  WEB_FETCH_OUTPUT_SCHEMA,
+} from "./tool-output";
 import type { ProviderFetchedPage, ToolOutputStoreError } from "./tool-output";
 import type { ToolRuntime } from "./tool-runtime";
 import {
@@ -148,6 +153,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       "Prefer webfetch format=markdown unless the user explicitly wants plain text or raw source.",
     ],
     parameters: WEB_FETCH_PARAMETERS,
+    outputSchema: WEB_FETCH_OUTPUT_SCHEMA,
 
     async execute(
       _toolCallId: string,
