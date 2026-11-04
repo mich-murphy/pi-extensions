@@ -574,3 +574,55 @@ describe("contextWindowFor", () => {
     expect(contextWindowFor(result.modelUsage, "claude-fable-5-1")).toBeUndefined();
   });
 });
+
+function overageEvent(rate_limit_info: unknown) {
+  return parsed({ type: "rate_limit_event", rate_limit_info });
+}
+
+describe("overage rate-limit decoding", () => {
+  test("reports overage for isUsingOverage or rateLimitType overage, preferring overageResetsAt", () => {
+    expect(
+      overageEvent({ status: "allowed", isUsingOverage: true, overageResetsAt: 1_792_548_000 }),
+    ).toStrictEqual({
+      type: "usage_limit",
+      rejected: false,
+      resetsAt: undefined,
+      overage: { resetsAt: 1_792_548_000_000 },
+    });
+    expect(overageEvent({ status: "allowed", rateLimitType: "overage" })).toStrictEqual({
+      type: "usage_limit",
+      rejected: false,
+      resetsAt: undefined,
+      overage: { resetsAt: undefined },
+    });
+  });
+
+  test.each([
+    {},
+    { isUsingOverage: false },
+    { isUsingOverage: "yes", rateLimitType: 7 },
+    { rateLimitType: "five_hour", overageResetsAt: "x", surprise: { a: 1 } },
+  ])("ignores absent, false or malformed overage fields (%j)", (extra) => {
+    expect(overageEvent({ status: "allowed", ...extra })).toStrictEqual({
+      type: "usage_limit",
+      rejected: false,
+      resetsAt: undefined,
+    });
+  });
+
+  test("a rejected overage window refused the request, so it is plain usage limit", () => {
+    expect(
+      overageEvent({ status: "rejected", rateLimitType: "overage", resetsAt: 1_792_548_000 }),
+    ).toStrictEqual({
+      type: "usage_limit",
+      rejected: true,
+      resetsAt: 1_792_548_000_000,
+    });
+  });
+
+  test("isUsingOverage wins even when the window is rejected", () => {
+    expect(overageEvent({ status: "rejected", isUsingOverage: true })).toMatchObject({
+      overage: { resetsAt: undefined },
+    });
+  });
+});

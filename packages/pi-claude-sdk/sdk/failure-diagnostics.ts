@@ -86,6 +86,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
         ? category
         : "provider";
     }
+    case "SdkOverageError": {
+      return "usage-limit";
+    }
     case "SdkMissingResultError": {
       return "provider";
     }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { subscriptionEnvironment } from "../sdk/subscription-environment";
+import { extraUsageAllowed, subscriptionEnvironment } from "../sdk/subscription-environment";
 
 describe("subscription environment", () => {
   test("removes API and cloud-provider credentials from the subscription subprocess", () => {
@@ -78,5 +78,76 @@ describe("subscription environment", () => {
     expect(environment.DISABLE_AUTOUPDATER).toBe("1");
     expect(environment.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY).toBe("1");
     expect(environment.DISABLE_PROMPT_CACHING).toBeUndefined();
+  });
+});
+
+describe("subscription environment hardening", () => {
+  test("strips variables that would break subscription routing or override Pi", () => {
+    const environment = subscriptionEnvironment({
+      CLAUDE_CODE_SIMPLE: "1",
+      CLAUDE_CODE_EFFORT_LEVEL: "max",
+      MCP_TOOL_TIMEOUT: "1",
+      ANTHROPIC_BASE_URL: "https://example.invalid",
+    });
+    expect(environment.CLAUDE_CODE_SIMPLE).toBeUndefined();
+    expect(environment.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
+    expect(environment.MCP_TOOL_TIMEOUT).toBeUndefined();
+    expect(environment.ANTHROPIC_BASE_URL).toBeUndefined();
+  });
+
+  test("forces Pi-owned feature switches over inherited values", () => {
+    const environment = subscriptionEnvironment({
+      CLAUDE_CODE_DISABLE_CLAUDE_MDS: "0",
+      ENABLE_TOOL_SEARCH: "true",
+      DISABLE_AUTO_COMPACT: "0",
+    });
+    expect(environment).toMatchObject({
+      CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      DISABLE_AUTO_COMPACT: "1",
+      CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
+      ENABLE_TOOL_SEARCH: "false",
+      CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
+      CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
+      CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1",
+    });
+  });
+
+  test("labels the entrypoint honestly and always replaces an inherited one", () => {
+    expect(
+      subscriptionEnvironment({ CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }).CLAUDE_CODE_ENTRYPOINT,
+    ).toBe("pi-claude-sdk");
+    expect(
+      subscriptionEnvironment({ PI_CLAUDE_SDK_ENTRYPOINT: "my-tool_1.0" }).CLAUDE_CODE_ENTRYPOINT,
+    ).toBe("my-tool_1.0");
+  });
+
+  test.each([
+    "cli",
+    "mcp",
+    "sdk-cli",
+    "sdk-ts",
+    "sdk-py",
+    "claude-vscode",
+    "claude-desktop",
+    "claude-desktop-3p",
+    "local-agent",
+    "claude-anything",
+    "remote_x",
+    "Upper",
+    "",
+    "a b",
+    "-x",
+    "x".repeat(65),
+  ])("rejects entrypoint override %j", (value) => {
+    expect(
+      subscriptionEnvironment({ PI_CLAUDE_SDK_ENTRYPOINT: value }).CLAUDE_CODE_ENTRYPOINT,
+    ).toBe("pi-claude-sdk");
+  });
+
+  test("extra usage is opt-in", () => {
+    expect(extraUsageAllowed({})).toBe(false);
+    expect(extraUsageAllowed({ PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE: "true" })).toBe(false);
+    expect(extraUsageAllowed({ PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE: "1" })).toBe(true);
   });
 });

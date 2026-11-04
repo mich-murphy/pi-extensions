@@ -241,12 +241,26 @@ export class SdkToolContractError extends Schema.TaggedError<SdkToolContractErro
   }
 }
 
+/** Error produced when a turn would be billed to Extra Usage and the user has not opted in. */
+export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkOverageError", {
+  /** When the plan limits reopen, in epoch milliseconds, when Claude Code reported it. */
+  resetsAt: Schema.UndefinedOr(Schema.Number),
+}) {
+  /** Actionable summary; contains only a reset time. */
+  override get message(): string {
+    const until =
+      this.resetsAt === undefined ? "they reset" : new Date(this.resetsAt).toISOString();
+    return `This turn would be billed to Extra Usage; plan limits are exhausted until ${until}. Set PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE=1 to allow.`;
+  }
+}
+
 /** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
   | SdkInstrumentationError
   | SdkToolContractError
   | InvalidDeferredCallLimitError
   | SdkMissingResultError
+  | SdkOverageError
   | SdkProtocolError
   | SdkQueryError
   | SdkResultError;

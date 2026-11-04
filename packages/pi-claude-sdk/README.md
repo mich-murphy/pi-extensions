@@ -52,6 +52,14 @@ Error messages never echo raw SDK error text. Terminal `errors` and `result` pro
 
 The provider deliberately removes API-key and Bedrock, Vertex, and Foundry routing variables from the Agent SDK subprocess. This keeps the provider on Claude's first-party subscription authentication instead of silently falling back to separately billed API or cloud-provider usage.
 
+### Subprocess environment and Extra Usage
+
+The Claude Code subprocess environment is hardened, modelled on OpenCode's isolation list (evidence: strings of Claude Code 2.1.316). Removed: `CLAUDE_CODE_SIMPLE` (simple mode never reads OAuth or keychain, which breaks subscription auth), `CLAUDE_CODE_EFFORT_LEVEL` (would override Pi's per-turn effort), `MCP_TOOL_TIMEOUT`, and `ANTHROPIC_BASE_URL` (would send the subscription token to another host). Forced because Pi owns the feature: `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `DISABLE_AUTO_COMPACT=1`, `CLAUDE_CODE_ENABLE_AWAY_SUMMARY=0`, `ENABLE_TOOL_SEARCH=false`, `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1`, `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`. Pi owns memory and context, so the changed behaviour is intended.
+
+`CLAUDE_CODE_ENTRYPOINT` is always set to an honest label, `pi-claude-sdk` by default (override with `PI_CLAUDE_SDK_ENTRYPOINT`, pattern `^[a-z0-9][a-z0-9._-]{0,63}$`). Values naming Anthropic clients (`cli`, `mcp`, `sdk-*`, `claude-*`, `remote_*`, `local-agent`) are ignored in favour of the default. An inherited value such as `sdk-cli` is replaced. Rationale: community measurements in anthropics/claude-code#97074 (no Anthropic reply), and the [Usage Policy](https://www.anthropic.com/legal/aup) effective 12 Nov 2026 bars misrepresenting the client being used.
+
+Extra Usage guard: by default, when a rate-limit event reports `isUsingOverage: true`, or `rateLimitType: "overage"` with a status other than `rejected`, the turn is aborted and fails with "This turn would be billed to Extra Usage; plan limits are exhausted until `reset time`. Set PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE=1 to allow." A rejected overage window billed nothing and stays an ordinary usage-limit failure. Set `PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE=1` to opt in. Limitation: the event arrives after Claude Code has sent the request, so the triggering request may already have been billed; the guard prevents further requests only.
+
 ## Architecture
 
 - Pi remains the visible coding harness and owns its conversation, tools, approvals, and tool execution.
