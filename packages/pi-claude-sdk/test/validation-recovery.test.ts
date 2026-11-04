@@ -137,6 +137,7 @@ describe("Pi-owned validation recovery", () => {
         let dangerousExecutions = 0;
         const records: CacheDiagnostic[] = [];
         const runner = createClaudeAgentSdkRunner({
+          claudeExecutable: "/usr/bin/claude",
           cacheDiagnostics: Effect.runSync(
             createCacheDiagnosticTracker((record) => records.push(record)),
           ),
@@ -298,6 +299,7 @@ describe("Pi-owned validation recovery", () => {
 
   test("programmatic runner fails closed without explicit protected Pi tool-loop integration", async () => {
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       async *runSdkQuery(params) {
         await deliverToolUse(installedHook(params), { id: "bad", input: { name: "read" } });
         yield resultMessage({ terminal_reason: "tool_deferred" });
@@ -312,6 +314,7 @@ describe("Pi-owned validation recovery", () => {
     "host batch stop cannot release calls on %s",
     async (ending) => {
       const runner = createClaudeAgentSdkRunner({
+        claudeExecutable: "/usr/bin/claude",
         validationRecovery: "pi-tool-loop",
         async *runSdkQuery(params) {
           await postBatch(params, { name: "read" });
@@ -337,6 +340,7 @@ describe("Pi-owned validation recovery", () => {
     { terminal_reason: "hook_stopped", is_error: true },
   ])("batch marker cannot authorize unrelated terminal shape %j", async (ending) => {
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       validationRecovery: "pi-tool-loop",
       async *runSdkQuery(params) {
         await deliverToolUse(installedHook(params), {
@@ -356,6 +360,7 @@ describe("Pi-owned validation recovery", () => {
     "empty stopped batch fails closed (%s)",
     async (terminalReason) => {
       const runner = createClaudeAgentSdkRunner({
+        claudeExecutable: "/usr/bin/claude",
         validationRecovery: "pi-tool-loop",
         async *runSdkQuery(params) {
           const hook = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
@@ -382,6 +387,7 @@ describe("Pi-owned validation recovery", () => {
 
   test("hook_stopped without our batch marker cannot release real calls", async () => {
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       async *runSdkQuery(params) {
         await deliverToolUse(installedHook(params), {
           id: "real",
@@ -421,6 +427,7 @@ describe("Pi-owned validation recovery", () => {
   test("message_start request counts deduplicate IDs and do not equate internal results with requests", async () => {
     const records: CacheDiagnostic[] = [];
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       cacheDiagnostics: Effect.runSync(
         createCacheDiagnosticTracker((record) => records.push(record)),
       ),

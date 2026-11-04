@@ -23,7 +23,7 @@ const UTC_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
 const releaseContractSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   agentSdkVersion: Schema.String,
-  bundledClaudeCodeVersion: Schema.String,
+  claudeCodeVersion: Schema.String,
   verifiedAt: Schema.String.check(Schema.isPattern(UTC_DATE_TIME)),
   model: Schema.Literal("fable"),
   contracts: Schema.Tuple([

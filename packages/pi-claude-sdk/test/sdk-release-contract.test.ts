@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
+import { isBelowMinimumClaudeCode } from "../sdk/claude-executable";
 import {
   AGENT_SDK_PACKAGE,
   decodeReleaseContract,
@@ -40,12 +41,12 @@ describe("claude SDK release contract", () => {
     expect(
       {
         agentSdkVersion: attestation.agentSdkVersion,
-        bundledClaudeCodeVersion: attestation.bundledClaudeCodeVersion,
+        claudeCodeAtLeastMinimum: !isBelowMinimumClaudeCode(attestation.claudeCodeVersion),
       },
       "sdk-release-contract.json must attest the installed SDK. Run `npm run test:claude-sdk-upgrade`; the live gate rewrites it once every contract passes.",
     ).toStrictEqual({
       agentSdkVersion: installed.version,
-      bundledClaudeCodeVersion: installed.claudeCodeVersion,
+      claudeCodeAtLeastMinimum: true,
     });
   });
 

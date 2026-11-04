@@ -1,6 +1,7 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import { Option, Predicate, Schema } from "effect";
 import { absurd } from "effect/Function";
+import { MIN_CLAUDE_CODE_VERSION } from "./claude-executable";
 import { lenientOptional } from "./lenient-schema";
 import {
   effectiveResultCategory,
@@ -73,6 +74,7 @@ const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
   ExecutableLaunchFailed: {},
+  ClaudeCodeTooOld: { version: Schema.String },
   WorkingDirectoryUnavailable: {},
   ProcessExited: { exitCode: Schema.Number },
   ProcessKilled: { signal: Schema.String },
@@ -140,7 +142,10 @@ function describeQueryFailure(reason: SdkQueryFailureReason): string {
       return "cancelled";
     }
     case "ExecutableNotFound": {
-      return "Claude Code executable not found";
+      return "Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH";
+    }
+    case "ClaudeCodeTooOld": {
+      return `Claude Code ${reason.version} is too old (${MIN_CLAUDE_CODE_VERSION} or newer is required); run \`claude update\``;
     }
     case "ExecutableLaunchFailed": {
       return "Claude Code is installed but could not be launched";
