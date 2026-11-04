@@ -19,6 +19,7 @@ import {
   publicUrl,
   redactorFor,
   settingsFrom,
+  textOf,
   textWebResponse,
   toolRuntimeWith,
 } from "./fakes";
@@ -215,6 +216,73 @@ describe("webfetch structuredContent", () => {
     ).execute("t", { url: `https://blocked.example/?k=${SECRET}` });
 
     expect(JSON.stringify(result.structuredContent)).not.toContain(SECRET);
+  });
+});
+
+function oversized(body: string): PublicWebResponse {
+  return {
+    ...plainResponse(body),
+    body: Buffer.alloc(1024 * 1024, 0x61),
+    responseTruncated: true,
+  };
+}
+
+describe("webfetch oversized page", () => {
+  const NOTICE =
+    "[Response truncated: the page is larger than the 1.0MB download limit, so only its first 1.0MB was read." +
+    " The rest of this page cannot be fetched; lists, counts and totals from it may be incomplete." +
+    " Look for a smaller or more specific source.]";
+
+  test("returns the page with a leading notice and the truncation flags", async () => {
+    const result = await fetchTool(Result.succeed(oversized(""))).execute("t", {
+      url: "https://example.com/page",
+    });
+    expect(textOf(result).startsWith(`${NOTICE}\n\n`)).toBe(true);
+    expect(result.details.truncated).toBe(true);
+    expect(result.details.responseTruncated).toBe(true);
+    expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, result.structuredContent)).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      truncated: true,
+      response_truncated: true,
+      bytes: 1024 * 1024,
+    });
+  });
+
+  test("a single-line oversized page keeps its start between the notice and the line-1 notice", async () => {
+    const line = "abcdefgh".repeat(131_072);
+    const result = await fetchTool(
+      Result.succeed({ ...plainResponse(line), responseTruncated: true }),
+    ).execute("t", { url: "https://example.com/page" });
+    const text = textOf(result);
+    expect(text.startsWith(`${NOTICE}\n\n`)).toBe(true);
+    expect(text.slice(NOTICE.length + 2).startsWith("abcdefgh")).toBe(true);
+    expect(text).toContain("[Output truncated: line 1 is ");
+    expect(text.indexOf("abcdefgh")).toBeLessThan(text.indexOf("[Output truncated: line 1 is "));
+    expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, result.structuredContent)).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      truncated: true,
+      response_truncated: true,
+      bytes: 1024 * 1024,
+    });
+  });
+
+  test("a normal page has no response_truncated field", async () => {
+    const result = await fetchTool(Result.succeed(plainResponse("hello"))).execute("t", {
+      url: "https://example.com/page",
+    });
+    expect(result.structuredContent).not.toHaveProperty("response_truncated");
+    expect(result.details.responseTruncated).toBeUndefined();
+  });
+
+  test("redacts secrets in page content", async () => {
+    const result = await fetchTool(
+      Result.succeed({
+        ...plainResponse(""),
+        body: Buffer.from(`token=${SECRET}`),
+        responseTruncated: true,
+      }),
+    ).execute("t", { url: "https://example.com/page" });
+    expect(JSON.stringify(result)).not.toContain(SECRET);
   });
 });
 

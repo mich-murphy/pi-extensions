@@ -74,12 +74,14 @@ Providers are tried in priority order until one succeeds. Results are normalized
 
 ### `webfetch`
 
-Parameters: `url` (required), `format` (`markdown` default, `text`, `html`), `timeout` (1–120s, default 30).
+Parameters: `url` (required), `format` (`markdown` default, `text`, `html`), `timeout` (1–120s, default 30), `offset` (non-negative byte offset into the converted text, default 0).
 
 Behavior:
 
 - Blocks private and local hosts and IPs, binds each connection to the DNS addresses it validated, and re-checks domain policy plus DNS on every redirect hop.
-- Follows at most 5 redirects; rejects URL credentials, non-HTTP redirects, and binary content over 5 MB.
+- Follows at most 5 redirects; rejects URL credentials, non-HTTP redirects, and images or binary content over 10 MB.
+- Pages long text: each call re-fetches the page and returns a window of up to 50 KB / 2000 lines starting at `offset` (counted in UTF-8 bytes of the converted text, after redaction; JSON/XML pass through unconverted). An offset inside a character moves to the next character boundary and the notice reports the offset used. When text remains, the notice ends with `Call webfetch again with offset=N to continue.`; an offset at or past the end returns `[offset N is at or past the end of the content (T)]`. For provider-rescued pages the offset counts the page markdown, not the leading note. `offset` is ignored for images.
+- A text, HTML, JSON or XML page over the 10 MB download cap (measured after decompression) is not an error: the first 10 MB is returned with `details.truncated` and `details.responseTruncated` set and `structuredContent.response_truncated: true`. Every page of such a fetch starts with a notice that the rest cannot be fetched, and `offset` pages through those 10 MB only. The last window, and an offset past the end, say the content stops at the download limit and the rest cannot be fetched; `next_offset` is absent then. Search provider responses over their cap still fail.
 - Returns PNG, JPEG, GIF, and WebP images inline.
 - Spills oversized output to a private temp file (0700 directory, 0600 file) so the agent can read it in chunks.
 - **Fetch rescue**: when a direct fetch hits a bot wall (401/403/429) or returns an unusable JS-only shell, the URL is retried through Exa's or Parallel's fetch infrastructure (following the search provider priority order). Rescued content is flagged in the output, since the URL is shared with that provider. Rescue only applies to the default markdown format and is disabled whenever a fetch domain allow or deny list is configured, because a remote provider cannot enforce the local policy across its redirects.
@@ -89,7 +91,7 @@ Behavior:
 Both tools declare an output schema, so codemode scripts receive structured values instead of the model-facing text.
 
 - `websearch` resolves to `{ query, provider, results }`, where each result has `title`, `url` and, when the provider supplies them, `snippet`, `published_at`, `source` and `score`.
-- `webfetch` resolves to `{ url, status, mime_type, format, bytes, content, truncated, full_output_path, via }` for text. `content` is the full page in the requested format up to 1 MiB, not the 50 KB model-facing cut; `truncated` is true only when that 1 MiB cut applied, and `full_output_path` points to the spilled file when one exists. Rescued pages set `via` and omit `status` and `mime_type`. Images resolve to `{ type: "image", data, mimeType, note }`, which codemode's `image()` accepts.
+- `webfetch` resolves to `{ url, status, mime_type, format, bytes, content, truncated, full_output_path, via, offset, next_offset }` for text. `content` is the page in the requested format from `offset` up to 1 MiB, not the 50 KB model-facing cut; `truncated` is true only when that 1 MiB cut applied, `next_offset` is then the offset to continue from, `offset` is present only when it was non-zero, and `full_output_path` points to the spilled file when one exists. Rescued pages set `via` and omit `status` and `mime_type`. Images resolve to `{ type: "image", data, mimeType, note }`, which codemode's `image()` accepts.
 - Failures still throw. Secrets are redacted from every string, as in the text output.
 
 ## Verification

@@ -630,6 +630,89 @@ describe("fetchPublicWebClient response body", () => {
     }),
   );
 
+  it.effect("returns the first bytes of a body over the cap when partial text is allowed", () =>
+    Effect.gen(function* () {
+      const streamed = trackedResponse(
+        { status: 200, headers: { "content-type": "text/plain" } },
+        {
+          pull: (controller) => {
+            controller.enqueue(new TextEncoder().encode("abcdefgh"));
+          },
+        },
+      );
+      const { client } = recordingClient(() => streamed.response);
+      const result = yield* Effect.result(
+        client.get(makeRequest({ maxResponseBytes: 12, allowPartialText: true })),
+      );
+      assert(Result.isSuccess(result));
+      expect(result.success.body.toString()).toBe("abcdefghabcd");
+      expect(result.success.responseTruncated).toBe(true);
+      expect(streamed.wasCancelled()).toBe(true);
+    }),
+  );
+
+  it.effect("reads to the cap instead of failing on an over-cap Content-Length", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({
+          status: 200,
+          body: "x".repeat(2048),
+          headers: { "content-type": "text/html", "content-length": "2048" },
+        }),
+      );
+      const result = yield* Effect.result(
+        client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
+      );
+      assert(Result.isSuccess(result));
+      expect(result.success.body.byteLength).toBe(1024);
+      expect(result.success.responseTruncated).toBe(true);
+    }),
+  );
+
+  it.effect("does not flag a body that fits the cap exactly", () =>
+    Effect.gen(function* () {
+      const { client } = recordingClient(() =>
+        responseOf({
+          status: 200,
+          body: "x".repeat(1024),
+          headers: { "content-type": "text/plain" },
+        }),
+      );
+      const result = yield* Effect.result(
+        client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
+      );
+      assert(Result.isSuccess(result));
+      expect(result.success.responseTruncated).toBeUndefined();
+    }),
+  );
+
+  it.effect("keeps failing an oversized image even when partial text is allowed", () =>
+    Effect.gen(function* () {
+      const declared = recordingClient(() =>
+        responseOf({
+          status: 200,
+          headers: { "content-type": "image/png", "content-length": "2048" },
+        }),
+      );
+      const head = yield* Effect.result(
+        declared.client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
+      );
+      expect(head).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
+
+      const streamed = recordingClient(() =>
+        responseOf({
+          status: 200,
+          body: "x".repeat(2048),
+          headers: { "content-type": "image/png" },
+        }),
+      );
+      const body = yield* Effect.result(
+        streamed.client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
+      );
+      expect(body).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
+    }),
+  );
+
   it.effect("reads the body when Content-Length is not a number", () =>
     Effect.gen(function* () {
       const { client } = recordingClient(() =>

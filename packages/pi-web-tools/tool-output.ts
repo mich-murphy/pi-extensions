@@ -101,8 +101,11 @@ export const WEB_FETCH_OUTPUT_SCHEMA = Type.Union([
     bytes: Type.Number(),
     content: Type.String(),
     truncated: Type.Boolean(),
+    response_truncated: Type.Optional(Type.Boolean()),
     full_output_path: Type.Optional(Type.String()),
     via: Type.Optional(Type.String()),
+    offset: Type.Optional(Type.Number()),
+    next_offset: Type.Optional(Type.Number()),
   }),
   Type.Object({
     type: Type.Literal("image"),
@@ -132,16 +135,25 @@ export const WEB_SEARCH_OUTPUT_SCHEMA = Type.Object({
 function limitUtf8Bytes(
   text: string,
   maxBytes: number,
-): { readonly content: string; readonly truncated: boolean } {
+): { readonly content: string; readonly truncated: boolean; readonly bytes: number } {
   const bytes = Buffer.from(text, "utf8");
   if (bytes.length <= maxBytes) {
-    return { content: text, truncated: false };
+    return { content: text, truncated: false, bytes: bytes.length };
   }
   let end = maxBytes;
   while (end > 0 && ((bytes.at(end) ?? 0) & 0xc0) === 0x80) {
     end -= 1;
   }
-  return { content: bytes.subarray(0, end).toString("utf8"), truncated: true };
+  return { content: bytes.subarray(0, end).toString("utf8"), truncated: true, bytes: end };
+}
+
+/** Smallest UTF-8 character boundary at or after offset (the end of the text at most). */
+function characterBoundaryAtOrAfter(bytes: Buffer, offset: number): number {
+  let start = Math.min(offset, bytes.length);
+  while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return start;
 }
 
 /** Builds structured content once the spill path (if any) is known. */
@@ -152,12 +164,20 @@ function fetchTextStructure(page: {
   readonly format: WebFetchFormat;
   readonly bytes: number;
   readonly text: string;
+  readonly offset: number;
   readonly status?: number;
   readonly mimeType?: string;
   readonly via?: string;
+  readonly responseTruncated?: boolean;
 }): StructureOutput {
   return (fullOutputPath) => {
-    const { content, truncated } = limitUtf8Bytes(page.text, STRUCTURED_OUTPUT_MAX_BYTES);
+    const all = Buffer.from(page.text, "utf8");
+    const start = page.offset > 0 ? characterBoundaryAtOrAfter(all, page.offset) : 0;
+    const pastEnd = page.offset > 0 && start >= all.length;
+    const { content, truncated, bytes } = limitUtf8Bytes(
+      start === 0 ? page.text : all.subarray(start).toString("utf8"),
+      STRUCTURED_OUTPUT_MAX_BYTES,
+    );
     return {
       url: page.url,
       ...(page.status === undefined ? {} : { status: page.status }),
@@ -165,9 +185,12 @@ function fetchTextStructure(page: {
       format: page.format,
       bytes: page.bytes,
       content,
-      truncated,
+      truncated: truncated || page.responseTruncated === true,
+      ...(page.responseTruncated === true ? { response_truncated: true } : {}),
       ...(fullOutputPath === undefined ? {} : { full_output_path: fullOutputPath }),
       ...(page.via === undefined ? {} : { via: page.via }),
+      ...(page.offset > 0 ? { offset: pastEnd ? page.offset : start } : {}),
+      ...(truncated ? { next_offset: start + bytes } : {}),
     };
   };
 }
@@ -221,9 +244,12 @@ export function projectFetchResult(
   options: {
     readonly store: ToolOutputStore["Service"];
     readonly secrets: readonly (string | undefined)[];
+    /** Byte offset into the converted text where the window starts; ignored for images. */
+    readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const { meta, body } = result;
+  const offset = options.offset ?? 0;
   const safeMeta = {
     ...meta,
     requestedUrl: redactSecrets(meta.requestedUrl, options.secrets),
@@ -251,7 +277,12 @@ export function projectFetchResult(
   }
 
   const text = redactSecrets(body.text, options.secrets);
-  return projectTextOutput<WebFetchDetails>({
+  const responseTruncated = meta.responseTruncated === true;
+  // The notice leads the output, so line and byte truncation of the page can never cut it off.
+  const projected = projectTextOutput<WebFetchDetails>({
+    // Paging stays inside the partial body: its last window says the content stops at the cap.
+    prefix: responseTruncated ? `${responseTruncatedNotice(meta.bytes)}\n\n` : "",
+    ...(responseTruncated ? { endNote: responseTruncatedEnd(meta.bytes) } : {}),
     output: text,
     details: {
       ...safeMeta,
@@ -262,12 +293,36 @@ export function projectFetchResult(
       format: meta.format,
       bytes: meta.bytes,
       text,
+      offset,
       status: meta.status,
       mimeType: safeMeta.mime,
+      ...(responseTruncated ? { responseTruncated } : {}),
     }),
+    offset,
     store: options.store,
     tempPrefix: "pi-webfetch-",
   });
+  return responseTruncated
+    ? projected.pipe(
+        Effect.map((projectedResult) => ({
+          ...projectedResult,
+          details: { ...projectedResult.details, truncated: true, responseTruncated: true },
+        })),
+      )
+    : projected;
+}
+
+function responseTruncatedEnd(capBytes: number): string {
+  return `Content stops at the ${formatSize(capBytes)} download limit; the rest of the page cannot be fetched.`;
+}
+
+function responseTruncatedNotice(capBytes: number): string {
+  const cap = formatSize(capBytes);
+  return (
+    `[Response truncated: the page is larger than the ${cap} download limit, so only its first ${cap} was read.` +
+    ` The rest of this page cannot be fetched; lists, counts and totals from it may be incomplete.` +
+    ` Look for a smaller or more specific source.]`
+  );
 }
 
 /**
@@ -279,20 +334,26 @@ export function projectProviderFetchedPage(
   options: {
     readonly store: ToolOutputStore["Service"];
     readonly secrets: readonly (string | undefined)[];
+    /** Byte offset into the page markdown (not counting the note) where the window starts. */
+    readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
+  const offset = options.offset ?? 0;
   const note = `[Direct fetch was blocked or unusable; content retrieved via ${page.provider} — the URL was shared with that provider]`;
   const requestedUrl = redactSecrets(page.url, options.secrets);
   const bytes = Buffer.byteLength(page.markdown, "utf8");
   const via = redactSecrets(page.provider, options.secrets);
   return projectTextOutput<WebFetchDetails>({
-    output: redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
+    prefix: redactSecrets(`${note}\n\n`, options.secrets),
+    output: redactSecrets(page.markdown, options.secrets),
+    offset,
     details: { requestedUrl, format: "markdown", bytes, via },
     structure: fetchTextStructure({
       url: requestedUrl,
       format: "markdown",
       bytes,
       text: redactSecrets(page.markdown, options.secrets),
+      offset,
       via,
     }),
     store: options.store,
@@ -347,43 +408,123 @@ function searchStructure(
   };
 }
 
+/** `. <note>` for the end of the content, or nothing when the output is not itself cut short. */
+function endSentence(endNote: string | undefined): string {
+  return endNote === undefined ? "" : `. ${endNote}`;
+}
+
+/** Footer of a window that fits the limits; empty for a whole page that is not cut short. */
+function untruncatedRange(start: number, total: number, endNote: string | undefined): string {
+  const range = start === 0 ? "" : `Showing bytes ${start}–${total} of ${total}`;
+  if (endNote === undefined) {
+    return range === "" ? "" : `\n\n[${range}]`;
+  }
+  return `\n\n[${range === "" ? "" : `${range}. `}${endNote}]`;
+}
+
+/** The text shown for a window over the limits, how many bytes of it were consumed, and its summary. */
+function truncatedWindow(
+  window: string,
+  truncation: ReturnType<typeof truncateHead>,
+): { readonly shownText: string; readonly shownBytes: number; readonly summary: string } {
+  if (truncation.firstLineExceedsLimit) {
+    // truncateHead never returns part of a line; show the start of the over-long first line.
+    const lineEnd = window.indexOf("\n");
+    const lineSize = Buffer.byteLength(lineEnd === -1 ? window : window.slice(0, lineEnd), "utf8");
+    const shown = limitUtf8Bytes(window, DEFAULT_MAX_BYTES);
+    return {
+      shownText: shown.content,
+      shownBytes: shown.bytes,
+      summary:
+        `[Output truncated: line 1 is ${formatSize(lineSize)}, longer than the ${formatSize(DEFAULT_MAX_BYTES)} limit;` +
+        ` showing its first ${formatSize(shown.bytes)} of ${formatSize(truncation.totalBytes)} total.`,
+    };
+  }
+  const omittedLines = truncation.totalLines - truncation.outputLines;
+  const omittedBytes = truncation.totalBytes - truncation.outputBytes;
+  return {
+    shownText: truncation.content,
+    // Whole lines are joined by one newline byte, which the next window skips.
+    shownBytes: truncation.outputBytes + 1,
+    summary:
+      `[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines` +
+      ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).` +
+      ` ${omittedLines} lines (${formatSize(omittedBytes)}) omitted.`,
+  };
+}
+
 function projectTextOutput<Details>({
   output,
+  prefix = "",
+  endNote,
+  offset = 0,
   details,
   structure,
   store,
   tempPrefix,
 }: {
+  /** The text to page through; offsets count its UTF-8 bytes. */
   readonly output: string;
+  /**
+   * Text shown before every window and saved with the full output, outside the offsets. One
+   * mechanism for every note: a rescue note or a response-truncated notice (they never combine
+   * today; if they did, the rescue note would come first, then the response-truncated notice).
+   */
+  readonly prefix?: string;
+  /**
+   * Said in place of the plain end-of-content notice when the window reaches the end of `output`,
+   * for output that is itself cut short, so nothing implies the source ended there.
+   */
+  readonly endNote?: string;
+  readonly offset?: number;
   readonly details: Details;
   readonly structure: StructureOutput;
   readonly store: ToolOutputStore["Service"];
   readonly tempPrefix: string;
 }): Effect.Effect<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError> {
-  const truncation = truncateHead(output, {
-    maxBytes: DEFAULT_MAX_BYTES,
-    maxLines: DEFAULT_MAX_LINES,
-  });
-
-  if (!truncation.truncated) {
+  const bytes = Buffer.from(output, "utf8");
+  const total = bytes.length;
+  const start = offset > 0 ? characterBoundaryAtOrAfter(bytes, offset) : 0;
+  if (offset > 0 && start >= total) {
     return Effect.succeed({
-      content: [{ type: "text", text: truncation.content }],
+      content: [
+        {
+          type: "text",
+          text: `${prefix}[offset ${offset} is at or past the end of the content (${total})${endSentence(endNote)}]`,
+        },
+      ],
       details: { ...details, truncated: false },
       structuredContent: structure(undefined),
     });
   }
 
-  return store.writeTextFile(tempPrefix, "output.txt", output).pipe(
+  const window = start === 0 ? output : bytes.subarray(start).toString("utf8");
+  const truncation = truncateHead(window, {
+    maxBytes: DEFAULT_MAX_BYTES,
+    maxLines: DEFAULT_MAX_LINES,
+  });
+
+  if (!truncation.truncated) {
+    const range = untruncatedRange(start, total, endNote);
+    return Effect.succeed({
+      content: [{ type: "text", text: `${prefix}${truncation.content}${range}` }],
+      details: { ...details, truncated: false },
+      structuredContent: structure(undefined),
+    });
+  }
+
+  return store.writeTextFile(tempPrefix, "output.txt", `${prefix}${output}`).pipe(
     Effect.map((fullOutputPath) => {
-      const omittedLines = truncation.totalLines - truncation.outputLines;
-      const omittedBytes = truncation.totalBytes - truncation.outputBytes;
-      let text = truncation.content;
-      text += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
-      text += ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
-      text += ` ${omittedLines} lines (${formatSize(omittedBytes)}) omitted.`;
-      text += ` Full output saved to: ${fullOutputPath}]`;
+      const { shownText, shownBytes, summary } = truncatedWindow(window, truncation);
+      const next = Math.min(start + shownBytes, total);
+      const saved = `Full output saved to: ${fullOutputPath}`;
+      const resume =
+        next < total
+          ? `. Call webfetch again with offset=${next} to continue.`
+          : endSentence(endNote);
+      const notice = `${summary} Showing bytes ${start}–${next} of ${total}. ${saved}${resume}]`;
       return {
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: `${prefix}${shownText}\n\n${notice}` }],
         details: { ...details, truncated: true, fullOutputPath },
         structuredContent: structure(fullOutputPath),
       };

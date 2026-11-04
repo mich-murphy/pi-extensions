@@ -1,14 +1,23 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { brotliCompressSync, gzipSync } from "node:zlib";
-import { Effect, Result } from "effect";
+import { Effect, Layer, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
+  DnsLookup,
+  PublicWebClient,
   readResponseBodyWithLimit,
   ResponseBodyReadFailed,
   ResponseBodyTooLarge,
 } from "../network";
 import { PublicWebTransport } from "../public-web-transport";
+import { parsePublicHttpUrl } from "../types";
+
+function parsePublicUrl(input: string) {
+  const parsed = parsePublicHttpUrl(input);
+  assert(Result.isSuccess(parsed));
+  return parsed.success;
+}
 
 function transportService(): PublicWebTransport["Service"] {
   return Effect.runSync(
@@ -172,6 +181,71 @@ describe("PublicWebTransport", () => {
         await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
       },
     );
+  });
+
+  test("reads the first bytes of a gzip body that is larger than the cap once decoded", async () => {
+    const cap = 64 * 1024;
+    const decodedSize = 8 * 1024 * 1024;
+    const connectionClosed = undefinedDeferred();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    process.on("uncaughtException", onUnhandled);
+    try {
+      await withLocalServer(
+        (request, response) => {
+          request.socket.once("close", connectionClosed.resolve);
+          response.writeHead(200, { "content-encoding": "gzip", "content-type": "text/plain" });
+          response.end(gzipSync("0123456789abcdef".repeat(decodedSize / 16)));
+        },
+        async (port) => {
+          const layer = PublicWebClient.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                PublicWebTransport.layer,
+                Layer.succeed(
+                  DnsLookup,
+                  DnsLookup.of({ lookup: async () => [{ address: "127.0.0.1", family: 4 }] }),
+                ),
+              ),
+            ),
+          );
+          const result = await Effect.runPromise(
+            Effect.gen(function* () {
+              const client = yield* PublicWebClient;
+              return yield* Effect.result(
+                client.get({
+                  url: parsePublicUrl(`http://big-gzip.invalid:${port}/`),
+                  accept: "*/*",
+                  userAgent: "test",
+                  fallbackUserAgent: "test",
+                  maxRedirects: 0,
+                  maxResponseBytes: cap,
+                  allowPartialText: true,
+                  blockPrivateHosts: false,
+                  domainPolicy: { allow: [], deny: [] },
+                }),
+              );
+            }).pipe(Effect.provide(layer)),
+          );
+          assert(Result.isSuccess(result));
+          expect(result.success.body.byteLength).toBe(cap);
+          expect(result.success.body.toString("utf8", 0, 16)).toBe("0123456789abcdef");
+          expect(result.success.responseTruncated).toBe(true);
+          await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+          // Give a late decoder error time to surface before judging.
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 100);
+          });
+        },
+      );
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      process.off("uncaughtException", onUnhandled);
+    }
+    expect(unhandled).toStrictEqual([]);
   });
 
   test("decodes stacked content encodings in reverse order", async () => {

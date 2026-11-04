@@ -51,6 +51,8 @@ export type WebFetchParams = {
   readonly url: PublicHttpUrl;
   readonly format: WebFetchFormat;
   readonly timeoutSeconds: number;
+  /** Byte offset into the converted text where the returned window starts. */
+  readonly offset: number;
 };
 
 /** The webfetch url parameter is not a usable public http(s) URL. */
@@ -100,6 +102,13 @@ const WEB_FETCH_PARAMETERS = Type.Object(
         description: `Optional timeout in seconds (${FETCH_TIMEOUT_SECONDS.min}-${FETCH_TIMEOUT_SECONDS.max}).`,
       }),
     ),
+    offset: Type.Optional(
+      Type.Integer({
+        minimum: 0,
+        description:
+          "Optional byte offset into the converted text to start from; use the offset a truncated result names. Ignored for images.",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -124,6 +133,7 @@ export function parseWebFetchParams(
       params.timeout ?? Duration.toSeconds(settings.fetch.timeout),
       FETCH_TIMEOUT_SECONDS,
     ),
+    offset: params.offset ?? 0,
   });
 }
 
@@ -146,7 +156,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
     name: "webfetch",
     label: "Web Fetch",
     description:
-      "Fetch a single URL and return readable markdown, text, raw HTML/source, or an inline raster image.",
+      "Fetch a single URL and return readable markdown, text, raw HTML/source, or an inline raster image. Long text is cut to a window; pass offset to read on.",
     promptSnippet: "Fetch one public URL as markdown, text, html, or an inline raster image",
     promptGuidelines: [
       "Use webfetch when the user provides a URL or after websearch identifies a page to inspect.",
@@ -280,7 +290,10 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   if (details.via !== undefined && details.via !== "") {
     text += theme.fg("warning", ` [via ${details.via}]`);
   }
-  if (details.truncated === true) {
+  if (details.responseTruncated === true) {
+    text += theme.fg("warning", " [response truncated]");
+  }
+  if (details.truncated === true && details.responseTruncated !== true) {
     text += theme.fg("warning", " [truncated]");
   }
   if (details.image === true) {
@@ -300,6 +313,7 @@ const runWebFetch = Effect.fnUntraced(
     const output = {
       store: yield* ToolOutputStore,
       secrets: snapshot.secrets,
+      offset: input.offset,
     };
     const result = yield* Effect.result(
       fetchPage.fetch(
