@@ -281,6 +281,9 @@ const planFor = (
   reader: SkillReader = "read",
 ) => planPrompt({ ...snap(messages), resources, reader, desiredHidden: ids(hidden) });
 
+const enabled = (reader: SkillReader) =>
+  renderToggleNote({ enabled: [skillB], disabled: [] }, reader);
+
 describe("standalone toggle notes", () => {
   test("a second note restates the first one's changes", () => {
     const first = planFor([head([skillA, skillB]), assistant], [skillA.id]).note;
@@ -306,13 +309,13 @@ describe("standalone toggle notes", () => {
   });
 
   test("enabled skills use Pi's guidance for the run's reader", () => {
-    const enabled = (reader: SkillReader) =>
-      renderToggleNote({ enabled: [skillB], disabled: [] }, reader);
-    expect(enabled("read")).toContain(formatSkillsForPrompt([skill(skillB)], "read").trim());
-    expect(enabled("read")).toContain("Use the read tool to load a skill's file");
-    expect(enabled("bash")).toContain("Use bash to load a skill's file");
-    expect(enabled("indirect")).toContain("\nLoad a skill's file when the task matches");
-    expect(enabled("read")).toContain("resolve it against the skill directory");
+    // Pi owns the guidance wording; assert delegation to it, not a copy of its text.
+    const readers = ["read", "bash", "indirect"] as const;
+    for (const reader of readers) {
+      expect(enabled(reader)).toContain(formatSkillsForPrompt([skill(skillB)], reader).trim());
+    }
+    // The reader is passed through: each one yields Pi's distinct guidance.
+    expect(new Set(readers.map((reader) => enabled(reader))).size).toBe(readers.length);
   });
 
   test("picks the reader like Pi", () => {

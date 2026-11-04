@@ -67,7 +67,7 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
       },
       registerCommand: () => undefined,
       getCommands: () => [],
-      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
+      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     },
     store,
     undefined,

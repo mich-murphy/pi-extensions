@@ -122,7 +122,7 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
       },
       registerCommand: () => undefined,
       getCommands: () => [],
-      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
+      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     },
     stateStore,
   );
@@ -662,7 +662,7 @@ describe("skill-toggle guard", () => {
             command = options;
           },
           getCommands: () => [],
-          exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
+          exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
         },
         store,
       );
@@ -763,7 +763,13 @@ describe("skill-toggle guard", () => {
           getCommands: () => [],
           exec: async (_command, args) => {
             execCalls.push(args);
-            return { stdout: "web/AGENTS.md\0README.md\0", stderr: "", code: 0, killed: false };
+            return {
+              stdout: "web/AGENTS.md\0README.md\0",
+              stderr: "",
+              code: 0,
+              killed: false,
+              truncated: false,
+            };
           },
         },
         {
