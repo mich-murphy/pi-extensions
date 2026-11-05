@@ -114,7 +114,12 @@ const hangingWeb: PublicWebClient["Service"] = { get: () => Effect.never };
 describe("parseWebFetchParams", () => {
   test("parses a minimal url with settings defaults", () => {
     expect(parseWebFetchParams({ url: " https://example.com " }, DEFAULT_SETTINGS)).toStrictEqual(
-      Result.succeed({ url: "https://example.com/", format: "markdown", timeoutSeconds: 30 }),
+      Result.succeed({
+        url: "https://example.com/",
+        format: "markdown",
+        timeoutSeconds: 30,
+        offset: 0,
+      }),
     );
   });
 

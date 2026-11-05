@@ -11,6 +11,7 @@ import { models, undatedModelId } from "../models";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { ModelObservation, RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import { subscriptionEnvironment } from "../sdk/subscription-environment";
+import { testClaudeExecutable } from "./claude-cli";
 import { drain, modelFixture, requestFixture, textBlock } from "./fixtures";
 import {
   decodeReleaseContract,
@@ -44,6 +45,7 @@ async function collect(
   const results: unknown[] = [];
   async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
     for await (const message of runSdkQuery(params)) {
+      recordClaudeCodeVersion(message);
       if (isTerminalResult(message)) {
         results.push(message);
       }
@@ -118,6 +120,7 @@ function deferredResultOf(message: unknown): DeferredResult | undefined {
 function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery {
   return async function* observedQuery(params) {
     for await (const message of query(params)) {
+      recordClaudeCodeVersion(message);
       const deferred = deferredResultOf(message);
       if (deferred !== undefined) {
         observe(deferred);
@@ -144,6 +147,29 @@ function expectedThinkingMetadata(canonicalModel: string) {
   };
 }
 
+const initMessage = Schema.Struct({
+  type: Schema.Literal("system"),
+  subtype: Schema.Literal("init"),
+  claude_code_version: Schema.String,
+});
+const isInitMessage = Schema.is(initMessage);
+let observedClaudeCodeVersion: string | undefined;
+
+/** Remember the version the CLI that actually ran reports in its system/init message. */
+function recordClaudeCodeVersion(message: unknown): void {
+  if (isInitMessage(message)) {
+    observedClaudeCodeVersion = message.claude_code_version;
+  }
+}
+
+/** The Claude Code version the live run executed, as reported by that CLI, not package metadata. */
+function usedClaudeCodeVersion(): string {
+  if (observedClaudeCodeVersion === undefined) {
+    throw new Error("No system/init message observed; cannot attest the Claude Code version");
+  }
+  return observedClaudeCodeVersion;
+}
+
 describe("installed Claude Agent SDK live contract", () => {
   const verified = new Set<LiveContract>();
   let observedDeferredResult: DeferredResult | undefined;
@@ -155,6 +181,7 @@ describe("installed Claude Agent SDK live contract", () => {
       prompt: idlePrompt(abortController.signal),
       options: {
         abortController,
+        pathToClaudeCodeExecutable: testClaudeExecutable(),
         env: { ...subscriptionEnvironment() },
         persistSession: false,
         settingSources: [],
@@ -299,7 +326,7 @@ describe("installed Claude Agent SDK live contract", () => {
     const attestation = decodeReleaseContract({
       schemaVersion: 1,
       agentSdkVersion: installed.version,
-      bundledClaudeCodeVersion: installed.claudeCodeVersion,
+      claudeCodeVersion: usedClaudeCodeVersion(),
       verifiedAt: new Date().toISOString().replace(/\.\d+Z$/u, "Z"),
       model: "fable",
       contracts: LIVE_CONTRACTS,

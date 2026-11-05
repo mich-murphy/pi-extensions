@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { calculateCost, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type {
   Api,
@@ -10,11 +11,12 @@ import type {
   TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { absurd } from "effect/Function";
-import { buildAgentRequest } from "./agent-request";
+import { buildAgentRequest, endsWithPrintedToolCall } from "./agent-request";
 import type { AgentRequest } from "./agent-request";
 import { SdkProviderDefect } from "./sdk/errors";
 import type { SdkRunError, SdkTurnFailure } from "./sdk/errors";
 import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
+import { VALIDATION_ERROR_TOOL } from "./validation-recovery";
 
 /** Complete token counts for the latest model call of a turn. */
 export type TokenUsage = {
@@ -132,6 +134,17 @@ class AssistantMessageWriter {
         return false;
       }
       case "done": {
+        if (event.reason === "stop" && this.endsWithPrintedCall()) {
+          // Recoverable malformed turn: Pi runs the reserved tool, persists its error result
+          // and continues its outer loop, so the model is told to invoke the tool for real.
+          this.appendToolCall({
+            id: `printed-call-${randomUUID()}`,
+            name: VALIDATION_ERROR_TOOL,
+            arguments: { error: "printed_tool_call" },
+          });
+          this.finish("toolUse");
+          return true;
+        }
         this.finish(event.reason);
         return true;
       }
@@ -197,6 +210,11 @@ class AssistantMessageWriter {
     } catch {
       // Diagnostics are non-fatal.
     }
+  }
+
+  private endsWithPrintedCall(): boolean {
+    const last = this.output.content.at(-1);
+    return last?.type === "text" && endsWithPrintedToolCall(last.text);
   }
 
   private get lastIndex(): number {

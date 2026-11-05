@@ -125,7 +125,7 @@ describe("claude SDK failure diagnostics", () => {
     [new AbortError("aborted"), "could not start the query (cancelled)"],
     [
       Object.assign(new Error("spawn claude ENOENT /secret/path"), { code: "ENOENT" }),
-      "could not start the query (Claude Code executable not found)",
+      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH)",
     ],
     [
       sdkRejection("Claude Code process exited with code 2\nstderr: token=abc", {
@@ -145,7 +145,7 @@ describe("claude SDK failure diagnostics", () => {
       sdkRejection("Claude Code executable not found at /secret/path", {
         errorClass: "executable_not_found",
       }),
-      "could not start the query (Claude Code executable not found)",
+      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH)",
     ],
     [
       sdkRejection("Claude Code native binary exists at /secret but failed to launch", {
@@ -175,6 +175,27 @@ describe("claude SDK failure diagnostics", () => {
 
     expect(error.message).toBe(expected);
     expect(error.cause).toBe(cause);
+  });
+
+  test("keeps working-directory failures actionable, private and non-retryable", () => {
+    const error = new SdkQueryError({
+      operation: "start",
+      reason: { _tag: "WorkingDirectoryUnavailable" },
+      cause: new Error("ENOENT /secret/network/timeout/worktree"),
+    });
+    const message = formatSdkRunError(error);
+    expect(message).toContain("restart Pi from an existing worktree and resume this session");
+    expect(message).not.toContain("/secret");
+    expect(message).not.toContain("executable not found");
+    expect(diagnoseSdkRunError(error)).toStrictEqual({
+      schemaVersion: 1,
+      kind: "provider",
+      errorTag: "SdkQueryError",
+      operation: "start",
+    });
+    expect(
+      isRetryableAssistantError({ ...failedAssistant("provider"), errorMessage: message }),
+    ).toBe(false);
   });
 
   test("never renders the raw cause of an iteration failure", () => {

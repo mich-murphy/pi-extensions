@@ -19,7 +19,7 @@ import {
   withToolCredentials,
 } from "./tool-credentials";
 import type { ToolCredentialComposition, ToolCredentialContext } from "./tool-credentials";
-import { projectSearchResults, ToolOutputStore } from "./tool-output";
+import { projectSearchResults, ToolOutputStore, WEB_SEARCH_OUTPUT_SCHEMA } from "./tool-output";
 import type { ToolOutputStoreError } from "./tool-output";
 import type { ToolRuntime } from "./tool-runtime";
 import { parseSearchQuery } from "./types";
@@ -117,6 +117,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       "Only set the provider parameter when the user asks for a specific provider or a previous search failed.",
     ],
     parameters: WEB_SEARCH_PARAMETERS,
+    outputSchema: WEB_SEARCH_OUTPUT_SCHEMA,
 
     async execute(
       _toolCallId: string,

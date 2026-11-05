@@ -1,6 +1,7 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
 import { Option, Predicate, Schema } from "effect";
 import { absurd } from "effect/Function";
+import { MIN_CLAUDE_CODE_VERSION } from "./claude-executable";
 import { lenientOptional } from "./lenient-schema";
 import {
   effectiveResultCategory,
@@ -73,6 +74,8 @@ const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
   ExecutableLaunchFailed: {},
+  ClaudeCodeTooOld: { version: Schema.String },
+  WorkingDirectoryUnavailable: {},
   ProcessExited: { exitCode: Schema.Number },
   ProcessKilled: { signal: Schema.String },
   Unclassified: {},
@@ -139,10 +142,16 @@ function describeQueryFailure(reason: SdkQueryFailureReason): string {
       return "cancelled";
     }
     case "ExecutableNotFound": {
-      return "Claude Code executable not found";
+      return "Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH";
+    }
+    case "ClaudeCodeTooOld": {
+      return `Claude Code ${reason.version} is too old (${MIN_CLAUDE_CODE_VERSION} or newer is required); run \`claude update\``;
     }
     case "ExecutableLaunchFailed": {
       return "Claude Code is installed but could not be launched";
+    }
+    case "WorkingDirectoryUnavailable": {
+      return "session working directory is unavailable; restart Pi from an existing worktree and resume this session";
     }
     case "ProcessExited": {
       return `Claude Code exited with code ${reason.exitCode}`;
@@ -232,12 +241,26 @@ export class SdkToolContractError extends Schema.TaggedError<SdkToolContractErro
   }
 }
 
+/** Error produced when a turn would be billed to Extra Usage and the user has not opted in. */
+export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkOverageError", {
+  /** When the plan limits reopen, in epoch milliseconds, when Claude Code reported it. */
+  resetsAt: Schema.UndefinedOr(Schema.Number),
+}) {
+  /** Actionable summary; contains only a reset time. */
+  override get message(): string {
+    const until =
+      this.resetsAt === undefined ? "they reset" : new Date(this.resetsAt).toISOString();
+    return `This turn would be billed to Extra Usage; plan limits are exhausted until ${until}. Set PI_CLAUDE_SDK_ALLOW_EXTRA_USAGE=1 to allow.`;
+  }
+}
+
 /** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
   | SdkInstrumentationError
   | SdkToolContractError
   | InvalidDeferredCallLimitError
   | SdkMissingResultError
+  | SdkOverageError
   | SdkProtocolError
   | SdkQueryError
   | SdkResultError;

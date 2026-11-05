@@ -68,7 +68,7 @@ export async function startParserTransport() {
           },
         });
         // A complete tool-use response with invalid JSON, NOT max_tokens or stream truncation.
-        // The bundled CLI, not this fixture/harness, must generate its parse error and marker.
+        // The installed Claude Code, not this fixture/harness, must generate its parse error and marker.
         const partial =
           requests === 1 ? '{"value":INVALID_JSON}' : JSON.stringify({ value: "corrected" });
         if (requests === 1) {

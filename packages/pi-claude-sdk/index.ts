@@ -117,7 +117,7 @@ function registerStatusCommands(
       }
       const notice = await commands.report(inspectClaudeSdkVersions(), (status) => ({
         text: `${formatClaudeSdkVersionStatus(status)}\n\n${formatModelStatus(observedModels)}`,
-        level: status.updateSuggested ? "warning" : "info",
+        level: status.updateSuggested || status.belowMinimum ? "warning" : "info",
       }));
       if (notice !== undefined) {
         ctx.ui.notify(notice.text, notice.level);

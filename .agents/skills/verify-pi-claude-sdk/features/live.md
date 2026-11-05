@@ -69,7 +69,7 @@ allowances and disabled paid extra usage.
 The new provider-owned error handoff requires the [recovery journey](recovery.md)
 in addition to the baseline gate. `live` and therefore `all` now run it, requiring
 explicit reviewed `--approve-recovery-live`. Offline hook simulations do not prove
-the bundled CLI's malformed-JSON control flow; old `all` evidence is not acceptance.
+the installed Claude Code's malformed-JSON control flow; old `all` evidence is not acceptance.
 
 Required controlled evidence:
 

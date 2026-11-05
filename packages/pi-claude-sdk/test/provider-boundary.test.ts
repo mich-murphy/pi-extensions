@@ -46,6 +46,7 @@ async function turn(
   collaborators: RunnerOptions = {},
 ) {
   const run = createClaudeAgentSdkRunner({
+    claudeExecutable: "/usr/bin/claude",
     sdkEnvironment: { PATH: "/bin" },
     ...collaborators,
     runSdkQuery: query,
@@ -514,6 +515,7 @@ describe("public SDK-adapted instrumentation", () => {
       tools: [],
     });
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       async *runSdkQuery({ prompt }) {
         const [message] = await drain(sdkPromptFixture(prompt));
@@ -539,6 +541,7 @@ describe("public SDK-adapted instrumentation", () => {
     });
     const snapshot = structuredClone(original);
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       async *runSdkQuery({ prompt }) {
         const [message] = await drain(sdkPromptFixture(prompt));
@@ -583,6 +586,7 @@ describe("public SDK-adapted instrumentation", () => {
     const entered = Promise.withResolvers<undefined>();
     let opened = 0;
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       runSdkQuery: (params) => {
         opened++;
@@ -682,6 +686,7 @@ describe("public SDK-adapted instrumentation", () => {
     let closed = 0;
     let sdkSignal: AbortSignal | undefined;
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       runSdkQuery: (params) => {
         sdkSignal = params.options?.abortController?.signal;

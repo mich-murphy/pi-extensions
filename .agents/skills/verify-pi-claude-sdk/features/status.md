@@ -1,7 +1,8 @@
 # Inspect versions and routing
 
-A user runs `/claude-sdk-status` to compare installed SDK/bundled/PATH Claude
-versions and see advertised-to-canonical model routing without sending a prompt.
+A user runs `/claude-sdk-status` to compare the installed Agent SDK, the Claude
+Code it expects, and the installed Claude Code it runs (path, version, minimum),
+and see advertised-to-canonical model routing without sending a prompt.
 
 ## Sub-features
 
@@ -21,8 +22,9 @@ Preconditions: isolated Launch, Doctor, Catalog; `claude --version` works.
   selected provider and no session file via `get_state`, discovers the command
   via `get_commands`, then sends `/claude-sdk-status` via `prompt`.
 - **Observe:** `commands.jsonl` contains sent action, successful response and
-  `extension_ui_request` method `notify` with `Agent SDK:`, `Bundled Claude Code:`,
-  `Installed Claude Code:` and all five model IDs. `status` must be `passed`.
+  `extension_ui_request` method `notify` with `Agent SDK:`, `Claude Code path:`,
+  `Installed Claude Code:`, `Claude Code expected by the Agent SDK:` and all five
+  model IDs. `status` must be `passed`.
 - **Proof:** preserve `commands.command.json`, `commands.jsonl`, stderr/exit and
   results. This action also drives [usage](usage.md); report each result separately.
 
@@ -31,5 +33,8 @@ Preconditions: isolated Launch, Doctor, Catalog; `claude --version` works.
 - Print/JSON mode has no UI; these handlers return immediately there. Exit 0
   without a notification is not success.
 - RPC supports notifications with `ctx.hasUI=true`; no terminal rendering is proved.
-- A newer PATH Claude can generate a warning; it does not prove the bundled SDK
-  is stale. Fresh sessions have no last-observed model until actual live turns.
+- The provider runs the installed Claude Code, never the SDK's bundled binary.
+  A newer installed Claude Code can generate an update suggestion; it does not
+  prove the pinned SDK is broken. An installed Claude Code below the minimum adds
+  a `claude update` line. Fresh sessions have no last-observed model until
+  actual live turns.

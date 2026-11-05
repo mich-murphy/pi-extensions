@@ -1,0 +1,6 @@
+{
+  "name": "no-bundled-claude",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Empty stand-in for the Agent SDK platform binaries: pi-claude-sdk always runs the installed Claude Code."
+}

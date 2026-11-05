@@ -18,7 +18,7 @@ const SEARCH_PROVIDER_NAMES: ReadonlySet<string> = new Set(SEARCH_PROVIDERS);
 export const FETCH_TIMEOUT_SECONDS = { default: 30, min: 1, max: 120 } as const;
 export const SEARCH_TIMEOUT_SECONDS = { default: 25, min: 1, max: 120 } as const;
 export const SEARCH_MAX_RESULTS = { default: 8, min: 1, max: 20 } as const;
-const FETCH_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const FETCH_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 export const SEARCH_MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
 const FETCH_MAX_REDIRECTS = 5;
 

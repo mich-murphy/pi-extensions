@@ -68,6 +68,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
     }
     case "SdkQueryError": {
       const { cause, reason } = error;
+      if (reason._tag === "WorkingDirectoryUnavailable") {
+        return "provider";
+      }
       return reason._tag === "Cancelled"
         ? "cancelled"
         : textKind(cause instanceof Error ? cause.message : String(cause));
@@ -82,6 +85,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
         category === "tool-contract"
         ? category
         : "provider";
+    }
+    case "SdkOverageError": {
+      return "usage-limit";
     }
     case "SdkMissingResultError": {
       return "provider";

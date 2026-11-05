@@ -12,7 +12,15 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    // Pi loads extensions with "@earendil-works/pi-ai" mapped to its extension view (pi-ai compat plus
+    // TypeBox's Type/Static/TSchema and a TypeBox-typed StringEnum). Type-check against what runs, as
+    // Pi's own examples/tsconfig.json does. Subpaths such as "/compat" stay the package's own.
+    "paths": {
+      "@earendil-works/pi-ai": [
+        "./node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/pi-ai-extension-view.d.ts"
+      ]
+    }
   },
   "include": ["packages/**/*.ts", "vitest.config.ts", "vitest.live.config.ts"]
 }
