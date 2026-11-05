@@ -31,7 +31,7 @@ Existing environment-only installations continue to work:
 | Variable | Effect |
 | --- | --- |
 | `EXA_API_KEY` | Search switches to Exa's official REST API (`/search` with highlights). Fetch rescue uses Exa's REST `/contents`. |
-| `PARALLEL_API_KEY` | Search switches to Parallel's official REST API (`/v1/search`, `fast` mode). |
+| `PARALLEL_API_KEY` | Search switches to Parallel's official REST API (`/v1/search`, `fast` mode, result cap sent as `advanced_settings.max_results`). |
 | `BRAVE_API_KEY` | Adds Brave to the end of the search fallback chain. |
 
 Credentials are resolved for each request, with Pi-stored keys taking precedence over environment fallback. Login, logout, and literal key changes affect subsequent requests without restarting Pi. A failed or malformed credential is a provider failure, not permission to switch that provider to keyless MCP; search can still fall back to another provider. Explicit Brave chains require a usable Brave key when searched. Endpoint overrides bypass web-tools credential lookup and always use keyless MCP. Pi's own availability checks can independently resolve stored commands, even when a tool will not use that provider.

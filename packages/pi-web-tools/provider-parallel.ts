@@ -127,8 +127,8 @@ export class ParallelApiSearchProvider implements SearchProvider {
         body: {
           objective: input.query,
           search_queries: [input.query],
-          max_results: input.maxResults,
           mode: "fast",
+          advanced_settings: { max_results: input.maxResults },
         },
         maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
         timeout: PARALLEL_SEARCH_TIMEOUT,
