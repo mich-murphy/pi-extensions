@@ -1,3 +1,4 @@
+import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -5,13 +6,16 @@ import {
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer } from "effect";
+import { Type } from "typebox";
 import type { FetchPageResult } from "./fetch-page";
+import { WEB_FETCH_FORMATS } from "./settings";
 import { writeTempTextFile } from "./temp";
 import type { OutputStoreError } from "./temp";
 import type {
   NormalizedSearchResult,
   PublicHttpUrl,
   WebFetchDetails,
+  WebFetchFormat,
   WebSearchDetails,
 } from "./types";
 
@@ -76,7 +80,97 @@ export type PiImageContent = {
 export type PiToolResult<Details> = {
   readonly content: (PiTextContent | PiImageContent)[];
   readonly details: Details;
+  /** Machine-readable result matching the tool's output schema, redacted like the text. */
+  readonly structuredContent: JsonValue;
 };
+
+/** Most bytes of page text carried in webfetch `structuredContent`, like Pi's bash tool. */
+export const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
+
+/**
+ * Output schema of webfetch. Text fields are snake_case like Pi's bash tool; the image variant
+ * matches the `read` tool so codemode's `image()` accepts it. Descriptions are left out so the
+ * type stays short in tool descriptions.
+ */
+export const WEB_FETCH_OUTPUT_SCHEMA = Type.Union([
+  Type.Object({
+    url: Type.String(),
+    status: Type.Optional(Type.Number()),
+    mime_type: Type.Optional(Type.String()),
+    format: Type.Union(WEB_FETCH_FORMATS.map((format) => Type.Literal(format))),
+    bytes: Type.Number(),
+    content: Type.String(),
+    truncated: Type.Boolean(),
+    full_output_path: Type.Optional(Type.String()),
+    via: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal("image"),
+    data: Type.String(),
+    mimeType: Type.String(),
+    note: Type.String(),
+  }),
+]);
+
+/** Output schema of websearch. */
+export const WEB_SEARCH_OUTPUT_SCHEMA = Type.Object({
+  query: Type.String(),
+  provider: Type.String(),
+  results: Type.Array(
+    Type.Object({
+      title: Type.String(),
+      url: Type.String(),
+      snippet: Type.Optional(Type.String()),
+      published_at: Type.Optional(Type.String()),
+      source: Type.Optional(Type.String()),
+      score: Type.Optional(Type.Number()),
+    }),
+  ),
+});
+
+/** Cut text to at most maxBytes of UTF-8 without splitting a character. */
+function limitUtf8Bytes(
+  text: string,
+  maxBytes: number,
+): { readonly content: string; readonly truncated: boolean } {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.length <= maxBytes) {
+    return { content: text, truncated: false };
+  }
+  let end = maxBytes;
+  while (end > 0 && ((bytes.at(end) ?? 0) & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  return { content: bytes.subarray(0, end).toString("utf8"), truncated: true };
+}
+
+/** Builds structured content once the spill path (if any) is known. */
+type StructureOutput = (fullOutputPath: string | undefined) => JsonValue;
+
+function fetchTextStructure(page: {
+  readonly url: string;
+  readonly format: WebFetchFormat;
+  readonly bytes: number;
+  readonly text: string;
+  readonly status?: number;
+  readonly mimeType?: string;
+  readonly via?: string;
+}): StructureOutput {
+  return (fullOutputPath) => {
+    const { content, truncated } = limitUtf8Bytes(page.text, STRUCTURED_OUTPUT_MAX_BYTES);
+    return {
+      url: page.url,
+      ...(page.status === undefined ? {} : { status: page.status }),
+      ...(page.mimeType === undefined ? {} : { mime_type: page.mimeType }),
+      format: page.format,
+      bytes: page.bytes,
+      content,
+      truncated,
+      ...(fullOutputPath === undefined ? {} : { full_output_path: fullOutputPath }),
+      ...(page.via === undefined ? {} : { via: page.via }),
+    };
+  };
+}
 
 /** Format normalized search results as URL-forward text for LLM consumption. */
 export function formatSearchResults(
@@ -141,27 +235,36 @@ export function projectFetchResult(
       : { charset: redactSecrets(meta.charset, options.secrets) }),
   };
   if (body._tag === "Image") {
+    const note = redactSecrets(
+      `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
+      options.secrets,
+    );
+    const data = body.data.toString("base64");
     return Effect.succeed({
       content: [
-        {
-          type: "text",
-          text: redactSecrets(
-            `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
-            options.secrets,
-          ),
-        },
-        { type: "image", data: body.data.toString("base64"), mimeType: safeMeta.mime },
+        { type: "text", text: note },
+        { type: "image", data, mimeType: safeMeta.mime },
       ],
       details: { ...safeMeta, image: true },
+      structuredContent: { type: "image", data, mimeType: safeMeta.mime, note },
     });
   }
 
+  const text = redactSecrets(body.text, options.secrets);
   return projectTextOutput<WebFetchDetails>({
-    output: redactSecrets(body.text, options.secrets),
+    output: text,
     details: {
       ...safeMeta,
       decoder: redactSecrets(body.decoder, options.secrets),
     },
+    structure: fetchTextStructure({
+      url: safeMeta.finalUrl,
+      format: meta.format,
+      bytes: meta.bytes,
+      text,
+      status: meta.status,
+      mimeType: safeMeta.mime,
+    }),
     store: options.store,
     tempPrefix: "pi-webfetch-",
   });
@@ -179,14 +282,19 @@ export function projectProviderFetchedPage(
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const note = `[Direct fetch was blocked or unusable; content retrieved via ${page.provider} — the URL was shared with that provider]`;
+  const requestedUrl = redactSecrets(page.url, options.secrets);
+  const bytes = Buffer.byteLength(page.markdown, "utf8");
+  const via = redactSecrets(page.provider, options.secrets);
   return projectTextOutput<WebFetchDetails>({
     output: redactSecrets(`${note}\n\n${page.markdown}`, options.secrets),
-    details: {
-      requestedUrl: redactSecrets(page.url, options.secrets),
+    details: { requestedUrl, format: "markdown", bytes, via },
+    structure: fetchTextStructure({
+      url: requestedUrl,
       format: "markdown",
-      bytes: Buffer.byteLength(page.markdown, "utf8"),
-      via: redactSecrets(page.provider, options.secrets),
-    },
+      bytes,
+      text: redactSecrets(page.markdown, options.secrets),
+      via,
+    }),
     store: options.store,
     tempPrefix: "pi-webfetch-",
   });
@@ -210,19 +318,45 @@ export function projectSearchResults(
       ...search.details,
       query: redactSecrets(search.details.query, options.secrets),
     },
+    structure: () => searchStructure(search, options.secrets),
     store: options.store,
     tempPrefix: "pi-websearch-",
   });
 }
 
+function searchStructure(
+  search: {
+    readonly query: string;
+    readonly results: readonly NormalizedSearchResult[];
+    readonly details: { readonly provider: string };
+  },
+  secrets: readonly (string | undefined)[],
+): JsonValue {
+  const redact = (input: string) => redactSecrets(input, secrets);
+  return {
+    query: redact(search.query),
+    provider: redact(search.details.provider),
+    results: search.results.map((result) => ({
+      title: redact(result.title),
+      url: redact(result.url),
+      ...(result.snippet === undefined ? {} : { snippet: redact(result.snippet) }),
+      ...(result.publishedAt === undefined ? {} : { published_at: redact(result.publishedAt) }),
+      ...(result.source === undefined ? {} : { source: redact(result.source) }),
+      ...(result.score === undefined ? {} : { score: result.score }),
+    })),
+  };
+}
+
 function projectTextOutput<Details>({
   output,
   details,
+  structure,
   store,
   tempPrefix,
 }: {
   readonly output: string;
   readonly details: Details;
+  readonly structure: StructureOutput;
   readonly store: ToolOutputStore["Service"];
   readonly tempPrefix: string;
 }): Effect.Effect<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError> {
@@ -235,6 +369,7 @@ function projectTextOutput<Details>({
     return Effect.succeed({
       content: [{ type: "text", text: truncation.content }],
       details: { ...details, truncated: false },
+      structuredContent: structure(undefined),
     });
   }
 
@@ -250,6 +385,7 @@ function projectTextOutput<Details>({
       return {
         content: [{ type: "text", text }],
         details: { ...details, truncated: true, fullOutputPath },
+        structuredContent: structure(fullOutputPath),
       };
     }),
   );
