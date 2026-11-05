@@ -45,6 +45,11 @@ export type PublicWebRequest = {
   readonly fallbackUserAgent: string;
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
+  /**
+   * Return the first `maxResponseBytes` of an oversized text-like body (flagged `responseTruncated`)
+   * instead of failing. Other content kinds keep failing over the cap.
+   */
+  readonly allowPartialText?: boolean | undefined;
   readonly blockPrivateHosts: boolean;
   /** Hostname policy enforced before DNS and transport work on every redirect hop. */
   readonly domainPolicy: DomainPolicy;
@@ -57,6 +62,8 @@ export type PublicWebResponse = {
   readonly status: number;
   readonly headers: Headers;
   readonly body: Readonly<Buffer>;
+  /** True when the body is only the first `maxResponseBytes` of a larger response. */
+  readonly responseTruncated?: boolean | undefined;
 };
 
 /** A request could not be completed at the network level (DNS, connection, TLS, or body stream). */
@@ -316,12 +323,19 @@ export function classifyMimeType(mime: string): ContentKind {
 export function decodeTextBuffer(
   buffer: Readonly<Buffer>,
   charset?: string,
+  options: { readonly partial?: boolean } = {},
 ): { text: string; decoder: string } {
+  // A cut-off body can end inside a UTF-8 sequence; streaming mode drops that tail instead of
+  // turning it into a replacement character.
+  const decode = (label: string) =>
+    new TextDecoder(label).decode(buffer, {
+      stream: options.partial === true && label === UTF8_LABEL,
+    });
   const normalizedCharset = normalizeCharset(charset);
   if (normalizedCharset !== undefined) {
     try {
       return {
-        text: new TextDecoder(normalizedCharset).decode(buffer),
+        text: decode(normalizedCharset),
         decoder: normalizedCharset,
       };
     } catch {
@@ -329,7 +343,7 @@ export function decodeTextBuffer(
     }
   }
   return {
-    text: new TextDecoder(UTF8_LABEL).decode(buffer),
+    text: decode(UTF8_LABEL),
     decoder: UTF8_LABEL,
   };
 }
@@ -371,9 +385,21 @@ export function readResponseBodyWithLimit(
   response: Response,
   maxBytes: number,
 ): Effect.Effect<Buffer, ResponseBodyTooLarge | ResponseBodyReadFailed> {
+  return readCapped(response, maxBytes, "fail").pipe(
+    Effect.flatMap(({ body, truncated }) =>
+      truncated ? Effect.fail(new ResponseBodyTooLarge()) : Effect.succeed(body),
+    ),
+  );
+}
+
+function readCapped(
+  response: Response,
+  maxBytes: number,
+  overflow: "fail" | "truncate",
+): Effect.Effect<{ readonly body: Buffer; readonly truncated: boolean }, ResponseBodyReadFailed> {
   const { body } = response;
   if (body === null) {
-    return Effect.succeed(Buffer.alloc(0));
+    return Effect.succeed({ body: Buffer.alloc(0), truncated: false });
   }
   return Effect.acquireUseRelease(
     Effect.sync(() => body.getReader()),
@@ -387,15 +413,21 @@ export function readResponseBodyWithLimit(
             catch: (cause) => new ResponseBodyReadFailed({ cause }),
           });
           if (chunk.done) {
-            return Buffer.concat(chunks);
+            return { body: Buffer.concat(chunks), truncated: false };
           }
-          bytes += chunk.value.byteLength;
-          if (bytes > maxBytes) {
-            return yield* new ResponseBodyTooLarge();
-          }
-          chunks.push(
-            Buffer.from(chunk.value.buffer, chunk.value.byteOffset, chunk.value.byteLength),
+          const view = Buffer.from(
+            chunk.value.buffer,
+            chunk.value.byteOffset,
+            chunk.value.byteLength,
           );
+          if (bytes + view.byteLength > maxBytes) {
+            if (overflow === "truncate") {
+              chunks.push(view.subarray(0, maxBytes - bytes));
+            }
+            return { body: Buffer.concat(chunks), truncated: true };
+          }
+          bytes += view.byteLength;
+          chunks.push(view);
         }
       }),
     (reader) =>
@@ -638,25 +670,35 @@ export class PublicWebClient extends Context.Service<
       const get = Effect.fnUntraced(
         function* (request: PublicWebRequest): Effect.fn.Return<PublicWebResponse, PublicWebError> {
           const { response, finalUrl } = yield* fetchPastChallenge(request);
-          const rejection = checkResponseHead(response, request.maxResponseBytes);
+          // Only text-like kinds can be usefully cut short; everything else keeps the hard cap.
+          const partialAllowed =
+            request.allowPartialText === true &&
+            isPartialReadable(parseContentType(response.headers.get("content-type")).kind);
+          const rejection = checkResponseHead(response, request.maxResponseBytes, partialAllowed);
           if (rejection !== undefined) {
             yield* cancelBody(response);
             return yield* Effect.fail(rejection);
           }
 
           const { hostname } = new URL(finalUrl);
-          const body = yield* readResponseBodyWithLimit(response, request.maxResponseBytes).pipe(
-            Effect.catchTags({
-              ResponseBodyTooLarge: () =>
-                Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes })),
-              ResponseBodyReadFailed: (error) =>
-                Effect.fail(
-                  new PublicWebRequestFailed({
-                    hostname,
-                    cause: sanitizeNetworkFailure(error.cause),
-                  }),
-                ),
-            }),
+          const { body, truncated } = yield* readCapped(
+            response,
+            request.maxResponseBytes,
+            partialAllowed ? "truncate" : "fail",
+          ).pipe(
+            Effect.flatMap((read) =>
+              read.truncated && !partialAllowed
+                ? Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes }))
+                : Effect.succeed(read),
+            ),
+            Effect.catchTag("ResponseBodyReadFailed", (error) =>
+              Effect.fail(
+                new PublicWebRequestFailed({
+                  hostname,
+                  cause: sanitizeNetworkFailure(error.cause),
+                }),
+              ),
+            ),
           );
           return {
             requestedUrl: request.url,
@@ -664,6 +706,7 @@ export class PublicWebClient extends Context.Service<
             status: response.status,
             headers: response.headers,
             body,
+            ...(truncated ? { responseTruncated: true } : {}),
           };
         },
         (effect) =>
@@ -711,15 +754,20 @@ function parseUrl(input: string, base: URL): URL | undefined {
   }
 }
 
+function isPartialReadable(kind: ContentKind): boolean {
+  return kind === "html" || kind === "text" || kind === "svg";
+}
+
 function checkResponseHead(
   response: Response,
   maxBytes: number,
+  partialAllowed: boolean,
 ): HttpStatusRejected | ResponseTooLarge | undefined {
   if (!response.ok) {
     return new HttpStatusRejected({ status: response.status, statusText: response.statusText });
   }
   const declaredBytes = parseContentLength(response.headers.get("content-length"));
-  if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+  if (!partialAllowed && Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
     return new ResponseTooLarge({ maxBytes });
   }
   return undefined;

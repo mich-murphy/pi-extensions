@@ -1,8 +1,12 @@
 import { once } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Effect } from "effect";
-import { assert, describe, expect, test } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
 import { createAgentSdkStream } from "../bridge";
@@ -45,6 +49,22 @@ const INVALID_CALL = { name: "pi_call", arguments: {} };
 
 type FallbackEnding = "clean-result" | "clean-eof" | "rejection";
 type QueryFailure = "start" | "iterate" | "protocol" | "missing-result";
+type WorkingDirectoryFailure = "deleted" | "not-directory" | "cwd-throws";
+
+function unavailableWorkingDirectory(scenario: WorkingDirectoryFailure, cwd: string): () => string {
+  if (scenario === "not-directory") {
+    writeFileSync(cwd, "not a directory");
+  } else {
+    mkdirSync(cwd);
+    rmSync(cwd, { recursive: true });
+  }
+  return () => {
+    if (scenario === "cwd-throws") {
+      throw Object.assign(new Error(`uv_cwd ENOENT ${cwd}`), { code: "ENOENT" });
+    }
+    return cwd;
+  };
+}
 
 async function* fallbackEnding(ending: FallbackEnding, params: SdkQueryParameters) {
   if (ending === "clean-result") {
@@ -80,11 +100,12 @@ async function runTurn(
   options: SimpleStreamOptions & RunnerOptions = {},
 ): Promise<BridgeEvent[]> {
   return drain(
-    createClaudeAgentSdkRunner({ validationRecovery: "pi-tool-loop", ...options, runSdkQuery })(
-      request,
-      sonnet,
-      options,
-    ),
+    createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
+      validationRecovery: "pi-tool-loop",
+      ...options,
+      runSdkQuery,
+    })(request, sonnet, options),
   );
 }
 
@@ -115,6 +136,7 @@ async function capturedParameters(
 ): Promise<SdkQueryParameters> {
   const captured: SdkQueryParameters[] = [];
   const runner = createClaudeAgentSdkRunner({
+    claudeExecutable: "/usr/bin/claude",
     sdkEnvironment: { PATH: "/bin" },
     runSdkQuery: (params) => {
       captured.push(params);
@@ -375,6 +397,7 @@ describe("turn streaming", () => {
   test("clears per-call cache splits from cumulative diagnostics and Pi usage when terminal split is absent", async () => {
     const diagnostics: CacheDiagnostic[] = [];
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       runSdkQuery: queryWith(
         [],
         streamEvent({
@@ -786,6 +809,7 @@ describe("usage limit observation", () => {
       [usageLimitResult],
     ];
     const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       async *runSdkQuery() {
         const messages = queries.shift();
         assert(messages);
@@ -999,6 +1023,39 @@ describe("deferred tool calls", () => {
 });
 
 describe("turn failures", () => {
+  test.each(["deleted", "not-directory", "cwd-throws"] as const)(
+    "rejects an unavailable working directory (%s) before opening the SDK",
+    async (scenario) => {
+      const root = mkdtempSync(join(tmpdir(), "pi-sdk-cwd-"));
+      const cwd = join(root, "private-worktree");
+      const spy = vi
+        .spyOn(process, "cwd")
+        .mockImplementation(unavailableWorkingDirectory(scenario, cwd));
+      const query = vi.fn<RunSdkQuery>(queryWith([], resultMessage()));
+      try {
+        const error = failureOf(await runTurn(query));
+        expect(query).not.toHaveBeenCalled();
+        expect(error).toMatchObject({
+          _tag: "SdkQueryError",
+          operation: "start",
+          reason: { _tag: "WorkingDirectoryUnavailable" },
+        });
+        expect(error.message).toBe(
+          "could not start the query (session working directory is unavailable; restart Pi from an existing worktree and resume this session)",
+        );
+        expect(error.message).not.toContain(cwd);
+      } finally {
+        spy.mockRestore();
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("passes the existing working directory to the SDK unchanged", async () => {
+    const params = await capturedParameters(requestFixture());
+    expect(params.options?.cwd).toBe(process.cwd());
+  });
+
   test("returns an SDK result error even after the hook captured a deferred call", async () => {
     const unavailable = resultMessage({
       is_error: true,
@@ -1225,6 +1282,7 @@ describe("SDK query cancellation", () => {
     });
     let sdkSignal: AbortSignal | undefined;
     const run = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
       runSdkQuery: async function* runSdkQuery(params) {
         const signal = params.options?.abortController?.signal;
         assert(signal !== undefined, "test setup: SDK abort signal missing");
@@ -1354,7 +1412,6 @@ describe("cache diagnostics", () => {
         assistantToolUses: 3,
         maxAssistantToolUses: 2,
         errorToolResults: 1,
-        hookDeniedCalls: 0,
         invalidGatewayCalls: 0,
         unexpectedToolCalls: 2,
         fallbackCalls: 0,
@@ -1546,4 +1603,27 @@ describe("rate-limit classification", () => {
     expect(error.message).toBe("Claude usage limit reached; check subscription allowance");
     expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
   });
+});
+
+describe("per-request output limit", () => {
+  test.each([
+    [4096, "4096"],
+    [1000.9, "1000"],
+  ])("forwards an explicit maxTokens of %s to Claude Code", async (maxTokens, expected) => {
+    const { options } = await capturedParameters(requestFixture(), sonnet, { maxTokens });
+    expect(options?.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe(expected);
+  });
+
+  test("leaves Claude Code's default output cap alone when Pi sets no maxTokens", async () => {
+    const { options } = await capturedParameters(requestFixture(), sonnet, {});
+    expect(options?.env).not.toHaveProperty("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+  });
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "ignores the non-positive or non-finite maxTokens %s",
+    async (maxTokens) => {
+      const { options } = await capturedParameters(requestFixture(), sonnet, { maxTokens });
+      expect(options?.env).not.toHaveProperty("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+    },
+  );
 });

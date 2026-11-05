@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Tool } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import { SdkToolContractError } from "./errors";
 
 const keywords = new Set([
@@ -122,11 +123,15 @@ function canonical(value: unknown): string {
   return JSON.stringify(sortJson(normalizeSchema(value)));
 }
 
+const reportedDegraded = new Set<string>();
+
 export type CatalogTool = {
   readonly declaration: Tool;
   readonly mcpName: string;
   readonly sdkName: string;
   readonly schema: z.ZodType;
+  /** True when the declared schema is unsupported and a permissive one stands in; Pi still validates. */
+  readonly degraded?: boolean;
 };
 
 function mcpToolName(name: string): string {
@@ -163,7 +168,21 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
       }
       return { declaration, mcpName, sdkName: sdkToolName(name), schema };
     } catch {
-      throw new SdkToolContractError({ reason: "schema" });
+      // One unsupported schema must not fail every turn. Pi validates arguments itself
+      // (validateToolArguments in the deferred capture), so a permissive object schema is safe.
+      if (!reportedDegraded.has(name)) {
+        reportedDegraded.add(name);
+        writeRedirectedDiagnostic(
+          `[claude-sdk-tool-schema] unsupported schema, using permissive: ${JSON.stringify(name)}\n`,
+        );
+      }
+      return {
+        declaration,
+        mcpName,
+        sdkName: sdkToolName(name),
+        schema: z.object({}).catchall(z.json()),
+        degraded: true,
+      };
     }
   });
 }

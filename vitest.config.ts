@@ -8,9 +8,19 @@ const piTui = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent
   "@earendil-works/pi-tui",
 );
 
+// Pi also maps an extension's "@earendil-works/pi-ai" import (root only) to its extension view: pi-ai
+// compat plus TypeBox's Type and a TypeBox-typed StringEnum. Tests load the same module Pi does.
+const piAiExtensionView = new URL(
+  "node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/pi-ai-extension-view.js",
+  import.meta.url,
+).pathname;
+
 export default defineConfig({
   resolve: {
-    alias: { "@earendil-works/pi-tui": piTui },
+    alias: [
+      { find: "@earendil-works/pi-tui", replacement: piTui },
+      { find: /^@earendil-works\/pi-ai$/u, replacement: piAiExtensionView },
+    ],
   },
   test: {
     include: ["packages/*/test/**/*.test.ts"],

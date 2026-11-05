@@ -142,7 +142,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
       commands.set(name, command);
     },
     getCommands: () => [],
-    exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
+    exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
   };
   let projectTrusted = true;
   const ctx = {
@@ -246,7 +246,7 @@ describe("extension lifecycle", () => {
         handlers[name] = handler;
       },
       getCommands: () => [],
-      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false }),
+      exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     };
     skillToggle(piMock);
 

@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
@@ -9,10 +10,12 @@ import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
 import type { CacheDiagnosticTracker } from "../cache-tracker";
 import { sdkModelSelectorFor, undatedModelId } from "../models";
+import { resolveClaudeExecutable, tooOldClaudeCode } from "./claude-executable";
 import { createDeferredCallCapture, createDeferredPiTools } from "./deferred-tools";
 import type { DeferredCallCapture } from "./deferred-tools";
 import {
   SdkMissingResultError,
+  SdkOverageError,
   SdkProtocolError,
   SdkQueryError,
   SdkResultError,
@@ -26,7 +29,7 @@ import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
 import type { CacheTtl } from "./prompt-stream";
 import { queryDiagnostics } from "./query-diagnostics";
 import { effectiveResultCategory } from "./result-failure";
-import { subscriptionEnvironment } from "./subscription-environment";
+import { extraUsageAllowed, subscriptionEnvironment } from "./subscription-environment";
 import { compileToolCatalog } from "./tool-catalog";
 import type { CatalogTool } from "./tool-catalog";
 
@@ -48,6 +51,8 @@ export type ModelObservation = {
 /** Runner collaborators. Each falls back to production behaviour. */
 export type RunnerOptions = {
   readonly runSdkQuery?: RunSdkQuery;
+  /** Claude Code executable to run; defaults to resolving the user's installation. */
+  readonly claudeExecutable?: string;
   /** Opt in only with the reserved validation-error tool and fail-safe guard installed. */
   readonly validationRecovery?: "pi-tool-loop";
   /** Injectable in-process MCP server factory; defaults to the installed SDK. */
@@ -84,6 +89,8 @@ type Turn = {
 };
 
 type QueryWiring = {
+  readonly cwd: string;
+  readonly executable: string;
   readonly abortController: AbortController;
   readonly hook: HookCallback;
   readonly batchHook: HookCallback;
@@ -179,9 +186,21 @@ function reasoningOptions({
 
 function queryParameters(
   turn: Turn,
-  { abortController, hook, batchHook, env, ttl, onFallback, createMcpServer, catalog }: QueryWiring,
+  {
+    cwd,
+    executable,
+    abortController,
+    hook,
+    batchHook,
+    env,
+    ttl,
+    onFallback,
+    createMcpServer,
+    catalog,
+  }: QueryWiring,
 ): SdkQueryParameters {
-  const { request, model } = turn;
+  const { request, model, options: streamOptions } = turn;
+  const maxTokens = streamOptions?.maxTokens;
   const server = createMcpServer({
     name: "pi",
     version: "0.1.0",
@@ -203,7 +222,14 @@ function queryParameters(
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
       abortController,
-      cwd: process.cwd(),
+      cwd,
+      // Always the user's installed Claude Code, never the SDK's bundled binary.
+      pathToClaudeCodeExecutable: executable,
+      // Pi owns every tool; anything outside mcp__pi__* is denied instead of prompting.
+      permissionMode: "dontAsk",
+      allowedTools: ["mcp__pi__*"],
+      // No slash-command/@file expansion or context injection into the replayed transcript.
+      verbatimPrompts: true,
       model: sdkModelSelectorFor(model.id),
       ...reasoningOptions(turn),
       includePartialMessages: true,
@@ -222,8 +248,17 @@ function queryParameters(
       // Omitting skills is not "skills off"; an empty list disables them.
       skills: [],
       mcpServers: { pi: server },
-      env: { ...env },
-      hooks: { PreToolUse: [{ hooks: [hook] }], PostToolBatch: [{ hooks: [batchHook] }] },
+      env: {
+        ...env,
+        ...(maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1
+          ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxTokens)) }
+          : {}),
+      },
+      // Fail closed if a hook throws or returns invalid output.
+      hooks: {
+        PreToolUse: [{ hooks: [hook], onFailure: "block" }],
+        PostToolBatch: [{ hooks: [batchHook], onFailure: "block" }],
+      },
     },
   };
 }
@@ -435,6 +470,7 @@ const HALTED: QueryItem = { _tag: "Halted" };
 function step(
   capture: QueryCapture,
   callerSignal: AbortSignal | undefined,
+  extraUsage: boolean,
 ): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
   return (progress, item) => {
     if (item._tag === "Halted") {
@@ -446,9 +482,23 @@ function step(
     if (Result.isFailure(item)) {
       return [progress, [ended(Result.fail(item.failure), progress)]];
     }
+    const tooOld = tooOldClaudeCode(item.success);
+    if (tooOld !== undefined) {
+      const failure = new SdkQueryError({
+        operation: "iterate",
+        reason: { _tag: "ClaudeCodeTooOld", version: tooOld },
+        cause: new Error("Claude Code is older than the supported minimum"),
+      });
+      return [progress, [ended(Result.fail(failure), progress)]];
+    }
     const parsed = parseSdkMessage(item.success);
     if (Result.isFailure(parsed)) {
       return [progress, [ended(Result.fail(parsed.failure), progress)]];
+    }
+    if (parsed.success.type === "usage_limit" && parsed.success.overage && !extraUsage) {
+      // Ending the step closes the SDK stream, which aborts the query before another request.
+      const failure = new SdkOverageError({ resetsAt: parsed.success.overage.resetsAt });
+      return [progress, [ended(Result.fail(failure), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
@@ -496,6 +546,7 @@ function querySteps(
   capture: QueryCapture,
   abortController: AbortController,
   turn: Turn,
+  extraUsage: boolean,
 ): Stream.Stream<QueryStep> {
   return Stream.fromAsyncIterable(abortOnClose(messages, abortController), (error) =>
     iterationFailure(capture, abortController.signal, error),
@@ -505,7 +556,7 @@ function querySteps(
     ),
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),
-    Stream.mapAccum(initialProgress, step(capture, turn.options?.signal)),
+    Stream.mapAccum(initialProgress, step(capture, turn.options?.signal, extraUsage)),
     Stream.takeUntil((queryStep) => queryStep._tag === "end"),
   );
 }
@@ -591,7 +642,6 @@ function conclude(
       assistantToolUses: progress.assistantToolUses,
       maxAssistantToolUses: progress.maxAssistantToolUses,
       errorToolResults: progress.errorToolResults,
-      hookDeniedCalls: capture.deferred.hookDeniedCalls,
       invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
       unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
       uncapturedBatchCalls: capture.deferred.uncapturedBatchCalls,
@@ -623,9 +673,29 @@ function reportUsageLimit(
   }
 }
 
+/** A deleted worktree makes spawn reject with ENOENT even when Claude Code exists. */
+function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
+  return Result.try({
+    try: () => {
+      const cwd = process.cwd();
+      if (!statSync(cwd).isDirectory()) {
+        throw new Error("Session working directory is not a directory");
+      }
+      return cwd;
+    },
+    catch: (cause) =>
+      new SdkQueryError({
+        operation: "start",
+        reason: { _tag: "WorkingDirectoryUnavailable" },
+        cause,
+      }),
+  });
+}
+
 const runTurn = Effect.fnUntraced(function* (
   {
     runSdkQuery,
+    claudeExecutable,
     sdkEnvironment,
     cacheDiagnostics,
     modelObserver,
@@ -662,6 +732,24 @@ const runTurn = Effect.fnUntraced(function* (
   if (Result.isFailure(compiled)) {
     return Stream.succeed(failed(compiled.failure));
   }
+  // Resolve once and fail closed: choosing another checkout would change tool semantics.
+  // process.cwd() can throw, or return Node's cached path after that path was deleted.
+  const directory = queryWorkingDirectory();
+  if (Result.isFailure(directory)) {
+    return Stream.succeed(failed(directory.failure));
+  }
+  const executable = claudeExecutable ?? resolveClaudeExecutable(sdkEnvironment);
+  if (executable === undefined) {
+    return Stream.succeed(
+      failed(
+        new SdkQueryError({
+          operation: "start",
+          reason: { _tag: "ExecutableNotFound" },
+          cause: new Error("claude executable not found"),
+        }),
+      ),
+    );
+  }
   const catalog = compiled.success;
   const capture = createQueryCapture(catalog, abortController, validationRecovery);
   const ttl = cacheTtlFor(
@@ -676,6 +764,8 @@ const runTurn = Effect.fnUntraced(function* (
     try: () =>
       runSdkQuery(
         queryParameters(appliedTurn, {
+          cwd: directory.success,
+          executable,
           abortController,
           hook: capture.deferred.hook,
           batchHook: capture.deferred.batchHook,
@@ -704,7 +794,13 @@ const runTurn = Effect.fnUntraced(function* (
       ),
     );
   }
-  return querySteps(started.success, capture, abortController, appliedTurn).pipe(
+  return querySteps(
+    started.success,
+    capture,
+    abortController,
+    appliedTurn,
+    extraUsageAllowed(sdkEnvironment),
+  ).pipe(
     Stream.map((queryStep) =>
       queryStep._tag === "event"
         ? queryStep.event

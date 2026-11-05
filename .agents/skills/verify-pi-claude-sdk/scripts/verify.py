@@ -135,7 +135,7 @@ def main():
                 assert {'claude-sdk-status', 'claude-sdk-usage'} <= names
                 _, notices = request('prompt', message='/claude-sdk-status')
                 text = '\n'.join(x['message'] for x in notices)
-                assert all(s in text for s in ['Agent SDK:', 'Bundled Claude Code:', 'Installed Claude Code:'] + IDS), text
+                assert all(s in text for s in ['Agent SDK:', 'Claude Code path:', 'Installed Claude Code:', 'Claude Code expected by the Agent SDK:'] + IDS), text
                 record('status', 'passed', 'real slash command emitted version and model mapping notification')
                 _, notices = request('prompt', message='/claude-sdk-usage')
                 text = '\n'.join(x['message'] for x in notices)

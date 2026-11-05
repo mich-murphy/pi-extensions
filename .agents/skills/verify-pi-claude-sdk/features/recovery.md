@@ -56,7 +56,7 @@ request bodies without logging/decoding them, and emits synthetic Messages SSE:
 
 1. A complete `tool_use` response with syntactically INVALID `input_json_delta`,
    **not** a max_tokens stop or a truncated transport stream. The actual installed
-   SDK/bundled CLI must generate its parse failure, skip `PreToolUse`, deliver the
+   SDK and Claude Code must generate its parse failure, skip `PreToolUse`, deliver the
    error batch to the production hook and honor `continue:false`.
 2. A valid corrected per-tool call, deferred by the real CLI's PreToolUse path.
 3. A fixed final text marker after Pi's pure corrected executor runs exactly once.

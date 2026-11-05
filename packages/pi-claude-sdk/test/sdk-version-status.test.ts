@@ -9,12 +9,12 @@ import type { ClaudeSdkVersionReads } from "../sdk-version-status";
 
 function versionSources(
   sdkVersion: string,
-  bundledClaudeCode: string,
+  expectedClaudeCode: string,
   installedOutput: string,
 ): ClaudeSdkVersionReads {
   return {
     readSdkPackageMetadata: async () =>
-      JSON.stringify({ version: sdkVersion, claudeCodeVersion: bundledClaudeCode }),
+      JSON.stringify({ version: sdkVersion, claudeCodeVersion: expectedClaudeCode }),
     readInstalledClaudeVersion: async () => installedOutput,
   };
 }
@@ -39,7 +39,10 @@ describe("claude SDK version status", () => {
         yield* inspectWith(versionSources("0.3.227", "2.1.227", "2.1.251 (Claude Code)")),
       ).toStrictEqual({
         agentSdk: "0.3.227",
-        bundledClaudeCode: "2.1.227",
+        expectedClaudeCode: "2.1.227",
+        claudePath: undefined,
+        minimumClaudeCode: "2.1.317",
+        belowMinimum: true,
         installedClaudeCode: "2.1.251",
         updateSuggested: true,
       });
@@ -83,7 +86,7 @@ describe("claude SDK version status", () => {
 
       expect(error).toMatchObject({ _tag: "ClaudeInstalledVersionError", reason: "not-installed" });
       expect(error.message).toBe(
-        "Claude Code is not installed or not on PATH (claude --version failed)",
+        "Claude Code is not installed or not on PATH (claude --version failed); install it, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH",
       );
     }),
   );

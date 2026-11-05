@@ -4,7 +4,7 @@ import type {
   PreToolUseHookInput,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { Type, normalizeContext } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import type {
   Context,
   Message,
@@ -15,6 +15,7 @@ import type {
   UserMessage,
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
 

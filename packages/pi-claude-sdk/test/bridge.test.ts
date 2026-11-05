@@ -377,3 +377,37 @@ describe("cache usage", () => {
     expect(message.usage).not.toHaveProperty("cacheWrite5m");
   });
 });
+
+async function printedCallReply(text: string) {
+  const stream = createAgentSdkStream({
+    model: sonnet,
+    context: contextFixture({
+      systemPrompt: "s",
+      messages: [{ role: "user", content: "go" }],
+      tools: [],
+    }),
+    options: undefined,
+    async *run() {
+      yield { type: "text_delta", text } satisfies BridgeEvent;
+      yield { type: "done", reason: "stop" } satisfies BridgeEvent;
+    },
+  });
+  return stream.result();
+}
+
+describe("printed tool call recovery", () => {
+  test("a reply ending in a printed call becomes a reserved validation call", async () => {
+    const message = await printedCallReply('ok\n<call id="x" tool="mcp__pi__read">{}</call>');
+    expect(message.stopReason).toBe("toolUse");
+    expect(message.content.at(-1)).toMatchObject({
+      type: "toolCall",
+      name: "pi_claude_sdk_validation_error",
+      arguments: { error: "printed_tool_call" },
+    });
+  });
+
+  test("ordinary prose ends the turn normally", async () => {
+    const message = await printedCallReply("Use the <call> tag like so.");
+    expect(message.stopReason).toBe("stop");
+  });
+});
