@@ -23,8 +23,10 @@ import {
 } from "./fakes";
 
 const CAP = 10 * 1024 * 1024;
+const PREFIX_NOTE =
+  "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false]";
 const END_NOTE =
-  "Content stops at the 10.0MB download limit; the rest of the page cannot be fetched.";
+  "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false; end of downloaded content]";
 const TRUNCATION_MARK = "\n\n[Output truncated";
 
 function textResult(text: string): FetchPageResult {
@@ -290,11 +292,11 @@ describe("webfetch offset paging over a response-truncated page", () => {
 
   test("pages through the partial body, each window carrying the notice and the next offset", async () => {
     const first = textOf(await project(text, undefined, [], true));
-    expect(first.startsWith("[Response truncated: ")).toBe(true);
+    expect(first.startsWith(`${PREFIX_NOTE}\n\n`)).toBe(true);
     expect(first).toContain("Showing bytes 0–51198 of 180000.");
     expect(first.endsWith("Call webfetch again with offset=51198 to continue.]")).toBe(true);
     const middle = textOf(await project(text, 51_198, [], true));
-    expect(middle.startsWith("[Response truncated: ")).toBe(true);
+    expect(middle.startsWith(`${PREFIX_NOTE}\n\n`)).toBe(true);
     expect(middle).toContain("Showing bytes 51198–102396 of 180000.");
     expect(middle.endsWith("offset=102396 to continue.]")).toBe(true);
     expect(middle).not.toContain(END_NOTE);
@@ -303,8 +305,8 @@ describe("webfetch offset paging over a response-truncated page", () => {
   test("the last window says the content stops at the download limit", async () => {
     const result = await project(text, 153_594, [], true);
     const shown = textOf(result);
-    expect(shown.startsWith("[Response truncated: ")).toBe(true);
-    expect(shown.endsWith(`[Showing bytes 153594–180000 of 180000. ${END_NOTE}]`)).toBe(true);
+    expect(shown.startsWith(`${PREFIX_NOTE}\n\n`)).toBe(true);
+    expect(shown.endsWith(`[Showing bytes 153594–180000 of 180000]\n${END_NOTE}`)).toBe(true);
     expect(shown).not.toContain("to continue");
     expect(result.structuredContent).toMatchObject({
       response_truncated: true,
@@ -316,21 +318,39 @@ describe("webfetch offset paging over a response-truncated page", () => {
 
   test("a one-line tail window says the content stops at the download limit", async () => {
     const shown = textOf(await project("a".repeat(60_000), 20_000, [], true));
-    expect(shown.endsWith(`[Showing bytes 20000–60000 of 60000. ${END_NOTE}]`)).toBe(true);
+    expect(shown.endsWith(`[Showing bytes 20000–60000 of 60000]\n${END_NOTE}`)).toBe(true);
   });
 
   test("a short first page of a truncated fetch does not imply the page ended", async () => {
     const shown = textOf(await project("short", undefined, [], true));
-    expect(shown.endsWith(`short\n\n[${END_NOTE}]`)).toBe(true);
+    expect(shown.endsWith(`short\n\n${END_NOTE}`)).toBe(true);
   });
 
   test("an offset past the end says the content stops at the download limit", async () => {
     const result = await project(text, 999_999, [], true);
-    expect(textOf(result).endsWith(`(180000). ${END_NOTE}]`)).toBe(true);
-    expect(textOf(result).startsWith("[Response truncated: ")).toBe(true);
+    expect(textOf(result).endsWith(`(180000)]\n${END_NOTE}`)).toBe(true);
+    expect(textOf(result).startsWith(`${PREFIX_NOTE}\n\n`)).toBe(true);
     expect(result.structuredContent).toMatchObject({ response_truncated: true, offset: 999_999 });
     expect(result.structuredContent).not.toHaveProperty("next_offset");
     expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, result.structuredContent)).toBe(true);
+  });
+
+  test("every window of a truncated fetch reports the download limit in bytes", async () => {
+    for (const offset of [undefined, 51_198, 153_594, 999_999]) {
+      const result = await project(text, offset, [], true);
+      expect(result.structuredContent).toMatchObject({ download_limit_bytes: CAP });
+      expect(result.details.downloadLimitBytes).toBe(CAP);
+      expect(result.details.responseTruncated).toBe(true);
+      expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, result.structuredContent)).toBe(true);
+    }
+  });
+
+  test("a page that was not truncated has no download limit field", async () => {
+    for (const offset of [undefined, 99]) {
+      const result = await project("abc", offset);
+      expect(result.structuredContent).not.toHaveProperty("download_limit_bytes");
+      expect(result.details.downloadLimitBytes).toBeUndefined();
+    }
   });
 
   test("a page that was not truncated keeps the plain end-of-content messages", async () => {

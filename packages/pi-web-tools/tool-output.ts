@@ -102,6 +102,7 @@ export const WEB_FETCH_OUTPUT_SCHEMA = Type.Union([
     content: Type.String(),
     truncated: Type.Boolean(),
     response_truncated: Type.Optional(Type.Boolean()),
+    download_limit_bytes: Type.Optional(Type.Number()),
     full_output_path: Type.Optional(Type.String()),
     via: Type.Optional(Type.String()),
     offset: Type.Optional(Type.Number()),
@@ -186,7 +187,9 @@ function fetchTextStructure(page: {
       bytes: page.bytes,
       content,
       truncated: truncated || page.responseTruncated === true,
-      ...(page.responseTruncated === true ? { response_truncated: true } : {}),
+      ...(page.responseTruncated === true
+        ? { response_truncated: true, download_limit_bytes: page.bytes }
+        : {}),
       ...(fullOutputPath === undefined ? {} : { full_output_path: fullOutputPath }),
       ...(page.via === undefined ? {} : { via: page.via }),
       ...(page.offset > 0 ? { offset: pastEnd ? page.offset : start } : {}),
@@ -306,23 +309,23 @@ export function projectFetchResult(
     ? projected.pipe(
         Effect.map((projectedResult) => ({
           ...projectedResult,
-          details: { ...projectedResult.details, truncated: true, responseTruncated: true },
+          details: {
+            ...projectedResult.details,
+            truncated: true,
+            responseTruncated: true,
+            downloadLimitBytes: meta.bytes,
+          },
         })),
       )
     : projected;
 }
 
 function responseTruncatedEnd(capBytes: number): string {
-  return `Content stops at the ${formatSize(capBytes)} download limit; the rest of the page cannot be fetched.`;
+  return `[webfetch truncated: reason=download_limit limit_bytes=${capBytes} bytes_read=${capBytes} complete=false; end of downloaded content]`;
 }
 
 function responseTruncatedNotice(capBytes: number): string {
-  const cap = formatSize(capBytes);
-  return (
-    `[Response truncated: the page is larger than the ${cap} download limit, so only its first ${cap} was read.` +
-    ` The rest of this page cannot be fetched; lists, counts and totals from it may be incomplete.` +
-    ` Look for a smaller or more specific source.]`
-  );
+  return `[webfetch truncated: reason=download_limit limit_bytes=${capBytes} bytes_read=${capBytes} complete=false]`;
 }
 
 /**
@@ -408,9 +411,9 @@ function searchStructure(
   };
 }
 
-/** `. <note>` for the end of the content, or nothing when the output is not itself cut short. */
-function endSentence(endNote: string | undefined): string {
-  return endNote === undefined ? "" : `. ${endNote}`;
+/** `\n<note>` on its own line after a closed bracket, or nothing when the output is not cut short. */
+function endLine(endNote: string | undefined): string {
+  return endNote === undefined ? "" : `\n${endNote}`;
 }
 
 /** Footer of a window that fits the limits; empty for a whole page that is not cut short. */
@@ -419,7 +422,7 @@ function untruncatedRange(start: number, total: number, endNote: string | undefi
   if (endNote === undefined) {
     return range === "" ? "" : `\n\n[${range}]`;
   }
-  return `\n\n[${range === "" ? "" : `${range}. `}${endNote}]`;
+  return range === "" ? `\n\n${endNote}` : `\n\n[${range}]\n${endNote}`;
 }
 
 /** The text shown for a window over the limits, how many bytes of it were consumed, and its summary. */
@@ -490,7 +493,7 @@ function projectTextOutput<Details>({
       content: [
         {
           type: "text",
-          text: `${prefix}[offset ${offset} is at or past the end of the content (${total})${endSentence(endNote)}]`,
+          text: `${prefix}[offset ${offset} is at or past the end of the content (${total})]${endLine(endNote)}`,
         },
       ],
       details: { ...details, truncated: false },
@@ -518,11 +521,9 @@ function projectTextOutput<Details>({
       const { shownText, shownBytes, summary } = truncatedWindow(window, truncation);
       const next = Math.min(start + shownBytes, total);
       const saved = `Full output saved to: ${fullOutputPath}`;
-      const resume =
-        next < total
-          ? `. Call webfetch again with offset=${next} to continue.`
-          : endSentence(endNote);
-      const notice = `${summary} Showing bytes ${start}–${next} of ${total}. ${saved}${resume}]`;
+      const resume = next < total ? `. Call webfetch again with offset=${next} to continue.` : "";
+      const tail = next < total ? "" : endLine(endNote);
+      const notice = `${summary} Showing bytes ${start}–${next} of ${total}. ${saved}${resume}]${tail}`;
       return {
         content: [{ type: "text", text: `${prefix}${shownText}\n\n${notice}` }],
         details: { ...details, truncated: true, fullOutputPath },

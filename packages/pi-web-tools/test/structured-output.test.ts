@@ -229,9 +229,7 @@ function oversized(body: string): PublicWebResponse {
 
 describe("webfetch oversized page", () => {
   const NOTICE =
-    "[Response truncated: the page is larger than the 1.0MB download limit, so only its first 1.0MB was read." +
-    " The rest of this page cannot be fetched; lists, counts and totals from it may be incomplete." +
-    " Look for a smaller or more specific source.]";
+    "[webfetch truncated: reason=download_limit limit_bytes=1048576 bytes_read=1048576 complete=false]";
 
   test("returns the page with a leading notice and the truncation flags", async () => {
     const result = await fetchTool(Result.succeed(oversized(""))).execute("t", {
@@ -244,8 +242,10 @@ describe("webfetch oversized page", () => {
     expect(result.structuredContent).toMatchObject({
       truncated: true,
       response_truncated: true,
+      download_limit_bytes: 1024 * 1024,
       bytes: 1024 * 1024,
     });
+    expect(result.details.downloadLimitBytes).toBe(1024 * 1024);
   });
 
   test("a single-line oversized page keeps its start between the notice and the line-1 notice", async () => {
@@ -271,6 +271,8 @@ describe("webfetch oversized page", () => {
       url: "https://example.com/page",
     });
     expect(result.structuredContent).not.toHaveProperty("response_truncated");
+    expect(result.structuredContent).not.toHaveProperty("download_limit_bytes");
+    expect(result.details.downloadLimitBytes).toBeUndefined();
     expect(result.details.responseTruncated).toBeUndefined();
   });
 

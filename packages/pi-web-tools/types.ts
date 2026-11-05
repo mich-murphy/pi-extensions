@@ -65,6 +65,8 @@ export type WebFetchDetails = {
   readonly truncated?: boolean | undefined;
   /** The page exceeded the download cap; only its first bytes were read. */
   readonly responseTruncated?: boolean | undefined;
+  /** The download cap in bytes; set only when the page exceeded it. */
+  readonly downloadLimitBytes?: number | undefined;
   readonly fullOutputPath?: string | undefined;
   /** Set when content came from a provider-side fetch instead of a direct request. */
   readonly via?: string | undefined;
