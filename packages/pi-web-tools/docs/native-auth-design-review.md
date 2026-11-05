@@ -22,7 +22,7 @@ With no credentials or configuration, search tries Exa's keyless MCP endpoint, t
 | Search/provider response cap | 1 MiB | Includes provider-side rescue responses. |
 | Fetch format | `markdown` | Per-call `text` and `html` are also supported; raster images are returned inline. |
 | Whole fetch deadline | 30 seconds | Per-call `timeout` rounds/clamps to 1–120 seconds; includes rescue and output projection. |
-| Direct fetch response cap | 5 MiB | Applied after decompression. |
+| Direct fetch response cap | 10 MiB | Applied after decompression. |
 | Direct fetch redirects | At most 5 | Recheck domain policy and DNS at every hop. Provider REST calls do not follow redirects. |
 | Fetch rescue | On | Only for eligible blocked/unusable markdown; disabling rescue prevents sharing the URL with a rescue provider. |
 | Fetch allow/deny lists | Empty | Hostname entries include subdomains; deny wins. Either nonempty list disables remote rescue. |

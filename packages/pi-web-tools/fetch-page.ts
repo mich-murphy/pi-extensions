@@ -27,6 +27,8 @@ export type FetchPageMeta = {
   readonly contentType: string;
   readonly charset?: string | undefined;
   readonly bytes: number;
+  /** Set when the page was larger than the download cap and only its first bytes were read. */
+  readonly responseTruncated?: true;
 };
 
 /** A successfully fetched page: response metadata plus its converted text or raw raster image. */
@@ -100,6 +102,7 @@ export class FetchPage extends Context.Service<
             fallbackUserAgent: WEBFETCH_FALLBACK_USER_AGENT,
             maxRedirects: options.maxRedirects,
             maxResponseBytes: options.maxResponseBytes,
+            allowPartialText: true,
             blockPrivateHosts: options.blockPrivateHosts,
             domainPolicy: options.domainPolicy,
           });
@@ -130,12 +133,15 @@ function projectResponse(
     contentType: parsedContentType.contentType,
     charset: parsedContentType.charset,
     bytes: response.body.byteLength,
+    ...(response.responseTruncated === true ? { responseTruncated: true as const } : {}),
   };
   if (parsedContentType.kind === "raster-image") {
     return Result.succeed({ meta, body: { _tag: "Image", data: response.body } });
   }
 
-  const decoded = decodeTextBuffer(response.body, parsedContentType.charset);
+  const decoded = decodeTextBuffer(response.body, parsedContentType.charset, {
+    partial: response.responseTruncated === true,
+  });
   const converted = convertText({
     text: decoded.text,
     baseUrl: response.finalUrl,

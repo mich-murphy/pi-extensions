@@ -121,6 +121,56 @@ describe("fetchPage", () => {
   );
 });
 
+function partial(body: Buffer, contentType: string) {
+  return { ...textWebResponse("", contentType), body, responseTruncated: true };
+}
+
+describe("fetchPage oversized pages", () => {
+  it.effect("asks the client for a partial read and flags the result", () =>
+    Effect.gen(function* () {
+      const { client, requests } = fakePublicWeb(
+        Result.succeed(partial(Buffer.from("plain words"), "text/plain")),
+      );
+      const result = yield* Effect.result(
+        fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
+      );
+      assert(Result.isSuccess(result));
+      expect(requests[0]?.allowPartialText).toBe(true);
+      expect(result.success.meta.responseTruncated).toBe(true);
+    }),
+  );
+
+  it.effect("drops an incomplete trailing UTF-8 sequence of a cut-off body", () =>
+    Effect.gen(function* () {
+      const cut = Buffer.from("abé").subarray(0, 3);
+      const { client } = fakePublicWeb(Result.succeed(partial(cut, "text/plain; charset=utf-8")));
+      const result = yield* Effect.result(
+        fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
+      );
+      assert(Result.isSuccess(result));
+      assert(result.success.body._tag === "Text");
+      expect(result.success.body.text).toBe("ab");
+    }),
+  );
+
+  it.effect("keeps a replacement character for a complete body with bad bytes", () =>
+    Effect.gen(function* () {
+      const { client } = fakePublicWeb(
+        Result.succeed({
+          ...textWebResponse("", "text/plain"),
+          body: Buffer.from([0x61, 0xc3]),
+        }),
+      );
+      const result = yield* Effect.result(
+        fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
+      );
+      assert(Result.isSuccess(result));
+      assert(result.success.body._tag === "Text");
+      expect(result.success.body.text).toBe("a\uFFFD");
+    }),
+  );
+});
+
 describe("fetchPage conversion failures", () => {
   it.effect("an HTML response without elements is EmptyHtmlDocument", () =>
     Effect.gen(function* () {

@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_MAX_BYTES, formatSize } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, it, test } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import type { FetchPageResult } from "../fetch-page";
@@ -112,6 +113,46 @@ describe("projectFetchResult", () => {
     const dirStat = await stat(fullOutputPath.slice(0, fullOutputPath.lastIndexOf("/")));
     expect(permissionBits(dirStat.mode)).toBe(0o700);
     expect(textOf(projected.success)).toContain("Full output saved to:");
+  });
+
+  test("shows the start of a first line longer than the byte limit", async () => {
+    // 3-byte characters put the 50 KB cut mid-character.
+    const line = "€".repeat(30_000);
+    const projected = await Effect.runPromise(
+      Effect.result(
+        projectFetchResult(textResult(`${line}\nsecond`), {
+          store: liveToolOutputStore(),
+          secrets: [],
+        }),
+      ),
+    );
+    assert(Result.isSuccess(projected));
+    const { fullOutputPath } = projected.success.details;
+    assert(typeof fullOutputPath === "string");
+    const text = textOf(projected.success);
+    const shown = text.slice(0, text.indexOf("\n\n[Output truncated"));
+    expect(shown).toBe("€".repeat(Math.floor(DEFAULT_MAX_BYTES / 3)));
+    expect(Buffer.byteLength(shown)).toBeLessThanOrEqual(DEFAULT_MAX_BYTES);
+    expect(
+      text.endsWith(
+        `[Output truncated: line 1 is ${formatSize(90_000)}, longer than the ${formatSize(DEFAULT_MAX_BYTES)} limit; showing its first ${formatSize(Buffer.byteLength(shown))} of ${formatSize(90_007)} total. Showing bytes 0–${Buffer.byteLength(shown)} of 90007. Full output saved to: ${fullOutputPath}. Call webfetch again with offset=${Buffer.byteLength(shown)} to continue.]`,
+      ),
+    ).toBe(true);
+    expect(projected.success.details.truncated).toBe(true);
+  });
+
+  test("redacts secrets in the shown part of a long first line", async () => {
+    const projected = await Effect.runPromise(
+      Effect.result(
+        projectFetchResult(textResult(`SECRET${"x".repeat(60_000)}`), {
+          store: liveToolOutputStore(),
+          secrets: ["SECRET"],
+        }),
+      ),
+    );
+    assert(Result.isSuccess(projected));
+    expect(textOf(projected.success)).not.toContain("SECRET");
+    expect(textOf(projected.success).startsWith("[redacted]x")).toBe(true);
   });
 
   it.effect("projects images as inline content", () =>

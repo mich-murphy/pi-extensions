@@ -352,3 +352,87 @@ describe("webfetch structuredContent through real rescue adapters", () => {
     },
   );
 });
+
+const LINE_BYTES = 100;
+const PAGED_BODY = Array.from(
+  { length: 10_600 },
+  (_, index) => `${String(index).padStart(8, "0")}${"x".repeat(LINE_BYTES - 9)}`,
+).join("\n");
+
+function pagedWindow(structured: unknown) {
+  assert(typeof structured === "object" && structured !== null);
+  assert("content" in structured && typeof structured.content === "string");
+  return structured;
+}
+
+describe("webfetch paging through real rescue adapters", () => {
+  test.each(RESCUE_CASES)(
+    "$name pages rescued markdown by the offset the notice names",
+    async (testCase) => {
+      const first = await rescueTool(testCase.make(PAGED_BODY)).execute("t", BLOCKED);
+      const next = Number(/offset=(?<next>\d+) to continue/u.exec(textOf(first))?.groups?.next);
+      expect(next).toBeGreaterThan(0);
+      expect(next).toBeLessThan(STRUCTURED_OUTPUT_MAX_BYTES);
+
+      const second = await rescueTool(testCase.make(PAGED_BODY)).execute("t", {
+        ...BLOCKED,
+        offset: next,
+      });
+      expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, second.structuredContent)).toBe(true);
+      expect(pagedWindow(second.structuredContent)).toMatchObject({
+        content: PAGED_BODY.slice(next),
+        offset: next,
+        truncated: false,
+        via: testCase.provider,
+      });
+      expect(second.structuredContent).not.toHaveProperty("next_offset");
+      expect(textOf(second)).toContain(PAGED_BODY.slice(next, next + 200));
+    },
+  );
+
+  test.each(RESCUE_CASES)(
+    "$name advances next_offset and drops it at the end",
+    async (testCase) => {
+      const first = await rescueTool(testCase.make(PAGED_BODY)).execute("t", BLOCKED);
+      expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, first.structuredContent)).toBe(true);
+      expect(first.structuredContent).toMatchObject({
+        content: PAGED_BODY.slice(0, STRUCTURED_OUTPUT_MAX_BYTES),
+        truncated: true,
+        next_offset: STRUCTURED_OUTPUT_MAX_BYTES,
+      });
+      expect(first.structuredContent).not.toHaveProperty("offset");
+
+      const last = await rescueTool(testCase.make(PAGED_BODY)).execute("t", {
+        ...BLOCKED,
+        offset: STRUCTURED_OUTPUT_MAX_BYTES,
+      });
+      expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, last.structuredContent)).toBe(true);
+      expect(last.structuredContent).toMatchObject({
+        content: PAGED_BODY.slice(STRUCTURED_OUTPUT_MAX_BYTES),
+        offset: STRUCTURED_OUTPUT_MAX_BYTES,
+        truncated: false,
+      });
+      expect(last.structuredContent).not.toHaveProperty("next_offset");
+    },
+  );
+
+  test.each(RESCUE_CASES)("$name reports an offset past the end as empty", async (testCase) => {
+    const offset = PAGED_BODY.length + 10;
+    const result = await rescueTool(testCase.make(PAGED_BODY)).execute("t", {
+      ...BLOCKED,
+      offset,
+    });
+
+    expect(Value.Check(WEB_FETCH_OUTPUT_SCHEMA, result.structuredContent)).toBe(true);
+    expect(textOf(result)).toContain(
+      `[offset ${offset} is at or past the end of the content (${PAGED_BODY.length})`,
+    );
+    expect(result.structuredContent).toMatchObject({
+      content: "",
+      offset,
+      truncated: false,
+      via: testCase.provider,
+    });
+    expect(result.structuredContent).not.toHaveProperty("next_offset");
+  });
+});
