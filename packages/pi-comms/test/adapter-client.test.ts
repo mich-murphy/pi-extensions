@@ -1,0 +1,1149 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
+import type { Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Database, Hegel } from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
+import { afterEach, describe, expect, test } from "vitest";
+import { GatewayClient } from "../adapter/client.js";
+import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
+import type { Configuration } from "../adapter/config.js";
+import { createAdapterRuntime } from "../adapter/runtime.js";
+import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
+import { registerTools } from "../adapter/tools.js";
+import { connectTransport } from "../adapter/transport.js";
+import sessionCommunication from "../index.js";
+import type { Frame, Message } from "../protocol/schema.js";
+import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
+
+const peer = { machineId: "alpha", sessionId: "unit", runtimeNonce: "1".repeat(32) };
+const other = { machineId: "beta", sessionId: "sender", runtimeNonce: "2".repeat(32) };
+const cleanups: (() => Promise<void>)[] = [];
+type Reply = Extract<Frame, { op: "result" }>;
+type Request = Exclude<Frame, { op: "result" | "roster.event" }>;
+async function gateway(
+  handler: (request: Request, socket: Socket) => Reply | undefined,
+  holdRegistration = false,
+) {
+  const directory = await mkdtemp(join(tmpdir(), "psc-"));
+  const sockets = new Set<Socket>();
+  const requests: Request[] = [];
+  const replies: Reply[] = [];
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => {
+      sockets.delete(socket);
+    });
+    let buffer = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= 4 && buffer.length >= frameBodyLength(buffer.subarray(0, 4)) + 4) {
+        const total = frameBodyLength(buffer.subarray(0, 4)) + 4;
+        const request = decodeFrame(buffer.subarray(0, total), "local-client");
+        buffer = Buffer.from(buffer.subarray(total));
+        if (request.op === "result") {
+          replies.push(request);
+          continue;
+        }
+        if (request.op === "roster.event") {
+          continue;
+        }
+        requests.push(request);
+        let reply: Reply | undefined;
+        if (request.op === "register" && !holdRegistration) {
+          reply = {
+            v: 1,
+            op: "result",
+            rid: request.rid,
+            forOp: "register",
+            outcome: {
+              tag: "ok",
+              value: {
+                peer: { ...peer, sessionId: request.sessionId, runtimeNonce: request.runtimeNonce },
+                scopeIds: request.scopeIds,
+              },
+            },
+          };
+        } else {
+          reply = handler(request, socket);
+        }
+        if (reply !== undefined) {
+          socket.write(encodeFrame(reply, "adapter-delivery"));
+        }
+      }
+    });
+  });
+  const socketPath = join(directory, "gateway.sock");
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  cleanups.push(async () => {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+    await rm(directory, { recursive: true, force: true });
+  });
+  const config: Configuration = {
+    machineId: "alpha",
+    socketPath,
+    scopeIds: ["team"],
+    label: "test",
+    policies: [
+      { machineId: "beta", scopeId: "team", permissions: ["discover", "read", "push", "interest"] },
+    ],
+  };
+  return {
+    config,
+    requests,
+    replies,
+    raw: (bytes: Buffer) => {
+      const socket = [...sockets][0];
+      assert(socket);
+      socket.write(bytes);
+    },
+    sendFrame: (frame: Frame) => {
+      const socket = [...sockets][0];
+      assert(socket);
+      socket.write(encodeFrame(frame, "adapter-delivery"));
+    },
+  };
+}
+function authored(id = "3".repeat(32)): Message {
+  return { id, kind: "update", content: "bounded authored content", format: "text" };
+}
+function binding(message: Message) {
+  return { messageId: message.id, sender: peer, recipient: other, scopeId: "team" };
+}
+
+function lostThenDenied() {
+  let sends = 0;
+  return (request: Request, socket: Socket): Reply | undefined => {
+    if (request.op !== "send") {
+      return undefined;
+    }
+    sends += 1;
+    if (sends === 1) {
+      socket.destroy();
+      return undefined;
+    }
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "send",
+      outcome: { tag: "not_admitted", binding: binding(request.message), code: "forbidden" },
+    };
+  };
+}
+function misbound(request: Request): Reply | undefined {
+  if (request.op !== "send") {
+    return undefined;
+  }
+  return {
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "send",
+    outcome: {
+      tag: "admitted",
+      binding: { ...binding(request.message), messageId: "f".repeat(32) },
+      correlation: "none",
+    },
+  };
+}
+function permissionList(allowed: boolean): string[] {
+  return allowed ? ["push"] : [];
+}
+
+function discoveryReply(request: Request): Reply | undefined {
+  if (request.op !== "discover") {
+    return undefined;
+  }
+  return {
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "discover",
+    outcome: {
+      tag: "ok",
+      value: {
+        peers: [{ peer: other, label: "other", scopeIds: request.scopeIds }],
+        watching: request.watch,
+      },
+    },
+  };
+}
+function releaseRegistration(fixture: Awaited<ReturnType<typeof gateway>>): void {
+  const request = fixture.requests.find((item) => item.op === "register");
+  assert(request?.op === "register");
+  fixture.sendFrame({
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "register",
+    outcome: { tag: "ok", value: { peer, scopeIds: ["team"] } },
+  });
+}
+async function resultOf<A>(promise: Promise<A>): Promise<A | string> {
+  try {
+    return await promise;
+  } catch (error) {
+    return error instanceof Error ? error.message : "failure";
+  }
+}
+function makeClient(config: Configuration): GatewayClient {
+  return new GatewayClient({
+    config,
+    peer,
+    incoming: () => {
+      throw new Error("Unexpected inbound");
+    },
+    statusChanged: () => undefined,
+  });
+}
+
+function toolGateway(request: Request): Reply | undefined {
+  if (request.op === "send") {
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "send",
+      outcome: { tag: "admitted", binding: binding(request.message), correlation: "none" },
+    };
+  }
+  if (request.op === "state.get") {
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "state.get",
+      outcome: { tag: "error", code: "not_found" },
+    };
+  }
+  if (request.op === "state.list") {
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "state.list",
+      outcome: {
+        tag: "ok",
+        value: { publisher: request.publisher, scopeId: request.scopeId, revision: 0, items: [] },
+      },
+    };
+  }
+  if (request.op === "interest.add") {
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "interest.add",
+      outcome: { tag: "error", code: "not_found" },
+    };
+  }
+  if (request.op === "interest.remove") {
+    return {
+      v: 1,
+      op: "result",
+      rid: request.rid,
+      forOp: "interest.remove",
+      outcome: {
+        tag: "ok",
+        value: {
+          publisher: request.publisher,
+          scopeId: request.scopeId,
+          work: request.work,
+          active: false,
+        },
+      },
+    };
+  }
+  return discoveryReply(request);
+}
+type CapturedTool = { name: string; execute: unknown };
+async function executeTool(
+  tools: readonly CapturedTool[],
+  name: string,
+  args: unknown,
+): Promise<unknown> {
+  const definition = tools.find((tool) => tool.name === name);
+  assert(definition);
+  // Public registration seam; these handlers do not read the optional host execution context.
+  const action = definition.execute;
+  assert(typeof action === "function");
+  const result: unknown = await Reflect.apply(action, undefined, [
+    "unit",
+    args,
+    new AbortController().signal,
+  ]);
+  assert(typeof result === "object" && result !== null && "details" in result);
+  const details: unknown = result.details;
+  assert(typeof details === "object" && details !== null && "value" in details);
+  return details.value;
+}
+
+function restoreAgentDir(previous: string | undefined): void {
+  if (previous === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = previous;
+  }
+}
+function replyToReport(
+  fixture: Awaited<ReturnType<typeof gateway>>,
+  request: Extract<Request, { op: "send" }>,
+  denied: boolean,
+): void {
+  const receipt = {
+    messageId: request.message.id,
+    sender: peer,
+    recipient: request.to,
+    scopeId: request.scopeId,
+  };
+  const outcome = denied
+    ? { tag: "not_admitted" as const, binding: receipt, code: "forbidden" as const }
+    : { tag: "admitted" as const, binding: receipt, correlation: "none" as const };
+  fixture.sendFrame({ v: 1, op: "result", rid: request.rid, forOp: "send", outcome });
+}
+function extensionHost() {
+  const handlers = new Map<string, unknown>();
+  let command: unknown;
+  const notifications: string[] = [];
+  const statuses: (string | undefined)[] = [];
+  const context = {
+    sessionManager: { getSessionId: () => peer.sessionId },
+    isIdle: () => true,
+    ui: {
+      notify: (text: string) => {
+        notifications.push(text);
+      },
+      setStatus: (_key: string, text: string | undefined) => {
+        statuses.push(text);
+      },
+    },
+  };
+  Reflect.apply(sessionCommunication, undefined, [
+    {
+      on: (name: string, handler: unknown) => {
+        handlers.set(name, handler);
+      },
+      registerTool: () => undefined,
+      registerCommand: (_name: string, definition: { handler: unknown }) => {
+        command = definition.handler;
+      },
+      sendMessage: () => undefined,
+    },
+  ]);
+  return {
+    notifications,
+    statuses,
+    event: async (name: string, event: unknown = {}) => {
+      const handler = handlers.get(name);
+      assert(typeof handler === "function");
+      const result: unknown = await Reflect.apply(handler, undefined, [event, context]);
+      return result;
+    },
+    command: async (args: string) => {
+      assert(typeof command === "function");
+      const result: unknown = await Reflect.apply(command, undefined, [args, context]);
+      return result;
+    },
+  };
+}
+
+describe("public adapter transport and notice accounting", () => {
+  afterEach(async () => {
+    for (const close of cleanups.splice(0).toReversed()) {
+      await close();
+    }
+  });
+  test("public extension registration is inert without config, reports failures, and disposes enabled lifecycle", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "psc-extension-"));
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = directory;
+    const host = extensionHost();
+    cleanups.push(async () => {
+      await host.event("session_shutdown");
+      restoreAgentDir(previous);
+      await rm(directory, { recursive: true, force: true });
+    });
+    await host.event("session_start");
+    await host.command("");
+    expect(host.notifications.at(-1)).toContain("not enabled");
+    await host.command("invalid");
+    expect(host.notifications.at(-1)).toContain("Usage:");
+    await host.command("reconnect");
+    await host.event("message_end", { message: { role: "custom" } });
+    await host.event("agent_before_settle", { entries: [] });
+    await host.event("agent_settled");
+    await host.event("session_compact");
+    await host.event("session_compact_failed", { aborted: true });
+    await host.event("session_shutdown");
+    await writeFile(join(directory, "session-communication.json"), "invalid");
+    await host.event("session_start");
+    expect(host.statuses.at(-1)).toContain("configuration/startup failed");
+    const fixture = await gateway(discoveryReply);
+    await writeFile(join(directory, "session-communication.json"), JSON.stringify(fixture.config));
+    await host.event("session_start");
+    await expect.poll(() => fixture.requests.length).toBe(1);
+    await host.command("reconnect");
+    expect(host.notifications.at(-1)).toContain("Session communication: enabled");
+    expect(host.statuses.at(-1)).toBeUndefined();
+    await host.event("message_end", { message: { role: "custom" } });
+    await host.event("agent_before_settle", { entries: [] });
+    await host.event("agent_settled");
+    await host.event("session_compact");
+    await host.event("session_compact_failed", { aborted: true });
+    await host.event("session_shutdown");
+    await host.event("session_shutdown");
+    await host.command("status");
+    expect(host.notifications.at(-1)).toBe(
+      "Session communication: not enabled · runtime unavailable",
+    );
+    expect(host.notifications.at(-1)).not.toContain("Session communication: enabled");
+  });
+  test("public tools share the scoped runtime and reserve report fanout before publication", async () => {
+    const fixture = await gateway(toolGateway);
+    const current: { session?: AdapterSession } = {};
+    const tools: CapturedTool[] = [];
+    registerTools(
+      {
+        registerTool: (definition) => {
+          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+        },
+      },
+      () => current.session,
+    );
+    await expect(executeTool(tools, "session_take", {})).resolves.toMatchObject({
+      tag: "error",
+      code: "unavailable",
+    });
+    const owned = await createAdapterRuntime(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+    );
+    cleanups.push(async () => {
+      await owned.dispose();
+    });
+    current.session = owned.session;
+    await expect.poll(() => owned.session.client.status().connected).toBe(true);
+    await expect(executeTool(tools, "session_peers", {})).resolves.toMatchObject({
+      peers: [{ peer: other }],
+    });
+    await expect(
+      executeTool(tools, "session_send", {
+        to: other,
+        scopeId: "team",
+        message: { kind: "request", content: "request", format: "text" },
+      }),
+    ).resolves.toMatchObject({ outcome: { tag: "admitted" } });
+    await expect(
+      executeTool(tools, "session_send", {
+        to: peer,
+        scopeId: "team",
+        message: { kind: "update", content: "denied", format: "text" },
+      }),
+    ).resolves.toMatchObject({ outcome: { tag: "not_admitted", code: "forbidden" } });
+    await expect(executeTool(tools, "session_take", {})).resolves.toMatchObject({ messages: [] });
+    const record = {
+      category: "context",
+      title: "title",
+      summary: "summary",
+      format: "text",
+      preparation: "authored",
+    };
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "put",
+        scopeId: "team",
+        key: "notes",
+        record,
+      }),
+    ).resolves.toMatchObject({ tag: "ok" });
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "remove",
+        scopeId: "team",
+        key: "notes",
+      }),
+    ).resolves.toMatchObject({ tag: "ok" });
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "get",
+        publisher: other,
+        scopeId: "team",
+        key: "notes",
+        expectedRevision: 1,
+      }),
+    ).resolves.toMatchObject({ tag: "error", code: "not_found" });
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "list",
+        publisher: other,
+        scopeId: "team",
+      }),
+    ).resolves.toMatchObject({ tag: "ok" });
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "list",
+        publisher: peer,
+        scopeId: "team",
+      }),
+    ).resolves.toMatchObject({ code: "forbidden" });
+    await expect(
+      executeTool(tools, "session_state", {
+        action: "remove",
+        scopeId: "other",
+        key: "notes",
+      }),
+    ).resolves.toMatchObject({ code: "unavailable" });
+    const work = { kind: "request", origin: peer, requestId: "8".repeat(32) };
+    await expect(
+      executeTool(tools, "session_interest", {
+        action: "add",
+        publisher: other,
+        scopeId: "team",
+        work,
+      }),
+    ).resolves.toMatchObject({ code: "not_found" });
+    await expect(
+      executeTool(tools, "session_interest", {
+        action: "remove",
+        publisher: other,
+        scopeId: "team",
+        work,
+      }),
+    ).resolves.toMatchObject({ tag: "ok" });
+    await expect(
+      executeTool(tools, "session_interest", {
+        action: "add",
+        publisher: peer,
+        scopeId: "team",
+        work,
+      }),
+    ).resolves.toMatchObject({ code: "forbidden" });
+    const report = {
+      scopeId: "team",
+      key: "work",
+      record: { ...record, category: "work", work, status: "in_progress" },
+      notify: "selected",
+      recipients: [other],
+    };
+    const release = owned.session.client.reservePushes(8);
+    assert(release);
+    const revision = owned.session.state.stats().revision;
+    await expect(executeTool(tools, "session_report", report)).resolves.toMatchObject({
+      tag: "error",
+      code: "overloaded",
+      resource: "operations",
+    });
+    expect(owned.session.state.stats().revision).toBe(revision);
+    release();
+    await expect(executeTool(tools, "session_report", report)).resolves.toMatchObject({
+      tag: "ok",
+      value: { pushes: [{ outcome: { tag: "admitted" } }] },
+    });
+    expect(owned.session.client.status().operations).toBe(0);
+    await expect(
+      executeTool(tools, "session_send", {
+        to: other,
+        scopeId: "team",
+        message: { kind: "request", content: "invalid", format: "text", unexpected: true },
+      }),
+    ).resolves.toMatchObject({ tag: "error", code: "invalid_input" });
+  });
+  test("report commits once, holds all eight logical slots across four-wide partial delivery, then releases", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    const recipients = Array.from({ length: 8 }, (_, index) => ({
+      ...other,
+      sessionId: `recipient-${index}`,
+    }));
+    const pending = session.report({
+      scopeId: "team",
+      key: "report",
+      notify: "selected",
+      recipients,
+      record: {
+        category: "work",
+        title: "bounded report",
+        summary: "authored terminal result",
+        format: "text",
+        preparation: "authored",
+        status: "completed",
+        work: { kind: "publication", publisher: peer, key: "report" },
+      },
+    });
+    await expect
+      .poll(() => fixture.requests.filter((request) => request.op === "send").length)
+      .toBe(4);
+    expect(session.state.stats().revision).toBe(1);
+    expect(session.client.status().operations).toBe(8);
+    await expect(
+      session.report({
+        scopeId: "team",
+        key: "unused",
+        notify: "selected",
+        recipients,
+        record: {
+          category: "context",
+          title: "not published",
+          summary: "not work",
+          format: "text",
+          preparation: "authored",
+        },
+      }),
+    ).resolves.toMatchObject({ tag: "error", code: "overloaded", resource: "operations" });
+    await expect(session.send(other, "team", authored())).resolves.toMatchObject({
+      tag: "not_admitted",
+      code: "overloaded",
+    });
+    const firstBatch = fixture.requests.filter((request) => request.op === "send");
+    for (const [index, request] of firstBatch.entries()) {
+      replyToReport(fixture, request, index === 0);
+    }
+    await expect
+      .poll(() => fixture.requests.filter((request) => request.op === "send").length)
+      .toBe(8);
+    expect(session.client.status().operations).toBe(8);
+    const secondBatch = fixture.requests.filter((request) => request.op === "send").slice(4);
+    for (const request of secondBatch) {
+      replyToReport(fixture, request, false);
+    }
+    const result = await pending;
+    expect(result).toMatchObject({ tag: "ok", value: { publication: { revision: 1 } } });
+    assert(result.tag === "ok");
+    expect(result.value.pushes).toHaveLength(8);
+    expect(result.value.pushes[0]).toMatchObject({
+      outcome: { tag: "not_admitted", code: "forbidden" },
+    });
+    expect(session.state.stats().revision).toBe(1);
+    expect(session.client.status().operations).toBe(0);
+    await expect(
+      session.report({
+        scopeId: "team",
+        key: "unused",
+        notify: "interested",
+        record: {
+          category: "context",
+          title: "invalid report",
+          summary: "not work",
+          format: "text",
+          preparation: "authored",
+        },
+      }),
+    ).resolves.toMatchObject({ tag: "error" });
+    expect(session.client.status().operations).toBe(0);
+  });
+  test("shared registration survives initiating caller cancellation", async () => {
+    const fixture = await gateway(discoveryReply, true);
+    const client = makeClient(fixture.config);
+    cleanups.push(async () => {
+      client.close();
+    });
+    const abort = new AbortController();
+    const first = resultOf(
+      client.request(
+        { v: 1, op: "discover", rid: "a".repeat(32), scopeIds: ["team"], watch: false },
+        abort.signal,
+      ),
+    );
+    await expect.poll(() => fixture.requests.length).toBe(1);
+    const second = resultOf(
+      client.request({
+        v: 1,
+        op: "discover",
+        rid: "b".repeat(32),
+        scopeIds: ["team"],
+        watch: false,
+      }),
+    );
+    abort.abort();
+    releaseRegistration(fixture);
+    await expect(first).resolves.toContain("cancelled");
+    await expect(second).resolves.toMatchObject({ forOp: "discover", outcome: { tag: "ok" } });
+  });
+  test("each connection waiter honors its own deadline without cancelling registration", async () => {
+    const fixture = await gateway(discoveryReply, true);
+    const client = makeClient(fixture.config);
+    cleanups.push(async () => {
+      client.close();
+    });
+    const first = resultOf(
+      client.request({
+        v: 1,
+        op: "discover",
+        rid: "a".repeat(32),
+        scopeIds: ["team"],
+        watch: false,
+      }),
+    );
+    await expect.poll(() => fixture.requests.length).toBe(1);
+    const short = resultOf(
+      client.request(
+        { v: 1, op: "discover", rid: "b".repeat(32), scopeIds: ["team"], watch: false },
+        undefined,
+        performance.now() + 20,
+      ),
+    );
+    const raced = await Promise.race([
+      short,
+      new Promise<string>((resolve) => {
+        setTimeout(() => {
+          resolve("waiter ignored deadline");
+        }, 150);
+      }),
+    ]);
+    releaseRegistration(fixture);
+    await short;
+    await first;
+    expect(raced).toContain("unavailable");
+  });
+  test("an initializing watch never returns a premature cached snapshot or different scopes", async () => {
+    const fixture = await gateway(() => undefined);
+    const client = makeClient(fixture.config);
+    cleanups.push(async () => {
+      client.close();
+    });
+    const first = client.discover(["team"], true);
+    await expect
+      .poll(() => fixture.requests.filter((request) => request.op === "discover").length)
+      .toBe(1);
+    const same = await client.discover(["team"], true);
+    const different = await client.discover(["other"], true);
+    const request = fixture.requests.find((item) => item.op === "discover");
+    assert(request);
+    const reply = discoveryReply(request);
+    assert(reply);
+    fixture.sendFrame(reply);
+    await first;
+    expect(same).toMatchObject({
+      outcome: { tag: "error", code: "overloaded", resource: "watch" },
+    });
+    expect(different).toMatchObject({
+      outcome: { tag: "error", code: "overloaded", resource: "watch" },
+    });
+    const ready = await client.discover(["team"], true);
+    expect(ready).toMatchObject({
+      outcome: { tag: "ok", value: { peers: [{ peer: other }], watching: true } },
+    });
+    await expect(client.discover(["other"], true)).resolves.toMatchObject({
+      outcome: { tag: "error", code: "overloaded", resource: "watch" },
+    });
+  });
+  test("keeps message identity and uncertainty when a lost receipt is followed by denial", async () => {
+    const fixture = await gateway(lostThenDenied());
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      incoming: () => {
+        throw new Error("Unexpected inbound");
+      },
+      statusChanged: () => undefined,
+    });
+    cleanups.push(async () => {
+      client.close();
+    });
+    const result = await client.send(other, "team", authored());
+    expect(result.tag).toBe("unknown");
+    const attempts = fixture.requests.filter((request) => request.op === "send");
+    expect(attempts).toHaveLength(2);
+    expect(new Set(attempts.map((request) => request.message.id)).size).toBe(1);
+    expect(new Set(attempts.map((request) => request.rid)).size).toBe(2);
+  });
+  test("rejects a misbound admitted receipt without retrying malformed protocol", async () => {
+    const fixture = await gateway(misbound);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      incoming: () => {
+        throw new Error("Unexpected inbound");
+      },
+      statusChanged: () => undefined,
+    });
+    cleanups.push(async () => {
+      client.close();
+    });
+    const result = await client.send(other, "team", authored());
+    expect(result).toMatchObject({ tag: "unknown", code: "protocol_error" });
+    expect(fixture.requests.filter((request) => request.op === "send")).toHaveLength(1);
+  });
+  test("transfers FIFO payloads once, retains receipts, and retires only exact identified notices", async () => {
+    const fixture = await gateway(() => undefined);
+    const notices: { customType: string; details?: unknown }[] = [];
+    let idle = false;
+    const session: AdapterSession = new AdapterSession(
+      fixture.config,
+      peer,
+      {
+        sendMessage: (message) => {
+          notices.push(message);
+        },
+      },
+      () => ({ isIdle: () => idle, ui: { setStatus: () => undefined } }),
+      () => {
+        session.pumpIdle();
+      },
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    const message = authored();
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "4".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message,
+    });
+    await expect.poll(() => session.state.stats().inboxMessages).toBe(1);
+    expect(notices).toHaveLength(0);
+    const boundary = session.beforeSettle({ entries: [] });
+    expect(boundary?.continue).toBe(true);
+    expect(session.beforeSettle({ entries: [] })).toBeUndefined();
+    session.settled();
+    idle = true;
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "5".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message: authored("6".repeat(32)),
+    });
+    await expect.poll(() => notices.length).toBe(1);
+    session.observed({ role: "custom", customType: NOTICE_TYPE, details: { noticeId: "wrong" } });
+    expect(session.status().notice).toBe("submitted_unobserved");
+    const taken = session.take(8);
+    expect(taken.messages.map((delivery) => delivery.message.id)).toStrictEqual([
+      message.id,
+      "6".repeat(32),
+    ]);
+    expect(session.take(8).messages).toHaveLength(0);
+    expect(session.state.stats().receipts).toBe(2);
+    expect(session.status().notice).toBe("submitted_unobserved");
+    session.observed({ role: "custom", customType: NOTICE_TYPE, details: notices[0]?.details });
+    expect(session.status().notice).toBe("none");
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "7".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message,
+    });
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(session.state.stats().inboxMessages).toBe(0);
+    expect(notices).toHaveLength(1);
+  });
+  test("watch events update only the live scoped snapshot and invalidation permits a fresh watch", async () => {
+    const fixture = await gateway(discoveryReply);
+    const client = makeClient(fixture.config);
+    cleanups.push(async () => {
+      client.close();
+    });
+    await client.discover(["team"], true);
+    const request = fixture.requests.find((item) => item.op === "discover");
+    assert(request);
+    fixture.sendFrame({
+      v: 1,
+      op: "roster.event",
+      rid: "f".repeat(32),
+      event: { tag: "remove", peer: other },
+    });
+    fixture.sendFrame({
+      v: 1,
+      op: "roster.event",
+      rid: request.rid,
+      event: { tag: "remove", peer: other },
+    });
+    await expect
+      .poll(async () => client.discover(["team"], true))
+      .toMatchObject({ outcome: { value: { peers: [] } } });
+    fixture.sendFrame({
+      v: 1,
+      op: "roster.event",
+      rid: request.rid,
+      event: { tag: "upsert", peer: { peer: other, label: "changed", scopeIds: ["team"] } },
+    });
+    await expect
+      .poll(async () => client.discover(["team"], true))
+      .toMatchObject({ outcome: { value: { peers: [{ label: "changed" }] } } });
+    fixture.sendFrame({
+      v: 1,
+      op: "roster.event",
+      rid: request.rid,
+      event: { tag: "invalidated", reason: "policy_changed" },
+    });
+    await expect.poll(() => client.status().watching).toBe(false);
+    await client.discover(["team"], true);
+    expect(fixture.requests.filter((item) => item.op === "discover")).toHaveLength(2);
+    const release = client.reservePushes(8);
+    assert(release);
+    expect(client.reservePushes(1)).toBeUndefined();
+    expect(client.reservePushes(0)).toBeUndefined();
+    expect(client.reservePushes(9)).toBeUndefined();
+    await expect(client.send(other, "team", authored())).resolves.toMatchObject({
+      tag: "not_admitted",
+      code: "overloaded",
+    });
+    release();
+    release();
+    expect(client.status().operations).toBe(0);
+    client.close();
+    expect(client.reservePushes(1)).toBeUndefined();
+    await expect(client.send(other, "team", authored())).resolves.toMatchObject({
+      code: "cancelled",
+    });
+    await expect(
+      client.request({
+        v: 1,
+        op: "discover",
+        rid: "e".repeat(32),
+        scopeIds: ["team"],
+        watch: false,
+      }),
+    ).rejects.toMatchObject({ code: "cancelled" });
+  });
+  test("failed watches release ownership and malformed scope events close the connection", async () => {
+    const fixture = await gateway(discoveryReply);
+    const client = makeClient(fixture.config);
+    cleanups.push(async () => {
+      client.close();
+    });
+    await expect(client.discover(["team"], true, AbortSignal.abort())).rejects.toMatchObject({
+      code: "cancelled",
+    });
+    expect(client.status().watching).toBe(false);
+    await client.discover(["team"], true);
+    const request = fixture.requests.find((item) => item.op === "discover");
+    assert(request);
+    fixture.sendFrame({
+      v: 1,
+      op: "roster.event",
+      rid: request.rid,
+      event: { tag: "upsert", peer: { peer: other, label: "bad scope", scopeIds: ["private"] } },
+    });
+    await expect.poll(() => client.status().status).toBe("protocol_error");
+    await expect(
+      client.request(
+        { v: 1, op: "discover", rid: "e".repeat(32), scopeIds: ["team"], watch: false },
+        undefined,
+        performance.now() - 1,
+      ),
+    ).rejects.toMatchObject({ code: "unavailable" });
+  });
+  test("transport bounds pending slots, aborts waits, discards stale results and fails malformed frames", async () => {
+    const fixture = await gateway(() => undefined, true);
+    const disconnected: string[] = [];
+    const connection = await connectTransport({
+      socketPath: fixture.config.socketPath,
+      deadline: performance.now() + 1000,
+      incoming: () => {
+        throw new Error("unsupported");
+      },
+      event: () => undefined,
+      disconnected: (code) => {
+        disconnected.push(code);
+      },
+      validateReply: () => undefined,
+    });
+    cleanups.push(async () => {
+      connection.close();
+    });
+    const abort = new AbortController();
+    const pending = Array.from({ length: 8 }, async (_, index) =>
+      resultOf(
+        connection.request(
+          {
+            v: 1,
+            op: "discover",
+            rid: index.toString(16).repeat(32),
+            scopeIds: ["team"],
+            watch: false,
+          },
+          performance.now() + 1000,
+          abort.signal,
+        ),
+      ),
+    );
+    expect(connection.pendingCount()).toBe(8);
+    await expect(
+      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() + 1000),
+    ).rejects.toMatchObject({ code: "overloaded", possible: false });
+    abort.abort();
+    await expect(Promise.all(pending)).resolves.toStrictEqual(
+      Array.from({ length: 8 }, () => "Session communication cancelled"),
+    );
+    expect(connection.pendingCount()).toBe(0);
+    await expect(
+      connection.request(
+        { v: 1, op: "close", rid: "a".repeat(32) },
+        performance.now() + 1000,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toMatchObject({ code: "cancelled" });
+    await expect(
+      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
+    ).rejects.toMatchObject({ code: "unavailable" });
+    await expect(
+      connection.request({ v: 1, op: "close", rid: "b".repeat(32) }, performance.now() + 10),
+    ).rejects.toMatchObject({ code: "unavailable", possible: true });
+    fixture.sendFrame({
+      v: 1,
+      op: "result",
+      rid: "b".repeat(32),
+      forOp: "close",
+      outcome: { tag: "ok", value: {} },
+    });
+    fixture.raw(Buffer.from([0, 0, 0, 0]));
+    await expect.poll(() => disconnected).toEqual(["protocol_error"]);
+    await expect(
+      connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 1000),
+    ).rejects.toMatchObject({ code: "unavailable" });
+  });
+  test("adapter serves read/interest controls without wakes, including wrong-runtime routing", async () => {
+    const fixture = await gateway(() => undefined);
+    const notices: unknown[] = [];
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      {
+        sendMessage: (value) => {
+          notices.push(value);
+        },
+      },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    const work = { kind: "publication" as const, publisher: peer, key: "report" };
+    expect(
+      session.state.publish({
+        scopeId: "team",
+        key: "report",
+        record: {
+          category: "work",
+          title: "report",
+          summary: "summary",
+          format: "text",
+          preparation: "authored",
+          work,
+        },
+      }),
+    ).toMatchObject({ tag: "ok" });
+    fixture.sendFrame({
+      v: 1,
+      op: "state.get",
+      rid: "a".repeat(32),
+      from: other,
+      publisher: peer,
+      scopeId: "team",
+      key: "report",
+      expectedRevision: 1,
+    });
+    fixture.sendFrame({
+      v: 1,
+      op: "state.list",
+      rid: "b".repeat(32),
+      from: other,
+      publisher: peer,
+      scopeId: "team",
+    });
+    fixture.sendFrame({
+      v: 1,
+      op: "interest.add",
+      rid: "c".repeat(32),
+      from: other,
+      publisher: peer,
+      scopeId: "team",
+      work,
+    });
+    fixture.sendFrame({
+      v: 1,
+      op: "interest.remove",
+      rid: "d".repeat(32),
+      from: other,
+      publisher: peer,
+      scopeId: "team",
+      work,
+    });
+    fixture.sendFrame({
+      v: 1,
+      op: "state.list",
+      rid: "e".repeat(32),
+      from: other,
+      publisher: other,
+      scopeId: "team",
+    });
+    await expect.poll(() => fixture.replies.length).toBe(5);
+    expect(fixture.replies.slice(0, 4).every((reply) => reply.outcome.tag === "ok")).toBe(true);
+    expect(fixture.replies[4]).toMatchObject({ outcome: { tag: "error", code: "no_route" } });
+    expect(notices).toHaveLength(0);
+    session.afterCompaction(true);
+    session.afterCompaction();
+    session.afterCompaction();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(notices).toHaveLength(0);
+    fixture.raw(Buffer.from(encodeFrame({ v: 1, op: "ping", rid: "f".repeat(32) }, "remote-link")));
+    await expect.poll(() => session.client.status().connected).toBe(false);
+    session.close();
+    session.afterCompaction();
+    expect(session.beforeSettle({ entries: [] })).toBeUndefined();
+  });
+  test("generated permissions stay exact-scope and terminal controls remain inert", () => {
+    new Hegel((tc) => {
+      const allowed = tc.draw(gs.booleans(), "allowed");
+      const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "character");
+      const config = decodeConfiguration({
+        machineId: "alpha",
+        socketPath: "/tmp/gateway.sock",
+        scopeIds: ["team"],
+        label: "test",
+        policies: [{ machineId: "beta", scopeId: "team", permissions: permissionList(allowed) }],
+      });
+      assert.equal(permits(config, "beta", "team", "push"), allowed);
+      assert.equal(permits(config, "beta", "other", "push"), false);
+      assert.equal(permits(config, "gamma", "team", "push"), false);
+      const output = visibleText(String.fromCodePoint(code));
+      assert.equal(output.includes("\u001b"), false);
+      assert.equal(output.includes("\u009b"), false);
+    })
+      .databaseKey("session-communication/adapter/policy-render")
+      .settings({ testCases: 200, seed: 12_345n, database: Database.disabled })
+      .runSync();
+  });
+});

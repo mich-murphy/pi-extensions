@@ -1,0 +1,2725 @@
+{
+  "contract": "v16 C1-C9+C6a",
+  "encoding": "hexFile contains exact complete frame bytes; json boundary omits prefix; framing boundary is literal incomplete/invalid framing. Never regenerate bytes from expected values.",
+  "cases": [
+    {
+      "name": "register",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "Alpha"
+        }
+      }
+    },
+    {
+      "name": "close",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/close.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "close",
+          "rid": "11111111111111111111111111111111"
+        }
+      }
+    },
+    {
+      "name": "ping",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/ping.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "ping",
+          "rid": "11111111111111111111111111111111"
+        }
+      }
+    },
+    {
+      "name": "discover",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/discover.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "discover",
+          "rid": "11111111111111111111111111111111",
+          "scopeIds": ["team"],
+          "watch": true
+        }
+      }
+    },
+    {
+      "name": "unwatch",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unwatch.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "unwatch",
+          "rid": "11111111111111111111111111111111",
+          "watchRid": "11111111111111111111111111111111"
+        }
+      }
+    },
+    {
+      "name": "send",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/send.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "send",
+          "rid": "11111111111111111111111111111111",
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "hello",
+            "format": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "remote-send",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-send.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "send",
+          "rid": "11111111111111111111111111111111",
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "hello",
+            "format": "text"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "forward-send",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-send.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "send",
+          "rid": "11111111111111111111111111111111",
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "hello",
+            "format": "text"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "deliver",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/deliver.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "deliver",
+          "rid": "11111111111111111111111111111111",
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "hello",
+            "format": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "state-get",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/state-get.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.get",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "key": "report",
+          "expectedRevision": 0
+        }
+      }
+    },
+    {
+      "name": "remote-state-get",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-state-get.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.get",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "key": "report",
+          "expectedRevision": 0,
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "forward-state-get",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-state-get.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.get",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "key": "report",
+          "expectedRevision": 0,
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "state-list",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/state-list.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.list",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team"
+        }
+      }
+    },
+    {
+      "name": "remote-state-list",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-state-list.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.list",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "forward-state-list",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-state-list.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "state.list",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "interest-add",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-add.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.add",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "request",
+            "origin": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requestId": "22222222222222222222222222222222"
+          }
+        }
+      }
+    },
+    {
+      "name": "remote-interest-add",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-interest-add.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.add",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "request",
+            "origin": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requestId": "22222222222222222222222222222222"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "forward-interest-add",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-interest-add.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.add",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "request",
+            "origin": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requestId": "22222222222222222222222222222222"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "interest-remove",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-remove.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.remove",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "publication",
+            "publisher": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "key": "report"
+          }
+        }
+      }
+    },
+    {
+      "name": "remote-interest-remove",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-interest-remove.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.remove",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "publication",
+            "publisher": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "key": "report"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "forward-interest-remove",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-interest-remove.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "interest.remove",
+          "rid": "11111111111111111111111111111111",
+          "publisher": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "work": {
+            "kind": "publication",
+            "publisher": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "key": "report"
+          },
+          "from": {
+            "machineId": "alpha",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-register",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-register.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "register",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "peer": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeIds": ["team"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-close",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-close.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "close",
+          "outcome": {
+            "tag": "ok",
+            "value": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "result-ping",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-ping.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "ping",
+          "outcome": {
+            "tag": "ok",
+            "value": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "result-discover",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-discover.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "discover",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "peers": [
+                {
+                  "peer": {
+                    "machineId": "alpha",
+                    "sessionId": "session",
+                    "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  },
+                  "label": "Alpha",
+                  "scopeIds": ["team"]
+                }
+              ],
+              "watching": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-unwatch",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-unwatch.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "unwatch",
+          "outcome": {
+            "tag": "ok",
+            "value": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "result-state-get",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-state-get.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.get",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "publisher": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team",
+              "publication": {
+                "key": "report",
+                "revision": 1,
+                "category": "context",
+                "title": "Title",
+                "summary": "Summary",
+                "format": "text",
+                "preparation": "authored"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-state-list",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-state-list.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.list",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "publisher": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team",
+              "revision": 1,
+              "items": [
+                {
+                  "key": "report",
+                  "revision": 1,
+                  "category": "context",
+                  "title": "Title"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-interest-add",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-interest-add.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.add",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "publisher": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team",
+              "work": {
+                "kind": "publication",
+                "publisher": {
+                  "machineId": "alpha",
+                  "sessionId": "session",
+                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "key": "report"
+              },
+              "active": true,
+              "expiresInMs": 86400000
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-interest-remove",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-interest-remove.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.remove",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "publisher": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team",
+              "work": {
+                "kind": "publication",
+                "publisher": {
+                  "machineId": "alpha",
+                  "sessionId": "session",
+                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "key": "report"
+              },
+              "active": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "result-send-admitted",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-send-admitted.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "send",
+          "outcome": {
+            "tag": "admitted",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team"
+            },
+            "correlation": "none"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-send-not_admitted",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-send-not_admitted.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "send",
+          "outcome": {
+            "tag": "not_admitted",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team"
+            },
+            "code": "overloaded",
+            "resource": "inbox"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-send-unknown",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-send-unknown.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "send",
+          "outcome": {
+            "tag": "unknown",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team"
+            },
+            "code": "unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-deliver-admitted",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-deliver-admitted.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "deliver",
+          "outcome": {
+            "tag": "admitted",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team"
+            },
+            "correlation": "none"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-deliver-not_admitted",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/result-deliver-not_admitted.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "deliver",
+          "outcome": {
+            "tag": "not_admitted",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team"
+            },
+            "code": "overloaded",
+            "resource": "inbox"
+          }
+        }
+      }
+    },
+    {
+      "name": "result-deliver-unknown",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/result-deliver-unknown.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "event-upsert",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/event-upsert.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "roster.event",
+          "rid": "11111111111111111111111111111111",
+          "event": {
+            "tag": "upsert",
+            "peer": {
+              "peer": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "label": "Alpha",
+              "scopeIds": ["team"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "event-remove",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/event-remove.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "roster.event",
+          "rid": "11111111111111111111111111111111",
+          "event": {
+            "tag": "remove",
+            "peer": {
+              "machineId": "alpha",
+              "sessionId": "session",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "event-invalidated",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/event-invalidated.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "roster.event",
+          "rid": "11111111111111111111111111111111",
+          "event": {
+            "tag": "invalidated",
+            "reason": "overflow"
+          }
+        }
+      }
+    },
+    {
+      "name": "duplicate-root",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/duplicate-root.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "duplicate-escaped",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/duplicate-escaped.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-field",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-field.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "null",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/null.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "missing",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/missing.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "wrong-type",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/wrong-type.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "version",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/version.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "lone-surrogate",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/lone-surrogate.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "bom",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/bom.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "trailing-document",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/trailing-document.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "comment",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/comment.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "trailing-comma",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/trailing-comma.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number-1-0",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number-1-0.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number-1e0",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number-1e0.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number--0",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number--0.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number-01",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number-01.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number-9007199254740992",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number-9007199254740992.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "number--1",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/number--1.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "malformed-utf8",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/malformed-utf8.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unicode-literal",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unicode-literal.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "\u00e9\ud83d\ude00"
+        }
+      }
+    },
+    {
+      "name": "unicode-escaped",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unicode-escaped.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "\u00e9\ud83d\ude00"
+        }
+      }
+    },
+    {
+      "name": "prefix-zero",
+      "boundary": "framing",
+      "role": "local-client",
+      "hexFile": "wire/prefix-zero.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "prefix-over",
+      "boundary": "framing",
+      "role": "local-client",
+      "hexFile": "wire/prefix-over.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "prefix-truncated",
+      "boundary": "framing",
+      "role": "local-client",
+      "hexFile": "wire/prefix-truncated.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "body-truncated",
+      "boundary": "framing",
+      "role": "local-client",
+      "hexFile": "wire/body-truncated.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "frame-maximum",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/frame-maximum.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "Alpha"
+        }
+      }
+    },
+    {
+      "name": "frame-oversize",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/frame-oversize.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "depth-16",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/depth-16.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "x": {
+            "x": {
+              "x": {
+                "x": {
+                  "x": {
+                    "x": {
+                      "x": {
+                        "x": {
+                          "x": {
+                            "x": {
+                              "x": {
+                                "x": {
+                                  "x": {
+                                    "x": {
+                                      "x": {
+                                        "x": 0
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "depth-17",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/depth-17.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "array-64",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/array-64.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "x": [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0
+          ]
+        }
+      }
+    },
+    {
+      "name": "array-65",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/array-65.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "duplicate-nested",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/duplicate-nested.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "null-nested",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/null-nested.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "authored-limit",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/authored-limit.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "send",
+          "rid": "11111111111111111111111111111111",
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "format": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "authored-over",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/authored-over.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "escaped-frame-over",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/escaped-frame-over.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "local-from",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/local-from.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "reply-without-replyTo",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/reply-without-replyTo.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-peer",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-peer.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-message",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-message.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-work",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-work.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-replyTo",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-replyTo.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-reference",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-reference.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-publication",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-publication.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-summary",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-summary.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-descriptor",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-descriptor.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-binding",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-binding.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-outcome",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-outcome.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "unknown-nested-event",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/unknown-nested-event.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "register",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-register-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "register",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-register-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-close-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-close-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "close",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-close-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-close-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "close",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-close-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-close-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-close-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-close-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-close-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-close-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-ping-forbidden",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-ping-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "ping",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-ping-overloaded",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-ping-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "ping",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-ping-foreign-code",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-ping-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-ping-missing-resource",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-ping-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-ping-extra-resource",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-ping-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-discover-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-discover-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "discover",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-discover-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-discover-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "discover",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-discover-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-discover-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-discover-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-discover-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-discover-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-discover-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-unwatch-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-unwatch-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "unwatch",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-unwatch-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-unwatch-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "unwatch",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-unwatch-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-unwatch-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-unwatch-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-unwatch-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-unwatch-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-unwatch-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-get-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-get-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.get",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-state-get-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-get-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.get",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-state-get-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-get-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-get-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-get-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-get-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-get-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-list-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-list-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.list",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-state-list-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-list-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "state.list",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-state-list-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-list-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-list-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-list-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-state-list-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-state-list-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-add-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-add-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.add",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-interest-add-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-add-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.add",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-interest-add-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-add-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-add-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-add-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-add-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-add-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-remove-forbidden",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-remove-forbidden.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.remove",
+          "outcome": {
+            "tag": "error",
+            "code": "forbidden"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-interest-remove-overloaded",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-remove-overloaded.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.remove",
+          "outcome": {
+            "tag": "error",
+            "code": "overloaded",
+            "resource": "operations"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-interest-remove-foreign-code",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-remove-foreign-code.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-remove-missing-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-remove-missing-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-interest-remove-extra-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-interest-remove-extra-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "interest-terminal-inactive",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-terminal-inactive.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "interest.add",
+          "outcome": {
+            "tag": "ok",
+            "value": {
+              "publisher": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "scopeId": "team",
+              "work": {
+                "kind": "publication",
+                "publisher": {
+                  "machineId": "alpha",
+                  "sessionId": "session",
+                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "key": "report"
+              },
+              "active": false,
+              "current": {
+                "key": "report",
+                "revision": 2,
+                "status": "completed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "interest-terminal-active",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-terminal-active.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "interest-inactive-missing-current",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-inactive-missing-current.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "interest-inactive-nonterminal",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-inactive-nonterminal.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "interest-inactive-with-lease",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-inactive-with-lease.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "interest-active-wrong-lease",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/interest-active-wrong-lease.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "request-status",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/request-status.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "too-many-refs",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/too-many-refs.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "wrong-reply-target",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/wrong-reply-target.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "send",
+          "rid": "11111111111111111111111111111111",
+          "to": {
+            "machineId": "beta",
+            "sessionId": "session",
+            "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "scopeId": "team",
+          "message": {
+            "id": "22222222222222222222222222222222",
+            "kind": "request",
+            "content": "hello",
+            "format": "text",
+            "replyTo": {
+              "sender": {
+                "machineId": "wrong",
+                "sessionId": "s",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "messageId": "33333333333333333333333333333333"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "registration-scopes",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/registration-scopes.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "discover-scopes",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/discover-scopes.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-scopes-empty",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-scopes-empty.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-scopes-duplicate",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-scopes-duplicate.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "discover-scopes-empty",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/discover-scopes-empty.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "discover-scopes-duplicate",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/discover-scopes-duplicate.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "session-control",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/session-control.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "session-max",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/session-max.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "Alpha"
+        }
+      }
+    },
+    {
+      "name": "session-over",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/session-over.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "label-max",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/label-max.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+        }
+      }
+    },
+    {
+      "name": "label-over",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/label-over.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "descriptor-encoded-512",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/descriptor-encoded-512.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "roster.event",
+          "rid": "11111111111111111111111111111111",
+          "event": {
+            "tag": "upsert",
+            "peer": {
+              "peer": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "label": "Alpha",
+              "scopeIds": ["team"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "descriptor-encoded-513",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/descriptor-encoded-513.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "remove-peer-not-descriptor",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/remove-peer-not-descriptor.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "roster.event",
+          "rid": "11111111111111111111111111111111",
+          "event": {
+            "tag": "remove",
+            "peer": {
+              "machineId": "alpha",
+              "sessionId": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+              "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "minimum-object",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/minimum-object.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {}
+      }
+    },
+    {
+      "name": "one-byte-body",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/one-byte-body.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "trailing-array",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/trailing-array.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "escaped-solidus",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/escaped-solidus.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "x": "a/b"
+        }
+      }
+    },
+    {
+      "name": "unsafe-natural",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/unsafe-natural.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "safe-natural-max",
+      "boundary": "json",
+      "role": "local-client",
+      "hexFile": "wire/safe-natural-max.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "x": 9007199254740991
+        }
+      }
+    },
+    {
+      "name": "remote-register",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-register.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "remote-close",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-close.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "local-ping",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/local-ping.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "adapter-discover",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/adapter-discover.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "adapter-unwatch",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/adapter-unwatch.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "adapter-send",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/adapter-send.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "local-deliver",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/local-deliver.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "forward-missing-from",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-missing-from.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "remote-missing-from",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/remote-missing-from.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "forward-discover",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/forward-discover.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    }
+  ]
+}

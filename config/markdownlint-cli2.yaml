@@ -1,5 +1,7 @@
 ignores:
   - "**/node_modules/**"
+  # Cargo/rustdoc output is generated dependency content, not repository documentation.
+  - "packages/pi-comms/gateway/target/**"
 config:
   line-length: false
   first-line-heading: false
