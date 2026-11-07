@@ -11,7 +11,7 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
 - `pi-scroll-context` shows the contextual user prompt in a compact header while browsing fullscreen history.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
-- [`pi-session-communication`](packages/pi-session-communication/README.md) adds explicitly configured, bounded collaboration between live Pi runtimes, locally or through a private-CA mTLS gateway peer. Its native gateway is started separately; installation and deployment are never automatic.
+- [`pi-comms`](packages/pi-comms/README.md) adds explicitly configured, bounded collaboration between live Pi runtimes, locally or through a private-CA mTLS gateway peer. Its native gateway is started separately; installation and deployment are never automatic.
 
 Pi loads these extensions from the root package manifest. Install the repository with:
 

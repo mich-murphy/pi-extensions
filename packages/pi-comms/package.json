@@ -1,5 +1,5 @@
 {
-  "name": "pi-session-communication",
+  "name": "pi-comms",
   "version": "0.1.0",
   "private": true,
   "description": "Bounded live-session collaboration for Pi",

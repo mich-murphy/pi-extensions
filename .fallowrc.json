@@ -7,20 +7,20 @@
       "name": "session-communication-offline-pi",
       "enablers": ["@earendil-works/pi-coding-agent"],
       "entryPoints": [
-        "packages/pi-session-communication/test/spike/extension.ts",
-        "packages/pi-session-communication/test/spike/production-extension.ts",
-        "packages/pi-session-communication/test/codemode/serve.ts",
-        "packages/pi-session-communication/test/codemode/trial.ts",
-        "packages/pi-session-communication/test/codemode/run.ts"
+        "packages/pi-comms/test/spike/extension.ts",
+        "packages/pi-comms/test/spike/production-extension.ts",
+        "packages/pi-comms/test/codemode/serve.ts",
+        "packages/pi-comms/test/codemode/trial.ts",
+        "packages/pi-comms/test/codemode/run.ts"
       ],
       "entryPointRole": "test",
       "usedExports": [
         {
-          "pattern": "packages/pi-session-communication/test/spike/extension.ts",
+          "pattern": "packages/pi-comms/test/spike/extension.ts",
           "exports": ["default"]
         },
         {
-          "pattern": "packages/pi-session-communication/test/spike/production-extension.ts",
+          "pattern": "packages/pi-comms/test/spike/production-extension.ts",
           "exports": ["default"]
         }
       ]

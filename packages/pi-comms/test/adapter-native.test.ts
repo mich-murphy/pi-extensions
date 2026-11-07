@@ -126,7 +126,7 @@ async function nativeGateway() {
   );
   const binary =
     process.env.PI_SESSION_GATEWAY_BINARY ??
-    fileURLToPath(new URL("../gateway/target/debug/pi-session-gateway", import.meta.url));
+    fileURLToPath(new URL("../gateway/target/debug/pi-gateway", import.meta.url));
   const child = spawn(binary, ["--config", configPath], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, RAYON_NUM_THREADS: "2", OMP_NUM_THREADS: "2" },

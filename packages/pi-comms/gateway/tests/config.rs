@@ -1,5 +1,5 @@
 //! Operator configuration has no implicit grants or remote fallback.
-use pi_session_gateway::config::Config;
+use pi_gateway::config::Config;
 use serde_json::{Value, json};
 
 fn valid() -> Value {

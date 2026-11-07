@@ -6,7 +6,7 @@ import { AdapterSession } from "./session.js";
 import type { AdapterHost } from "./session.js";
 
 class AdapterService extends Context.Service<AdapterService, AdapterSession>()(
-  "pi-session-communication/Adapter",
+  "pi-comms/Adapter",
 ) {}
 /** Exactly one scoped service, wake Queue and pump fiber per enabled session lifetime. */
 export async function createAdapterRuntime(

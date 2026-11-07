@@ -1,6 +1,6 @@
 """Actual two-Pi/two-Rust-gateway interop, generated PKI, offline model only.
 
-Local: python3 packages/pi-session-communication/test/spike/interop.py
+Local: python3 packages/pi-comms/test/spike/interop.py
 Cross-host: add --ssh-host bc-01 --remote-root /tmp/APPROVED_ROOT/source
 --ssh-tunnel for an owned narrow loopback tunnel (mTLS remains inside SSH).
 Stage interop_endpoint.py at APPROVED_ROOT/interop, outside the immutable source;
@@ -28,7 +28,7 @@ import time
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 RELATIVE = HERE.relative_to(ROOT)
-BINARY = Path('packages/pi-session-communication/gateway/target/release/pi-session-gateway')
+BINARY = Path('packages/pi-comms/gateway/target/release/pi-gateway')
 
 
 def run(args, directory):

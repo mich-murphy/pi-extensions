@@ -1,4 +1,4 @@
-# Pi session communication
+# Pi Comms (`pi-comms`)
 
 Opt-in collaboration between exact live Pi runtimes, with a separate bounded gateway. Messages and publications are deliberately authored; this extension does not export transcripts, discover project secrets, transfer arbitrary files, apply patches, or orchestrate remote tasks.
 
@@ -13,6 +13,8 @@ Opt-in collaboration between exact live Pi runtimes, with a separate bounded gat
 - `test/spike/`: isolated, offline tests through the pinned real Pi CLI, including native terminal Escape.
 
 ## Explicit local configuration
+
+The extension package is `pi-comms` and its native executable is `pi-gateway`. The existing `session-communication.json` configuration filename, `/session-communication` command and `session_*` tools are unchanged by the package rename.
 
 Load this package through the repository's Pi extension package, or explicitly load its `index.ts`. Configuration is read only from `session-communication.json` in Pi's **user agent directory** (`getAgentDir()`), not from the current project. Missing configuration makes collaboration unavailable: no gateway registration, automatic daemon startup, publication or peer-triggered model work.
 
@@ -56,8 +58,8 @@ Paths above are placeholders, not automatically expanded or created. Policies ar
 From the repository root, build and run the native process explicitly:
 
 ```sh
-(cd packages/pi-session-communication/gateway && CARGO_BUILD_JOBS=2 cargo build --locked --release)
-packages/pi-session-communication/gateway/target/release/pi-session-gateway \
+(cd packages/pi-comms/gateway && CARGO_BUILD_JOBS=2 cargo build --locked --release)
+packages/pi-comms/gateway/target/release/pi-gateway \
   --config /absolute/path/to/gateway.json
 ```
 

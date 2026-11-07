@@ -11,13 +11,13 @@ See the [evaluation report](../../docs/codemode-evaluation.md) for executed offl
 
 Fixture for live use (prints one JSON line: socketPath, agentDir, config, cwd, extension, task {id,prompt,expected}):
 
-    node --import jiti/register packages/pi-session-communication/test/codemode/serve.ts --scenario aggregate [--codemode] [--receipts file]
+    node --import jiti/register packages/pi-comms/test/codemode/serve.ts --scenario aggregate [--codemode] [--receipts file]
 
 Run with `PI_CODING_AGENT_DIR=<agentDir>` and `-e <extension>`; receipts are written when stdin closes.
 
 Results artifact (explicit only; the test never writes it):
 
-    node --import jiti/register packages/pi-session-communication/test/codemode/run.ts results.json 3
+    node --import jiti/register packages/pi-comms/test/codemode/run.ts results.json 3
 
 Metrics: `toolResultBytes` = UTF-8 bytes of tool-result text; `cumulativeRequestBytes` = summed JSON bytes of every
 request transcript (includes tool declarations); rounds, tool calls, gateway ops, correctness vs expected JSON.

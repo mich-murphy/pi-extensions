@@ -1,5 +1,5 @@
 //! Observable resource accounting and reservation atomicity.
-use pi_session_gateway::budget::{BufferClass, Buffers, ConnectionId, ConnectionKind};
+use pi_gateway::budget::{BufferClass, Buffers, ConnectionId, ConnectionKind};
 
 #[test]
 fn control_headroom_and_generation_fencing() {
@@ -70,7 +70,7 @@ fn arbitrary_header_never_accepts_out_of_range(tc: hegel::TestCase) {
     if let Ok(header) = <[u8; 4]>::try_from(bytes.as_slice()) {
         let declared = u32::from_be_bytes(header);
         assert_eq!(
-            pi_session_gateway::wire::body_length(header).is_ok(),
+            pi_gateway::wire::body_length(header).is_ok(),
             (1..=32764).contains(&declared)
         );
     }

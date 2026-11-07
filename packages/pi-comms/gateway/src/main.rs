@@ -3,8 +3,8 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
-use pi_session_gateway::config::Config;
-use pi_session_gateway::daemon::Daemon;
+use pi_gateway::config::Config;
+use pi_gateway::daemon::Daemon;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
@@ -16,7 +16,7 @@ async fn main() -> io::Result<()> {
     ) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: pi-session-gateway --config <absolute-path> | --initialize-revocation-floor <absolute-path>",
+            "usage: pi-gateway --config <absolute-path> | --initialize-revocation-floor <absolute-path>",
         ));
     }
     let path = PathBuf::from(
@@ -31,9 +31,7 @@ async fn main() -> io::Result<()> {
         ));
     }
     if command.as_deref() == Some(std::ffi::OsStr::new("--initialize-revocation-floor")) {
-        drop(pi_session_gateway::revocation::FloorStore::initialize(
-            &path,
-        )?);
+        drop(pi_gateway::revocation::FloorStore::initialize(&path)?);
         return Ok(());
     }
     let config = Config::read(&path).map_err(io::Error::other)?;

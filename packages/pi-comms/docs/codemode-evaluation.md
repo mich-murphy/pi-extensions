@@ -34,10 +34,10 @@ Reproduce from the repository root:
 ```sh
 RAYON_NUM_THREADS=2 UV_THREADPOOL_SIZE=2 GOMAXPROCS=2 OMP_NUM_THREADS=2 \
   node --import jiti/register \
-  packages/pi-session-communication/test/codemode/run.ts \
+  packages/pi-comms/test/codemode/run.ts \
   /tmp/session-codemode-results.json 3
 
-npm test -- packages/pi-session-communication/test/codemode --maxWorkers=2
+npm test -- packages/pi-comms/test/codemode --maxWorkers=2
 ```
 
 The test gate does not rewrite the result artifact. It checks correctness, exact active tools, exact selected reads/revisions, operation counts and the expected scheduling/context tradeoff.

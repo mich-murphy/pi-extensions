@@ -1,4 +1,4 @@
-# Native session gateway
+# Pi Gateway (`pi-gateway`)
 
 A standalone, explicitly started volatile Unix routing daemon with an optional
 single private-CA mTLS gateway peer. Local-only configuration remains supported.
@@ -16,7 +16,7 @@ Build from this directory with `cargo build --locked`. Start only when the user
 requests it:
 
 ```sh
-./target/debug/pi-session-gateway --config /absolute/path/config.json
+./target/debug/pi-gateway --config /absolute/path/config.json
 ```
 
 Configuration is strict JSON with no unknown fields or implicit grants:
@@ -158,7 +158,7 @@ In particular, the example permits outgoing push without outgoing discovery.
 Initialize a **new** durable floor explicitly through authenticated operator action:
 
 ```sh
-./target/debug/pi-session-gateway --initialize-revocation-floor /absolute/private-directory/revocation-floors.json
+./target/debug/pi-gateway --initialize-revocation-floor /absolute/private-directory/revocation-floors.json
 ```
 
 The directory must already be private; existing state is never overwritten. Normal

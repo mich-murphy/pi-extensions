@@ -5,4 +5,4 @@ coverage/
 *.tsbuildinfo
 .hegel/
 __pycache__/
-packages/pi-session-communication/gateway/target/
+packages/pi-comms/gateway/target/

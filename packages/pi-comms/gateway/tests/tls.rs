@@ -1,5 +1,5 @@
 //! Generated private PKI and memory-stream TLS; no normal credentials or remote services.
-use pi_session_gateway::tls::{Policy, Trust};
+use pi_gateway::tls::{Policy, Trust};
 use rcgen::{
     BasicConstraints, Certificate, CertificateParams, CertificateRevocationListParams, DnType,
     ExtendedKeyUsagePurpose, IsCa, Issuer, KeyIdMethod, KeyPair, KeyUsagePurpose,
@@ -545,7 +545,7 @@ fn unused_configured_roots_still_bound_local_and_peer_credential_expiry() {
 
 #[test]
 fn durable_revocation_floors_reject_restart_rollback_and_keep_retired_issuers() {
-    use pi_session_gateway::revocation::FloorStore;
+    use pi_gateway::revocation::FloorStore;
     use std::os::unix::fs::PermissionsExt;
     let directory = std::path::PathBuf::from("/tmp")
         .canonicalize()
@@ -617,7 +617,7 @@ fn durable_revocation_floors_reject_restart_rollback_and_keep_retired_issuers() 
 
 #[tokio::test(start_paused = true)]
 async fn active_memory_tls_stream_is_dropped_at_verified_expiry_or_applied_withdrawal() {
-    use pi_session_gateway::lease::{LinkEnd, LinkLease};
+    use pi_gateway::lease::{LinkEnd, LinkLease};
     use tokio::io::AsyncReadExt;
     let ca = Authority::new("lease test CA");
     for reason in [LinkEnd::Expired, LinkEnd::Withdrawn] {
@@ -700,7 +700,7 @@ impl CredentialDirectory {
         peer: &str,
         mode: &str,
         address: std::net::SocketAddr,
-    ) -> pi_session_gateway::remote::Settings {
+    ) -> pi_gateway::remote::Settings {
         use std::os::unix::fs::PermissionsExt;
         let (chain, key) = ca.leaf(own);
         for (name, bytes) in [
@@ -716,11 +716,11 @@ impl CredentialDirectory {
         }
         let state = self.0.join("floors.json");
         drop(
-            pi_session_gateway::revocation::FloorStore::initialize(&state)
+            pi_gateway::revocation::FloorStore::initialize(&state)
                 .expect("explicit test-only floor bootstrap"),
         );
         let settings = serde_json::json!({"machineId":peer,"endpoint":{"mode":mode,"address":address.to_string()},"rootCertificates":[self.0.join("root.der")],"certificateChain":[self.0.join("leaf.der")],"privateKey":self.0.join("key.der"),"crls":[self.0.join("current.crl")],"revocationState":state});
-        pi_session_gateway::remote::Settings::parse(
+        pi_gateway::remote::Settings::parse(
             &serde_json::to_vec(&settings).expect("settings encoding"),
         )
         .expect("strict temporary remote settings")
@@ -795,7 +795,7 @@ fn explicit_credentials_fail_closed_on_public_key_file_and_missing_floor_state()
     std::fs::remove_file(directory.0.join("floors.json")).unwrap();
     let settings = serde_json::json!({"machineId":"beta","endpoint":{"mode":"connect","address":"127.0.0.1:1"},"rootCertificates":[directory.0.join("root.der")],"certificateChain":[directory.0.join("leaf.der")],"privateKey":directory.0.join("key.der"),"crls":[directory.0.join("current.crl")],"revocationState":directory.0.join("floors.json")});
     assert!(
-        pi_session_gateway::remote::Settings::parse(&serde_json::to_vec(&settings).unwrap())
+        pi_gateway::remote::Settings::parse(&serde_json::to_vec(&settings).unwrap())
             .unwrap()
             .prepare("alpha")
             .is_err(),
@@ -820,7 +820,7 @@ async fn startup_and_tcp_stream_are_refused_when_restart_configuration_rolls_crl
         time + Duration::hours(12),
         vec![],
     ));
-    let mut installed = pi_session_gateway::revocation::FloorStore::open(&path).unwrap();
+    let mut installed = pi_gateway::revocation::FloorStore::open(&path).unwrap();
     installed.apply(&newer).unwrap();
     drop(installed);
     let expected = std::fs::read(&path).unwrap();
@@ -898,25 +898,22 @@ fn durable_floor_rejects_swappable_private_directory_beneath_nonsticky_writable_
     std::fs::create_dir(&parent).unwrap();
     std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
     let path = parent.join("floors.json");
-    drop(pi_session_gateway::revocation::FloorStore::initialize(&path).unwrap());
+    drop(pi_gateway::revocation::FloorStore::initialize(&path).unwrap());
     // A second old victim-owned 0700 tree can be substituted through an unprotected
     // ancestor without a leaf symlink. Never actually involve another UID/root.
     let backup = ancestor.join("backup");
     std::fs::create_dir(&backup).unwrap();
     std::fs::set_permissions(&backup, std::fs::Permissions::from_mode(0o700)).unwrap();
-    drop(
-        pi_session_gateway::revocation::FloorStore::initialize(&backup.join("floors.json"))
-            .unwrap(),
-    );
+    drop(pi_gateway::revocation::FloorStore::initialize(&backup.join("floors.json")).unwrap());
     let ca = Authority::new("ancestor regression CA");
     let bundle = ca.trust(ca.current_crl());
-    let mut active = pi_session_gateway::revocation::FloorStore::open(&path).unwrap();
+    let mut active = pi_gateway::revocation::FloorStore::open(&path).unwrap();
     active.apply(&bundle).unwrap();
     std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o777)).unwrap();
     std::fs::rename(&parent, ancestor.join("displaced")).unwrap();
     std::fs::rename(&backup, &parent).unwrap();
     assert!(
-        pi_session_gateway::revocation::FloorStore::open(&path).is_err(),
+        pi_gateway::revocation::FloorStore::open(&path).is_err(),
         "new process cannot follow a swapped old floor/lock through an unprotected ancestor"
     );
     assert!(
@@ -924,12 +921,12 @@ fn durable_floor_rejects_swappable_private_directory_beneath_nonsticky_writable_
         "existing locked owner must not persist through a substituted parent"
     );
     assert!(
-        pi_session_gateway::revocation::FloorStore::initialize(&parent.join("new.json")).is_err(),
+        pi_gateway::revocation::FloorStore::initialize(&parent.join("new.json")).is_err(),
         "bootstrap cannot legitimize unsafe ancestry"
     );
     std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o1777)).unwrap();
     assert!(
-        pi_session_gateway::revocation::FloorStore::open(&path).is_ok(),
+        pi_gateway::revocation::FloorStore::open(&path).is_ok(),
         "trusted-owner sticky ancestor protects a victim-owned child just like canonical macOS/Linux temporary roots"
     );
 }

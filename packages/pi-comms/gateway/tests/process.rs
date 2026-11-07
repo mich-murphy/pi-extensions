@@ -32,7 +32,7 @@ impl Gateway {
         let socket = directory.join("s");
         let config = directory.join("config.json");
         fs::write(&config, serde_json::to_vec(&json!({"machineId":"alpha","socketPath":socket,"scopeIds":["team","private"],"policies":[{"machineId":"alpha","scopeId":"team","permissions":permissions}]})).expect("isolated fixture setup and framed I/O must succeed")).expect("isolated fixture setup and framed I/O must succeed");
-        let mut child = Command::new(env!("CARGO_BIN_EXE_pi-session-gateway"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
             .args([
                 "--config",
                 config
@@ -107,7 +107,7 @@ fn read(stream: &mut UnixStream) -> Value {
     stream
         .read_exact(&mut header)
         .expect("isolated fixture setup and framed I/O must succeed");
-    let length = pi_session_gateway::wire::body_length(header)
+    let length = pi_gateway::wire::body_length(header)
         .expect("isolated fixture setup and framed I/O must succeed");
     let mut bytes = vec![0; length];
     stream
@@ -118,13 +118,13 @@ fn read(stream: &mut UnixStream) -> Value {
     let value: Value =
         serde_json::from_slice(&bytes).expect("isolated fixture setup and framed I/O must succeed");
     let role = if value["op"] == "deliver" {
-        pi_session_gateway::wire::Role::AdapterDelivery
+        pi_gateway::wire::Role::AdapterDelivery
     } else if value.get("from").is_some() {
-        pi_session_gateway::wire::Role::GatewayForward
+        pi_gateway::wire::Role::GatewayForward
     } else {
-        pi_session_gateway::wire::Role::LocalClient
+        pi_gateway::wire::Role::LocalClient
     };
-    pi_session_gateway::wire::decode_frame(&frame, role)
+    pi_gateway::wire::decode_frame(&frame, role)
         .expect("isolated fixture setup and framed I/O must succeed")
 }
 fn rid(number: u64) -> String {

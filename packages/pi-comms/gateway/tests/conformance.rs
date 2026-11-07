@@ -2,7 +2,7 @@
 use std::fs;
 use std::path::Path;
 
-use pi_session_gateway::wire::{self, Role};
+use pi_gateway::wire::{self, Role};
 use serde_json::Value;
 
 #[test]

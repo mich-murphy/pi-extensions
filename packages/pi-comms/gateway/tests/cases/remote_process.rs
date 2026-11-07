@@ -42,7 +42,7 @@ impl Process {
         }
     }
     fn child(config: &PathBuf) -> Child {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_pi-session-gateway"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
             .arg("--config")
             .arg(config)
             .stdout(Stdio::piped())
@@ -126,13 +126,13 @@ fn read(stream: &mut UnixStream) -> Value {
     stream
         .read_exact(&mut header)
         .expect("isolated generated-PKI process fixture and bounded framed I/O");
-    let length = pi_session_gateway::wire::body_length(header)
+    let length = pi_gateway::wire::body_length(header)
         .expect("isolated generated-PKI process fixture and bounded framed I/O");
     let mut bytes = vec![0; length];
     stream
         .read_exact(&mut bytes)
         .expect("isolated generated-PKI process fixture and bounded framed I/O");
-    pi_session_gateway::wire::decode_body(&bytes, pi_session_gateway::wire::Role::AdapterDelivery)
+    pi_gateway::wire::decode_body(&bytes, pi_gateway::wire::Role::AdapterDelivery)
         .expect("isolated generated-PKI process fixture and bounded framed I/O")
 }
 fn register(stream: &mut UnixStream, session: &str, n: u32) -> Value {
@@ -342,10 +342,9 @@ async fn remote_read<S: tokio::io::AsyncRead + Unpin>(stream: &mut S) -> std::io
     use tokio::io::AsyncReadExt;
     let mut header = [0; 4];
     stream.read_exact(&mut header).await?;
-    let mut bytes =
-        vec![0; pi_session_gateway::wire::body_length(header).map_err(std::io::Error::other)?];
+    let mut bytes = vec![0; pi_gateway::wire::body_length(header).map_err(std::io::Error::other)?];
     stream.read_exact(&mut bytes).await?;
-    pi_session_gateway::wire::decode_body(&bytes, pi_session_gateway::wire::Role::RemoteLink)
+    pi_gateway::wire::decode_body(&bytes, pi_gateway::wire::Role::RemoteLink)
         .map_err(std::io::Error::other)
 }
 fn descriptor(machine: &str) -> Value {
@@ -536,7 +535,7 @@ fn controlled_restart_installs_revocation_even_when_no_peer_can_authenticate_and
     );
     beta.terminate();
     fs::write(beta.directory.0.join("current.crl"), older).unwrap();
-    let rejected = Command::new(env!("CARGO_BIN_EXE_pi-session-gateway"))
+    let rejected = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
         .arg("--config")
         .arg(beta.directory.0.join("config.json"))
         .output()
@@ -553,7 +552,7 @@ fn explicit_floor_cli_initializes_once_without_resetting_existing_state() {
     let directory = CredentialDirectory::new();
     let path = directory.0.join("new-floors.json");
     let initialize = || {
-        Command::new(env!("CARGO_BIN_EXE_pi-session-gateway"))
+        Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
             .arg("--initialize-revocation-floor")
             .arg(&path)
             .output()

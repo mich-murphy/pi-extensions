@@ -26,7 +26,7 @@ From the repository root, after the parent's pinned dependencies are installed:
 ```sh
 RAYON_NUM_THREADS=2 UV_THREADPOOL_SIZE=2 GOMAXPROCS=2 \
   node_modules/.bin/vitest run \
-  packages/pi-session-communication/test/spike/lifecycle.test.ts --maxWorkers=2
+  packages/pi-comms/test/spike/lifecycle.test.ts --maxWorkers=2
 ```
 
 The Vitest test invokes seven Python standard-library journeys against the actual
@@ -42,8 +42,8 @@ To regenerate the derived evidence trace:
 
 ```sh
 RAYON_NUM_THREADS=2 UV_THREADPOOL_SIZE=2 GOMAXPROCS=2 \
-  PI_SPIKE_EVIDENCE=packages/pi-session-communication/test/spike/evidence.json \
-  python3 packages/pi-session-communication/test/spike/offline.py
+  PI_SPIKE_EVIDENCE=packages/pi-comms/test/spike/evidence.json \
+  python3 packages/pi-comms/test/spike/offline.py
 ```
 
 `PI_SPIKE_PACKAGE` can explicitly select another installation of the same pinned
@@ -261,6 +261,9 @@ stale-runtime rejection and successful fresh targeting. It requires identical
 production-source, fixture and endpoint-controller hashes on both machines.
 `interop-evidence.json` records the parent's successful cross-host run, platform
 and binary/source identities, assertions and cleanup—not a replayed transcript.
+It predates the `pi-comms`/`pi-gateway` rename: its original names and hashes are
+preserved as historical evidence, not rewritten or claimed to attest the renamed
+source. Reproduction commands below use the current names.
 
 Each run creates a private test CA, exact `gateway.alpha.pi.internal` and
 `gateway.beta.pi.internal` DNS SAN leaves, current full numbered issuer CRLs,
@@ -274,8 +277,8 @@ For a two-gateway local loopback reproduction, first build the release binary:
 
 ```sh
 CARGO_BUILD_JOBS=2 cargo build --release --locked \
-  --manifest-path packages/pi-session-communication/gateway/Cargo.toml
-python3 -I packages/pi-session-communication/test/spike/interop.py \
+  --manifest-path packages/pi-comms/gateway/Cargo.toml
+python3 -I packages/pi-comms/test/spike/interop.py \
   --evidence /tmp/pi-session-interop-local.json
 ```
 
@@ -287,7 +290,7 @@ Do not copy real profiles or credentials. Then use an existing strictly verified
 SSH alias:
 
 ```sh
-python3 -I packages/pi-session-communication/test/spike/interop.py \
+python3 -I packages/pi-comms/test/spike/interop.py \
   --ssh-host YOUR_VERIFIED_TEST_HOST \
   --remote-root /absolute/private-scratch/source \
   --ssh-tunnel \

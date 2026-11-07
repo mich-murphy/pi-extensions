@@ -18,7 +18,7 @@ import tempfile
 
 if os.environ.get('PI_INTEROP_SOURCE'):
     sys.path.insert(0, str(Path(os.environ['PI_INTEROP_SOURCE']) /
-                           'packages/pi-session-communication/test/spike'))
+                           'packages/pi-comms/test/spike'))
 
 from offline import HERE, PACKAGE, Journey
 from production import ProductionAdapter

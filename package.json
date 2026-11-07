@@ -27,7 +27,7 @@
     "fallow:dupes": "fallow dupes --fail-on-issues",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
     "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
-    "check:rust": "cd packages/pi-session-communication/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
+    "check:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
     "check": "oxfmt --check --threads=2 && oxlint --threads=2 && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint"
   },
   "devDependencies": {
@@ -78,7 +78,7 @@
       "./packages/pi-vim/index.ts",
       "./packages/pi-scroll-context/index.ts",
       "./packages/pi-web-tools/index.ts",
-      "./packages/pi-session-communication/index.ts"
+      "./packages/pi-comms/index.ts"
     ]
   }
 }
