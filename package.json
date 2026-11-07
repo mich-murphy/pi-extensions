@@ -10,8 +10,8 @@
   ],
   "type": "module",
   "scripts": {
-    "format": "oxfmt",
-    "lint": "oxlint",
+    "format": "oxfmt --threads=2",
+    "lint": "oxlint --threads=2",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -27,7 +27,8 @@
     "fallow:dupes": "fallow dupes --fail-on-issues",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
     "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
-    "check": "oxfmt --check && oxlint && npm run typecheck && npm run test:coverage && npm run fallow && npm run markdownlint"
+    "check:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
+    "check": "oxfmt --check --threads=2 && oxlint --threads=2 && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
@@ -35,10 +36,10 @@
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-tui": "1.5.0",
     "@effect/vitest": "4.1.2",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@types/turndown": "5.0.6",
-    "@vitest/coverage-v8": "5.1.0",
-    "fallow": "3.38.1",
+    "@vitest/coverage-v8": "5.0.5",
+    "fallow": "3.39.0",
     "markdownlint-cli2": "0.24.0",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
@@ -65,6 +66,7 @@
   "allowScripts": {
     "@google/genai": false,
     "fsevents": false,
+    "koffi": false,
     "protobufjs": false
   },
   "pi": {
@@ -75,7 +77,8 @@
       "./packages/pi-skill-toggle/index.ts",
       "./packages/pi-vim/index.ts",
       "./packages/pi-scroll-context/index.ts",
-      "./packages/pi-web-tools/index.ts"
+      "./packages/pi-web-tools/index.ts",
+      "./packages/pi-comms/index.ts"
     ]
   }
 }

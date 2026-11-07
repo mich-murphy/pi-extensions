@@ -27,6 +27,7 @@ export default defineConfig({
     // Native CLI boot tests are CPU-heavy under V8 coverage.
     // Serialize files on shared CI runners; retain every assertion, timeout and coverage gate.
     fileParallelism: process.env.CI !== "true",
+    maxWorkers: 2,
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "json-summary"],

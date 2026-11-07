@@ -3,3 +3,6 @@ coverage/
 .fallow/
 .DS_Store
 *.tsbuildinfo
+.hegel/
+__pycache__/
+packages/pi-comms/gateway/target/

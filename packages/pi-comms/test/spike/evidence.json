@@ -1,0 +1,6301 @@
+{
+  "piVersion": "1.5.0",
+  "evidenceKind": "Derived lifecycle trace; raw system prompts and repeated payloads omitted",
+  "testsRun": 7,
+  "success": true,
+  "failures": 0,
+  "errors": 0,
+  "fixtureSha256": {
+    "extension.ts": "d7daa7f09bd3c4f15d9375bc03de3e8832e3e621420badac2a28f8807cb72b4e",
+    "offline.py": "4648d3a2dba41cc7a3967de4829be8909385145c935ec46a6e06ff2be31cbe04"
+  },
+  "journeys": [
+    {
+      "test": "test_coalesced_wake_explicit_inbox_take",
+      "mode": "rpc",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 1,
+            "selected": "hold",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 1
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": ["inbox-a", "inbox-b", "inbox-c", "inbox-d"],
+            "bytes": 52,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": ["inbox-a", "inbox-b", "inbox-c", "inbox-d"],
+            "bytes": 52,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": ["inbox-a", "inbox-b", "inbox-c", "inbox-d"],
+            "bytes": 52,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "messages": [
+              {
+                "id": "inbox-a",
+                "content": "PEER: inbox-a"
+              },
+              {
+                "id": "inbox-b",
+                "content": "PEER: inbox-b"
+              },
+              {
+                "id": "inbox-c",
+                "content": "PEER: inbox-c"
+              },
+              {
+                "id": "inbox-d",
+                "content": "PEER: inbox-d"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "toolResult"],
+            "peerMarkers": ["PEER: inbox-a", "PEER: inbox-b", "PEER: inbox-c", "PEER: inbox-d"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 4,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: inbox-a", "PEER: inbox-b", "PEER: inbox-c", "PEER: inbox-d"]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "messages": [
+              {
+                "id": "future-authorized",
+                "content": "PEER: future-authorized"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "index": 5,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: future-authorized",
+              "PEER: inbox-a",
+              "PEER: inbox-b",
+              "PEER: inbox-c",
+              "PEER: inbox-d"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "6b7db5fdef3b3ec1b218537552023c4c",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_inbox_busy_boundary_and_native_escape",
+      "mode": "tui",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 1,
+            "selected": "hold",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 1
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 2,
+            "outstanding": ["before-inbox-escape", "during-inbox-abort"],
+            "bytes": 49,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 2,
+            "outstanding": ["before-inbox-escape", "during-inbox-abort"],
+            "bytes": 49,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 2,
+            "outstanding": ["before-inbox-escape", "during-inbox-abort"],
+            "bytes": 49,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "messages": [
+              {
+                "id": "before-inbox-escape",
+                "content": "PEER: before-inbox-escape"
+              },
+              {
+                "id": "during-inbox-abort",
+                "content": "PEER: during-inbox-abort"
+              },
+              {
+                "id": "fresh-inbox-push",
+                "content": "PEER: fresh-inbox-push"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "toolResult"],
+            "peerMarkers": [
+              "PEER: before-inbox-escape",
+              "PEER: during-inbox-abort",
+              "PEER: fresh-inbox-push"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 4,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: before-inbox-escape",
+              "PEER: during-inbox-abort",
+              "PEER: fresh-inbox-push"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "messages": [
+              {
+                "id": "busy-inbox-a",
+                "content": "PEER: busy-inbox-a"
+              },
+              {
+                "id": "busy-inbox-b",
+                "content": "PEER: busy-inbox-b"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 5,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: before-inbox-escape",
+              "PEER: busy-inbox-a",
+              "PEER: busy-inbox-b",
+              "PEER: during-inbox-abort",
+              "PEER: fresh-inbox-push"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_boundary",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "source": "before_settle"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "index": 6,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: before-inbox-escape",
+              "PEER: busy-inbox-a",
+              "PEER: busy-inbox-b",
+              "PEER: during-inbox-abort",
+              "PEER: fresh-inbox-push"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "nonce": "9a1dfcf512970c614658286244a347f5",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "9a1dfcf512970c614658286244a347f5",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_inbox_push_during_manual_compaction_and_failure",
+      "mode": "rpc",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 1,
+            "selected": "success",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 4,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 5,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "before_compact",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "reason": "manual",
+            "willRetry": false
+          }
+        },
+        {
+          "type": "compact_gate",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "idle": false
+          }
+        },
+        {
+          "type": "compacted",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "reason": "manual",
+            "willRetry": false,
+            "idle": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 6,
+            "selected": "success",
+            "roles": ["system", "user", "user", "assistant", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "messages": [
+              {
+                "id": "during-manual-compact",
+                "content": "PEER: during-manual-compact"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 7,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 8,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 9,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 10,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 11,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 12,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "before_compact",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "reason": "manual",
+            "willRetry": false
+          }
+        },
+        {
+          "type": "compact_gate",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "idle": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 13,
+            "selected": "compact-fail",
+            "roles": ["system", "user"],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "compact_failed",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "session_compact_failed",
+            "reason": "manual",
+            "errorMessage": "Compaction failed: Summarization failed: synthetic offline failure",
+            "aborted": false,
+            "willRetry": false,
+            "fromExtension": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-2"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "noticeId": "notice-2"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 14,
+            "selected": "compact-fail",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 2,
+            "outstanding": ["during-failing-compact"],
+            "bytes": 28,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 2,
+            "outstanding": ["during-failing-compact"],
+            "bytes": 28,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 2,
+            "outstanding": ["during-failing-compact"],
+            "bytes": 28,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 2,
+            "outstanding": ["during-failing-compact"],
+            "bytes": 28,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-3"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "noticeId": "notice-3"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 15,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: during-manual-compact"]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "messages": [
+              {
+                "id": "during-failing-compact",
+                "content": "PEER: during-failing-compact"
+              },
+              {
+                "id": "after-failing-compact",
+                "content": "PEER: after-failing-compact"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "index": 16,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: after-failing-compact",
+              "PEER: during-failing-compact",
+              "PEER: during-manual-compact"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "nonce": "c2169211923aa059625b55cea1090572",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "c2169211923aa059625b55cea1090572",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_native_escape_and_ambiguous_capacity",
+      "mode": "tui",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 1,
+            "selected": "hold",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "before-escape",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 1,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "before-escape",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 1
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "during-abort",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 2,
+            "outstanding": ["before-escape", "during-abort"],
+            "bytes": 37,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "during-abort",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 2,
+            "outstanding": ["before-escape", "during-abort"],
+            "bytes": 37,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 2,
+            "outstanding": ["before-escape", "during-abort"],
+            "bytes": 37,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 2,
+            "outstanding": ["before-escape", "during-abort"],
+            "bytes": 37,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "after-abort",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape", "during-abort", "after-abort"],
+            "bytes": 54,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "after-abort",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "after-abort",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape", "during-abort"],
+            "bytes": 37,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "host_observed",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "during-abort",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "user"],
+            "peerMarkers": ["PEER: after-abort", "PEER: during-abort"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 3,
+            "outstanding": ["before-escape"],
+            "bytes": 19,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 3,
+            "selected": "hold",
+            "roles": ["system", "user", "assistant", "user", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: after-abort", "PEER: during-abort"]
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-0",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 4,
+            "outstanding": ["before-escape", "capacity-0"],
+            "bytes": 35,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-0",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-1",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 5,
+            "outstanding": ["before-escape", "capacity-0", "capacity-1"],
+            "bytes": 51,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-1",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-2",
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 6,
+            "outstanding": ["before-escape", "capacity-0", "capacity-1", "capacity-2"],
+            "bytes": 67,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "id": "capacity-2",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 3
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 4,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: after-abort", "PEER: during-abort"]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 5,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: after-abort", "PEER: during-abort"]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "index": 6,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: after-abort", "PEER: during-abort"]
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 6,
+            "outstanding": ["before-escape", "capacity-0", "capacity-1", "capacity-2"],
+            "bytes": 67
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 6,
+            "outstanding": ["before-escape", "capacity-0", "capacity-1", "capacity-2"],
+            "bytes": 67
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "ba7c3ea470f181771271e2d0493460fd",
+          "data": {
+            "nonce": "ba7c3ea470f181771271e2d0493460fd",
+            "receipts": 6,
+            "outstanding": ["before-escape", "capacity-0", "capacity-1", "capacity-2"],
+            "bytes": 67
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_repeated_inbox_abort_take_cycles_bound_notices",
+      "mode": "tui",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 1,
+            "selected": "hold",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 1
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 3,
+            "outstanding": ["cycle-0-idle", "cycle-0-busy", "cycle-0-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 3,
+            "outstanding": ["cycle-0-idle", "cycle-0-busy", "cycle-0-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 3,
+            "outstanding": ["cycle-0-idle", "cycle-0-busy", "cycle-0-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-2"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-2"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-0-idle",
+                "content": "PEER: cycle-0-idle"
+              },
+              {
+                "id": "cycle-0-busy",
+                "content": "PEER: cycle-0-busy"
+              },
+              {
+                "id": "cycle-0-during",
+                "content": "PEER: cycle-0-during"
+              },
+              {
+                "id": "cycle-0-fresh",
+                "content": "PEER: cycle-0-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "toolResult"],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-3"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-3"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 4,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 4
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 7,
+            "outstanding": ["cycle-1-idle", "cycle-1-busy", "cycle-1-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 7,
+            "outstanding": ["cycle-1-idle", "cycle-1-busy", "cycle-1-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 7,
+            "outstanding": ["cycle-1-idle", "cycle-1-busy", "cycle-1-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-4"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-4"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 5,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-1-idle",
+                "content": "PEER: cycle-1-idle"
+              },
+              {
+                "id": "cycle-1-busy",
+                "content": "PEER: cycle-1-busy"
+              },
+              {
+                "id": "cycle-1-during",
+                "content": "PEER: cycle-1-during"
+              },
+              {
+                "id": "cycle-1-fresh",
+                "content": "PEER: cycle-1-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 6,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-5"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-5"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 7,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 7
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 11,
+            "outstanding": ["cycle-2-idle", "cycle-2-busy", "cycle-2-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 11,
+            "outstanding": ["cycle-2-idle", "cycle-2-busy", "cycle-2-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 11,
+            "outstanding": ["cycle-2-idle", "cycle-2-busy", "cycle-2-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-6"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-6"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 8,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-2-idle",
+                "content": "PEER: cycle-2-idle"
+              },
+              {
+                "id": "cycle-2-busy",
+                "content": "PEER: cycle-2-busy"
+              },
+              {
+                "id": "cycle-2-during",
+                "content": "PEER: cycle-2-during"
+              },
+              {
+                "id": "cycle-2-fresh",
+                "content": "PEER: cycle-2-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 9,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 12,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 12,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 12,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 12,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-7"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-7"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 10,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 10
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 15,
+            "outstanding": ["cycle-3-idle", "cycle-3-busy", "cycle-3-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 15,
+            "outstanding": ["cycle-3-idle", "cycle-3-busy", "cycle-3-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 15,
+            "outstanding": ["cycle-3-idle", "cycle-3-busy", "cycle-3-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-8"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-8"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 11,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-3-idle",
+                "content": "PEER: cycle-3-idle"
+              },
+              {
+                "id": "cycle-3-busy",
+                "content": "PEER: cycle-3-busy"
+              },
+              {
+                "id": "cycle-3-during",
+                "content": "PEER: cycle-3-during"
+              },
+              {
+                "id": "cycle-3-fresh",
+                "content": "PEER: cycle-3-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 12,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 16,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 16,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 16,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 16,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-9"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-9"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 13,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 13
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 19,
+            "outstanding": ["cycle-4-idle", "cycle-4-busy", "cycle-4-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 19,
+            "outstanding": ["cycle-4-idle", "cycle-4-busy", "cycle-4-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 19,
+            "outstanding": ["cycle-4-idle", "cycle-4-busy", "cycle-4-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-10"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-10"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 14,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-4-idle",
+                "content": "PEER: cycle-4-idle"
+              },
+              {
+                "id": "cycle-4-busy",
+                "content": "PEER: cycle-4-busy"
+              },
+              {
+                "id": "cycle-4-during",
+                "content": "PEER: cycle-4-during"
+              },
+              {
+                "id": "cycle-4-fresh",
+                "content": "PEER: cycle-4-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 15,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 20,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 20,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 20,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 20,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-11"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-11"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 16,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 16
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 23,
+            "outstanding": ["cycle-5-idle", "cycle-5-busy", "cycle-5-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 23,
+            "outstanding": ["cycle-5-idle", "cycle-5-busy", "cycle-5-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 23,
+            "outstanding": ["cycle-5-idle", "cycle-5-busy", "cycle-5-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-12"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-12"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 17,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-5-idle",
+                "content": "PEER: cycle-5-idle"
+              },
+              {
+                "id": "cycle-5-busy",
+                "content": "PEER: cycle-5-busy"
+              },
+              {
+                "id": "cycle-5-during",
+                "content": "PEER: cycle-5-during"
+              },
+              {
+                "id": "cycle-5-fresh",
+                "content": "PEER: cycle-5-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 18,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 24,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 24,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 24,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 24,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-13"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-13"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 19,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 19
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 27,
+            "outstanding": ["cycle-6-idle", "cycle-6-busy", "cycle-6-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 27,
+            "outstanding": ["cycle-6-idle", "cycle-6-busy", "cycle-6-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 27,
+            "outstanding": ["cycle-6-idle", "cycle-6-busy", "cycle-6-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-14"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-14"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 20,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-6-idle",
+                "content": "PEER: cycle-6-idle"
+              },
+              {
+                "id": "cycle-6-busy",
+                "content": "PEER: cycle-6-busy"
+              },
+              {
+                "id": "cycle-6-during",
+                "content": "PEER: cycle-6-during"
+              },
+              {
+                "id": "cycle-6-fresh",
+                "content": "PEER: cycle-6-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 21,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle",
+              "PEER: cycle-6-busy",
+              "PEER: cycle-6-during",
+              "PEER: cycle-6-fresh",
+              "PEER: cycle-6-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 28,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 28,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 28,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 28,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-15"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-15"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 22,
+            "selected": "hold",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle",
+              "PEER: cycle-6-busy",
+              "PEER: cycle-6-during",
+              "PEER: cycle-6-fresh",
+              "PEER: cycle-6-idle"
+            ]
+          }
+        },
+        {
+          "type": "abort_seen",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 22
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 31,
+            "outstanding": ["cycle-7-idle", "cycle-7-busy", "cycle-7-during"],
+            "bytes": 56,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": true,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 31,
+            "outstanding": ["cycle-7-idle", "cycle-7-busy", "cycle-7-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 31,
+            "outstanding": ["cycle-7-idle", "cycle-7-busy", "cycle-7-during"],
+            "bytes": 56,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-16"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "noticeId": "notice-16"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 23,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle",
+              "PEER: cycle-6-busy",
+              "PEER: cycle-6-during",
+              "PEER: cycle-6-fresh",
+              "PEER: cycle-6-idle"
+            ]
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "messages": [
+              {
+                "id": "cycle-7-idle",
+                "content": "PEER: cycle-7-idle"
+              },
+              {
+                "id": "cycle-7-busy",
+                "content": "PEER: cycle-7-busy"
+              },
+              {
+                "id": "cycle-7-during",
+                "content": "PEER: cycle-7-during"
+              },
+              {
+                "id": "cycle-7-fresh",
+                "content": "PEER: cycle-7-fresh"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "index": 24,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult"
+            ],
+            "peerMarkers": [
+              "PEER: cycle-0-busy",
+              "PEER: cycle-0-during",
+              "PEER: cycle-0-fresh",
+              "PEER: cycle-0-idle",
+              "PEER: cycle-1-busy",
+              "PEER: cycle-1-during",
+              "PEER: cycle-1-fresh",
+              "PEER: cycle-1-idle",
+              "PEER: cycle-2-busy",
+              "PEER: cycle-2-during",
+              "PEER: cycle-2-fresh",
+              "PEER: cycle-2-idle",
+              "PEER: cycle-3-busy",
+              "PEER: cycle-3-during",
+              "PEER: cycle-3-fresh",
+              "PEER: cycle-3-idle",
+              "PEER: cycle-4-busy",
+              "PEER: cycle-4-during",
+              "PEER: cycle-4-fresh",
+              "PEER: cycle-4-idle",
+              "PEER: cycle-5-busy",
+              "PEER: cycle-5-during",
+              "PEER: cycle-5-fresh",
+              "PEER: cycle-5-idle",
+              "PEER: cycle-6-busy",
+              "PEER: cycle-6-during",
+              "PEER: cycle-6-fresh",
+              "PEER: cycle-6-idle",
+              "PEER: cycle-7-busy",
+              "PEER: cycle-7-during",
+              "PEER: cycle-7-fresh",
+              "PEER: cycle-7-idle"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 32,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 32,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 32,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "nonce": "b952d4538231d6259535764e146158db",
+            "receipts": 32,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "b952d4538231d6259535764e146158db",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_rpc_admission_lifecycle",
+      "mode": "rpc",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "idle",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": ["idle"],
+            "bytes": 10,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "idle",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "idle",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 1,
+            "selected": "success",
+            "roles": ["system", "user"],
+            "peerMarkers": ["PEER: idle"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 1,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 2,
+            "selected": "hold",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: idle"]
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "busy",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": ["busy"],
+            "bytes": 10,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "busy",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "busy",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: busy", "PEER: idle"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 2,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "filtered",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": ["filtered"],
+            "bytes": 14,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "filtered",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "filtered",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 4,
+            "selected": "success",
+            "roles": ["system", "assistant", "user", "assistant", "assistant"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "retry",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": ["retry"],
+            "bytes": 11,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "retry",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "retry",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 5,
+            "selected": "retry-once",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: busy", "PEER: filtered", "PEER: idle", "PEER: retry"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 6,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: busy", "PEER: filtered", "PEER: idle", "PEER: retry"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 4,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "error",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": ["error"],
+            "bytes": 11,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "error",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "error",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 7,
+            "selected": "error",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: busy",
+              "PEER: error",
+              "PEER: filtered",
+              "PEER: idle",
+              "PEER: retry"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 5,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "overflow",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": ["overflow"],
+            "bytes": 14,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "overflow",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "overflow",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 8,
+            "selected": "overflow-once",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": [
+              "PEER: busy",
+              "PEER: error",
+              "PEER: filtered",
+              "PEER: idle",
+              "PEER: overflow",
+              "PEER: retry"
+            ]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "before_compact",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "reason": "overflow",
+            "willRetry": true
+          }
+        },
+        {
+          "type": "compacted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "reason": "overflow",
+            "willRetry": true,
+            "idle": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 9,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: error", "PEER: filtered", "PEER: overflow", "PEER: retry"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 10,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: error", "PEER: filtered", "PEER: overflow", "PEER: retry"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "before_compact",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "reason": "manual",
+            "willRetry": false
+          }
+        },
+        {
+          "type": "compacted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "reason": "manual",
+            "willRetry": false,
+            "idle": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 11,
+            "selected": "success",
+            "roles": ["system", "user", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 6,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "before_compact",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "reason": "manual",
+            "willRetry": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 12,
+            "selected": "compact-fail",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "compact_failed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "session_compact_failed",
+            "reason": "manual",
+            "errorMessage": "Compaction failed: Summarization failed: synthetic offline failure",
+            "aborted": false,
+            "willRetry": false,
+            "fromExtension": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "boundary",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 7,
+            "outstanding": ["boundary"],
+            "bytes": 14,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "boundary",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "boundary",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 7,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 13,
+            "selected": "success",
+            "roles": ["system", "user", "user", "assistant", "user", "assistant", "user"],
+            "peerMarkers": ["PEER: boundary"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 7,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 7,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 7,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "admitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "settled-push",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": ["settled-push"],
+            "bytes": 18,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "submitted",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "settled-push",
+            "returnType": "undefined"
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": ["settled-push"],
+            "bytes": 18,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {}
+        },
+        {
+          "type": "host_observed",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "id": "settled-push",
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "index": 14,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: boundary", "PEER: settled-push"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+            "receipts": 8,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "e2c15e03ebd0e4ac75d29ee0fb10476c",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "reload"
+          }
+        },
+        {
+          "type": "session_start",
+          "nonce": "6d939a65c0399181044e3fd74dce347e",
+          "data": {
+            "type": "session_start",
+            "reason": "reload"
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "6d939a65c0399181044e3fd74dce347e",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "new"
+          }
+        },
+        {
+          "type": "session_start",
+          "nonce": "102c5a90ce1ab14b14eefa4e387e0c84",
+          "data": {
+            "type": "session_start",
+            "reason": "new"
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "102c5a90ce1ab14b14eefa4e387e0c84",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "test": "test_settled_arrivals_share_one_deferred_idle_notice",
+      "mode": "rpc",
+      "events": [
+        {
+          "type": "session_start",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "type": "session_start",
+            "reason": "startup"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "index": 1,
+            "selected": "success",
+            "roles": ["system", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_gate",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 0,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_submitted",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "source": "idle",
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": ["settle-a", "settle-b", "settle-c"],
+            "bytes": 42,
+            "idle": true,
+            "idleNoticeInFlight": "notice-1",
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {}
+        },
+        {
+          "type": "notice_observed",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "noticeId": "notice-1"
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "index": 2,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user"],
+            "peerMarkers": []
+          }
+        },
+        {
+          "type": "inbox_taken",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "messages": [
+              {
+                "id": "settle-a",
+                "content": "PEER: settle-a"
+              },
+              {
+                "id": "settle-b",
+                "content": "PEER: settle-b"
+              },
+              {
+                "id": "settle-c",
+                "content": "PEER: settle-c"
+              }
+            ]
+          }
+        },
+        {
+          "type": "request",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "index": 3,
+            "selected": "success",
+            "roles": ["system", "user", "assistant", "user", "assistant", "toolResult"],
+            "peerMarkers": ["PEER: settle-a", "PEER: settle-b", "PEER: settle-c"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "notice_boundary",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "source": "before_settle"
+          }
+        },
+        {
+          "type": "agent_start",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {}
+        },
+        {
+          "type": "request",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "index": 4,
+            "selected": "success",
+            "roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "toolResult",
+              "assistant",
+              "user"
+            ],
+            "peerMarkers": ["PEER: settle-a", "PEER: settle-b", "PEER: settle-c"]
+          }
+        },
+        {
+          "type": "agent_end",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "agent_before_settle",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": false,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_first",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "type": "agent_settled",
+            "aborted": false,
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "settled_last",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "nonce": "7df24d4366db6ec93f873f82d44de8da",
+            "receipts": 3,
+            "outstanding": [],
+            "bytes": 0,
+            "idle": true,
+            "pending": false
+          }
+        },
+        {
+          "type": "session_shutdown",
+          "nonce": "7df24d4366db6ec93f873f82d44de8da",
+          "data": {
+            "type": "session_shutdown",
+            "reason": "quit"
+          }
+        }
+      ],
+      "exit": 0
+    }
+  ]
+}

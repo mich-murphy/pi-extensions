@@ -11,6 +11,7 @@ Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an
 - `pi-vim` adds Vim-style editing to Pi's prompt editor.
 - `pi-scroll-context` shows the contextual user prompt in a compact header while browsing fullscreen history.
 - `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
+- [`pi-comms`](packages/pi-comms/README.md) adds explicitly configured, bounded collaboration between live Pi runtimes, locally or through a private-CA mTLS gateway peer. Its native gateway is started separately; installation and deployment are never automatic.
 
 Pi loads these extensions from the root package manifest. Install the repository with:
 
@@ -39,6 +40,8 @@ Pi supplies its core packages to extensions at runtime. Keep those packages in `
 - Oxlint lints with type-aware rules, following Clippy's category model: `correctness`, `suspicious`, and `perf` are errors, and `pedantic`, `style`, and `restriction` rules are opted into one at a time, never as whole categories. The opt-ins follow typescript-eslint's `strict-type-checked` and `stylistic-type-checked` presets plus the TypeScript skill, grouped in `.oxlintrc.json` by type safety, readability, data structures, modules, and Pi-specific hazards. Warnings fail the run. Suppress a rule only on the offending line, with `-- <reason>`.
 - Fallow checks the whole repository for dead code, duplication, complexity, and dependency problems.
 - markdownlint-cli2 checks package documentation.
+- The session gateway uses pinned Rust 1.98.0, committed Cargo.lock, and locked fmt/check/clippy/test/rustdoc gates (`npm run check:rust`). Its lint policy follows pinned BeautifulRust guidance with upstream attribution.
+- Session communication uses Hegel property tests in TypeScript and Rust, plus isolated offline real-Pi RPC/TUI journeys. Those journeys require Python 3; they do not use normal Pi profiles or provider credentials.
 
 Every extension must pass the whole-repo Fallow gate, `npm run fallow`, whether or not a change touches it. A finding from any of its three checks fails `npm run check`:
 
@@ -54,4 +57,4 @@ Renovate runs from `.github/workflows/renovate.yaml` on a schedule and on demand
 
 Two dependencies never automerge, whatever the update type. Pi's own `@earendil-works/*` packages define the provider and extension contracts and are resolved from the running Pi at runtime, so a contract change type-checks clean against the pinned version and only fails in a live session; they are raised as one grouped PR. `@anthropic-ai/claude-agent-sdk` is gated on the live attestation in `sdk-release-contract.json`, which CI cannot produce, so its PR carries the upgrade procedure.
 
-Keep dependency ranges exact. A `latest` range is never out of date, so Renovate cannot raise a PR for it and the installed version drifts silently on every install.
+Keep npm dependency ranges exact. A `latest` range is never out of date, so Renovate cannot raise a PR for it and the installed version drifts silently on every install. The Rust application uses compatible Cargo constraints with a committed lockfile and `--locked` gates; its beta Hegel dependency is additionally pinned exactly.

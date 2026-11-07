@@ -22,9 +22,10 @@ repos:
     hooks:
       - id: format-check
         name: format-check
-        entry: "npx oxfmt --check"
+        entry: "npx oxfmt --check --threads=2"
         language: system
         types_or: [javascript, jsx, ts, tsx, json]
+        pass_filenames: false
         priority: 10
         stages: [pre-commit]
       - id: lint
