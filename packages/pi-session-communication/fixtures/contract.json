@@ -1,0 +1,33 @@
+{
+  "contract": "v16 C1-C9+C6a; v17 authorizes implementation without changing wire contract",
+  "boundaries": {
+    "frame": "Exactly one complete 4-byte big-endian-prefixed strict UTF8 JSON object.",
+    "json": "Body-only generic interpretation cases; operation fields intentionally not imposed.",
+    "framing": "Literal malformed/incomplete header or body; reject before interpretation."
+  },
+  "roles": {
+    "local-client": "Local session/gateway request path; caller omits authenticated from. Results/events on same path are schema-validated before live mapping checks.",
+    "gateway-forward": "Authenticated routed forwarding path: send/state.get/state.list/interest.add/interest.remove, all requiring from.",
+    "adapter-delivery": "Gateway-to-Pi path: deliver plus authenticated state/interest requests. Receiver deliver result may only admit/reject, never claim unknown.",
+    "remote-link": "Authenticated inter-gateway path: own-machine discovery/unwatch, ping and authenticated routed operations. Machine/scope authorization belongs to live connection state."
+  },
+  "encodedBounds": "wire/*.hex is authoritative raw evidence; expected.value is canonical decoded data, not a generator. Descriptor bytes include its actual object representation including escaping/whitespace. Full frame cap counts the prefix.",
+  "semanticBoundaryCases": [
+    {
+      "fixture": "wrong-reply-target",
+      "structural": "accepted",
+      "runtime": "not_admitted invalid_correlation; runtime must compare exact replyTo sender/recipient with retained scoped evidence"
+    },
+    {
+      "case": "well-shaped receipt with wrong runtime/scope/message binding",
+      "structural": "accepted",
+      "runtime": "protocol failure for a live mapping; well-formed stale mappings discarded without allocation"
+    },
+    {
+      "case": "forged remote machine or unapproved scope claim",
+      "structural": "accepted if identifiers are syntactically valid",
+      "runtime": "connection machine binding and current directional policy must deny; no admission/wake"
+    }
+  ],
+  "identity": "Effective send key is sender PeerRef + recipient PeerRef + scopeId + message.id; rid is not an idempotency key. Decoded key order/escape spelling are irrelevant, but optional absence, array order and exact Unicode remain distinct. Retained receipts/expiry/atomic admission are adapter-owned, not implemented by the decoder."
+}

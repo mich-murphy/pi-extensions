@@ -1,6 +1,31 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "minimumVersion": "3.32.0",
+  // Real Pi subprocess/evaluation entrypoints are launched outside the TS import graph.
+  "framework": [
+    {
+      "name": "session-communication-offline-pi",
+      "enablers": ["@earendil-works/pi-coding-agent"],
+      "entryPoints": [
+        "packages/pi-session-communication/test/spike/extension.ts",
+        "packages/pi-session-communication/test/spike/production-extension.ts",
+        "packages/pi-session-communication/test/codemode/serve.ts",
+        "packages/pi-session-communication/test/codemode/trial.ts",
+        "packages/pi-session-communication/test/codemode/run.ts"
+      ],
+      "entryPointRole": "test",
+      "usedExports": [
+        {
+          "pattern": "packages/pi-session-communication/test/spike/extension.ts",
+          "exports": ["default"]
+        },
+        {
+          "pattern": "packages/pi-session-communication/test/spike/production-extension.ts",
+          "exports": ["default"]
+        }
+      ]
+    }
+  ],
   "rules": {
     "unused-dev-dependencies": "error",
     "unused-optional-dependencies": "error",
