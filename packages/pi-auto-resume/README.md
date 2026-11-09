@@ -1,112 +1,60 @@
-# Pi Auto Resume
+# pi-auto-resume
 
-Continues a session automatically when a provider's usage limit resets, or
-after a transient provider or network failure outlasts Pi's own retries. It is
-on by default; `/auto-resume off` turns it off for the current session,
-`/auto-resume on` turns it back on, and `/auto-resume` alone toggles it.
+Continues a Pi session automatically after a provider usage limit resets or a transient provider failure.
 
-## When it waits
+## Install
 
-A provider publishes the limit's reset time on the `usage-limit` event channel
-before its failed turn ends. Currently only `pi-claude-sdk` does this; its
-payload is `{ provider: "claude-sdk", resetsAt }`, with `resetsAt` in epoch
-milliseconds. When the run settles on that failure and the reset is at most
-five hours away, the extension:
+Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). Auto-resume is on by default.
 
-1. Omits the failed attempt from model context, so the resumed turn carries on
-   as if it never happened. The attempt stays in the transcript.
-2. Shows a warning and a one-line widget above the editor with the resume time.
-3. Checks the wall clock once a minute and, once the reset has passed and Pi is
-   idle, starts the next turn with a marker message. The marker is shown in the
-   transcript and hidden from the model.
+## Commands
 
-A resumed turn that hits a new limit with a new reset time waits again. A new
-prompt, any newly started agent run (including one started by another extension),
-session tree navigation, or `/auto-resume off` cancels the wait. Session replacement,
-reload, and shutdown also discard it.
+| Command | Effect |
+| --- | --- |
+| `/auto-resume` | Toggles auto-resume for this session. |
+| `/auto-resume on` | Turns it on. |
+| `/auto-resume off` | Turns it off and cancels any pending wait. |
 
-Everything else is left to the user: a limit with no reset time or a reset more
-than five hours away. The extension never probes the provider, and the wait is
-kept in memory only, so it ends with the Pi process.
+Any other argument shows `Usage: /auto-resume [on|off]` and changes nothing.
 
-Comparing the wall clock, rather than sleeping for the whole wait, keeps the
-resume on time when the machine sleeps; it does not keep the machine awake.
+## Configuration
 
-## Transient failures
+Add an `autoResume.transient` object to `~/.pi/agent/settings.json`, or to a project's `.pi/settings.json`. Every field is optional. An invalid field makes Pi warn once and use all defaults.
 
-Pi retries connection and capacity errors itself. When a run still ends on a
-failed reply after those retries, with no usage-limit notice, the extension
-retries the turn with backoff using the same widget, context omission and
-cancellation as a usage-limit wait. A failure counts as transient when
-`isRetryableAssistantError` from `@earendil-works/pi-ai` matches it and it is not
-a context overflow, or when it is one of two Claude Agent SDK failures that
-classifier does not recognise:
+| Field | Default | Effect |
+| --- | --- | --- |
+| `enabled` | `true` | `false` stops transient retries; usage-limit waits continue. `/auto-resume off` stops both. |
+| `delaysMinutes` | `[1, 2, 5, 10, 15]` | Wait before each attempt. The last value repeats. Values are positive and may be fractional. |
+| `maxAttempts` | `8` | Retries before Pi gives up. Positive integer. |
+| `windowMinutes` | `120` | No retry starts later than this long after the first failure. |
 
-- `Claude Agent SDK: the query failed; retry or check Claude Code status`
-- `Claude Agent SDK: could not start the query (unexpected SDK error)`
+## How it behaves
 
-Aborted runs (Esc, or subagents stopped on interrupt), authentication and
-invalid-request errors, context overflow and unrecognised errors are not
-retried. Transient retries run only in the TUI and RPC modes.
+When a run ends on a failure, Pi omits the failed attempt from model context, shows a warning and a widget above the editor, and checks the clock every minute. Once the time passes and Pi is idle, it starts a new turn with a marker message.
 
-The waits are 1, 2, 5, 10 and 15 minutes, then 15 minutes for each later
-attempt. Retrying stops after 8 attempts or once the next attempt would start
-more than 120 minutes after the first failure, whichever comes first. Pi then
-shows one warning and leaves the session to you. A completed run, a prompt of
-your own, a branch switch or a session shutdown resets the count. A usage-limit
-notice replaces a pending transient wait, and only one wait exists at a time.
+- **Usage limit:** waits if the provider publishes a reset time on the `usage-limit` event channel and it is at most 5 hours away. `pi-claude-sdk` publishes one; other providers get transient retries only.
+- **Transient failure:** applies after Pi's own retries fail. Aborted runs, authentication errors, invalid requests and context overflow are not retried. After `maxAttempts` retries, or once `windowMinutes` have passed since the first failure, it stops and asks you to send a message.
 
-Because the wall clock is checked once a minute, a wait shorter than a minute
-resumes at the next check.
-
-### Settings
-
-Set `autoResume.transient` in Pi's settings. Every field is optional:
-
-```json
-{
-  "autoResume": {
-    "transient": {
-      "enabled": true,
-      "delaysMinutes": [1, 2, 5, 10, 15],
-      "maxAttempts": 8,
-      "windowMinutes": 120
-    }
-  }
-}
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Waiting: usage limit or transient failure
+    Waiting --> Resumed: reset time passes and Pi is idle
+    Resumed --> Idle: turn succeeds
+    Resumed --> Waiting: fails again, within limits
+    Resumed --> Idle: fails again, limits reached
+    Waiting --> Idle: new prompt, tree navigation, off or shutdown
 ```
 
-Delays and the window must be positive and may be fractional. `maxAttempts` must
-be a positive integer. If any field is invalid, Pi warns once and uses the
-defaults. Settings are reread at each failure. `enabled: false` turns off
-transient retries only. `/auto-resume off` turns off both kinds of wait for the
-session.
+Modes differ:
 
-## Print and JSON modes
+| Mode | Behavior |
+| --- | --- |
+| TUI, RPC | Waits and resumes. |
+| Print | Writes `Usage limit resets at <ISO time>` to stderr and exits. |
+| JSON | Records an `auto-resume` custom entry with `{ resetsAt }` and exits. |
 
-These modes exit as soon as Pi settles, so the extension never waits there and
-never retries transient failures.
-Print mode writes `Usage limit resets at <ISO time>` to stderr, and JSON mode
-records an `auto-resume` custom entry with `{ resetsAt }`, which appears as an
-`entry_appended` event.
+## Limitations
 
-## Notice correlation
-
-Notices are consumed at settlement and cleared at each agent/turn start, so a
-retry or the next main request cannot reuse a previous request's notice. When a
-notice names a provider, it must match the final failed assistant message.
-Malformed or out-of-range dates are ignored in every mode.
-
-The event has no request/session ID. A nested or concurrent call to the same
-provider can therefore still be ambiguous if its notice arrives during the final
-main request. Exact correlation would require a richer provider event contract;
-the extension does not infer usage limits from error text.
-
-## Verification
-
-Ask Pi to run the `verify-pi-auto-resume` skill, or open
-[the skill instructions](../../.agents/skills/verify-pi-auto-resume/SKILL.md).
-Follow that skill's invocation instructions for its
-[verification runner](../../.agents/skills/verify-pi-auto-resume/scripts/verify.py).
-The harness uses the checkout-pinned Pi runtime and a synthetic offline provider;
-it does not require subscription credentials or live provider requests.
+- The wait lives in memory and ends with the Pi process.
+- The provider's reset-time event names no request. If another call to the same provider hits a limit during the final request, its reset time can be applied to the wrong failure.
+- Waiting does not keep the machine awake, and `pi-caffeinate` releases while Pi is idle. After the machine wakes, the next minute check resumes on schedule.

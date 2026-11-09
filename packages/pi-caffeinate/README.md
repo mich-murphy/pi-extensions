@@ -1,26 +1,24 @@
-# Pi Caffeinate
+# pi-caffeinate
 
-Prevents macOS idle and display sleep while Pi is doing agent work. It also
-prevents system sleep while the Mac is connected to AC power.
-Each active Pi process holds one `/usr/bin/caffeinate` process. The assertion
-starts on `agent_start`, remains active across retries and compaction, and ends
-on `agent_settled` or `session_shutdown`. Each assertion started by
-`agent_start` gets one restart after an unexpected process exit. That allowance
-prevents a restart loop; a later `agent_start` gets a fresh allowance whenever
-no assertion remains, including a continuation that starts before settlement.
+Keeps your Mac awake while Pi is working. It works on macOS only and does nothing on other systems.
 
-Stopping requests `SIGTERM`, then requests `SIGKILL` one second later if
-caffeinate is still running. Pi never waits for terminal process exit, so the
-extension adds no delay to settling or shutdown. A failed signal is a process
-notification, not proof that caffeinate exited; the adapter may subsequently
-report its actual exit. Released-child notifications are intentionally ignored.
-The `-w` flag makes caffeinate exit with Pi, so a crashed Pi cannot leave the Mac
-awake.
+## Install
 
-The extension has no settings or commands. Installing it enables this command:
+Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). It has no settings or commands.
 
-```text
-/usr/bin/caffeinate -d -i -s -w <pi-pid>
-```
+## How it behaves
 
-Other operating systems remain unchanged: the extension registers nothing.
+Pi holds the Mac awake from the start of agent work, including retries and compaction. It releases when Pi settles and is idle, or when the session shuts down. If the process exits unexpectedly, it restarts once. caffeinate exits when Pi exits, so a crashed Pi cannot leave the Mac awake.
+
+It runs `/usr/bin/caffeinate -d -i -s -w <pi-pid>`:
+
+| Flag | Prevents |
+| --- | --- |
+| `-d` | Display sleep. |
+| `-i` | Idle sleep. |
+| `-s` | System sleep, only on AC power. |
+| `-w` | Outliving Pi: caffeinate exits when Pi does. |
+
+## Troubleshooting
+
+While Pi works, `pmset -g assertions` lists a `caffeinate` entry. If caffeinate fails to start or exits unexpectedly, Pi shows a `No Sleep` message.

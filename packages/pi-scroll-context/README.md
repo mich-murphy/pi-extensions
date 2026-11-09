@@ -1,80 +1,29 @@
 # pi-scroll-context
 
-A single muted, full-width `❯ prompt…` row above Pi's fullscreen transcript while
-browsing history. It shows the nearest preceding user prompt, not the newest
-prompt, and is suppressed while that prompt's original text is still visible.
-Returning to the live end reclaims the row, including during long streamed output.
+Keeps your current prompt visible while you scroll back through a Pi session. A single muted row above the transcript shows the nearest user prompt before the part you are reading.
 
-Load for one invocation without changing your profile:
+## Install
 
-```sh
-pi -e ./packages/pi-scroll-context/index.ts
-```
+Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). It has no settings or commands.
 
-There are no settings, commands, shortcuts, timestamps, navigation buttons, or
-model-context changes. Regular, print, JSON, and RPC modes have no sticky row.
-The active theme supplies `muted` text and `userMessageBg` across the entire row.
+## Requirements
 
-## Compatibility and implementation
+It needs Pi's fullscreen mode. That is the default, so you usually need to do nothing. If you switched to regular mode, set `tuiMode` back to `fullscreen` in `/settings`, or start Pi with `--tui-mode fullscreen`. In regular, print, JSON and RPC modes there is no row.
 
-Verified against Pi 1.3.0 and 1.4.0 with isolated native CLI and tmux terminal
-journeys. Automated tests use the repository's exact pinned Pi dependency.
+## Usage
 
-Pi has no public fixed transcript-header slot. `host.ts` isolates these contracts:
+Scroll up through the transcript. Once the prompt you are reading under scrolls off screen, it appears in a row at the top.
 
-- The factory's stable forwarding TUI reference exposes the private `layoutRoot`.
-- The native root is a two-entry VStack: primary ScrollView, then the input dock.
-- `Symbol.for("@earendil-works/pi-tui/layout-node")` supplies its layout description.
-- Native user messages prefix rendered rows with OSC 133 prompt boundaries and
-  retain their original prompt in a private `text` field. Boundaries determine
-  geometry; the optional text read avoids inserting spaces into soft-wrapped words.
+## How it behaves
 
-The adapter recognizes the native root's exact allocation shape. It measures
-native document/dock render caches before inserting zero or one row; it never
-probes by mutating scroll state. Native ScrollView remains responsible for scroll
-anchors, following the end, selection, search, and input routing. No renderer,
-terminal writes, keybindings, session entries, or provider requests are intercepted.
-The invisible discovery widget consumes zero rows. The patched root survives
-regular/fullscreen renderer replacement; shutdown/reload restores its original
-method only if another extension has not replaced it in the meantime.
+- **Shows** when you scroll back and the prompt that owns the visible content has scrolled off screen.
+- **Hides** while that prompt's own text is still visible.
+- **Returns** the row to the transcript when you scroll back to the live end, including during long streamed output.
 
-Unknown layout shapes are left untouched. These private contracts can change in
-future Pi releases, so this is not a guarantee of compatibility with arbitrary
-hosts or other extensions that replace the fullscreen root. Native render-cache
-measurement is repeated as output, tools, width, and session branches change.
-Width changes retain Pi's native numeric scroll-offset behavior; the header follows
-the turn actually visible after reflow rather than overriding Pi's scroll anchoring.
+## Limitations
 
-## Verification
+Pi has no public way to pin a row above the transcript, so the extension hooks into undocumented parts of Pi's screen layout. A Pi upgrade may break it. If the layout is not recognised, the extension leaves Pi untouched and shows no row.
 
-Run the extension tests and the repository quality gates:
+## Credit
 
-```sh
-npx vitest run packages/pi-scroll-context/test
-CI=true npm run check
-```
-
-The native journey needs `tmux`. It replays a synthetic session in an isolated
-profile without submitting model prompts. Plain and ANSI terminal captures, the
-terminal write log, actions, and results remain in the printed temporary directory.
-The CLI load smoke test still runs when tmux is unavailable; only the native
-terminal journey is skipped in that environment.
-
-Run it directly, optionally choosing another installed Pi package directory:
-
-```sh
-node packages/pi-scroll-context/test/fixtures/native-journey.ts
-node packages/pi-scroll-context/test/fixtures/native-journey.ts /path/to/pi-coding-agent
-```
-
-Native checks cover live-bottom baseline parity, keyboard and mouse-wheel history
-scrolling, historical prompt ownership, duplicate suppression, themed colors,
-editor focus, row reclamation, Unicode/narrow reflow, reload, and mode switches.
-Deterministic native-layout tests additionally cover streamed content changes,
-first-frame resize settlement, branch/compaction document rebuilds, partial and
-identical prompts, incompatible hosts, and disposal beneath another extension's
-wrapper. These layout checks do not require a live model response.
-
-Reference: [BlockLune/pi-sticky-header](https://github.com/BlockLune/pi-sticky-header)
-informed the private-host compatibility research. This implementation is original;
-it does not copy that extension's source or its follow-end header behavior.
+[BlockLune/pi-sticky-header](https://github.com/BlockLune/pi-sticky-header) informed the research into Pi's private layout. This implementation is original.
