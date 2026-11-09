@@ -6,9 +6,9 @@ import { Result } from "effect";
 import { describe, test } from "vitest";
 import { htmlToMarkdown, htmlToText } from "../html";
 
-// Each case parses and converts a document of up to 64 elements twice; 60 cases keep the file
-// well under 3s.
-const settings = { testCases: 60, seed: 12_345n, database: Database.disabled };
+// Each case parses and converts a document of up to 64 elements twice. 300 cases are needed to
+// reliably hit a link-wrapped raw-text-only div (60 missed it); the file still runs well under 3s.
+const settings = { testCases: 300, seed: 12_345n, database: Database.disabled };
 const MARKER = "ZQSCRIPTMARKERQZ";
 const VISIBLE = "ZQVISIBLEMARKERQZ";
 const BASE_URL = "https://example.com/";
@@ -57,11 +57,21 @@ function assertAllowedOutcome(
   assert.equal(typeof result.success, "string");
   assert.ok(!result.success.includes(MARKER), "script text leaked into the output");
   // Readable-root extraction legitimately keeps only the best-scoring div and drops its siblings,
-  // so visible text is only promised to survive when no div competes for the root.
-  if (html.includes("<div")) {
+  // so visible text is only promised to survive when no div with visible text competes for the
+  // root. A div holding only raw text never competes (it has no visible text).
+  if (hasDivWithVisibleText(html)) {
     return;
   }
   assert.ok(result.success.includes(VISIBLE), "visible text was lost");
+}
+
+// True when some div's content up to its first closing tag has visible text once raw-text
+// elements and tags are removed.
+function hasDivWithVisibleText(html: string): boolean {
+  const withoutRawText = html.replaceAll(/<(?:script|style)>.*?<\/(?:script|style)>/gu, "");
+  return [...withoutRawText.matchAll(/<div>(?<inner>.*?)<\/div>/gu)].some((match) =>
+    /\S/u.test((match.groups?.inner ?? "").replaceAll(/<[^>]*>/gu, "")),
+  );
 }
 
 function assertConversionsSafe(html: string): void {

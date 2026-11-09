@@ -85,6 +85,22 @@ describe("htmlToText on input without an html element", () => {
 });
 
 describe("readable root extraction", () => {
+  const rawTextOnlyDivs = [
+    ["script in a div inside a link", '<a href="/x"><div><script>RAWMARK</script></div></a>'],
+    ["script in a div", "<div><script>RAWMARK</script></div>"],
+    ["style in a div inside a link", '<a href="/x"><div><style>RAWMARK</style></div></a>'],
+    ["script in a div after a link", '<a href="/x">go</a><div><script>RAWMARK</script></div>'],
+  ] as const;
+
+  test.each(rawTextOnlyDivs)(
+    "a div holding only raw text (%s) cannot win the root",
+    (_label, prefix) => {
+      const text = htmlToText(`${prefix}<p>VISIBLEMARK</p>`, "https://e.x/");
+      expect(text).toContain("VISIBLEMARK");
+      expect(text).not.toContain("RAWMARK");
+    },
+  );
+
   const preferredRoots = [
     ["#readme", "div", 'id="readme"'],
     ["[data-testid='repository-readme-content']", "div", 'data-testid="repository-readme-content"'],

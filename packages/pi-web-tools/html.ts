@@ -526,7 +526,11 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
     current.nextChild = node.nextSibling;
     if (isElementNode(node)) {
       stack.push({ stats: openElement(node, current.stats), nextChild: node.firstChild });
-    } else if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
+    } else if (
+      (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) &&
+      !RAW_TEXT_TAGS.has(current.stats.element.localName)
+    ) {
+      // Raw text (script, style, ...) is never visible, so it must not score a candidate.
       current.stats.text.appendText(node.nodeValue ?? "");
     }
   }
