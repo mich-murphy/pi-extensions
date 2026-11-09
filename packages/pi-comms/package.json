@@ -8,6 +8,7 @@
     "pi-package",
     "session-communication"
   ],
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "effect": "4.0.6"

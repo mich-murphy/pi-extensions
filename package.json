@@ -5,6 +5,7 @@
   "keywords": [
     "pi-package"
   ],
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
