@@ -120,6 +120,8 @@ class AssistantMessageWriter {
         return false;
       }
       case "usage": {
+        // Pi's `Usage` has `cacheWrite1h` (a subset of `cacheWrite`) but no 5m field, so the
+        // diagnostic `cacheWrite5m` is dropped here: it is derivable as cacheWrite - cacheWrite1h.
         const { input, output, cacheRead, cacheWrite, cacheWrite1h } = event.usage;
         const totalTokens = input + output + cacheRead + cacheWrite;
         Object.assign(

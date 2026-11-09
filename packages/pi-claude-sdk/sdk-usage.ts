@@ -274,6 +274,14 @@ export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
   );
 });
 
+/**
+ * Remaining percentage rounded to two decimals, the precision Claude reports utilisation at.
+ * `100 - 64.1` is `35.900000000000006` in binary floating point, which must not reach the user.
+ */
+function remainingPercent(usedPercent: number): number {
+  return Math.round((100 - usedPercent) * 100) / 100;
+}
+
 function formatResetTime(resetsAt: string | null): string {
   if (resetsAt === null) {
     return "reset time unavailable";
@@ -303,7 +311,7 @@ export function formatClaudeUsageStatus(status: ClaudeUsageStatus): string {
     const remaining =
       window.usedPercent === null
         ? "remaining usage unavailable"
-        : `${100 - window.usedPercent}% remaining`;
+        : `${remainingPercent(window.usedPercent)}% remaining`;
     return `${window.name}: ${remaining}, ${formatResetTime(window.resetsAt)}`;
   });
   if (status.extraUsageEnabled !== null) {
