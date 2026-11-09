@@ -61,6 +61,7 @@ export class SimulatedGateway {
   constructor(
     private readonly scenario: Scenario,
     private readonly receiptsPath?: string,
+    private readonly registerReplyDelayMs = 0,
   ) {}
 
   count(op: string): number {
@@ -118,10 +119,23 @@ export class SimulatedGateway {
         const reply = this.answer(request);
         this.record(request, reply);
         if (reply !== undefined) {
-          socket.write(encodeFrame(reply, "adapter-delivery"));
+          this.write(socket, request, reply);
         }
       }
     });
+  }
+  private write(socket: Socket, request: Frame, reply: Reply): void {
+    const bytes = encodeFrame(reply, "adapter-delivery");
+    if (request.op === "register" && this.registerReplyDelayMs > 0) {
+      // Models a loaded machine: the gateway has SEEN register, the adapter has not yet processed the reply.
+      setTimeout(() => {
+        if (!socket.destroyed) {
+          socket.write(bytes);
+        }
+      }, this.registerReplyDelayMs);
+    } else {
+      socket.write(bytes);
+    }
   }
   private record(request: Frame, reply: Reply | undefined): void {
     const sessionId = targetOf(request)?.sessionId;

@@ -5,12 +5,17 @@ import { SCENARIOS, TASKS } from "./corpus.js";
 import { SimulatedGateway } from "./gateway.js";
 import { makeProfile } from "./profile.js";
 
-export async function startFixture(scenarioId: string, codemode = false, receiptsPath?: string) {
+export async function startFixture(
+  scenarioId: string,
+  codemode = false,
+  receiptsPath?: string,
+  registerReplyDelayMs = 0,
+) {
   const scenario = SCENARIOS[scenarioId];
   if (scenario === undefined) {
     throw new Error(`Unknown scenario ${scenarioId}`);
   }
-  const gateway = new SimulatedGateway(scenario, receiptsPath);
+  const gateway = new SimulatedGateway(scenario, receiptsPath, registerReplyDelayMs);
   const socketPath = await gateway.start();
   const profile = await makeProfile(socketPath, codemode);
   return {
