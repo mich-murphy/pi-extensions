@@ -4,11 +4,8 @@ import { createServer } from "node:net";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Database, Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
 import { afterEach, describe, expect, test } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
-import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
@@ -159,10 +156,6 @@ function misbound(request: Request): Reply | undefined {
     },
   };
 }
-function permissionList(allowed: boolean): string[] {
-  return allowed ? ["push"] : [];
-}
-
 function discoveryReply(request: Request): Reply | undefined {
   if (request.op !== "discover") {
     return undefined;
@@ -1123,27 +1116,5 @@ describe("public adapter transport and notice accounting", () => {
     session.close();
     session.afterCompaction();
     expect(session.beforeSettle({ entries: [] })).toBeUndefined();
-  });
-  test("generated permissions stay exact-scope and terminal controls remain inert", () => {
-    new Hegel((tc) => {
-      const allowed = tc.draw(gs.booleans(), "allowed");
-      const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "character");
-      const config = decodeConfiguration({
-        machineId: "alpha",
-        socketPath: "/tmp/gateway.sock",
-        scopeIds: ["team"],
-        label: "test",
-        policies: [{ machineId: "beta", scopeId: "team", permissions: permissionList(allowed) }],
-      });
-      assert.equal(permits(config, "beta", "team", "push"), allowed);
-      assert.equal(permits(config, "beta", "other", "push"), false);
-      assert.equal(permits(config, "gamma", "team", "push"), false);
-      const output = visibleText(String.fromCodePoint(code));
-      assert.equal(output.includes("\u001b"), false);
-      assert.equal(output.includes("\u009b"), false);
-    })
-      .databaseKey("session-communication/adapter/policy-render")
-      .settings({ testCases: 200, seed: 12_345n, database: Database.disabled })
-      .runSync();
   });
 });

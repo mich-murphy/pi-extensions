@@ -9,9 +9,9 @@ import type { Delivery, PublicationRecord } from "../state/types.js";
 const receiver = { machineId: "beta", sessionId: "receiver", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: "a".repeat(32) };
 const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
-type Step = { action: number; id: number; body: number; advance: number };
+type Step = { action: number; id: number; body: number; advance: number; size: number };
 type ModelReceipt = {
-  body: number;
+  body: string;
   admittedAt: number;
   active: boolean;
   key: string;
@@ -36,34 +36,46 @@ function activeBytes(model: Model): number {
     .filter((receipt) => receipt.active)
     .reduce((sum, receipt) => sum + receipt.bytes, 0);
 }
+const INBOX_BYTES = 1300;
+function contentFor(step: Step): string {
+  return `value:${step.body}:${"x".repeat(step.size)}`;
+}
+function inputFor(id: number, content: string) {
+  return {
+    from: sender,
+    to: receiver,
+    scopeId: "team",
+    message: { id: id.toString(16).padStart(32, "0"), kind: "update", format: "text", content },
+  } as const;
+}
+function deliveryBytes(id: number, content: string): number {
+  return (
+    Buffer.byteLength(
+      JSON.stringify({ v: 1, op: "deliver", rid: "0".repeat(32), ...inputFor(id, content) }),
+    ) + 4
+  );
+}
+const baseBytes = deliveryBytes(0, "value:0:");
 function expectedAdmission(model: Model, step: Step, bytes: number): string {
   if (!model.authorized) {
     return "forbidden";
   }
   const prior = model.entries.get(step.id);
   if (prior !== undefined) {
-    return prior.body === step.body ? "admitted" : "id_conflict";
+    return prior.body === contentFor(step) ? "admitted" : "id_conflict";
   }
   if (model.entries.size === 5) {
     return "receipts";
   }
   const active = [...model.entries.values()].filter((entry) => entry.active).length;
-  return active >= 3 || activeBytes(model) + bytes > 1300 || !model.queue ? "inbox" : "admitted";
+  return active >= 3 || activeBytes(model) + bytes > INBOX_BYTES || !model.queue
+    ? "inbox"
+    : "admitted";
 }
 function applySend(state: SessionState, model: Model, step: Step): void {
-  const input = {
-    from: sender,
-    to: receiver,
-    scopeId: "team",
-    message: {
-      id: step.id.toString(16).padStart(32, "0"),
-      kind: "update",
-      format: "text",
-      content: `value:${step.body}`,
-    },
-  } as const;
-  const bytes =
-    Buffer.byteLength(JSON.stringify({ v: 1, op: "deliver", rid: "0".repeat(32), ...input })) + 4;
+  const content = contentFor(step);
+  const input = inputFor(step.id, content);
+  const bytes = deliveryBytes(step.id, content);
   const expected = expectedAdmission(model, step, bytes);
   const actual = state.admit(input);
   const decision = actual.tag === "admitted" ? "admitted" : actual.code;
@@ -72,7 +84,7 @@ function applySend(state: SessionState, model: Model, step: Step): void {
   assert.equal(reason, expected);
   if (expected === "admitted" && !model.entries.has(step.id)) {
     model.entries.set(step.id, {
-      body: step.body,
+      body: content,
       admittedAt: model.now,
       active: true,
       key: JSON.stringify([
@@ -154,7 +166,7 @@ function assertAdmissionTrace(steps: readonly Step[]): void {
       offers.push(delivery);
       return true;
     },
-    limits: { inboxMessages: 3, inboxBytes: 1300, receipts: 5 },
+    limits: { inboxMessages: 3, inboxBytes: INBOX_BYTES, receipts: 5 },
   });
   for (const step of steps) {
     applyStep(state, model, step);
@@ -268,6 +280,40 @@ function assertInterestTrace(actions: readonly number[]): void {
   }
 }
 
+// Sizes straddle the single-message limit and its multiples so the byte branch is reached.
+const sizeGenerator = gs.oneOf(
+  gs.integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
+  gs.sampledFrom(
+    [1, 2].flatMap((count) =>
+      [-1, 0, 1].map((delta) => Math.max(0, Math.floor(INBOX_BYTES / count) - baseBytes + delta)),
+    ),
+  ),
+);
+function assertSingleDelivery(size: number, unit: string): void {
+  const content = unit.repeat(size) || "x";
+  const state = createState({
+    peer: receiver,
+    scopeIds: ["team"],
+    clock: () => 0,
+    authorize: () => true,
+    offer: () => true,
+    limits: { inboxMessages: 3, inboxBytes: INBOX_BYTES, receipts: 5 },
+  });
+  const bytes = deliveryBytes(1, content);
+  const actual = state.admit(inputFor(1, content));
+  if (bytes <= INBOX_BYTES) {
+    assert.equal(actual.tag, "admitted");
+    assert.equal(state.stats().inboxBytes, bytes);
+  } else {
+    assert.deepStrictEqual(
+      actual.tag === "not_admitted" && actual.code === "overloaded"
+        ? [actual.code, actual.resource]
+        : actual.tag,
+      ["overloaded", "inbox"],
+    );
+    assert.equal(state.stats().inboxBytes, 0);
+  }
+}
 describe("Hegel bounded state/fault traces against independent models", () => {
   test("admission, lost ACK retries, queue failure, retirement and expiry model", () => {
     new Hegel((tc) => {
@@ -279,11 +325,31 @@ describe("Hegel bounded state/fault traces against independent models", () => {
           id: tc.draw(gs.integers({ minValue: 0, maxValue: 7 }), `id${index}`),
           body: tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), `body${index}`),
           advance: tc.draw(gs.integers({ minValue: 0, maxValue: 700_000 }), `advance${index}`),
+          size: tc.draw(sizeGenerator, `size${index}`),
         });
       }
       assertAdmissionTrace(steps);
     })
       .databaseKey("session-communication/ts/admission-model")
+      .settings(settings)
+      .runSync();
+  });
+
+  test("single delivery admission flips exactly at the inbox byte limit", () => {
+    new Hegel((tc) => {
+      const unit = tc.draw(gs.sampledFrom(["x", "é", "界", "😀"]), "unit");
+      const width = Buffer.byteLength(unit);
+      const edge = Math.floor((INBOX_BYTES - baseBytes + 8) / width);
+      const size = tc.draw(
+        gs.oneOf(
+          gs.sampledFrom([edge - 2, edge - 1, edge, edge + 1, edge + 2]),
+          gs.integers({ minValue: 1, maxValue: 2 * edge }),
+        ),
+        "size",
+      );
+      assertSingleDelivery(size, unit);
+    })
+      .databaseKey("session-communication/ts/byte-limit")
       .settings(settings)
       .runSync();
   });
