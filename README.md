@@ -19,10 +19,11 @@ Pi loads these extensions from the root package manifest. Install the repository
 pi install git:github.com/mich-murphy/pi-extensions
 ```
 
-For local development:
+For local development, the toolchain (Node, Rust, a C compiler) comes from the project's Nix flake. Enter it with `nix develop`, or run `direnv allow` to load it through `.envrc`. Hegel's native engine installs with `npm ci`, so Nix does not provide it.
 
 ```sh
-npm install
+nix develop
+npm ci
 npm run check
 pi -e ./packages/pi-caffeinate/index.ts
 ```

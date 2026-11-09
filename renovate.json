@@ -8,6 +8,9 @@
   "branchConcurrentLimit": 5,
   "rebaseWhen": "conflicted",
   "automergeStrategy": "rebase",
+  "nix": {
+    "enabled": true
+  },
   "osvVulnerabilityAlerts": true,
   "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
   "major": {
