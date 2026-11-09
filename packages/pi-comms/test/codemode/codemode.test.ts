@@ -30,4 +30,15 @@ describe("offline codemode vs direct tools (simulated gateway, scripted recorder
       pick(results, "single_read", "direct").cumulativeRequestBytes,
     );
   }, 120_000);
+
+  test("a slow register reply delays the trial instead of failing it", async () => {
+    process.env.CODEMODE_TRIAL_REGISTER_DELAY_MS = "1500";
+    try {
+      const results = await runAll(["single_read"], 1);
+      expect(results.map((r) => r.correct)).toStrictEqual([true, true]);
+      expect(results.map((r) => r.traceOk)).toStrictEqual([true, true]);
+    } finally {
+      delete process.env.CODEMODE_TRIAL_REGISTER_DELAY_MS;
+    }
+  }, 120_000);
 });

@@ -10,7 +10,11 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentSession, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSession,
+  ExtensionAPI,
+  ExtensionUIContext,
+} from "@earendil-works/pi-coding-agent";
 import adapter from "../../index.js";
 import { EXPECTED_OPS, EXPECTED_READS } from "./corpus.js";
 import { plan } from "./recorder.js";
@@ -149,8 +153,48 @@ async function createSession(fixture: Fixture, arm: Arm, recorder: (pi: Extensio
   });
   return session;
 }
+const STATUS_KEY = "session-communication";
+const READY_BUDGET_MS = 30_000;
+/** UI context whose only behaviour is reporting the adapter's own "connected" status event
+ *  (the adapter clears its attention status exactly when the register reply was processed). */
+function isUiContext(value: Partial<ExtensionUIContext>): value is ExtensionUIContext {
+  return typeof value.setStatus === "function" && typeof value.notify === "function";
+}
+function readinessUi(onConnected: () => void): ExtensionUIContext {
+  // Plain object: the extension runner spreads the context, so a Proxy would lose its members.
+  const ui: Partial<ExtensionUIContext> = {
+    notify: () => undefined,
+    setStatus: (key: string, text: string | undefined) => {
+      if (key === STATUS_KEY && text === undefined) {
+        onConnected();
+      }
+    },
+  };
+  if (!isUiContext(ui)) {
+    throw new TypeError("readiness UI context is incomplete");
+  }
+  return ui;
+}
+async function awaitConnected(connected: Promise<undefined>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("adapter never reported connected"));
+    }, READY_BUDGET_MS);
+  });
+  try {
+    await Promise.race([connected, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function prepare(session: AgentSession, fixture: Fixture, arm: Arm): Promise<string[]> {
-  await session.bindExtensions({});
+  const { promise: connected, resolve: onConnected } = Promise.withResolvers<undefined>();
+  await session.bindExtensions({
+    uiContext: readinessUi(() => {
+      onConnected(undefined);
+    }),
+  });
   if (arm === "codemode") {
     session.setActiveToolsByName([...session.getActiveToolNames(), "codemode"]);
   }
@@ -159,11 +203,7 @@ async function prepare(session: AgentSession, fixture: Fixture, arm: Arm): Promi
     throw new Error("recorder model missing");
   }
   await session.setModel(model);
-  for (let i = 0; i < 300 && fixture.gateway.count("register") === 0; i += 1) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 10);
-    });
-  }
+  await awaitConnected(connected);
   const active = session.getActiveToolNames();
   const expectedTools = [
     "session_interest",
@@ -244,7 +284,12 @@ async function execute(
   };
 }
 async function runTrial(scenario: string, arm: Arm): Promise<Metrics> {
-  const fixture = await startFixture(scenario, arm === "codemode");
+  const fixture = await startFixture(
+    scenario,
+    arm === "codemode",
+    undefined,
+    Number(process.env.CODEMODE_TRIAL_REGISTER_DELAY_MS ?? 0),
+  );
   process.env.PI_CODING_AGENT_DIR = fixture.profile.agentDir;
   const counters: Counters = { requestBytes: [], calls: 0 };
   const session = await createSession(fixture, arm, recorderExtension(scenario, arm, counters));
