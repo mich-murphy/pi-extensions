@@ -61,6 +61,29 @@ describe("htmlToText", () => {
   });
 });
 
+describe("htmlToText on input without an html element", () => {
+  test.each([
+    ["script first", "<script>SCRIPTMARK</script><p>hi there</p>", ["hi there"], ["SCRIPTMARK"]],
+    ["style first", "<style>STYLEMARK</style><p>hi there</p>", ["hi there"], ["STYLEMARK"]],
+    [
+      "doctype and title",
+      "<!doctype html><title>TITLEMARK</title><p>hello world</p>",
+      ["hello world"],
+      [],
+    ],
+    ["sibling paragraphs", "<p>alpha</p><p>bravo</p>", ["alpha", "bravo"], []],
+    ["text around inline", "lead <b>middle</b> tail", ["lead", "middle", "tail"], []],
+  ])("%s keeps content and leaks no raw text", (_name, input, present, absent) => {
+    const text = htmlToText(input, "https://example.com");
+    for (const word of present) {
+      expect(text).toContain(word);
+    }
+    for (const word of absent) {
+      expect(text).not.toContain(word);
+    }
+  });
+});
+
 describe("readable root extraction", () => {
   const preferredRoots = [
     ["#readme", "div", 'id="readme"'],

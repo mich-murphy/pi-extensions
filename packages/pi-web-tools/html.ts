@@ -308,9 +308,19 @@ function createTurndownService(): TurndownService {
   return service;
 }
 
-function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | undefined {
+// linkedom makes the first element the document element when the input has no html element, which
+// cuts off later siblings and text, so such input is parsed again inside a full document shell.
+function parseWithHtmlRoot(rawHtml: string): Document {
   const { document } = parseHTML(rawHtml);
-  const root = extractReadableRoot(document);
+  const rootName = document.documentElement?.localName;
+  if (rootName === undefined || rootName === "html") {
+    return document;
+  }
+  return parseHTML(`<!DOCTYPE html><html><head></head><body>${rawHtml}</body></html>`).document;
+}
+
+function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | undefined {
+  const root = extractReadableRoot(parseWithHtmlRoot(rawHtml));
   if (root === undefined) {
     return undefined;
   }
