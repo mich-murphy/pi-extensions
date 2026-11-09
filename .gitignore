@@ -6,3 +6,4 @@ coverage/
 .hegel/
 __pycache__/
 packages/pi-comms/gateway/target/
+.direnv/
