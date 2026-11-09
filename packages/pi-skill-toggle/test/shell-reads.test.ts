@@ -152,7 +152,7 @@ describe("pathsReadByCommand ignores commands that print no file content", () =>
     expect(reads(command)).toStrictEqual([]);
   });
 
-  // Documented limitation (README "Limitations"): the shell check is fail-open here. Inline
+  // Documented limitation (README "Limitations" points here for the exact list): the shell check is fail-open here. Inline
   // interpreter code is not inspected, a loop value copied into another variable is not
   // tracked, and a temporary `name=value cmd` assignment makes that loop binding unknown for
   // the rest of the body. These pins catch accidental changes in either direction.
