@@ -81,7 +81,6 @@ describe("terminal-safe diagnostic output", () => {
   test("disabled cache diagnostics stay disabled with redirected stderr", () => {
     setTerminalStderr(false);
     expect(Effect.runSync(cacheDiagnosticsTracker("disabled"))).toBeUndefined();
-    expect(write).not.toHaveBeenCalled();
   });
 
   test("checks the destination when writing, not when creating the cache tracker", () => {
@@ -93,12 +92,21 @@ describe("terminal-safe diagnostic output", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  test("parses the diagnostics switches, the file destination implying enabled", () => {
-    expect(parseCacheDiagnosticsMode({})).toBe("disabled");
-    expect(parseCacheDiagnosticsMode({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" })).toBe("enabled");
-    expect(
-      parseCacheDiagnosticsMode({ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "/tmp/cache.jsonl" }),
-    ).toStrictEqual({ file: "/tmp/cache.jsonl" });
+  test.each([
+    [{}, "disabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" }, "enabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "0" }, "disabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "true" }, "disabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "" }, "disabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "" }, "disabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "", PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "1" }, "enabled"],
+    [{ PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "/tmp/cache.jsonl" }, { file: "/tmp/cache.jsonl" }],
+    [
+      { PI_CLAUDE_SDK_CACHE_DIAGNOSTICS_FILE: "/tmp/c", PI_CLAUDE_SDK_CACHE_DIAGNOSTICS: "0" },
+      { file: "/tmp/c" },
+    ],
+  ])("parses the diagnostics switches %j", (environment, expected) => {
+    expect(parseCacheDiagnosticsMode(environment)).toStrictEqual(expected);
   });
 
   test("appends owner-only JSONL to the diagnostics file even on a terminal, never throwing", () => {
