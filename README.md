@@ -1,61 +1,49 @@
 # Pi extensions
 
-Personal extensions for the [Pi coding agent](https://pi.dev/), maintained as an npm workspace.
+Extensions for the [Pi coding agent](https://pi.dev/).
 
-## Packages
+## Install
 
-- `pi-claude-sdk` routes Claude model turns through the official Claude Agent SDK.
-- `pi-auto-resume` continues a session automatically when a provider's usage limit resets.
-- `pi-caffeinate` keeps macOS awake while Pi is working.
-- `pi-skill-toggle` toggles discovered skills and context files without removing them from disk.
-- `pi-vim` adds Vim-style editing to Pi's prompt editor.
-- `pi-scroll-context` shows the contextual user prompt in a compact header while browsing fullscreen history.
-- `pi-web-tools` adds public web search and fetch tools that work without API keys, with optional native Pi login for Exa, Parallel, and Brave.
-- [`pi-comms`](packages/pi-comms/README.md) adds explicitly configured, bounded collaboration between live Pi runtimes, locally or through a private-CA mTLS gateway peer. Its native gateway is started separately; installation and deployment are never automatic.
-
-Pi loads these extensions from the root package manifest. Install the repository with:
+Install every extension in this repository:
 
 ```sh
 pi install git:github.com/mich-murphy/pi-extensions
 ```
 
-For local development, the toolchain (Node, Rust, a C compiler) comes from the project's Nix flake. Enter it with `nix develop`, or run `direnv allow` to load it through `.envrc`. Hegel's native engine installs with `npm ci`, so Nix does not provide it.
+Then restart Pi or run `/reload`. The extensions need Node.js 22 or later.
 
-```sh
-nix develop
-npm ci
-npm run check
-pi -e ./packages/pi-caffeinate/index.ts
+To load only some of them, edit the package entry in `~/.pi/agent/settings.json` and list the extensions you want:
+
+```json
+{
+  "packages": [
+    {
+      "source": "git:github.com/mich-murphy/pi-extensions",
+      "extensions": ["packages/pi-vim/index.ts", "packages/pi-web-tools/index.ts"]
+    }
+  ]
+}
 ```
 
-For isolated CLI interaction checks of web-tools native authentication, use [the verification skill](.agents/skills/verify-pi-web-tools/SKILL.md); it drives real Pi with synthetic credentials and retains evidence without touching your normal profile or calling providers.
-For skill-toggle menu, worktree policy, and read-guard checks, use [the skill-toggle verification skill](.agents/skills/verify-pi-skill-toggle/SKILL.md).
+You can also switch individual extensions on and off with `pi config`.
 
-Pi supplies its core packages to extensions at runtime. Keep those packages in `peerDependencies`; third-party runtime packages belong in the owning workspace's `dependencies`.
+## Packages
 
-## Checks
+| Package | What it does | Requires |
+| --- | --- | --- |
+| [pi-claude-sdk](packages/pi-claude-sdk) | Runs Claude models through your Claude Code subscription | Claude Code, signed in |
+| [pi-auto-resume](packages/pi-auto-resume) | Continues a session when a usage limit resets or a transient failure clears | |
+| [pi-caffeinate](packages/pi-caffeinate) | Keeps macOS awake while Pi is working | macOS |
+| [pi-skill-toggle](packages/pi-skill-toggle) | Switches skills and instruction files on or off without deleting them | |
+| [pi-vim](packages/pi-vim) | Adds Vim keys to the prompt editor | |
+| [pi-scroll-context](packages/pi-scroll-context) | Keeps your prompt visible while you scroll back through history | Fullscreen mode |
+| [pi-web-tools](packages/pi-web-tools) | Adds web search and fetch tools that work without an API key | |
+| [pi-comms](packages/pi-comms) | Lets live Pi sessions message each other | A gateway, for sessions on other machines |
 
-- Vitest runs the behavioral tests, enforces at least 80% statement, branch, and line coverage, and writes V8 coverage in Istanbul format.
-- TypeScript checks every workspace with strict compiler options and Node 22 types.
-- Oxfmt formats TypeScript, JSON, and configuration files; markdownlint owns Markdown.
-- Oxlint lints with type-aware rules, following Clippy's category model: `correctness`, `suspicious`, and `perf` are errors, and `pedantic`, `style`, and `restriction` rules are opted into one at a time, never as whole categories. The opt-ins follow typescript-eslint's `strict-type-checked` and `stylistic-type-checked` presets plus the TypeScript skill, grouped in `.oxlintrc.json` by type safety, readability, data structures, modules, and Pi-specific hazards. Warnings fail the run. Suppress a rule only on the offending line, with `-- <reason>`.
-- Fallow checks the whole repository for dead code, duplication, complexity, and dependency problems.
-- markdownlint-cli2 checks package documentation.
-- The session gateway uses pinned Rust 1.98.0, committed Cargo.lock, and locked fmt/check/clippy/test/rustdoc gates (`npm run check:rust`). Its lint policy follows pinned BeautifulRust guidance with upstream attribution.
-- Session communication uses Hegel property tests in TypeScript and Rust, plus isolated offline real-Pi RPC/TUI journeys. Those journeys require Python 3; they do not use normal Pi profiles or provider credentials.
+## Contributing
 
-Every extension must pass the whole-repo Fallow gate, `npm run fallow`, whether or not a change touches it. A finding from any of its three checks fails `npm run check`:
+See [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
-- `fallow:dead-code` fails on any error-level dead-code or dependency finding.
-- `fallow:dupes` fails on any clone group of at least 50 tokens and 5 lines that appears three or more times (`fallow dupes --fail-on-issues`).
-- `fallow:health` fails on any function over the cyclomatic, cognitive, or CRAP limit. It reads the coverage that `test:coverage` writes, so `check` runs the tests first.
+## License
 
-Fix findings instead of silencing them: no `fallow-ignore` comments, raised thresholds, or excluded files. For review, `npm run fallow:audit` lists only the findings a branch introduces, marked new or inherited, and `npm run fallow:review` prints a brief that always exits 0. Neither replaces the gate.
-
-## Dependency updates
-
-Renovate runs from `.github/workflows/renovate.yaml` on a schedule and on demand, scoped to this repository by `.github/renovate-config.json`, and needs a `RENOVATE_TOKEN` repository secret. `renovate.json` holds the update policy: digests, pins and patches automerge, and everything else waits for review.
-
-Two dependencies never automerge, whatever the update type. Pi's own `@earendil-works/*` packages define the provider and extension contracts and are resolved from the running Pi at runtime, so a contract change type-checks clean against the pinned version and only fails in a live session; they are raised as one grouped PR. `@anthropic-ai/claude-agent-sdk` is gated on the live attestation in `sdk-release-contract.json`, which CI cannot produce, so its PR carries the upgrade procedure.
-
-Keep npm dependency ranges exact. A `latest` range is never out of date, so Renovate cannot raise a PR for it and the installed version drifts silently on every install. The Rust application uses compatible Cargo constraints with a committed lockfile and `--locked` gates; its beta Hegel dependency is additionally pinned exactly.
+[MIT](LICENSE)

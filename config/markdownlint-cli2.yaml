@@ -1,5 +1,7 @@
 ignores:
   - "**/node_modules/**"
+  # direnv's local Nix cache holds third-party flake sources.
+  - ".direnv/**"
   # Cargo/rustdoc output is generated dependency content, not repository documentation.
   - "packages/pi-comms/gateway/target/**"
 config:

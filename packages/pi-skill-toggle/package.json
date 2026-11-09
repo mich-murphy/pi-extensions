@@ -2,6 +2,7 @@
   "name": "pi-skill-toggle",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "effect": "4.1.2"

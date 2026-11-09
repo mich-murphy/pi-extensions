@@ -9,6 +9,7 @@
     "web-fetch",
     "web-search"
   ],
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@mixmark-io/domino": "2.2.0",
