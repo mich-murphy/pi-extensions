@@ -297,7 +297,7 @@ export function parseContentType(contentTypeHeader: string | null | undefined): 
   const contentType = contentTypeHeader?.trim() ?? "";
   const [mimePart = ""] = contentType.split(";");
   const mime = mimePart.trim().toLowerCase();
-  const charsetMatch = /charset\s*=\s*['"]?(?<charset>[^;'"]+)/iu.exec(contentType);
+  const charsetMatch = /(?:^|;)\s*charset\s*=\s*['"]?(?<charset>[^;'"]+)/iu.exec(contentType);
   const charset = charsetMatch?.groups?.charset?.trim().toLowerCase();
   return { contentType, mime, charset, kind: classifyMimeType(mime) };
 }
@@ -455,8 +455,16 @@ const NON_PUBLIC_RANGES: readonly (readonly [
   ["192.168.0.0", 16, "ipv4"],
   ["224.0.0.0", 4, "ipv4"],
   ["240.0.0.0", 4, "ipv4"],
+  ["192.0.0.0", 24, "ipv4"],
+  ["192.0.2.0", 24, "ipv4"],
+  ["198.18.0.0", 15, "ipv4"],
+  ["198.51.100.0", 24, "ipv4"],
+  ["203.0.113.0", 24, "ipv4"],
   ["::", 96, "ipv6"],
   ["64:ff9b::", 96, "ipv6"],
+  ["64:ff9b:1::", 48, "ipv6"],
+  ["2001:db8::", 32, "ipv6"],
+  ["100::", 64, "ipv6"],
   ["fc00::", 7, "ipv6"],
   ["fe80::", 10, "ipv6"],
   ["ff00::", 8, "ipv6"],
@@ -471,7 +479,47 @@ for (const [network, prefixLength, family] of NON_PUBLIC_RANGES) {
 export function isPrivateOrLocalIp(input: string): boolean {
   const ip = stripIpv6Brackets(input);
   const version = isIP(ip);
-  return version !== 0 && NON_PUBLIC_ADDRESSES.check(ip, version === 4 ? "ipv4" : "ipv6");
+  if (version === 0) {
+    return false;
+  }
+  if (NON_PUBLIC_ADDRESSES.check(ip, version === 4 ? "ipv4" : "ipv6")) {
+    return true;
+  }
+  const embedded = version === 6 ? embeddedIpv4(ip) : undefined;
+  return embedded !== undefined && NON_PUBLIC_ADDRESSES.check(embedded, "ipv4");
+}
+
+/** Expand a valid IPv6 literal to eight 16-bit groups. */
+function ipv6Groups(ip: string): number[] {
+  let text = ip.split("%")[0] ?? ip;
+  const tail = /(?<a>\d+)\.(?<b>\d+)\.(?<c>\d+)\.(?<d>\d+)$/u.exec(text)?.groups;
+  if (tail) {
+    const [a = 0, b = 0, c = 0, d = 0] = [tail.a, tail.b, tail.c, tail.d].map(Number);
+    text = `${text.slice(0, text.lastIndexOf(":") + 1)}${(a * 256 + b).toString(16)}:${(c * 256 + d).toString(16)}`;
+  }
+  const [head = "", rest] = text.split("::");
+  const front = head ? head.split(":") : [];
+  const back = rest === undefined || rest === "" ? [] : rest.split(":");
+  const fill =
+    rest === undefined ? [] : Array.from({ length: 8 - front.length - back.length }, () => "0");
+  return [...front, ...fill, ...back].map((group) => Number.parseInt(group, 16));
+}
+
+/** The IPv4 address a SIIT (::ffff:0:a.b.c.d) or 6to4 (2002:a.b.c.d::/48) address embeds. */
+function embeddedIpv4(ip: string): string | undefined {
+  const g = ipv6Groups(ip);
+  const siit = g.slice(0, 4).every((group) => group === 0) && g[4] === 0xff_ff && g[5] === 0;
+  let pair: (number | undefined)[] = [];
+  if (siit) {
+    pair = [g[6], g[7]];
+  } else if (g[0] === 0x20_02) {
+    pair = [g[1], g[2]];
+  }
+  const [high, low] = pair;
+  if (high === undefined || low === undefined) {
+    return undefined;
+  }
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 }
 
 function stripIpv6Brackets(hostname: string): string {

@@ -61,8 +61,8 @@ Nonsecret configuration uses environment variables; everything is optional. Cred
 | `PI_WEB_TOOLS_EXA_ENDPOINT` | `https://mcp.exa.ai/mcp` | Exa MCP-compatible endpoint override. Forces MCP transport; API keys are never sent to overridden endpoints. |
 | `PI_WEB_TOOLS_PARALLEL_ENDPOINT` | `https://search.parallel.ai/mcp` | Parallel MCP-compatible endpoint override. Same key rule. |
 | `PI_WEB_TOOLS_FETCH_RESCUE` | `on` | `off` disables provider-side fetch rescue. |
-| `PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS` | (unset) | Comma-separated hostname allow list for `webfetch`. Subdomains match. |
-| `PI_WEB_TOOLS_FETCH_DENY_DOMAINS` | (unset) | Comma-separated hostname deny list. Wins over the allow list. |
+| `PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS` | (unset) | Comma-separated hostname allow list for `webfetch`. Subdomains match. Entries must be bare hostnames (a trailing `.` is ignored); wildcards, schemes, paths, ports and credentials are rejected as invalid settings. |
+| `PI_WEB_TOOLS_FETCH_DENY_DOMAINS` | (unset) | Comma-separated hostname deny list. Wins over the allow list. Same entry rules as the allow list. |
 
 ## Tools
 

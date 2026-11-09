@@ -1,3 +1,5 @@
+import { Database, Hegel } from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
 import { CollapsedTextLength, normalizedTextLength } from "../collapsed-text";
 
@@ -8,42 +10,28 @@ const ALPHABET = [
   "😀",
   "\uD800",
   "\uDC00",
-  "​",
+  "\u200B",
   " ",
   "\t",
   "\n",
   "\v",
   "\f",
   "\r",
-  " ",
-  " ",
-  " ",
-  " ",
-  " ",
+  "\u00A0",
+  "\u1680",
+  "\u2000",
+  "\u200A",
+  "\u202F",
   "\u2028",
   "\u2029",
-  " ",
-  " ",
-  "　",
-  "﻿",
+  "\u205F",
+  "\u3000",
+  "\uFEFF",
 ];
-
-function createRandom(seed: number): (limit: number) => number {
-  let state = seed;
-  return (limit) => {
-    state = (state * 48_271) % 2_147_483_647;
-    return state % limit;
-  };
-}
-
-function randomText(random: (limit: number) => number): string {
-  let text = "";
-  const length = random(12);
-  for (let index = 0; index < length; index += 1) {
-    text += ALPHABET[random(ALPHABET.length)];
-  }
-  return text;
-}
+const textGenerator = gs
+  .arrays(gs.sampledFrom(ALPHABET), { maxSize: 14 })
+  .map((parts) => parts.join(""));
+const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
 
 const expectedLength = (text: string) => text.replaceAll(/\s+/gu, " ").trim().length;
 
@@ -55,12 +43,14 @@ describe("normalizedTextLength", () => {
     },
   );
 
-  test("matches the regex normalization on random text", () => {
-    const random = createRandom(7);
-    for (let run = 0; run < 2000; run += 1) {
-      const text = randomText(random);
+  test("matches the regex normalization on generated text", () => {
+    new Hegel((tc) => {
+      const text = tc.draw(textGenerator, "text");
       expect(normalizedTextLength(text)).toBe(expectedLength(text));
-    }
+    })
+      .databaseKey("pi-web-tools/collapsed-text-length")
+      .settings(settings)
+      .runSync();
   });
 });
 
@@ -77,9 +67,8 @@ describe("collapsedTextLength", () => {
   });
 
   test("appending measures of pieces measures their concatenation", () => {
-    const random = createRandom(11);
-    for (let run = 0; run < 2000; run += 1) {
-      const pieces = Array.from({ length: 1 + random(4) }, () => randomText(random));
+    new Hegel((tc) => {
+      const pieces = tc.draw(gs.arrays(textGenerator, { minSize: 1, maxSize: 4 }), "pieces");
       const combined = new CollapsedTextLength();
       for (const piece of pieces) {
         const measure = new CollapsedTextLength();
@@ -87,6 +76,31 @@ describe("collapsedTextLength", () => {
         combined.append(measure);
       }
       expect(combined.trimmedLength()).toBe(expectedLength(pieces.join("")));
-    }
+      // Appending text piecewise gives the same measure.
+      const textual = new CollapsedTextLength();
+      for (const piece of pieces) {
+        textual.appendText(piece);
+      }
+      expect(textual.trimmedLength()).toBe(combined.trimmedLength());
+    })
+      .databaseKey("pi-web-tools/collapsed-text-compose")
+      .settings(settings)
+      .runSync();
+  });
+
+  test("an empty measure is the identity on either side", () => {
+    new Hegel((tc) => {
+      const text = tc.draw(textGenerator, "text");
+      const measured = new CollapsedTextLength();
+      measured.appendText(text);
+      const left = new CollapsedTextLength();
+      left.append(new CollapsedTextLength());
+      left.append(measured);
+      left.append(new CollapsedTextLength());
+      expect(left.trimmedLength()).toBe(expectedLength(text));
+    })
+      .databaseKey("pi-web-tools/collapsed-text-identity")
+      .settings(settings)
+      .runSync();
   });
 });
