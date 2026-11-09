@@ -82,11 +82,16 @@ export function permits(
     )
   );
 }
+/** Bidi embedding/override (U+202A-202E) and isolate (U+2066-2069) controls reorder displayed text. */
+const bidiControl = /[\u202a-\u202e\u2066-\u2069]/u;
 /** Terminal rendering is inert; JSON/control interpretation never executes authored text. */
 export function visibleText(value: string): string {
   return Array.from(value, (character) => {
     const code = character.codePointAt(0) ?? 0;
-    return code <= 8 || (code >= 11 && code <= 31) || (code >= 127 && code <= 159)
+    return code <= 8 ||
+      (code >= 11 && code <= 31) ||
+      (code >= 127 && code <= 159) ||
+      bidiControl.test(character)
       ? `\\u${code.toString(16).padStart(4, "0")}`
       : character;
   }).join("");
