@@ -392,6 +392,8 @@ export function registerAutoResume(
 
   pi.registerMessageRenderer(AUTO_RESUME_TYPE, renderMarker);
 
+  // agent_start deliberately keeps the streak: auto-resume's own sendMessage triggers it, and
+  // resetting there would erase the attempt count between every retry.
   pi.on("agent_start", () => {
     cancel();
     published = undefined;
@@ -406,6 +408,8 @@ export function registerAutoResume(
   pi.on("session_tree", () => {
     cancel();
     published = undefined;
+    // A branch is a different conversation: its failures must not inherit this streak.
+    streak = undefined;
   });
 
   pi.on("agent_before_settle", (event, ctx) => {
@@ -449,6 +453,7 @@ export function registerAutoResume(
   pi.on("session_shutdown", () => {
     cancel();
     published = undefined;
+    streak = undefined;
   });
 
   pi.registerCommand(AUTO_RESUME_TYPE, {

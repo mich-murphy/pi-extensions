@@ -371,4 +371,26 @@ describe("autoResume.transient settings", () => {
 
     expect(pi.widgetText(AUTO_RESUME_TYPE)).toContain("t+3m");
   });
+
+  test("a branch switch starts a fresh failure streak", () => {
+    const pi = harness();
+    fail(pi, CONNECTION_ERROR, "a1");
+    fail(pi, CONNECTION_ERROR, "a2");
+
+    pi.navigateTree();
+    fail(pi, CONNECTION_ERROR, "b1");
+
+    expect(pi.notifications.at(-1)?.message).toContain("(attempt 1)");
+  });
+
+  test("a session shutdown starts a fresh failure streak", () => {
+    const pi = harness();
+    fail(pi, CONNECTION_ERROR, "a1");
+    fail(pi, CONNECTION_ERROR, "a2");
+
+    pi.shutdown();
+    fail(pi, CONNECTION_ERROR, "b1");
+
+    expect(pi.notifications.at(-1)?.message).toContain("(attempt 1)");
+  });
 });
