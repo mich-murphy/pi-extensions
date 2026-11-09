@@ -203,3 +203,71 @@ describe("pathsReadByCommand ignores commands that print no file content", () =>
     }
   });
 });
+
+describe("pathsReadByCommand follows bash scoping and expansion", () => {
+  test.each([
+    ["cd web | cat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["cd web |& cat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["cd web & cat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["cd web &\ncat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["cd web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd web; cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd web\ncat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd web || cat AGENTS.md", ["/repo/web/AGENTS.md"]],
+    ["cd web && cat a | cat b", ["/repo/web/a", "/repo/web/b"]],
+    // A newline ends a list, so a `cd` before it scopes later lines, but a pipeline element
+    // runs in a subshell and its `cd` never leaks past the newline.
+    ["true | cd web\ncat a", ["/repo/a"]],
+    // The newline ends the list, so `cd web` applies to both background jobs on the next line.
+    ["cd web\ncat a & cat b", ["/repo/web/a", "/repo/web/b"]],
+    // A newline after `|` continues the pipeline: `cd web` is still a subshell element.
+    ["cat a |\ncd web; cat b", ["/repo/a", "/repo/b"]],
+    ["cd web |\ncat a", ["/repo/a"]],
+    ["cd web |&\ncat a", ["/repo/a"]],
+    // A newline after `&&` continues the and-list, which `&` then backgrounds as a whole.
+    ["cd web &&\ntrue & cat b", ["/repo/b"]],
+    ["cd web &&\ncat a", ["/repo/web/a"]],
+    ["cd web ||\ncat a", ["/repo/web/a"]],
+    ["cat {AGENTS,README}.md", []],
+    ["cat {1..3}.md", []],
+    ["cat ~user/x", []],
+    ["cat ~+/x", []],
+    ["cat ~/x", [join(homedir(), "x")]],
+    ["command cat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["command -p cat AGENTS.md", ["/repo/AGENTS.md"]],
+    ["ksh -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
+    ["mksh -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
+    ["ash -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
+    // Brace choice: bash expands only a comma list or a `x..y` sequence, so `{}`, `{a}`, `{..}`
+    // and quoted braces stay literal and are still reported.
+    ["cat {}", ["/repo/{}"]],
+    ["cat {a}", ["/repo/{a}"]],
+    ["cat {..}", ["/repo/{..}"]],
+    ['cat "{a,b}"', ["/repo/{a,b}"]],
+    [String.raw`cat \{a,b\}`, ["/repo/{a,b}"]],
+  ])("%s", (command, expected) => {
+    expect(reads(command)).toStrictEqual(expected.toSorted());
+  });
+
+  test.each(["command -v cat AGENTS.md", "command -V cat AGENTS.md"])("%s only describes", (c) => {
+    expect(reads(c)).toStrictEqual([]);
+  });
+});
+
+// Known limits: each form reads AGENTS.md in bash, but the guard does not see it. Pinned so any
+// change is deliberate; see README "Limitations".
+describe("pathsReadByCommand known limits (fail-open)", () => {
+  test.each([
+    'echo "$(<AGENTS.md)"',
+    "cat <<< AGENTS.md",
+    "xargs cat <<< AGENTS.md",
+    'eval "cat AGENTS.md"',
+    "find . -name AGENTS.md -exec cat {} +",
+    "sort AGENTS.md",
+    "tr a b < AGENTS.md",
+    "while read l; do :; done < AGENTS.md",
+    "cat $'AGENTS.md'",
+  ])("%s", (command) => {
+    expect(reads(command)).toStrictEqual([]);
+  });
+});
