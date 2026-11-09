@@ -20,7 +20,14 @@ type Command = {
 type Item =
   | { readonly kind: "command"; readonly command: Command }
   | { readonly kind: "open" }
-  | { readonly kind: "close" };
+  | { readonly kind: "close" }
+  | { readonly kind: "boundary"; readonly boundary: Boundary };
+
+/** How a list operator separates commands: `&&`/`||`, `;`/newline, `|`/`|&`, or `&`. */
+type Boundary = "and" | "semi" | "pipe" | "background";
+
+/** Where the current list and pipeline started, for undoing a `cd` that ran in a subshell. */
+type Frame = { list: string | undefined; pipe: string | undefined; piped: boolean };
 
 /** Option letters and long options that take a separate value. */
 type Options = { readonly short: string; readonly long: readonly string[] };
@@ -71,6 +78,13 @@ const KEYWORDS = new Set([
   "time",
 ]);
 const CONDITION_LOOPS = new Set(["while", "until"]);
+/**
+ * Unquoted brace expansion: `{a,b}` or a sequence such as `{1..3}` or `{a..e}`. Other braces, such as
+ * `{}`, `{a}` or `{..}`, are literal in bash and stay literal here. Quoted or escaped characters are
+ * replaced by `_` before the test, so `"{a,b}"` stays literal.
+ */
+const BRACE_EXPANSION =
+  /\{[^}]*,[^}]*\}|\{(?:-?\d+|[A-Za-z])\.\.(?:-?\d+|[A-Za-z])(?:\.\.-?\d+)?\}/u;
 const ASSIGNMENT = /^[A-Za-z_]\w*=/u;
 const NAME = /[A-Za-z_]\w*/uy;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
@@ -130,13 +144,14 @@ const WRAPPERS: ReadonlyMap<string, { readonly options: Options; readonly skip: 
     sudo: { options: { short: "ugCDhpT", long: [] }, skip: 0 },
     nohup: { options: NO_OPTIONS, skip: 0 },
     exec: { options: NO_OPTIONS, skip: 0 },
+    command: { options: NO_OPTIONS, skip: 0 },
     nice: { options: { short: "n", long: [] }, skip: 0 },
     timeout: { options: { short: "sk", long: [] }, skip: 1 },
     stdbuf: { options: { short: "ioe", long: [] }, skip: 0 },
     xargs: { options: { short: "IndPLsEa", long: [] }, skip: 0 },
   }),
 );
-const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "mksh", "ash"]);
 /**
  * List the files a shell command prints the contents of, as far as its literal text shows.
  *
@@ -189,9 +204,7 @@ class Lexer {
         const end = this.source.indexOf("\n", this.index);
         this.index = end === -1 ? this.source.length : end;
       } else if (char === "\n") {
-        this.index += 1;
-        this.flush();
-        this.readHeredocBodies();
+        this.newline();
       } else if ((char === "<" || char === ">") && this.source.charAt(this.index + 1) === "(") {
         this.index += 2;
         this.substitutions.push(this.balanced());
@@ -201,6 +214,19 @@ class Lexer {
       }
     }
     this.flush();
+  }
+
+  private newline(): void {
+    this.index += 1;
+    this.flush();
+    const last = this.items.at(-1);
+    // A newline after `|`, `|&`, `&&` or `||` continues the command.
+    const continues =
+      last?.kind === "boundary" && (last.boundary === "pipe" || last.boundary === "and");
+    if (!continues) {
+      this.items.push({ kind: "boundary", boundary: "semi" });
+    }
+    this.readHeredocBodies();
   }
 
   private operatorOrWord(): void {
@@ -227,6 +253,7 @@ class Lexer {
       this.target();
     } else {
       this.flush();
+      this.items.push({ kind: "boundary", boundary: boundaryOf(operator) });
     }
   }
 
@@ -275,11 +302,15 @@ class Lexer {
     const start = this.index;
     let text = "";
     let literal = true;
+    let bare = "";
     while (this.index < this.source.length && !WORD_END.has(this.source.charAt(this.index))) {
+      const char = this.source.charAt(this.index);
       const part = this.wordPart(start);
       text += part.text;
       literal &&= part.literal;
+      bare += "\\'\"$`".includes(char) ? "_" : char;
     }
+    literal &&= !BRACE_EXPANSION.test(bare);
     const raw = this.source.slice(start, this.index);
     const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
     const variable = /^\$(?:(?<bare>[A-Za-z_]\w*)|\{(?<braced>[A-Za-z_]\w*)\})$/u.exec(unquoted);
@@ -317,8 +348,11 @@ class Lexer {
       }
     }
     this.index += 1;
-    if (char === "~" && this.index - 1 === start && this.tildeEndsAt(this.index)) {
-      return { text: homedir(), literal: true };
+    if (char === "~" && this.index - 1 === start) {
+      // `~user`, `~+` and `~-` name directories only the shell knows.
+      return this.tildeEndsAt(this.index)
+        ? { text: homedir(), literal: true }
+        : { text: char, literal: false };
     }
     return { text: char, literal: !"*?[".includes(char) };
   }
@@ -426,12 +460,23 @@ class Lexer {
   }
 }
 
+function boundaryOf(operator: string): Boundary {
+  if (operator === "|" || operator === "|&") {
+    return "pipe";
+  }
+  if (operator === "&") {
+    return "background";
+  }
+  return operator === "&&" || operator === "||" ? "and" : "semi";
+}
+
 function home(name: string): Word {
   return name === "HOME" ? { text: homedir(), literal: true } : { text: "", literal: false };
 }
 
 class Evaluator {
   private readonly directories: (string | undefined)[];
+  private readonly frames: Frame[];
   /** Nested loop bindings; other loop forms have no resolvable binding. */
   private readonly loops: { readonly variable?: string | undefined; list: readonly Word[] }[] = [];
 
@@ -441,16 +486,21 @@ class Evaluator {
     private readonly reads: Set<string>,
   ) {
     this.directories = [cwd];
+    this.frames = [{ list: cwd, pipe: cwd, piped: false }];
   }
 
   run(items: readonly Item[]): void {
     for (const item of items) {
       if (item.kind === "open") {
         this.directories.push(this.cwd);
+        this.frames.push(this.frame());
       } else if (item.kind === "close") {
         if (this.directories.length > 1) {
           this.directories.pop();
         }
+        this.popFrame();
+      } else if (item.kind === "boundary") {
+        this.boundary(item.boundary);
       } else {
         this.evaluate(item.command);
       }
@@ -459,6 +509,46 @@ class Evaluator {
 
   private get cwd(): string | undefined {
     return this.directories.at(-1);
+  }
+
+  private frame(): Frame {
+    return { list: this.cwd, pipe: this.cwd, piped: false };
+  }
+
+  private popFrame(): void {
+    if (this.frames.length > 1) {
+      this.frames.pop();
+    }
+  }
+
+  /**
+   * Every pipeline element, and a list followed by `&`, runs in a subshell, so a `cd` in it does
+   * not reach the next command. `cd x && cat f` and `cd x; cat f` stay in one shell.
+   */
+  private boundary(boundary: Boundary): void {
+    const frame = this.frames.at(-1);
+    if (frame === undefined) {
+      return;
+    }
+    if (boundary === "pipe") {
+      frame.piped = true;
+      this.directories[this.directories.length - 1] = frame.pipe;
+      return;
+    }
+    if (boundary === "background") {
+      this.directories[this.directories.length - 1] = frame.list;
+      frame.pipe = frame.list;
+      frame.piped = false;
+      return;
+    }
+    if (frame.piped) {
+      this.directories[this.directories.length - 1] = frame.pipe;
+    }
+    frame.pipe = this.cwd;
+    frame.piped = false;
+    if (boundary === "semi") {
+      frame.list = this.cwd;
+    }
   }
 
   private evaluate(command: Command): void {
@@ -498,6 +588,10 @@ class Evaluator {
     for (const keyword of keywords) {
       if (CONDITION_LOOPS.has(keyword.text)) {
         this.loops.push({ list: [] });
+      } else if (keyword.text === "{") {
+        this.frames.push(this.frame());
+      } else if (keyword.text === "}") {
+        this.popFrame();
       }
     }
     return start === -1 ? [] : words.slice(start);
@@ -619,7 +713,14 @@ function unwrap(words: readonly Word[]): readonly Word[] {
       return remaining;
     }
     const rest = remaining.slice(1);
-    const positional = parseArguments(rest, wrapper.options, true).positionals;
+    const parsed = parseArguments(rest, wrapper.options, true);
+    if (
+      basename(first?.text ?? "") === "command" &&
+      (parsed.flags.has("-v") || parsed.flags.has("-V"))
+    ) {
+      return []; // `command -v` and `-V` only describe the command.
+    }
+    const positional = parsed.positionals;
     const after = positional.slice(wrapper.skip);
     remaining = after.slice(leadingAssignments(after));
   }

@@ -146,6 +146,16 @@ This is a prompt and supported-read control, **not a security boundary**:
   into another variable (`g=$f; cat "$g"`) is not tracked, and a temporary
   assignment to the loop variable (`f=x cmd`) makes that binding unknown for
   the rest of the loop body.
+- Brace expansion (`{a,b}`, `{1..3}`) and `~user`, `~+`, and `~-` are treated
+  as unknown and yield no path. A `cd` inside a pipeline element or before `&`
+  does not carry over to later commands. `command` is recognised as a prefix,
+  and `ksh`, `mksh`, and `ash` are recognised as shells.
+- These forms read a protected file but are not seen by the guard (fail-open,
+  pinned in `test/shell-reads.test.ts`): `echo "$(<AGENTS.md)"`,
+  `cat <<< AGENTS.md`, `xargs cat <<< AGENTS.md`, `eval "cat AGENTS.md"`,
+  `find . -name AGENTS.md -exec cat {} +`, `sort AGENTS.md`,
+  `tr a b < AGENTS.md`, `while read l; do :; done < AGENTS.md`, and
+  `cat $'AGENTS.md'`.
 - Paths are compared by on-disk identity as well as lexically. A read through a
   symlink, or through a differently cased name on a case-insensitive file
   system such as default macOS APFS, is blocked when it reaches a protected
