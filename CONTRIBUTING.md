@@ -65,7 +65,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 Renovate opens update pull requests on a schedule. Digest, pin and patch updates merge automatically. Two groups always wait for review:
 
 - **Pi packages** (`@earendil-works/*`). A contract change type-checks against the pinned version and fails only in a live session.
-- **The Claude Agent SDK.** Upgrading it needs a live check that CI cannot run. Follow the [SDK upgrade steps](packages/pi-claude-sdk/README.md#sdk-upgrade-gate).
+- **The Claude Agent SDK.** Upgrading it needs a live check that CI cannot run. Follow the [SDK upgrade steps](packages/pi-claude-sdk/docs/sdk-upgrade.md).
 
 ## Pull requests
 

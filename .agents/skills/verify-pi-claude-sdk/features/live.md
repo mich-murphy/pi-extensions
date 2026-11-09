@@ -50,7 +50,7 @@ allowances and disabled paid extra usage.
 - Controlled probes are not an autonomous-workflow cost guarantee. The original
   Haiku 4.5 `toggle-mid` journey reproduced internal error/denial recovery rounds
   even after this gate passed. See
-  [the investigation](../../../../packages/pi-claude-sdk/docs/cache-roundtrip-investigation.md)
+  [cache diagnostics](../../../../packages/pi-claude-sdk/docs/diagnostics.md)
   before calling the provider production-ready.
 - Exhausted allowance is a blocker, not a reason to mock generation, weaken
   assertions, retry until billed, or report live success.
