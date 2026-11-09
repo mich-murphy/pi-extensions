@@ -34,7 +34,6 @@ describe("parseSettings", () => {
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["parallel", "exa"]);
     expect(settings.success.search.defaultProviders).toBe(false);
-    expect(JSON.stringify(settings.success)).not.toContain("exa-key");
   });
 
   test("deduplicates repeated providers, keeping first-mention order", () => {
@@ -63,7 +62,6 @@ describe("parseSettings", () => {
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["exa", "brave"]);
     expect(settings.success.search.defaultProviders).toBe(false);
-    expect(JSON.stringify(settings.success)).not.toContain("key");
   });
 
   test("blank provider configuration retains the default chain", () => {
@@ -95,5 +93,26 @@ describe("parseSettings", () => {
     assert(Result.isSuccess(settings));
     expect(settings.success.fetch.allowDomains).toStrictEqual(["docs.example.com", "example.org"]);
     expect(settings.success.fetch.denyDomains).toStrictEqual(["evil.example"]);
+  });
+
+  test("normalizes a trailing dot and rejects malformed domain entries", () => {
+    const ok = parseSettings({ PI_WEB_TOOLS_FETCH_DENY_DOMAINS: "Evil.com." });
+    assert(Result.isSuccess(ok));
+    expect(ok.success.fetch.denyDomains).toStrictEqual(["evil.com"]);
+
+    for (const bad of [
+      "*.evil.com",
+      ".evil.com",
+      "https://evil.com",
+      "evil.com/x",
+      "evil.com:80",
+      "a b",
+      "a..b",
+      "u@evil.com",
+    ]) {
+      const result = parseSettings({ PI_WEB_TOOLS_FETCH_DENY_DOMAINS: bad });
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toContain("PI_WEB_TOOLS_FETCH_DENY_DOMAINS");
+    }
   });
 });

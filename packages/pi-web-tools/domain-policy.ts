@@ -40,7 +40,9 @@ export function checkDomainPolicy(
   url: PublicHttpUrl | URL,
   policy: DomainPolicy,
 ): Result.Result<void, DomainPolicyError> {
-  const hostname = new URL(url).hostname.toLowerCase();
+  // A trailing dot marks a fully qualified name and resolves to the same host, so it must not
+  // change the verdict.
+  const hostname = new URL(url).hostname.toLowerCase().replace(/\.$/u, "");
 
   if (policy.deny.some((entry) => matchesDomainEntry(hostname, entry))) {
     return Result.fail(new DomainDenied({ hostname }));

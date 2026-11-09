@@ -164,18 +164,40 @@ function parseEndpointOverride(
   return Result.succeed(parsed.success);
 }
 
-function parseDomainList(value: string | undefined): readonly string[] {
+// Entries must be bare hostnames: URL, wildcard, port, path or userinfo forms would never match a
+// hostname as the operator intended, so a deny-list typo would fail open.
+const FORBIDDEN_DOMAIN_CHARACTERS = /[\s/\\:@*?#]/u;
+
+function isBareHostname(name: string): boolean {
+  return (
+    name !== "" &&
+    !FORBIDDEN_DOMAIN_CHARACTERS.test(name) &&
+    name.split(".").every((label) => label !== "")
+  );
+}
+
+function parseDomainList(
+  value: string | undefined,
+  envName: string,
+): Result.Result<readonly string[], SettingsError> {
   if (value === undefined) {
-    return [];
+    return Result.succeed([]);
   }
   const domains = new Set<string>();
   for (const entry of value.split(",")) {
-    const normalized = entry.trim().toLowerCase();
-    if (normalized) {
-      domains.add(normalized);
+    const trimmed = entry.trim().toLowerCase();
+    if (!trimmed) {
+      continue;
     }
+    const normalized = trimmed.replace(/\.$/u, "");
+    if (!isBareHostname(normalized)) {
+      return invalid(
+        `${envName} contains a malformed entry; expected comma-separated bare hostnames such as example.com (no scheme, wildcard, port, path or credentials)`,
+      );
+    }
+    domains.add(normalized);
   }
-  return [...domains];
+  return Result.succeed([...domains]);
 }
 
 /** Parse all web-tools settings from the process environment. */
@@ -199,6 +221,18 @@ export function parseSettings(
     return Result.fail(parallelEndpoint.failure);
   }
 
+  const allowDomains = parseDomainList(
+    environment[FETCH_ALLOW_DOMAINS_ENV],
+    FETCH_ALLOW_DOMAINS_ENV,
+  );
+  if (Result.isFailure(allowDomains)) {
+    return Result.fail(allowDomains.failure);
+  }
+  const denyDomains = parseDomainList(environment[FETCH_DENY_DOMAINS_ENV], FETCH_DENY_DOMAINS_ENV);
+  if (Result.isFailure(denyDomains)) {
+    return Result.fail(denyDomains.failure);
+  }
+
   return Result.succeed({
     fetch: {
       defaultFormat: "markdown",
@@ -206,8 +240,8 @@ export function parseSettings(
       maxResponseBytes: FETCH_MAX_RESPONSE_BYTES,
       maxRedirects: FETCH_MAX_REDIRECTS,
       rescue: parseOnOff(environment[FETCH_RESCUE_ENV], true),
-      allowDomains: parseDomainList(environment[FETCH_ALLOW_DOMAINS_ENV]),
-      denyDomains: parseDomainList(environment[FETCH_DENY_DOMAINS_ENV]),
+      allowDomains: allowDomains.success,
+      denyDomains: denyDomains.success,
     },
     search: {
       providers: providers.success,
