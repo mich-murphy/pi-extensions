@@ -1,37 +1,46 @@
-# Pi Vim editor
+# pi-vim
 
-Adds a small Vim-style normal mode to Pi's main prompt editor without replacing
-Pi's editor implementation.
+Adds Vim-style Normal mode to Pi's main prompt editor.
 
-The editor starts in Insert mode. Press `Esc` or `Ctrl+[` for Normal mode. The
-editor border shows the current mode and any pending command, such as
-`NORMAL di`. When Pi empties the editor, for example after it accepts a
-submission, the editor returns to Insert mode for the next prompt.
+## Install
 
-## Normal-mode bindings
+Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). It has no settings, and works in the interactive terminal UI only.
 
-- Movement: `h`, `j`, `k`, `l`, `w`, `b`, `0`, `$`
-- Insert: `i`, `a`, `A`, `I`, `o`, `O`
-- Editing: `x`, `D`, `C`, `u`, `dd`, `dw`, `diw`, `cc`, `cw`, `ciw`
+## Usage
 
-Printable keys never reach Pi in Normal mode, so an unbound key does nothing.
-`Esc` cancels a pending command. With nothing pending, `Esc` keeps Pi's
-interrupt behavior. Control keys such as `Enter`, arrows, and Pi's application
-shortcuts keep their configured Pi meaning.
+The editor starts in Insert mode. Press `Esc` or `Ctrl+[` for Normal mode. The editor's bottom border shows ` INSERT ` or ` NORMAL `, plus any pending command, such as `NORMAL d`. The label is hidden while the autocomplete list is open or the terminal is very narrow.
 
-`h`, `l`, `x`, `D`, and `dw` stay within the current line, as they do in Vim.
-`j` and `k` move like Pi's arrow keys, so they follow wrapped lines and browse
-prompt history from the first and last line.
+After Pi accepts a prompt, the editor returns to Insert mode.
 
-## How it works
+## Normal-mode keys
 
-Each binding is a list of base-editor actions, such as "line start" or "delete
-word". The extension performs an action by sending the base editor the input
-that Pi's default keybindings map to it. It sends that input under the default
-keybindings and past Pi's application shortcuts, so rebinding Pi's editor keys
-does not change what a Vim command does.
+| Key | Action | Notes |
+| --- | --- | --- |
+| `h` `l` | Left, right | Stay within the line. |
+| `j` `k` | Down, up | Move like Pi's arrow keys: follow wrapped lines and browse history from the first or last line. |
+| `w` `b` | Next word, previous word | Use Pi's word boundaries. |
+| `0` `$` | Line start, line end | |
+| `i` `a` | Insert at, after the cursor | |
+| `I` `A` | Insert at line start, end | |
+| `o` `O` | Open a line below, above | Enters Insert mode. |
+| `x` | Delete character | Stays within the line. |
+| `D` | Delete to line end | |
+| `C` | Delete to line end, then insert | |
+| `dd` | Delete line | Needs two `u` presses to restore. |
+| `dw` `cw` | Delete word, change word | Delete to the word's end. |
+| `diw` `ciw` | Delete inner word, change inner word | Does nothing on whitespace. |
+| `cc` | Clear line, then insert | |
+| `u` | Undo | |
+| `Esc` | Cancel a pending command | With nothing pending, keeps Pi's interrupt behavior. |
 
-Word operations intentionally use Pi's existing word boundaries. `dw` and `cw`
-delete to the end of the word, and `diw` does nothing on whitespace. Pi offers
-no atomic way to delete a whole line, so `dd` on a line with text needs two `u`
-presses to restore it.
+Enter, arrows and Pi's shortcuts keep their Pi meaning. Other printable keys do nothing.
+
+## Differences from Vim
+
+- Word motions and edits use Pi's word boundaries.
+- `dd` is not a single undo step.
+- Rebinding Pi's editor keys does not change these commands.
+
+## Not supported
+
+Counts (`3w`), `.` repeat, visual mode, registers and `p`, search, and any key not in the table.
