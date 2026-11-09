@@ -63,8 +63,19 @@ const hostile = [
   "long ".repeat(60),
 ];
 
+// Independent oracle: U+202A-202E and U+2066-2069 as an explicit decimal list, not a range.
+const bidiCodes = [8234, 8235, 8236, 8237, 8238, 8294, 8295, 8296, 8297];
+const bidiControl = new RegExp(
+  `[${bidiCodes.map((code) => `\\u${code.toString(16)}`).join("")}]`,
+  "u",
+);
 function isVisibleTextEscaped(code: number): boolean {
-  return code <= 8 || (code >= 11 && code <= 31) || (code >= 127 && code <= 159);
+  return (
+    code <= 8 ||
+    (code >= 11 && code <= 31) ||
+    (code >= 127 && code <= 159) ||
+    bidiCodes.includes(code)
+  );
 }
 function controlSequence(code: number, kind: number): string {
   const character = String.fromCodePoint(code);
@@ -92,6 +103,7 @@ function assertVisibleTextTable(code: number): void {
     assert.equal(output, character);
   }
   assert.equal(hasEscapeOrC1(output), false);
+  assert.equal(bidiControl.test(output), false);
 }
 function assertVisibleTextSequence(code: number, kind: number, prefix: string): void {
   const sequence = controlSequence(code, kind);
@@ -99,6 +111,15 @@ function assertVisibleTextSequence(code: number, kind: number, prefix: string): 
   assert.equal(hasEscapeOrC1(output), false);
   assert.equal(output, Array.from(sequence, (part) => visibleText(part)).join(""));
   assert.equal(visibleText(prefix + sequence), visibleText(prefix) + output);
+}
+// Every third drawn code is replaced by a bidi control so they are drawn often.
+function pickCode(drawn: number, bidi: number): number {
+  return drawn % 3 === 0 ? bidi : drawn;
+}
+function assertVisibleTextBidi(code: number, prefix: string): void {
+  const output = visibleText(`${prefix}${String.fromCodePoint(code)}${prefix}`);
+  assert.equal(bidiControl.test(output), false);
+  assert.equal(output.includes(`\\u${code.toString(16)}`), true);
 }
 const controlCodes = [...Array.from({ length: 32 }, (_, code) => code), 127, 128, 155, 159];
 function baseConfiguration(allowed: boolean): Record<string, unknown> {
@@ -218,6 +239,7 @@ function assertRenderedBounds(
           !hasEscapeOrC1(line.replaceAll(sgr, "")),
           `${name}/${slot} leaked ESC/C1: ${JSON.stringify(line)}`,
         );
+        assert(!bidiControl.test(line), `${name}/${slot} leaked bidi: ${JSON.stringify(line)}`);
       }
     }
   }
@@ -239,11 +261,14 @@ describe("Hegel adapter policy and rendering properties", () => {
   });
   test("visibleText escapes controls per table and never emits ESC or C1", () => {
     new Hegel((tc) => {
-      const code = tc.draw(gs.integers({ minValue: 0, maxValue: 12_287 }), "code");
+      const drawn = tc.draw(gs.integers({ minValue: 0, maxValue: 12_287 }), "code");
+      const bidi = tc.draw(gs.sampledFrom(bidiCodes), "bidi");
+      const code = pickCode(drawn, bidi);
       const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "sequence");
       const prefix = tc.draw(gs.text({ maxSize: 12 }), "prefix");
       assertVisibleTextTable(code);
       assertVisibleTextSequence(code % 160, kind, prefix);
+      assertVisibleTextBidi(bidi, prefix);
     })
       .databaseKey("session-communication/adapter/visible-text")
       .settings(settings)
@@ -261,5 +286,14 @@ describe("Hegel adapter policy and rendering properties", () => {
       .databaseKey("session-communication/adapter/render-bounds")
       .settings(settings)
       .runSync();
+  });
+});
+
+// Embedding, override and isolate controls reorder text in bidi-aware terminals. LRM/RLM/ALM are
+// deliberately left alone: they are zero-width marks that cannot reorder across a run on their own.
+describe("visibleText bidi controls", () => {
+  test.each(bidiCodes)("escapes code point %i and keeps surrounding text", (code) => {
+    const escaped = `\\u${code.toString(16)}`;
+    assert.equal(visibleText(`a${String.fromCodePoint(code)}b`), `a${escaped}b`);
   });
 });
