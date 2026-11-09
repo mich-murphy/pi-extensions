@@ -52,9 +52,9 @@ retried. Transient retries run only in the TUI and RPC modes.
 The waits are 1, 2, 5, 10 and 15 minutes, then 15 minutes for each later
 attempt. Retrying stops after 8 attempts or once the next attempt would start
 more than 120 minutes after the first failure, whichever comes first. Pi then
-shows one warning and leaves the session to you. A completed run or a prompt of
-your own resets the count. A usage-limit notice replaces a pending transient
-wait, and only one wait exists at a time.
+shows one warning and leaves the session to you. A completed run, a prompt of
+your own, a branch switch or a session shutdown resets the count. A usage-limit
+notice replaces a pending transient wait, and only one wait exists at a time.
 
 Because the wall clock is checked once a minute, a wait shorter than a minute
 resumes at the next check.
