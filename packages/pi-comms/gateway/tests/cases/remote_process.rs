@@ -582,8 +582,8 @@ fn explicit_floor_cli_initializes_once_without_resetting_existing_state() {
 #[test]
 fn real_daemon_bounds_pending_unauthenticated_handshakes_and_closes_on_five_second_deadline() {
     let ca = Authority::new("pending handshake cap CA");
-    let _beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
-    let address = _beta.address();
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     let mut pending: Vec<_> = (0..4)
         .map(|_| std::net::TcpStream::connect(address).expect("isolated pending TCP handshake"))
         .collect();
