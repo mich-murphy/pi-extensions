@@ -85,6 +85,7 @@ const reportFields = {
   status: Schema.optionalKey(status),
   refs: Schema.optionalKey(refs),
 };
+// Per-field cap; validateFrame's wire.ts aggregate (all authored fields <= 24,576 bytes) also shadows it for frames.
 export const Message = Schema.Struct({
   id: randomId,
   kind: Schema.Literals(["request", "reply", "update"]),
