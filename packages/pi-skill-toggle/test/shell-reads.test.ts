@@ -263,11 +263,98 @@ describe("pathsReadByCommand known limits (fail-open)", () => {
     "xargs cat <<< AGENTS.md",
     'eval "cat AGENTS.md"',
     "find . -name AGENTS.md -exec cat {} +",
-    "sort AGENTS.md",
     "tr a b < AGENTS.md",
     "while read l; do :; done < AGENTS.md",
     "cat $'AGENTS.md'",
+    "rg -n pattern",
+    "rg -uu pattern",
+    "grep -r pattern",
+    "jq -R . AGENTS.md",
+    "cmp AGENTS.md /dev/null; tr a-z a-z < AGENTS.md",
+    'while IFS= read -r l; do echo "$l"; done < AGENTS.md',
+    "awk 'BEGIN{while((getline l < \"AGENTS.md\")>0) print l}'",
+    "tar cf - AGENTS.md | tar xOf -",
   ])("%s", (command) => {
     expect(reads(command)).toStrictEqual([]);
+  });
+
+  // The read is of a directory or of a copy the analyser cannot connect to the protected file.
+  // The guard still compares the reported path's file identity, but only for links that already
+  // exist when the command starts.
+  test.each([
+    ["grep -r pattern .", ["/repo"]],
+    ["rg pattern .", ["/repo"]],
+    ["grep -R pattern /repo", ["/repo"]],
+    ["cp AGENTS.md copy.txt && cat copy.txt", ["/repo/copy.txt"]],
+    ["ln AGENTS.md copy.txt; cat copy.txt", ["/repo/copy.txt"]],
+    ["mv AGENTS.md m.txt; cat m.txt", ["/repo/m.txt"]],
+    ["sed 'r AGENTS.md' other.txt", ["/repo/other.txt"]],
+  ])("%s", (command, expected) => {
+    expect(reads(command)).toStrictEqual(expected);
+  });
+});
+
+describe("pathsReadByCommand reads plain file readers", () => {
+  test.each([
+    "sort AGENTS.md",
+    "sort -r -k2 AGENTS.md",
+    "sort -t, -k 2 AGENTS.md",
+    "uniq AGENTS.md",
+    "paste AGENTS.md",
+    "paste -d, AGENTS.md",
+    "rev AGENTS.md",
+    "column -t AGENTS.md",
+    "fmt -w 60 AGENTS.md",
+    "expand -t 4 AGENTS.md",
+    "unexpand AGENTS.md",
+    "pr AGENTS.md",
+    "pr -h title AGENTS.md",
+    "comm -3 AGENTS.md /dev/null",
+    "hexdump -C AGENTS.md",
+    "dd if=AGENTS.md",
+    "dd if=AGENTS.md of=/dev/stdout bs=1k 2>/dev/null",
+    "dd bs=1 if=AGENTS.md",
+    "dd if=/repo/AGENTS.md",
+    "env LC_ALL=C sort AGENTS.md",
+  ])("%s", (command) => {
+    expect(reads(command)).toContain("/repo/AGENTS.md");
+  });
+
+  test.each([
+    "sort",
+    "echo x | sort -u | uniq -c",
+    "sort < /dev/null",
+    "dd of=out.bin bs=1k count=1",
+    "dd if=/dev/zero of=out.bin count=1",
+    "cat x | column -t",
+    "ls | sort -r",
+    "sort -o sorted.txt -",
+  ])("%s", (command) => {
+    expect(reads(command).filter((path) => path.endsWith("AGENTS.md"))).toStrictEqual([]);
+  });
+});
+
+describe("pathsReadByCommand bounds pathological input", () => {
+  test("a very long chain of cd stops resolving relative paths instead of growing quadratically", () => {
+    // The tracked directory would exceed any file system's path limit long before this chain ends.
+    expect(reads(`${"cd a;".repeat(5000)} cat AGENTS.md`)).toStrictEqual([]);
+    // Short chains are exact.
+    expect(reads(`${"cd a;".repeat(20)} cat AGENTS.md`)).toStrictEqual([
+      `/repo/${"a/".repeat(20)}AGENTS.md`,
+    ]);
+  });
+
+  test("a command over the size cap is not analysed, so the guard fails open", () => {
+    const filler = "echo x;".repeat(15_000);
+    expect(reads(`${filler} cat AGENTS.md`)).toStrictEqual([]);
+    expect(reads(`cat AGENTS.md; ${filler}`)).toStrictEqual([]);
+    expect(reads("cat AGENTS.md; echo x;")).toStrictEqual(["/repo/AGENTS.md"]);
+  });
+
+  test("a command near the cap with a worst-case cd chain returns promptly", () => {
+    const started = performance.now();
+    reads("cd a;".repeat(19_990));
+    // Unfixed this takes seconds (about 8 s); the bound is generous for loaded machines.
+    expect(performance.now() - started).toBeLessThan(5000);
   });
 });

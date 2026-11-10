@@ -17,8 +17,8 @@ function items(value: unknown): unknown[] {
 function text(value: unknown, fallback = "…"): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
 }
-function preview(value: unknown): string {
-  return truncateToWidth(visibleText(text(value)).replaceAll(/\s+/gu, " "), 96);
+function preview(value: unknown, fallback = "…"): string {
+  return truncateToWidth(visibleText(text(value, fallback)).replaceAll(/\s+/gu, " "), 96);
 }
 function identity(value: unknown): string {
   const peer = fields(value);
@@ -56,7 +56,7 @@ function callSummary(name: string, args: Fields): string {
       return `→ ${identity(args.to)} · ${preview(message.kind)} · ${preview(message.content)}`;
     }
     case "session_take": {
-      return `← inbox · up to ${text(args.limit, "4")} messages`;
+      return `← inbox · up to ${preview(args.limit, "4")} messages`;
     }
     case "session_peers": {
       return `Discover peers${args.watch === true ? " · watch" : ""}`;

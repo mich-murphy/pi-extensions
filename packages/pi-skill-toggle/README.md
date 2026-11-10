@@ -57,7 +57,9 @@ After a session's first request, toggles reach the model as a short appended not
 This is a prompt and read control, **not a security boundary**. A model can still reach a disabled file through paths the extension does not check. The main gaps:
 
 - Main-session `bash` is unrestricted, and `edit`, `write`, `grep`, `find` and `ls` are never checked.
-- The subagent `bash` check inspects known content readers such as `cat`, `head`, `sed` and `rg`. It misses computed paths, globs, inline interpreter code (`python -c`, `node -e`), `eval`, `xargs`, `find -exec` and variable copies.
+- The subagent `bash` check inspects known content readers such as `cat`, `head`, `sed`, `sort` and `rg`, and `dd if=`. It misses computed paths, globs, inline interpreter code (`python -c`, `node -e`), `eval`, `xargs`, `find -exec` and variable copies. Newer gaps found by testing: recursive `grep -r` or `rg` without a file operand, `$'...'` quoting, reads that go through a copy or move made earlier in the same command (`cp AGENTS.md c.txt && cat c.txt`), `ln` hard links made by the command itself, and readers it does not know such as `jq`, `tar`, `gzip` or `sed 'r file'`.
+- The `bash` check is a best-effort nudge that fails open. A command longer than 100,000 characters is not analysed at all, and a `cd` chain that builds a path longer than 4,096 characters makes later relative paths unresolvable and skipped.
+- The `read` tool check compares paths the way Pi resolves them (`@`, `~/`, `file://`) and also compares file identity, so symlinks and existing hard links to a disabled `AGENTS.md`, `CLAUDE.md` or `SKILL.md` are blocked. Hard links to other files inside a disabled skill's folder are not.
 - Git, network access and other commands can expose content.
 - Disabling a resource does not erase earlier conversation context or copies held elsewhere.
 

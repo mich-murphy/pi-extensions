@@ -39,6 +39,13 @@ type Arguments = {
 };
 
 const MAX_DEPTH = 3;
+/**
+ * Backstop for input the analyser cannot resolve in reasonable time. A longer command is not
+ * analysed at all, like any other input it cannot resolve: the best-effort check fails open.
+ */
+const MAX_COMMAND_LENGTH = 100_000;
+/** Longest directory or file path tracked; a `cd` chain beyond it is treated as unresolvable. */
+const MAX_PATH_LENGTH = 4096;
 const WORD_END = new Set([" ", "\t", "\r", "\n", "|", "&", ";", "(", ")", "<", ">"]);
 const OPERATORS = [
   "<<<",
@@ -109,6 +116,17 @@ const PRINTERS: ReadonlyMap<string, Options> = new Map(
     cut: { short: "bcdf", long: [] },
     fold: { short: "w", long: [] },
     diff: { short: "UCxX", long: [] },
+    hexdump: { short: "nse", long: [] },
+    sort: { short: "kotST", long: ["--key", "--field-separator", "--output", "--buffer-size"] },
+    uniq: { short: "fsw", long: [] },
+    paste: { short: "d", long: ["--delimiters"] },
+    rev: NO_OPTIONS,
+    column: { short: "csoWNRTH", long: [] },
+    fmt: { short: "wpgt", long: [] },
+    expand: { short: "t", long: [] },
+    unexpand: { short: "t", long: [] },
+    pr: { short: "ehiwlnoNsSTm", long: [] },
+    comm: NO_OPTIONS,
   }),
 );
 const SEARCH_OPTIONS: ReadonlyMap<string, Options> = new Map(
@@ -166,6 +184,9 @@ const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "mksh", "ash"]);
  */
 export function pathsReadByCommand(command: string, cwd: string): readonly string[] {
   const reads = new Set<string>();
+  if (command.length > MAX_COMMAND_LENGTH) {
+    return [];
+  }
   analyze(command, cwd, 0, reads);
   return [...reads];
 }
@@ -691,10 +712,12 @@ class Evaluator {
   }
 
   private resolve(path: string): string | undefined {
-    if (isAbsolute(path)) {
-      return resolve(path);
+    if (!isAbsolute(path) && this.cwd === undefined) {
+      return undefined;
     }
-    return this.cwd === undefined ? undefined : resolve(this.cwd, path);
+    const resolved = isAbsolute(path) ? resolve(path) : resolve(this.cwd ?? "", path);
+    // Each step of a long `cd` chain copies the whole path, so cap its growth.
+    return resolved.length > MAX_PATH_LENGTH ? undefined : resolved;
   }
 }
 
@@ -819,6 +842,9 @@ function fileArguments(name: string, args: readonly Word[]): readonly Word[] | u
       ? undefined
       : withoutProgram(parsed, ["-e", "-f", "--regexp", "--file"]);
   }
+  if (name === "dd") {
+    return ddInputs(args);
+  }
   if (name === "sed") {
     const parsed = parseArguments(args, SED_OPTIONS);
     return [...parsed.flags].some((flag) => flag === "-i" || flag === "--in-place")
@@ -833,6 +859,13 @@ function fileArguments(name: string, args: readonly Word[]): readonly Word[] | u
     return withoutProgram(parsed, ["-f"]).filter((word) => !ASSIGNMENT.test(word.text));
   }
   return undefined;
+}
+
+/** `dd if=FILE` names its input file; every other `dd` operand is an option. */
+function ddInputs(args: readonly Word[]): readonly Word[] {
+  return args
+    .filter((word) => word.literal && word.text.startsWith("if="))
+    .map((word) => ({ text: word.text.slice(3), literal: true }));
 }
 
 /** Drop the script or pattern positional unless an option supplied it. */

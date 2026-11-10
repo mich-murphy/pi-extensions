@@ -1,5 +1,6 @@
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -8,7 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionUIContext, Skill } from "@earendil-works/pi-coding-agent";
@@ -408,9 +409,72 @@ describe("skill-toggle guard", () => {
       expect(toolPath("./x/../AGENTS.md", "/repo")).toBe("/repo/AGENTS.md");
       expect(toolPath("/abs/AGENTS.md", "/repo")).toBe("/abs/AGENTS.md");
     });
+
+    test("expands ~ forms the way Pi's file tools do", () => {
+      const home = homedir();
+      expect(toolPath("~", "/repo")).toBe(home);
+      expect(toolPath("~/AGENTS.md", "/repo")).toBe(join(home, "AGENTS.md"));
+      expect(toolPath("@~/AGENTS.md", "/repo")).toBe(join(home, "AGENTS.md"));
+      expect(toolPath("~/./proj/AGENTS.md", "/repo")).toBe(join(home, "proj/AGENTS.md"));
+      expect(toolPath("@~/./proj/../AGENTS.md", "/repo")).toBe(join(home, "AGENTS.md"));
+      // `~user` and a mid-path `~` are not expanded by Pi either.
+      expect(toolPath("~user/AGENTS.md", "/repo")).toBe("/repo/~user/AGENTS.md");
+      expect(toolPath("x/~/AGENTS.md", "/repo")).toBe("/repo/x/~/AGENTS.md");
+    });
+
+    test("converts file:// URLs the way Pi's file tools do", () => {
+      expect(toolPath("file:///abs/AGENTS.md", "/repo")).toBe("/abs/AGENTS.md");
+      expect(toolPath("@file:///abs/web/../AGENTS.md", "/repo")).toBe("/abs/AGENTS.md");
+      expect(toolPath("file:///a%20b/AGENTS.md", "/repo")).toBe("/a b/AGENTS.md");
+      // An unparseable URL cannot be read by Pi; the guard must not throw on it.
+      expect(toolPath("file://host/abs/AGENTS.md", "/repo")).toBe("/repo/file:/host/abs/AGENTS.md");
+    });
+
+    test("normalises Unicode spaces like Pi", () => {
+      expect(toolPath("a\u00A0b/AGENTS.md", "/repo")).toBe("/repo/a b/AGENTS.md");
+    });
   });
 
   describe("on-disk path identity", () => {
+    test("hard links to protected files are blocked by file identity", () => {
+      const { main, other } = repository();
+      const rootAgents = instruction(join(main, "AGENTS.md"));
+      const deploy = skillResource(join(main, ".agents/skills/deploy/SKILL.md"), "deploy");
+      const matcher = disabledResourceMatcher(
+        [rootAgents, deploy],
+        overrides({ [rootAgents.id]: "disabled", [join(main, "web/AGENTS.md")]: "disabled" }),
+        new Set(),
+      );
+      const hardAgents = join(other, "notes.md");
+      linkSync(rootAgents.id, hardAgents);
+      const hardSkill = join(other, "skill-copy.md");
+      linkSync(deploy.id, hardSkill);
+      // Persisted-only disabled file, not loaded this session.
+      const hardWeb = join(other, "web-copy.md");
+      linkSync(join(main, "web/AGENTS.md"), hardWeb);
+      const unrelated = write(join(other, "plain.md"));
+      linkSync(unrelated, join(other, "plain-copy.md"));
+
+      expect(matcher.match(hardAgents)).toBe("AGENTS.md");
+      expect(matcher.match(hardSkill)).toBe('skill "deploy"');
+      expect(matcher.match(hardWeb)).toBe("web/AGENTS.md");
+      expect(matcher.match(join(other, "plain-copy.md"))).toBeUndefined();
+      expect(matcher.match(unrelated)).toBeUndefined();
+    });
+
+    test("hard links to enabled files stay readable", () => {
+      const { main, other } = repository();
+      const rootAgents = instruction(join(main, "AGENTS.md"));
+      const matcher = disabledResourceMatcher(
+        [rootAgents],
+        overrides({ [rootAgents.id]: "enabled" }),
+        new Set(),
+      );
+      const copy = join(other, "notes.md");
+      linkSync(rootAgents.id, copy);
+      expect(matcher.match(copy)).toBeUndefined();
+    });
+
     test.runIf(ignoresCase)(
       "case-insensitive file systems: case variants of protected files are blocked",
       () => {

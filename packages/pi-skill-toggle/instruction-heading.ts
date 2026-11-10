@@ -1,24 +1,36 @@
 import { open } from "node:fs/promises";
 import { basename } from "node:path";
 
+/**
+ * The first heading of an instruction file, or "" when it has none or only repeats the file name.
+ * A heading is never blank and never holds a control character: control characters become spaces,
+ * and an empty heading such as `#` followed by spaces is no heading, so the search goes on.
+ */
 export function instructionHeading(content: string, path: string): string {
   let previous = "";
   for (const line of proseLines(content)) {
-    const heading = /^ {0,3}#{1,6}[\t ]+(?<heading>.+?)(?:[\t ]+#+)?[\t ]*$/u.exec(line)?.groups
+    const atx = /^ {0,3}#{1,6}[\t ]+(?<heading>.+?)(?:[\t ]+#+)?[\t ]*$/u.exec(line)?.groups
       ?.heading;
-    if (heading !== undefined) {
+    const heading = atx === undefined ? "" : printable(atx);
+    if (heading !== "") {
       return distinctHeading(heading, path);
     }
-    if (previous !== "" && /^ {0,3}(?:=+|-+)[\t ]*$/u.test(line)) {
-      return distinctHeading(previous, path);
+    const setext = previous !== "" && /^ {0,3}(?:=+|-+)[\t ]*$/u.test(line);
+    if (setext && printable(previous) !== "") {
+      return distinctHeading(printable(previous), path);
     }
     previous = /^\S/u.test(line) ? line.trim() : "";
   }
   return "";
 }
 
+/** Replace control characters with spaces, then trim. */
+function printable(text: string): string {
+  return text.replaceAll(/\p{Cc}/gu, " ").trim();
+}
+
 function withoutFrontmatter(content: string): readonly string[] {
-  const lines = content.replace(/^\uFEFF/u, "").split(/\r?\n/u);
+  const lines = content.replace(/^\uFEFF/u, "").split(/\r\n|[\r\n]/u);
   if (lines[0] !== "---") {
     return lines;
   }

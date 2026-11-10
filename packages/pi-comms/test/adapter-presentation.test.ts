@@ -174,6 +174,8 @@ const cases = [
   },
 ];
 
+const takeCall = (args: unknown) => render("session_take", "call", args, undefined);
+
 describe("presentation-only session tool rendering", () => {
   test.each(cases)(
     "$name $call: compact and expanded actual result shapes remain immutable",
@@ -367,6 +369,20 @@ describe("presentation-only session tool rendering", () => {
         result({ tag: "ok", value: { publication, pushes: [] } }),
       ).join("\n"),
     ).toContain("Published; no peer notifications");
+  });
+  test("session_take call summary is inert for any limit value", () => {
+    expect(takeCall({}).join("\n")).toContain("up to 4 messages");
+    expect(takeCall({ limit: 7 }).join("\n")).toContain("up to 7 messages");
+    for (const limit of ["\u001b[2J", "\u001b]52;c;x\u0007", "\u0080", "5\u009b31m", "a\nb"]) {
+      const lines = takeCall({ limit });
+      expect(lines.join("")).toContain("up to ");
+      for (const line of lines) {
+        expect(line).not.toMatch(/\p{Cc}/u);
+      }
+    }
+    expect(takeCall({ limit: "a\u001b[2Jb" }).join("\n")).toContain(
+      String.raw`up to a\u001b[2Jb messages`,
+    );
   });
   test("large batches are counted but previews stay small; authored labels never replace authenticated identity", () => {
     const peers = Array.from({ length: 64 }, () => ({
