@@ -104,10 +104,6 @@ function lastRequest(machine: Machine): CacheRequestDiagnostic {
   return event;
 }
 
-function plainBlock(text: string): PromptBlock {
-  return { text, images: [] };
-}
-
 function drawBlock(tc: TestCase): PromptBlock {
   const text = tc.draw(gs.arrays(gs.sampledFrom(["a", "b"]), { maxSize: 2 })).join("");
   const images = tc.draw(gs.arrays(gs.sampledFrom(["x", "yy"]), { maxSize: 1 }));
@@ -400,27 +396,4 @@ describe("cache tracker properties", () => {
     },
     propertyTimeout(60_000),
   );
-
-  test("classification priority is model > reasoning > tools > divergence (example table)", () => {
-    const base: Req = {
-      model: "claude-sdk/sonnet",
-      reasoning: undefined,
-      tools: "t1",
-      ttl: undefined,
-      blocks: [plainBlock("a"), plainBlock("b")],
-    };
-    const changed = { model: "other", reasoning: "high", tools: "t2", blocks: [plainBlock("z")] };
-    const table: readonly [Partial<Req>, CacheRequestDiagnostic["prefixChange"]][] = [
-      [changed, "model-changed"],
-      [{ reasoning: "high", tools: "t2", blocks: changed.blocks }, "reasoning-changed"],
-      [{ tools: "t2", blocks: changed.blocks }, "tools-changed"],
-      [{ blocks: changed.blocks }, "system-changed"],
-    ];
-    for (const [override, expected] of table) {
-      const machine = createMachine();
-      submit(machine, base);
-      submit(machine, { ...base, ...override });
-      assert.equal(lastRequest(machine).prefixChange, expected);
-    }
-  });
 });

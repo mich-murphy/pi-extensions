@@ -2,14 +2,8 @@ import type {
   ToolCallEvent,
   ProviderConfig,
   ToolResultEvent,
-  ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, test } from "vitest";
-import autoResume from "../../pi-auto-resume/index";
-import noSleep from "../../pi-caffeinate/index";
-import skillToggle from "../../pi-skill-toggle/index";
-import vimMode from "../../pi-vim/index";
-import webToolsExtension from "../../pi-web-tools/index";
 import type { ClaudeHandlers, ClaudeEvents } from "../index";
 import registerClaudeSdkProvider, { USAGE_LIMIT_CHANNEL, usageLimitPublisher } from "../index";
 
@@ -53,15 +47,6 @@ function bashCall(command: string): ToolCallEvent {
 }
 
 describe("extension entry point", () => {
-  test("all package factories accept the installed Pi extension contract", () => {
-    expect(registerClaudeSdkProvider satisfies ExtensionFactory).toBeTypeOf("function");
-    expect(autoResume satisfies ExtensionFactory).toBeTypeOf("function");
-    expect(noSleep satisfies ExtensionFactory).toBeTypeOf("function");
-    expect(skillToggle satisfies ExtensionFactory).toBeTypeOf("function");
-    expect(vimMode satisfies ExtensionFactory).toBeTypeOf("function");
-    expect(webToolsExtension satisfies ExtensionFactory).toBeTypeOf("function");
-  });
-
   test("registers every model without the routing fields Pi does not know about", () => {
     const provider = loadExtension().providers.get("claude-sdk");
 

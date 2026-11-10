@@ -1,10 +1,9 @@
-/* oxlint-disable vitest/no-conditional-in-test -- deterministic SDK event-order simulators */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, PostToolBatchHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Effect } from "effect";
@@ -119,181 +118,221 @@ async function* rejectedTurn(params: Parameters<RunSdkQuery>[0], path: string): 
   });
 }
 
+type BatchStopEnding = "failed-result" | "missing-result" | "rejection";
+
+/** How the SDK ends after the host stopped the batch: an error result, nothing, or a throw. */
+async function* afterBatchStop(
+  ending: BatchStopEnding,
+): AsyncGenerator<ReturnType<typeof resultMessage>> {
+  if (ending === "failed-result") {
+    yield resultMessage({ is_error: true });
+  }
+  if (ending === "rejection") {
+    throw new Error("private");
+  }
+}
+
+type RecoveryPath = "missing-arguments" | "pre-hook-validation" | "unhooked-valid";
+
+const RECOVERY_SCENARIOS: readonly { readonly path: RecoveryPath; readonly inactive: boolean }[] = [
+  { path: "missing-arguments", inactive: false },
+  { path: "pre-hook-validation", inactive: false },
+  { path: "unhooked-valid", inactive: false },
+  { path: "missing-arguments", inactive: true },
+];
+
+const REJECTION_KIND: Readonly<Record<RecoveryPath, string>> = {
+  "missing-arguments": "invalid_tool_input",
+  "pre-hook-validation": "sdk_input_rejected",
+  "unhooked-valid": "uncaptured_tool_batch",
+};
+
+/** Real `read` executions: the corrected call, plus the unhooked sibling on that path. */
+const READ_EXECUTIONS: Readonly<Record<RecoveryPath, number>> = {
+  "missing-arguments": 1,
+  "pre-hook-validation": 1,
+  "unhooked-valid": 2,
+};
+
+const PI_MESSAGE_ROLES: ReadonlySet<string> = new Set([
+  "system",
+  "user",
+  "assistant",
+  "toolResult",
+]);
+
+function isPiMessage(message: AgentMessage): message is Message {
+  return PI_MESSAGE_ROLES.has(message.role);
+}
+
+function recordTo(session: SessionManager): (event: AgentEvent) => void {
+  return (event) => {
+    if (event.type === "message_end" && isPiMessage(event.message)) {
+      session.appendMessage(event.message);
+    }
+  };
+}
+
+const isQueryRecord = (record: CacheDiagnostic): boolean =>
+  record.type === "usage" || record.type === "query";
+
+const isBadResult = (message: AgentMessage): boolean =>
+  message.role === "toolResult" && message.toolCallId === "bad";
+
+function rejectionText(rejectionKind: string, inactive: boolean): string {
+  return inactive
+    ? `Tool ${VALIDATION_ERROR_TOOL} not found`
+    : validationRecoveryReason({ error: rejectionKind });
+}
+
+/** Drive Pi's real outer loop and SessionManager through a rejected call and its correction. */
+async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
+  const dir = await mkdtemp(join(tmpdir(), "pi-sdk-offline-recovery-"));
+  try {
+    const session = SessionManager.create(dir, dir);
+    let queries = 0;
+    let executions = 0;
+    let replacementExecutions = 0;
+    let dangerousExecutions = 0;
+    const records: CacheDiagnostic[] = [];
+    const runner = createClaudeAgentSdkRunner({
+      claudeExecutable: "/usr/bin/claude",
+      cacheDiagnostics: Effect.runSync(
+        createCacheDiagnosticTracker((record) => records.push(record)),
+      ),
+      validationRecovery: "pi-tool-loop",
+      async *runSdkQuery(params) {
+        queries += 1;
+        yield streamEvent({
+          type: "message_start",
+          message: {
+            id: `offline-model-${queries}`,
+            model: "claude-sonnet-5-5",
+            usage: { input_tokens: 10 },
+          },
+        });
+        if (queries === 1) {
+          yield* rejectedTurn(params, path);
+        } else if (queries === 2) {
+          await deliverToolUse(installedHook(params), {
+            id: "corrected",
+            input: { name: "read", arguments: { path: "fixture" } },
+          });
+          yield resultMessage({ terminal_reason: "tool_deferred", num_turns: 1 });
+        } else {
+          assert(queries === 3);
+          yield textDelta("complete");
+          yield resultMessage({ num_turns: 1 });
+        }
+      },
+    });
+    const tools: AgentTool[] = [
+      {
+        name: "dangerous",
+        label: "Dangerous",
+        description: "Must not execute",
+        parameters: Type.Object({}),
+        async execute() {
+          dangerousExecutions += 1;
+          return { content: [], details: undefined };
+        },
+      },
+      {
+        name: "read",
+        label: "Read",
+        description: "Read fixture",
+        parameters: Type.Object({ path: Type.String() }),
+        async execute(_id, args) {
+          expect(args).toStrictEqual({ path: "fixture" });
+          executions += 1;
+          return { content: [{ type: "text", text: "fixture" }], details: undefined };
+        },
+      },
+      {
+        // Even a late/colliding executable using the reserved name cannot run.
+        name: VALIDATION_ERROR_TOOL,
+        label: "Collision",
+        description: "Must never execute",
+        parameters: Type.Object({ error: Type.String() }),
+        async execute() {
+          replacementExecutions += 1;
+          return { content: [], details: undefined };
+        },
+      },
+    ];
+    const messages = await runAgentLoop(
+      [{ role: "user", content: "Read fixture", timestamp: 0 }],
+      {
+        messages: [],
+        tools: inactive ? tools.filter((tool) => tool.name !== VALIDATION_ERROR_TOOL) : tools,
+      },
+      {
+        model: sonnet,
+        convertToLlm: (history) => history.filter((message) => isPiMessage(message)),
+        beforeToolCall: async ({ toolCall, args }) => blockValidationRecovery(toolCall.name, args),
+      },
+      recordTo(session),
+      undefined,
+      (model, context, options) => createAgentSdkStream({ model, context, options, run: runner }),
+    );
+    const file = session.getSessionFile();
+    assert(file !== undefined);
+    const persisted = SessionManager.open(file)
+      .getEntries()
+      .filter((entry) => entry.type === "message")
+      .map((entry) => entry.message);
+    return {
+      queries,
+      executions,
+      dangerousExecutions,
+      replacementExecutions,
+      records,
+      messages,
+      persisted,
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 describe("Pi-owned validation recovery", () => {
-  test.each([
-    { path: "missing-arguments", inactive: false },
-    { path: "pre-hook-validation", inactive: false },
-    { path: "unhooked-valid", inactive: false },
-    { path: "missing-arguments", inactive: true },
-  ])(
+  test.each(RECOVERY_SCENARIOS)(
     "real Pi outer loop persists $path rejection and correction (inactive=$inactive)",
     async ({ path, inactive }) => {
-      const dir = await mkdtemp(join(tmpdir(), "pi-sdk-offline-recovery-"));
-      try {
-        const session = SessionManager.create(dir, dir);
-        let queries = 0;
-        let executions = 0;
-        let replacementExecutions = 0;
-        let dangerousExecutions = 0;
-        const records: CacheDiagnostic[] = [];
-        const runner = createClaudeAgentSdkRunner({
-          claudeExecutable: "/usr/bin/claude",
-          cacheDiagnostics: Effect.runSync(
-            createCacheDiagnosticTracker((record) => records.push(record)),
-          ),
-          validationRecovery: "pi-tool-loop",
-          async *runSdkQuery(params) {
-            queries += 1;
-            yield streamEvent({
-              type: "message_start",
-              message: {
-                id: `offline-model-${queries}`,
-                model: "claude-sonnet-5-5",
-                usage: { input_tokens: 10 },
-              },
-            });
-            if (queries === 1) {
-              yield* rejectedTurn(params, path);
-            } else if (queries === 2) {
-              await deliverToolUse(installedHook(params), {
-                id: "corrected",
-                input: { name: "read", arguments: { path: "fixture" } },
-              });
-              yield resultMessage({ terminal_reason: "tool_deferred", num_turns: 1 });
-            } else {
-              assert(queries === 3);
-              yield textDelta("complete");
-              yield resultMessage({ num_turns: 1 });
-            }
-          },
-        });
-        const tools: AgentTool[] = [
-          {
-            name: "dangerous",
-            label: "Dangerous",
-            description: "Must not execute",
-            parameters: Type.Object({}),
-            async execute() {
-              dangerousExecutions += 1;
-              return { content: [], details: undefined };
-            },
-          },
-          {
-            name: "read",
-            label: "Read",
-            description: "Read fixture",
-            parameters: Type.Object({ path: Type.String() }),
-            async execute(_id, args) {
-              expect(args).toStrictEqual({ path: "fixture" });
-              executions += 1;
-              return { content: [{ type: "text", text: "fixture" }], details: undefined };
-            },
-          },
-          {
-            // Even a late/colliding executable using the reserved name cannot run.
-            name: VALIDATION_ERROR_TOOL,
-            label: "Collision",
-            description: "Must never execute",
-            parameters: Type.Object({ error: Type.String() }),
-            async execute() {
-              replacementExecutions += 1;
-              return { content: [], details: undefined };
-            },
-          },
-        ];
-        const messages = await runAgentLoop(
-          [{ role: "user", content: "Read fixture", timestamp: 0 }],
-          {
-            messages: [],
-            tools: inactive ? tools.filter((tool) => tool.name !== VALIDATION_ERROR_TOOL) : tools,
-          },
-          {
-            model: sonnet,
-            convertToLlm: (history) =>
-              history.filter((message): message is Message =>
-                ["system", "user", "assistant", "toolResult"].includes(message.role),
-              ),
-            beforeToolCall: async ({ toolCall, args }) =>
-              blockValidationRecovery(toolCall.name, args),
-          },
-          (event) => {
-            if (
-              event.type === "message_end" &&
-              (event.message.role === "system" ||
-                event.message.role === "user" ||
-                event.message.role === "assistant" ||
-                event.message.role === "toolResult")
-            ) {
-              session.appendMessage(event.message);
-            }
-          },
-          undefined,
-          (model, context, options) =>
-            createAgentSdkStream({ model, context, options, run: runner }),
-        );
-        expect(queries).toBe(3);
-        expect(executions).toBe(path === "unhooked-valid" ? 2 : 1);
-        expect(dangerousExecutions).toBe(0);
-        expect(replacementExecutions).toBe(0);
-        expect(
-          records.filter((record) => record.type === "usage" || record.type === "query"),
-        ).toHaveLength(3);
-        for (const record of records.filter(
-          (entry) => entry.type === "usage" || entry.type === "query",
-        )) {
-          expect(record).toMatchObject({ query: { modelRequests: 1 } });
-        }
-        let rejectionKind = "invalid_tool_input";
-        if (path === "unhooked-valid") {
-          rejectionKind = "uncaptured_tool_batch";
-        }
-        if (path === "pre-hook-validation") {
-          rejectionKind = "sdk_input_rejected";
-        }
-        const rejection = messages.find((m) => m.role === "toolResult" && m.toolCallId === "bad");
-        expect(rejection).toMatchObject({
-          role: "toolResult",
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: inactive
-                ? `Tool ${VALIDATION_ERROR_TOOL} not found`
-                : validationRecoveryReason({
-                    error: rejectionKind,
-                  }),
-            },
-          ],
-        });
-        const file = session.getSessionFile();
-        assert(file !== undefined);
-        const reopened = SessionManager.open(file);
-        const persisted = reopened
-          .getEntries()
-          .filter((entry) => entry.type === "message")
-          .map((entry) => entry.message);
-        expect(persisted).toContainEqual(rejection);
-        expect(persisted).toContainEqual(
-          expect.objectContaining({
-            role: "assistant",
-            content: expect.arrayContaining([
-              {
-                type: "toolCall",
-                id: "bad",
-                name: VALIDATION_ERROR_TOOL,
-                arguments: {
-                  error: rejectionKind,
-                },
-              },
-            ]) as unknown,
-          }),
-        );
-        expect(persisted).toContainEqual(
-          expect.objectContaining({ role: "toolResult", toolCallId: "corrected", isError: false }),
-        );
-      } finally {
-        await rm(dir, { recursive: true, force: true });
+      const run = await runRecoveryScenario(path, inactive);
+      const rejectionKind = REJECTION_KIND[path];
+      expect(run.queries).toBe(3);
+      expect(run.executions).toBe(READ_EXECUTIONS[path]);
+      expect(run.dangerousExecutions).toBe(0);
+      expect(run.replacementExecutions).toBe(0);
+      const queryRecords = run.records.filter(isQueryRecord);
+      expect(queryRecords).toHaveLength(3);
+      for (const record of queryRecords) {
+        expect(record).toMatchObject({ query: { modelRequests: 1 } });
       }
+      const rejection = run.messages.find((message) => isBadResult(message));
+      expect(rejection).toMatchObject({
+        role: "toolResult",
+        isError: true,
+        content: [{ type: "text", text: rejectionText(rejectionKind, inactive) }],
+      });
+      expect(run.persisted).toContainEqual(rejection);
+      expect(run.persisted).toContainEqual(
+        expect.objectContaining({
+          role: "assistant",
+          content: expect.arrayContaining([
+            {
+              type: "toolCall",
+              id: "bad",
+              name: VALIDATION_ERROR_TOOL,
+              arguments: { error: rejectionKind },
+            },
+          ]) as unknown,
+        }),
+      );
+      expect(run.persisted).toContainEqual(
+        expect.objectContaining({ role: "toolResult", toolCallId: "corrected", isError: false }),
+      );
     },
   );
 
@@ -318,12 +357,7 @@ describe("Pi-owned validation recovery", () => {
         validationRecovery: "pi-tool-loop",
         async *runSdkQuery(params) {
           await postBatch(params, { name: "read" });
-          if (ending === "failed-result") {
-            yield resultMessage({ is_error: true });
-          }
-          if (ending === "rejection") {
-            throw new Error("private");
-          }
+          yield* afterBatchStop(ending);
         },
       });
       await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([

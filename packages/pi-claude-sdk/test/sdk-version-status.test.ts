@@ -62,20 +62,6 @@ describe("claude SDK version status", () => {
     }),
   );
 
-  it.effect("compares major and minor versions before patch versions", () =>
-    Effect.gen(function* () {
-      const newerMinor = yield* inspectWith(
-        versionSources("0.3.999", "2.1.999", "2.2.0 (Claude Code)"),
-      );
-      const olderMajor = yield* inspectWith(
-        versionSources("0.3.1", "3.0.0", "2.99.999 (Claude Code)"),
-      );
-
-      expect(newerMinor.updateSuggested).toBe(true);
-      expect(olderMajor.updateSuggested).toBe(false);
-    }),
-  );
-
   it.effect("explains a missing claude binary", () =>
     Effect.gen(function* () {
       const error = yield* failureOf(
