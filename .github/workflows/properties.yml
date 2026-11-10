@@ -1,0 +1,77 @@
+name: Properties
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Seed to replay, an integer from 0 to 2^64 - 1. Empty picks a random one
+        required: false
+        type: string
+      cases:
+        description: Test cases per property
+        required: false
+        default: "2000"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  properties:
+    name: Property tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      UV_THREADPOOL_SIZE: 2
+      OMP_NUM_THREADS: 2
+      SEED_INPUT: ${{ inputs.seed }}
+      CASES_INPUT: ${{ inputs.cases }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 2
+      - name: Install dependencies
+        run: nix develop -c npm ci
+      - name: Choose seed and case count
+        run: |
+          seed="${SEED_INPUT:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}"
+          cases="${CASES_INPUT:-2000}"
+          echo "HEGEL_SEED=${seed}" >> "$GITHUB_ENV"
+          echo "HEGEL_TEST_CASES=${cases}" >> "$GITHUB_ENV"
+          echo "Seed: ${seed}, cases: ${cases}"
+          {
+            echo "### Property tests"
+            echo
+            echo "Seed \`${seed}\`, ${cases} cases per property."
+            echo
+            echo "Reproduce locally:"
+            echo
+            echo '```sh'
+            echo "HEGEL_SEED=${seed} HEGEL_TEST_CASES=${cases} npm run test:properties"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Run property tests
+        timeout-minutes: 35
+        run: nix develop -c npm run test:properties -- --fileParallelism=false
+      - name: Explain how to reproduce
+        if: ${{ failure() }}
+        run: |
+          echo "Property tests failed. Reproduce locally with:"
+          echo "  HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties"
+          echo "Add each counterexample above as a regression test before fixing it."
+          {
+            echo
+            echo "**Failed.** Reproduce with \`HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties\`."
+          } >> "$GITHUB_STEP_SUMMARY"
