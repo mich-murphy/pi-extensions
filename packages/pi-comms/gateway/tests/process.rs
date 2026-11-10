@@ -252,3 +252,196 @@ fn malformed_prefix_closes_only_affected_client() {
     let mut healthy = gateway.connect();
     register(&mut healthy, "healthy", 12, &["team"]);
 }
+
+fn send_to(stream: &mut UnixStream, to: &Value, number: u64) {
+    write(
+        stream,
+        &json!({"v":1,"op":"send","rid":rid(number),"to":to,"scopeId":"team","message":{"id":rid(1000 + number),"kind":"request","content":"hello","format":"text"}}),
+    );
+}
+
+#[test]
+fn thirty_local_connections_are_served_and_the_thirty_first_is_closed_until_one_leaves() {
+    let gateway = Gateway::start(&["push"]);
+    let mut clients: Vec<_> = (0..30)
+        .map(|index| {
+            let mut stream = gateway.connect();
+            register(
+                &mut stream,
+                &format!("session-{index}"),
+                100 + index,
+                &["team"],
+            );
+            stream
+        })
+        .collect();
+    let mut excess = gateway.connect();
+    let mut byte = [0_u8; 1];
+    assert_eq!(
+        excess
+            .read(&mut byte)
+            .expect("the gateway closes the excess connection instead of leaving it to time out"),
+        0,
+        "connection 31 is refused with an immediate close"
+    );
+    let mut leaving = clients.pop().expect("thirty connections");
+    write(&mut leaving, &json!({"v":1,"op":"close","rid":rid(2)}));
+    assert_eq!(read(&mut leaving)["outcome"]["tag"], "ok");
+    drop(leaving);
+    // The gateway reaps the closed task asynchronously; the freed slot is usable shortly after.
+    let mut admitted = false;
+    for _ in 0..40 {
+        let mut again = gateway.connect();
+        write(
+            &mut again,
+            &json!({"v":1,"op":"register","rid":rid(1),"sessionId":"replacement","runtimeNonce":rid(900),"scopeIds":["team"],"label":"replacement"}),
+        );
+        let mut header = [0_u8; 4];
+        if again.read_exact(&mut header).is_ok() {
+            admitted = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(admitted, "a freed connection slot admits a new client");
+}
+
+#[test]
+fn nine_concurrent_sends_on_one_connection_are_refused_as_overloaded_operations() {
+    let gateway = Gateway::start(&["push"]);
+    let mut sender = gateway.connect();
+    register(&mut sender, "sender", 10, &["team"]);
+    let mut other = gateway.connect();
+    register(&mut other, "other", 12, &["team"]);
+    let mut receiver = gateway.connect();
+    let target = register(&mut receiver, "receiver", 11, &["team"]);
+    for number in 2..10 {
+        send_to(&mut sender, &target, number);
+    }
+    let mut deliveries = Vec::new();
+    for _ in 2..10 {
+        deliveries.push(read(&mut receiver));
+    }
+    send_to(&mut sender, &target, 10);
+    let refused = read(&mut sender);
+    assert_eq!(refused["rid"], rid(10));
+    assert_eq!(refused["outcome"]["tag"], "not_admitted");
+    assert_eq!(refused["outcome"]["code"], "overloaded");
+    assert_eq!(refused["outcome"]["resource"], "operations");
+    assert_eq!(
+        refused["outcome"]["binding"]["messageId"],
+        rid(1010),
+        "the refusal is bound to the refused message"
+    );
+    // The cap is per connection: another connection is unaffected.
+    send_to(&mut other, &target, 2);
+    assert_eq!(read(&mut receiver)["from"]["sessionId"], "other");
+    // Settling one operation frees one slot on the saturated connection.
+    let first = &deliveries[0];
+    write(
+        &mut receiver,
+        &json!({"v":1,"op":"result","rid":first["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":{"messageId":first["message"]["id"],"sender":first["from"],"recipient":first["to"],"scopeId":"team"},"correlation":"none"}}),
+    );
+    assert_eq!(read(&mut sender)["outcome"]["tag"], "admitted");
+    send_to(&mut sender, &target, 11);
+    assert_eq!(read(&mut receiver)["from"]["sessionId"], "sender");
+}
+
+#[test]
+fn a_second_concurrent_watch_is_overloaded_until_the_first_is_released() {
+    let gateway = Gateway::start(&["discover"]);
+    let mut client = gateway.connect();
+    register(&mut client, "watcher", 10, &["team"]);
+    let watch = |number: u64| json!({"v":1,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":true});
+    write(&mut client, &watch(2));
+    assert_eq!(read(&mut client)["outcome"]["tag"], "ok");
+    write(&mut client, &watch(3));
+    let refused = read(&mut client);
+    assert_eq!(refused["rid"], rid(3));
+    assert_eq!(refused["outcome"]["tag"], "error");
+    assert_eq!(refused["outcome"]["code"], "overloaded");
+    assert_eq!(refused["outcome"]["resource"], "watch");
+    write(
+        &mut client,
+        &json!({"v":1,"op":"unwatch","rid":rid(4),"watchRid":rid(2)}),
+    );
+    assert_eq!(read(&mut client)["outcome"]["tag"], "ok");
+    write(&mut client, &watch(5));
+    assert_eq!(
+        read(&mut client)["outcome"]["tag"],
+        "ok",
+        "releasing the watch frees the slot"
+    );
+}
+
+#[test]
+fn socket_is_owner_only_and_sigterm_removes_it_with_a_clean_exit() {
+    let mut gateway = Gateway::start(&["push"]);
+    let socket_mode = fs::metadata(&gateway.socket)
+        .expect("bound socket")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(socket_mode, 0o600, "the socket is owner-only");
+    let pid = rustix::process::Pid::from_raw(
+        i32::try_from(gateway.child.id()).expect("test process PID fits OS pid_t"),
+    )
+    .expect("positive child PID");
+    rustix::process::kill_process(pid, rustix::process::Signal::TERM)
+        .expect("terminate isolated foreground gateway");
+    assert!(
+        gateway
+            .child
+            .wait()
+            .expect("wait for the gateway")
+            .success(),
+        "SIGTERM is a controlled shutdown"
+    );
+    assert!(
+        !gateway.socket.exists(),
+        "the gateway removes its own socket on SIGTERM"
+    );
+}
+
+#[test]
+fn gateway_refuses_a_socket_directory_that_others_can_enter() {
+    let gateway = Gateway::start(&["push"]);
+    let open = gateway.directory.join("open");
+    fs::create_dir(&open).expect("fixture directory");
+    fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).expect("fixture mode");
+    let config = gateway.directory.join("open.json");
+    let socket = open.join("s");
+    fs::write(
+        &config,
+        serde_json::to_vec(
+            &json!({"machineId":"beta","socketPath":socket,"scopeIds":["team"],"policies":[]}),
+        )
+        .expect("fixture config"),
+    )
+    .expect("fixture config file");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--config")
+        .arg(&config)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("isolated gateway process");
+    let mut first_line = String::new();
+    BufReader::new(child.stdout.take().expect("piped stdout"))
+        .read_line(&mut first_line)
+        .expect("stdout until ready or exit");
+    // A gateway that wrongly started would stay up, so never wait on it.
+    let _ = child.kill();
+    assert!(
+        first_line.is_empty(),
+        "a refused start never reports ready: {first_line:?}"
+    );
+    assert!(
+        !child.wait().expect("reap gateway").success(),
+        "a 0755 socket directory is not a private boundary"
+    );
+    assert!(
+        !socket.exists(),
+        "no socket is created in an unsafe directory"
+    );
+}

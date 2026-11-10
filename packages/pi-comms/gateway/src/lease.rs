@@ -112,7 +112,11 @@ mod tests {
                 .await,
             LinkEnd::Expired
         );
-        assert_eq!(begin.elapsed(), MAX_AGE);
+        assert_eq!(
+            begin.elapsed(),
+            Duration::from_hours(24),
+            "an active link never outlives 24 hours, however distant its credentials expire"
+        );
     }
 
     #[tokio::test(start_paused = true)]

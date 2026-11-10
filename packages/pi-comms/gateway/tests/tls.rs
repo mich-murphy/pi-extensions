@@ -930,3 +930,81 @@ fn durable_floor_rejects_swappable_private_directory_beneath_nonsticky_writable_
         "trusted-owner sticky ancestor protects a victim-owned child just like canonical macOS/Linux temporary roots"
     );
 }
+
+#[tokio::test]
+async fn client_leaf_signed_by_an_unknown_ca_is_rejected_even_with_a_trusted_ca_name() {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    let ca = Authority::new("trusted CA");
+    // A different key pair under another name, and one forging the trusted issuer name.
+    let strangers = [Authority::new("unknown CA"), Authority::new("trusted CA")];
+    let server_trust = ca.trust(ca.current_crl());
+    let (server_chain, server_key) = ca.leaf("beta");
+    let server = Policy::new(server_trust, "alpha")
+        .unwrap()
+        .server_config(server_chain, server_key)
+        .unwrap();
+    let client_with = |issuer: &Authority| {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(ca.cert.der().clone()).unwrap();
+        let (chain, key) = issuer.leaf("alpha");
+        rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_client_auth_cert(
+            chain.into_iter().map(CertificateDer::from).collect(),
+            PrivateKeyDer::try_from(key).unwrap(),
+        )
+        .unwrap()
+    };
+    assert!(
+        handshake(client_with(&ca), server.clone()).await,
+        "control: the same client shape is accepted when its leaf is signed by the trusted CA"
+    );
+    for stranger in &strangers {
+        assert!(
+            !handshake(client_with(stranger), server.clone()).await,
+            "a client leaf signed by a CA outside the configured roots must not authenticate"
+        );
+    }
+}
+
+#[test]
+fn crl_number_rollback_is_rejected_even_when_the_issue_time_moves_forward() {
+    use pi_gateway::revocation::FloorStore;
+    let ca = Authority::new("number rollback CA");
+    let time = OffsetDateTime::now_utc();
+    let high = ca.trust(ca.crl(
+        5,
+        time - Duration::hours(2),
+        time + Duration::hours(1),
+        vec![],
+    ));
+    // Newer thisUpdate and later nextUpdate, but a lower CRL number.
+    let lower_number_newer_time = ca.trust(ca.crl(
+        4,
+        time - Duration::hours(1),
+        time + Duration::hours(3),
+        vec![],
+    ));
+    assert!(
+        high.check_replacement(&lower_number_newer_time).is_err(),
+        "a lower CRL number is a rollback regardless of thisUpdate"
+    );
+    let directory = CredentialDirectory::new();
+    let path = directory.0.join("number-floors.json");
+    let mut store = FloorStore::initialize(&path).unwrap();
+    store.apply(&high).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    assert!(
+        store.apply(&lower_number_newer_time).is_err(),
+        "the durable floor must refuse a lower CRL number with a newer thisUpdate"
+    );
+    assert_eq!(
+        before,
+        std::fs::read(&path).unwrap(),
+        "refusal leaves the floor unchanged"
+    );
+}
