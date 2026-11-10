@@ -5,6 +5,7 @@ import { stateful } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { planPrompt, promptSnapshot } from "../prompt-epoch";
 import type { PromptPlan, PromptSnapshot } from "../prompt-epoch";
 import { isInPrompt, RESOURCE_SECTIONS } from "../prompt-view";
@@ -247,13 +248,19 @@ function newWorld(tc: TestCase): World {
 }
 
 describe("prompt-epoch properties", () => {
-  test("prompt plans converge under toggles, responses, model switches, and compaction", () => {
-    assertProperty(
-      "prompt-epoch",
-      "prompt plans converge under toggles, responses, model switches, and compaction",
-      (tc) => {
-        stateful.run(tc, machine, newWorld(tc));
-      },
-    );
-  });
+  // A stateful machine that renders whole prompts each step: 0.25 s quiet and 0.52 s under 8 busy
+  // processes.
+  test(
+    "prompt plans converge under toggles, responses, model switches, and compaction",
+    { timeout: propertyTimeout(30_000) },
+    () => {
+      assertProperty(
+        "prompt-epoch",
+        "prompt plans converge under toggles, responses, model switches, and compaction",
+        (tc) => {
+          stateful.run(tc, machine, newWorld(tc));
+        },
+      );
+    },
+  );
 });
