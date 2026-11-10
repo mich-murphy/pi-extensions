@@ -1,7 +1,7 @@
 """Actual two-Pi/two-Rust-gateway interop, generated PKI, offline model only.
 
 Local: python3 packages/pi-comms/test/spike/interop.py
-Cross-host: add --ssh-host bc-01 --remote-root /tmp/APPROVED_ROOT/source
+Cross-host: add --ssh-host dev-01 --remote-root /tmp/APPROVED_ROOT/source
 --ssh-tunnel for an owned narrow loopback tunnel (mTLS remains inside SSH).
 Stage interop_endpoint.py at APPROVED_ROOT/interop, outside the immutable source;
 node is expected at APPROVED_ROOT/node/bin/node. Without --ssh-tunnel, provide
