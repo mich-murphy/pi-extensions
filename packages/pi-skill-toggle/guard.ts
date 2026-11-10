@@ -1,6 +1,7 @@
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RepositoryLocator } from "./repository";
 import { resourcePathId } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
@@ -102,6 +103,23 @@ export function disabledResourceMatcher(
     }
     return `skill "${owner.disabledSkill}"`;
   };
+  // Candidates for hard-link matching: every named resource file, loaded or only persisted.
+  const linkedCandidates = lazy(() =>
+    hardLinkIndex([...resources.map((resource) => resource.id), ...persistedPaths(overrides)]),
+  );
+  /** A second name for a protected file: same device and inode as a disabled resource file. */
+  const hardLinkMatch = (path: string): string | undefined => {
+    const identity = fileIdentity(path);
+    for (const candidate of identity === undefined
+      ? []
+      : (linkedCandidates().get(identity) ?? [])) {
+      const label = matchId(candidate);
+      if (label !== undefined) {
+        return label;
+      }
+    }
+    return undefined;
+  };
   return {
     match: (path) => {
       const id = resourcePathId(path, "/");
@@ -109,9 +127,44 @@ export function disabledResourceMatcher(
       // protected files. It only differs from the lexical path when both name the same file, so
       // case-sensitive file systems keep distinct `agents.md` and `AGENTS.md` files separate.
       const onDisk = resourcePathId(canonical(id), "/");
-      return matchId(id) ?? (onDisk === id ? undefined : matchId(onDisk));
+      return matchId(id) ?? (onDisk === id ? undefined : matchId(onDisk)) ?? hardLinkMatch(onDisk);
     },
   };
+}
+
+/** Absolute paths of every explicit choice; repository choices resolve in the main checkout. */
+function persistedPaths(overrides: ToggleOverrides | undefined): readonly string[] {
+  return [
+    ...(overrides?.files.keys() ?? []),
+    ...[...(overrides?.repositories ?? [])].flatMap(([repository, choices]) =>
+      [...choices.keys()].map((path) => join(dirname(repository), path)),
+    ),
+  ];
+}
+
+/**
+ * `device:inode` of a file that has other names, else undefined. Ordinary single-link files
+ * cost one `stat` and never reach the (lazily built) index of protected files' identities.
+ */
+function fileIdentity(path: string): string | undefined {
+  try {
+    const stats = statSync(path, { bigint: true });
+    return stats.nlink > 1n && stats.isFile() ? `${stats.dev}:${stats.ino}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resource files that have more than one name, grouped by identity. */
+function hardLinkIndex(paths: Iterable<string>): ReadonlyMap<string, readonly ResourcePath[]> {
+  const index = new Map<string, ResourcePath[]>();
+  for (const path of new Set(paths)) {
+    const identity = fileIdentity(path);
+    if (identity !== undefined) {
+      index.set(identity, [...(index.get(identity) ?? []), resourcePathId(path, "/")]);
+    }
+  }
+  return index;
 }
 
 const onDiskKey = (kind: ToggleResource["kind"], path: string): string => `${kind}\0${path}`;
@@ -153,14 +206,35 @@ function realPath(path: string): string | undefined {
   }
 }
 
-/** Resolve a path argument the way Pi's file tools do: `@` prefix, then `~`, then the cwd. */
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/gu;
+
+/**
+ * Resolve a path argument the way Pi's file tools do (`resolvePath` in Pi's `utils/paths`):
+ * Unicode spaces, `@` prefix, `~` or `~/`, `file://` URL, then the cwd. An unparseable URL is
+ * unreadable for Pi, so it is left as an ordinary relative path.
+ */
 export function toolPath(path: string, cwd: string): string {
-  const withoutAt = path.startsWith("@") ? path.slice(1) : path;
-  const expanded =
-    withoutAt === "~" || withoutAt.startsWith("~/")
-      ? join(homedir(), withoutAt.slice(1))
-      : withoutAt;
-  return resolve(cwd, expanded);
+  const spaced = path.replaceAll(UNICODE_SPACES, " ");
+  const withoutAt = spaced.startsWith("@") ? spaced.slice(1) : spaced;
+  return resolve(cwd, expandHome(withoutAt) ?? fileUrlPath(withoutAt) ?? withoutAt);
+}
+
+function expandHome(path: string): string | undefined {
+  if (path === "~") {
+    return homedir();
+  }
+  return path.startsWith("~/") ? join(homedir(), path.slice(2)) : undefined;
+}
+
+function fileUrlPath(path: string): string | undefined {
+  if (!path.startsWith("file://")) {
+    return undefined;
+  }
+  try {
+    return fileURLToPath(path);
+  } catch {
+    return undefined;
+  }
 }
 
 const instructionLabel = (path: string): string =>
