@@ -68,6 +68,14 @@ describe("isPrivateOrLocalIp", () => {
     "2002:a00:1::",
     "2002:7f00:1::1",
     "::ffff:0:10.0.0.1",
+    "0:0:0:0:0:0:ffff:ffff",
+    "64:ff9b::ffff:ffff",
+    "64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
+    "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+    "100::ffff:ffff:ffff:ffff",
+    "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
   ];
 
   test.each(blocked)("blocks %s", (ip) => {
@@ -91,10 +99,108 @@ describe("isPrivateOrLocalIp", () => {
     "fec0::1",
     "fc::1",
     "fe8::1",
+    "::1:0:0",
+    "64:ff9b:0:0:0:1:0:0",
+    "2001:db9::",
+    "100:0:0:1::",
+    "fe00::",
+    "fe7f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "fbff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
   ];
 
   test.each(allowed)("allows %s", (ip) => {
     expect(isPrivateOrLocalIp(ip)).toBe(false);
+  });
+});
+
+// An independent statement of the non-public ranges, written from the registries rather than read
+// from network.ts. Each row yields both edges (first and last address inside, blocked) and both
+// neighbours (allowed unless another row covers them).
+const RANGES: readonly (readonly [cidr: string, purpose: string])[] = [
+  ["0.0.0.0/8", "RFC 791 this network"],
+  ["10.0.0.0/8", "RFC 1918 private use"],
+  ["100.64.0.0/10", "RFC 6598 carrier-grade NAT"],
+  ["127.0.0.0/8", "RFC 1122 loopback"],
+  ["169.254.0.0/16", "RFC 3927 link-local"],
+  ["172.16.0.0/12", "RFC 1918 private use"],
+  ["192.168.0.0/16", "RFC 1918 private use"],
+  ["224.0.0.0/4", "RFC 5771 multicast"],
+  ["240.0.0.0/4", "RFC 1112 reserved and broadcast"],
+  ["192.0.0.0/24", "RFC 6890 IETF protocol assignments"],
+  ["192.0.2.0/24", "RFC 5737 TEST-NET-1"],
+  ["198.18.0.0/15", "RFC 2544 benchmarking"],
+  ["198.51.100.0/24", "RFC 5737 TEST-NET-2"],
+  ["203.0.113.0/24", "RFC 5737 TEST-NET-3"],
+  ["::/96", "RFC 4291 unspecified, loopback and deprecated IPv4-compatible"],
+  ["64:ff9b::/96", "RFC 6052 NAT64 well-known prefix"],
+  ["64:ff9b:1::/48", "RFC 8215 local-use NAT64"],
+  ["2001:db8::/32", "RFC 3849 documentation"],
+  ["100::/64", "RFC 6666 discard-only"],
+  ["fc00::/7", "RFC 4193 unique local"],
+  ["fe80::/10", "RFC 4291 link-local"],
+  ["ff00::/8", "RFC 4291 multicast"],
+];
+
+type Cidr = { readonly v6: boolean; readonly first: bigint; readonly last: bigint };
+
+const parseV4 = (text: string): bigint =>
+  text.split(".").reduce((acc, part) => acc * 256n + BigInt(part), 0n);
+
+function parseV6(text: string): bigint {
+  const [head = "", tail = ""] = text.split("::");
+  const front = head === "" ? [] : head.split(":");
+  const back = tail === "" ? [] : tail.split(":");
+  const fill = Array.from({ length: 8 - front.length - back.length }, () => "0");
+  return [...front, ...fill, ...back].reduce(
+    (acc, group) => (acc << 16n) | BigInt(`0x${group}`),
+    0n,
+  );
+}
+
+const formatV4 = (value: bigint): string =>
+  [24n, 16n, 8n, 0n].map((shift) => String((value >> shift) & 255n)).join(".");
+
+const formatV6 = (value: bigint): string =>
+  Array.from({ length: 8 }, (_, index) =>
+    ((value >> BigInt(16 * (7 - index))) & 0xff_ffn).toString(16),
+  ).join(":");
+
+function parseCidr(text: string): Cidr {
+  const [address = "", length = ""] = text.split("/");
+  const v6 = address.includes(":");
+  const first = v6 ? parseV6(address) : parseV4(address);
+  return { v6, first, last: first + (1n << ((v6 ? 128n : 32n) - BigInt(length))) - 1n };
+}
+
+const PARSED_RANGES = RANGES.map(([cidr]) => parseCidr(cidr));
+
+const covered = (v6: boolean, value: bigint): boolean =>
+  PARSED_RANGES.some((range) => range.v6 === v6 && value >= range.first && value <= range.last);
+
+/** [label, address, blocked] for the edges and neighbours of one range. */
+function edgeCases(cidr: string): readonly (readonly [string, string, boolean])[] {
+  const range = parseCidr(cidr);
+  const format = range.v6 ? formatV6 : formatV4;
+  const max = (1n << (range.v6 ? 128n : 32n)) - 1n;
+  const cases: [string, string, boolean][] = [
+    [`${cidr} first`, format(range.first), true],
+    [`${cidr} last`, format(range.last), true],
+  ];
+  if (range.first > 0n) {
+    const below = range.first - 1n;
+    cases.push([`${cidr} below`, format(below), covered(range.v6, below)]);
+  }
+  if (range.last < max) {
+    const above = range.last + 1n;
+    cases.push([`${cidr} above`, format(above), covered(range.v6, above)]);
+  }
+  return cases;
+}
+
+describe("isPrivateOrLocalIp range edges", () => {
+  test.each(RANGES.flatMap(([cidr]) => edgeCases(cidr)))("%s: %s", (_label, address, blocked) => {
+    expect(isPrivateOrLocalIp(address)).toBe(blocked);
   });
 });
 
@@ -190,6 +296,9 @@ function inOrder(...replies: readonly (() => Response)[]): () => Response {
     return reply();
   };
 }
+
+const redirectReply = () =>
+  responseOf({ status: 302, headers: { location: "https://example.com/next" } });
 
 function abortedSignal(): AbortSignal {
   const controller = new AbortController();
@@ -623,6 +732,26 @@ describe("fetchPublicWebClient response body", () => {
     }),
   );
 
+  it.effect("accepts a Content-Length exactly at the cap and rejects one byte over", () =>
+    Effect.gen(function* () {
+      const exact = recordingClient(() =>
+        responseOf({ status: 200, body: "x".repeat(1024), headers: { "content-length": "1024" } }),
+      );
+      const accepted = yield* Effect.result(
+        exact.client.get(makeRequest({ maxResponseBytes: 1024 })),
+      );
+      assert(Result.isSuccess(accepted));
+      expect(accepted.success.body.byteLength).toBe(1024);
+
+      const over = trackedResponse({ status: 200, headers: { "content-length": "1025" } });
+      const rejected = yield* Effect.result(
+        recordingClient(() => over.response).client.get(makeRequest({ maxResponseBytes: 1024 })),
+      );
+      expect(rejected).toStrictEqual(Result.fail(new ResponseTooLarge({ maxBytes: 1024 })));
+      expect(over.wasCancelled()).toBe(true);
+    }),
+  );
+
   it.effect("returns the first bytes of a body over the cap when partial text is allowed", () =>
     Effect.gen(function* () {
       const streamed = trackedResponse(
@@ -848,6 +977,25 @@ describe("fetchPublicWebClient", () => {
       const result = yield* Effect.result(client.get(makeRequest({ maxRedirects: 2 })));
       assert(Result.isFailure(result));
       expect(result.failure._tag).toBe("RedirectLimitExceeded");
+    }),
+  );
+
+  it.effect("follows exactly maxRedirects redirects, then fails on the next one", () =>
+    Effect.gen(function* () {
+      const atLimit = recordingClient(
+        inOrder(redirectReply, redirectReply, () => responseOf({ status: 200 })),
+      );
+      const reached = yield* Effect.result(atLimit.client.get(makeRequest({ maxRedirects: 2 })));
+      assert(Result.isSuccess(reached));
+      expect(reached.success.status).toBe(200);
+      expect(atLimit.hops).toHaveLength(3);
+
+      const overLimit = recordingClient(
+        inOrder(redirectReply, redirectReply, redirectReply, () => responseOf({ status: 200 })),
+      );
+      const refused = yield* Effect.result(overLimit.client.get(makeRequest({ maxRedirects: 2 })));
+      expect(refused).toStrictEqual(Result.fail(new RedirectLimitExceeded({ maxRedirects: 2 })));
+      expect(overLimit.hops).toHaveLength(3);
     }),
   );
 
