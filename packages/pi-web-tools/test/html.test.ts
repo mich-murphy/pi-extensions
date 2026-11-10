@@ -61,6 +61,16 @@ describe("htmlToText", () => {
   });
 });
 
+describe("htmlToText cleanup", () => {
+  test("strips trailing spaces, long blank runs and outer blank lines from the converter output", () => {
+    const base = "https://example.com";
+    expect(htmlToText("<p>a</p><br><br><br><br><p>b</p>", base)).toBe("a\n\nb");
+    expect(htmlToText("<pre>a  \nb</pre>", base)).toBe("a\nb");
+    expect(htmlToText("<pre>\n\n\nx\n\n\n</pre>", base)).toBe("x");
+    expect(htmlToText("<pre>a   \n\n\n\n\nb</pre>", base)).toBe("a\n\nb");
+  });
+});
+
 describe("htmlToText on input without an html element", () => {
   test.each([
     ["script first", "<script>SCRIPTMARK</script><p>hi there</p>", ["hi there"], ["SCRIPTMARK"]],

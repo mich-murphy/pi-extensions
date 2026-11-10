@@ -14,8 +14,16 @@ const MARKER = "ZQSCRIPTMARKERQZ";
 const VISIBLE = "ZQVISIBLEMARKERQZ";
 const BASE_URL = "https://example.com/";
 const ALLOWED_FAILURES = new Set(["EmptyHtmlDocument", "HtmlConversionFailed"]);
-const NODE_KINDS = ["p", "div", "table", "script", "template", "a", "text"];
-const WORDS = ["hello world", "alpha beta gamma delta", "x", " "];
+const NODE_KINDS = ["p", "div", "table", "script", "template", "a", "text", "pre", "br"];
+// Only <pre> keeps source whitespace, so the padded words are what the text cleanup has to remove.
+const WORDS = [
+  "hello world",
+  "alpha beta gamma delta",
+  "x",
+  " ",
+  "padded  \n\n\n\n\ntail",
+  "\n\n\n",
+];
 const HREFS = [
   "/x",
   "javascript:alert(1)",
@@ -34,6 +42,9 @@ function renderNode(tc: TestCase, depth: number): string {
   }
   if (kind === "script") {
     return `<script>${MARKER}</script>`;
+  }
+  if (kind === "br") {
+    return "<br>";
   }
   const count = depth <= 1 ? 0 : tc.draw(gs.integers({ minValue: 0, maxValue: 2 }), "children");
   const inner = Array.from({ length: count }, () => renderNode(tc, depth - 1)).join("");
@@ -94,8 +105,21 @@ function hasDivWithVisibleText(html: string): boolean {
   return false;
 }
 
+// Plain text is cleaned up: no trailing spaces on a line, no run of three newlines, no outer blank.
+function assertCleanText(result: Result.Result<string, unknown>): void {
+  if (Result.isFailure(result)) {
+    return;
+  }
+  const text = result.success;
+  assert.ok(!/[ \t]\n/u.test(text), "a line kept trailing whitespace");
+  assert.ok(!/\n{3,}/u.test(text), "three newlines in a row survived");
+  assert.equal(text, text.trim(), "leading or trailing whitespace survived");
+}
+
 function assertConversionsSafe(html: string): void {
-  assertAllowedOutcome(htmlToText(html, BASE_URL), html);
+  const text = htmlToText(html, BASE_URL);
+  assertAllowedOutcome(text, html);
+  assertCleanText(text);
   assertAllowedOutcome(htmlToMarkdown(html, BASE_URL), html);
 }
 
