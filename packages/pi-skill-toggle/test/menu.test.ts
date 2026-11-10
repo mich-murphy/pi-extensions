@@ -117,6 +117,15 @@ describe("context menu", () => {
     expect(disabled.text()).toMatch(/Global instructions\s+Always on/u);
   });
 
+  test("the global instructions category reads Not loaded when Pi loaded none", () => {
+    const dialog = menu([globalSkill, projectInstruction]);
+    expect(dialog.text()).toMatch(/Global instructions\s+Not loaded/u);
+    expect(dialog.text()).not.toMatch(/Global instructions\s+(?:Always on|\d+ off)/u);
+    // With nothing to open, Enter on the category does not enter a submenu.
+    dialog.press(ENTER);
+    expect(dialog.text()).toContain("Auto-save");
+  });
+
   test("quotes actual skill descriptions inline and keeps source text secondary", () => {
     const dialog = menu([globalSkill]);
     dialog.open(1);
