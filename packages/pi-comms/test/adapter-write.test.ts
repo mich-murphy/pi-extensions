@@ -6,6 +6,7 @@ import { connectTransport } from "../adapter/transport.js";
 import type { Reply, Request } from "../adapter/transport.js";
 import type { Frame } from "../protocol/schema.js";
 import { encodeFrame } from "../protocol/wire.js";
+import { fakeDelay } from "./fake-delay.js";
 
 /** A real Node Writable with a deliberately blocked transport completion callback. */
 class BlockedSocket extends Socket {
@@ -126,6 +127,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
       scopeId: "team",
       message: { id: "3".repeat(32), kind: "update", content: "authored", format: "text" },
       request: async (rid, deadline) => connection.request(sending(rid), deadline),
+      delay: fakeDelay,
     });
     await vi.advanceTimersByTimeAsync(4000);
     deliver(socket, readRequest(2));
