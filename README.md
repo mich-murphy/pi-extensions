@@ -42,7 +42,7 @@ You can also switch individual extensions on and off with `pi config`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), including [why the quality gates are set where they are](CONTRIBUTING.md#why-these-gates). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 

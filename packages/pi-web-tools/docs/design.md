@@ -27,6 +27,14 @@ Direct fetches pass these checks:
 - Responses are byte-capped after decompression (10 MiB), with a deadline. Text over the cap is returned truncated and flagged. Cloudflare challenges are retried once with a fallback user agent.
 - Oversized output spills to a temp file in a 0700 directory with 0600 permissions, because pages can hold sensitive content.
 
+### Redirects
+
+OWASP's [SSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html) says to "Disable the support for the following of the redirection in your web client". This package follows redirects anyway, as a deliberate deviation, because many real pages move between URLs and a fetch tool that fails on every redirect is not useful.
+
+Following is safe only if a redirect cannot reach a target the first request could not. `network.ts` handles each hop as a new request. It rejects credentials in the URL, a non-`http(s)` protocol, a missing or invalid `Location` and a chain past the hop limit. Then it applies the domain allow and deny lists, resolves DNS, blocks private and reserved addresses and connects only to the validated addresses.
+
+The residual risk is that the policy is a deny list of address ranges, which OWASP calls bypass-prone, so a range the list misses is reachable by redirect as well as directly. A redirect also lets a public page choose where the next request goes, within the same policy.
+
 ## Provider-side fetch rescue
 
 When a direct markdown fetch gets 401, 403 or 429, or returns an HTML page with under 160 characters of text, the URL is retried through Exa or Parallel in search priority order. Output marks rescued pages with `via`, because the URL is shared with that provider.

@@ -44,9 +44,19 @@ Fix findings rather than silencing them:
 
 While working on a branch, `npm run fallow:audit` lists only the Fallow findings your branch introduces.
 
+## Why these gates
+
+The numbers are project conventions. They keep review tractable; no source gives them as the right values.
+
+**Coverage.** The 80% threshold on branches, lines and statements is a floor, not a target, and not evidence that the tests are good. Coverage shows which code no test runs. It does not show that a test would fail when the code is wrong. Google publishes a [60% acceptable, 75% commendable, 90% exemplary](https://testing.googleblog.com/2020/08/code-coverage-best-practices.html) guideline and avoids broad top-down mandates. [Inozemtseva and Holmes (ICSE 2014)](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf) found a low to moderate correlation between coverage and suite effectiveness once suite size is controlled for, and advise against using coverage as a quality target. Current coverage is about 96.5% of lines and 93.3% of branches. Judge a test by whether it fails when behaviour is broken: check it by mutating the code under test, and use [property tests](#property-tests) where inputs are open-ended.
+
+**Complexity.** Fallow flags a function above cyclomatic complexity 20, cognitive complexity 15 or a CRAP score of 30, and above 60 lines. These are Fallow's defaults, and `.fallowrc.json` does not override them. They are looser than McCabe's original limit of 10. [NIST SP 500-235](http://www.mccabe.com/pdf/mccabe-nist235r.pdf) allows limits up to 15 when the project has operational advantages such as experienced staff. SonarSource's [cognitive complexity paper](https://www.sonarsource.com/docs/CognitiveComplexity.pdf) defines the metric and gives no threshold. The limits here are not claimed to be evidence-based.
+
 ## Property tests
 
 Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches.
+
+Both runs exist because a fixed seed makes the gate reproducible but explores the same inputs every time. Running other seeds locally during an evidence review found a genuine defect that seed 12345 never reached. The Rust gateway properties in `packages/pi-comms/gateway/tests` hard-code their seeds and ignore `HEGEL_SEED`, so the nightly run does not vary them.
 
 Two environment variables change every property:
 

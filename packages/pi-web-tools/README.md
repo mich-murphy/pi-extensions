@@ -116,6 +116,7 @@ Pi's codemode lets the model call tools from a script. Both tools declare an out
 ## Limitations
 
 - Fetch rescue: when a direct fetch is blocked (401, 403, 429) or returns an empty JS-only page, `webfetch` asks Exa or Parallel to fetch the page instead, which sends them the URL. It applies only to `markdown` and is off when an allow or deny list is set.
+- Fetch follows redirects, which OWASP advises against. Every hop is checked against the same host and address policy. See [Redirects](docs/design.md#redirects).
 - Every `offset` call downloads the page again.
 - A stored `!command` key cannot be cancelled while it runs, and Pi caches its result until restart.
 - Never put credentials in queries or URLs.
