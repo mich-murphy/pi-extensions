@@ -8,6 +8,7 @@ import { STRUCTURED_OUTPUT_MAX_BYTES, projectFetchResult, redactSecrets } from "
 import type { ToolOutputStore } from "../tool-output";
 import { parsePublicHttpUrl } from "../types";
 import { UTF8, publicUrl } from "./fakes";
+import { observableText } from "./leaks";
 
 // Paging uses only 50 cases: each case walks every window of up to ~240 KB of text.
 const settings = { testCases: 50, seed: 12_345n, database: Database.disabled };
@@ -276,7 +277,7 @@ function checkUrl([scheme, userinfo, host, path]: [string, string, string, strin
     assert.equal(again.success, parsed.success);
     return;
   }
-  assert.ok(!JSON.stringify(parsed.failure).includes(PASSWORD));
+  assert.ok(!observableText(parsed.failure).includes(PASSWORD));
   assert.ok(!parsed.failure._tag.includes(PASSWORD));
   assert.ok(!String(Object.values(parsed.failure)).includes(PASSWORD));
 }

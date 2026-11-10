@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import { Result } from "effect";
 import { describe, expect, test } from "vitest";
 import { isPrivateOrLocalIp, parseContentType } from "../network";
+import { parsePublicHttpUrl } from "../types";
 
 const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
 
@@ -94,6 +96,7 @@ const toGroups = (o: readonly number[]) => [
 const V6_PREFIXES: readonly (readonly (number | undefined)[])[] = [
   [0, 0, 0, 0, 0, 0xff_ff], // mapped
   [0, 0, 0, 0, 0xff_ff, 0], // SIIT
+  [0, 0, 0, 0, 0xff_ff], // SIIT look-alike: group 5 free, so ::ffff:<nonzero>:a:b is drawn too
   [0, 0, 0, 0, 0, 0], // compatible
   [0x64, 0xff_9b, 0, 0, 0, 0], // NAT64
   [0x64, 0xff_9b, 1], // local-use NAT64
@@ -145,6 +148,24 @@ function checkEdge(index: number, atEnd: boolean, delta: number): void {
   assert.equal(isPrivateOrLocalIp(octets.join(".")), v4NonGlobal(value), octets.join("."));
 }
 
+// WHATWG URL accepts these legacy spellings of an IPv4 host: a whole 32-bit integer in any radix,
+// dotted parts in hex or octal, and short forms whose last part fills the remaining bytes.
+type Spelling = (octets: readonly number[]) => string;
+const whole = (octets: readonly number[]) => octets.reduce((acc, part) => acc * 256 + part, 0);
+const tail = (octets: readonly number[], keep: number) =>
+  octets.slice(keep).reduce((acc, part) => acc * 256 + part, 0);
+const NUMERIC_SPELLINGS: readonly Spelling[] = [
+  (o) => String(whole(o)),
+  (o) => `0x${whole(o).toString(16)}`,
+  (o) => `0${whole(o).toString(8)}`,
+  (o) => o.map((part) => `0x${part.toString(16)}`).join("."),
+  (o) => o.map((part) => `0${part.toString(8)}`).join("."),
+  (o) => o.join("."),
+  (o) => `${o[0] ?? 0}.${o[1] ?? 0}.${tail(o, 2)}`,
+  (o) => `${o[0] ?? 0}.${tail(o, 1)}`,
+  (o) => `0x${(o[0] ?? 0).toString(16)}.${tail(o, 1)}`,
+];
+
 describe("isPrivateOrLocalIp properties", () => {
   test("IPv4 verdict is right at every range edge", () => {
     new Hegel((tc) => {
@@ -182,6 +203,22 @@ describe("isPrivateOrLocalIp properties", () => {
       expect(isPrivateOrLocalIp(dottedTail(groups)), "dotted tail").toBe(expected);
     })
       .databaseKey("pi-web-tools/private-ip-v6")
+      .settings(settings)
+      .runSync();
+  });
+
+  test("every legacy numeric spelling of an IPv4 host gets the dotted-quad verdict", () => {
+    new Hegel((tc) => {
+      const octets = tc.draw(ipv4Octets, "octets");
+      const spelling = tc.draw(gs.sampledFrom(NUMERIC_SPELLINGS), "spelling");
+      const [a = 0, b = 0, c = 0, d = 0] = octets;
+      const parsed = parsePublicHttpUrl(`http://${spelling(octets)}/`);
+      assert.ok(Result.isSuccess(parsed), `${spelling(octets)} did not parse`);
+      const { hostname } = new URL(parsed.success);
+      assert.equal(hostname, octets.join("."), "the URL parser canonicalises the host");
+      assert.equal(isPrivateOrLocalIp(hostname), v4NonGlobal(v4(a, b, c, d)), hostname);
+    })
+      .databaseKey("pi-web-tools/private-ip-v4-spellings")
       .settings(settings)
       .runSync();
   });

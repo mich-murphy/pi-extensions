@@ -36,6 +36,7 @@ import {
   fetchPageWith,
   toolRuntimeWith,
 } from "./fakes";
+import { expectNoLeak } from "./leaks";
 
 const DEFAULT_SETTINGS = settingsFrom();
 const FETCH_OPTIONS = {
@@ -381,6 +382,30 @@ describe("webfetch tool", () => {
     });
     expect(JSON.stringify(result)).not.toContain("sekrit-key");
     expect(textOf(result)).toContain("[redacted]");
+  });
+
+  test("redacts the request's resolved key from a failure message on its own", async () => {
+    // The identity redactText leaves only the per-request credential snapshot to scrub.
+    const settings = settingsFrom();
+    const tool = createWebFetchTool({
+      settings,
+      redactText: (input) => input,
+      runtime: toolRuntimeWith({
+        settings,
+        secret: "sekrit-key",
+        fetchPage: fetchPageFor(
+          Result.fail(new HttpStatusRejected({ status: 500, statusText: "echo sekrit-key" })),
+        ),
+      }),
+    });
+
+    const failure = await tool.execute("t1", { url: "https://echo.example/" }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    assert(failure instanceof Error);
+    expect(failure.message).toBe("Request failed (500 echo [redacted])");
+    expectNoLeak(failure, "sekrit-key");
   });
 
   test("redacts image progress and metadata without changing the image payload", async () => {

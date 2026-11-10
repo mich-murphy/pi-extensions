@@ -4,6 +4,7 @@ import { TestClock } from "effect/testing";
 import { parseMcpMessage, parseMcpToolResult } from "../mcp";
 import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
 import { publicUrl, mcpClientWith } from "./fakes";
+import { expectNoLeak } from "./leaks";
 
 const ENDPOINT = publicUrl("https://mcp.example/mcp");
 
@@ -480,7 +481,7 @@ describe("credential reflection", () => {
       expect(result.failure.message).toContain("[redacted]");
       expect(result.failure.message).not.toContain("-long");
       for (const secret of secrets) {
-        expect(JSON.stringify(result.failure)).not.toContain(secret);
+        expectNoLeak(result.failure, secret);
       }
     }
   });
