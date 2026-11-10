@@ -143,6 +143,12 @@ impl Daemon {
     pub fn socket_path(&self) -> &Path {
         &self.config.socket_path
     }
+    /// Returns the remote listener's actually bound address, resolving a configured port 0.
+    ///
+    /// `None` when no remote is configured or the remote endpoint connects out.
+    pub fn remote_listen_address(&self) -> Option<std::net::SocketAddr> {
+        self.link.as_ref().and_then(Driver::local_address)
+    }
     /// Returns the configured authoritative local machine identity.
     pub fn machine_id(&self) -> &str {
         &self.config.machine_id

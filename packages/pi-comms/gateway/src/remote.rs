@@ -155,6 +155,11 @@ impl Settings {
         {
             return Err(rejected());
         }
+        // Port 0 asks the OS for an ephemeral listener port, reported at readiness. It is
+        // never a valid destination, so a connecting endpoint must name a real port.
+        if matches!(self.endpoint, Endpoint::Connect { address } if address.port() == 0) {
+            return Err(rejected());
+        }
         Ok(())
     }
 
