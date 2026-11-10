@@ -383,10 +383,13 @@ describe("public native web authentication", () => {
     expect(outcome.failure.reason).toBe("incompatible");
   });
 
-  test("Pi command timeout fails safely", async () => {
-    const { resolve } = await fixture("!printf timeout-secret; exec sleep 11");
+  // Pi runs a stored `!command` with a hard-coded ten-second synchronous timeout inside AuthStorage;
+  // that wait cannot be injected. A timeout surfaces exactly like a command killed by a signal:
+  // execSync throws and Pi stores no value. Killing the command here reaches that path at once.
+  test("a command killed by a signal fails safely without leaking its output", async () => {
+    const { resolve } = await fixture("!printf killed-secret; kill -KILL $$");
     const result = await resolve();
     assert(Result.isFailure(result));
-    expectNoLeak(result, "timeout-secret", "sleep");
-  }, 30_000);
+    expectNoLeak(result, "killed-secret", "kill -KILL");
+  });
 });

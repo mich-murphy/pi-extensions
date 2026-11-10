@@ -27,6 +27,14 @@ function transportService(): PublicWebTransport["Service"] {
   );
 }
 
+async function eventLoopTurns(turns: number): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+}
+
 function uninitializedDeferred(): never {
   throw new Error("Deferred promise was not initialized");
 }
@@ -42,20 +50,6 @@ function undefinedDeferred(): {
     };
   });
   return { promise, resolve: resolvePromise };
-}
-
-async function settleWithin<A>(promise: Promise<A>, milliseconds: number): Promise<A> {
-  let timer: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error("Timed out waiting for the local connection to close"));
-    }, milliseconds);
-  });
-  try {
-    return await Promise.race([promise, timedOut]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function withLocalServer<A>(
@@ -151,7 +145,7 @@ describe("PublicWebTransport", () => {
         );
         expect(response.status).toBe(205);
         expect(response.body).toBeNull();
-        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+        await expect(connectionClosed.promise).resolves.toBeUndefined();
       },
     );
   });
@@ -178,7 +172,7 @@ describe("PublicWebTransport", () => {
         expect(response.headers.get("content-length")).toBeNull();
         const body = await Effect.runPromise(Effect.result(readResponseBodyWithLimit(response, 8)));
         expect(body).toStrictEqual(Result.fail(new ResponseBodyTooLarge()));
-        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+        await expect(connectionClosed.promise).resolves.toBeUndefined();
       },
     );
   });
@@ -234,11 +228,10 @@ describe("PublicWebTransport", () => {
           expect(result.success.body.byteLength).toBe(cap);
           expect(result.success.body.toString("utf8", 0, 16)).toBe("0123456789abcdef");
           expect(result.success.responseTruncated).toBe(true);
-          await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
-          // Give a late decoder error time to surface before judging.
-          await new Promise<void>((resolve) => {
-            setTimeout(resolve, 100);
-          });
+          await expect(connectionClosed.promise).resolves.toBeUndefined();
+          // The socket is closed, so the pipeline has destroyed every decoder; Node reports a rejection
+          // or uncaught exception raised by then on the next event-loop turns, which this drains.
+          await eventLoopTurns(2);
         },
       );
     } finally {
@@ -360,7 +353,7 @@ describe("PublicWebTransport", () => {
         expect(first.value).toBeInstanceOf(Uint8Array);
         await reader.cancel();
         reader.releaseLock();
-        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+        await expect(connectionClosed.promise).resolves.toBeUndefined();
       },
     );
   });
@@ -390,7 +383,7 @@ describe("PublicWebTransport", () => {
         await expect(pendingRead).resolves.toMatchObject({ done: true });
         reader.releaseLock();
         expect(response.body.locked).toBe(false);
-        await expect(settleWithin(connectionClosed.promise, 1000)).resolves.toBeUndefined();
+        await expect(connectionClosed.promise).resolves.toBeUndefined();
       },
     );
   });
