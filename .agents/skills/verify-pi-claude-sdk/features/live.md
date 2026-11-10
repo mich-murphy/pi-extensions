@@ -16,7 +16,7 @@ result to the conversation. The upgrade gate verifies all advertised selectors.
 
 ## How to get to it (user POV)
 
-Choose the provider with `--model claude-sdk/claude-5.1-fable`; use `--print` for
+Choose the provider with `--model claude-sdk/claude-5.2-fable`; use `--print` for
 text and `--mode json --tools read` for observable tool execution. Maintainers
 run `npm run test:claude-sdk-upgrade` when validating the SDK/provider release.
 

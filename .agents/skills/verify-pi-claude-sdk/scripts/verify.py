@@ -15,7 +15,7 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[4]
-IDS = ['claude-5.5-sonnet', 'claude-5.5-opus', 'claude-5.1-fable',
+IDS = ['claude-5.5-sonnet', 'claude-5.5-opus', 'claude-5.2-fable',
        'claude-5.5-haiku', 'claude-4.5-haiku']
 
 
@@ -220,7 +220,6 @@ def main():
                 rows = {parts[1]: parts[2:] for line in text.splitlines()
                         if len(parts := line.split()) >= 6 and parts[0] == 'claude-sdk'}
                 expected = {model: ['1M', '128K', 'yes', 'yes'] for model in IDS}
-                expected['claude-5.1-fable'] = ['1M', '64K', 'yes', 'yes']
                 expected['claude-4.5-haiku'] = ['200K', '32K', 'yes', 'yes']
                 assert rows == expected, f'unexpected catalog values: {rows}'
                 record('catalog', 'passed', 'real CLI listed all five models with SDK context/output limits, thinking and images')
@@ -238,12 +237,12 @@ def main():
                     record('live', 'blocked', 'require current usage evidence with extra usage disabled and available allowance')
                     continue
                 # User path beyond protocol tests: actual Pi text response, then read-only tool execution.
-                text = run('live-text', base + ['--model', 'claude-sdk/claude-5.1-fable', '--no-tools', '--print', 'Reply with exactly CLAUDE_SDK_TEXT_OK.'])
+                text = run('live-text', base + ['--model', 'claude-sdk/claude-5.2-fable', '--no-tools', '--print', 'Reply with exactly CLAUDE_SDK_TEXT_OK.'])
                 assert text.strip() == 'CLAUDE_SDK_TEXT_OK', text
                 fixture = scratch / 'work/probe.txt'
                 fixture.write_text('CLAUDE_SDK_READ_OK\n')
                 before = hashlib.sha256(fixture.read_bytes()).hexdigest()
-                stream = run('live-read', base + ['--model', 'claude-sdk/claude-5.1-fable', '--tools', 'read', '--mode', 'json', 'Use the read tool to read probe.txt. After receiving the tool result, reply with ONLY the file contents, verbatim. Do not add a filename, introduction, quotation marks, code fences, or any other text.'])
+                stream = run('live-read', base + ['--model', 'claude-sdk/claude-5.2-fable', '--tools', 'read', '--mode', 'json', 'Use the read tool to read probe.txt. After receiving the tool result, reply with ONLY the file contents, verbatim. Do not add a filename, introduction, quotation marks, code fences, or any other text.'])
                 events = [json.loads(x) for x in stream.splitlines() if x]
                 assert any(x.get('type') == 'tool_execution_end' and x.get('toolName') == 'read' and not x.get('isError') for x in events), 'no successful Pi read execution in live-read.stdout'
                 messages = [x['message'] for x in events if x.get('type') == 'message_end']

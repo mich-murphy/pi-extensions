@@ -32,7 +32,8 @@ export type SdkModelConfig = {
   /**
    * Claude Code model selector sent to the Agent SDK. Current models use the
    * documented moving aliases so the underlying model tracks the bundled
-   * Claude Code; superseded models use their full model ID.
+   * Claude Code; superseded models use their full model ID. Fable 5.2 also uses
+   * its full ID because Claude Code 2.1.319 still resolves the `fable` alias to 5.1.
    */
   readonly sdkModel: string;
   /**
@@ -74,18 +75,17 @@ export const models: readonly SdkModelConfig[] = [
     maxTokens: 128_000,
   },
   {
-    id: "claude-5.1-fable",
-    name: "Claude Fable 5.1 (official Agent SDK)",
-    sdkModel: "fable",
-    canonicalModel: "claude-fable-5-1",
+    id: "claude-5.2-fable",
+    name: "Claude Fable 5.2 (official Agent SDK)",
+    sdkModel: "claude-fable-5-2",
+    canonicalModel: "claude-fable-5-2",
     minimumCacheableTokens: 512,
     reasoning: true,
     thinkingLevelMap: fableEffortLevels,
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 1_000_000,
-    // Claude Code 2.1.303 reports 64K, below the direct Messages API's 128K.
-    maxTokens: 64_000,
+    maxTokens: 128_000,
   },
   {
     id: "claude-5.5-haiku",
@@ -159,10 +159,12 @@ export function undatedModelId(modelId: string): string {
  * Registered models keep theirs next to their limits above. Do not infer a minimum from
  * a family or version range: even adjacent Opus releases have different thresholds.
  * Source: https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations
- * (checked 2026-10-20); the SDK's installed model catalog does not expose cache minima.
+ * (checked 2026-11-10); the SDK's installed model catalog does not expose cache minima.
  */
 const otherCacheMinimums: Readonly<Record<string, number>> = {
   "claude-fable-5": 512,
+  "claude-fable-5-1": 512,
+  "claude-mythos-5-2": 512,
   "claude-mythos-5": 512,
   "claude-mythos-5-1": 512,
   "claude-opus-5": 512,

@@ -245,7 +245,13 @@ describe("SDK query parameters", () => {
       models.map(async (model) => selectorFor(modelFixture(model))),
     );
 
-    expect(selectors).toStrictEqual(["sonnet", "opus", "fable", "haiku", "claude-haiku-4-5"]);
+    expect(selectors).toStrictEqual([
+      "sonnet",
+      "opus",
+      "claude-fable-5-2",
+      "haiku",
+      "claude-haiku-4-5",
+    ]);
   });
 
   test("passes unknown model IDs through to the Agent SDK unchanged", async () => {
@@ -262,7 +268,7 @@ describe("SDK query parameters", () => {
     const reasoningModels = [
       "claude-5.5-sonnet",
       "claude-5.5-opus",
-      "claude-5.1-fable",
+      "claude-5.2-fable",
       "claude-5.5-haiku",
     ];
 
