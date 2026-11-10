@@ -12,6 +12,11 @@ import { fakePi } from "./fake-pi";
 const KILL_GRACE_MS = 50;
 const spawnNode = caffeinateSpawner(process.execPath, KILL_GRACE_MS);
 const IDLE_FOREVER = "setInterval(() => {}, 1000)";
+// Waits poll observable state (a file, a process listing) and return as soon as it holds. Vitest's
+// default 1 s poll budget is too tight for spawning `pgrep` on a loaded machine, so the budget is a
+// generous hang guard; each test's own timeout sits above it.
+const OBSERVE = { timeout: 20_000 };
+const OBSERVE_TEST_TIMEOUT_MS = 30_000;
 
 async function ended(child: CaffeinateProcess): Promise<CaffeinateEnd> {
   return new Promise((resolve) => {
@@ -40,30 +45,31 @@ describe("caffeinate process adapter", () => {
     child.stop();
   });
 
-  test("escalates to SIGKILL when the child ignores SIGTERM", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "no-sleep-"));
-    const ready = join(directory, "ready");
-    try {
-      const child = spawnNode([
-        "-e",
-        `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], ""); ${IDLE_FOREVER}`,
-        ready,
-      ]);
-      const end = ended(child);
-      await vi.waitFor(
-        () => {
+  test(
+    "escalates to SIGKILL when the child ignores SIGTERM",
+    async () => {
+      const directory = mkdtempSync(join(tmpdir(), "no-sleep-"));
+      const ready = join(directory, "ready");
+      try {
+        const child = spawnNode([
+          "-e",
+          `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], ""); ${IDLE_FOREVER}`,
+          ready,
+        ]);
+        const end = ended(child);
+        await vi.waitFor(() => {
           expect(existsSync(ready)).toBe(true);
-        },
-        { timeout: 5000 },
-      );
+        }, OBSERVE);
 
-      child.stop();
+        child.stop();
 
-      await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGKILL" });
-    } finally {
-      rmSync(directory, { recursive: true });
-    }
-  });
+        await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGKILL" });
+      } finally {
+        rmSync(directory, { recursive: true });
+      }
+    },
+    OBSERVE_TEST_TIMEOUT_MS,
+  );
 
   test("reports a missing command as caffeinate being unavailable", async () => {
     const child = caffeinateSpawner("/nonexistent/caffeinate", KILL_GRACE_MS)([]);
@@ -106,14 +112,15 @@ describe("no-sleep entry point", () => {
       await pi.emit("agent_start");
       await vi.waitFor(() => {
         expect(caffeinateIsRunning()).toBe(true);
-      });
+      }, OBSERVE);
 
       await pi.emit("agent_settled");
       await vi.waitFor(() => {
         expect(caffeinateIsRunning()).toBe(false);
-      });
+      }, OBSERVE);
       expect(pi.notifications).toStrictEqual([]);
     },
+    OBSERVE_TEST_TIMEOUT_MS,
   );
 
   test.runIf(process.platform !== "darwin")("registers nothing outside macOS", () => {
