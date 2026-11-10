@@ -72,6 +72,6 @@ The provider discards raw SDK `errors` and `result` prose. It does not redact or
 
 ## Model routing
 
-Current models send a Claude Code moving alias (`sonnet`, `opus`, `fable`, `haiku`). `claude-4.5-haiku` sends the full ID `claude-haiku-4-5`. Any other ID passes through unchanged, so custom IDs keep working. Aliases can move without a code change.
+Current models send a Claude Code moving alias (`sonnet`, `opus`, `haiku`). `claude-5.2-fable` sends the full ID `claude-fable-5-2`, because the `fable` alias still resolves to Fable 5.1 in Claude Code 2.1.319. `claude-4.5-haiku` sends the full ID `claude-haiku-4-5`. Any other ID passes through unchanged, so custom IDs keep working. Aliases can move without a code change.
 
 Every turn records the concrete model from the SDK's `message_start`. `/claude-sdk-status` prints each advertised ID, its selector and the last observed model, and flags a model that differs from the expected one. The live upgrade gate checks the same resolutions, context windows and output limits. See [SDK upgrade](sdk-upgrade.md).

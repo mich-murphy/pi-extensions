@@ -29,7 +29,7 @@ The provider registers these models:
 | --- | --- | --- | --- |
 | `claude-5.5-sonnet` | 1,000,000 | 128,000 | `low`, `medium`, `high`, `xhigh`, `max` |
 | `claude-5.5-opus` | 1,000,000 | 128,000 | `low`, `medium`, `high`, `xhigh`, `max` |
-| `claude-5.1-fable` | 1,000,000 | 64,000 | `minimal` (sent as `low`), `low`, `medium`, `high`, `xhigh`, `max` |
+| `claude-5.2-fable` | 1,000,000 | 128,000 | `minimal` (sent as `low`), `low`, `medium`, `high`, `xhigh`, `max` |
 | `claude-5.5-haiku` | 1,000,000 | 128,000 | `low`, `medium`, `high`, `xhigh`, `max` |
 | `claude-4.5-haiku` | 200,000 | 32,000 | `off`, `minimal`, `low`, `medium`, `high` |
 

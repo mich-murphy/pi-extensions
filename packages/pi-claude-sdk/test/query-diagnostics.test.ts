@@ -73,7 +73,7 @@ describe("safe query diagnostics", () => {
         sonnet: { inputTokens: 5 },
         haiku: { inputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
         opus: { inputTokens: Number.NaN, cacheReadInputTokens: -1, cacheCreationInputTokens: 1.5 },
-        fable: {
+        "claude-fable-5-2": {
           inputTokens: Number.MAX_SAFE_INTEGER,
           cacheReadInputTokens: 1,
           cacheCreationInputTokens: 0,
@@ -83,7 +83,7 @@ describe("safe query diagnostics", () => {
       { model: "sonnet", input: 5 },
       { model: "haiku", input: 0, cacheRead: 0, cacheWrite: 0, promptTokens: 0 },
       { model: "opus" },
-      { model: "fable", input: Number.MAX_SAFE_INTEGER, cacheRead: 1, cacheWrite: 0 },
+      { model: "claude-fable-5-2", input: Number.MAX_SAFE_INTEGER, cacheRead: 1, cacheWrite: 0 },
     ]);
   });
 

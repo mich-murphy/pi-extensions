@@ -68,7 +68,7 @@ describe("extension entry point", () => {
     expect(provider?.models?.map((model) => model.id)).toStrictEqual([
       "claude-5.5-sonnet",
       "claude-5.5-opus",
-      "claude-5.1-fable",
+      "claude-5.2-fable",
       "claude-5.5-haiku",
       "claude-4.5-haiku",
     ]);
