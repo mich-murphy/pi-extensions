@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import type { Socket } from "node:net";
@@ -107,7 +108,25 @@ async function receiptLossProxy(config: Configuration, onLoss: () => void) {
     },
   };
 }
+// The built gateway. `npm run check` and CI build it first; a bare `npx vitest run` in a fresh clone does not.
+const gatewayBinary =
+  process.env.PI_SESSION_GATEWAY_BINARY ??
+  fileURLToPath(new URL("../gateway/target/debug/pi-gateway", import.meta.url));
+
+function requireGatewayBinary(): void {
+  // A failure, never a skip: this test is the only one that runs the native gateway, so a dropped build
+  // step must turn CI red rather than pass without exercising it.
+  if (!existsSync(gatewayBinary)) {
+    throw new Error(
+      `The native gateway binary is not built: ${gatewayBinary} does not exist. ` +
+        "Build it with `npm run check:rust` or `cd packages/pi-comms/gateway && cargo build --locked`, " +
+        "or set PI_SESSION_GATEWAY_BINARY to a built pi-gateway.",
+    );
+  }
+}
+
 async function nativeGateway() {
+  requireGatewayBinary();
   // Canonical private directory is required by the native gateway, including on macOS /var.
   const directory = await realpath(await mkdtemp(join(tmpdir(), "psc-native-")));
   await chmod(directory, 0o700);
@@ -124,10 +143,7 @@ async function nativeGateway() {
     configPath,
     JSON.stringify({ machineId: "alpha", socketPath, scopeIds: ["team"], policies }),
   );
-  const binary =
-    process.env.PI_SESSION_GATEWAY_BINARY ??
-    fileURLToPath(new URL("../gateway/target/debug/pi-gateway", import.meta.url));
-  const child = spawn(binary, ["--config", configPath], {
+  const child = spawn(gatewayBinary, ["--config", configPath], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, RAYON_NUM_THREADS: "2", OMP_NUM_THREADS: "2" },
   });

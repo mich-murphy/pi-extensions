@@ -37,6 +37,8 @@ It runs these steps in order and stops at the first failure:
 | Fallow | `npm run fallow` | Dead code, duplication or a function over the complexity limit, anywhere in the repo |
 | Markdown | `npm run markdownlint` | Any Markdown lint finding |
 
+The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-comms/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
+
 Fix findings rather than silencing them:
 
 - Suppress a lint rule only on the offending line, with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
