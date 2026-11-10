@@ -792,13 +792,15 @@ describe("public adapter transport and notice accounting", () => {
   test("transfers FIFO payloads once, retains receipts, and retires only exact identified notices", async () => {
     const fixture = await gateway(() => undefined);
     const notices: { customType: string; details?: unknown }[] = [];
+    const wakes: unknown[] = [];
     let idle = false;
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
       {
-        sendMessage: (message) => {
+        sendMessage: (message, options) => {
           notices.push(message);
+          wakes.push(options);
         },
       },
       () => ({ isIdle: () => idle, ui: { setStatus: () => undefined } }),
@@ -837,6 +839,8 @@ describe("public adapter transport and notice accounting", () => {
       message: authored("6".repeat(32)),
     });
     await expect.poll(() => notices.length).toBe(1);
+    // The notice is what wakes an idle Pi: it must start a turn, steered into the session.
+    expect(wakes).toStrictEqual([{ triggerTurn: true, deliverAs: "steer" }]);
     session.observed({ role: "custom", customType: NOTICE_TYPE, details: { noticeId: "wrong" } });
     expect(session.status().notice).toBe("submitted_unobserved");
     const taken = session.take(8);
