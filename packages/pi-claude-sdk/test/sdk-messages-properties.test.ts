@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
 import type { ReportedUsage } from "../sdk/messages";
 import { resultMessage } from "./fixtures";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const COUNT_KEYS = [
   ["input_tokens", "input"],
   ["output_tokens", "output"],
@@ -126,7 +127,6 @@ describe("SDK message properties", () => {
     new Hegel((tc) => {
       assertUsageFold(tc);
     })
-      .databaseKey("pi-claude-sdk/usage-fold")
       .settings(settings)
       .runSync();
   });
@@ -135,7 +135,6 @@ describe("SDK message properties", () => {
     new Hegel((tc) => {
       assertTurnScopeSplit(tc);
     })
-      .databaseKey("pi-claude-sdk/usage-turn-split")
       .settings(settings)
       .runSync();
   });
@@ -144,7 +143,6 @@ describe("SDK message properties", () => {
     new Hegel((tc) => {
       assertLimitLookup(tc);
     })
-      .databaseKey("pi-claude-sdk/limit-lookup")
       .settings(settings)
       .runSync();
   });

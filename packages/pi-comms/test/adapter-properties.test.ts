@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { Text, visibleWidth } from "@earendil-works/pi-tui";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
 import { toolPresentation } from "../adapter/presentation.js";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const toolNames = [
   "session_peers",
   "session_send",
@@ -255,7 +256,6 @@ describe("Hegel adapter policy and rendering properties", () => {
       assertPermissionDecision(allowed, code, kind);
       assertControlNamesRejected(allowed, code, kind, field);
     })
-      .databaseKey("session-communication/adapter/policy-names")
       .settings(settings)
       .runSync();
   });
@@ -270,7 +270,6 @@ describe("Hegel adapter policy and rendering properties", () => {
       assertVisibleTextSequence(code % 160, kind, prefix);
       assertVisibleTextBidi(bidi, prefix);
     })
-      .databaseKey("session-communication/adapter/visible-text")
       .settings(settings)
       .runSync();
   });
@@ -283,7 +282,6 @@ describe("Hegel adapter policy and rendering properties", () => {
       const isError = tc.draw(gs.booleans(), "isError");
       assertRenderedBounds(name, args, value, width, isError);
     })
-      .databaseKey("session-communication/adapter/render-bounds")
       .settings(settings)
       .runSync();
   });

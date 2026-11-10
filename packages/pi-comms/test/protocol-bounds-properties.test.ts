@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
 import type { BoundaryRole } from "../protocol/wire.js";
 import { decodeFrame, encodeFrame, frameBodyLength, validateFrame } from "../protocol/wire.js";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
+const settings = propertySettings(200);
 const rid = "1".repeat(32);
 const nonce = "a".repeat(32);
 
@@ -112,10 +113,7 @@ function property(
   name: string,
   body: (tc: Parameters<ConstructorParameters<typeof Hegel>[0]>[0]) => void,
 ) {
-  new Hegel(body)
-    .databaseKey(`session-communication/ts/bounds-${name}`)
-    .settings(settings)
-    .runSync();
+  new Hegel(body).settings(settings).runSync();
 }
 
 describe("Hegel size-bound edges", () => {

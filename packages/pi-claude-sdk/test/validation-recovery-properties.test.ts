@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { VALIDATION_REASONS, validationRecoveryReason } from "../validation-recovery";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const MAX_REASON_LENGTH = 400;
 
 function drawMarker(tc: TestCase): string {
@@ -64,7 +65,6 @@ describe("validation recovery reason properties", () => {
     new Hegel((tc) => {
       assertTotalBoundedValueFree(tc);
     })
-      .databaseKey("pi-claude-sdk/validation-recovery-total")
       .settings(settings)
       .runSync();
   });
@@ -73,7 +73,6 @@ describe("validation recovery reason properties", () => {
     new Hegel((tc) => {
       assertReasonsDistinct(tc);
     })
-      .databaseKey("pi-claude-sdk/validation-recovery-distinct")
       .settings(settings)
       .runSync();
   });

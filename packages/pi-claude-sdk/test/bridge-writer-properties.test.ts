@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { createAgentSdkStream } from "../bridge";
 import type { BridgeEvent, TokenUsage } from "../bridge";
 import { SdkResultError } from "../sdk/errors";
 import { contextFixture, drain, sonnet } from "./fixtures";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const context = contextFixture({
   systemPrompt: "s",
   messages: [{ role: "user", content: "Hello" }],
@@ -105,7 +106,6 @@ describe("bridge writer properties", () => {
       );
       checkRun(before, terminal, await collect([...before, terminal, ...after]));
     })
-      .databaseKey("pi-claude-sdk/bridge-writer")
       .settings(settings)
       .run();
   });

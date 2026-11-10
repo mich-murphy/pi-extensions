@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, expect, test } from "vitest";
+import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import {
   BRAVE_API_KEY_ENV,
   clampInteger,
@@ -14,7 +14,7 @@ import {
   parseSettings,
 } from "../settings";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const ALLOW_ENV = "PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS";
 const DENY_ENV = "PI_WEB_TOOLS_FETCH_DENY_DOMAINS";
 
@@ -101,62 +101,42 @@ function checkClamp(a: number, b: number): void {
 
 describe("parseSettings properties", () => {
   test("API keys never influence the parsed settings", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkKeysIgnored(
-          tc.draw(gs.arrays(gs.text({ maxSize: 24 }), { minSize: 3, maxSize: 3 }), "keys"),
-          tc.draw(gs.sampledFrom([{}, { [PROVIDERS_ENV]: "parallel, exa" }]), "base"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/settings-keys-ignored")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkKeysIgnored(
+        tc.draw(gs.arrays(gs.text({ maxSize: 24 }), { minSize: 3, maxSize: 3 }), "keys"),
+        tc.draw(gs.sampledFrom([{}, { [PROVIDERS_ENV]: "parallel, exa" }]), "base"),
+      );
+    });
   });
 
   test("domain entries normalize to lowercase names without a trailing dot", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkNormalized(tc.draw(gs.arrays(entry, { maxSize: 5 }), "entries"));
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/settings-domain-normalize")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkNormalized(tc.draw(gs.arrays(entry, { maxSize: 5 }), "entries"));
+    });
   });
 
   test("malformed domain entries fail loudly and name only the variable", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkMalformed(
-          tc.draw(entryLabels, "labels"),
-          tc.draw(gs.sampledFrom(DEFECTS), "defect"),
-          tc.draw(entryLabels, "neighbour").join("."),
-          tc.draw(gs.sampledFrom([ALLOW_ENV, DENY_ENV]), "env"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/settings-domain-malformed")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkMalformed(
+        tc.draw(entryLabels, "labels"),
+        tc.draw(gs.sampledFrom(DEFECTS), "defect"),
+        tc.draw(entryLabels, "neighbour").join("."),
+        tc.draw(gs.sampledFrom([ALLOW_ENV, DENY_ENV]), "env"),
+      );
+    });
   });
 });
 
 describe("clampInteger properties", () => {
   const bounds = FETCH_TIMEOUT_SECONDS;
   test("stays in bounds, is idempotent and monotonic", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkClamp(
-          // Biased around the 1..120 bounds, where rounding and pinning actually matter.
-          tc.draw(gs.floats({ minValue: -5, maxValue: 130 }), "a"),
-          tc.draw(gs.floats({ minValue: -1e6, maxValue: 1e6 }), "b"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/clamp-integer")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkClamp(
+        // Biased around the 1..120 bounds, where rounding and pinning actually matter.
+        tc.draw(gs.floats({ minValue: -5, maxValue: 130 }), "a"),
+        tc.draw(gs.floats({ minValue: -1e6, maxValue: 1e6 }), "b"),
+      );
+    });
   });
 
   test.each([Number.NaN, Infinity, -Infinity])("non-finite input %s gets the default", (value) => {

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Result } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, test } from "vitest";
+import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import { checkDomainPolicy } from "../domain-policy";
 import type { DomainPolicy } from "../domain-policy";
 import { parsePublicHttpUrl } from "../types";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 // A tiny label pool makes suffix collisions, near misses ("notevil") and case variants common.
 const LABELS = ["evil", "notevil", "com", "org", "a", "b", "EVIL", "Com"];
@@ -64,34 +64,24 @@ const listGenerator = gs.arrays(labelsGenerator(1, 3), { maxSize: 3 });
 
 describe("checkDomainPolicy properties", () => {
   test("verdict matches a label-suffix model, with or without a trailing dot", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkVerdict(
-          tc.draw(labelsGenerator(1, 4), "host"),
-          tc.draw(listGenerator, "allow"),
-          tc.draw(listGenerator, "deny"),
-          tc.draw(gs.booleans(), "trailingDot"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/domain-policy-model")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkVerdict(
+        tc.draw(labelsGenerator(1, 4), "host"),
+        tc.draw(listGenerator, "allow"),
+        tc.draw(listGenerator, "deny"),
+        tc.draw(gs.booleans(), "trailingDot"),
+      );
+    });
   });
 
   test("adding a deny entry never helps and adding an allow entry never hurts", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkMonotonic(
-          tc.draw(labelsGenerator(1, 4), "host"),
-          tc.draw(listGenerator, "allow"),
-          tc.draw(listGenerator, "deny"),
-          tc.draw(labelsGenerator(1, 3), "extra"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/domain-policy-monotonic")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkMonotonic(
+        tc.draw(labelsGenerator(1, 4), "host"),
+        tc.draw(listGenerator, "allow"),
+        tc.draw(listGenerator, "deny"),
+        tc.draw(labelsGenerator(1, 3), "extra"),
+      );
+    });
   });
 });

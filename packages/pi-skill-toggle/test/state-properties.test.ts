@@ -13,6 +13,7 @@ import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:pa
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
 import type { ToggleValue } from "../resources";
@@ -60,33 +61,40 @@ const pairs = (key: gs.PrintableGenerator<string>, value: gs.PrintableGenerator<
     Object.fromEntries(tc.draw(gs.arrays(gs.tuples(key, value), { maxSize: 4 }))),
   );
 
-const json: gs.PrintableGenerator<unknown> = gs.recursive<unknown>(
-  gs.oneOf<unknown>(
-    gs.none(),
-    gs.booleans(),
-    gs.integers(),
-    gs.text({ maxSize: 8 }),
-    gs.sampledFrom(KEYS),
-    gs.sampledFrom(PATHS),
-  ),
-  (children) =>
+const jsonWith = (options: gs.RecursiveOptions): gs.PrintableGenerator<unknown> =>
+  gs.recursive<unknown>(
     gs.oneOf<unknown>(
-      gs.arrays(children, { maxSize: 4 }),
-      pairs(
-        gs.oneOf(gs.sampledFrom(KEYS), gs.sampledFrom(PATHS), gs.text({ maxSize: 4 })),
-        children,
-      ),
+      gs.none(),
+      gs.booleans(),
+      gs.integers(),
+      gs.text({ maxSize: 8 }),
+      gs.sampledFrom(KEYS),
+      gs.sampledFrom(PATHS),
     ),
-);
+    (children) =>
+      gs.oneOf<unknown>(
+        gs.arrays(children, { maxSize: 4 }),
+        pairs(
+          gs.oneOf(gs.sampledFrom(KEYS), gs.sampledFrom(PATHS), gs.text({ maxSize: 4 })),
+          children,
+        ),
+      ),
+    options,
+  );
+
+const json = jsonWith({});
+// The json inside entries is drawn once per entry of a nested map, so it gets a small leaf budget;
+// otherwise a document multiplies a 100-leaf budget by the entries and the generator dominates the run.
+const entryJson = jsonWith({ maxLeaves: 8 });
 
 const toggleish = gs.oneOf<unknown>(
   gs.sampledFrom(TOGGLES),
-  json,
-  pairs(gs.sampledFrom(KEYS), json),
+  entryJson,
+  pairs(gs.sampledFrom(KEYS), entryJson),
 );
-const fileish = gs.oneOf<unknown>(json, pairs(gs.sampledFrom(PATHS), toggleish));
+const fileish = gs.oneOf<unknown>(entryJson, pairs(gs.sampledFrom(PATHS), toggleish));
 const repositoryish = gs.oneOf<unknown>(
-  json,
+  entryJson,
   pairs(gs.sampledFrom(PATHS), pairs(gs.sampledFrom(RELATIVE), toggleish)),
 );
 const documentLike = gs.composite((tc) => ({
@@ -243,32 +251,53 @@ function probe(fixture: Fixture, path: ResourcePath): void {
   }
 }
 
-function assertSequence(steps: readonly (readonly [number, Action])[]): void {
+type Workspace = {
+  readonly statePath: string;
+  readonly root: string;
+  readonly paths: readonly ResourcePath[];
+};
+
+/**
+ * One directory tree serves every case of a property: building and removing a tree per case was most of
+ * the run. `resetWorkspace` returns it to the state a fresh tree has.
+ */
+function withWorkspace(run: (workspace: Workspace) => void): void {
   inTemporaryDirectory((directory) => {
-    const statePath = join(directory, "state", "pi-skill-toggle.json");
     const root = join(directory, "checkout");
     mkdirSync(join(root, ".git"), { recursive: true });
     const paths = Array.from({ length: SLOTS }, (_, index) => {
       const file = join(index < 2 ? directory : root, `r${index}`, "SKILL.md");
       mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, `r${index}`);
       return resourcePathId(file, directory);
     });
-    const fixture: Fixture = {
-      statePath,
-      store: new ToggleStateFile(statePath),
-      paths,
-      repository: realpathSync(join(root, ".git")),
-      root,
-      model: new Map(),
-    };
-    assertLoads(fixture, new Map());
-    for (const [slot, action] of steps) {
-      const path = paths[slot];
-      assert.ok(path);
-      applyAction(fixture, path, action);
-    }
+    run({ statePath: join(directory, "state", "pi-skill-toggle.json"), root, paths });
   });
+}
+
+function resetWorkspace(workspace: Workspace): void {
+  rmSync(workspace.statePath, { force: true });
+  for (const [index, path] of workspace.paths.entries()) {
+    writeFileSync(path, `r${index}`);
+  }
+}
+
+function assertSequence(workspace: Workspace, steps: readonly (readonly [number, Action])[]): void {
+  resetWorkspace(workspace);
+  const { statePath, root, paths } = workspace;
+  const fixture: Fixture = {
+    statePath,
+    store: new ToggleStateFile(statePath),
+    paths,
+    repository: realpathSync(join(root, ".git")),
+    root,
+    model: new Map(),
+  };
+  assertLoads(fixture, new Map());
+  for (const [slot, action] of steps) {
+    const path = paths[slot];
+    assert.ok(path);
+    applyAction(fixture, path, action);
+  }
 }
 
 function applyAction(fixture: Fixture, path: ResourcePath, action: Action): void {
@@ -297,16 +326,20 @@ function drawSteps(tc: TestCase): (readonly [number, Action])[] {
 }
 
 describe("state properties", () => {
-  // About 1.5s alone, spent in the recursive JSON generator rather than in load(); under a loaded
-  // coverage run it exceeded vitest's 5s default, so it gets headroom instead of a smaller generator.
-  test("loading arbitrary JSON-ish documents never throws and yields well-formed overrides", () => {
-    withLoader((load) => {
-      assertProperty("state", "load-never-throws", (tc) => {
-        assertWellFormed(load(JSON.stringify(tc.draw(document))));
+  // The cost is the recursive JSON generator rather than load(), about 1.5s alone and up to 6.2s with
+  // the CPU saturated. The timeout is at least ten times that and grows with HEGEL_TEST_CASES.
+  test(
+    "loading arbitrary JSON-ish documents never throws and yields well-formed overrides",
+    () => {
+      withLoader((load) => {
+        assertProperty("state", "load-never-throws", (tc) => {
+          assertWellFormed(load(JSON.stringify(tc.draw(document))));
+        });
       });
-    });
-    assertBothOutcomes();
-  }, 15_000);
+      assertBothOutcomes();
+    },
+    propertyTimeout(90_000),
+  );
 
   test("loading arbitrary text never throws", () => {
     withLoader((load) => {
@@ -316,20 +349,29 @@ describe("state properties", () => {
     });
   });
 
-  test("set/clear sequences match a map model, survive reload, and round-trip file bytes", () => {
-    assertProperty("state", "set-clear-model", (tc) => {
-      assertSequence(drawSteps(tc));
-    });
-  });
+  // Real file-system work per step, up to 3.7s with the CPU saturated: ten times that, scaled by case count.
+  test(
+    "set/clear sequences match a map model, survive reload, and round-trip file bytes",
+    () => {
+      withWorkspace((workspace) => {
+        assertProperty("state", "set-clear-model", (tc) => {
+          assertSequence(workspace, drawSteps(tc));
+        });
+      });
+    },
+    propertyTimeout(60_000),
+  );
 
   test("a stale entry is pruned by the next update (example)", () => {
-    assertSequence([
-      [0, "enabled"],
-      [1, "disabled"],
-      [0, "toggle-file"],
-      [2, "enabled"],
-      [0, "probe"],
-      [1, "probe"],
-    ]);
+    withWorkspace((workspace) => {
+      assertSequence(workspace, [
+        [0, "enabled"],
+        [1, "disabled"],
+        [0, "toggle-file"],
+        [2, "enabled"],
+        [0, "probe"],
+        [1, "probe"],
+      ]);
+    });
   });
 });

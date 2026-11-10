@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { parseHTML } from "linkedom";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { compileSelector, compileSelectorSet } from "../element-selector";
 
-const settings = { testCases: 300, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(300);
 const { document } = parseHTML("<html><body></body></html>");
 
 const TAGS = ["div", "p", "a", "span", "article", "main"];
@@ -111,7 +112,6 @@ describe("selector properties", () => {
         recase(tc.draw(gs.sampledFrom(VALUES), "value2"), tc.draw(recaseFlags, "selectorCase")),
       );
     })
-      .databaseKey("pi-web-tools/selector-attribute-case")
       .settings(settings)
       .runSync();
   });
@@ -123,7 +123,6 @@ describe("selector properties", () => {
         tc.draw(gs.arrays(listGen, { minSize: 1, maxSize: 4 }), "lists"),
       );
     })
-      .databaseKey("pi-web-tools/selector-agrees-with-matches")
       .settings(settings)
       .runSync();
   });

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { htmlToMarkdown, htmlToText } from "../html";
 
 // Each case parses and converts a document of up to 64 elements twice. 300 cases are needed to
 // reliably hit a link-wrapped raw-text-only div (60 missed it); the file still runs well under 3s.
-const settings = { testCases: 300, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(300);
 const MARKER = "ZQSCRIPTMARKERQZ";
 const VISIBLE = "ZQVISIBLEMARKERQZ";
 const BASE_URL = "https://example.com/";
@@ -75,13 +76,22 @@ function assertAllowedOutcome(
   assert.ok(result.success.includes(VISIBLE), "visible text was lost");
 }
 
-// True when some div's content up to its first closing tag has visible text once raw-text
-// elements and tags are removed.
+// True when any div holds visible text, at any depth, once raw-text elements are removed. The scan
+// follows div nesting by tag so a nested div cannot hide the text that follows it in its parent.
 function hasDivWithVisibleText(html: string): boolean {
   const withoutRawText = html.replaceAll(/<(?:script|style)>.*?<\/(?:script|style)>/gu, "");
-  return [...withoutRawText.matchAll(/<div>(?<inner>.*?)<\/div>/gu)].some((match) =>
-    /\S/u.test((match.groups?.inner ?? "").replaceAll(/<[^>]*>/gu, "")),
-  );
+  let depth = 0;
+  for (const match of withoutRawText.matchAll(
+    /<(?<close>\/?)(?<name>[a-z]+)[^>]*>|(?<text>[^<]+)/gu,
+  )) {
+    const { close, name, text } = match.groups ?? {};
+    if (name === "div") {
+      depth += close === "/" ? -1 : 1;
+    } else if (text !== undefined && depth > 0 && /\S/u.test(text)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function assertConversionsSafe(html: string): void {
@@ -94,7 +104,6 @@ describe("html conversion fuzz", () => {
     new Hegel((tc) => {
       assertConversionsSafe(tc.draw(documentGen, "html"));
     })
-      .databaseKey("pi-web-tools/html-fuzz")
       .settings(settings)
       .runSync();
   });

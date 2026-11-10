@@ -44,6 +44,30 @@ Fix findings rather than silencing them:
 
 While working on a branch, `npm run fallow:audit` lists only the Fallow findings your branch introduces.
 
+## Property tests
+
+Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches.
+
+Two environment variables change every property:
+
+| Variable | Effect |
+| --- | --- |
+| `HEGEL_SEED` | Replaces the seed. An integer from 0 to 2^64 - 1 |
+| `HEGEL_TEST_CASES` | Replaces the case count |
+
+Run the nightly set locally. It picks a random seed and prints it, with the case count, before the run:
+
+```sh
+npm run test:properties
+HEGEL_SEED=42 HEGEL_TEST_CASES=500 npm run test:properties
+```
+
+To reproduce a nightly failure, copy the seed and case count from the log and run the same command. The same seed and case count give the same inputs, so the shrunk counterexample is identical. Narrow it with a file path, for example `npm run test:properties -- packages/pi-vim`.
+
+Turn every counterexample into a regression test with an explicit example before you fix the code. Hegel's failure database is off, so nothing else replays it. A failing property is either a defect in the code or a wrong property or generator. Fix the property when its oracle or generator allows a state that cannot occur.
+
+Do not raise a timeout to fix a slow property. Make the property cheaper. A property that is inherently long wraps its timeout in `propertyTimeout()` so it grows with `HEGEL_TEST_CASES`.
+
 ## Verify behaviour in real Pi
 
 Some packages have an agent skill that drives a real, isolated Pi session. Run the matching skill after changing that package's behaviour:

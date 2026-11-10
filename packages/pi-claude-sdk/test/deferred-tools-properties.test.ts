@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { createDeferredCallCapture } from "../sdk/deferred-tools";
 import { compileToolCatalog } from "../sdk/tool-catalog";
 import type { CatalogTool } from "../sdk/tool-catalog";
 import { deliverToolUse } from "./fixtures";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const parameters = Type.Object({ path: Type.String() }, { additionalProperties: false });
 const PREFIX = "mcp__pi__";
 const SDK_NAME = /^[a-zA-Z0-9_-]{1,64}$/u;
@@ -133,7 +134,6 @@ describe("SDK tool-name mapping properties", () => {
     new Hegel((tc) => {
       assertDistinctAndWellFormed(drawNames(tc));
     })
-      .databaseKey("pi-claude-sdk/tool-names-wellformed")
       .settings(settings)
       .runSync();
   });
@@ -142,7 +142,6 @@ describe("SDK tool-name mapping properties", () => {
     new Hegel((tc) => {
       assertOrderIndependent(drawNames(tc));
     })
-      .databaseKey("pi-claude-sdk/tool-names-deterministic")
       .settings(settings)
       .runSync();
   });
@@ -151,7 +150,6 @@ describe("SDK tool-name mapping properties", () => {
     new Hegel((tc) => {
       assertRoundTrip(drawNames(tc));
     })
-      .databaseKey("pi-claude-sdk/tool-names-roundtrip")
       .settings(settings)
       .runSync();
   });

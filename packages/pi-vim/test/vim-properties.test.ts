@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
-import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, test } from "vitest";
+import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import { createEditor, KEYBOARDS, resetKeyboard } from "./vim-harness";
 import type { Keyboard } from "./vim-harness";
 
@@ -152,6 +152,34 @@ function checkOracles(token: string, before: Snapshot, after: Snapshot): void {
   }
 }
 
+/** What the next `u` presses must restore after an edit, and how many it takes. */
+type PendingUndo = { readonly restored: string; readonly remaining: number };
+
+/** `dd` in multi-line text takes two `u` presses to restore (see the README); every other edit takes one. */
+function undosNeeded(token: string, before: Snapshot): number {
+  return token === "dd" && before.lines.length > 1 ? 2 : 1;
+}
+
+function trackUndo(
+  pending: PendingUndo | undefined,
+  token: string,
+  before: Snapshot,
+  after: Snapshot,
+): PendingUndo | undefined {
+  if (token === "u") {
+    if (pending === undefined) {
+      return undefined;
+    }
+    if (pending.remaining > 1) {
+      return { ...pending, remaining: pending.remaining - 1 };
+    }
+    assert.equal(after.text, pending.restored, "u did not restore the pre-edit text");
+    return undefined;
+  }
+  const changed = before.label === " NORMAL " && EDITS.has(token) && before.text !== after.text;
+  return changed ? { restored: before.text, remaining: undosNeeded(token, before) } : undefined;
+}
+
 function runTrace(
   keyboard: Keyboard,
   lines: readonly (readonly string[])[],
@@ -161,21 +189,14 @@ function runTrace(
   const editor = createEditor();
   editor.setText(lines.map((line) => line.join("")).join("\n"));
   editor.handleInput(keyboard.escape);
-  let previous: { token: string; before: Snapshot; changed: boolean } | undefined;
+  let pending: PendingUndo | undefined;
   for (const token of tokens) {
     const before = snapshot(editor);
     send(editor, keyboard, token);
     const after = snapshot(editor);
     checkBounds(after);
     checkOracles(token, before, after);
-    if (token === "u" && previous?.changed === true) {
-      assert.equal(after.text, previous.before.text, "u did not restore the pre-edit text");
-    }
-    previous = {
-      token,
-      before,
-      changed: before.label === " NORMAL " && EDITS.has(token) && before.text !== after.text,
-    };
+    pending = trackUndo(pending, token, before, after);
   }
 }
 
@@ -183,7 +204,7 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
   afterEach(resetKeyboard);
 
   test("random key traces keep the editor invariants", () => {
-    const property = new Hegel((tc) => {
+    assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
         gs.arrays(gs.arrays(gs.sampledFrom(ALPHABET), { maxSize: 12 }), {
           minSize: 1,
@@ -193,11 +214,6 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
       );
       const tokens = tc.draw(gs.arrays(gs.sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
       runTrace(keyboard, lines, tokens);
-    })
-      .databaseKey(`pi-vim/editor-traces-${keyboard.name}`)
-      .settings({ testCases: 200, seed: 12_345n, database: Database.disabled });
-    expect(() => {
-      property.runSync();
-    }).not.toThrow();
+    });
   });
 });
