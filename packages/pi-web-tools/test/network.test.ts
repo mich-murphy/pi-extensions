@@ -1,5 +1,6 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Cause, Effect, Exit, Result } from "effect";
+import { Cause, Effect, Exit, Fiber, Result } from "effect";
+import { TestClock } from "effect/testing";
 import type { PublicWebError, PublicWebRequest } from "../network";
 import {
   classifyMimeType,
@@ -392,20 +393,30 @@ describe("fetchPublicWebClient fetch failures", () => {
     expect(failureOf(result)).toStrictEqual({ tag: "PublicWebRequestFailed", message });
   });
 
-  test("a caller deadline interrupts a hanging fetch and aborts its signal", async () => {
-    const inits: (RequestInit | undefined)[] = [];
-    const client = publicWebClientWith({
-      lookup: async () => [{ address: "93.184.216.34" }],
-      fetchImpl: async (_input, init) => {
-        inits.push(init);
-        return neverResponds();
-      },
-    });
-    const result = await run(client.get(makeRequest()).pipe(Effect.timeout("20 millis")));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("TimeoutError");
-    expect(inits[0]?.signal?.aborted).toBe(true);
-  });
+  it.effect("a caller deadline interrupts a hanging fetch and aborts its signal", () =>
+    Effect.gen(function* () {
+      const fetchStarted = Promise.withResolvers<undefined>();
+      const inits: (RequestInit | undefined)[] = [];
+      const client = publicWebClientWith({
+        lookup: async () => [{ address: "93.184.216.34" }],
+        fetchImpl: async (_input, init) => {
+          inits.push(init);
+          fetchStarted.resolve(undefined);
+          return neverResponds();
+        },
+      });
+      const fiber = yield* Effect.forkChild(
+        Effect.result(client.get(makeRequest()).pipe(Effect.timeout("20 millis"))),
+      );
+      // The deadline is the test clock's, and only moves once the fetch is hanging.
+      yield* Effect.promise(async () => fetchStarted.promise);
+      yield* TestClock.adjust("20 millis");
+      const result = yield* Fiber.join(fiber);
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("TimeoutError");
+      expect(inits[0]?.signal?.aborted).toBe(true);
+    }),
+  );
 });
 
 describe("describeNetworkFailure", () => {
@@ -773,14 +784,30 @@ describe("fetchPublicWebClient response body", () => {
     }),
   );
 
-  test("a caller deadline during the body read cancels the body", async () => {
-    const slow = trackedResponse({ status: 200 });
-    const { client } = recordingClient(() => slow.response);
-    const result = await run(client.get(makeRequest()).pipe(Effect.timeout("20 millis")));
-    assert(Result.isFailure(result));
-    expect(result.failure._tag).toBe("TimeoutError");
-    expect(slow.wasCancelled()).toBe(true);
-  });
+  it.effect("a caller deadline during the body read cancels the body", () =>
+    Effect.gen(function* () {
+      const bodyRead = Promise.withResolvers<undefined>();
+      const slow = trackedResponse(
+        { status: 200 },
+        {
+          pull: () => {
+            bodyRead.resolve(undefined);
+          },
+        },
+      );
+      const { client } = recordingClient(() => slow.response);
+      const fiber = yield* Effect.forkChild(
+        Effect.result(client.get(makeRequest()).pipe(Effect.timeout("20 millis"))),
+      );
+      // The deadline is the test clock's, and only moves once the body read is pending.
+      yield* Effect.promise(async () => bodyRead.promise);
+      yield* TestClock.adjust("20 millis");
+      const result = yield* Fiber.join(fiber);
+      assert(Result.isFailure(result));
+      expect(result.failure._tag).toBe("TimeoutError");
+      expect(slow.wasCancelled()).toBe(true);
+    }),
+  );
 });
 
 describe("readResponseBodyWithLimit", () => {
