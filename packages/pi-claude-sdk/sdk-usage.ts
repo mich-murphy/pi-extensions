@@ -140,6 +140,8 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
       persistSession: false,
       settingSources: [],
       tools: [],
+      strictMcpConfig: true,
+      skills: [],
     },
   });
   return {

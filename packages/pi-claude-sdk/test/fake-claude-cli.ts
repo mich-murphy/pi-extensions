@@ -17,6 +17,8 @@ export type FakeClaude = {
   readonly directory: string;
   /** Command-line arguments of every non-version invocation, as the SDK spawned it. */
   readonly spawnedWith: () => readonly (readonly string[])[];
+  /** The `request` body of every control request the SDK wrote to stdin. */
+  readonly controlRequests: () => readonly unknown[];
 };
 
 const SCRIPT = `#!/usr/bin/env node
@@ -42,6 +44,7 @@ process.stdin.on("data", (chunk) => {
   buffered = lines.pop();
   for (const line of lines.filter(Boolean)) {
     const message = JSON.parse(line);
+    fs.appendFileSync(path.join(__dirname, "stdin.jsonl"), line + "\\n");
     if (message.type !== "control_request") continue;
     const subtype = message.request.subtype;
     if (subtype === "get_usage" && behaviour.usage === undefined) {
@@ -73,6 +76,21 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
   return {
     path,
     directory,
+    controlRequests: () => {
+      try {
+        return readFileSync(join(directory, "stdin.jsonl"), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line): unknown => JSON.parse(line))
+          .flatMap((message) =>
+            typeof message === "object" && message !== null && "request" in message
+              ? [message.request]
+              : [],
+          );
+      } catch {
+        return [];
+      }
+    },
     spawnedWith: () => {
       const log = join(directory, "spawned.jsonl");
       try {
