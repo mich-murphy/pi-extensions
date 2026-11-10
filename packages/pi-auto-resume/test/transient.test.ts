@@ -60,6 +60,10 @@ describe("classifying a failed reply", () => {
     "401 Unauthorized: invalid x-api-key",
     "400 invalid_request_error: messages: field required",
     "Something unexpected happened",
+    // Also match Pi's retryable pattern, but retrying an oversized prompt cannot succeed.
+    "413 Connection error.",
+    "prompt is too long: servers are currently overloaded",
+    "context_length_exceeded: terminated",
   ])("leaves %s to the user", (errorMessage) => {
     const pi = harness();
 
