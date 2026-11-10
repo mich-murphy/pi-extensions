@@ -224,6 +224,9 @@ class Lexer {
   private readonly pending: {
     readonly heredoc: { body: string | undefined };
     readonly delimiter: string;
+    /** A quoted delimiter makes the body literal; otherwise its substitutions run. */
+    readonly quoted: boolean;
+    readonly substitutions: string[];
   }[] = [];
 
   constructor(private readonly source: string) {}
@@ -283,7 +286,14 @@ class Lexer {
     } else if (operator === "<<") {
       const dash = this.source.charAt(this.index) === "-";
       this.index += dash ? 1 : 0;
-      this.pending.push({ heredoc: this.heredoc, delimiter: this.target().text });
+      const start = this.index;
+      const delimiter = this.target().text;
+      this.pending.push({
+        heredoc: this.heredoc,
+        delimiter,
+        quoted: /['"\\]/u.test(this.source.slice(start, this.index)),
+        substitutions: this.substitutions,
+      });
     } else if (OUTPUT_REDIRECTS.has(operator)) {
       this.target();
     } else {
@@ -318,7 +328,7 @@ class Lexer {
   }
 
   private readHeredocBodies(): void {
-    for (const { heredoc, delimiter } of this.pending.splice(0)) {
+    for (const { heredoc, delimiter, quoted, substitutions } of this.pending.splice(0)) {
       const lines: string[] = [];
       while (this.index < this.source.length) {
         const end = this.source.indexOf("\n", this.index);
@@ -330,6 +340,9 @@ class Lexer {
         lines.push(line);
       }
       heredoc.body = lines.join("\n");
+      if (!quoted) {
+        substitutions.push(...Lexer.expansionsIn(heredoc.body));
+      }
     }
   }
 
@@ -435,15 +448,61 @@ class Lexer {
     return { text, literal: false };
   }
 
+  /**
+   * `$( … )` runs `inner`; `$(( … ))` is arithmetic, whose own substitutions run. When the
+   * leading `(` does not close at the very end (`$((cat a) )`) the whole is a subshell.
+   */
+  private substitution(inner: string): void {
+    if (!inner.startsWith("(")) {
+      this.substitutions.push(inner);
+      return;
+    }
+    const probe = new Lexer(inner.slice(1));
+    probe.scan("(");
+    if (probe.index < inner.length - 1) {
+      this.substitutions.push(inner);
+    } else {
+      this.substitutions.push(...Lexer.expansionsIn(inner));
+    }
+  }
+
+  /**
+   * The command substitutions that run in text where quotes are literal and only backslash,
+   * `$(`, `${` and backticks matter: an arithmetic expansion or an unquoted heredoc body.
+   */
+  static expansionsIn(text: string): readonly string[] {
+    const lexer = new Lexer(text);
+    while (lexer.index < text.length) {
+      lexer.expansionStep();
+    }
+    return lexer.substitutions;
+  }
+
+  private expansionStep(): void {
+    const char = this.source.charAt(this.index);
+    const next = this.source.charAt(this.index + 1);
+    if (char === "\\") {
+      this.index += 2;
+    } else if (char === "`") {
+      this.backtick(false);
+    } else if (char === "$" && (next === "(" || next === "{")) {
+      this.index += 2;
+      if (next === "(") {
+        this.substitutions.push(this.scan("("));
+      } else {
+        this.scan("{");
+      }
+    } else {
+      this.index += 1;
+    }
+  }
+
   /** Only `$HOME` has a value known without running the shell; every other expansion is dynamic. */
   private dollar(): Word {
     const next = this.source.charAt(this.index + 1);
     if (next === "(") {
       this.index += 2;
-      const inner = this.scan("(");
-      if (!inner.startsWith("(")) {
-        this.substitutions.push(inner);
-      }
+      this.substitution(this.scan("("));
       return { text: "", literal: false };
     }
     if (next === "{") {
@@ -559,10 +618,7 @@ class Lexer {
   /** Record the outermost `$( )` inside a `${ }` once it closes (or the input ends). */
   private collect(scan: Scan, end: number): void {
     if (scan.span !== -1 && (scan.parens === 0 || end === this.source.length)) {
-      const inner = this.source.slice(scan.span, end);
-      if (!inner.startsWith("(")) {
-        this.substitutions.push(inner);
-      }
+      this.substitution(this.source.slice(scan.span, end));
       scan.span = -1;
     }
   }

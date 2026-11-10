@@ -105,6 +105,67 @@ describe("parameter expansions", () => {
   });
 });
 
+// Substitutions run inside arithmetic and inside the body of a heredoc whose delimiter is unquoted;
+// in such a body quotes are literal and only `\\`, `$(`, `${` and backticks matter.
+describe("arithmetic expansions and heredoc bodies", () => {
+  const hidden: readonly string[] = [
+    "echo $(( $(cat secret) + 1 ))",
+    "echo $(( `cat secret` + 1 ))",
+    "echo $((x[$(cat secret)]))",
+    "x=1; echo $((x + $(cat secret)))",
+    "echo $((cat secret) )",
+    'echo $(( "$(cat secret)" ))',
+    "echo $(( ${x:-$(cat secret)} ))",
+    "echo ${x:-$((cat secret) )}",
+    "cat <<EOF\n$(cat secret)\nEOF",
+    "cat <<EOF\n`cat secret`\nEOF",
+    "cat <<EOF\n${x:-$(cat secret)}\nEOF",
+    "cat <<-EOF\n\t$(cat secret)\n\tEOF",
+    "cat <<EOF\n'$(cat secret)'\nEOF",
+    "cat <<EOF\n$((1+$(cat secret)))\nEOF",
+    "cat <<EOF\n\\\\$(cat secret)\nEOF",
+  ];
+  test.each(hidden)("%j", (command) => {
+    assert.deepEqual(reads(command), paths("secret"));
+  });
+
+  const seen: readonly string[] = [
+    "echo $[ $(cat secret) ]",
+    "echo <(cat secret)",
+    "x=$(cat secret)",
+    "(( $(cat secret) )); echo",
+    "let $(cat secret)",
+    "a[$(cat secret)]=1",
+    "echo ${a[$(cat secret)]}",
+    'cat <<EOF\n"\nEOF\ncat secret',
+  ];
+  test.each(seen)("%j", (command) => {
+    assert.deepEqual(reads(command), paths("secret"));
+  });
+
+  const literal: readonly string[] = [
+    "cat <<'EOF'\n$(cat secret)\nEOF",
+    'cat <<"EOF"\n$(cat secret)\nEOF',
+    "cat <<\\EOF\n$(cat secret)\nEOF",
+    "cat <<EOF\n\\$(cat secret)\nEOF",
+    "cat <<EOF\n\\`cat secret\\`\nEOF",
+    "echo $((cat secret))",
+    "echo $((1<2)) ; echo $((1+2))",
+  ];
+  test.each(literal)("%j reads nothing", (command) => {
+    assert.deepEqual(reads(command), []);
+  });
+
+  test("a quote in a heredoc body does not start a string", () => {
+    assert.deepEqual(reads('cat <<EOF\n"$(cat ")")"\nEOF'), paths(")"));
+  });
+
+  test("deeply nested arithmetic stays bounded and keeps the read", () => {
+    const body = `${"$(( $(cat a) + ".repeat(5000)}1${" ))".repeat(5000)}`;
+    assert.deepEqual(reads(`echo ${body}`), paths("a"));
+  });
+});
+
 describe("ordinary commands keep their results", () => {
   const benign: readonly (readonly [string, readonly string[]])[] = [
     [String.raw`git commit -m "say \"hi\""`, []],

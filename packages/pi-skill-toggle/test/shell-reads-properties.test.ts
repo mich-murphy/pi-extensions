@@ -204,6 +204,29 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
+  // Arithmetic and an unquoted heredoc body run their substitutions; a quoted delimiter makes the body literal.
+  test("a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not", () => {
+    assertProperty(
+      "shell-reads",
+      "a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not",
+      (tc) => {
+        const { word, source } = tc.draw(quoted, "word");
+        const literal = tc.draw(gs.sampledFrom(["'EOF'", '"EOF"', String.raw`\EOF`]), "delimiter");
+        const dash = tc.draw(gs.sampledFrom(["<<", "<<-"]), "dash");
+        const read = [resolve(cwd, word)];
+        const substitution = `$(cat ${source})`;
+        assert.deepEqual(reads(`echo $(( ${substitution} + 1 ))`), read, "arithmetic");
+        assert.deepEqual(reads(`echo $(( 1 + ${substitution} ))`), read, "arithmetic operand");
+        assert.deepEqual(reads(`cat ${dash}EOF\n${substitution}\nEOF`), read, "unquoted heredoc");
+        assert.deepEqual(
+          reads(`cat ${dash}${literal}\n${substitution}\nEOF`),
+          [],
+          "quoted heredoc",
+        );
+      },
+    );
+  });
+
   test("a cd scopes exactly as bash scopes it", () => {
     assertProperty("shell-reads", "a cd scopes exactly as bash scopes it", (tc) => {
       const { word, source } = tc.draw(quoted, "word");
