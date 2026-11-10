@@ -66,19 +66,24 @@ describe("provider commands", () => {
   }
 
   describe("claude-sdk-status", () => {
-    test("warns that an old Claude Code needs updating and lists the model mappings", async () => {
-      const claude = installClaude({ version: "2.1.200" });
+    // Runs a real stand-in `claude` executable: 0.46 s with 8 busy processes plus other suites running.
+    test(
+      "warns that an old Claude Code needs updating and lists the model mappings",
+      { timeout: 30_000 },
+      async () => {
+        const claude = installClaude({ version: "2.1.200" });
 
-      const [notice, ...rest] = await runCommand("claude-sdk-status");
+        const [notice, ...rest] = await runCommand("claude-sdk-status");
 
-      expect(rest).toStrictEqual([]);
-      expect(notice?.level).toBe("warning");
-      expect(notice?.text).toContain(`Claude Code path: ${claude.path}`);
-      expect(notice?.text).toContain("Installed Claude Code: 2.1.200 (minimum 2.1.317)");
-      expect(notice?.text).toContain("Claude Code is too old: run `claude update`.");
-      expect(notice?.text).toContain("Models:\n  claude-5.5-sonnet → ");
-      expect(notice?.text).toContain("not observed yet");
-    });
+        expect(rest).toStrictEqual([]);
+        expect(notice?.level).toBe("warning");
+        expect(notice?.text).toContain(`Claude Code path: ${claude.path}`);
+        expect(notice?.text).toContain("Installed Claude Code: 2.1.200 (minimum 2.1.317)");
+        expect(notice?.text).toContain("Claude Code is too old: run `claude update`.");
+        expect(notice?.text).toContain("Models:\n  claude-5.5-sonnet → ");
+        expect(notice?.text).toContain("not observed yet");
+      },
+    );
 
     test("shows an error notice, not a crash, when Claude Code is not installed", async () => {
       const emptyPath = mkdtempSync(join(tmpdir(), "claude-sdk-empty-path-"));

@@ -6,8 +6,10 @@ import { describe, expect, test } from "vitest";
 const helper = resolve(".agents/skills/verify-pi-claude-sdk/scripts/verify.py");
 
 describe("verification model-prompt approval gate (offline)", () => {
+  // Three real python3 processes per case, up to 0.5 s with 8 busy processes plus other suites running.
   test.each(["all", "live", "recovery"])(
     "%s without approval exits before any provider process",
+    { timeout: 30_000 },
     async (action) => {
       const evidence = await mkdtemp("/tmp/pi-sdk-approval-test-");
       const run = (operation: string) =>

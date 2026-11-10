@@ -3,7 +3,7 @@ import { Text, visibleWidth } from "@earendil-works/pi-tui";
 import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
-import { propertySettings } from "../../../test-support/hegel-settings";
+import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
 import { toolPresentation } from "../adapter/presentation.js";
 
@@ -273,18 +273,24 @@ describe("Hegel adapter policy and rendering properties", () => {
       .settings(settings)
       .runSync();
   });
-  test("every tool renderer stays within width and free of ESC/C1 for arbitrary JSON", () => {
-    new Hegel((tc) => {
-      const name = tc.draw(gs.sampledFrom(toolNames), "tool");
-      const args = tc.draw(argsValue, "args");
-      const value = tc.draw(argsValue, "result");
-      const width = tc.draw(gs.integers({ minValue: 10, maxValue: 200 }), "width");
-      const isError = tc.draw(gs.booleans(), "isError");
-      assertRenderedBounds(name, args, value, width, isError);
-    })
-      .settings(settings)
-      .runSync();
-  });
+  // Each case lays out four renderings of arbitrary JSON through Pi's text layout: 0.4 s quiet and 0.8 s
+  // under 8 busy processes.
+  test(
+    "every tool renderer stays within width and free of ESC/C1 for arbitrary JSON",
+    { timeout: propertyTimeout(30_000) },
+    () => {
+      new Hegel((tc) => {
+        const name = tc.draw(gs.sampledFrom(toolNames), "tool");
+        const args = tc.draw(argsValue, "args");
+        const value = tc.draw(argsValue, "result");
+        const width = tc.draw(gs.integers({ minValue: 10, maxValue: 200 }), "width");
+        const isError = tc.draw(gs.booleans(), "isError");
+        assertRenderedBounds(name, args, value, width, isError);
+      })
+        .settings(settings)
+        .runSync();
+    },
+  );
 });
 
 // Embedding, override and isolate controls reorder text in bidi-aware terminals. LRM/RLM/ALM are

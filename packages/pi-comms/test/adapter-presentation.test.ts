@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { Text, visibleWidth } from "@earendil-works/pi-tui";
-import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
-import { propertySettings } from "../../../test-support/hegel-settings";
+import {
+  assertHegel,
+  propertySettings,
+  propertyTimeout,
+} from "../../../test-support/hegel-settings";
 import { attentionStatus, diagnostics, toolPresentation } from "../adapter/presentation.js";
 import { registerTools } from "../adapter/tools.js";
 import { createState } from "../state/core.js";
@@ -529,35 +532,43 @@ describe("presentation-only session tool rendering", () => {
       ).join("\n"),
     ).toContain("ctrl+o for details");
   });
-  test("Hegel: generated controls, Unicode and multiline bodies are inert, cell-bounded and nonmutating", () => {
-    new Hegel((tc) => {
-      const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "control");
-      const width = tc.draw(gs.integers({ minValue: 1, maxValue: 100 }), "width");
-      const repeats = tc.draw(gs.integers({ minValue: 1, maxValue: 50 }), "length");
-      const body =
-        `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
-          repeats,
-        );
-      const args = { to: other, message: { ...message, content: body } };
-      const payload = result({ outcome: admitted, note: body });
-      const before = JSON.stringify({ args, payload });
-      for (const expanded of [false, true]) {
-        for (const slot of ["call", "result"] as const) {
-          const lines = render("session_send", slot, args, payload, expanded, width);
-          for (const line of lines) {
-            assert(visibleWidth(line) <= width);
-            assert(!stripStyle(line).includes("\u001b"));
-            assert(!line.includes("\u009b"));
+  // Each case renders four large multiline strings through Pi's text layout, about 1 ms apiece. The
+  // test measured 1.8 s under 8 busy processes, so it keeps a 60 s timeout.
+  test(
+    "Hegel: generated controls, Unicode and multiline bodies are inert, cell-bounded and nonmutating",
+    { timeout: propertyTimeout(60_000) },
+    () => {
+      assertHegel(propertySettings(200, 456n), (tc) => {
+        const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "control");
+        const width = tc.draw(gs.integers({ minValue: 1, maxValue: 100 }), "width");
+        const repeats = tc.draw(gs.integers({ minValue: 1, maxValue: 50 }), "length");
+        const body =
+          `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
+            repeats,
+          );
+        const args = { to: other, message: { ...message, content: body } };
+        const payload = result({ outcome: admitted, note: body });
+        const before = JSON.stringify({ args, payload });
+        // In render order: collapsed call, collapsed result, expanded call, expanded result.
+        const rendered: string[][] = [];
+        for (const expanded of [false, true]) {
+          for (const slot of ["call", "result"] as const) {
+            const lines = render("session_send", slot, args, payload, expanded, width);
+            rendered.push(lines);
+            for (const line of lines) {
+              assert(visibleWidth(line) <= width);
+              assert(!stripStyle(line).includes("\u001b"));
+              assert(!line.includes("\u009b"));
+            }
           }
         }
-      }
-      assert(render("session_send", "call", args, payload, false, width).length <= 12);
-      assert(render("session_send", "result", args, payload, false, width).length <= 24);
-      assert.equal(JSON.stringify({ args, payload }), before);
-    })
-      .settings(propertySettings(200, 456n))
-      .runSync();
-  });
+        const [collapsedCall = [], collapsedResult = []] = rendered;
+        assert(collapsedCall.length <= 12);
+        assert(collapsedResult.length <= 24);
+        assert.equal(JSON.stringify({ args, payload }), before);
+      });
+    },
+  );
   test.each([
     { count: 0, peerLabel: "peers", messageLabel: "messages", publicationLabel: "publications" },
     { count: 1, peerLabel: "peer", messageLabel: "message", publicationLabel: "publication" },

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { resourcePathId } from "../resource-path";
 import type { ToggleValue } from "../resources";
 import { ToggleStateFile, ToggleStateMalformed, ToggleStateTooNew } from "../state";
@@ -185,7 +186,10 @@ function assertTooNew(fixture: Fixture, whole: number, fractional: boolean): voi
   assert.equal(result.error.path, fixture.statePath);
 }
 
-describe("legacy state migration properties", () => {
+// Every case writes the state file and loads, and for the first property saves, it again: file system
+// work that is the point of these properties. The slowest took 1.4 s with 8 busy processes plus other
+// test suites running, so each keeps a timeout well over 10x that.
+describe("legacy state migration properties", { timeout: propertyTimeout(90_000) }, () => {
   test("v4, v5 and v6 documents load as the toggles their legacy meaning prescribes and stay stable when saved", () => {
     withFixture((fixture) => {
       assertProperty("migration", "legacy-meaning", (tc) => {

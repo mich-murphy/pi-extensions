@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { disabledResourceMatcher } from "../guard";
 import { RepositoryLocator } from "../repository";
 import { resourcePathId } from "../resource-path";
@@ -51,9 +51,11 @@ function resource(path: string, origin: "global" | "project" = "project"): Toggl
     editability: "editable",
   };
 }
-function repository(separate = false) {
+type Checkouts = { root: string; main: string; common: string; child: string; second: string };
+
+/** A main checkout with two linked worktrees. Costs five `git` processes. */
+function checkouts(separate: boolean): Checkouts {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-skill-real-git-")));
-  directories.push(root);
   const main = join(root, "main");
   const common = separate ? join(root, "git-data") : join(main, ".git");
   const child = join(root, "child");
@@ -76,8 +78,35 @@ function repository(separate = false) {
   );
   git("-C", main, "worktree", "add", "-q", "--detach", child);
   git("-C", main, "worktree", "add", "-q", "--detach", second);
+  return { root, main, common, child, second };
+}
+
+/** A private scratch directory and state file for one test. */
+function scratch() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-skill-real-git-")));
+  directories.push(root);
   const statePath = join(root, "state.json");
-  return { root, main, common, child, second, statePath, store: new ToggleStateFile(statePath) };
+  return { root, statePath, store: new ToggleStateFile(statePath) };
+}
+
+/** A checkout layout the test may change: it gets its own repository. */
+function repository(separate = false) {
+  const layout = checkouts(separate);
+  directories.push(layout.root);
+  return { ...layout, ...scratch() };
+}
+
+// Tests that only read the checkout layout share one repository per layout. Spawning five `git`
+// processes per test made each test as slow as process-spawn latency under CPU contention.
+const shared = new Map<boolean, Checkouts>();
+/** A read-only view of the shared repository with a private state file and scratch directory. */
+function sharedRepository(separate = false) {
+  let layout = shared.get(separate);
+  if (layout === undefined) {
+    layout = checkouts(separate);
+    shared.set(separate, layout);
+  }
+  return { ...layout, ...scratch() };
 }
 
 function expectOutsideGit(repo: ReturnType<typeof repository>, stale: string) {
@@ -106,7 +135,9 @@ function legacyState(version: number, entries: Record<string, string>) {
   };
 }
 
-describe("repository-wide policy with real Git", () => {
+// Real `git` processes: a test costs up to five spawns, about 0.2 s quiet. One took 6.4 s when several
+// test suites ran at once, so the suite keeps 90 s, over 10x that.
+describe("repository-wide policy with real Git", { timeout: 90_000 }, () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
@@ -114,11 +145,17 @@ describe("repository-wide policy with real Git", () => {
       rmSync(path, { recursive: true, force: true });
     }
   });
+  afterAll(() => {
+    for (const layout of shared.values()) {
+      rmSync(layout.root, { recursive: true, force: true });
+    }
+    shared.clear();
+  });
 
   test.each([false, true])(
     "recognizes main and linked checkouts (separate git dir: %s)",
     (separate) => {
-      const repo = repository(separate);
+      const repo = sharedRepository(separate);
       const locator = new RepositoryLocator();
       expect(locator.locate(join(repo.main, "nested/AGENTS.md"))).toStrictEqual({
         repository: repo.common,
@@ -188,7 +225,7 @@ describe("repository-wide policy with real Git", () => {
   });
 
   test("memoizes locations only within one policy evaluation and keeps global scope separate", () => {
-    const repo = repository();
+    const repo = scratch();
     const path = resourcePathId(join(repo.root, "new-repo/AGENTS.md"), "/");
     const choices: ToggleOverrides = {
       files: new Map(),
@@ -210,7 +247,7 @@ describe("repository-wide policy with real Git", () => {
   test.each([4, 5, 6])(
     "migrates v%s conflicts read-only, with main checkout winning",
     (version) => {
-      const repo = repository(true);
+      const repo = sharedRepository(true);
       const mainPath = join(repo.main, "nested/AGENTS.md");
       const childPath = join(repo.child, "nested/AGENTS.md");
       const entries = { [childPath]: "disabled", [mainPath]: "enabled" } as const;
@@ -241,7 +278,7 @@ describe("repository-wide policy with real Git", () => {
   );
 
   test("normalizes v7 repository keys on load and persists them only on save", () => {
-    const repo = repository();
+    const repo = sharedRepository();
     writeFileSync(
       repo.statePath,
       JSON.stringify({
@@ -273,7 +310,7 @@ describe("repository-wide policy with real Git", () => {
   });
 
   test("child-only legacy conflicts are deterministic regardless of JSON entry order", () => {
-    const repo = repository();
+    const repo = sharedRepository();
     const first = join(repo.child, "AGENTS.md");
     const second = join(repo.second, "AGENTS.md");
     const orders: Record<string, string>[] = [
@@ -308,7 +345,7 @@ describe("repository-wide policy with real Git", () => {
     ["agent-dir", ".pi/agent/AGENTS.md"],
     ["agents-skills", ".agents/skills/deploy/SKILL.md"],
   ])("keeps %s globals absolute even inside a Git checkout", (_kind, suffix) => {
-    const repo = repository();
+    const repo = sharedRepository();
     // Both global conventions deliberately live under this repository.
     vi.stubEnv("PI_CODING_AGENT_DIR", join(repo.main, ".pi/agent"));
     vi.stubEnv("HOME", repo.main);

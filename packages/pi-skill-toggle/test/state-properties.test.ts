@@ -341,15 +341,21 @@ describe("state properties", () => {
     propertyTimeout(90_000),
   );
 
-  test("loading arbitrary text never throws", () => {
-    withLoader((load) => {
-      assertProperty("state", "load-text", (tc) => {
-        assertWellFormed(load(tc.draw(gs.text({ maxSize: 40 }))));
+  // One state file write and load per case: 0.5 s with 8 busy processes plus other suites running.
+  test(
+    "loading arbitrary text never throws",
+    () => {
+      withLoader((load) => {
+        assertProperty("state", "load-text", (tc) => {
+          assertWellFormed(load(tc.draw(gs.text({ maxSize: 40 }))));
+        });
       });
-    });
-  });
+    },
+    propertyTimeout(30_000),
+  );
 
-  // Real file-system work per step, up to 3.7s with the CPU saturated: ten times that, scaled by case count.
+  // Real file-system work per step, up to 10.5 s with 8 busy processes plus other suites running: over
+  // ten times that, scaled by case count.
   test(
     "set/clear sequences match a map model, survive reload, and round-trip file bytes",
     () => {
@@ -359,7 +365,7 @@ describe("state properties", () => {
         });
       });
     },
-    propertyTimeout(60_000),
+    propertyTimeout(150_000),
   );
 
   test("a stale entry is pruned by the next update (example)", () => {

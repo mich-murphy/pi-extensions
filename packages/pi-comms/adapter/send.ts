@@ -43,9 +43,15 @@ function terminalFailure(
   }
   return failure(binding, possible, error.code);
 }
+/** Waits for `milliseconds`, rejecting when `signal` aborts. A seam so tests can run it on fake timers. */
+export type Delay = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+const realDelay: Delay = async (milliseconds, signal) => {
+  await delay(milliseconds, undefined, signal === undefined ? {} : { signal });
+};
 async function backoff(
   retryIndex: number,
   deadline: number,
+  wait: Delay,
   signal?: AbortSignal,
 ): Promise<"ready" | "expired" | "cancelled"> {
   const milliseconds = (retryIndex === 0 ? 100 : 500) + Math.floor(Math.random() * 51);
@@ -53,7 +59,7 @@ async function backoff(
     return "expired";
   }
   try {
-    await delay(milliseconds, undefined, signal === undefined ? {} : { signal });
+    await wait(milliseconds, signal);
     return "ready";
   } catch {
     return "cancelled";
@@ -67,6 +73,8 @@ export async function sendWithRetries(options: {
   message: Message;
   signal?: AbortSignal;
   request: (rid: string, deadline: number) => Promise<Reply>;
+  /** Retry backoff wait; defaults to real timers. */
+  delay?: Delay;
 }): Promise<SendOutcome> {
   const binding = {
     messageId: options.message.id,
@@ -106,7 +114,7 @@ export async function sendWithRetries(options: {
       return terminalFailure(result, binding, possible);
     }
     // eslint-disable-next-line eslint/no-await-in-loop -- Backoff consumes the same bounded sender budget.
-    const pause = await backoff(count, deadline, options.signal);
+    const pause = await backoff(count, deadline, options.delay ?? realDelay, options.signal);
     if (pause !== "ready") {
       return failure(binding, possible, pause === "cancelled" ? "cancelled" : "unavailable");
     }

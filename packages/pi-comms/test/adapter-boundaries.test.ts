@@ -6,6 +6,7 @@ import { decodeConfiguration, loadConfiguration } from "../adapter/config.js";
 import { sendWithRetries } from "../adapter/send.js";
 import { ConnectionFailure } from "../adapter/transport.js";
 import { waitFor } from "../adapter/wait.js";
+import { fakeDelay } from "./fake-delay.js";
 
 describe("adapter configuration and retry boundaries", () => {
   const directories: string[] = [];
@@ -156,7 +157,7 @@ describe("adapter configuration and retry boundaries", () => {
         throw new ConnectionFailure("unavailable", true);
       },
     );
-    const result = sendWithRetries(sendOptions(request));
+    const result = sendWithRetries({ ...sendOptions(request), delay: fakeDelay });
     await vi.runAllTimersAsync();
     await expect(result).resolves.toMatchObject({ tag: "unknown", code: "unavailable" });
     expect(request).toHaveBeenCalledTimes(3);
