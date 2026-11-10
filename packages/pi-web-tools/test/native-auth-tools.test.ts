@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { Effect, Layer } from "effect";
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
@@ -13,11 +13,10 @@ import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
 import type { ProviderError } from "../provider-types";
 import { FetchRescueProviders, SearchProviders } from "../search";
 import { WebToolsConfig } from "../settings";
-import { ToolOutputStore } from "../tool-output";
 import { createToolRuntime } from "../tool-runtime";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
-import { settingsFrom, textOf } from "./fakes";
+import { settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
 import { expectNoLeak } from "./leaks";
 import { nativeAuthFixture } from "./native-auth-fixture";
 import type { AuthStorageData } from "./native-auth-fixture";
@@ -94,7 +93,7 @@ async function tools(
       Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(Layer.provide(ports)),
       WebToolsConfig.layer(settings),
       CredentialResolver.unavailableLayer,
-      ToolOutputStore.layer,
+      trackedToolOutputLayer,
       Layer.succeed(
         FetchPage,
         FetchPage.of({
@@ -429,7 +428,6 @@ describe("native-auth integration", () => {
       const path = result.details.fullOutputPath;
       expect(path).toStrictEqual(expect.any(String));
       assert(typeof path === "string");
-      cleanup.push(async () => rm(path, { force: true }));
       const contents = await readFile(path, "utf8");
       expect(contents).not.toContain(secret);
       expect(contents).toContain("[redacted]");
