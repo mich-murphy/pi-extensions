@@ -178,6 +178,32 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
+  // `${name:-word}` ends at its own closing brace however the word is quoted, and the substitutions
+  // inside it run: the generator had never produced one, which is how the next bug hid.
+  test("a parameter expansion default keeps its quoting and its substitutions", () => {
+    assertProperty(
+      "shell-reads",
+      "a parameter expansion default keeps its quoting and its substitutions",
+      (tc) => {
+        const { word, source } = tc.draw(quoted, "word");
+        const name = tc.draw(gs.sampledFrom(["x", "y1", "_v"]), "name");
+        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", ":?", ":+", "+"]), "operator");
+        const tail = tc.draw(directory, "tail");
+        const expansion = `\${${name}${operator}${source}}`;
+        const nested = `\${${name}${operator}\${y${operator}$(cat ${source})}}`;
+        const read = [resolve(cwd, word)];
+        assert.deepEqual(reads(`echo ${expansion} ; cat ${tail}`), [resolve(cwd, tail)]);
+        assert.deepEqual(reads(`echo "${expansion}" ; cat ${tail}`), [resolve(cwd, tail)]);
+        assert.deepEqual(reads(`echo \${${name}${operator}$(cat ${source})}`), read);
+        assert.deepEqual(reads(`echo "\${${name}${operator}$(cat ${source})}"`), read);
+        assert.deepEqual(
+          reads(`echo ${nested} ; cat ${tail}`),
+          [...new Set([resolve(cwd, tail), ...read])].toSorted(),
+        );
+      },
+    );
+  });
+
   test("a cd scopes exactly as bash scopes it", () => {
     assertProperty("shell-reads", "a cd scopes exactly as bash scopes it", (tc) => {
       const { word, source } = tc.draw(quoted, "word");

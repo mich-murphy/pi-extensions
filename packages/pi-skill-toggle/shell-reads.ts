@@ -203,8 +203,16 @@ function analyze(source: string, cwd: string | undefined, depth: number, reads: 
 const BACKTICK_ESCAPE = /\\(?<char>[`$\\])/gu;
 const QUOTED_BACKTICK_ESCAPE = /\\(?<char>[`$"\\])/gu;
 
-/** An open construct while scanning a substitution: a `(` group or a double-quoted string. */
-type Open = "(" | '"';
+/** An open construct while scanning a substitution: a `(` or `${` group or a double-quoted string. */
+type Open = "(" | "{" | '"';
+
+type Scan = {
+  readonly open: Open[];
+  /** How many `(` groups are open. */
+  parens: number;
+  /** Where the outermost open `$( )` began, or -1. */
+  span: number;
+};
 
 class Lexer {
   readonly items: Item[] = [];
@@ -234,7 +242,7 @@ class Lexer {
         this.newline();
       } else if ((char === "<" || char === ">") && this.source.charAt(this.index + 1) === "(") {
         this.index += 2;
-        this.substitutions.push(this.balanced());
+        this.substitutions.push(this.scan("("));
         this.words.push({ text: "", literal: false });
       } else {
         this.operatorOrWord();
@@ -432,17 +440,15 @@ class Lexer {
     const next = this.source.charAt(this.index + 1);
     if (next === "(") {
       this.index += 2;
-      const inner = this.balanced();
+      const inner = this.scan("(");
       if (!inner.startsWith("(")) {
         this.substitutions.push(inner);
       }
       return { text: "", literal: false };
     }
     if (next === "{") {
-      const end = this.source.indexOf("}", this.index + 2);
-      const name = this.source.slice(this.index + 2, end === -1 ? undefined : end);
-      this.index = end === -1 ? this.source.length : end + 1;
-      return home(name);
+      this.index += 2;
+      return home(this.scan("{"));
     }
     NAME.lastIndex = this.index + 1;
     const name = NAME.exec(this.source)?.[0];
@@ -482,59 +488,93 @@ class Lexer {
   }
 
   /**
-   * Read up to the `)` that closes an already consumed `(`, skipping quoted text. A stack of open
-   * constructs (`(` groups and double quotes) keeps this one linear pass: inside double quotes `\"`
-   * does not close the string and `$(` opens a nested group whose own quotes are independent.
+   * Read up to the `)` (or `}`) that closes an already consumed `$(` (or `${`), skipping quoted
+   * text. A stack of open constructs keeps this one linear pass: inside double quotes `\"` does not
+   * close the string, and `$(` and `${` open nested constructs whose own quotes are independent.
+   * Inside `${ }` the outermost `$( )` and backtick substitutions are collected for analysis.
    */
-  private balanced(): string {
+  private scan(base: "(" | "{"): string {
     const start = this.index;
-    const open: Open[] = ["("];
+    const scan: Scan = { open: [base], parens: base === "(" ? 1 : 0, span: -1 };
     while (this.index < this.source.length) {
       const char = this.source.charAt(this.index);
+      const top = scan.open.at(-1);
       if (char === "\\") {
         this.index += 2;
       } else if (char === "`") {
-        this.skipBacktick();
-      } else if (open.at(-1) === '"') {
-        this.inDoubleQuotes(open, char);
-      } else if (this.inGroup(open, char)) {
+        this.scanBacktick(scan, top === '"');
+      } else if (char === "'" && top !== '"') {
+        const end = this.source.indexOf(char, this.index + 1);
+        this.index = end === -1 ? this.source.length : end + 1;
+      } else if (this.scanStep(scan, char, top)) {
         return this.source.slice(start, this.index - 1);
       }
     }
+    this.collect(scan, this.source.length);
     return this.source.slice(start);
   }
 
-  /** Step over one character outside double quotes; true once the outermost `(` is closed. */
-  private inGroup(open: Open[], char: string): boolean {
-    if (char === "'") {
-      const end = this.source.indexOf(char, this.index + 1);
-      this.index = end === -1 ? this.source.length : end + 1;
+  /** Step over one character; true once the construct that `scan` started with is closed. */
+  private scanStep(scan: Scan, char: string, top: Open | undefined): boolean {
+    const next = this.source.charAt(this.index + 1);
+    if (char === "$" && (next === "(" || next === "{")) {
+      scan.open.push(next);
+      this.index += 2;
+      if (next === "(") {
+        this.enterParen(scan);
+      }
       return false;
     }
     this.index += 1;
-    if (char === '"' || char === "(") {
-      open.push(char);
-    } else if (char === ")") {
-      open.pop();
-    }
-    return open.length === 0;
-  }
-
-  private skipBacktick(): void {
-    const end = this.backtickEnd(this.index);
-    this.index = end === -1 ? this.source.length : end + 1;
-  }
-
-  private inDoubleQuotes(open: Open[], char: string): void {
-    if (char === "$" && this.source.charAt(this.index + 1) === "(") {
-      open.push("(");
-      this.index += 2;
-      return;
-    }
     if (char === '"') {
-      open.pop();
+      this.toggleQuote(scan, top);
+    } else if (char === "(" && top === "(") {
+      scan.open.push("(");
+      this.enterParen(scan);
+    } else if (char === ")" && top === "(") {
+      scan.open.pop();
+      scan.parens -= 1;
+      this.collect(scan, this.index - 1);
+    } else if (char === "}" && top === "{") {
+      scan.open.pop();
     }
-    this.index += 1;
+    return scan.open.length === 0;
+  }
+
+  private toggleQuote(scan: Scan, top: Open | undefined): void {
+    if (top === '"') {
+      scan.open.pop();
+    } else {
+      scan.open.push('"');
+    }
+  }
+
+  private enterParen(scan: Scan): void {
+    scan.parens += 1;
+    if (scan.parens === 1) {
+      scan.span = this.index;
+    }
+  }
+
+  /** Record the outermost `$( )` inside a `${ }` once it closes (or the input ends). */
+  private collect(scan: Scan, end: number): void {
+    if (scan.span !== -1 && (scan.parens === 0 || end === this.source.length)) {
+      const inner = this.source.slice(scan.span, end);
+      if (!inner.startsWith("(")) {
+        this.substitutions.push(inner);
+      }
+      scan.span = -1;
+    }
+  }
+
+  /** Backticks nested in a `$( )` are analysed with it; any other is a substitution of its own. */
+  private scanBacktick(scan: Scan, inDoubleQuotes: boolean): void {
+    if (scan.parens > 0) {
+      const end = this.backtickEnd(this.index);
+      this.index = end === -1 ? this.source.length : end + 1;
+    } else {
+      this.backtick(inDoubleQuotes);
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { describe, test } from "vitest";
 import { pathsReadByCommand } from "../shell-reads";
@@ -57,6 +58,53 @@ describe("escapes inside backticks", () => {
   });
 });
 
+// `x` is unset and `cat` prints its arguments in the bash oracle. `${x:+…}` is not run by bash with
+// `x` unset, but the guard cannot know that, so it reports the read.
+describe("parameter expansions", () => {
+  const hidden: readonly string[] = [
+    'echo ${x:-"}"} ; cat secret',
+    'echo ${x:-"a } b"} ; cat secret',
+    "echo ${x:-$(cat secret)}",
+    "echo ${x:-`cat secret`}",
+    'echo "${x:-$(cat secret)}"',
+    "echo ${x:-'}'} ; cat secret",
+    'echo "${x:-"}"}" ; cat secret',
+    "echo ${x:-${y:-$(cat secret)}}",
+    "echo ${x:+$(cat secret)}",
+    "echo ${x:+$(cat secret)} ${#x}",
+    'echo ${x:-"$(cat "secret")"}',
+    'echo ${x:-$(echo "}")} ; cat secret',
+  ];
+  test.each(hidden)("%s", (command) => {
+    assert.deepEqual(reads(command), paths("secret"));
+  });
+
+  const exact: readonly string[] = [
+    "echo ${x:-}} ; cat secret",
+    "echo $((1+2)) ; cat secret",
+    'echo ${x:-"a b"} ; cat secret',
+    "echo \"${x:-'}'}\" ; cat secret",
+    "echo ${x:-\\}} ; cat secret",
+    "echo ${#x} ; cat secret",
+    "echo ${x%%\\}*} ; cat secret",
+    "echo $(echo ${x:-)} ; cat secret)",
+    "echo ${x:-(} ; cat secret",
+    'echo "${x:-\\"}" ; cat secret',
+    "echo ${x/\\}/a} ; cat secret",
+  ];
+  test.each(exact)("%s", (command) => {
+    assert.deepEqual(reads(command), paths("secret"));
+  });
+
+  test("an expansion that never closes still reports the substitution inside it", () => {
+    assert.deepEqual(reads("echo ${x:-$(cat secret)"), paths("secret"));
+  });
+
+  test("the home directory expansion is unchanged", () => {
+    assert.deepEqual(reads("cat ${HOME}/a"), [`${homedir()}/a`]);
+  });
+});
+
 describe("ordinary commands keep their results", () => {
   const benign: readonly (readonly [string, readonly string[]])[] = [
     [String.raw`git commit -m "say \"hi\""`, []],
@@ -86,5 +134,11 @@ describe("pathological input", () => {
     const depth = 20_000;
     const command = `${'"$('.repeat(depth)}cat x${')"'.repeat(depth)}`;
     assert.doesNotThrow(() => reads(command));
+  });
+
+  test("deeply nested parameter expansions are scanned in one pass and keep the read", () => {
+    const depth = 10_000;
+    const command = `echo ${"${x:-".repeat(depth)}$(cat secret)${"}".repeat(depth)}`;
+    assert.deepEqual(reads(command), paths("secret"));
   });
 });
