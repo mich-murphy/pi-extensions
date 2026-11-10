@@ -200,6 +200,20 @@ function analyze(source: string, cwd: string | undefined, depth: number, reads: 
   new Evaluator(cwd, depth, reads).run(lexer.items);
 }
 
+const BACKTICK_ESCAPE = /\\(?<char>[`$\\])/gu;
+const QUOTED_BACKTICK_ESCAPE = /\\(?<char>[`$"\\])/gu;
+
+/** An open construct while scanning a substitution: a `(` or `${` group or a double-quoted string. */
+type Open = "(" | "{" | '"';
+
+type Scan = {
+  readonly open: Open[];
+  /** How many `(` groups are open. */
+  parens: number;
+  /** Where the outermost open `$( )` began, or -1. */
+  span: number;
+};
+
 class Lexer {
   readonly items: Item[] = [];
   private substitutions: string[] = [];
@@ -210,6 +224,9 @@ class Lexer {
   private readonly pending: {
     readonly heredoc: { body: string | undefined };
     readonly delimiter: string;
+    /** A quoted delimiter makes the body literal; otherwise its substitutions run. */
+    readonly quoted: boolean;
+    readonly substitutions: string[];
   }[] = [];
 
   constructor(private readonly source: string) {}
@@ -228,7 +245,7 @@ class Lexer {
         this.newline();
       } else if ((char === "<" || char === ">") && this.source.charAt(this.index + 1) === "(") {
         this.index += 2;
-        this.substitutions.push(this.balanced());
+        this.substitutions.push(this.scan("("));
         this.words.push({ text: "", literal: false });
       } else {
         this.operatorOrWord();
@@ -269,7 +286,14 @@ class Lexer {
     } else if (operator === "<<") {
       const dash = this.source.charAt(this.index) === "-";
       this.index += dash ? 1 : 0;
-      this.pending.push({ heredoc: this.heredoc, delimiter: this.target().text });
+      const start = this.index;
+      const delimiter = this.target().text;
+      this.pending.push({
+        heredoc: this.heredoc,
+        delimiter,
+        quoted: /['"\\]/u.test(this.source.slice(start, this.index)),
+        substitutions: this.substitutions,
+      });
     } else if (OUTPUT_REDIRECTS.has(operator)) {
       this.target();
     } else {
@@ -304,7 +328,7 @@ class Lexer {
   }
 
   private readHeredocBodies(): void {
-    for (const { heredoc, delimiter } of this.pending.splice(0)) {
+    for (const { heredoc, delimiter, quoted, substitutions } of this.pending.splice(0)) {
       const lines: string[] = [];
       while (this.index < this.source.length) {
         const end = this.source.indexOf("\n", this.index);
@@ -316,6 +340,9 @@ class Lexer {
         lines.push(line);
       }
       heredoc.body = lines.join("\n");
+      if (!quoted) {
+        substitutions.push(...Lexer.expansionsIn(heredoc.body));
+      }
     }
   }
 
@@ -361,7 +388,7 @@ class Lexer {
         return this.dollar();
       }
       case "`": {
-        this.backtick();
+        this.backtick(false);
         return { text: "", literal: false };
       }
       default: {
@@ -411,7 +438,7 @@ class Lexer {
         text += expansion.text;
         literal &&= expansion.literal;
       } else if (char === "`") {
-        this.backtick();
+        this.backtick(true);
         literal = false;
       } else {
         text += char;
@@ -421,22 +448,66 @@ class Lexer {
     return { text, literal: false };
   }
 
+  /**
+   * `$( … )` runs `inner`; `$(( … ))` is arithmetic, whose own substitutions run. When the
+   * leading `(` does not close at the very end (`$((cat a) )`) the whole is a subshell.
+   */
+  private substitution(inner: string): void {
+    if (!inner.startsWith("(")) {
+      this.substitutions.push(inner);
+      return;
+    }
+    const probe = new Lexer(inner.slice(1));
+    probe.scan("(");
+    if (probe.index < inner.length - 1) {
+      this.substitutions.push(inner);
+    } else {
+      this.substitutions.push(...Lexer.expansionsIn(inner));
+    }
+  }
+
+  /**
+   * The command substitutions that run in text where quotes are literal and only backslash,
+   * `$(`, `${` and backticks matter: an arithmetic expansion or an unquoted heredoc body.
+   */
+  static expansionsIn(text: string): readonly string[] {
+    const lexer = new Lexer(text);
+    while (lexer.index < text.length) {
+      lexer.expansionStep();
+    }
+    return lexer.substitutions;
+  }
+
+  private expansionStep(): void {
+    const char = this.source.charAt(this.index);
+    const next = this.source.charAt(this.index + 1);
+    if (char === "\\") {
+      this.index += 2;
+    } else if (char === "`") {
+      this.backtick(false);
+    } else if (char === "$" && (next === "(" || next === "{")) {
+      this.index += 2;
+      if (next === "(") {
+        this.substitutions.push(this.scan("("));
+      } else {
+        this.scan("{");
+      }
+    } else {
+      this.index += 1;
+    }
+  }
+
   /** Only `$HOME` has a value known without running the shell; every other expansion is dynamic. */
   private dollar(): Word {
     const next = this.source.charAt(this.index + 1);
     if (next === "(") {
       this.index += 2;
-      const inner = this.balanced();
-      if (!inner.startsWith("(")) {
-        this.substitutions.push(inner);
-      }
+      this.substitution(this.scan("("));
       return { text: "", literal: false };
     }
     if (next === "{") {
-      const end = this.source.indexOf("}", this.index + 2);
-      const name = this.source.slice(this.index + 2, end === -1 ? undefined : end);
-      this.index = end === -1 ? this.source.length : end + 1;
-      return home(name);
+      this.index += 2;
+      return home(this.scan("{"));
     }
     NAME.lastIndex = this.index + 1;
     const name = NAME.exec(this.source)?.[0];
@@ -452,32 +523,114 @@ class Lexer {
     return { text: "", literal: false };
   }
 
-  private backtick(): void {
-    const end = this.source.indexOf("`", this.index + 1);
-    this.substitutions.push(this.source.slice(this.index + 1, end === -1 ? undefined : end));
+  /** Backslash removes itself before `` ` ``, `$` and `\`, and before `"` when the backticks sit in double quotes. */
+  private backtick(inDoubleQuotes: boolean): void {
+    const end = this.backtickEnd(this.index);
+    const inner = this.source.slice(this.index + 1, end === -1 ? undefined : end);
+    this.substitutions.push(
+      inner.replaceAll(inDoubleQuotes ? QUOTED_BACKTICK_ESCAPE : BACKTICK_ESCAPE, "$<char>"),
+    );
     this.index = end === -1 ? this.source.length : end + 1;
   }
 
-  /** Read up to the `)` that closes an already consumed `(`, skipping quoted text. */
-  private balanced(): string {
-    const start = this.index;
-    let depth = 1;
-    while (this.index < this.source.length) {
-      const char = this.source.charAt(this.index);
+  /** The index of the backtick closing the one at `open`; `\`` does not close it. Or -1. */
+  private backtickEnd(open: number): number {
+    for (let index = open + 1; index < this.source.length; index += 1) {
+      const char = this.source.charAt(index);
       if (char === "\\") {
-        this.index += 2;
-      } else if (char === "'" || char === '"') {
-        const end = this.source.indexOf(char, this.index + 1);
-        this.index = end === -1 ? this.source.length : end + 1;
-      } else {
-        depth += Number(char === "(") - Number(char === ")");
-        this.index += 1;
-        if (depth === 0) {
-          return this.source.slice(start, this.index - 1);
-        }
+        index += 1;
+      } else if (char === "`") {
+        return index;
       }
     }
+    return -1;
+  }
+
+  /**
+   * Read up to the `)` (or `}`) that closes an already consumed `$(` (or `${`), skipping quoted
+   * text. A stack of open constructs keeps this one linear pass: inside double quotes `\"` does not
+   * close the string, and `$(` and `${` open nested constructs whose own quotes are independent.
+   * Inside `${ }` the outermost `$( )` and backtick substitutions are collected for analysis.
+   */
+  private scan(base: "(" | "{"): string {
+    const start = this.index;
+    const scan: Scan = { open: [base], parens: base === "(" ? 1 : 0, span: -1 };
+    while (this.index < this.source.length) {
+      const char = this.source.charAt(this.index);
+      const top = scan.open.at(-1);
+      if (char === "\\") {
+        this.index += 2;
+      } else if (char === "`") {
+        this.scanBacktick(scan, top === '"');
+      } else if (char === "'" && top !== '"') {
+        const end = this.source.indexOf(char, this.index + 1);
+        this.index = end === -1 ? this.source.length : end + 1;
+      } else if (this.scanStep(scan, char, top)) {
+        return this.source.slice(start, this.index - 1);
+      }
+    }
+    this.collect(scan, this.source.length);
     return this.source.slice(start);
+  }
+
+  /** Step over one character; true once the construct that `scan` started with is closed. */
+  private scanStep(scan: Scan, char: string, top: Open | undefined): boolean {
+    const next = this.source.charAt(this.index + 1);
+    if (char === "$" && (next === "(" || next === "{")) {
+      scan.open.push(next);
+      this.index += 2;
+      if (next === "(") {
+        this.enterParen(scan);
+      }
+      return false;
+    }
+    this.index += 1;
+    if (char === '"') {
+      this.toggleQuote(scan, top);
+    } else if (char === "(" && top === "(") {
+      scan.open.push("(");
+      this.enterParen(scan);
+    } else if (char === ")" && top === "(") {
+      scan.open.pop();
+      scan.parens -= 1;
+      this.collect(scan, this.index - 1);
+    } else if (char === "}" && top === "{") {
+      scan.open.pop();
+    }
+    return scan.open.length === 0;
+  }
+
+  private toggleQuote(scan: Scan, top: Open | undefined): void {
+    if (top === '"') {
+      scan.open.pop();
+    } else {
+      scan.open.push('"');
+    }
+  }
+
+  private enterParen(scan: Scan): void {
+    scan.parens += 1;
+    if (scan.parens === 1) {
+      scan.span = this.index;
+    }
+  }
+
+  /** Record the outermost `$( )` inside a `${ }` once it closes (or the input ends). */
+  private collect(scan: Scan, end: number): void {
+    if (scan.span !== -1 && (scan.parens === 0 || end === this.source.length)) {
+      this.substitution(this.source.slice(scan.span, end));
+      scan.span = -1;
+    }
+  }
+
+  /** Backticks nested in a `$( )` are analysed with it; any other is a substitution of its own. */
+  private scanBacktick(scan: Scan, inDoubleQuotes: boolean): void {
+    if (scan.parens > 0) {
+      const end = this.backtickEnd(this.index);
+      this.index = end === -1 ? this.source.length : end + 1;
+    } else {
+      this.backtick(inDoubleQuotes);
+    }
   }
 }
 

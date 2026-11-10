@@ -157,6 +157,14 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
+  // Found by HEGEL_SEED=15001035743802267891 at 2000 cases. `balanced` skips a double-quoted string up to
+  // the next `"` without honouring `\"`, so the `)` inside the string closes the substitution early and
+  // the file `")` that cat reads is never reported. Fails until `balanced` handles escapes in quotes.
+  test("a substitution keeps a double-quoted string that holds an escaped quote and a parenthesis", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat "\")")`), [resolve(cwd, '")')]);
+    assert.deepEqual(reads(String.raw`echo $(cat a\;"\")")`), [resolve(cwd, 'a;")')]);
+  });
+
   test("wrappers, sequencing and substitution leave the read set unchanged", () => {
     assertProperty(
       "shell-reads",
@@ -166,6 +174,55 @@ describe("pathsReadByCommand properties", () => {
         const wrap = tc.draw(gs.integers({ minValue: 0, maxValue: WRAPS.length - 1 }), "wrapper");
         const command = wrapped(wrap, `cat ${source}`);
         assert.deepEqual(reads(command), [resolve(cwd, word)], command);
+      },
+    );
+  });
+
+  // `${name:-word}` ends at its own closing brace however the word is quoted, and the substitutions
+  // inside it run: the generator had never produced one, which is how the next bug hid.
+  test("a parameter expansion default keeps its quoting and its substitutions", () => {
+    assertProperty(
+      "shell-reads",
+      "a parameter expansion default keeps its quoting and its substitutions",
+      (tc) => {
+        const { word, source } = tc.draw(quoted, "word");
+        const name = tc.draw(gs.sampledFrom(["x", "y1", "_v"]), "name");
+        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", ":?", ":+", "+"]), "operator");
+        const tail = tc.draw(directory, "tail");
+        const expansion = `\${${name}${operator}${source}}`;
+        const nested = `\${${name}${operator}\${y${operator}$(cat ${source})}}`;
+        const read = [resolve(cwd, word)];
+        assert.deepEqual(reads(`echo ${expansion} ; cat ${tail}`), [resolve(cwd, tail)]);
+        assert.deepEqual(reads(`echo "${expansion}" ; cat ${tail}`), [resolve(cwd, tail)]);
+        assert.deepEqual(reads(`echo \${${name}${operator}$(cat ${source})}`), read);
+        assert.deepEqual(reads(`echo "\${${name}${operator}$(cat ${source})}"`), read);
+        assert.deepEqual(
+          reads(`echo ${nested} ; cat ${tail}`),
+          [...new Set([resolve(cwd, tail), ...read])].toSorted(),
+        );
+      },
+    );
+  });
+
+  // Arithmetic and an unquoted heredoc body run their substitutions; a quoted delimiter makes the body literal.
+  test("a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not", () => {
+    assertProperty(
+      "shell-reads",
+      "a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not",
+      (tc) => {
+        const { word, source } = tc.draw(quoted, "word");
+        const literal = tc.draw(gs.sampledFrom(["'EOF'", '"EOF"', String.raw`\EOF`]), "delimiter");
+        const dash = tc.draw(gs.sampledFrom(["<<", "<<-"]), "dash");
+        const read = [resolve(cwd, word)];
+        const substitution = `$(cat ${source})`;
+        assert.deepEqual(reads(`echo $(( ${substitution} + 1 ))`), read, "arithmetic");
+        assert.deepEqual(reads(`echo $(( 1 + ${substitution} ))`), read, "arithmetic operand");
+        assert.deepEqual(reads(`cat ${dash}EOF\n${substitution}\nEOF`), read, "unquoted heredoc");
+        assert.deepEqual(
+          reads(`cat ${dash}${literal}\n${substitution}\nEOF`),
+          [],
+          "quoted heredoc",
+        );
       },
     );
   });
