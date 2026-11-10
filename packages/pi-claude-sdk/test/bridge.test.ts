@@ -164,6 +164,30 @@ describe("provider event streaming", () => {
   });
 });
 
+describe("terminal event", () => {
+  test("stops consuming the run at the terminal event, so the SDK run is released", async () => {
+    let resumedAfterTerminal = false;
+    const closed = Promise.withResolvers<true>();
+    async function* run(): AsyncGenerator<BridgeEvent> {
+      try {
+        yield { type: "done", reason: "stop" };
+        resumedAfterTerminal = true;
+        yield { type: "text_delta", text: "late" };
+      } finally {
+        closed.resolve(true);
+      }
+    }
+
+    const stream = createAgentSdkStream({ model: sonnet, context, options: {}, run });
+    await drain(stream);
+    await closed.promise;
+
+    expect(resumedAfterTerminal).toBe(false);
+    const message = await stream.result();
+    expect(message.content).toStrictEqual([]);
+  });
+});
+
 describe("provider failures", () => {
   test("surfaces a failed turn as one categorized Pi error that keeps the partial content", async () => {
     const events = await piEvents([
