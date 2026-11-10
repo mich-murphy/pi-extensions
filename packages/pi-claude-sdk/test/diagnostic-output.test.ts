@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { Effect } from "effect";
-import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "../cache-diagnostics";
 import type { CacheDiagnosticsMode } from "../cache-diagnostics";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
@@ -112,6 +112,9 @@ describe("terminal-safe diagnostic output", () => {
   test("appends owner-only JSONL to the diagnostics file even on a terminal, never throwing", () => {
     setTerminalStderr(true);
     const directory = mkdtempSync(join(tmpdir(), "pi-claude-sdk-cache-"));
+    onTestFinished(() => {
+      rmSync(directory, { recursive: true, force: true });
+    });
     const file = join(directory, "cache.jsonl");
 
     emitCacheDiagnostics({ file });
