@@ -9,12 +9,26 @@ import { offlineContractPath } from "./offline-sdk-contract";
 // The contract child runs the installed Claude Code and gets only PATH, so look where it will look.
 // Without one the contract cannot run, which is a host without Claude Code, not a failure.
 const claudeCodeInstalled = resolveClaudeExecutable({ PATH: process.env.PATH }) !== undefined;
-const runnable = process.platform === "darwin" && claudeCodeInstalled;
+
+/** Why the contract cannot run on this host, reported with the skip; undefined when it can. */
+function skipReason(): string | undefined {
+  if (process.platform !== "darwin") {
+    return "the offline SDK contract uses sandbox-exec, which exists only on macOS";
+  }
+  return claudeCodeInstalled
+    ? undefined
+    : "Claude Code is not installed on PATH; the offline SDK contract runs the real executable";
+}
 
 describe("production Pi loop through actual offline SDK", () => {
-  test.skipIf(!runnable).each(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"])(
+  test.for(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"])(
     "%s preserves execution ownership, durable recovery and one terminal per turn",
-    async (scenario) => {
+    // A real sandboxed Pi process: up to 4.2 s under 8 busy processes. The contract child aborts itself at
+    // 30 s, the spawn is killed at 100 s and the test fails at 120 s, in that order.
+    { timeout: 120_000 },
+    async (scenario, context) => {
+      const reason = skipReason();
+      context.skip(reason !== undefined, reason);
       const home = await mkdtemp(join(tmpdir(), "pi-sdk-contract-"));
       try {
         const profile = join(home, "network.sb");
@@ -53,8 +67,5 @@ describe("production Pi loop through actual offline SDK", () => {
         await rm(home, { recursive: true, force: true });
       }
     },
-    // A real sandboxed Pi process: up to 4.2 s under 8 busy processes. The contract child aborts itself at
-    // 30 s, the spawn is killed at 100 s and the test fails at 120 s, in that order.
-    120_000,
   );
 });
