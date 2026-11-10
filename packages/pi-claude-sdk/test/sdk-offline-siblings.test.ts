@@ -3,12 +3,16 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
+import { resolveClaudeExecutable } from "../sdk/claude-executable";
 import { offlineContractPath } from "./offline-sdk-contract";
 
+// The contract child runs the installed Claude Code and gets only PATH, so look where it will look.
+// Without one the contract cannot run, which is a host without Claude Code, not a failure.
+const claudeCodeInstalled = resolveClaudeExecutable({ PATH: process.env.PATH }) !== undefined;
+const runnable = process.platform === "darwin" && claudeCodeInstalled;
+
 describe("production Pi loop through actual offline SDK", () => {
-  test
-    .skipIf(process.platform !== "darwin")
-    .each(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"])(
+  test.skipIf(!runnable).each(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"])(
     "%s preserves execution ownership, durable recovery and one terminal per turn",
     async (scenario) => {
       const home = await mkdtemp(join(tmpdir(), "pi-sdk-contract-"));
