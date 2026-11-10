@@ -3,9 +3,6 @@ import { buildAgentRequest } from "../agent-request";
 import { contextFixture } from "./fixtures";
 import type { MessageFixture } from "./fixtures";
 
-/** Estimator: ceil(characters / 4), a common rough ratio for English text and code. */
-const tokens = (chars: number) => Math.ceil(chars / 4);
-
 const readTool = {
   name: "read",
   description: "Read",
@@ -97,10 +94,6 @@ describe("replay size", () => {
       .slice(1, -1)
       .map((block) => block.text)
       .join("\n").length;
-    // oxlint-disable-next-line eslint/no-console
-    console.info(
-      `replay-size old=${oldChars} chars (~${tokens(oldChars)} tok) new=${newChars} chars (~${tokens(newChars)} tok) saved=${(((oldChars - newChars) / oldChars) * 100).toFixed(1)}%`,
-    );
     expect(newChars).toBeLessThan(oldChars);
   });
 });
