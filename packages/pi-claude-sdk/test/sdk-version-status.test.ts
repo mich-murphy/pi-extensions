@@ -49,6 +49,26 @@ describe("claude SDK version status", () => {
     }),
   );
 
+  it.effect("renders every status line, in order, for an old and newer Claude Code", () =>
+    Effect.gen(function* () {
+      const status = yield* inspectWith({
+        ...versionSources("0.3.227", "2.1.227", "2.1.251 (Claude Code)"),
+        readClaudePath: () => "/opt/claude",
+      });
+
+      expect(formatClaudeSdkVersionStatus(status)).toBe(
+        [
+          "Agent SDK: 0.3.227",
+          "Claude Code path: /opt/claude",
+          "Installed Claude Code: 2.1.251 (minimum 2.1.317)",
+          "Claude Code expected by the Agent SDK: 2.1.227",
+          "Claude Code is too old: run `claude update`.",
+          "The installed Claude Code is newer. Update the pinned Agent SDK and npmDepsHash.",
+        ].join("\n"),
+      );
+    }),
+  );
+
   it.effect("does not suggest an update for matching versions", () =>
     Effect.gen(function* () {
       const status = yield* inspectWith(

@@ -100,6 +100,7 @@ describe("Claude Code minimum version", () => {
     expect(tooOldClaudeCode({ ...init, claude_code_version: "2.1.317" })).toBeUndefined();
     expect(tooOldClaudeCode({ ...init, claude_code_version: 2 })).toBeUndefined();
     expect(tooOldClaudeCode({ ...init, subtype: "status" })).toBeUndefined();
+    expect(tooOldClaudeCode({ ...init, type: "assistant" })).toBeUndefined();
     expect(tooOldClaudeCode({ type: "assistant" })).toBeUndefined();
     expect(tooOldClaudeCode(null)).toBeUndefined();
   });

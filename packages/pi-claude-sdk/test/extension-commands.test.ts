@@ -5,7 +5,7 @@ import type { ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import type { ClaudeHandlers } from "../index";
 import registerClaudeSdkProvider from "../index";
-import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
+import { VALIDATION_ERROR_TOOL, validationRecoveryReason } from "../validation-recovery";
 import { installFakeClaude } from "./fake-claude-cli";
 import type { FakeClaude, FakeClaudeBehaviour } from "./fake-claude-cli";
 
@@ -85,6 +85,17 @@ describe("provider commands", () => {
       },
     );
 
+    test("warns, without the too-old line, when Claude Code is newer than the Agent SDK", async () => {
+      installClaude({ version: "99.0.0" });
+
+      const [notice, ...rest] = await runCommand("claude-sdk-status");
+
+      expect(rest).toStrictEqual([]);
+      expect(notice?.level).toBe("warning");
+      expect(notice?.text).toContain("The installed Claude Code is newer.");
+      expect(notice?.text).not.toContain("too old");
+    });
+
     test("shows an error notice, not a crash, when Claude Code is not installed", async () => {
       const emptyPath = mkdtempSync(join(tmpdir(), "claude-sdk-empty-path-"));
       scratch.push(emptyPath);
@@ -151,6 +162,19 @@ describe("reserved validation-recovery tool", () => {
 
     expect(result?.block).toBe(true);
     expect(result?.reason).toMatch(/\S/u);
+  });
+
+  test("the loaded extension passes the call's input to the correction", () => {
+    const { handlers } = loadExtension();
+    const input = { error: "printed_tool_call" };
+
+    const result = handlers.tool_call?.(
+      { ...toolCall(VALIDATION_ERROR_TOOL), input },
+      quietContext,
+    );
+
+    expect(result?.reason).toBe(validationRecoveryReason(input));
+    expect(result?.reason).not.toBe(validationRecoveryReason({}));
   });
 
   test("the loaded extension leaves an ordinary tool alone", () => {
