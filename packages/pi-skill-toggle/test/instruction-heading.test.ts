@@ -33,6 +33,26 @@ describe("instruction headings", () => {
     expect(instructionHeading(content, "/repo/AGENTS.md")).toBe(expected);
   });
 
+  // A heading is never blank and never holds a control character; a blank one is no heading.
+  test.each([
+    ["#  ", ""],
+    ["# \t", ""],
+    ["#   \n", ""],
+    ["#  \n# Real", "Real"],
+    ["# \u0001\n# Real", "Real"],
+    ["<\r<\n=", "<"],
+    ["Title\r=====\rBody", "Title"],
+    ["Title\r\n=====\r\nBody", "Title"],
+    ["# a\tb", "a b"],
+    ["# a\u001b[2Jb\u009b", "a [2Jb"],
+    ["# \u001b]0;x\u0007 title", "]0;x  title"],
+  ])("never returns a blank or control-character heading for %j", (content, expected) => {
+    const heading = instructionHeading(content, "/repo/AGENTS.md");
+    expect(heading).toBe(expected);
+    expect(heading).toBe(heading.trim());
+    expect(heading).not.toMatch(/\p{Cc}/u);
+  });
+
   test("reads a bounded prefix and treats unavailable metadata as optional", async () => {
     const directory = mkdtempSync(join(tmpdir(), "pi-heading-"));
     directories.push(directory);
