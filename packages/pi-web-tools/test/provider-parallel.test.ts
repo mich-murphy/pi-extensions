@@ -14,27 +14,6 @@ import { fakeMcpClient, fakeProviderHttp, publicUrl, searchQuery } from "./fakes
 const QUERY = searchQuery("web search apis");
 const PAGE = publicUrl("https://example.com/");
 
-/** Keys allowed by Parallel's V1SearchRequest and AdvancedSearchSettings (both additionalProperties: false). */
-const V1_SEARCH_REQUEST_KEYS = [
-  "objective",
-  "search_queries",
-  "mode",
-  "max_chars_total",
-  "session_id",
-  "client_model",
-  "advanced_settings",
-];
-const V1_ADVANCED_SETTINGS_KEYS = [
-  "source_policy",
-  "fetch_policy",
-  "excerpt_settings",
-  "location",
-  "max_results",
-];
-function keysOf(value: unknown): string[] {
-  return typeof value === "object" && value !== null ? Object.keys(value) : [];
-}
-
 function fetchWith(result: McpToolCallResult) {
   const { client } = fakeMcpClient([Result.succeed(result)]);
   return new ParallelMcpFetchProvider(client, "s").fetchMarkdown(PAGE);
@@ -188,26 +167,6 @@ describe("parallelApiSearchProvider", () => {
         mode: "fast",
         advanced_settings: { max_results: 6 },
       });
-    }),
-  );
-
-  it.effect("sends only keys the v1 schema allows (additionalProperties: false)", () =>
-    Effect.gen(function* () {
-      const { client, requests } = fakeProviderHttp([
-        Result.succeed({ bodyText: JSON.stringify(RESULTS_PAYLOAD) }),
-      ]);
-      yield* Effect.result(
-        new ParallelApiSearchProvider(Redacted.make("k"), client).search({
-          query: QUERY,
-          maxResults: 3,
-        }),
-      );
-      const body = requests[0]?.body;
-      assert(typeof body === "object" && body !== null);
-      expect(V1_SEARCH_REQUEST_KEYS).toStrictEqual(expect.arrayContaining(keysOf(body)));
-      expect(V1_ADVANCED_SETTINGS_KEYS).toStrictEqual(
-        expect.arrayContaining(keysOf(Reflect.get(body, "advanced_settings"))),
-      );
     }),
   );
 

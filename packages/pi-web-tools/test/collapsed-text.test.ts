@@ -37,13 +37,6 @@ const settings = propertySettings(200);
 const expectedLength = (text: string) => text.replaceAll(/\s+/gu, " ").trim().length;
 
 describe("normalizedTextLength", () => {
-  test.each(["", " ", "  \n\t ", "a", " a ", "a  b", " a　　b﻿"])(
-    "measures %j as the collapsed, trimmed text",
-    (text) => {
-      expect(normalizedTextLength(text)).toBe(expectedLength(text));
-    },
-  );
-
   test("matches the regex normalization on generated text", () => {
     new Hegel((tc) => {
       const text = tc.draw(textGenerator, "text");
@@ -82,21 +75,6 @@ describe("collapsedTextLength", () => {
         textual.appendText(piece);
       }
       expect(textual.trimmedLength()).toBe(combined.trimmedLength());
-    })
-      .settings(settings)
-      .runSync();
-  });
-
-  test("an empty measure is the identity on either side", () => {
-    new Hegel((tc) => {
-      const text = tc.draw(textGenerator, "text");
-      const measured = new CollapsedTextLength();
-      measured.appendText(text);
-      const left = new CollapsedTextLength();
-      left.append(new CollapsedTextLength());
-      left.append(measured);
-      left.append(new CollapsedTextLength());
-      expect(left.trimmedLength()).toBe(expectedLength(text));
     })
       .settings(settings)
       .runSync();

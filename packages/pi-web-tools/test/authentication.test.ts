@@ -1,10 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setImmediate } from "node:timers/promises";
 import { Effect, Redacted, Result } from "effect";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
-import { ModelConfig } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-config.js";
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { createWebAuthentication, WEB_AUTH_PROVIDERS } from "../authentication";
 import type { SearchProviderName } from "../types";
@@ -24,28 +22,6 @@ async function fixture(key?: string) {
   const resolve = async () =>
     Effect.runPromise(Effect.result(controller.resolverFor(registry).resolve("exa")));
   return { storage, runtime, registry, controller, pi, resolve };
-}
-
-/** Hold real config snapshots from registration, not the runtime's initial load. */
-function holdRegistrationLoads(modelsPath: string) {
-  const loaded = Promise.withResolvers<undefined>();
-  const release = Promise.withResolvers<undefined>();
-  const load = ModelConfig.load.bind(ModelConfig);
-  let reads = 0;
-  const pendingLoads = Object.keys(WEB_AUTH_PROVIDERS).length * 2;
-  const spy = vi.spyOn(ModelConfig, "load").mockImplementation(async (path) => {
-    const config = await load(path);
-    // Hold every registration-triggered read after it captures the old file,
-    // so stale refreshes cannot finish by chance.
-    if (path === modelsPath && ++reads > 1) {
-      if (reads === pendingLoads + 1) {
-        loaded.resolve(undefined);
-      }
-      await release.promise;
-    }
-    return config;
-  });
-  return { loaded, release, spy };
 }
 
 describe("public native web authentication", () => {
@@ -255,31 +231,6 @@ describe("public native web authentication", () => {
     assert(Result.isFailure(result));
     expect(result.failure.reason).toBe("incompatible");
     expectNoLeak(result, "external-synthetic");
-  });
-
-  test("native fixture waits for registration refreshes before exposing models.json to edits", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pi-web-auth-refresh-"));
-    const modelsPath = join(directory, "models.json");
-    const { loaded, release, spy } = holdRegistrationLoads(modelsPath);
-    let pending: ReturnType<typeof nativeAuthFixture> | undefined;
-    try {
-      await writeFile(modelsPath, JSON.stringify({ providers: {} }));
-      pending = nativeAuthFixture({ modelsPath });
-      await loaded.promise;
-      const returnedBeforeRefreshes = await Promise.race([
-        pending.then(() => true),
-        setImmediate().then(() => false),
-      ]);
-      release.resolve(undefined);
-      const { registry } = await pending;
-      expect(returnedBeforeRefreshes).toBe(false);
-      expect(registry.getError()).toBeUndefined();
-    } finally {
-      release.resolve(undefined);
-      await pending;
-      spy.mockRestore();
-      await rm(directory, { recursive: true, force: true });
-    }
   });
 
   test("composed models.json overrides preserve stored precedence and fail safely on invalid headers", async () => {

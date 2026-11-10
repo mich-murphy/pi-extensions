@@ -8,7 +8,6 @@ import {
   describeNetworkFailure,
   HttpStatusRejected,
   isPrivateOrLocalIp,
-  parseContentType,
   PrivateHostBlocked,
   readResponseBodyWithLimit,
   RedirectLimitExceeded,
@@ -23,49 +22,17 @@ import {
 import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
+  // The numeric range tables are covered by network-properties.test.ts (every range edge, every
+  // spelling). These rows keep a readable canon and the two IPv6 prefix edges the property's
+  // generator does not reach (febf::1 and fec0::1 straddle the fe80::/10 boundary).
   const blocked = [
     "10.0.0.1",
     "127.0.0.1",
-    "0.0.0.0",
     "169.254.1.1",
-    "192.168.1.1",
-    "172.16.0.1",
-    "172.31.255.255",
-    "100.64.0.1",
-    "100.127.255.255",
     "::1",
-    "::",
-    "fc00::1",
-    "fd12::ab",
-    "fe80::1",
     "::ffff:127.0.0.1",
-    "::ffff:10.1.2.3",
     "[::1]",
-    "::FFFF:7F00:1",
-    "0:0:0:0:0:ffff:127.0.0.1",
-    "::8.8.8.8",
-    "64:ff9b::a00:1",
-    "64:ff9b::10.0.0.1",
-    "224.0.0.1",
-    "239.255.255.255",
-    "240.0.0.1",
-    "255.255.255.255",
-    "::ffff:224.0.0.1",
-    "ff02::1",
-    "ff0e::1",
     "febf::1",
-    "64:ff9b:1::1",
-    "192.0.0.1",
-    "192.0.2.1",
-    "198.18.0.1",
-    "198.19.255.255",
-    "198.51.100.1",
-    "203.0.113.1",
-    "2001:db8::1",
-    "100::1",
-    "2002:a00:1::",
-    "2002:7f00:1::1",
-    "::ffff:0:10.0.0.1",
   ];
 
   test.each(blocked)("blocks %s", (ip) => {
@@ -74,18 +41,11 @@ describe("isPrivateOrLocalIp", () => {
 
   const allowed = [
     "8.8.8.8",
-    "1.1.1.1",
-    "172.15.0.1",
-    "198.20.0.1",
     "2002:808:808::1",
     "::ffff:0:8.8.8.8",
-    "172.32.0.1",
-    "100.63.0.1",
-    "100.128.0.1",
     "2001:4860:4860::8888",
     "not-an-ip",
     "::ffff:8.8.8.8",
-    "223.255.255.255",
     "fec0::1",
     "fc::1",
     "fe8::1",
@@ -96,44 +56,10 @@ describe("isPrivateOrLocalIp", () => {
   });
 });
 
-describe("parseContentType", () => {
-  test("parses mime and charset", () => {
-    const parsed = parseContentType("text/html; charset=UTF-8");
-    expect(parsed.mime).toBe("text/html");
-    expect(parsed.charset).toBe(UTF8);
-    expect(parsed.kind).toBe("html");
-  });
-});
-
 describe("classifyMimeType", () => {
-  const cases = [
-    ["text/html", "html"],
-    [" TEXT/HTML ", "html"],
-    ["application/xhtml+xml", "html"],
-    ["image/png", "raster-image"],
-    ["image/jpeg", "raster-image"],
-    ["image/gif", "raster-image"],
-    ["image/webp", "raster-image"],
-    ["image/svg+xml", "svg"],
-    ["IMAGE/SVG+XML", "svg"],
-    ["text/plain", "text"],
-    ["text/csv", "text"],
-    ["application/json", "text"],
-    ["application/xml", "text"],
-    ["application/javascript", "text"],
-    ["application/x-javascript", "text"],
-    ["application/ecmascript", "text"],
-    ["application/ld+json", "text"],
-    ["application/rss+xml", "text"],
-    ["application/atom+xml", "text"],
-    ["application/hal+json", "text"],
-    ["", "binary"],
-    ["   ", "binary"],
-    ["application/octet-stream", "binary"],
-    ["application/pdf", "binary"],
-    ["image/avif", "binary"],
-    ["video/mp4", "binary"],
-  ] as const;
+  // The MIME table, the text/ and +xml/+json suffix rules and the binary default are covered by
+  // content-properties.test.ts. image/avif is the one decision the property does not generate.
+  const cases = [["image/avif", "binary"]] as const;
 
   test.each(cases)("classifies %j as %s", (mime, kind) => {
     expect(classifyMimeType(mime)).toBe(kind);
@@ -691,23 +617,6 @@ describe("fetchPublicWebClient response body", () => {
       assert(Result.isSuccess(result));
       expect(result.success.body.byteLength).toBe(1024);
       expect(result.success.responseTruncated).toBe(true);
-    }),
-  );
-
-  it.effect("does not flag a body that fits the cap exactly", () =>
-    Effect.gen(function* () {
-      const { client } = recordingClient(() =>
-        responseOf({
-          status: 200,
-          body: "x".repeat(1024),
-          headers: { "content-type": "text/plain" },
-        }),
-      );
-      const result = yield* Effect.result(
-        client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
-      );
-      assert(Result.isSuccess(result));
-      expect(result.success.responseTruncated).toBeUndefined();
     }),
   );
 

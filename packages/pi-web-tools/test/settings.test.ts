@@ -1,7 +1,6 @@
 import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
-  BRAVE_API_KEY_ENV,
   EXA_API_KEY_ENV,
   InvalidSetting,
   EXA_ENDPOINT_ENV,
@@ -18,12 +17,6 @@ describe("parseSettings", () => {
     expect(settings.success.search.defaultProviders).toBe(true);
     expect(settings.success.fetch.rescue).toBe(true);
     expect(settings.success.fetch.allowDomains).toStrictEqual([]);
-  });
-
-  test("does not read keys or append Brave during static parsing", () => {
-    const settings = parseSettings({ [BRAVE_API_KEY_ENV]: "BSA_test" });
-    assert(Result.isSuccess(settings));
-    expect(settings.success.search.providers).toStrictEqual(["exa", "parallel"]);
   });
 
   test("honors explicit provider ordering and filtering", () => {

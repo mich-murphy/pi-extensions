@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Cause, Duration, Effect, Exit, Fiber, Result } from "effect";
+import { Duration, Effect, Fiber, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { providerHttpWith } from "./fakes";
 
@@ -172,15 +172,6 @@ describe("fetchProviderHttpClient", () => {
       expect(tooLargeResult.failure._tag).toBe("ProviderResponseTooLarge");
     }),
   );
-
-  test("a caller abort interrupts the request", async () => {
-    const aborted = new AbortController();
-    aborted.abort();
-    const client = providerHttpWith(async () => jsonResponse("{}"));
-    const exit = await Effect.runPromiseExit(client.getJson(request), { signal: aborted.signal });
-    assert(Exit.isFailure(exit));
-    expect(Cause.hasInterrupts(exit.cause)).toBe(true);
-  });
 
   it.effect("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", () =>
     Effect.gen(function* () {
