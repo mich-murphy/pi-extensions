@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -382,23 +381,24 @@ describe("toggleStateFile", () => {
     expect(() => store.set(resourcePathId("/skill", "/"), "disabled")).toThrow(TypeError);
   });
 
+  // A read-only directory (chmod 0o500) is not enforced for uid 0, so a permission failure makes the
+  // test depend on who runs it. A temporary name over the 255-byte file name limit is refused by
+  // every file system for every user, on the same write path; the EACCES wording is pinned in
+  // lifecycle.test.ts.
   test("reports write failures and leaves no temporary files", () => {
     const context = testContext();
-    const stateDirectory = dirname(context.statePath);
-    mkdirSync(stateDirectory, { recursive: true });
-    chmodSync(stateDirectory, 0o500);
+    const stateDirectory = join(context.directory, "state");
+    // The state file itself fits, but its `.<uuid>.tmp` sibling (41 bytes longer) does not.
+    const statePath = join(stateDirectory, `${"s".repeat(230)}.json`);
+    const store = new ToggleStateFile(statePath);
 
-    try {
-      const failure = failureOf(context.store.set(context.resourceFile("skill"), "disabled"));
-      expect(failure).toMatchObject({
-        _tag: "ToggleStateUnavailable",
-        operation: "update",
-        code: "EACCES",
-      });
-      expect(failure.message).toContain("permission was denied");
-      expect(readdirSync(stateDirectory)).toStrictEqual([]);
-    } finally {
-      chmodSync(stateDirectory, 0o700);
-    }
+    const failure = failureOf(store.set(context.resourceFile("skill"), "disabled"));
+
+    expect(failure).toMatchObject({
+      _tag: "ToggleStateUnavailable",
+      operation: "update",
+      code: "ENAMETOOLONG",
+    });
+    expect(readdirSync(stateDirectory)).toStrictEqual([]);
   });
 });

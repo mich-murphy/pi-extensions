@@ -351,10 +351,18 @@ describe("pathsReadByCommand bounds pathological input", () => {
     expect(reads("cat AGENTS.md; echo x;")).toStrictEqual(["/repo/AGENTS.md"]);
   });
 
-  test("a command near the cap with a worst-case cd chain returns promptly", () => {
-    const started = performance.now();
-    reads("cd a;".repeat(19_990));
-    // Unfixed this takes seconds (about 8 s); the bound is generous for loaded machines.
-    expect(performance.now() - started).toBeLessThan(5000);
+  test("a worst-case cd chain is bounded by the path cap, not by elapsed time", () => {
+    // Every tracked directory is capped at 4096 characters, so each of the chain's steps copies a
+    // bounded string and the whole chain does linear work. Pinning the exact cap is the
+    // load-independent form of "returns promptly": unfixed, paths grew without bound.
+    const chain = "cd a;".repeat(2039);
+    // "/repo/ab/" + "a/" * 2039 + "AGENTS.md" is exactly 4096 characters: allowed.
+    expect(reads(`cd ab; ${chain} cat AGENTS.md`)).toStrictEqual([
+      `/repo/ab/${"a/".repeat(2039)}AGENTS.md`,
+    ]);
+    // One character more is over the cap: nothing resolves.
+    expect(reads(`cd abc; ${chain} cat AGENTS.md`)).toStrictEqual([]);
+    // Near the command-size cap the chain still resolves nothing and reads nothing.
+    expect(reads(`${"cd a;".repeat(19_990)} cat AGENTS.md`)).toStrictEqual([]);
   });
 });
