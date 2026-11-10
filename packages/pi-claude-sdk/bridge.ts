@@ -95,7 +95,10 @@ class AssistantMessageWriter {
   readonly stream = createAssistantMessageEventStream();
   private readonly output: AssistantMessage;
   private open: TextContent | ThinkingContent | undefined;
-  /** Set once Pi's stream has received its terminal event; later events are ignored. */
+  /**
+   * Set once a terminal event was attempted. `pump` stops at the first terminal event, so only
+   * a terminal push that threw can reach `fail` again; this keeps that from ending twice.
+   */
   private ended = false;
 
   constructor(
@@ -107,9 +110,6 @@ class AssistantMessageWriter {
   }
 
   write(event: BridgeEvent): boolean {
-    if (this.ended) {
-      return true;
-    }
     switch (event.type) {
       case "text_delta": {
         this.append("text", event.text);
@@ -271,9 +271,6 @@ class AssistantMessageWriter {
   }
 
   private finish(reason: "stop" | "length" | "toolUse"): void {
-    if (this.ended) {
-      return;
-    }
     this.ended = true;
     this.output.stopReason = reason;
     try {
