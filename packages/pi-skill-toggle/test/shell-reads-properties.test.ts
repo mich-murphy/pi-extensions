@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { isAbsolute, resolve } from "node:path";
+import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { pathsReadByCommand } from "../shell-reads";
@@ -59,6 +60,56 @@ const quoted = gs.composite((tc): Quoted => {
   }
   return { word: chars.join(""), source };
 });
+
+type Braced = { readonly source: string; readonly words: readonly string[] };
+
+/** A brace expression, with the words bash expands it to written out directly. */
+function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
+  return gs.composite((tc): Braced => {
+    const text = (): Braced => {
+      const value = tc.draw(gs.text({ alphabet: "abc", maxSize: 2 }));
+      return { source: value, words: [value] };
+    };
+    const group = (): Braced => {
+      const kind = tc.draw(gs.integers({ minValue: 0, maxValue: depth > 0 ? 2 : 1 }));
+      if (kind === 0) {
+        return sequence(tc);
+      }
+      const size = tc.draw(gs.integers({ minValue: 2, maxValue: 3 }));
+      const options = Array.from({ length: size }, () =>
+        kind === 1 ? text() : tc.draw(braced(depth - 1)),
+      );
+      return {
+        source: `{${options.map((option) => option.source).join(",")}}`,
+        words: options.flatMap((option) => option.words),
+      };
+    };
+    const parts = [text(), group(), text(), ...(tc.draw(gs.booleans()) ? [group()] : [])];
+    let joined: Braced = { source: "", words: [""] };
+    for (const part of parts) {
+      joined = {
+        source: joined.source + part.source,
+        words: joined.words.flatMap((head) => part.words.map((tail) => head + tail)),
+      };
+    }
+    return joined;
+  });
+}
+
+function sequence(tc: TestCase): Braced {
+  const letters = tc.draw(gs.booleans());
+  const from = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
+  const to = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
+  const step = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
+  const render = (value: number): string =>
+    letters ? String.fromCodePoint(97 + value) : `${value}`;
+  const words: string[] = [];
+  const direction = to < from ? -step : step;
+  for (let value = from; direction > 0 ? value <= to : value >= to; value += direction) {
+    words.push(render(value));
+  }
+  return { source: `{${render(from)}..${render(to)}..${step}}`, words };
+}
 
 const directory = gs.text({ alphabet: "abcdefg", minSize: 1, maxSize: 4 });
 const plain = gs.text({ alphabet: "abc.", maxSize: 4 });
@@ -258,17 +309,7 @@ describe("pathsReadByCommand properties", () => {
       const before = tc.draw(plain, "before");
       const after = tc.draw(plain, "after");
       const special = tc.draw(
-        gs.sampledFrom([
-          "*",
-          "?",
-          "[ab]",
-          "$V",
-          "${V}",
-          "$(echo x)",
-          "`echo x`",
-          "{a,b}",
-          "{1..3}",
-        ]),
+        gs.sampledFrom(["*", "?", "[ab]", "$V", "${V}", "$(echo x)", "`echo x`"]),
         "special",
       );
       assert.deepEqual(reads(`cat ${before}${special}${after}`), []);
@@ -284,6 +325,88 @@ describe("pathsReadByCommand properties", () => {
       const word = `${before}{${inner}}x`;
       assert.deepEqual(reads(`cat ${word}`), [resolve(cwd, word)]);
     });
+  });
+
+  // A generated word, quoted any way a shell allows, in each construct the lexer must see through.
+  test("a word in a trap action, coproc, source or default is reported", () => {
+    assertProperty(
+      "shell-reads",
+      "a word in a trap action, coproc, source or default is reported",
+      (tc) => {
+        const { word, source } = tc.draw(quoted, "word");
+        const read = [resolve(cwd, word)];
+        const signal = tc.draw(gs.sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
+        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", "="]), "operator");
+        assert.deepEqual(reads(`trap ${inSingleQuotes(`cat ${source}`)} ${signal}`), read);
+        assert.deepEqual(reads(`trap -- ${inSingleQuotes(`cat ${source}`)} ${signal}`), read);
+        assert.deepEqual(reads(`coproc cat ${source}`), read);
+        assert.deepEqual(reads(`coproc P { cat ${source}; }`), read);
+        assert.deepEqual(reads(`source ${source} arg1 arg2`), read);
+        assert.deepEqual(reads(`. ${source}`), read);
+        assert.deepEqual(reads(`cat \${x${operator}${source}}`), read);
+        assert.deepEqual(reads(`cat \${x${operator}${source}}.md`), [resolve(cwd, `${word}.md`)]);
+      },
+    );
+  });
+
+  test("a default or alternative word in double quotes is reported", () => {
+    assertProperty(
+      "shell-reads",
+      "a default or alternative word in double quotes is reported",
+      (tc) => {
+        const word = tc.draw(gs.text({ alphabet: "abc./ ", minSize: 1, maxSize: 6 }), "word");
+        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", "=", ":+", "+"]), "operator");
+        // Single quotes are ordinary characters inside double quotes, so no escaping is needed.
+        assert.deepEqual(reads(`cat "\${x${operator}${word}}"`), [resolve(cwd, word)]);
+      },
+    );
+  });
+
+  test("a trap that resets, ignores or lists reads nothing", () => {
+    assertProperty("shell-reads", "a trap that resets, ignores or lists reads nothing", (tc) => {
+      const { source } = tc.draw(quoted, "word");
+      const signal = tc.draw(gs.sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
+      assert.deepEqual(reads(`trap - ${signal} ${source}`), []);
+      assert.deepEqual(reads(`trap '' ${signal} ${source}`), []);
+      assert.deepEqual(reads(`trap -p ${signal}`), []);
+      assert.deepEqual(reads(`trap ${source}`), []);
+    });
+  });
+
+  test("brace expansion matches an independently generated expansion", () => {
+    assertProperty(
+      "shell-reads",
+      "brace expansion matches an independently generated expansion",
+      (tc) => {
+        const tree = tc.draw(braced(2), "tree");
+        // More than 256 words are left unresolved; a separate property pins that.
+        tc.assume(tree.words.length <= 256);
+        const expected = [
+          ...new Set(tree.words.filter((word) => word !== "").map((word) => resolve(cwd, word))),
+        ].toSorted();
+        assert.deepEqual(reads(`cat ${tree.source}`), expected, tree.source);
+        assert.deepEqual(reads(`cat "${tree.source}"`), [resolve(cwd, tree.source)]);
+        assert.deepEqual(reads(`cat '${tree.source}'`), [resolve(cwd, tree.source)]);
+        assert.deepEqual(
+          reads(`cat ${tree.source.replaceAll("{", String.raw`\{`)}`),
+          [resolve(cwd, tree.source)],
+          "escaped",
+        );
+      },
+    );
+  });
+
+  test("a brace expansion past the cap reads nothing and a plain word still does", () => {
+    assertProperty(
+      "shell-reads",
+      "a brace expansion past the cap reads nothing and a plain word still does",
+      (tc) => {
+        const count = tc.draw(gs.integers({ minValue: 257, maxValue: 1_000_000_000 }), "count");
+        const { word, source } = tc.draw(quoted, "word");
+        assert.deepEqual(reads(`cat {1..${count}}`), []);
+        assert.deepEqual(reads(`cat {1..${count}} ${source}`), [resolve(cwd, word)]);
+      },
+    );
   });
 
   test("commands that print no file content read nothing", () => {

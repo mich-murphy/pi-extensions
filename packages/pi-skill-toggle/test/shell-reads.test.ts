@@ -123,7 +123,6 @@ describe("pathsReadByCommand ignores commands that print no file content", () =>
   test.each([
     'for p in AGENTS.md; do cat "$q"; done',
     'for p in AGENTS.md; do cat "$p/public.txt"; done',
-    'for p in AGENTS.md; do cat "${p:-public.txt}"; done',
     'for p in AGENTS.md; do cat "$(echo public.txt)"; done',
     "cd --unknown web && cat AGENTS.md",
     "cd web extra && cat AGENTS.md",
@@ -228,8 +227,8 @@ describe("pathsReadByCommand follows bash scoping and expansion", () => {
     ["cd web &&\ntrue & cat b", ["/repo/b"]],
     ["cd web &&\ncat a", ["/repo/web/a"]],
     ["cd web ||\ncat a", ["/repo/web/a"]],
-    ["cat {AGENTS,README}.md", []],
-    ["cat {1..3}.md", []],
+    ["cat {AGENTS,README}.md", ["/repo/AGENTS.md", "/repo/README.md"]],
+    ["cat {1..3}.md", ["/repo/1.md", "/repo/2.md", "/repo/3.md"]],
     ["cat ~user/x", []],
     ["cat ~+/x", []],
     ["cat ~/x", [join(homedir(), "x")]],

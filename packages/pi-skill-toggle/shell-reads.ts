@@ -5,9 +5,14 @@ import { basename, isAbsolute, resolve } from "node:path";
 type Word = {
   readonly text: string;
   readonly literal: boolean;
+  /** Set when every character was written as itself, so `\{` and `'{'` are not a bare `{`. */
+  readonly bare?: boolean | undefined;
   /** Set only for an exact `$name`, `${name}`, or double-quoted equivalent. */
   readonly variable?: string | undefined;
 };
+
+/** One lexed part of a word. Only an unquoted, unescaped character that is itself is `plain`. */
+type Piece = Word & { readonly plain: boolean };
 
 /** One simple command. Its heredoc body is filled in once the lexer reaches the next line. */
 type Command = {
@@ -27,7 +32,13 @@ type Item =
 type Boundary = "and" | "semi" | "pipe" | "background";
 
 /** Where the current list and pipeline started, for undoing a `cd` that ran in a subshell. */
-type Frame = { list: string | undefined; pipe: string | undefined; piped: boolean };
+type Frame = {
+  list: string | undefined;
+  pipe: string | undefined;
+  piped: boolean;
+  /** A `coproc` group, whose closing brace also ends the subshell's own directory. */
+  subshell?: true;
+};
 
 /** Option letters and long options that take a separate value. */
 type Options = { readonly short: string; readonly long: readonly string[] };
@@ -84,14 +95,27 @@ const KEYWORDS = new Set([
   "}",
   "time",
 ]);
+/** What may follow `coproc NAME`: a compound command. */
+const COMPOUND_START = new Set(["{", "while", "until", "if", "for", "case", "select"]);
 const CONDITION_LOOPS = new Set(["while", "until"]);
 /**
- * Unquoted brace expansion: `{a,b}` or a sequence such as `{1..3}` or `{a..e}`. Other braces, such as
- * `{}`, `{a}` or `{..}`, are literal in bash and stay literal here. Quoted or escaped characters are
- * replaced by `_` before the test, so `"{a,b}"` stays literal.
+ * Brace expansion stops here, and the word is left unresolved like any other dynamic one. The
+ * limits keep one word's expansion, a whole command's, and the nesting it is scanned at bounded.
  */
-const BRACE_EXPANSION =
-  /\{[^}]*,[^}]*\}|\{(?:-?\d+|[A-Za-z])\.\.(?:-?\d+|[A-Za-z])(?:\.\.-?\d+)?\}/u;
+const MAX_BRACE_WORDS = 256;
+const MAX_BRACE_WORDS_PER_COMMAND = 4096;
+const MAX_BRACE_NESTING = 8;
+const MAX_BRACE_PIECES = 1024;
+/** Deepest `${name:-default}` nested in another's default that is still read as a path. */
+const MAX_DEFAULT_NESTING = 8;
+/** `${name:-word}`, `${name-word}`, `${name:=word}`, `${name=word}`, `${name:+word}`, `${name+word}`. */
+const PARAMETER_DEFAULT =
+  /^(?<name>[A-Za-z_]\w*(?:\[[^\]]*\])?|\d+|[@*?$!#-])(?<operator>:?[-=+])(?<word>.*)$/su;
+const EXACT_VARIABLE = /^\$(?:(?<bare>[A-Za-z_]\w*)|\{(?<braced>[A-Za-z_]\w*)\})$/u;
+const DEFAULTED_VARIABLE = /^\$\{(?<name>[A-Za-z_]\w*):?[-=]/u;
+const SIGNED_NUMBER = /^-?\d{1,15}$/u;
+const NUMBER_SEQUENCE = /^(?<from>-?\d+)\.\.(?<to>-?\d+)(?:\.\.(?<step>-?\d+))?$/u;
+const LETTER_SEQUENCE = /^(?<from>[A-Za-z])\.\.(?<to>[A-Za-z])(?:\.\.(?<step>-?\d+))?$/u;
 const ASSIGNMENT = /^[A-Za-z_]\w*=/u;
 const NAME = /[A-Za-z_]\w*/uy;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
@@ -229,7 +253,14 @@ class Lexer {
     readonly substitutions: string[];
   }[] = [];
 
-  constructor(private readonly source: string) {}
+  /** How many more words brace expansion may produce in this source. */
+  private braceBudget = MAX_BRACE_WORDS_PER_COMMAND;
+
+  constructor(
+    private readonly source: string,
+    /** How many `${name:-default}` defaults enclose this source. */
+    private readonly nesting = 0,
+  ) {}
 
   lex(): void {
     while (this.index < this.source.length) {
@@ -274,7 +305,7 @@ class Lexer {
     }
     const operator = OPERATORS.find((candidate) => this.source.startsWith(candidate, this.index));
     if (operator === undefined) {
-      this.words.push(this.word());
+      this.words.push(...this.wordList());
       return;
     }
     this.index += operator.length;
@@ -346,27 +377,55 @@ class Lexer {
     }
   }
 
+  /** One word where the shell makes one; a brace expansion that makes several is unresolved. */
   private word(): Word {
+    const [first, second] = this.wordList();
+    return second === undefined && first !== undefined ? first : { text: "", literal: false };
+  }
+
+  /** The words one source word becomes: several for a brace expansion, one otherwise. */
+  private wordList(): readonly Word[] {
     const start = this.index;
-    let text = "";
-    let literal = true;
-    let bare = "";
+    const pieces: Piece[] = [];
     while (this.index < this.source.length && !WORD_END.has(this.source.charAt(this.index))) {
       const char = this.source.charAt(this.index);
       const part = this.wordPart(start);
-      text += part.text;
-      literal &&= part.literal;
-      bare += "\\'\"$`".includes(char) ? "_" : char;
+      pieces.push({ ...part, plain: part.text === char && !"\\'\"$`".includes(char) });
     }
-    literal &&= !BRACE_EXPANSION.test(bare);
-    const raw = this.source.slice(start, this.index);
+    const single = this.single(pieces, start);
+    if (!pieces.some((piece) => piece.plain && piece.text === "{")) {
+      return [single];
+    }
+    const expansion = expandBraces(pieces, 0);
+    this.braceBudget -= expansion?.length ?? 0;
+    if (expansion === undefined || this.braceBudget < 0) {
+      return [{ text: single.text, literal: false }];
+    }
+    return expansion.map((expanded) => joinPieces(expanded));
+  }
+
+  private single(pieces: readonly Piece[], start: number): Word {
+    const word = joinPieces(pieces);
+    return { ...word, variable: this.variableOf(this.source.slice(start, this.index), word) };
+  }
+
+  /**
+   * The variable a word is exactly: `$name` or `${name}` when unknown, and `${name:-word}`,
+   * `${name-word}`, `${name:=word}` or `${name=word}` whose word is only a fallback.
+   */
+  private variableOf(raw: string, word: Word): string | undefined {
     const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
-    const variable = /^\$(?:(?<bare>[A-Za-z_]\w*)|\{(?<braced>[A-Za-z_]\w*)\})$/u.exec(unquoted);
-    return {
-      text,
-      literal,
-      variable: literal ? undefined : (variable?.groups?.bare ?? variable?.groups?.braced),
-    };
+    const exact = EXACT_VARIABLE.exec(unquoted)?.groups;
+    if (exact !== undefined) {
+      return word.literal ? undefined : (exact.bare ?? exact.braced);
+    }
+    const name = DEFAULTED_VARIABLE.exec(unquoted)?.groups?.name;
+    if (name === undefined) {
+      return undefined;
+    }
+    const probe = new Lexer(unquoted.slice(2));
+    probe.scan("{");
+    return probe.index === unquoted.length - 2 ? name : undefined;
   }
 
   /** Consume one piece of a word: an escape, a quoted run, an expansion, or one character. */
@@ -434,7 +493,7 @@ class Lexer {
         text += this.source.charAt(this.index + 1);
         this.index += 2;
       } else if (char === "$") {
-        const expansion = this.dollar();
+        const expansion = this.dollar(true);
         text += expansion.text;
         literal &&= expansion.literal;
       } else if (char === "`") {
@@ -497,8 +556,11 @@ class Lexer {
     }
   }
 
-  /** Only `$HOME` has a value known without running the shell; every other expansion is dynamic. */
-  private dollar(): Word {
+  /**
+   * Only `$HOME` has a value known without running the shell. A literal default or alternative
+   * word of any other `${name:-word}` is a possible path, since `name` may well be unset.
+   */
+  private dollar(quoted = false): Word {
     const next = this.source.charAt(this.index + 1);
     if (next === "(") {
       this.index += 2;
@@ -507,7 +569,7 @@ class Lexer {
     }
     if (next === "{") {
       this.index += 2;
-      return home(this.scan("{"));
+      return this.parameter(this.scan("{"), quoted);
     }
     NAME.lastIndex = this.index + 1;
     const name = NAME.exec(this.source)?.[0];
@@ -521,6 +583,55 @@ class Lexer {
     }
     this.index += 2;
     return { text: "", literal: false };
+  }
+
+  /** The inside of a `${ }`: a default or alternative word, or a plain name. */
+  private parameter(inner: string, quoted: boolean): Word {
+    const groups = PARAMETER_DEFAULT.exec(inner)?.groups;
+    if (groups?.word === undefined) {
+      return home(inner);
+    }
+    // `$HOME` is set, so `${HOME:-word}` is its value; `${HOME:+word}` is the word.
+    if (groups.name === "HOME" && groups.operator?.endsWith("+") !== true) {
+      return home("HOME");
+    }
+    return this.defaultWord(groups.word, quoted);
+  }
+
+  /**
+   * Read the word of a `${name:-word}` as shell text. Its substitutions already ran when the
+   * enclosing `${ }` was scanned. Unquoted, an unquoted space would split it into several words,
+   * which one word cannot stand for.
+   */
+  private defaultWord(text: string, quoted: boolean): Word {
+    if (this.nesting >= MAX_DEFAULT_NESTING) {
+      return { text: "", literal: false };
+    }
+    const lexer = new Lexer(text, this.nesting + 1);
+    const pieces: Word[] = [];
+    let splits = false;
+    while (lexer.index < text.length) {
+      const char = lexer.source.charAt(lexer.index);
+      const part = quoted ? lexer.quotedPart() : lexer.wordPart(0);
+      splits ||= !quoted && part.text === char && /\s/u.test(char);
+      pieces.push(part);
+    }
+    const word = joinPieces(pieces.map((piece) => ({ ...piece, plain: false })));
+    return splits ? { text: word.text, literal: false } : word;
+  }
+
+  /**
+   * One piece of a default word inside double quotes: a single quote is an ordinary character
+   * there, and a backslash escapes only `$`, `` ` ``, `"`, `\` and a newline.
+   */
+  private quotedPart(): Word {
+    const char = this.source.charAt(this.index);
+    const next = this.source.charAt(this.index + 1);
+    if (char === "'" || (char === "\\" && !'$`"\\\n'.includes(next))) {
+      this.index += 1;
+      return { text: char, literal: true };
+    }
+    return this.wordPart(0);
   }
 
   /** Backslash removes itself before `` ` ``, `$` and `\`, and before `"` when the backticks sit in double quotes. */
@@ -648,6 +759,154 @@ function home(name: string): Word {
   return name === "HOME" ? { text: homedir(), literal: true } : { text: "", literal: false };
 }
 
+function joinPieces(pieces: readonly Piece[]): Word {
+  return {
+    text: pieces.map((piece) => piece.text).join(""),
+    literal: pieces.every((piece) => piece.literal),
+    bare: pieces.every((piece) => piece.plain),
+  };
+}
+
+type Expansion = readonly (readonly Piece[])[];
+
+/**
+ * The words bash's brace expansion makes of a word, or undefined when there would be too many.
+ * Only plain `{`, `,`, `}` and sequence characters count, so quoted, escaped and `${ }` braces
+ * stay inert. A `{` that does not start an expansion stays literal, as in `{a}` or `{a{b,c}}`.
+ *
+ * @param depth - How many braces enclose these pieces.
+ */
+function expandBraces(pieces: readonly Piece[], depth: number): Expansion | undefined {
+  if (pieces.length > MAX_BRACE_PIECES || depth > MAX_BRACE_NESTING) {
+    return undefined;
+  }
+  const closes = matchingBraces(pieces);
+  for (let open = 0; open < pieces.length; open += 1) {
+    const close = closes[open] ?? -1;
+    if (close === -1) {
+      continue;
+    }
+    const inner = pieces.slice(open + 1, close);
+    const options = braceAlternatives(inner) ?? braceSequence(inner);
+    if (options === null) {
+      return undefined;
+    }
+    if (options !== undefined) {
+      return combineBraces(pieces.slice(0, open), options, pieces.slice(close + 1), depth);
+    }
+  }
+  return [pieces];
+}
+
+/** For each plain `{`, the index of its plain `}`, or -1. */
+function matchingBraces(pieces: readonly Piece[]): readonly number[] {
+  const closes = pieces.map(() => -1);
+  const opens: number[] = [];
+  for (const [index, piece] of pieces.entries()) {
+    if (piece.plain && piece.text === "{") {
+      opens.push(index);
+    } else if (piece.plain && piece.text === "}") {
+      closes[opens.pop() ?? index] = index;
+    }
+  }
+  return closes;
+}
+
+/** The comma-separated alternatives of a brace body, or undefined when it has no top-level comma. */
+function braceAlternatives(inner: readonly Piece[]): readonly (readonly Piece[])[] | undefined {
+  const options: Piece[][] = [[]];
+  let depth = 0;
+  let commas = 0;
+  for (const piece of inner) {
+    if (piece.plain && piece.text === "," && depth === 0) {
+      commas += 1;
+      options.push([]);
+      continue;
+    }
+    depth += piece.plain && piece.text === "{" ? 1 : 0;
+    depth -= piece.plain && piece.text === "}" ? 1 : 0;
+    options.at(-1)?.push(piece);
+  }
+  return commas === 0 ? undefined : options;
+}
+
+/**
+ * The words of `{1..3}`, `{3..1..2}`, `{01..10}` or `{a..e}`. Undefined when the body is not a
+ * sequence, null when it has more words than the cap allows.
+ */
+function braceSequence(inner: readonly Piece[]): Expansion | null | undefined {
+  if (!inner.every((piece) => piece.plain && piece.text.length === 1)) {
+    return undefined;
+  }
+  const body = inner.map((piece) => piece.text).join("");
+  const numbers = NUMBER_SEQUENCE.exec(body)?.groups;
+  const letters = LETTER_SEQUENCE.exec(body)?.groups;
+  if (numbers !== undefined) {
+    return numberSequence(numbers.from ?? "", numbers.to ?? "", numbers.step ?? "1");
+  }
+  if (letters === undefined) {
+    return undefined;
+  }
+  const values = sequenceValues(
+    (letters.from ?? "").codePointAt(0) ?? 0,
+    (letters.to ?? "").codePointAt(0) ?? 0,
+    letters.step ?? "1",
+  );
+  return values?.map((value) => [sequencePiece(String.fromCodePoint(value))]) ?? null;
+}
+
+/** `{from..to..step}` of integers; bash pads to the longest end when either has a leading zero. */
+function numberSequence(from: string, to: string, step: string): Expansion | null {
+  if (![from, to, step].every((part) => SIGNED_NUMBER.test(part))) {
+    return null;
+  }
+  const values = sequenceValues(Number(from), Number(to), step);
+  const width = /^-?0\d/u.test(from) || /^-?0\d/u.test(to) ? Math.max(from.length, to.length) : 0;
+  return values?.map((value) => [sequencePiece(paddedNumber(value, width))]) ?? null;
+}
+
+function paddedNumber(value: number, width: number): string {
+  const digits = String(Math.abs(value));
+  return value < 0 ? `-${digits.padStart(width - 1, "0")}` : digits.padStart(width, "0");
+}
+
+function sequencePiece(text: string): Piece {
+  return { text, literal: true, plain: false };
+}
+
+/** The values from `from` to `to` in steps of `|step|` (1 for 0), or undefined past the cap. */
+function sequenceValues(from: number, to: number, step: string): readonly number[] | undefined {
+  const size = Math.abs(Number(step)) || 1;
+  const count = Math.floor(Math.abs(to - from) / size) + 1;
+  if (count > MAX_BRACE_WORDS) {
+    return undefined;
+  }
+  const direction = to < from ? -size : size;
+  return Array.from({ length: count }, (_, index) => from + index * direction);
+}
+
+/** Every alternative of the first brace, in front of every expansion of what follows it. */
+function combineBraces(
+  before: readonly Piece[],
+  options: Expansion,
+  after: readonly Piece[],
+  depth: number,
+): Expansion | undefined {
+  const middle: (readonly Piece[])[] = [];
+  for (const option of options) {
+    const expanded = expandBraces(option, depth + 1);
+    if (expanded === undefined || middle.length + expanded.length > MAX_BRACE_WORDS) {
+      return undefined;
+    }
+    middle.push(...expanded);
+  }
+  const tail = expandBraces(after, depth);
+  if (tail === undefined || middle.length * tail.length > MAX_BRACE_WORDS) {
+    return undefined;
+  }
+  return middle.flatMap((head) => tail.map((rest) => [...before, ...head, ...rest]));
+}
+
 class Evaluator {
   private readonly directories: (string | undefined)[];
   private readonly frames: Frame[];
@@ -690,8 +949,8 @@ class Evaluator {
   }
 
   private popFrame(): void {
-    if (this.frames.length > 1) {
-      this.frames.pop();
+    if (this.frames.length > 1 && this.frames.pop()?.subshell && this.directories.length > 1) {
+      this.directories.pop();
     }
   }
 
@@ -730,6 +989,38 @@ class Evaluator {
       analyze(inner, this.cwd, this.depth + 1, this.reads);
     }
     const words = this.withoutKeywords(command.words);
+    if (words[0]?.literal === true && words[0].text === "coproc") {
+      this.coproc(words, command);
+    } else {
+      this.evaluateWords(words, command);
+    }
+  }
+
+  /**
+   * `coproc [NAME] command` runs the command in a subshell, so a `cd` in it does not reach the
+   * next command. `NAME` is only a name before a compound command: `coproc NAME cat x` runs a
+   * command called `NAME`.
+   */
+  private coproc(words: readonly Word[], command: Command): void {
+    const [, name, third] = words;
+    const named =
+      name?.literal === true &&
+      /^[A-Za-z_]\w*$/u.test(name.text) &&
+      third?.bare === true &&
+      COMPOUND_START.has(third.text);
+    const rest = words.slice(named ? 2 : 1);
+    this.directories.push(this.cwd);
+    if (rest[0]?.bare === true && rest[0].text === "{") {
+      // The group's own `}` ends the subshell.
+      this.frames.push({ ...this.frame(), subshell: true });
+      this.evaluateWords(this.withoutKeywords(rest.slice(1)), command);
+      return;
+    }
+    this.evaluateWords(this.withoutKeywords(rest), command);
+    this.directories.pop();
+  }
+
+  private evaluateWords(words: readonly Word[], command: Command): void {
     if (this.loopBoundary(words)) {
       return;
     }
@@ -748,11 +1039,15 @@ class Evaluator {
     if (run[0]?.literal !== true) {
       return;
     }
-    const files = this.filesRead(basename(run[0].text), run.slice(1), command);
-    if (files === undefined) {
+    const name = basename(run[0].text);
+    const args = run.slice(1);
+    if (this.builtin(name, args, command)) {
       return;
     }
-    this.add(files);
+    const files = fileArguments(name, args);
+    if (files !== undefined) {
+      this.add([...files, ...command.inputs]);
+    }
   }
 
   /** Drop leading keywords such as `if` and `do`, opening a loop for `while` and `until`. */
@@ -793,25 +1088,42 @@ class Evaluator {
     return true;
   }
 
-  /** Files the command prints, or undefined when it is not a content reader. */
-  private filesRead(
-    name: string,
-    args: readonly Word[],
-    command: Command,
-  ): readonly Word[] | undefined {
+  /** Handle a command that runs or reads rather than prints; true when `name` is one. */
+  private builtin(name: string, args: readonly Word[], command: Command): boolean {
     if (name === "cd" || name === "pushd") {
       this.changeDirectory(args);
-      return undefined;
-    }
-    if (SHELLS.has(name)) {
+    } else if (SHELLS.has(name)) {
       const script = shellScript(args, command.heredoc.body);
       if (script !== undefined) {
         analyze(script, this.cwd, this.depth + 1, this.reads);
       }
-      return undefined;
+    } else if (name === "trap") {
+      this.trapAction(args);
+    } else if (name === "source" || name === ".") {
+      this.add(parseArguments(args, NO_OPTIONS, true).positionals.slice(0, 1));
+    } else {
+      return false;
     }
-    const files = fileArguments(name, args);
-    return files === undefined ? undefined : [...files, ...command.inputs];
+    return true;
+  }
+
+  /**
+   * `trap ACTION SIGNAL…` runs ACTION as a command later. A lone operand is a signal, `-` resets
+   * and an empty ACTION ignores, and `-p` or `-l` only list.
+   */
+  private trapAction(args: readonly Word[]): void {
+    const { flags, positionals } = parseArguments(args, NO_OPTIONS);
+    const [action, signal] = positionals;
+    if (
+      action === undefined ||
+      signal === undefined ||
+      ["-l", "-p", "-P"].some((f) => flags.has(f))
+    ) {
+      return;
+    }
+    if (action.text !== "-") {
+      analyze(action.text, this.cwd, this.depth + 1, this.reads);
+    }
   }
 
   private changeDirectory(args: readonly Word[]): void {
