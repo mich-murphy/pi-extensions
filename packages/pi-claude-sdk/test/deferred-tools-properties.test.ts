@@ -4,7 +4,7 @@ import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
-import { propertySettings } from "../../../test-support/hegel-settings";
+import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { createDeferredCallCapture } from "../sdk/deferred-tools";
 import { compileToolCatalog } from "../sdk/tool-catalog";
 import type { CatalogTool } from "../sdk/tool-catalog";
@@ -129,28 +129,44 @@ function assertRoundTrip(names: readonly string[]): void {
   );
 }
 
+// Each case compiles up to a dozen tool schemas through zod, about 70 us apiece and not avoidable: the
+// catalog compiles a schema for every tool. The slowest property took 1.4 s under 8 busy processes.
+const PROPERTY_TIMEOUT = propertyTimeout(60_000);
+
 describe("SDK tool-name mapping properties", () => {
-  test("mapped names are distinct, within 64 chars [a-zA-Z0-9_-], plain or hashed", () => {
-    new Hegel((tc) => {
-      assertDistinctAndWellFormed(drawNames(tc));
-    })
-      .settings(settings)
-      .runSync();
-  });
+  test(
+    "mapped names are distinct, within 64 chars [a-zA-Z0-9_-], plain or hashed",
+    { timeout: PROPERTY_TIMEOUT },
+    () => {
+      new Hegel((tc) => {
+        assertDistinctAndWellFormed(drawNames(tc));
+      })
+        .settings(settings)
+        .runSync();
+    },
+  );
 
-  test("mapping is deterministic and independent of registration order and catalog", () => {
-    new Hegel((tc) => {
-      assertOrderIndependent(drawNames(tc));
-    })
-      .settings(settings)
-      .runSync();
-  });
+  test(
+    "mapping is deterministic and independent of registration order and catalog",
+    { timeout: PROPERTY_TIMEOUT },
+    () => {
+      new Hegel((tc) => {
+        assertOrderIndependent(drawNames(tc));
+      })
+        .settings(settings)
+        .runSync();
+    },
+  );
 
-  test("mapped names round-trip to the exact Pi names through capture", () => {
-    new Hegel((tc) => {
-      assertRoundTrip(drawNames(tc));
-    })
-      .settings(settings)
-      .runSync();
-  });
+  test(
+    "mapped names round-trip to the exact Pi names through capture",
+    { timeout: PROPERTY_TIMEOUT },
+    () => {
+      new Hegel((tc) => {
+        assertRoundTrip(drawNames(tc));
+      })
+        .settings(settings)
+        .runSync();
+    },
+  );
 });

@@ -28,7 +28,7 @@ describe("production Pi loop through actual offline SDK", () => {
             offlineContractPath,
           ],
           {
-            timeout: 40_000,
+            timeout: 100_000,
             encoding: "utf8",
             env: {
               PATH: process.env.PATH,
@@ -49,6 +49,8 @@ describe("production Pi loop through actual offline SDK", () => {
         await rm(home, { recursive: true, force: true });
       }
     },
-    45_000,
+    // A real sandboxed Pi process: up to 4.2 s under 8 busy processes. The contract child aborts itself at
+    // 30 s, the spawn is killed at 100 s and the test fails at 120 s, in that order.
+    120_000,
   );
 });
