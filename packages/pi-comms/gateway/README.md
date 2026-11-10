@@ -35,7 +35,7 @@ The config is strict JSON, 32 KiB or smaller, with no unknown fields.
 | `policies[].direction` | `outgoing` (default) or `incoming` | `outgoing`: your local sessions acting on that machine. `incoming`: that machine acting on your sessions. |
 | `remote` | Optional object | One peer gateway. |
 | `remote.machineId` | Machine pattern, not your own | Peer name. It must have a policy. |
-| `remote.endpoint` | `{"mode":"listen"\|"connect","address":"IP:port"}` | One side listens, the other connects. |
+| `remote.endpoint` | `{"mode":"listen"\|"connect","address":"IP:port"}` | One side listens, the other connects. A listener may use port `0`: the OS picks a free port and `ready` reports it. A connector must name a real port. |
 | `remote.rootCertificates` | 1–4 paths | Trusted roots. |
 | `remote.certificateChain` | 1–8 paths | Your chain, leaf first, without the root. |
 | `remote.issuerCertificates` | 0–8 paths | Extra issuers used only to verify a CRL. They add no trust. |
@@ -81,7 +81,7 @@ Local Unix connections have no heartbeat.
 
 ## Output
 
-Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. Stderr has `{"event":"remote_unavailable","reason":"reconnect_exhausted"}` when the connector gives up. It then stays down until you restart it or a local session registers again. Startup failures print `Error:` and exit non-zero.
+Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A gateway whose remote endpoint listens adds `"remoteListenAddress":"IP:port"`, the socket address it actually bound. With a configured port of `0` this is the only way to learn the port. Gateways without a remote, and connectors, omit the field. Stderr has `{"event":"remote_unavailable","reason":"reconnect_exhausted"}` when the connector gives up. It then stays down until you restart it or a local session registers again. Startup failures print `Error:` and exit non-zero.
 
 ## Troubleshooting
 
