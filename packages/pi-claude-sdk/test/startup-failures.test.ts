@@ -40,7 +40,7 @@ describe("startup failures reach the user", () => {
     const message = await shownToUser(async function* oldClaude() {
       yield { type: "system", subtype: "init", claude_code_version: "2.1.316" };
       yield resultMessage();
-    }, {});
+    }, installed);
 
     expect(message).toBe(
       "Claude Agent SDK: the query stopped before finishing (Claude Code 2.1.316 is too old (2.1.317 or newer is required); run `claude update`)",
