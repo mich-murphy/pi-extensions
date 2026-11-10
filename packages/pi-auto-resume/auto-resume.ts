@@ -396,6 +396,8 @@ export function registerAutoResume(
   // resetting there would erase the attempt count between every retry.
   pi.on("agent_start", () => {
     cancel();
+    // Normally redundant with turn_start, which follows immediately; kept so a run never
+    // inherits a notice published before it began.
     published = undefined;
   });
 

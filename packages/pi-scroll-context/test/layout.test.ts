@@ -12,9 +12,9 @@ import { createHostAdapter } from "../host";
 
 initTheme("dark");
 
-function fixture() {
+function fixture(firstPrompt = "first prompt") {
   const document = new Container();
-  document.addChild(new UserMessageComponent("first prompt"));
+  document.addChild(new UserMessageComponent(firstPrompt));
   document.addChild(
     new AssistantMessageComponent({
       role: "assistant",
@@ -74,6 +74,21 @@ function callMethod(method: unknown, receiver: unknown): unknown {
   return typeof method === "function" ? Reflect.apply(method, receiver, []) : undefined;
 }
 
+/** A root whose native two-entry layout has one allocation field of one entry changed. */
+function driftedRoot(native: Component, which: "transcript" | "dock", change: object) {
+  const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
+  const node = getLayoutNode(native);
+  if (node?.type !== "vstack") {
+    throw new Error("test setup: native root is not a vstack");
+  }
+  const target = which === "transcript" ? 0 : 1;
+  const entries = node.entries.map((entry, index) =>
+    index === target ? { ...entry, ...change } : entry,
+  );
+  const layoutNode = () => ({ ...node, entries });
+  return { root: { render: () => [], [symbol]: layoutNode }, layoutNode, symbol };
+}
+
 function visible(component: Component): boolean | undefined {
   const node = getLayoutNode(component);
   return node?.type === "vstack"
@@ -118,6 +133,58 @@ describe("native chat viewport", () => {
     expect(Reflect.get(f.root, symbol)).toBe(wrapped);
     expect(plain(f.render().lines)[0]).not.toContain("❯");
     expect(muted).not.toHaveBeenCalled();
+  });
+
+  test("collapses the whitespace of a multi-line prompt into one clean row", () => {
+    const f = fixture("  first\n\n   prompt \t here  ");
+    f.render();
+    f.transcript.scrollTo(8);
+    expect(plain(f.render().lines)[0]).toBe(
+      `❯ first prompt here${" ".repeat(40 - "❯ first prompt here".length)}`,
+    );
+    f.adapter.dispose();
+  });
+
+  test("dispose puts the root's layout property back exactly as it found it", () => {
+    const f = fixture();
+    f.adapter.dispose();
+    const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
+    const ownBefore = Object.getOwnPropertyDescriptor(f.root, symbol);
+    const methodBefore: unknown = Reflect.get(f.root, symbol);
+    const adapter = createHostAdapter(f.tui, (text) => text);
+    expect(Reflect.get(f.root, symbol)).not.toBe(methodBefore);
+    adapter.dispose();
+    expect(Reflect.get(f.root, symbol)).toBe(methodBefore);
+    expect(Object.getOwnPropertyDescriptor(f.root, symbol)).toStrictEqual(ownBefore);
+  });
+
+  test("dispose also restores an own layout property the root already had", () => {
+    const f = fixture();
+    f.adapter.dispose();
+    const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
+    const inherited: unknown = Reflect.get(f.root, symbol);
+    const own = () => callMethod(inherited, f.root);
+    Object.defineProperty(f.root, symbol, { configurable: true, writable: true, value: own });
+    const adapter = createHostAdapter(f.tui, (text) => text);
+    expect(Reflect.get(f.root, symbol)).not.toBe(own);
+    adapter.dispose();
+    expect(Reflect.get(f.root, symbol)).toBe(own);
+  });
+
+  test.each(
+    (["transcript", "dock"] as const).flatMap((which) =>
+      [{ basis: 1 }, { grow: 2 }, { shrink: 0 }, { minSize: 0 }, { minSize: 2 }].map(
+        (change) => [which, change] as const,
+      ),
+    ),
+  )("does not patch a root whose %s allocation drifted by %j", (which, change) => {
+    const f = fixture();
+    f.adapter.dispose();
+    const { root, layoutNode, symbol } = driftedRoot(f.root, which, change);
+    Reflect.set(f.tui, "layoutRoot", root);
+    const adapter = createHostAdapter(f.tui, (text) => text);
+    expect(Reflect.get(root, symbol)).toBe(layoutNode);
+    adapter.dispose();
   });
 
   test.each([null, {}])("invalid duck-scroll document fails closed %#", (document) => {

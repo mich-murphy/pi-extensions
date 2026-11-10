@@ -39,6 +39,7 @@ Enter, arrows and Pi's shortcuts keep their Pi meaning. Other printable keys do 
 
 - Word motions and edits use Pi's word boundaries.
 - `dd` is not a single undo step.
+- `diw` and `ciw` do nothing on whitespace. Vim selects the run of whitespace.
 - Rebinding Pi's editor keys does not change these commands.
 
 ## Not supported

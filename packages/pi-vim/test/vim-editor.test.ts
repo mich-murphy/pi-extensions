@@ -169,6 +169,23 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
     expectLabel(editor, "NORMAL");
   });
 
+  // README: `diw` and `ciw` do nothing on whitespace (Vim would select the whitespace run).
+  test.each(
+    ["diw", "ciw"].flatMap((command) => [
+      { command, text: "one  two", keys: "0lll", cursor: { line: 0, col: 3 } },
+      { command, text: "one two\n  three", keys: "0", cursor: { line: 1, col: 0 } },
+      { command, text: "one \ntwo", keys: "k$", cursor: { line: 0, col: 3 } },
+    ]),
+  )("$command leaves $text alone with the cursor at $cursor", ({ command, text, keys, cursor }) => {
+    const editor = normalMode(text, keys);
+    expect(editor.getCursor()).toStrictEqual(cursor);
+
+    typeKeys(editor, command);
+
+    expect(editor.getText()).toBe(text);
+    expect(editor.getCursor()).toStrictEqual(cursor);
+  });
+
   test("shows a pending command in the border until it completes or is cancelled", () => {
     const editor = normalMode("one", "d");
     expectLabel(editor, "NORMAL d");

@@ -3,7 +3,11 @@ import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
 import * as gs from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
-import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
+import {
+  assertHegel,
+  propertySettings,
+  propertyTimeout,
+} from "../../../test-support/hegel-settings";
 import { createEditor, KEYBOARDS, resetKeyboard } from "./vim-harness";
 import type { Keyboard } from "./vim-harness";
 
@@ -146,10 +150,24 @@ function checkOracles(token: string, before: Snapshot, after: Snapshot): void {
     );
     assert.deepEqual(after.lines, expected);
   }
+  if (token === "diw" || token === "ciw") {
+    checkInnerWordOnBlank(token, before, after);
+  }
   if (token === "dd") {
     const expected = before.lines.length === 1 ? [""] : before.lines.toSpliced(before.line, 1);
     assert.deepEqual(after.lines, expected);
   }
+}
+
+const isBlankAt = (line: string, col: number): boolean => !/\S/u.test(line.slice(col, col + 1));
+
+/** The README promises `diw` and `ciw` do nothing on whitespace or an empty line. */
+function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot): void {
+  if (!isBlankAt(before.lines[before.line] ?? "", before.col)) {
+    return;
+  }
+  assert.equal(after.text, before.text, `${token} changed text on whitespace`);
+  assert.deepEqual([after.line, after.col], [before.line, before.col], `${token} moved cursor`);
 }
 
 /** What the next `u` presses must restore after an edit, and how many it takes. */
@@ -203,7 +221,8 @@ function runTrace(
 describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard) => {
   afterEach(resetKeyboard);
 
-  test("random key traces keep the editor invariants", () => {
+  // 200 traces of up to 20 keys through the real editor: up to 0.95 s under 8 busy processes.
+  test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
         gs.arrays(gs.arrays(gs.sampledFrom(ALPHABET), { maxSize: 12 }), {
