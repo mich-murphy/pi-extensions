@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
 import type { Configuration } from "../adapter/config.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
@@ -713,18 +713,12 @@ describe("public adapter transport and notice accounting", () => {
         performance.now() + 20,
       ),
     );
-    const raced = await Promise.race([
-      short,
-      new Promise<string>((resolve) => {
-        setTimeout(() => {
-          resolve("waiter ignored deadline");
-        }, 150);
-      }),
-    ]);
+    // The registration is still held, so only the waiter's own deadline can settle `short`: if it
+    // ignored the deadline this await would hang and the test would fail on its timeout.
+    const shortOutcome = await short;
     releaseRegistration(fixture);
-    await short;
     await first;
-    expect(raced).toContain("unavailable");
+    expect(shortOutcome).toContain("unavailable");
   });
   test("an initializing watch never returns a premature cached snapshot or different scopes", async () => {
     const fixture = await gateway(() => undefined);
@@ -972,7 +966,7 @@ describe("public adapter transport and notice accounting", () => {
     const disconnected: string[] = [];
     const connection = await connectTransport({
       socketPath: fixture.config.socketPath,
-      deadline: performance.now() + 1000,
+      deadline: performance.now() + 60_000,
       incoming: () => {
         throw new Error("unsupported");
       },
@@ -996,14 +990,14 @@ describe("public adapter transport and notice accounting", () => {
             scopeIds: ["team"],
             watch: false,
           },
-          performance.now() + 1000,
+          performance.now() + 60_000,
           abort.signal,
         ),
       ),
     );
     expect(connection.pendingCount()).toBe(8);
     await expect(
-      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() + 1000),
+      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() + 60_000),
     ).rejects.toMatchObject({ code: "overloaded", possible: false });
     abort.abort();
     await expect(Promise.all(pending)).resolves.toStrictEqual(
@@ -1013,16 +1007,34 @@ describe("public adapter transport and notice accounting", () => {
     await expect(
       connection.request(
         { v: 1, op: "close", rid: "a".repeat(32) },
-        performance.now() + 1000,
+        performance.now() + 60_000,
         AbortSignal.abort(),
       ),
     ).rejects.toMatchObject({ code: "cancelled" });
     await expect(
       connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
     ).rejects.toMatchObject({ code: "unavailable" });
-    await expect(
-      connection.request({ v: 1, op: "close", rid: "b".repeat(32) }, performance.now() + 10),
-    ).rejects.toMatchObject({ code: "unavailable", possible: true });
+    // The deadline runs on a fake clock that moves only once the gateway holds the request, so the
+    // write has completed and the failure must say the request may have been delivered.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const unanswered = connection
+        .request({ v: 1, op: "close", rid: "b".repeat(32) }, performance.now() + 10)
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      await expect
+        .poll(() => fixture.requests.some((item) => item.rid === "b".repeat(32)))
+        .toBe(true);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      vi.advanceTimersByTime(10);
+      await expect(unanswered).resolves.toMatchObject({ code: "unavailable", possible: true });
+    } finally {
+      vi.useRealTimers();
+    }
     fixture.sendFrame({
       v: 1,
       op: "result",
@@ -1033,7 +1045,7 @@ describe("public adapter transport and notice accounting", () => {
     fixture.raw(Buffer.from([0, 0, 0, 0]));
     await expect.poll(() => disconnected).toEqual(["protocol_error"]);
     await expect(
-      connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 1000),
+      connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 60_000),
     ).rejects.toMatchObject({ code: "unavailable" });
   });
   test("session_state get puts expectedRevision on the wire only when the caller supplied one", async () => {

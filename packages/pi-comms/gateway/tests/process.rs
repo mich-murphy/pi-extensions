@@ -6,7 +6,7 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -89,18 +89,18 @@ impl Drop for Gateway {
     }
 }
 fn write(stream: &mut UnixStream, frame: &Value) {
+    try_write(stream, frame).expect("isolated fixture setup and framed I/O must succeed");
+}
+/// Writes one frame, reporting a closed peer instead of panicking.
+fn try_write(stream: &mut UnixStream, frame: &Value) -> std::io::Result<()> {
     let bytes =
         serde_json::to_vec(frame).expect("isolated fixture setup and framed I/O must succeed");
-    stream
-        .write_all(
-            &u32::try_from(bytes.len())
-                .expect("isolated fixture setup and framed I/O must succeed")
-                .to_be_bytes(),
-        )
-        .expect("isolated fixture setup and framed I/O must succeed");
-    stream
-        .write_all(&bytes)
-        .expect("isolated fixture setup and framed I/O must succeed");
+    stream.write_all(
+        &u32::try_from(bytes.len())
+            .expect("isolated fixture setup and framed I/O must succeed")
+            .to_be_bytes(),
+    )?;
+    stream.write_all(&bytes)
 }
 fn read(stream: &mut UnixStream) -> Value {
     let mut header = [0; 4];
@@ -288,16 +288,19 @@ fn thirty_local_connections_are_served_and_the_thirty_first_is_closed_until_one_
     write(&mut leaving, &json!({"v":1,"op":"close","rid":rid(2)}));
     assert_eq!(read(&mut leaving)["outcome"]["tag"], "ok");
     drop(leaving);
-    // The gateway reaps the closed task asynchronously; the freed slot is usable shortly after.
+    // The gateway reaps the closed task asynchronously, so poll the observable state (a refused
+    // connection is closed at once) up to a generous hang guard rather than a fixed attempt count.
+    let deadline = Instant::now() + Duration::from_secs(60);
     let mut admitted = false;
-    for _ in 0..40 {
+    while Instant::now() < deadline {
         let mut again = gateway.connect();
-        write(
+        // A refused connection is closed by the gateway, so its write may fail as well as its read.
+        let registered = try_write(
             &mut again,
             &json!({"v":1,"op":"register","rid":rid(1),"sessionId":"replacement","runtimeNonce":rid(900),"scopeIds":["team"],"label":"replacement"}),
         );
         let mut header = [0_u8; 4];
-        if again.read_exact(&mut header).is_ok() {
+        if registered.is_ok() && again.read_exact(&mut header).is_ok() {
             admitted = true;
             break;
         }

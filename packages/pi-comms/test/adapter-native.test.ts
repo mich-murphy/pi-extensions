@@ -137,9 +137,10 @@ async function nativeGateway() {
     diagnostic = (diagnostic + bytes.toString("utf8")).slice(-4096);
   });
   const abort = new AbortController();
+  // A hang guard, not a budget: readiness takes tens of milliseconds, and the event is awaited.
   const timer = setTimeout(() => {
     abort.abort();
-  }, 5000);
+  }, 30_000);
   child.once("error", () => {
     abort.abort();
   });
@@ -332,5 +333,5 @@ describe("production adapter / native local gateway vertical slice", () => {
       await Promise.all([left.dispose(), right.dispose()]);
       await gateway.close();
     }
-  }, 15_000);
+  }, 60_000); // runs in about 0.3 s; the guard above is 30 s, so this stays above it.
 });

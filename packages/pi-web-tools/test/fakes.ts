@@ -1,7 +1,10 @@
+import { rm } from "node:fs/promises";
 import { isIP } from "node:net";
+import { dirname } from "node:path";
 import type { Context } from "effect";
 import { Duration, Effect, Exit, Layer, Redacted, Result } from "effect";
 import { TestClock } from "effect/testing";
+import { onTestFinished } from "vitest";
 import { CredentialResolver } from "../credentials";
 import type { CredentialSnapshot } from "../credentials";
 import { FetchPage } from "../fetch-page";
@@ -304,9 +307,29 @@ export function fetchPageWith(client: PublicWebClient["Service"]): FetchPage["Se
   );
 }
 
+/** The live temp-file output store; each directory it creates is removed when the running test finishes. */
+// A `pi-webfetch-*` directory left in the shared tmpdir by every run is the leak this prevents.
+export const trackedToolOutputLayer: Layer.Layer<ToolOutputStore> = Layer.effect(
+  ToolOutputStore,
+  Effect.gen(function* () {
+    const live = yield* ToolOutputStore.pipe(Effect.provide(ToolOutputStore.layer));
+    return ToolOutputStore.of({
+      writeTextFile: (prefix, fileName, content) =>
+        live.writeTextFile(prefix, fileName, content).pipe(
+          Effect.tap((path) =>
+            Effect.sync(() => {
+              const directory = dirname(path);
+              onTestFinished(async () => rm(directory, { recursive: true, force: true }));
+            }),
+          ),
+        ),
+    });
+  }),
+);
+
 /** The live temp-file tool output store. */
 export function liveToolOutputStore(): ToolOutputStore["Service"] {
-  return serviceFrom(ToolOutputStore, ToolOutputStore.layer);
+  return serviceFrom(ToolOutputStore, trackedToolOutputLayer);
 }
 
 /**
@@ -353,7 +376,7 @@ export function toolRuntimeWith(services: {
         }),
       ),
       Layer.succeed(FetchPage, services.fetchPage ?? FetchPage.of({ fetch: () => Effect.never })),
-      ToolOutputStore.layer,
+      trackedToolOutputLayer,
       WebToolsConfig.layer(settings),
       services.testClock === true ? TestClock.layer() : Layer.empty,
     ),

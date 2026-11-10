@@ -103,11 +103,13 @@ describe("credential boundary", () => {
     expect(result.failure.reason).toBe("timeout");
     expect(signal?.aborted).toBe(true);
     const controller = new AbortController();
+    const resolverStarted = Promise.withResolvers<undefined>();
     const running = Effect.runPromiseExit(
       credentialEffect.pipe(
         Effect.provide(
           CredentialResolver.layerWith(async (_, supplied) => {
             signal = supplied;
+            resolverStarted.resolve(undefined);
             return new Promise(() => {
               /* deliberately pending until interrupted */
             });
@@ -116,9 +118,7 @@ describe("credential boundary", () => {
       ),
       { signal: controller.signal },
     );
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
+    await resolverStarted.promise;
     controller.abort();
     const exit = await running;
     assert(Exit.isFailure(exit));

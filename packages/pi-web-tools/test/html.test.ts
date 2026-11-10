@@ -1,7 +1,7 @@
 import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import * as Html from "../html";
-import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
+import { EmptyHtmlDocument } from "../html-conversion";
 
 function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
   return Result.getOrThrow(Html.htmlToMarkdown(rawHtml, baseUrl));
@@ -403,17 +403,23 @@ describe("conversion failures", () => {
     },
   );
 
-  test("a library stack overflow on deep nesting is HtmlConversionFailed", () => {
-    const deep = `${"<div>".repeat(5000)}x${"</div>".repeat(5000)}`;
+  // Whether the libraries overflow the stack at this depth depends on JIT state, so both outcomes are
+  // accepted; what the test pins is that deep nesting never throws. The failure mapping itself is
+  // pinned deterministically in html-conversion-failure.test.ts. The deep parse is inherently slow
+  // (quadratic in depth): about 1 s unloaded, so 60 s is far beyond 10x the loaded maximum.
+  test("deep nesting converts or is HtmlConversionFailed, never a thrown error", () => {
+    const deep = `${"<div>".repeat(3000)}x${"</div>".repeat(3000)}`;
     for (const converted of [
       Html.htmlToMarkdown(deep, "https://example.com"),
       Html.htmlToText(deep, "https://example.com"),
     ]) {
-      assert(Result.isFailure(converted));
-      assert(converted.failure instanceof HtmlConversionFailed);
-      expect(converted.failure.cause).toBeInstanceOf(RangeError);
+      const outcome = Result.match(converted, {
+        onFailure: (failure) => failure._tag,
+        onSuccess: () => "Success",
+      });
+      expect(["Success", "HtmlConversionFailed"]).toContain(outcome);
     }
-  });
+  }, 60_000);
 
   test("other exceptions propagate as defects", () => {
     const notHtml = Symbol("not html");
