@@ -146,10 +146,24 @@ function checkOracles(token: string, before: Snapshot, after: Snapshot): void {
     );
     assert.deepEqual(after.lines, expected);
   }
+  if (token === "diw" || token === "ciw") {
+    checkInnerWordOnBlank(token, before, after);
+  }
   if (token === "dd") {
     const expected = before.lines.length === 1 ? [""] : before.lines.toSpliced(before.line, 1);
     assert.deepEqual(after.lines, expected);
   }
+}
+
+const isBlankAt = (line: string, col: number): boolean => !/\S/u.test(line.slice(col, col + 1));
+
+/** The README promises `diw` and `ciw` do nothing on whitespace or an empty line. */
+function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot): void {
+  if (!isBlankAt(before.lines[before.line] ?? "", before.col)) {
+    return;
+  }
+  assert.equal(after.text, before.text, `${token} changed text on whitespace`);
+  assert.deepEqual([after.line, after.col], [before.line, before.col], `${token} moved cursor`);
 }
 
 /** What the next `u` presses must restore after an edit, and how many it takes. */
