@@ -9,7 +9,14 @@ import type { Delivery, PublicationRecord } from "../state/types.js";
 const receiver = { machineId: "beta", sessionId: "receiver", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: "a".repeat(32) };
 const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
-type Step = { action: number; id: number; body: number; advance: number; size: number };
+type Step = {
+  action: number;
+  id: number;
+  body: number;
+  advance: number;
+  size: number;
+  resend: number;
+};
 type ModelReceipt = {
   body: string;
   admittedAt: number;
@@ -37,8 +44,14 @@ function activeBytes(model: Model): number {
     .reduce((sum, receipt) => sum + receipt.bytes, 0);
 }
 const INBOX_BYTES = 1300;
-function contentFor(step: Step): string {
-  return `value:${step.body}:${"x".repeat(step.size)}`;
+// One send in three repeats the exact content already held for that id, so lost-ACK retries
+// (duplicate admits that must return the stored receipt without extending its retention) are
+// common. Fully random content would almost never repeat.
+function contentFor(model: Model, step: Step): string {
+  const prior = model.entries.get(step.id);
+  return prior !== undefined && step.resend === 0
+    ? prior.body
+    : `value:${step.body}:${"x".repeat(step.size)}`;
 }
 function inputFor(id: number, content: string) {
   return {
@@ -56,13 +69,13 @@ function deliveryBytes(id: number, content: string): number {
   );
 }
 const baseBytes = deliveryBytes(0, "value:0:");
-function expectedAdmission(model: Model, step: Step, bytes: number): string {
+function expectedAdmission(model: Model, step: Step, bytes: number, content: string): string {
   if (!model.authorized) {
     return "forbidden";
   }
   const prior = model.entries.get(step.id);
   if (prior !== undefined) {
-    return prior.body === contentFor(step) ? "admitted" : "id_conflict";
+    return prior.body === content ? "admitted" : "id_conflict";
   }
   if (model.entries.size === 5) {
     return "receipts";
@@ -73,10 +86,10 @@ function expectedAdmission(model: Model, step: Step, bytes: number): string {
     : "admitted";
 }
 function applySend(state: SessionState, model: Model, step: Step): void {
-  const content = contentFor(step);
+  const content = contentFor(model, step);
   const input = inputFor(step.id, content);
   const bytes = deliveryBytes(step.id, content);
-  const expected = expectedAdmission(model, step, bytes);
+  const expected = expectedAdmission(model, step, bytes, content);
   const actual = state.admit(input);
   const decision = actual.tag === "admitted" ? "admitted" : actual.code;
   const reason =
@@ -314,6 +327,12 @@ function assertSingleDelivery(size: number, unit: string): void {
     assert.equal(state.stats().inboxBytes, 0);
   }
 }
+// Half-TTL steps make "admit, retry, retire, wait" land on either side of the 10-minute expiry
+// measured from the first admission rather than from the latest retry.
+const advanceGenerator = gs.oneOf(
+  gs.integers({ minValue: 0, maxValue: 700_000 }),
+  gs.sampledFrom([1, 299_999, 300_000, 300_001, 599_999, 600_000]),
+);
 describe("Hegel bounded state/fault traces against independent models", () => {
   test("admission, lost ACK retries, queue failure, retirement and expiry model", () => {
     new Hegel((tc) => {
@@ -324,8 +343,9 @@ describe("Hegel bounded state/fault traces against independent models", () => {
           action: tc.draw(gs.integers({ minValue: 0, maxValue: 7 }), `action${index}`),
           id: tc.draw(gs.integers({ minValue: 0, maxValue: 7 }), `id${index}`),
           body: tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), `body${index}`),
-          advance: tc.draw(gs.integers({ minValue: 0, maxValue: 700_000 }), `advance${index}`),
+          advance: tc.draw(advanceGenerator, `advance${index}`),
           size: tc.draw(sizeGenerator, `size${index}`),
+          resend: tc.draw(gs.integers({ minValue: 0, maxValue: 2 }), `resend${index}`),
         });
       }
       assertAdmissionTrace(steps);
