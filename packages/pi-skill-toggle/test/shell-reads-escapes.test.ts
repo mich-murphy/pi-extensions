@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import { resolve } from "node:path";
+import { describe, test } from "vitest";
+import { pathsReadByCommand } from "../shell-reads";
+
+const cwd = "/repo";
+
+function reads(command: string): readonly string[] {
+  return pathsReadByCommand(command, cwd).toSorted();
+}
+
+function paths(...names: string[]): readonly string[] {
+  return names.map((name) => resolve(cwd, name)).toSorted();
+}
+
+// Each expectation below was taken from real `bash -c` with `cat` replaced by a function that
+// prints its arguments, so the paths are what bash actually hands to cat.
+describe("escapes inside command substitutions", () => {
+  test("an escaped quote does not close a double-quoted string inside $( )", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat "\")")`), paths('")'));
+    assert.deepEqual(reads(String.raw`echo $(cat a\;"\")")`), paths('a;")'));
+    assert.deepEqual(reads(String.raw`echo $(cat "a\"b")`), paths('a"b'));
+  });
+
+  test("an escaped backslash before the closing quote still closes it", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat "a\\")`), paths("a\\"));
+    assert.deepEqual(reads(String.raw`echo $(cat "a\\") && cat b`), paths("a\\", "b"));
+  });
+
+  test("single quotes have no escapes", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat '")' )`), paths('")'));
+    assert.deepEqual(reads(String.raw`echo $(cat 'a\' b)`), paths("a\\", "b"));
+  });
+
+  test("a $( ) nested in double quotes keeps its own quotes", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat "$(cat ")")")`), paths(")"));
+    assert.deepEqual(reads(String.raw`echo $(cat "a$(cat "\")")")`), paths('")'));
+    assert.deepEqual(reads(String.raw`echo "$(cat "a)b")"`), paths("a)b"));
+  });
+
+  test("a backtick substitution inside $( ) keeps its parenthesis", () => {
+    assert.deepEqual(reads('echo $(cat a `cat ")"` b)'), paths(")", "a", "b"));
+    assert.deepEqual(reads('echo $(cat "`cat \\")\\"`")'), paths(")"));
+  });
+});
+
+describe("escapes inside backticks", () => {
+  test("an escaped backtick does not close the substitution", () => {
+    assert.deepEqual(reads("echo `echo \\`cat f\\``"), paths("f"));
+    assert.deepEqual(reads("echo `echo \\`cat 'a b'\\`; cat c`"), paths("a b", "c"));
+  });
+
+  test("backslash-escaped quotes inside backticks inside double quotes", () => {
+    assert.deepEqual(reads('echo "`cat \\"x y\\"`"'), paths("x y"));
+    const command = 'echo $(echo "`cat \\"\\\\\\")\\"`")';
+    assert.deepEqual(reads(command), paths('")'));
+  });
+});
+
+describe("ordinary commands keep their results", () => {
+  const benign: readonly (readonly [string, readonly string[]])[] = [
+    [String.raw`git commit -m "say \"hi\""`, []],
+    ['echo "$(date)"', []],
+    [String.raw`cat "a b" | grep "x\"y"`, ["a b"]],
+    ['echo $(cat "a b.txt")', ["a b.txt"]],
+    ['cat $(echo "it\'s")', []],
+    [String.raw`echo "a\\" "b" ; cat c`, ["c"]],
+    [String.raw`ls "a\$b" && cat d`, ["d"]],
+    ['echo `cat "q r"`', ["q r"]],
+    ['cat "a$(echo "b")c"', []],
+    [String.raw`echo "$(printf "%s" "x\"y")" && cat z`, ["z"]],
+  ];
+  test.each(benign)("%s", (command, expected) => {
+    assert.deepEqual(reads(command), paths(...expected));
+  });
+});
+
+describe("pathological input", () => {
+  test("many escaped quote pairs are scanned in one pass and the read is still found", () => {
+    const body = String.raw`\")`.repeat(50_000 / 3);
+    // The quoted word is longer than any path the guard resolves, so only `y` is reported.
+    assert.deepEqual(reads(`echo $(cat "${body}" y)`), paths("y"));
+  });
+
+  test("deeply nested quoted substitutions do not overflow the stack", () => {
+    const depth = 20_000;
+    const command = `${'"$('.repeat(depth)}cat x${')"'.repeat(depth)}`;
+    assert.doesNotThrow(() => reads(command));
+  });
+});

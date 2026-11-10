@@ -200,6 +200,12 @@ function analyze(source: string, cwd: string | undefined, depth: number, reads: 
   new Evaluator(cwd, depth, reads).run(lexer.items);
 }
 
+const BACKTICK_ESCAPE = /\\(?<char>[`$\\])/gu;
+const QUOTED_BACKTICK_ESCAPE = /\\(?<char>[`$"\\])/gu;
+
+/** An open construct while scanning a substitution: a `(` group or a double-quoted string. */
+type Open = "(" | '"';
+
 class Lexer {
   readonly items: Item[] = [];
   private substitutions: string[] = [];
@@ -361,7 +367,7 @@ class Lexer {
         return this.dollar();
       }
       case "`": {
-        this.backtick();
+        this.backtick(false);
         return { text: "", literal: false };
       }
       default: {
@@ -411,7 +417,7 @@ class Lexer {
         text += expansion.text;
         literal &&= expansion.literal;
       } else if (char === "`") {
-        this.backtick();
+        this.backtick(true);
         literal = false;
       } else {
         text += char;
@@ -452,32 +458,83 @@ class Lexer {
     return { text: "", literal: false };
   }
 
-  private backtick(): void {
-    const end = this.source.indexOf("`", this.index + 1);
-    this.substitutions.push(this.source.slice(this.index + 1, end === -1 ? undefined : end));
+  /** Backslash removes itself before `` ` ``, `$` and `\`, and before `"` when the backticks sit in double quotes. */
+  private backtick(inDoubleQuotes: boolean): void {
+    const end = this.backtickEnd(this.index);
+    const inner = this.source.slice(this.index + 1, end === -1 ? undefined : end);
+    this.substitutions.push(
+      inner.replaceAll(inDoubleQuotes ? QUOTED_BACKTICK_ESCAPE : BACKTICK_ESCAPE, "$<char>"),
+    );
     this.index = end === -1 ? this.source.length : end + 1;
   }
 
-  /** Read up to the `)` that closes an already consumed `(`, skipping quoted text. */
+  /** The index of the backtick closing the one at `open`; `\`` does not close it. Or -1. */
+  private backtickEnd(open: number): number {
+    for (let index = open + 1; index < this.source.length; index += 1) {
+      const char = this.source.charAt(index);
+      if (char === "\\") {
+        index += 1;
+      } else if (char === "`") {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Read up to the `)` that closes an already consumed `(`, skipping quoted text. A stack of open
+   * constructs (`(` groups and double quotes) keeps this one linear pass: inside double quotes `\"`
+   * does not close the string and `$(` opens a nested group whose own quotes are independent.
+   */
   private balanced(): string {
     const start = this.index;
-    let depth = 1;
+    const open: Open[] = ["("];
     while (this.index < this.source.length) {
       const char = this.source.charAt(this.index);
       if (char === "\\") {
         this.index += 2;
-      } else if (char === "'" || char === '"') {
-        const end = this.source.indexOf(char, this.index + 1);
-        this.index = end === -1 ? this.source.length : end + 1;
-      } else {
-        depth += Number(char === "(") - Number(char === ")");
-        this.index += 1;
-        if (depth === 0) {
-          return this.source.slice(start, this.index - 1);
-        }
+      } else if (char === "`") {
+        this.skipBacktick();
+      } else if (open.at(-1) === '"') {
+        this.inDoubleQuotes(open, char);
+      } else if (this.inGroup(open, char)) {
+        return this.source.slice(start, this.index - 1);
       }
     }
     return this.source.slice(start);
+  }
+
+  /** Step over one character outside double quotes; true once the outermost `(` is closed. */
+  private inGroup(open: Open[], char: string): boolean {
+    if (char === "'") {
+      const end = this.source.indexOf(char, this.index + 1);
+      this.index = end === -1 ? this.source.length : end + 1;
+      return false;
+    }
+    this.index += 1;
+    if (char === '"' || char === "(") {
+      open.push(char);
+    } else if (char === ")") {
+      open.pop();
+    }
+    return open.length === 0;
+  }
+
+  private skipBacktick(): void {
+    const end = this.backtickEnd(this.index);
+    this.index = end === -1 ? this.source.length : end + 1;
+  }
+
+  private inDoubleQuotes(open: Open[], char: string): void {
+    if (char === "$" && this.source.charAt(this.index + 1) === "(") {
+      open.push("(");
+      this.index += 2;
+      return;
+    }
+    if (char === '"') {
+      open.pop();
+    }
+    this.index += 1;
   }
 }
 

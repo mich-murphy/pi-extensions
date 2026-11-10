@@ -157,6 +157,14 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
+  // Found by HEGEL_SEED=15001035743802267891 at 2000 cases. `balanced` skips a double-quoted string up to
+  // the next `"` without honouring `\"`, so the `)` inside the string closes the substitution early and
+  // the file `")` that cat reads is never reported. Fails until `balanced` handles escapes in quotes.
+  test("a substitution keeps a double-quoted string that holds an escaped quote and a parenthesis", () => {
+    assert.deepEqual(reads(String.raw`echo $(cat "\")")`), [resolve(cwd, '")')]);
+    assert.deepEqual(reads(String.raw`echo $(cat a\;"\")")`), [resolve(cwd, 'a;")')]);
+  });
+
   test("wrappers, sequencing and substitution leave the read set unchanged", () => {
     assertProperty(
       "shell-reads",
