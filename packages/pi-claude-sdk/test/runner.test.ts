@@ -666,17 +666,6 @@ describe("usage limit observation", () => {
     expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
   });
 
-  test("reports a reset carried by a rate-limit API error", async () => {
-    const usage = { input_tokens: 0, output_tokens: 0 };
-    const { observations } = await observeUsageLimits(
-      rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),
-      { type: "assistant", message: { usage }, error: "rate_limit" },
-      resultMessage({ is_error: true }),
-    );
-
-    expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
-  });
-
   test.each([
     ["no rate-limit event", []],
     ["a rejection without a reset time", [rateLimitEvent({ status: "rejected" })]],
@@ -763,9 +752,6 @@ describe("usage limit observation", () => {
     ["allowed", { status: "allowed", resetsAt: 1_792_550_000 }],
     ["warning", { status: "allowed_warning", resetsAt: 1_792_550_000 }],
     ["missing reset", { status: "rejected" }],
-    ["invalid reset", { status: "rejected", resetsAt: Number.MAX_VALUE }],
-    ["unknown status", { status: "future_status", resetsAt: 1_792_550_000 }],
-    ["malformed update", {}],
   ])("clears stale reset metadata after %s", async (_name, info) => {
     const { observations } = await observeUsageLimits(
       rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }),

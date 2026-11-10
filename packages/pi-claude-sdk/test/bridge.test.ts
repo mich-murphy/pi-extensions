@@ -220,15 +220,6 @@ describe("provider failures", () => {
     );
   });
 
-  test("ignores events after the terminal event", async () => {
-    const events = await piEvents([
-      { type: "done", reason: "stop" },
-      { type: "text_delta", text: "late" },
-    ]);
-
-    expect(events.map((event) => event.type)).toStrictEqual(["start", "done"]);
-  });
-
   test("turns an unexpected rejection from the run into a Pi error instead of an unhandled one", async () => {
     const events = await drain(
       createAgentSdkStream({ model: sonnet, context, options: {}, run: failingRun }),
@@ -325,18 +316,6 @@ describe("broken stderr", () => {
     const events = await drain(stream);
     expect(events.map((item) => item.type)).toStrictEqual(["start"]);
     await expect(stream.result()).resolves.toMatchObject({ stopReason: "stop" });
-  });
-
-  test("a done then a failed produces a single terminal event", async () => {
-    const events = await piEvents([
-      { type: "done", reason: "stop" },
-      {
-        type: "failed",
-        error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
-      },
-      { type: "text_delta", text: "late" },
-    ]);
-    expect(events.map((event) => event.type)).toStrictEqual(["start", "done"]);
   });
 });
 

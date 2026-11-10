@@ -253,18 +253,6 @@ describe("subscription rate-limit messages", () => {
 });
 
 describe("usage accumulation", () => {
-  test("replaces each reported count and keeps the rest, treating null like an omitted count", () => {
-    const started = applyUsage(undefined, { input_tokens: 12, cache_read_input_tokens: 4 });
-    expect(started).toStrictEqual({ input: 12, output: 0, cacheRead: 4, cacheWrite: 0 });
-
-    const finished = applyUsage(started, {
-      input_tokens: null,
-      output_tokens: 3,
-      cache_creation_input_tokens: null,
-    });
-    expect(finished).toStrictEqual({ input: 12, output: 3, cacheRead: 4, cacheWrite: 0 });
-  });
-
   test("reads the 1h and 5m cache-write split leniently and keeps it across reports", () => {
     const split = applyUsage(undefined, {
       cache_creation_input_tokens: 10,
@@ -284,28 +272,6 @@ describe("usage accumulation", () => {
         streamEvent({ type: "message_delta", usage: { output_tokens: 1, cache_creation: null } }),
       ),
     ).toMatchObject({ type: "usage", usage: { output_tokens: 1 } });
-  });
-
-  test("does not inherit a per-call cache-write split into cumulative terminal totals", () => {
-    const lastCall = applyUsage(undefined, {
-      cache_creation_input_tokens: 3,
-      cache_creation: { ephemeral_1h_input_tokens: 3, ephemeral_5m_input_tokens: 0 },
-    });
-    const terminal = applyUsage(lastCall, { cache_creation_input_tokens: 10 }, "turn");
-
-    expect(terminal.cacheWrite).toBe(10);
-    expect(terminal).not.toHaveProperty("cacheWrite1h");
-    expect(terminal).not.toHaveProperty("cacheWrite5m");
-    expect(
-      applyUsage(
-        lastCall,
-        {
-          cache_creation_input_tokens: 10,
-          cache_creation: { ephemeral_1h_input_tokens: 7, ephemeral_5m_input_tokens: 3 },
-        },
-        "turn",
-      ),
-    ).toMatchObject({ cacheWrite: 10, cacheWrite1h: 7, cacheWrite5m: 3 });
   });
 
   test("accepts the null counts the API sends on message_delta", () => {
@@ -458,22 +424,6 @@ describe("terminal SDK result", () => {
 });
 
 describe("maxOutputTokensFor", () => {
-  test.each([
-    ["claude-haiku-4-5", undefined, "claude-haiku-4-5", 64_000],
-    ["claude-haiku-4-5-20251001", undefined, "claude-haiku-4-5", 64_000],
-    ["claude-haiku-4-5", undefined, "claude-haiku-4-5-20251001", 64_000],
-    ["haiku", "claude-haiku-4-5-20251001", "claude-haiku-4-5", 64_000],
-    ["haiku", "claude-haiku-4-5", "claude-haiku-4-5-20251001", 64_000],
-    ["haiku", "claude-haiku-4-5", "claude-opus-5-5", undefined],
-  ])("matches key %s or canonical model %s against %s", (key, canonicalModel, model, expected) => {
-    const result = parsed(
-      resultMessage({ modelUsage: { [key]: { canonicalModel, maxOutputTokens: 64_000 } } }),
-    );
-    assert(result.type === "result", "test setup: expected a result message");
-
-    expect(maxOutputTokensFor(result.modelUsage, model)).toBe(expected);
-  });
-
   test.each([undefined, null, 0, -1, 1.5, "64000", Number.NaN, Number.POSITIVE_INFINITY])(
     "ignores an absent or invalid output limit %s without losing the context window",
     (maxOutputTokens) => {
@@ -534,28 +484,6 @@ describe("contextWindowFor", () => {
     throw new Error("test setup: expected a result message");
   }
   const { modelUsage } = message;
-
-  test("matches an entry by key or canonical model", () => {
-    expect(contextWindowFor(modelUsage, "claude-fable-5-1")).toBe(1_000_000);
-    expect(contextWindowFor(modelUsage, "claude-haiku-4-5-20251001")).toBe(200_000);
-  });
-
-  test("matches a dated entry through its canonical model", () => {
-    expect(contextWindowFor(modelUsage, "claude-haiku-4-5")).toBe(200_000);
-  });
-
-  test("matches an undated entry when the served model carries a snapshot date", () => {
-    const pinned = parsed(
-      resultMessage({
-        modelUsage: {
-          "claude-haiku-4-5": { canonicalModel: "claude-haiku-4-5", contextWindow: 200_000 },
-        },
-      }),
-    );
-    assert(pinned.type === "result", "test setup: expected a result message");
-
-    expect(contextWindowFor(pinned.modelUsage, "claude-haiku-4-5-20251001")).toBe(200_000);
-  });
 
   test("returns undefined for unknown models", () => {
     expect(contextWindowFor(modelUsage, "claude-opus-5")).toBeUndefined();

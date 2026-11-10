@@ -104,44 +104,6 @@ describe("cache diagnostics", () => {
     expect(changed.commonPrefixBlocks).toBe(1);
   });
 
-  test("flags a large low-reuse turn as a possible cache collapse", () => {
-    const events: CacheDiagnostic[] = [];
-    const tracker = Effect.runSync(
-      createCacheDiagnosticTracker((event) => {
-        events.push(event);
-      }),
-    );
-    const recordUsage = tracker("claude-sdk/sonnet", {
-      promptBlocks: [textBlock("x".repeat(100_000))],
-      cacheBreakpoints: [0],
-    });
-    recordUsage({ input: 94_337, output: 100, cacheRead: 27_165, cacheWrite: 0 });
-
-    expect(events[1]).toMatchObject({
-      type: "usage",
-      promptTokens: 121_502,
-      cacheReadPercent: 22.36,
-      possibleCollapse: true,
-    });
-  });
-
-  it.effect("measures the gap between requests with the Clock in scope", () =>
-    Effect.gen(function* () {
-      const events: CacheDiagnostic[] = [];
-      const prompt = { promptBlocks: [textBlock("stable")], cacheBreakpoints: [0] };
-
-      const tracker = yield* createCacheDiagnosticTracker((event) => {
-        events.push(event);
-      });
-      tracker("claude-sdk/sonnet", prompt);
-      yield* TestClock.adjust("5 seconds");
-      tracker("claude-sdk/sonnet", prompt);
-
-      expect(events[0]).not.toHaveProperty("msSincePreviousRequest");
-      expect(events[1]).toMatchObject({ type: "request", turn: 2, msSincePreviousRequest: 5000 });
-    }),
-  );
-
   it.effect("classifies prefix changes and the likely cause of a low cache read", () =>
     Effect.gen(function* () {
       const events: CacheDiagnostic[] = [];

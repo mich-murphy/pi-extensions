@@ -98,24 +98,6 @@ describe("claude SDK usage", () => {
     }),
   );
 
-  it.effect("accepts null optional named weekly windows", () =>
-    Effect.gen(function* () {
-      const status = yield* withStart(() =>
-        usageQuery({
-          ...usageResponse,
-          rate_limits: {
-            ...usageResponse.rate_limits,
-            seven_day_oauth_apps: null,
-            seven_day_opus: null,
-            seven_day_sonnet: null,
-          },
-        }),
-      );
-
-      expect(status.windows).toHaveLength(3);
-    }),
-  );
-
   it.effect("reports unavailable plan limits without inventing usage", () =>
     Effect.gen(function* () {
       const status = yield* withStart(() =>

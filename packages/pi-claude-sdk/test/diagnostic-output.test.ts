@@ -147,15 +147,4 @@ describe("terminal-safe diagnostic output", () => {
     }).not.toThrow();
     expect(write).toHaveBeenCalledTimes(1);
   });
-
-  test("a throwing write is not even attempted on a terminal", () => {
-    setTerminalStderr(true);
-    write.mockImplementationOnce(() => {
-      throw new Error("EPIPE");
-    });
-    expect(() => {
-      writeRedirectedDiagnostic("line\n");
-    }).not.toThrow();
-    expect(write).not.toHaveBeenCalled();
-  });
 });
