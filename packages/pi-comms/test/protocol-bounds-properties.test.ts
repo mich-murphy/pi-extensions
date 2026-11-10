@@ -109,6 +109,21 @@ function prefixOf(length: number): Uint8Array {
   return prefix;
 }
 
+/**
+ * A property case is a pure function of its draws, so checking one twice proves nothing. The edge
+ * generators draw only seven offsets, but 200 cases build and parse tens of kilobytes each time (a
+ * 30x slowdown under a loaded coverage run). The returned function runs a check once per distinct key.
+ */
+function oncePerKey(): (key: string, check: () => void) => void {
+  const seen = new Set<string>();
+  return (key, check) => {
+    if (!seen.has(key)) {
+      seen.add(key);
+      check();
+    }
+  };
+}
+
 function property(
   name: string,
   body: (tc: Parameters<ConstructorParameters<typeof Hegel>[0]>[0]) => void,
@@ -118,20 +133,26 @@ function property(
 
 describe("Hegel size-bound edges", () => {
   test("authored content accepted iff <= 24576 bytes", () => {
+    const once = oncePerKey();
     property("authored", (tc) => {
       const offset = tc.draw(edge, "offset");
-      assertFrameEdge(sendFrame(AUTHORED_MAX + offset), "local-client", offset <= 0);
+      once(`${offset}`, () => {
+        assertFrameEdge(sendFrame(AUTHORED_MAX + offset), "local-client", offset <= 0);
+      });
     });
   });
 
   test("descriptor accepted iff <= 512 JSON bytes", () => {
+    const once = oncePerKey();
     property("descriptor", (tc) => {
       const offset = tc.draw(edge, "offset");
-      assertFrameEdge(
-        upsertWithDescriptorBytes(DESCRIPTOR_MAX + offset),
-        "gateway-forward",
-        offset <= 0,
-      );
+      once(`${offset}`, () => {
+        assertFrameEdge(
+          upsertWithDescriptorBytes(DESCRIPTOR_MAX + offset),
+          "gateway-forward",
+          offset <= 0,
+        );
+      });
     });
   });
 
@@ -156,21 +177,24 @@ describe("Hegel size-bound edges", () => {
   });
 
   test("body bytes accepted iff 1..32764 (prefix and decodeJson)", () => {
+    const once = oncePerKey();
     property("body", (tc) => {
       const offset = tc.draw(edge, "offset");
-      assert.equal(
-        accepts(() => decodeJson(paddedBody(BODY_MAX + offset))),
-        offset <= 0,
-      );
-      assert.equal(
-        accepts(() => frameBodyLength(prefixOf(BODY_MAX + offset))),
-        offset <= 0,
-      );
       const low = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "low");
-      assert.equal(
-        accepts(() => frameBodyLength(prefixOf(low))),
-        low >= 1,
-      );
+      once(`${offset}/${low}`, () => {
+        assert.equal(
+          accepts(() => decodeJson(paddedBody(BODY_MAX + offset))),
+          offset <= 0,
+        );
+        assert.equal(
+          accepts(() => frameBodyLength(prefixOf(BODY_MAX + offset))),
+          offset <= 0,
+        );
+        assert.equal(
+          accepts(() => frameBodyLength(prefixOf(low))),
+          low >= 1,
+        );
+      });
     });
   });
 });
