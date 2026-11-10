@@ -3,35 +3,60 @@ import { expect } from "vitest";
 
 const MAX_DEPTH = 16;
 
-function collect(value: unknown, seen: Set<object>, out: string[], depth: number): void {
+type Walk = { readonly seen: Set<object>; readonly out: string[] };
+
+function collectPrimitive(value: unknown, out: string[]): boolean {
   if (typeof value === "string") {
     out.push(value);
-    return;
+    return true;
   }
   if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
     out.push(String(value));
-    return;
+    return true;
   }
-  if (typeof value !== "object" || value === null || seen.has(value) || depth > MAX_DEPTH) {
-    return;
-  }
-  seen.add(value);
+  return false;
+}
+
+function collectError(value: object, out: string[]): void {
   if (value instanceof Error) {
     // `message` may be a prototype getter, and JSON.stringify drops it with the stack.
     out.push(value.name, value.message, value.stack ?? "");
   }
+}
+
+function collectEntries(value: object, walk: Walk, depth: number): void {
   if (value instanceof Map || value instanceof Set) {
     for (const entry of value) {
-      collect(entry, seen, out, depth + 1);
+      collect(entry, walk, depth + 1);
     }
   }
+}
+
+function collectOwnProperties(value: object, walk: Walk, depth: number): void {
   for (const key of Reflect.ownKeys(value)) {
-    out.push(String(key));
+    walk.out.push(String(key));
     const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
     if (descriptor !== undefined && "value" in descriptor) {
-      collect(descriptor.value, seen, out, depth + 1);
+      collect(descriptor.value, walk, depth + 1);
     }
   }
+}
+
+function alreadyVisitedOrTooDeep(value: object, walk: Walk, depth: number): boolean {
+  return walk.seen.has(value) || depth > MAX_DEPTH;
+}
+
+function collect(value: unknown, walk: Walk, depth: number): void {
+  if (collectPrimitive(value, walk.out)) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || alreadyVisitedOrTooDeep(value, walk, depth)) {
+    return;
+  }
+  walk.seen.add(value);
+  collectError(value, walk.out);
+  collectEntries(value, walk, depth);
+  collectOwnProperties(value, walk, depth);
 }
 
 /**
@@ -41,7 +66,7 @@ function collect(value: unknown, seen: Set<object>, out: string[], depth: number
  */
 export function observableText(value: unknown): string {
   const out: string[] = [];
-  collect(value, new Set(), out, 0);
+  collect(value, { seen: new Set(), out }, 0);
   out.push(inspect(value, { depth: null, showHidden: true }));
   return out.join("\n");
 }
