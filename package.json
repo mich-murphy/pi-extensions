@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:properties": "vitest run --config vitest.properties.config.ts",
+    "test:properties:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 HEGEL_SEED=\"${HEGEL_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}\" HEGEL_TEST_CASES=\"${HEGEL_TEST_CASES:-2000}\" && echo \"Hegel properties: HEGEL_SEED=$HEGEL_SEED HEGEL_TEST_CASES=$HEGEL_TEST_CASES\" && cargo test --locked --all-features $(grep -l hegel::test tests/*.rs | sed 's|tests/\\(.*\\)\\.rs|--test \\1|') -- --test-threads=2",
     "bench:skill-toggle-cache": "vitest run packages/pi-skill-toggle/test/cache-benchmark.test.ts",
     "test:claude-sdk-pin": "vitest run packages/pi-claude-sdk/test/sdk-release-contract.test.ts",
     "test:live": "vitest run --config vitest.live.config.ts",

@@ -1,6 +1,8 @@
 //! Observable resource accounting and reservation atomicity.
 use pi_gateway::budget::{BufferClass, Buffers, ConnectionId, ConnectionKind};
 
+mod support;
+
 #[test]
 fn control_headroom_and_generation_fencing() {
     let mut buffers = Buffers::new();
@@ -63,7 +65,7 @@ fn aggregate_is_not_thirty_reserved_entitlements() {
     assert_eq!(buffers.retained_bytes(), 0);
 }
 
-#[hegel::test(test_cases=200, seed=Some(12345), database=hegel::Database::Disabled, print_blob=true)]
+#[hegel::test(support::property_settings(200, 12345))]
 fn arbitrary_header_never_accepts_out_of_range(tc: hegel::TestCase) {
     use hegel::generators as gs;
     let bytes = tc.draw(gs::vecs(gs::integers::<u8>()).max_size(64));
@@ -76,7 +78,7 @@ fn arbitrary_header_never_accepts_out_of_range(tc: hegel::TestCase) {
     }
 }
 
-#[hegel::test(test_cases=200, seed=Some(23456), database=hegel::Database::Disabled, print_blob=true)]
+#[hegel::test(support::property_settings(200, 23456))]
 fn reservation_sequences_preserve_atomic_accounting(tc: hegel::TestCase) {
     use hegel::generators as gs;
     let sizes = tc.draw(gs::vecs(gs::integers::<u16>()).max_size(64));
@@ -108,7 +110,7 @@ fn reservation_sequences_preserve_atomic_accounting(tc: hegel::TestCase) {
     assert_eq!(buffers.retained_bytes(), 0);
 }
 
-#[hegel::test(test_cases=200, seed=Some(34567), database=hegel::Database::Disabled, print_blob=true)]
+#[hegel::test(support::property_settings(200, 34567))]
 fn control_flood_cannot_borrow_data_capacity(tc: hegel::TestCase) {
     use hegel::generators as gs;
     let sizes = tc.draw(gs::vecs(gs::integers::<u16>()).max_size(64));

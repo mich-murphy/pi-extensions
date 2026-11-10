@@ -60,18 +60,24 @@ jobs:
             echo
             echo '```sh'
             echo "HEGEL_SEED=${seed} HEGEL_TEST_CASES=${cases} npm run test:properties"
+            echo "HEGEL_SEED=${seed} HEGEL_TEST_CASES=${cases} npm run test:properties:rust"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Run property tests
         timeout-minutes: 35
         run: nix develop -c npm run test:properties -- --fileParallelism=false
+      - name: Run gateway property tests
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: nix develop -c npm run test:properties:rust
       - name: Explain how to reproduce
         if: ${{ failure() }}
         run: |
           echo "Property tests failed. Reproduce locally with:"
           echo "  HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties"
+          echo "  HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties:rust"
           echo "Add each counterexample above as a regression test before fixing it."
           {
             echo
-            echo "**Failed.** Reproduce with \`HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties\`."
+            echo "**Failed.** Reproduce with \`HEGEL_SEED=${HEGEL_SEED} HEGEL_TEST_CASES=${HEGEL_TEST_CASES} npm run test:properties\` or \`npm run test:properties:rust\` for the failing suite."
           } >> "$GITHUB_STEP_SUMMARY"

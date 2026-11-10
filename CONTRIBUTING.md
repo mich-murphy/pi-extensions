@@ -37,6 +37,8 @@ It runs these steps in order and stops at the first failure:
 | Fallow | `npm run fallow` | Dead code, duplication or a function over the complexity limit, anywhere in the repo |
 | Markdown | `npm run markdownlint` | Any Markdown lint finding |
 
+The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-comms/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
+
 Fix findings rather than silencing them:
 
 - Suppress a lint rule only on the offending line, with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
@@ -54,11 +56,11 @@ The numbers are project conventions. They keep review tractable; no source gives
 
 ## Property tests
 
-Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches.
+Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches. It runs the TypeScript properties and the Rust gateway properties in `packages/pi-comms/gateway/tests` with the same seed and case count.
 
-Both runs exist because a fixed seed makes the gate reproducible but explores the same inputs every time. Running other seeds locally during an evidence review found a genuine defect that seed 12345 never reached. The Rust gateway properties in `packages/pi-comms/gateway/tests` hard-code their seeds and ignore `HEGEL_SEED`, so the nightly run does not vary them.
+Both runs exist because a fixed seed makes the gate reproducible but explores the same inputs every time. Running other seeds locally during an evidence review found a genuine defect that seed 12345 never reached.
 
-Two environment variables change every property:
+Two environment variables change every property, in both languages. The Rust ones read them in `packages/pi-comms/gateway/tests/support/mod.rs`, because the `hegeltest` crate ignores them for a property that pins its own seed. An invalid value fails the run:
 
 | Variable | Effect |
 | --- | --- |
@@ -69,10 +71,11 @@ Run the nightly set locally. It picks a random seed and prints it, with the case
 
 ```sh
 npm run test:properties
+npm run test:properties:rust
 HEGEL_SEED=42 HEGEL_TEST_CASES=500 npm run test:properties
 ```
 
-To reproduce a nightly failure, copy the seed and case count from the log and run the same command. The same seed and case count give the same inputs, so the shrunk counterexample is identical. Narrow it with a file path, for example `npm run test:properties -- packages/pi-vim`.
+To reproduce a nightly failure, copy the seed and case count from the log and run the same command. The same seed and case count give the same inputs, so the shrunk counterexample is identical. Narrow it with a file path, for example `npm run test:properties -- packages/pi-vim`. A failing Rust property prints its seed and case count before the shrunk counterexample, so replay it with `npm run test:properties:rust` and those two values.
 
 Turn every counterexample into a regression test with an explicit example before you fix the code. Hegel's failure database is off, so nothing else replays it. A failing property is either a defect in the code or a wrong property or generator. Fix the property when its oracle or generator allows a state that cannot occur.
 
