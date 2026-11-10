@@ -212,7 +212,8 @@ describe("native prompt boundaries and row", () => {
     expect(selectContext(lines, empty.length, ["next"])).toBeUndefined();
     expect(selectContext(lines, lines.length - 1, ["next"])).toBe("next");
   });
-  test.each([1, 2, 3, 8, 20])("fits Unicode and strips ANSI at width %s", (width) => {
+  // Widths from 3 up are covered by the contextRow property, which draws widths 3 to 40.
+  test.each([1, 2])("fits Unicode and strips ANSI at width %s", (width) => {
     const row = contextRow(
       "\u001b[31m界 é 👩‍💻\u001b[0m\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
       width,
