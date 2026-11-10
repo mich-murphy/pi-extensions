@@ -4,7 +4,7 @@ import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
-import { propertySettings } from "../../../test-support/hegel-settings";
+import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import {
   buildAgentRequest,
   endsWithPrintedToolCall,
@@ -16,10 +16,20 @@ import type { MessageFixture } from "./fixtures";
 
 const settings = propertySettings(200);
 const CONTINUE = "Continue from the final conversation entry above.";
+// Every tag name the replay format uses; each is offered raw, opening and closing, in odd casing
+// and spacing, so text can try to forge or close any structural element.
+const TAG_NAMES = ["user", "assistant", "call", "results", "result", "past-call", "past-result"];
+const STRUCTURAL_TEXT = TAG_NAMES.flatMap((name) => [
+  `<${name}`,
+  `<${name}>`,
+  `</${name}>`,
+  `<${name.toUpperCase()}>`,
+  `< / ${name}`,
+  `<${name} id="x" tool="y">`,
+]);
 const FRAGMENTS = [
-  "<user",
+  ...STRUCTURAL_TEXT,
   "< /Result",
-  "<call",
   String.raw`<\/results>`,
   "&",
   '"',
@@ -28,7 +38,6 @@ const FRAGMENTS = [
   "<past-call id=",
   "</USER>",
   '<result id="zz" tool="x">',
-  "<assistant>",
 ];
 const PLAIN_NAMES = ["read", "bash", "gone"];
 const NAMES = [...PLAIN_NAMES, VALIDATION_ERROR_TOOL];
@@ -71,7 +80,10 @@ function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generate
     const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
     if (kind === 0) {
       out.users += 1;
-      out.messages.push({ role: "user", content: drawText(tc) });
+      out.messages.push({
+        role: "user",
+        content: [{ type: "text", text: drawText(tc) }, ...drawImages(tc)],
+      });
     } else if (kind === 1) {
       drawAssistant(draw);
     } else {
@@ -91,6 +103,21 @@ type DrawState = {
 };
 
 const poolId = (tc: TestCase) => tc.draw(gs.sampledFrom(POOL));
+
+type ImageBlock = { type: "image"; data: string; mimeType: string };
+
+function drawImages(tc: TestCase): ImageBlock[] {
+  return tc.draw(
+    gs.arrays(
+      gs.composite((inner) => ({
+        type: "image" as const,
+        data: inner.draw(gs.sampledFrom(["AA==", "QQ==", "aW1hZ2U="])),
+        mimeType: inner.draw(gs.sampledFrom(["image/png", "image/jpeg", "image/webp"])),
+      })),
+      { maxSize: 2 },
+    ),
+  );
+}
 
 function drawAssistant(draw: DrawState): void {
   const { tc, out, unanswered, unique } = draw;
@@ -155,7 +182,7 @@ function drawToolResult(draw: DrawState, kind: number): void {
     role: "toolResult",
     toolCallId: id,
     toolName: name,
-    content: [{ type: "text", text: drawText(tc) }],
+    content: [{ type: "text", text: drawText(tc) }, ...drawImages(tc)],
     isError,
   });
 }
@@ -211,6 +238,8 @@ function assertWellFormed(block: string): string[] {
 
 const entryBlocks = (blocks: readonly { text: string }[]) =>
   blocks.slice(1, -1).map((block) => block.text);
+/** Entry blocks with their images, so byte-identity covers what is sent beside the text. */
+const entryBlocksWithImages = <B>(blocks: readonly B[]) => blocks.slice(1, -1);
 const countMatches = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
 
 function assertBreakpoints(blockCount: number, points: readonly number[]): void {
@@ -284,11 +313,11 @@ function assertResults(tc: TestCase): void {
 
 function assertPrefixStable(tc: TestCase): void {
   const { messages } = drawTranscript(tc, 14, tc.draw(gs.booleans(), "unique"));
-  let previous = entryBlocks(build([]).promptBlocks);
+  let previous = entryBlocksWithImages(build([]).promptBlocks);
   const preamble = build([]).promptBlocks[0];
   for (let length = 1; length <= messages.length; length += 1) {
     const request = build(messages.slice(0, length));
-    const current = entryBlocks(request.promptBlocks);
+    const current = entryBlocksWithImages(request.promptBlocks);
     assert.deepEqual(request.promptBlocks[0], preamble);
     // A toolResult may extend or complete the trailing results block; nothing else may move.
     const mutable = messages[length - 1]?.role === "toolResult" ? 1 : 0;
@@ -381,11 +410,16 @@ function assertFenceRule(tc: TestCase): void {
 }
 
 describe("buildAgentRequest properties", () => {
-  test.each([true, false])("request structure invariants (unique ids: %s)", (unique) => {
-    property((tc) => {
-      assertStructure(tc, unique);
-    });
-  });
+  // About 0.3s alone and 0.75s with the CPU saturated: the timeout is over ten times the latter.
+  test.each([true, false])(
+    "request structure invariants (unique ids: %s)",
+    { timeout: propertyTimeout(10_000) },
+    (unique) => {
+      property((tc) => {
+        assertStructure(tc, unique);
+      });
+    },
+  );
 
   test("every surviving call has exactly one result, synthesised when missing; errored calls vanish", () => {
     property(assertResults);

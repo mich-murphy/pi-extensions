@@ -8,6 +8,8 @@ export type FakeClaudeBehaviour = {
   readonly version: string;
   /** Payload for the SDK's usage control request, or undefined to fail it. */
   readonly usage?: unknown;
+  /** SDK messages written to stdout, in order, when the prompt arrives (one turn). */
+  readonly turn?: readonly unknown[];
 };
 
 export type FakeClaude = {
@@ -45,6 +47,10 @@ process.stdin.on("data", (chunk) => {
   for (const line of lines.filter(Boolean)) {
     const message = JSON.parse(line);
     fs.appendFileSync(path.join(__dirname, "stdin.jsonl"), line + "\\n");
+    if (message.type === "user") {
+      for (const reply of behaviour.turn ?? []) console.log(JSON.stringify(reply));
+      continue;
+    }
     if (message.type !== "control_request") continue;
     const subtype = message.request.subtype;
     if (subtype === "get_usage" && behaviour.usage === undefined) {
@@ -53,7 +59,10 @@ process.stdin.on("data", (chunk) => {
         response: { subtype: "error", request_id: message.request_id, error: "usage unavailable" },
       }));
     } else {
-      respond(message.request_id, subtype === "get_usage" ? behaviour.usage : {});
+      respond(
+        message.request_id,
+        subtype === "get_usage" ? behaviour.usage : subtype === "initialize" ? { hook_on_failure_supported: true } : {},
+      );
     }
   }
 });

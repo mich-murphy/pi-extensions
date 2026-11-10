@@ -32,14 +32,20 @@ async function* failingRun(): AsyncGenerator<BridgeEvent> {
 }
 
 /** Make Pi's stream throw when the writer pushes one terminal event type. */
-function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "error"): void {
+function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "error") {
   const push = stream.push.bind(stream);
-  vi.spyOn(stream, "push").mockImplementation((event: AssistantMessageEvent) => {
+  return vi.spyOn(stream, "push").mockImplementation((event: AssistantMessageEvent) => {
     if (event.type === type) {
       throw new Error("finalization defect");
     }
     push(event);
   });
+}
+
+/** How many terminal events (`done` or `error`) the writer tried to push. */
+function terminalPushes(push: ReturnType<typeof breakTerminalPush>): number {
+  return push.mock.calls.filter(([event]) => event.type === "done" || event.type === "error")
+    .length;
 }
 
 function streamOf(event: BridgeEvent): AssistantMessageEventStream {
@@ -161,6 +167,30 @@ describe("provider event streaming", () => {
     ]);
 
     expect(terminalOf(events).reason).toBe("length");
+  });
+});
+
+describe("terminal event", () => {
+  test("stops consuming the run at the terminal event, so the SDK run is released", async () => {
+    let resumedAfterTerminal = false;
+    const closed = Promise.withResolvers<true>();
+    async function* run(): AsyncGenerator<BridgeEvent> {
+      try {
+        yield { type: "done", reason: "stop" };
+        resumedAfterTerminal = true;
+        yield { type: "text_delta", text: "late" };
+      } finally {
+        closed.resolve(true);
+      }
+    }
+
+    const stream = createAgentSdkStream({ model: sonnet, context, options: {}, run });
+    await drain(stream);
+    await closed.promise;
+
+    expect(resumedAfterTerminal).toBe(false);
+    const message = await stream.result();
+    expect(message.content).toStrictEqual([]);
   });
 });
 
@@ -304,17 +334,19 @@ describe("broken stderr", () => {
       type: "failed",
       error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
     });
-    breakTerminalPush(stream, "error");
+    const push = breakTerminalPush(stream, "error");
     const events = await drain(stream);
     expect(events.map((item) => item.type)).toStrictEqual(["start"]);
+    expect(terminalPushes(push)).toBe(1);
     await expect(stream.result()).resolves.toMatchObject({ stopReason: "error" });
   });
 
   test("a throw while pushing the done event still ends the stream and settles its result", async () => {
     const stream = streamOf({ type: "done", reason: "stop" });
-    breakTerminalPush(stream, "done");
+    const push = breakTerminalPush(stream, "done");
     const events = await drain(stream);
     expect(events.map((item) => item.type)).toStrictEqual(["start"]);
+    expect(terminalPushes(push)).toBe(1);
     await expect(stream.result()).resolves.toMatchObject({ stopReason: "stop" });
   });
 });
