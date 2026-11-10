@@ -227,7 +227,8 @@ def main():
                 rpc_commands()
             elif action == 'metadata':
                 output = run('metadata', ['npm', 'run', 'test:live', '--', 'packages/pi-claude-sdk/test/sdk-live-contract.live.ts', '-t', 'model metadata resolves'], cwd=copy_gate())
-                assert re.search(r'Tests\s+1 passed', output), 'metadata test did not run'
+                plain = re.sub(r'\x1b\[[0-9;]*m', '', output)  # vitest colours its summary when FORCE_COLOR is set
+                assert re.search(r'Tests\s+1 passed', plain), 'metadata test did not run'
                 record('metadata', 'passed', 'real SDK supportedModels metadata only; filtered run does NOT attest live gate')
             elif action == 'live':
                 if not a.approve_recovery_live:
