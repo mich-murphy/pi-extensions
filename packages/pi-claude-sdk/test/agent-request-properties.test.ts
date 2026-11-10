@@ -4,7 +4,7 @@ import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
-import { propertySettings } from "../../../test-support/hegel-settings";
+import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import {
   buildAgentRequest,
   endsWithPrintedToolCall,
@@ -410,11 +410,16 @@ function assertFenceRule(tc: TestCase): void {
 }
 
 describe("buildAgentRequest properties", () => {
-  test.each([true, false])("request structure invariants (unique ids: %s)", (unique) => {
-    property((tc) => {
-      assertStructure(tc, unique);
-    });
-  });
+  // About 0.3s alone and 0.75s with the CPU saturated: the timeout is over ten times the latter.
+  test.each([true, false])(
+    "request structure invariants (unique ids: %s)",
+    { timeout: propertyTimeout(10_000) },
+    (unique) => {
+      property((tc) => {
+        assertStructure(tc, unique);
+      });
+    },
+  );
 
   test("every surviving call has exactly one result, synthesised when missing; errored calls vanish", () => {
     property(assertResults);
