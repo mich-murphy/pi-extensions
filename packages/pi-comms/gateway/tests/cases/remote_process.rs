@@ -9,8 +9,13 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+/// Listener address that lets the OS choose the port; the gateway reports the bound one at readiness.
+const ANY: std::net::SocketAddr =
+    std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0);
+
 struct Process {
     child: Child,
+    bound: Option<std::net::SocketAddr>,
     directory: CredentialDirectory,
 }
 impl Process {
@@ -36,12 +41,19 @@ impl Process {
         Self::spawn(directory, &path)
     }
     fn spawn(directory: CredentialDirectory, config: &PathBuf) -> Self {
+        let (child, bound) = Self::child(config);
         Self {
-            child: Self::child(config),
+            child,
+            bound,
             directory,
         }
     }
-    fn child(config: &PathBuf) -> Child {
+    /// The address the remote listener actually bound, as reported by the `ready` event.
+    fn address(&self) -> std::net::SocketAddr {
+        self.bound
+            .expect("a listening process reports its bound address at readiness")
+    }
+    fn child(config: &PathBuf) -> (Child, Option<std::net::SocketAddr>) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
             .arg("--config")
             .arg(config)
@@ -66,7 +78,10 @@ impl Process {
         let parsed: Value = serde_json::from_str(&ready)
             .expect("isolated generated-PKI process fixture and bounded framed I/O");
         assert_eq!(parsed["event"], "ready", "foreground readiness");
-        child
+        let bound = parsed["remoteListenAddress"]
+            .as_str()
+            .map(|address| address.parse().expect("ready reports a socket address"));
+        (child, bound)
     }
     fn terminate(&mut self) {
         let pid = rustix::process::Pid::from_raw(
@@ -81,7 +96,7 @@ impl Process {
         );
     }
     fn restart(&mut self) {
-        self.child = Self::child(&self.directory.0.join("config.json"));
+        (self.child, self.bound) = Self::child(&self.directory.0.join("config.json"));
     }
     fn connect(&self) -> UnixStream {
         let stream = UnixStream::connect(self.directory.0.join("s"))
@@ -184,13 +199,6 @@ fn await_peer(stream: &mut UnixStream, snapshot: &Value, peer: &Value) {
     }
     panic!("expected bounded peer upsert");
 }
-fn address() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
-    listener
-        .local_addr()
-        .expect("isolated generated-PKI process fixture and bounded framed I/O")
-}
 fn grants(peer: &str) -> Value {
     json!([{"machineId":peer,"scopeId":"team","permissions":["discover","push","read","interest"]},{"machineId":peer,"scopeId":"team","direction":"incoming","permissions":["push","read","interest"]}])
 }
@@ -207,8 +215,8 @@ fn send(stream: &mut UnixStream, to: &Value, n: u32) {
 #[test]
 fn two_real_daemons_route_exact_receipts_read_interest_and_withdraw_without_replay() {
     let ca = Authority::new("two-process private test CA");
-    let address = address();
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta-session", 1);
     let mut alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
@@ -270,9 +278,9 @@ fn two_real_daemons_route_exact_receipts_read_interest_and_withdraw_without_repl
 #[test]
 fn real_pair_push_only_does_not_require_discover_and_incoming_ceiling_is_independent() {
     let ca = Authority::new("push-only two-process CA");
-    let address = address();
     let beta_policy = json!([{"machineId":"alpha","scopeId":"team","permissions":["discover","read","push"]},{"machineId":"alpha","scopeId":"team","direction":"incoming","permissions":["push"]}]);
-    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &beta_policy);
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &beta_policy);
+    let address = beta.address();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta", 20);
     let alpha_policy = json!([{"machineId":"beta","scopeId":"team","permissions":["push","read"]},{"machineId":"beta","scopeId":"team","direction":"incoming","permissions":["read"]}]);
@@ -356,8 +364,8 @@ fn descriptor(machine: &str) -> Value {
 async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_unadvertised_source()
  {
     let ca = Authority::new("adversarial process CA");
-    let address = address();
-    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     for case in 0..5 {
         let directory = CredentialDirectory::new();
         let prepared = directory
@@ -401,8 +409,8 @@ async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_
 #[tokio::test]
 async fn real_daemon_authenticates_identity_and_rejects_transit_but_keeps_valid_link() {
     let ca = Authority::new("identity and transit process CA");
-    let address = address();
-    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     let impostor_directory = CredentialDirectory::new();
     let impostor = impostor_directory
         .settings(&ca, "impostor", "beta", "connect", address)
@@ -458,13 +466,13 @@ fn replace_leaf(process: &Process, ca: &Authority, serial: u64, seconds: i64) {
 #[test]
 fn real_pair_active_credential_expiry_withdraws_routes_and_possible_admission_stays_unknown() {
     let ca = Authority::new("active expiry process CA");
-    let address = address();
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
     beta.terminate();
     replace_leaf(&beta, &ca, 43, 4);
     beta.restart();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta", 900);
+    let address = beta.address();
     let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
     let mut a = alpha.connect();
     register(&mut a, "alpha", 901);
@@ -492,13 +500,13 @@ fn real_pair_active_credential_expiry_withdraws_routes_and_possible_admission_st
 fn controlled_restart_installs_revocation_even_when_no_peer_can_authenticate_and_rejects_rollback()
 {
     let ca = Authority::new("controlled revocation process CA");
-    let address = address();
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
     beta.terminate();
     replace_leaf(&beta, &ca, 43, 3600);
     beta.restart();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta", 910);
+    let address = beta.address();
     let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
     let mut a = alpha.connect();
     register(&mut a, "alpha", 911);
@@ -574,8 +582,8 @@ fn explicit_floor_cli_initializes_once_without_resetting_existing_state() {
 #[test]
 fn real_daemon_bounds_pending_unauthenticated_handshakes_and_closes_on_five_second_deadline() {
     let ca = Authority::new("pending handshake cap CA");
-    let address = address();
-    let _beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let _beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = _beta.address();
     let mut pending: Vec<_> = (0..4)
         .map(|_| std::net::TcpStream::connect(address).expect("isolated pending TCP handshake"))
         .collect();
@@ -601,8 +609,7 @@ fn real_daemon_bounds_pending_unauthenticated_handshakes_and_closes_on_five_seco
 #[test]
 fn real_pair_active_crl_expiry_withdraws_routes_and_possible_admission_stays_unknown() {
     let ca = Authority::new("active CRL expiry process CA");
-    let address = address();
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
     beta.terminate();
     replace_leaf(&beta, &ca, 43, 3600);
     let current = time::OffsetDateTime::now_utc();
@@ -619,6 +626,7 @@ fn real_pair_active_crl_expiry_withdraws_routes_and_possible_admission_stays_unk
     beta.restart();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta", 900);
+    let address = beta.address();
     let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
     let mut a = alpha.connect();
     register(&mut a, "alpha", 901);
@@ -687,8 +695,8 @@ async fn link_is_alive<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
 #[tokio::test]
 async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_thirty_first() {
     let ca = Authority::new("imported session cap CA");
-    let address = address();
-    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     // Snapshot sizes 30 and 31, then a live upsert taking a 29-session roster to 30 and to 31.
     for (snapshot, upserts, survives) in
         [(30, 0, true), (31, 0, false), (29, 1, true), (30, 1, false)]
@@ -711,8 +719,8 @@ async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_t
 #[tokio::test]
 async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overloaded() {
     let ca = Authority::new("operation cap CA");
-    let address = address();
-    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
     let mut receiver = beta.connect();
     let target = register(&mut receiver, "receiver", 1);
     let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
@@ -739,4 +747,56 @@ async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overl
     assert_eq!(refused["outcome"]["code"], "overloaded");
     assert_eq!(refused["outcome"]["resource"], "operations");
     drop(beta);
+}
+
+#[test]
+fn listener_on_port_zero_reports_a_nonzero_bound_address_that_accepts_connections() {
+    let ca = Authority::new("port zero CA");
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let bound = beta.address();
+    assert_eq!(bound.ip(), ANY.ip(), "the bound IP is the configured IP");
+    assert_ne!(bound.port(), 0, "ready reports the port the OS chose");
+    std::net::TcpStream::connect(bound).expect("the reported address is the live listener");
+}
+
+#[test]
+fn concurrent_listeners_on_port_zero_receive_distinct_ports() {
+    let ca = Authority::new("concurrent port zero CA");
+    let first = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let second = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    assert_ne!(first.address(), second.address());
+    std::net::TcpStream::connect(first.address()).expect("first listener is live");
+    std::net::TcpStream::connect(second.address()).expect("second listener is live");
+}
+
+#[test]
+fn connecting_process_reports_no_remote_listen_address() {
+    let ca = Authority::new("connector readiness CA");
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let alpha = Process::start(
+        &ca,
+        "alpha",
+        "beta",
+        "connect",
+        beta.address(),
+        &grants("beta"),
+    );
+    assert!(
+        alpha.bound.is_none(),
+        "only listeners report a bound address"
+    );
+}
+
+#[test]
+fn port_zero_is_valid_for_a_listener_and_rejected_for_a_dialed_address() {
+    let directory = CredentialDirectory::new();
+    let settings = |mode: &str| {
+        serde_json::to_vec(&json!({"machineId":"beta","endpoint":{"mode":mode,"address":"127.0.0.1:0"},"rootCertificates":[directory.0.join("root.der")],"certificateChain":[directory.0.join("leaf.der")],"privateKey":directory.0.join("key.der"),"crls":[directory.0.join("current.crl")],"revocationState":directory.0.join("floors.json")}))
+        .expect("settings encoding")
+    };
+    assert!(pi_gateway::remote::Settings::parse(&settings("listen")).is_ok());
+    assert!(
+        pi_gateway::remote::Settings::parse(&settings("connect")).is_err(),
+        "port 0 is never a destination"
+    );
 }
