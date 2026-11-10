@@ -12,6 +12,7 @@ import {
   publicUrl,
   publicWebClientWith,
 } from "./fakes";
+import { expectNoLeak } from "./leaks";
 
 function recordingTracer() {
   const spans: Tracer.NativeSpan[] = [];
@@ -88,11 +89,13 @@ describe("safe telemetry", () => {
           return reflectedMcpResponse(calls, text, rpc);
         },
       });
-      await Effect.runPromiseExit(
+      const exit = await Effect.runPromiseExit(
         client
           .callTool("search", { query: secrets[0] }, secrets)
           .pipe(Effect.provideService(Tracer.Tracer, tracer)),
       );
+      // The span summary exports only the error type, so the scrub itself is observed on the failure.
+      expectNoLeak(exit, ...secrets, "-suffix");
       const exported = exportedSpans(spans);
       expect(spans.map((span) => span.name)).toContain("McpClient.callTool");
       expect(exported).toContain("ProviderToolError");

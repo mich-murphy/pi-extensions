@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Logger, Redacted, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { CredentialResolver, resolveCredentialSnapshot } from "../credentials";
+import { expectNoLeak, observableText } from "./leaks";
 
 const credentialEffect = Effect.gen(function* () {
   return yield* (yield* CredentialResolver).resolve("exa");
@@ -58,8 +59,7 @@ describe("credential boundary", () => {
       }),
     ]) {
       const exit = await Effect.runPromiseExit(credentialEffect.pipe(Effect.provide(layer)));
-      expect(JSON.stringify(exit)).not.toContain("SECRET");
-      expect(JSON.stringify(exit)).not.toContain("private-command");
+      expectNoLeak(exit, "SECRET", "private-command");
       assert(Exit.isFailure(exit));
     }
   });
@@ -67,7 +67,7 @@ describe("credential boundary", () => {
   test("captured failure telemetry retains neither rejected values nor raw causes", async () => {
     const messages: string[] = [];
     const logger = Logger.make((options) => {
-      messages.push(JSON.stringify(options.message));
+      messages.push(observableText(options.message));
     });
     const program = Effect.gen(function* () {
       const result = yield* Effect.result(credentialEffect);

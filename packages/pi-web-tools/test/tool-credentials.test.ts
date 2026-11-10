@@ -1,6 +1,8 @@
 import { Effect, Redacted } from "effect";
 import { describe, expect, test } from "vitest";
 import { CredentialResolver, CredentialFailure } from "../credentials";
+import { FetchPage } from "../fetch-page";
+import { PrivateIpBlocked } from "../network";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
 import { settingsFrom, toolRuntimeWith } from "./fakes";
@@ -50,6 +52,42 @@ describe("credential wait lifecycle", () => {
       await runtime.dispose();
     },
   );
+  test("webfetch never resolves the Brave credential, which only search can use", async () => {
+    const resolved: string[] = [];
+    const settings = settingsFrom();
+    const credentials = CredentialResolver.of({
+      resolve: (provider) =>
+        Effect.sync(() => {
+          resolved.push(provider);
+          return undefined;
+        }),
+    });
+    const fetchRuntime = toolRuntimeWith({
+      settings,
+      credentials,
+      fetchPage: FetchPage.of({ fetch: () => Effect.fail(new PrivateIpBlocked()) }),
+    });
+    const searchRuntime = toolRuntimeWith({ settings, credentials, searchProviders: [] });
+    const fetchTool = createWebFetchTool({
+      settings,
+      runtime: fetchRuntime,
+      redactText: (input) => input,
+    });
+    const searchTool = createWebSearchTool({
+      settings,
+      runtime: searchRuntime,
+      redactText: (input) => input,
+    });
+    await fetchTool.execute("fetch", { url: "https://example.com/" }).catch(rejectionMessage);
+    // A stored Brave `!command` key would run on every fetch if it were resolved here.
+    expect(resolved).toStrictEqual(["exa", "parallel"]);
+    resolved.length = 0;
+    await searchTool.execute("search", { query: "query" }).catch(rejectionMessage);
+    // The same settings do resolve Brave for search, so the fetch result above is not vacuous.
+    expect(resolved).toStrictEqual(["exa", "parallel", "brave"]);
+    await Promise.all([fetchRuntime.dispose(), searchRuntime.dispose()]);
+  });
+
   test("shutdown interrupts resolution, suppresses late transport, and rejects stale calls", async () => {
     const started = Promise.withResolvers<undefined>();
     const resolved = Promise.withResolvers<Redacted.Redacted>();

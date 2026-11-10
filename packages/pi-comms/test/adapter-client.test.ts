@@ -203,6 +203,19 @@ function makeClient(config: Configuration): GatewayClient {
   });
 }
 
+function missingPublication(request: Request): Reply | undefined {
+  if (request.op !== "state.get") {
+    return undefined;
+  }
+  return {
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "state.get",
+    outcome: { tag: "error", code: "not_found" },
+  };
+}
+
 function toolGateway(request: Request): Reply | undefined {
   if (request.op === "send") {
     return {
@@ -1022,6 +1035,84 @@ describe("public adapter transport and notice accounting", () => {
     await expect(
       connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 1000),
     ).rejects.toMatchObject({ code: "unavailable" });
+  });
+  test("session_state get puts expectedRevision on the wire only when the caller supplied one", async () => {
+    const fixture = await gateway(missingPublication);
+    const current: { session?: AdapterSession } = {};
+    const tools: CapturedTool[] = [];
+    registerTools(
+      {
+        registerTool: (definition) => {
+          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+        },
+      },
+      () => current.session,
+    );
+    const owned = await createAdapterRuntime(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+    );
+    cleanups.push(async () => {
+      await owned.dispose();
+    });
+    current.session = owned.session;
+    await expect.poll(() => owned.session.client.status().connected).toBe(true);
+    const get = { action: "get", publisher: other, scopeId: "team", key: "notes" };
+    await executeTool(tools, "session_state", { ...get, expectedRevision: 7 });
+    await executeTool(tools, "session_state", { ...get, expectedRevision: 0 });
+    await executeTool(tools, "session_state", get);
+    const sent = fixture.requests.filter((request) => request.op === "state.get");
+    expect(sent.map((request) => request.expectedRevision)).toStrictEqual([7, 0, undefined]);
+    expect(sent.map((request) => "expectedRevision" in request)).toStrictEqual([true, true, false]);
+  });
+  test("adapter answers a state.get whose expectedRevision differs from the current publication with revision_mismatch", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    expect(
+      session.state.publish({
+        scopeId: "team",
+        key: "report",
+        record: {
+          category: "context",
+          title: "report",
+          summary: "summary",
+          format: "text",
+          preparation: "authored",
+        },
+      }),
+    ).toMatchObject({ tag: "ok" });
+    const ask = (rid: string, expectedRevision: number) => {
+      fixture.sendFrame({
+        v: 1,
+        op: "state.get",
+        rid,
+        from: other,
+        publisher: peer,
+        scopeId: "team",
+        key: "report",
+        expectedRevision,
+      });
+    };
+    ask("a".repeat(32), 1);
+    ask("b".repeat(32), 2);
+    await expect.poll(() => fixture.replies.length).toBe(2);
+    expect(fixture.replies[0]?.outcome).toMatchObject({ tag: "ok" });
+    expect(fixture.replies[1]?.outcome).toStrictEqual({
+      tag: "error",
+      code: "revision_mismatch",
+    });
   });
   test("adapter serves read/interest controls without wakes, including wrong-runtime routing", async () => {
     const fixture = await gateway(() => undefined);

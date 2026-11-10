@@ -8,6 +8,7 @@ import { ModelConfig } from "../../../node_modules/@earendil-works/pi-coding-age
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { createWebAuthentication, WEB_AUTH_PROVIDERS } from "../authentication";
 import type { SearchProviderName } from "../types";
+import { expectNoLeak } from "./leaks";
 import { inheritingChild, nativeAuthFixture } from "./native-auth-fixture";
 
 async function fixture(key?: string) {
@@ -90,8 +91,7 @@ describe("public native web authentication", () => {
       const result = await resolve();
       assert(Result.isFailure(result));
       expect(["invalid", "incompatible", "resolution"]).toContain(result.failure.reason);
-      expect(JSON.stringify(result)).not.toContain("ambient-synthetic");
-      expect(JSON.stringify(result)).not.toContain("printf");
+      expectNoLeak(result, "ambient-synthetic", "printf");
     },
   );
 
@@ -254,7 +254,7 @@ describe("public native web authentication", () => {
     const result = await resolve();
     assert(Result.isFailure(result));
     expect(result.failure.reason).toBe("incompatible");
-    expect(JSON.stringify(result)).not.toContain("external-synthetic");
+    expectNoLeak(result, "external-synthetic");
   });
 
   test("native fixture waits for registration refreshes before exposing models.json to edits", async () => {
@@ -321,8 +321,7 @@ describe("public native web authentication", () => {
       const rejected = await resolve();
       assert(Result.isFailure(rejected));
       expect(rejected.failure.reason).toBe("resolution");
-      expect(JSON.stringify(rejected)).not.toContain("PI_WEB_MISSING_HEADER");
-      expect(JSON.stringify(rejected)).not.toContain("stored-synthetic");
+      expectNoLeak(rejected, "PI_WEB_MISSING_HEADER", "stored-synthetic");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -388,7 +387,6 @@ describe("public native web authentication", () => {
     const { resolve } = await fixture("!printf timeout-secret; exec sleep 11");
     const result = await resolve();
     assert(Result.isFailure(result));
-    expect(JSON.stringify(result)).not.toContain("timeout-secret");
-    expect(JSON.stringify(result)).not.toContain("sleep");
+    expectNoLeak(result, "timeout-secret", "sleep");
   }, 30_000);
 });

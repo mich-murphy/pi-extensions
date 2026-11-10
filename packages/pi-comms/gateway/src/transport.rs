@@ -333,6 +333,37 @@ mod tests {
             "a partial header must expire without a polling loop"
         );
     }
+    #[tokio::test(start_paused = true)]
+    async fn partial_frame_is_assembled_for_exactly_five_seconds_from_its_first_byte() {
+        for partial_body in [false, true] {
+            let accounting = Accounting::default();
+            let id = ConnectionId(1);
+            accounting
+                .open(id, ConnectionKind::Local)
+                .expect("fresh connection ledger");
+            let (stream, mut peer) = tokio::io::duplex(64);
+            let (events, _receive) = mpsc::channel(2);
+            let (_send, output) = mpsc::channel(2);
+            let task = tokio::spawn(connection(id, stream, accounting, events, output));
+            // One header byte, or a complete header announcing a body that never arrives.
+            let prefix: &[u8] = if partial_body { &[0, 0, 0, 4, 1] } else { &[0] };
+            peer.write_all(prefix).await.expect("partial frame prefix");
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_millis(4_999)).await;
+            tokio::task::yield_now().await;
+            assert!(
+                !task.is_finished(),
+                "a slow sender keeps its frame open until the five-second deadline"
+            );
+            tokio::time::advance(Duration::from_millis(1)).await;
+            tokio::task::yield_now().await;
+            assert!(
+                task.is_finished(),
+                "the stalled frame closes the connection at five seconds"
+            );
+            task.await.expect("connection task exits cleanly");
+        }
+    }
     #[tokio::test]
     async fn withdrawn_source_drops_unwritten_frame_without_releasing_charge_early() {
         let accounting = Accounting::default();

@@ -191,30 +191,16 @@ function fakeHttpFetch(fetchImpl: typeof fetch): Layer.Layer<HttpFetch> {
   return Layer.succeed(HttpFetch, HttpFetch.of({ fetch: fetchImpl }));
 }
 
-/** The live public web client over a test transport and resolver. */
-export function publicWebClientWith(dependencies: {
-  readonly fetchImpl: typeof fetch;
-  readonly lookup: (
-    hostname: string,
-  ) => Promise<readonly { readonly address: string; readonly family?: 4 | 6 }[]>;
-}): PublicWebClient["Service"] {
-  const transport = Layer.succeed(
-    PublicWebTransport,
-    PublicWebTransport.of({
-      get: async (url, _addresses, request) =>
-        dependencies.fetchImpl(url, {
-          method: "GET",
-          headers: request.headers,
-          signal: request.signal,
-          redirect: "manual",
-        }),
-    }),
-  );
-  const resolver = Layer.succeed(
+export type TestLookup = (
+  hostname: string,
+) => Promise<readonly { readonly address: string; readonly family?: 4 | 6 }[]>;
+
+function resolverFrom(lookup: TestLookup): Layer.Layer<DnsLookup> {
+  return Layer.succeed(
     DnsLookup,
     DnsLookup.of({
       lookup: async (hostname) => {
-        const records = await dependencies.lookup(hostname);
+        const records = await lookup(hostname);
         return records.map((record) => {
           const family = record.family ?? isIP(record.address);
           if (family !== 4 && family !== 6) {
@@ -225,10 +211,46 @@ export function publicWebClientWith(dependencies: {
       },
     }),
   );
+}
+
+/**
+ * The live public web client over a test transport and resolver. The transport receives the
+ * addresses the client approved, so a test can assert on what the real client validated and pinned.
+ */
+export function publicWebClientOverTransport(dependencies: {
+  readonly transport: PublicWebTransport["Service"];
+  readonly lookup: TestLookup;
+}): PublicWebClient["Service"] {
   return serviceFrom(
     PublicWebClient,
-    PublicWebClient.layer.pipe(Layer.provide(Layer.mergeAll(transport, resolver))),
+    PublicWebClient.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(PublicWebTransport, dependencies.transport),
+          resolverFrom(dependencies.lookup),
+        ),
+      ),
+    ),
   );
+}
+
+/** The live public web client over a test fetch (which ignores the approved addresses) and resolver. */
+export function publicWebClientWith(dependencies: {
+  readonly fetchImpl: typeof fetch;
+  readonly lookup: TestLookup;
+}): PublicWebClient["Service"] {
+  return publicWebClientOverTransport({
+    lookup: dependencies.lookup,
+    transport: {
+      get: async (url, _addresses, request) =>
+        dependencies.fetchImpl(url, {
+          method: "GET",
+          headers: request.headers,
+          signal: request.signal,
+          redirect: "manual",
+        }),
+    },
+  });
 }
 
 /** The live provider HTTP client over a test fetch. */

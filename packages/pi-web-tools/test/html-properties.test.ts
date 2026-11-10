@@ -15,7 +15,16 @@ const BASE_URL = "https://example.com/";
 const ALLOWED_FAILURES = new Set(["EmptyHtmlDocument", "HtmlConversionFailed"]);
 const NODE_KINDS = ["p", "div", "table", "script", "template", "a", "text"];
 const WORDS = ["hello world", "alpha beta gamma delta", "x", " "];
-const HREFS = ["/x", "javascript:alert(1)", "https://e.com/y", ""];
+const HREFS = [
+  "/x",
+  "javascript:alert(1)",
+  "JaVaScRiPt:alert(1)",
+  " java\tscript:alert(1)",
+  "vbscript:msgbox(1)",
+  "https://e.com/y",
+  "",
+];
+const SCRIPT_URL = /(?:java|vb)\s*script:/iu;
 
 function renderNode(tc: TestCase, depth: number): string {
   const kind = tc.draw(gs.sampledFrom(NODE_KINDS), "kind");
@@ -56,6 +65,7 @@ function assertAllowedOutcome(
   }
   assert.equal(typeof result.success, "string");
   assert.ok(!result.success.includes(MARKER), "script text leaked into the output");
+  assert.ok(!SCRIPT_URL.test(result.success), "a script URL survived link sanitising");
   // Readable-root extraction legitimately keeps only the best-scoring div and drops its siblings,
   // so visible text is only promised to survive when no div with visible text competes for the
   // root. A div holding only raw text never competes (it has no visible text).

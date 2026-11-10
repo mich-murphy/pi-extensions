@@ -1,51 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { WEB_AUTH_PROVIDERS } from "../authentication";
 import webToolsExtension from "../index";
-import { nativeAuthFixture } from "./native-auth-fixture";
-
-type RegisteredTool = {
-  readonly name: string;
-  readonly execute: (...args: readonly never[]) => Promise<unknown>;
-};
-
-type TestContext = Pick<ExtensionContext, "modelRegistry"> & {
-  readonly ui: { readonly notify: (message: string) => void };
-};
-
-async function fakePi() {
-  const { registry } = await nativeAuthFixture({ register: false });
-  const tools: RegisteredTool[] = [];
-  type Handler = (event: unknown, ctx: TestContext) => void | Promise<void>;
-  const handlers = new Map<string, Handler[]>();
-  const notifications: string[] = [];
-  const api = {
-    registerProvider: registry.registerProvider.bind(registry),
-    unregisterProvider: registry.unregisterProvider.bind(registry),
-    registerTool: (tool: RegisteredTool) => {
-      tools.push(tool);
-    },
-    on: (event: string, handler: Handler) => {
-      const existing = handlers.get(event) ?? [];
-      existing.push(handler);
-      handlers.set(event, existing);
-    },
-  };
-  const ctx = {
-    modelRegistry: registry,
-    ui: {
-      notify: (message: string) => {
-        notifications.push(message);
-      },
-    },
-  };
-  const emit = async (event: string) => {
-    for (const handler of handlers.get(event) ?? []) {
-      await handler({}, ctx);
-    }
-  };
-  return { pi: api, tools, ctx, emit, registry, notifications };
-}
+import { fakePi } from "./fake-pi";
 
 const ENV_KEYS = [
   "EXA_API_KEY",

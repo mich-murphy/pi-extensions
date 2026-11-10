@@ -337,6 +337,7 @@ async fn remote_write<S: tokio::io::AsyncWrite + Unpin>(stream: &mut S, value: &
         .await
         .expect("local TLS write");
     stream.write_all(&bytes).await.expect("local TLS body");
+    stream.flush().await.expect("local TLS flush");
 }
 async fn remote_read<S: tokio::io::AsyncRead + Unpin>(stream: &mut S) -> std::io::Result<Value> {
     use tokio::io::AsyncReadExt;
@@ -639,4 +640,103 @@ fn real_pair_active_crl_expiry_withdraws_routes_and_possible_admission_stays_unk
     );
     send(&mut a, &beta_peer, 905);
     assert_eq!(read(&mut a)["outcome"]["code"], "no_route");
+}
+
+fn imported(index: u32) -> Value {
+    json!({"peer":{"machineId":"alpha","sessionId":format!("remote-{index}"),"runtimeNonce":rid(2000 + index)},"label":"remote fixture","scopeIds":["team"]})
+}
+
+/// Opens an authenticated raw link to `beta` and answers its roster watch with `snapshot` peers.
+async fn link_with_snapshot(
+    ca: &Authority,
+    address: std::net::SocketAddr,
+    snapshot: u32,
+) -> (
+    impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    Value,
+    CredentialDirectory,
+    pi_gateway::lease::LinkLease,
+) {
+    let directory = CredentialDirectory::new();
+    let prepared = directory
+        .settings(ca, "alpha", "beta", "connect", address)
+        .prepare("alpha")
+        .expect("alpha credentials prepare");
+    let (mut stream, lease) = prepared
+        .connect()
+        .await
+        .expect("authenticated link")
+        .into_parts();
+    let discover = remote_read(&mut stream)
+        .await
+        .expect("roster watch request");
+    let peers: Vec<_> = (0..snapshot).map(imported).collect();
+    remote_write(&mut stream,&json!({"v":1,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":true}}})).await;
+    (stream, discover["rid"].clone(), directory, lease)
+}
+
+async fn link_is_alive<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+    stream: &mut S,
+) -> bool {
+    remote_write(stream, &json!({"v":1,"op":"ping","rid":rid(3000)})).await;
+    tokio::time::timeout(Duration::from_secs(3), remote_read(stream))
+        .await
+        .is_ok_and(|reply| reply.is_ok_and(|pong| pong["forOp"] == "ping"))
+}
+
+#[tokio::test]
+async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_thirty_first() {
+    let ca = Authority::new("imported session cap CA");
+    let address = address();
+    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    // Snapshot sizes 30 and 31, then a live upsert taking a 29-session roster to 30 and to 31.
+    for (snapshot, upserts, survives) in
+        [(30, 0, true), (31, 0, false), (29, 1, true), (30, 1, false)]
+    {
+        let (mut stream, watch, _directory, _lease) =
+            link_with_snapshot(&ca, address, snapshot).await;
+        for index in 0..upserts {
+            remote_write(&mut stream,&json!({"v":1,"op":"roster.event","rid":watch,"event":{"tag":"upsert","peer":imported(snapshot + index)}})).await;
+        }
+        assert_eq!(
+            link_is_alive(&mut stream).await,
+            survives,
+            "snapshot of {snapshot} sessions plus {upserts} upserts must {} the link",
+            if survives { "keep" } else { "close" }
+        );
+    }
+    drop(beta);
+}
+
+#[tokio::test]
+async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overloaded() {
+    let ca = Authority::new("operation cap CA");
+    let address = address();
+    let beta = Process::start(&ca, "beta", "alpha", "listen", address, &grants("alpha"));
+    let mut receiver = beta.connect();
+    let target = register(&mut receiver, "receiver", 1);
+    let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
+    let origin = imported(0)["peer"].clone();
+    let send_from_remote = |number: u32| json!({"v":1,"op":"send","rid":rid(4000 + number),"from":origin,"to":target,"scopeId":"team","message":{"id":rid(5000 + number),"kind":"request","content":"queued","format":"text"}});
+    // One operation at a time: the delivery proves the gateway registered it before the next
+    // frame is offered, so the gateway's bounded inbound queue never overflows.
+    for number in 0..256 {
+        remote_write(&mut stream, &send_from_remote(number)).await;
+        let delivery = read(&mut receiver);
+        assert_eq!(
+            delivery["message"]["id"],
+            rid(5000 + number),
+            "the first 256 operations reach the receiver in order"
+        );
+    }
+    remote_write(&mut stream, &send_from_remote(256)).await;
+    let refused = tokio::time::timeout(Duration::from_secs(5), remote_read(&mut stream))
+        .await
+        .expect("the 257th operation must be answered promptly")
+        .expect("the link stays open");
+    assert_eq!(refused["rid"], rid(4256));
+    assert_eq!(refused["outcome"]["tag"], "not_admitted");
+    assert_eq!(refused["outcome"]["code"], "overloaded");
+    assert_eq!(refused["outcome"]["resource"], "operations");
+    drop(beta);
 }

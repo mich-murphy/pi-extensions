@@ -9,7 +9,7 @@ import { McpClients } from "../mcp";
 import type { McpToolCallResult } from "../mcp";
 import { ProviderHttpClient } from "../provider-http";
 import type { ProviderHttpRequest, ProviderHttpResponse } from "../provider-http";
-import { ProviderProtocolInvalid } from "../provider-types";
+import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
 import type { ProviderError } from "../provider-types";
 import { FetchRescueProviders, SearchProviders } from "../search";
 import { WebToolsConfig } from "../settings";
@@ -18,6 +18,7 @@ import { createToolRuntime } from "../tool-runtime";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
 import { settingsFrom, textOf } from "./fakes";
+import { expectNoLeak } from "./leaks";
 import { nativeAuthFixture } from "./native-auth-fixture";
 import type { AuthStorageData } from "./native-auth-fixture";
 
@@ -438,14 +439,17 @@ describe("native-auth integration", () => {
       const t = await tools({
         http: (request) =>
           Effect.fail(
-            new ProviderProtocolInvalid({
-              reason: `reflected ${request.headers["x-api-key"]}`,
-            }),
+            new ProviderToolError({ detail: `reflected ${request.headers["x-api-key"]}` }),
           ),
       });
       await t.login("exa", "error-synthetic-key");
-      await expect(t.runSearch("exa")).rejects.toThrow("returned an invalid response");
-      await expect(t.runSearch("exa")).rejects.not.toThrow("error-synthetic-key");
+      const failure = await t.runSearch("exa").then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      assert(failure instanceof Error);
+      expect(failure.message).toContain("reported an error: reflected [redacted]");
+      expectNoLeak(failure, "error-synthetic-key");
     });
 
     test("the unavailable runtime resolver cannot substitute a global registry when context is omitted", async () => {
