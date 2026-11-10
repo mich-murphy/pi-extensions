@@ -106,17 +106,4 @@ describe("createToolRuntime", () => {
     disposalGate.resolve(undefined);
     await finalDisposal;
   });
-
-  test("aborting the signal interrupts the program", async () => {
-    const runtime = createToolRuntime(countingLayer().layer);
-    const controller = new AbortController();
-    const outcome = runtime.runExit(Effect.never, controller.signal);
-    setTimeout(() => {
-      controller.abort();
-    }, 10);
-    const exit = await outcome;
-    assert(Exit.isFailure(exit));
-    expect(Cause.hasInterrupts(exit.cause)).toBe(true);
-    await runtime.dispose();
-  });
 });

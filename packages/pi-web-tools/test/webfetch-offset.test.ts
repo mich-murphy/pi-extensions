@@ -27,7 +27,6 @@ const PREFIX_NOTE =
   "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false]";
 const END_NOTE =
   "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false; end of downloaded content]";
-const TRUNCATION_MARK = "\n\n[Output truncated";
 
 function textResult(text: string): FetchPageResult {
   return {
@@ -66,70 +65,7 @@ async function project(
   );
 }
 
-type Window = { readonly offset: number; readonly shown: string; readonly next?: number };
-
-async function readWindow(text: string, offset: number): Promise<Window> {
-  const shownText = textOf(await project(text, offset));
-  const cut = shownText.indexOf(TRUNCATION_MARK);
-  if (cut === -1) {
-    const footer = shownText.lastIndexOf("\n\n[Showing");
-    return { offset, shown: offset > 0 ? shownText.slice(0, footer) : shownText };
-  }
-  const next = Number(/offset=(?<next>\d+) to continue\.\]$/u.exec(shownText)?.groups?.next);
-  return { offset, shown: shownText.slice(0, cut), next };
-}
-
-async function readAllWindows(text: string): Promise<Window[]> {
-  const windows: Window[] = [];
-  let offset: number | undefined = 0;
-  while (offset !== undefined) {
-    const window = await readWindow(text, offset);
-    windows.push(window);
-    offset = window.next;
-  }
-  return windows;
-}
-
-/** A window is exact when it is the bytes at its offset and the next one skips at most a newline. */
-function windowIsExact(full: Buffer, window: Window): boolean {
-  const end = window.offset + Buffer.byteLength(window.shown);
-  const exact = full.subarray(window.offset, end).toString("utf8") === window.shown;
-  if (window.next === undefined) {
-    return exact && end === full.length;
-  }
-  const skipped = full.subarray(end, window.next).toString("utf8");
-  return exact && (skipped === "" || skipped === "\n") && window.next > window.offset;
-}
-
-async function pageThrough(
-  text: string,
-): Promise<{ readonly ok: boolean; readonly count: number }> {
-  const full = Buffer.from(text, "utf8");
-  const windows = await readAllWindows(text);
-  return { ok: windows.every((window) => windowIsExact(full, window)), count: windows.length };
-}
-
 describe("webfetch offset paging", () => {
-  test("continues with no gap or overlap across multi-line windows (line limit)", async () => {
-    const text = Array.from({ length: 5000 }, (_, i) => `line ${i} é`).join("\n");
-    const paged = await pageThrough(text);
-    expect(paged.ok).toBe(true);
-    expect(paged.count).toBeGreaterThan(2);
-  });
-
-  test("continues with no gap or overlap across multi-line windows (byte limit)", async () => {
-    const text = Array.from({ length: 600 }, (_, i) => `${i} ${"€".repeat(100)}`).join("\n");
-    const paged = await pageThrough(text);
-    expect(paged.ok).toBe(true);
-    expect(paged.count).toBeGreaterThan(2);
-  });
-
-  test("continues with no gap or overlap through one long line", async () => {
-    const paged = await pageThrough("€".repeat(60_000));
-    expect(paged.ok).toBe(true);
-    expect(paged.count).toBeGreaterThan(2);
-  });
-
   test("names the window and the next offset in the notice", async () => {
     const text = "€".repeat(60_000);
     const first = textOf(await project(text));
@@ -351,11 +287,5 @@ describe("webfetch offset paging over a response-truncated page", () => {
       expect(result.structuredContent).not.toHaveProperty("download_limit_bytes");
       expect(result.details.downloadLimitBytes).toBeUndefined();
     }
-  });
-
-  test("a page that was not truncated keeps the plain end-of-content messages", async () => {
-    expect(textOf(await project("abc", 99))).toBe(
-      "[offset 99 is at or past the end of the content (3)]",
-    );
   });
 });

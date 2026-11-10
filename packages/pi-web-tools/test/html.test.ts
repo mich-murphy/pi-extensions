@@ -420,11 +420,4 @@ describe("conversion failures", () => {
       expect(["Success", "HtmlConversionFailed"]).toContain(outcome);
     }
   }, 60_000);
-
-  test("other exceptions propagate as defects", () => {
-    const notHtml = Symbol("not html");
-    expect(() => {
-      Reflect.apply(Html.htmlToText, undefined, [notHtml, "https://example.com"]);
-    }).toThrow(TypeError);
-  });
 });

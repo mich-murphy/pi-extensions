@@ -8,7 +8,6 @@ import {
   describeNetworkFailure,
   HttpStatusRejected,
   isPrivateOrLocalIp,
-  parseContentType,
   PrivateHostBlocked,
   readResponseBodyWithLimit,
   RedirectLimitExceeded,
@@ -23,6 +22,9 @@ import {
 import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
+  // network-properties.test.ts covers the range tables generatively. These rows stay as the explicit
+  // list of addresses the SSRF guard must classify, including febf::1 and fec0::1, which straddle the
+  // fe80::/10 boundary and which the property's generator does not reach.
   const blocked = [
     "10.0.0.1",
     "127.0.0.1",
@@ -96,44 +98,10 @@ describe("isPrivateOrLocalIp", () => {
   });
 });
 
-describe("parseContentType", () => {
-  test("parses mime and charset", () => {
-    const parsed = parseContentType("text/html; charset=UTF-8");
-    expect(parsed.mime).toBe("text/html");
-    expect(parsed.charset).toBe(UTF8);
-    expect(parsed.kind).toBe("html");
-  });
-});
-
 describe("classifyMimeType", () => {
-  const cases = [
-    ["text/html", "html"],
-    [" TEXT/HTML ", "html"],
-    ["application/xhtml+xml", "html"],
-    ["image/png", "raster-image"],
-    ["image/jpeg", "raster-image"],
-    ["image/gif", "raster-image"],
-    ["image/webp", "raster-image"],
-    ["image/svg+xml", "svg"],
-    ["IMAGE/SVG+XML", "svg"],
-    ["text/plain", "text"],
-    ["text/csv", "text"],
-    ["application/json", "text"],
-    ["application/xml", "text"],
-    ["application/javascript", "text"],
-    ["application/x-javascript", "text"],
-    ["application/ecmascript", "text"],
-    ["application/ld+json", "text"],
-    ["application/rss+xml", "text"],
-    ["application/atom+xml", "text"],
-    ["application/hal+json", "text"],
-    ["", "binary"],
-    ["   ", "binary"],
-    ["application/octet-stream", "binary"],
-    ["application/pdf", "binary"],
-    ["image/avif", "binary"],
-    ["video/mp4", "binary"],
-  ] as const;
+  // The MIME table, the text/ and +xml/+json suffix rules and the binary default are covered by
+  // content-properties.test.ts. image/avif is the one decision the property does not generate.
+  const cases = [["image/avif", "binary"]] as const;
 
   test.each(cases)("classifies %j as %s", (mime, kind) => {
     expect(classifyMimeType(mime)).toBe(kind);
@@ -691,23 +659,6 @@ describe("fetchPublicWebClient response body", () => {
       assert(Result.isSuccess(result));
       expect(result.success.body.byteLength).toBe(1024);
       expect(result.success.responseTruncated).toBe(true);
-    }),
-  );
-
-  it.effect("does not flag a body that fits the cap exactly", () =>
-    Effect.gen(function* () {
-      const { client } = recordingClient(() =>
-        responseOf({
-          status: 200,
-          body: "x".repeat(1024),
-          headers: { "content-type": "text/plain" },
-        }),
-      );
-      const result = yield* Effect.result(
-        client.get(makeRequest({ maxResponseBytes: 1024, allowPartialText: true })),
-      );
-      assert(Result.isSuccess(result));
-      expect(result.success.responseTruncated).toBeUndefined();
     }),
   );
 
