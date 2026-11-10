@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import {
   buildAgentRequest,
   endsWithPrintedToolCall,
@@ -13,7 +14,7 @@ import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
 import { contextFixture } from "./fixtures";
 import type { MessageFixture } from "./fixtures";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const CONTINUE = "Continue from the final conversation entry above.";
 const FRAGMENTS = [
   "<user",
@@ -29,7 +30,8 @@ const FRAGMENTS = [
   '<result id="zz" tool="x">',
   "<assistant>",
 ];
-const NAMES = ["read", "bash", "gone", VALIDATION_ERROR_TOOL];
+const PLAIN_NAMES = ["read", "bash", "gone"];
+const NAMES = [...PLAIN_NAMES, VALIDATION_ERROR_TOOL];
 const POOL = ["a", "b", "c"];
 const tools = ["read", "bash", VALIDATION_ERROR_TOOL].map((name) => ({
   name,
@@ -63,7 +65,7 @@ type Generated = {
  */
 function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generated {
   const out: Generated = { messages: [], calls: [], orphans: [], users: 0 };
-  const draw: DrawState = { tc, out, unanswered: [], unique, serial: 0 };
+  const draw: DrawState = { tc, out, unanswered: [], names: new Map(), unique, serial: 0 };
   const ops = tc.draw(gs.integers({ minValue: 0, maxValue: maxOps }), "ops");
   for (let op = 0; op < ops; op += 1) {
     const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
@@ -83,6 +85,7 @@ type DrawState = {
   readonly tc: TestCase;
   readonly out: Generated;
   readonly unanswered: CallModel[];
+  readonly names: Map<string, string>;
   readonly unique: boolean;
   serial: number;
 };
@@ -98,7 +101,7 @@ function drawAssistant(draw: DrawState): void {
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
   for (let index = 0; index < count; index += 1) {
     const id = unique ? `call-${draw.serial++}` : poolId(tc);
-    const name = tc.draw(gs.sampledFrom(NAMES));
+    const name = nameFor(draw, id, NAMES);
     const args = { a: drawText(tc), "<call": drawText(tc) };
     content.push({ type: "toolCall", id, name, arguments: args });
     const model = {
@@ -114,11 +117,22 @@ function drawAssistant(draw: DrawState): void {
   out.messages.push({ role: "assistant", content, stopReason });
 }
 
+/**
+ * One id names one tool for the whole transcript: Pi builds a call and its result from the same tool
+ * call, and providers never reuse an id for another call. The first use binds the name. A result with
+ * no call yet takes an ordinary one, so only a real call can introduce the validation tool.
+ */
+function nameFor(draw: DrawState, id: string, candidates: readonly string[]): string {
+  const name = draw.names.get(id) ?? draw.tc.draw(gs.sampledFrom(candidates));
+  draw.names.set(id, name);
+  return name;
+}
+
 function drawToolResult(draw: DrawState, kind: number): void {
   const { tc, out, unanswered, unique } = draw;
   let id = poolId(tc);
-  let name = tc.draw(gs.sampledFrom(NAMES));
   const isError = tc.draw(gs.booleans());
+  let name = "read";
   if (unique && kind === 2) {
     if (unanswered.length === 0) {
       return;
@@ -133,8 +147,9 @@ function drawToolResult(draw: DrawState, kind: number): void {
     call.isError = isError;
   } else if (unique) {
     id = `orphan-${draw.serial++}`;
-    name = "read";
     out.orphans.push(id);
+  } else {
+    name = nameFor(draw, id, PLAIN_NAMES);
   }
   out.messages.push({
     role: "toolResult",
@@ -148,8 +163,8 @@ function drawToolResult(draw: DrawState, kind: number): void {
 const build = (messages: readonly MessageFixture[]) =>
   buildAgentRequest(contextFixture({ systemPrompt: "system", messages, tools }));
 
-function property(key: string, body: (tc: TestCase) => void): void {
-  new Hegel(body).databaseKey(`pi-claude-sdk/${key}`).settings(settings).runSync();
+function property(body: (tc: TestCase) => void): void {
+  new Hegel(body).settings(settings).runSync();
 }
 
 const LT = "<";
@@ -367,40 +382,40 @@ function assertFenceRule(tc: TestCase): void {
 
 describe("buildAgentRequest properties", () => {
   test.each([true, false])("request structure invariants (unique ids: %s)", (unique) => {
-    property(`agent-request-structure-${unique}`, (tc) => {
+    property((tc) => {
       assertStructure(tc, unique);
     });
   });
 
   test("every surviving call has exactly one result, synthesised when missing; errored calls vanish", () => {
-    property("agent-request-results", assertResults);
+    property(assertResults);
   });
 
   test("appending a message keeps earlier blocks byte-identical, bar the open results block", () => {
-    property("agent-request-prefix", assertPrefixStable);
+    property(assertPrefixStable);
   });
 
   test("breakpoint invariants hold when entries exceed the lookback window", () => {
-    property("agent-request-long", assertLongBreakpoints);
+    property(assertLongBreakpoints);
   });
 
   test("hostile ids, tool names and media types stay inside their attributes", () => {
-    property("agent-request-attributes", assertHostileAttributes);
+    property(assertHostileAttributes);
   });
 });
 
 describe("transcript escaping properties", () => {
   test("hostile text and arguments never forge structure, and JSON arguments roundtrip", () => {
-    property("agent-request-escaping", assertEscaping);
+    property(assertEscaping);
   });
 });
 
 describe("endsWithPrintedToolCall properties", () => {
   test("never throws, and trailing whitespace changes nothing", () => {
-    property("printed-call-total", assertWhitespaceInvariant);
+    property(assertWhitespaceInvariant);
   });
 
   test("a call tag after prose is printed unless an unclosed fence encloses it", () => {
-    property("printed-call-fence", assertFenceRule);
+    property(assertFenceRule);
   });
 });

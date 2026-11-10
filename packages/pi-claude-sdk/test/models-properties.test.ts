@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { minimumCacheableTokensFor, undatedModelId } from "../models";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 // Independent oracle: documented minimums per known identifier (ids, aliases, canonical ids).
 const KNOWN: readonly (readonly [string, number])[] = [
@@ -101,7 +102,6 @@ describe("model metadata properties", () => {
     new Hegel((tc) => {
       assertVariantsAgree(tc);
     })
-      .databaseKey("pi-claude-sdk/models-variants")
       .settings(settings)
       .runSync();
   });
@@ -110,7 +110,6 @@ describe("model metadata properties", () => {
     new Hegel((tc) => {
       assertUndatedStrips(tc);
     })
-      .databaseKey("pi-claude-sdk/models-undated")
       .settings(settings)
       .runSync();
   });
@@ -119,7 +118,6 @@ describe("model metadata properties", () => {
     new Hegel((tc) => {
       assertUnknownIsUndefined(tc);
     })
-      .databaseKey("pi-claude-sdk/models-unknown")
       .settings(settings)
       .runSync();
   });

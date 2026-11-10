@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Effect, Result } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, test } from "vitest";
+import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import type { FetchPageResult } from "../fetch-page";
 import { STRUCTURED_OUTPUT_MAX_BYTES, projectFetchResult, redactSecrets } from "../tool-output";
 import type { ToolOutputStore } from "../tool-output";
@@ -11,8 +11,8 @@ import { UTF8, publicUrl } from "./fakes";
 import { observableText } from "./leaks";
 
 // Paging uses only 50 cases: each case walks every window of up to ~240 KB of text.
-const settings = { testCases: 50, seed: 12_345n, database: Database.disabled };
-const fastSettings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(50);
+const fastSettings = propertySettings();
 
 const store: ToolOutputStore["Service"] = {
   writeTextFile: () => Effect.succeed("/fake/output.txt"),
@@ -133,34 +133,24 @@ function checkPastEnd(text: string, extra: number): void {
 
 describe("webfetch paging properties", () => {
   test("following next offsets reconstructs the text exactly", () => {
-    new Hegel((tc) => {
+    assertHegel(settings, (tc) => {
       const text = tc.draw(pagedText, "text");
       const total = Buffer.byteLength(text);
       const startAt = tc.draw(
         gs.oneOf(gs.just(0), gs.integers({ minValue: 0, maxValue: total })),
         "start",
       );
-      expect(() => {
-        checkPaging(text, startAt);
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/tool-output-paging")
-      .settings(settings)
-      .runSync();
+      checkPaging(text, startAt);
+    });
   });
 
   test("an offset at or past the end reports it without throwing", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkPastEnd(
-          tc.draw(baseText, "text"),
-          tc.draw(gs.integers({ minValue: 0, maxValue: 50 }), "extra"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/tool-output-past-end")
-      .settings(fastSettings)
-      .runSync();
+    assertHegel(fastSettings, (tc) => {
+      checkPastEnd(
+        tc.draw(baseText, "text"),
+        tc.draw(gs.integers({ minValue: 0, maxValue: 50 }), "extra"),
+      );
+    });
   });
 });
 
@@ -198,51 +188,33 @@ function checkOverlap(reverse: boolean, parts: string[]): void {
 
 describe("redactSecrets properties", () => {
   test("overlapping secrets are replaced whole regardless of order", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkOverlap(
-          tc.draw(gs.booleans(), "reverse"),
-          tc.draw(
-            gs.arrays(gs.sampledFrom(["k+", "k+k+", "a.b", "a.bb"]), { maxSize: 6 }),
-            "parts",
-          ),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/redact-overlap")
-      .settings(fastSettings)
-      .runSync();
+    assertHegel(fastSettings, (tc) => {
+      checkOverlap(
+        tc.draw(gs.booleans(), "reverse"),
+        tc.draw(gs.arrays(gs.sampledFrom(["k+", "k+k+", "a.b", "a.bb"]), { maxSize: 6 }), "parts"),
+      );
+    });
   });
 
   test("no secret survives and nothing changes without secrets", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkRedaction(
-          tc.draw(gs.arrays(gs.sampledFrom([...SECRETS, ...SAFE]), { maxSize: 8 }), "parts"),
-          tc.draw(gs.arrays(gs.sampledFrom(SECRETS), { maxSize: 3 }), "secrets"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/redact-secrets")
-      .settings(fastSettings)
-      .runSync();
+    assertHegel(fastSettings, (tc) => {
+      checkRedaction(
+        tc.draw(gs.arrays(gs.sampledFrom([...SECRETS, ...SAFE]), { maxSize: 8 }), "parts"),
+        tc.draw(gs.arrays(gs.sampledFrom(SECRETS), { maxSize: 3 }), "secrets"),
+      );
+    });
   });
 
   test("regex metacharacters match literally", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkLiteral(
-          tc.draw(gs.arrays(gs.sampledFrom(SAFE), { maxSize: 8 }), "parts"),
-          tc.draw(
-            gs.arrays(gs.sampledFrom(["a.b", "a*b", "k+", "^s$"]), { minSize: 1, maxSize: 3 }),
-            "secrets",
-          ),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/redact-literal")
-      .settings(fastSettings)
-      .runSync();
+    assertHegel(fastSettings, (tc) => {
+      checkLiteral(
+        tc.draw(gs.arrays(gs.sampledFrom(SAFE), { maxSize: 8 }), "parts"),
+        tc.draw(
+          gs.arrays(gs.sampledFrom(["a.b", "a*b", "k+", "^s$"]), { minSize: 1, maxSize: 3 }),
+          "secrets",
+        ),
+      );
+    });
   });
 });
 
@@ -284,13 +256,8 @@ function checkUrl([scheme, userinfo, host, path]: [string, string, string, strin
 
 describe("parsePublicHttpUrl properties", () => {
   test("successes are idempotent and credential-free; failures never leak the password", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkUrl(tc.draw(urlParts, "parts"));
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/public-http-url")
-      .settings(fastSettings)
-      .runSync();
+    assertHegel(fastSettings, (tc) => {
+      checkUrl(tc.draw(urlParts, "parts"));
+    });
   });
 });

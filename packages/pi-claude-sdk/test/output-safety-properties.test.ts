@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "../output-safety";
 import type { SuspiciousOutputKind } from "../output-safety";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const PROSE = "hello, world.\n";
 const B64_CHARS = "ABCxyz019+/".split("");
 const IMAGE = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
@@ -198,7 +199,6 @@ describe("output safety properties", () => {
     new Hegel((tc) => {
       assertSanitizes(tc);
     })
-      .databaseKey("pi-claude-sdk/output-safety-sanitize")
       .settings(settings)
       .runSync();
   });
@@ -207,7 +207,6 @@ describe("output safety properties", () => {
     new Hegel((tc) => {
       assertContext(tc);
     })
-      .databaseKey("pi-claude-sdk/output-safety-context")
       .settings(settings)
       .runSync();
   });
@@ -216,7 +215,6 @@ describe("output safety properties", () => {
     new Hegel((tc) => {
       assertCatDetection(tc);
     })
-      .databaseKey("pi-claude-sdk/output-safety-cat")
       .settings(settings)
       .runSync();
   });
@@ -225,7 +223,6 @@ describe("output safety properties", () => {
     new Hegel((tc) => {
       assertNeverThrows(tc);
     })
-      .databaseKey("pi-claude-sdk/output-safety-throw")
       .settings(settings)
       .runSync();
   });

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
 import type { CaffeinateEnd } from "../no-sleep-lifecycle";
 import { fakePi } from "./fake-pi";
@@ -162,8 +163,7 @@ describe("no-sleep lifecycle properties", () => {
       );
       assertLifecycle(actions);
     })
-      .databaseKey("pi-caffeinate/lifecycle-model")
-      .settings({ testCases: 200, seed: 12_345n, database: Database.disabled })
+      .settings(propertySettings())
       .runSync();
   });
 });

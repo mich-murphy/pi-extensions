@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Effect } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { ClaudeSdkVersionSources, inspectClaudeSdkVersions } from "../sdk-version-status";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const NOISE: readonly ((version: string) => string)[] = [
   (version) => version,
   (version) => `${version} (Claude Code)`,
@@ -70,21 +71,10 @@ async function assertScenario(scenario: Scenario): Promise<void> {
   assert.equal(forward.updateSuggested || backward.updateSuggested, installed !== bundled);
 }
 
-function collectScenarios(): Scenario[] {
-  const scenarios: Scenario[] = [];
-  new Hegel((tc) => {
-    const bundled = drawTriple(tc);
-    const installed = tc.draw(gs.booleans()) ? bundled : drawTriple(tc);
-    scenarios.push({
-      bundled,
-      installed,
-      noise: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })),
-    });
-  })
-    .databaseKey("pi-claude-sdk/sdk-version-order")
-    .settings(settings)
-    .runSync();
-  return scenarios;
+function drawScenario(tc: TestCase): Scenario {
+  const bundled = drawTriple(tc);
+  const installed = tc.draw(gs.booleans()) ? bundled : drawTriple(tc);
+  return { bundled, installed, noise: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) };
 }
 
 const UNSAFE = ["9007199254740992", "9007199254740993", "99999999999999999999"];
@@ -101,7 +91,11 @@ async function assertUnsafeRejected(unsafe: string, slot: number): Promise<void>
 
 describe("sdk version comparison properties", () => {
   test("update suggestion follows tuple order through noisy version text", async () => {
-    await Promise.all(collectScenarios().map(async (scenario) => assertScenario(scenario)));
+    await new Hegel(async (tc) => {
+      await assertScenario(drawScenario(tc));
+    })
+      .settings(settings)
+      .run();
   });
 
   test("components above Number.MAX_SAFE_INTEGER are rejected, not mis-compared", async () => {

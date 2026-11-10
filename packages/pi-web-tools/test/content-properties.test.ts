@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Effect, Result } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import {
   classifyMimeType,
   decodeTextBuffer,
@@ -12,7 +13,7 @@ import {
 import type { PublicWebRequest } from "../network";
 import { publicUrl, publicWebClientWith } from "./fakes";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 // ---- M3: mime classification and charset decoding ----
 
@@ -137,7 +138,6 @@ describe("content type properties", () => {
       const [mime, kind] = tc.draw(gs.sampledFrom(KNOWN_KINDS), "row");
       assertKind(mime, kind, tc.draw(caseFlags, "case"), tc.draw(padding, "padding"));
     })
-      .databaseKey("pi-web-tools/classify-known")
       .settings(settings)
       .runSync();
   });
@@ -151,7 +151,6 @@ describe("content type properties", () => {
         tc.draw(padding, "padding"),
       );
     })
-      .databaseKey("pi-web-tools/classify-suffix")
       .settings(settings)
       .runSync();
   });
@@ -161,7 +160,6 @@ describe("content type properties", () => {
       const token = tc.draw(TOKEN, "token");
       assertUnlistedIsBinary(token, tc.draw(caseFlags, "case"), tc.draw(padding, "padding"));
     })
-      .databaseKey("pi-web-tools/classify-binary")
       .settings(settings)
       .runSync();
   });
@@ -170,7 +168,6 @@ describe("content type properties", () => {
     new Hegel((tc) => {
       assertContentTypeTotal(tc.draw(gs.optional(gs.text({ maxSize: 60 })), "header"));
     })
-      .databaseKey("pi-web-tools/parse-total")
       .settings(settings)
       .runSync();
   });
@@ -183,7 +180,6 @@ describe("content type properties", () => {
         tc.draw(gs.booleans(), "partial"),
       );
     })
-      .databaseKey("pi-web-tools/decode-total")
       .settings(settings)
       .runSync();
   });
@@ -196,7 +192,6 @@ describe("content type properties", () => {
         tc.draw(gs.sampledFrom([undefined, "utf8", " UTF-8 ", "no-such-label"]), "charset"),
       );
     })
-      .databaseKey("pi-web-tools/decode-partial")
       .settings(settings)
       .runSync();
   });
@@ -319,7 +314,6 @@ describe("capped body read properties", () => {
         tc.draw(cap, "max"),
       );
     })
-      .databaseKey("pi-web-tools/read-fail-mode")
       .settings(settings)
       .run();
   });
@@ -332,7 +326,6 @@ describe("capped body read properties", () => {
         tc.draw(cap, "max"),
       );
     })
-      .databaseKey("pi-web-tools/read-truncate-mode")
       .settings(settings)
       .run();
   });
@@ -345,7 +338,6 @@ describe("capped body read properties", () => {
         tc.draw(cap, "max"),
       );
     })
-      .databaseKey("pi-web-tools/read-binary-cap")
       .settings(settings)
       .run();
   });

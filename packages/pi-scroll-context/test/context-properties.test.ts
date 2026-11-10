@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { contextRow, selectContext } from "../context";
 
 const ZONE_START = "\u001B]133;A\u0007";
 const ZONE_END = "\u001B]133;B\u0007";
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 type Block = { kind: "filler" | "prompt"; first: string; body: string[]; pad: number };
 type Placed = { start: number; lastText: number; text: string };
@@ -99,7 +100,6 @@ describe("scroll context properties", () => {
       const raw = tc.draw(gs.integers({ minValue: 0, maxValue: 200 }));
       assertSelect(blocks, raw);
     })
-      .databaseKey("pi-scroll-context/select")
       .settings(settings)
       .runSync();
   });
@@ -114,7 +114,6 @@ describe("scroll context properties", () => {
       const width = tc.draw(gs.integers({ minValue: 3, maxValue: 40 }));
       assertRow(text, width);
     })
-      .databaseKey("pi-scroll-context/row")
       .settings(settings)
       .runSync();
   });

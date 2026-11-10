@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { readTransientSettings, registerAutoResume } from "../auto-resume";
 import type { TransientSettings } from "../auto-resume";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = 60_000;
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 type Step = { jump: number; event: "none" | "tree" | "shutdown" };
 type Plan = { delaysMinutes: number[]; maxAttempts: number; windowMinutes: number };
 
@@ -205,7 +206,6 @@ describe("transient backoff properties", () => {
       );
       assertSchedule(plan, steps);
     })
-      .databaseKey("pi-auto-resume/transient-schedule")
       .settings(settings)
       .runSync();
   });
@@ -221,7 +221,6 @@ describe("transient backoff properties", () => {
       );
       assertReader(shape, fields, junk);
     })
-      .databaseKey("pi-auto-resume/transient-reader")
       .settings(settings)
       .runSync();
   });

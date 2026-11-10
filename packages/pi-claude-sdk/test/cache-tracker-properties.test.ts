@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { Database, Hegel, stateful } from "@hegeldev/hegel";
+import { stateful } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Clock, Effect } from "effect";
-import { TestClock } from "effect/testing";
 import { describe, test } from "vitest";
+import {
+  assertHegel,
+  propertySettings,
+  propertyTimeout,
+} from "../../../test-support/hegel-settings";
 import type { PromptBlock } from "../agent-request";
 import type { TokenUsage } from "../bridge";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
@@ -15,7 +19,7 @@ import type {
   CacheUsageDiagnostic,
 } from "../cache-tracker";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const MODELS = ["claude-sdk/sonnet", "claude-sdk/claude-haiku-4-5", "other"] as const;
 /** Documented minimums per model, written out independently of `models.ts` lookups. */
 const MINIMUMS: Readonly<Record<string, number | undefined>> = {
@@ -42,7 +46,7 @@ type Pending = {
 };
 type Machine = {
   readonly tracker: CacheDiagnosticTracker;
-  readonly clock: TestClock.TestClock;
+  readonly clock: ManualClock;
   readonly events: CacheDiagnostic[];
   previous: Req | undefined;
   previousAt: number;
@@ -51,15 +55,31 @@ type Machine = {
   readonly pending: Pending[];
 };
 
+/** The tracker only reads the time, so a clock the machine moves by hand is enough and stays synchronous. */
+type ManualClock = { time: number };
+
+function manualClockService(state: ManualClock): Clock.Clock {
+  const nanos = () => BigInt(state.time) * 1_000_000n;
+  return {
+    currentTimeMillisUnsafe: () => state.time,
+    currentTimeMillis: Effect.sync(() => state.time),
+    currentTimeNanosUnsafe: nanos,
+    currentTimeNanos: Effect.sync(nanos),
+    monotonicTimeNanosUnsafe: nanos,
+    monotonicTimeNanos: Effect.sync(nanos),
+    sleep: () => Effect.void,
+  };
+}
+
 function createMachine(): Machine {
   const events: CacheDiagnostic[] = [];
-  const clock = Effect.runSync(Effect.scoped(TestClock.make()));
+  const clock: ManualClock = { time: 0 };
   const tracker = Effect.runSync(
     createCacheDiagnosticTracker((event) => {
       events.push(event);
       // A failing destination must never propagate out of the tracker.
       throw new Error("sink failure");
-    }).pipe(Effect.provideService(Clock.Clock, clock)),
+    }).pipe(Effect.provideService(Clock.Clock, manualClockService(clock))),
   );
   return {
     tracker,
@@ -286,43 +306,61 @@ function drawTokens(tc: TestCase, name: string): number {
   );
 }
 
+/**
+ * Rules never reject. Hegel enables a random subset of rules per case, and a rule gated by `assume`
+ * on earlier state was rejected about 96% of the time, so most of the time went to rejected steps. A rule
+ * that needs a request or a pending usage report makes one first, which keeps every state reachable.
+ */
+function drawRequest(tc: TestCase): Req {
+  return { ...drawSettings(tc), blocks: drawBlocks(tc) };
+}
+
+function ensureRequest(tc: TestCase, machine: Machine): Req {
+  if (machine.previous === undefined) {
+    submit(machine, drawRequest(tc));
+  }
+  return previousOf(machine);
+}
+
+function rewriteBlocks(tc: TestCase, previous: Req): readonly PromptBlock[] {
+  if (previous.blocks.length === 0) {
+    return [drawBlock(tc)];
+  }
+  const at = tc.draw(gs.integers({ minValue: 0, maxValue: previous.blocks.length - 1 }));
+  return previous.blocks.map((block, index) => (index === at ? drawBlock(tc) : block));
+}
+
 const machineSpec: stateful.StateMachine<Machine> = {
   rules: {
     fresh: (tc, machine) => {
-      submit(machine, { ...drawSettings(tc), blocks: drawBlocks(tc) });
+      submit(machine, drawRequest(tc));
     },
     identical: (tc, machine) => {
-      tc.assume(machine.previous !== undefined);
-      submit(machine, previousOf(machine));
+      submit(machine, ensureRequest(tc, machine));
       const request = lastRequest(machine);
       assert.equal(request.prefixChange, "appended");
       assert.equal(request.commonPrefixBlocks, request.blocks);
     },
     extend: (tc, machine) => {
-      tc.assume(machine.previous !== undefined);
-      const previous = previousOf(machine);
+      const previous = ensureRequest(tc, machine);
       submit(machine, { ...previous, blocks: [...previous.blocks, drawBlock(tc)] });
     },
     rewrite: (tc, machine) => {
-      tc.assume(machine.previous !== undefined && machine.previous.blocks.length > 0);
-      const previous = previousOf(machine);
-      const at = tc.draw(gs.integers({ minValue: 0, maxValue: previous.blocks.length - 1 }));
-      submit(machine, {
-        ...previous,
-        blocks: previous.blocks.map((block, index) => (index === at ? drawBlock(tc) : block)),
-      });
+      const previous = ensureRequest(tc, machine);
+      submit(machine, { ...previous, blocks: rewriteBlocks(tc, previous) });
     },
     retune: (tc, machine) => {
-      tc.assume(machine.previous !== undefined);
-      submit(machine, { ...previousOf(machine), ...drawSettings(tc) });
+      submit(machine, { ...ensureRequest(tc, machine), ...drawSettings(tc) });
     },
-    tick: async (tc, machine) => {
+    tick: (tc, machine) => {
       const ms = tc.draw(gs.sampledFrom([0, 1000, 300_000, 300_001, 3_600_000, 3_600_001]));
-      await Effect.runPromise(machine.clock.adjust(ms));
+      machine.clock.time += ms;
       machine.now += ms;
     },
     report: (tc, machine) => {
-      tc.assume(machine.pending.length > 0);
+      if (machine.pending.length === 0) {
+        submit(machine, drawRequest(tc));
+      }
       // Any pending recorder, in any order: each keeps its own turn and model.
       const index = tc.draw(gs.integers({ minValue: 0, maxValue: machine.pending.length - 1 }));
       // Half the reports sit exactly around the 20k collapse threshold (all tokens uncached).
@@ -349,17 +387,19 @@ const machineSpec: stateful.StateMachine<Machine> = {
 };
 
 describe("cache tracker properties", () => {
-  test("request and usage diagnostics follow an independent model across any call sequence", async () => {
-    // TestClock.adjust is asynchronous, so the machine runs under Hegel's async driver.
-    await new Hegel(async (tc) => {
-      recorders.clear();
-      assert.equal(recorders.size, 0);
-      await stateful.runAsync(tc, machineSpec, createMachine());
-    })
-      .databaseKey("pi-claude-sdk/cache-tracker-machine")
-      .settings(settings)
-      .run();
-  });
+  // About 0.8s alone and up to 5.0s with the CPU saturated: the timeout is ten times the latter and
+  // grows with HEGEL_TEST_CASES.
+  test(
+    "request and usage diagnostics follow an independent model across any call sequence",
+    () => {
+      assertHegel(settings, (tc) => {
+        recorders.clear();
+        assert.equal(recorders.size, 0);
+        stateful.run(tc, machineSpec, createMachine());
+      });
+    },
+    propertyTimeout(60_000),
+  );
 
   test("classification priority is model > reasoning > tools > divergence (example table)", () => {
     const base: Req = {

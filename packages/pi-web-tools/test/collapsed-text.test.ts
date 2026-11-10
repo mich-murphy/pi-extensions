@@ -1,6 +1,7 @@
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { CollapsedTextLength, normalizedTextLength } from "../collapsed-text";
 
 const ALPHABET = [
@@ -31,7 +32,7 @@ const ALPHABET = [
 const textGenerator = gs
   .arrays(gs.sampledFrom(ALPHABET), { maxSize: 14 })
   .map((parts) => parts.join(""));
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 const expectedLength = (text: string) => text.replaceAll(/\s+/gu, " ").trim().length;
 
@@ -48,7 +49,6 @@ describe("normalizedTextLength", () => {
       const text = tc.draw(textGenerator, "text");
       expect(normalizedTextLength(text)).toBe(expectedLength(text));
     })
-      .databaseKey("pi-web-tools/collapsed-text-length")
       .settings(settings)
       .runSync();
   });
@@ -83,7 +83,6 @@ describe("collapsedTextLength", () => {
       }
       expect(textual.trimmedLength()).toBe(combined.trimmedLength());
     })
-      .databaseKey("pi-web-tools/collapsed-text-compose")
       .settings(settings)
       .runSync();
   });
@@ -99,7 +98,6 @@ describe("collapsedTextLength", () => {
       left.append(new CollapsedTextLength());
       expect(left.trimmedLength()).toBe(expectedLength(text));
     })
-      .databaseKey("pi-web-tools/collapsed-text-identity")
       .settings(settings)
       .runSync();
   });

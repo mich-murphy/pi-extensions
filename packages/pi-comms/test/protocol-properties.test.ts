@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { sameMessage, scopedMessageKey } from "../protocol/identity.js";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
 import { Message } from "../protocol/schema.js";
 import type { BoundaryRole } from "../protocol/wire.js";
 import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
+const settings = propertySettings(200);
 
 const adversarial = gs.oneOf(
   gs.sampledFrom(["", ",", "][", '"', "\\", '","', String.raw`\"`, "[", "]", "a", "a,b"]),
@@ -179,7 +180,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       const content = `content:${points.map((value) => String.fromCodePoint(toScalar(value))).join("")}`;
       assertRoundtrip(at(frameCases(content), index));
     })
-      .databaseKey("session-communication/ts/roundtrip")
       .settings(settings)
       .runSync();
   });
@@ -193,7 +193,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       );
       assertSurrogateRejected(prefix, surrogate);
     })
-      .databaseKey("session-communication/ts/lone-surrogate")
       .settings(settings)
       .runSync();
   });
@@ -206,7 +205,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       const body = Buffer.from(`{"${key}":0,"${escaped}":1}`, "utf8");
       assert.throws(() => decodeJson(body), ProtocolError);
     })
-      .databaseKey("session-communication/ts/duplicate-key")
       .settings(settings)
       .runSync();
   });
@@ -218,7 +216,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       assert.throws(() => decodeJson(Buffer.from(`{"value":${value}e0}`)), ProtocolError);
       assert.deepStrictEqual(decodeJson(Buffer.from(`{"value":${value}}`)), { value });
     })
-      .databaseKey("session-communication/ts/lexical-number")
       .settings(settings)
       .runSync();
   });
@@ -251,7 +248,6 @@ describe("Hegel v16 bounded protocol properties", () => {
         false,
       );
     })
-      .databaseKey("session-communication/ts/decoded-equality")
       .settings(settings)
       .runSync();
   });
@@ -266,7 +262,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       prefix.writeUInt32BE(length);
       assert.throws(() => frameBodyLength(prefix), ProtocolError);
     })
-      .databaseKey("session-communication/ts/invalid-prefix")
       .settings(settings)
       .runSync();
   });
@@ -281,7 +276,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       ]);
       assert.throws(() => decodeJson(body), ProtocolError);
     })
-      .databaseKey("session-communication/ts/malformed-utf8")
       .settings(settings)
       .runSync();
   });
@@ -297,7 +291,6 @@ describe("Hegel v16 bounded protocol properties", () => {
       const second = deriveSecond(first, { reuse, fresh, shift, field, cut });
       assertKeyInjective(first, second);
     })
-      .databaseKey("session-communication/ts/scoped-idempotency")
       .settings(settings)
       .runSync();
   });

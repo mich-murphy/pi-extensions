@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
 import type { BoundaryRole } from "../protocol/wire.js";
 import { decodeFrame, encodeFrame } from "../protocol/wire.js";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
+const settings = propertySettings(200);
 const roles: readonly BoundaryRole[] = [
   "local-client",
   "gateway-forward",
@@ -157,7 +158,6 @@ describe("Hegel decoder totality", () => {
       const role = tc.draw(gs.sampledFrom(roles), "role");
       assertTotal(arbitraryBytes(raw, fix), role);
     })
-      .databaseKey("session-communication/ts/decode-total-arbitrary")
       .settings(settings)
       .runSync();
   });
@@ -184,7 +184,6 @@ describe("Hegel decoder totality", () => {
       assertTotal(sample.bytes, role);
       assertTotal(sample.bytes, sample.role);
     })
-      .databaseKey("session-communication/ts/decode-total-mutated")
       .settings(settings)
       .runSync();
   });
@@ -196,7 +195,6 @@ describe("Hegel decoder totality", () => {
       assertJsonTotal(Buffer.from(text, "utf8"));
       assertJsonTotal(raw);
     })
-      .databaseKey("session-communication/ts/decode-json-total")
       .settings(settings)
       .runSync();
   });
@@ -209,7 +207,6 @@ describe("Hegel decoder totality", () => {
       );
       assertUtf8Agreement(pieces);
     })
-      .databaseKey("session-communication/ts/decode-json-utf8")
       .settings(settings)
       .runSync();
   });

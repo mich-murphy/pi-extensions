@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { Text, visibleWidth } from "@earendil-works/pi-tui";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { attentionStatus, diagnostics, toolPresentation } from "../adapter/presentation.js";
 import { registerTools } from "../adapter/tools.js";
 import { createState } from "../state/core.js";
@@ -554,8 +555,7 @@ describe("presentation-only session tool rendering", () => {
       assert(render("session_send", "result", args, payload, false, width).length <= 24);
       assert.equal(JSON.stringify({ args, payload }), before);
     })
-      .databaseKey("session-communication/presentation/inert-width-purity")
-      .settings({ testCases: 200, seed: 456n, database: Database.disabled })
+      .settings(propertySettings(200, 456n))
       .runSync();
   });
   test.each([

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, expect, test } from "vitest";
+import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import { isPrivateOrLocalIp, parseContentType } from "../network";
 import { parsePublicHttpUrl } from "../types";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 
 // ---- Independent numeric oracle: IANA non-global IPv4 ranges as [base, prefixLength]. ----
 const v4 = (a: number, b: number, c: number, d: number) => ((a * 256 + b) * 256 + c) * 256 + d;
@@ -168,47 +168,34 @@ const NUMERIC_SPELLINGS: readonly Spelling[] = [
 
 describe("isPrivateOrLocalIp properties", () => {
   test("IPv4 verdict is right at every range edge", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkEdge(
-          tc.draw(gs.integers({ minValue: 0, maxValue: V4_NON_GLOBAL.length - 1 }), "range"),
-          tc.draw(gs.booleans(), "atEnd"),
-          tc.draw(gs.sampledFrom([-1, 0, 1]), "delta"),
-        );
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/private-ip-v4-edges")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkEdge(
+        tc.draw(gs.integers({ minValue: 0, maxValue: V4_NON_GLOBAL.length - 1 }), "range"),
+        tc.draw(gs.booleans(), "atEnd"),
+        tc.draw(gs.sampledFrom([-1, 0, 1]), "delta"),
+      );
+    });
   });
 
   test("IPv4 verdict matches the numeric IANA range table", () => {
-    new Hegel((tc) => {
-      expect(() => {
-        checkV4(tc.draw(ipv4Octets, "octets"));
-      }).not.toThrow();
-    })
-      .databaseKey("pi-web-tools/private-ip-v4")
-      .settings(settings)
-      .runSync();
+    assertHegel(settings, (tc) => {
+      checkV4(tc.draw(ipv4Octets, "octets"));
+    });
   });
 
   test("IPv6 verdict matches the numeric table, in every spelling", () => {
-    new Hegel((tc) => {
+    assertHegel(settings, (tc) => {
       const groups = tc.draw(v6Groups, "groups");
       const expected = v6NonGlobal(groups);
       expect(isPrivateOrLocalIp(hex(groups, false)), "lower").toBe(expected);
       expect(isPrivateOrLocalIp(hex(groups, true)), "upper").toBe(expected);
       expect(isPrivateOrLocalIp(`[${hex(groups, false)}]`), "bracketed").toBe(expected);
       expect(isPrivateOrLocalIp(dottedTail(groups)), "dotted tail").toBe(expected);
-    })
-      .databaseKey("pi-web-tools/private-ip-v6")
-      .settings(settings)
-      .runSync();
+    });
   });
 
   test("every legacy numeric spelling of an IPv4 host gets the dotted-quad verdict", () => {
-    new Hegel((tc) => {
+    assertHegel(settings, (tc) => {
       const octets = tc.draw(ipv4Octets, "octets");
       const spelling = tc.draw(gs.sampledFrom(NUMERIC_SPELLINGS), "spelling");
       const [a = 0, b = 0, c = 0, d = 0] = octets;
@@ -217,22 +204,16 @@ describe("isPrivateOrLocalIp properties", () => {
       const { hostname } = new URL(parsed.success);
       assert.equal(hostname, octets.join("."), "the URL parser canonicalises the host");
       assert.equal(isPrivateOrLocalIp(hostname), v4NonGlobal(v4(a, b, c, d)), hostname);
-    })
-      .databaseKey("pi-web-tools/private-ip-v4-spellings")
-      .settings(settings)
-      .runSync();
+    });
   });
 
   test("arbitrary text never throws and non-IPs are not private", () => {
-    new Hegel((tc) => {
+    assertHegel(settings, (tc) => {
       const text = tc.draw(gs.text({ maxSize: 40 }), "text");
       expect(typeof isPrivateOrLocalIp(text)).toBe("boolean");
       // A leading letter outside hex digits can never be an IP literal.
       expect(isPrivateOrLocalIp(`x${text}`)).toBe(false);
-    })
-      .databaseKey("pi-web-tools/private-ip-text")
-      .settings(settings)
-      .runSync();
+    });
   });
 });
 
@@ -240,7 +221,7 @@ describe("parseContentType charset properties", () => {
   const NAMES = ["foo", "charset", "xcharset", "charsetx", "Charset", "a-charset", "q"];
   const VALUES = ["utf-8", "ISO-8859-1", "x", "Shift_JIS"];
   test("only a parameter named exactly charset sets the charset", () => {
-    new Hegel((tc) => {
+    assertHegel(settings, (tc) => {
       const params = tc.draw(
         gs.arrays(
           gs.tuples(
@@ -259,9 +240,6 @@ describe("parseContentType charset properties", () => {
       ].join(";");
       const first = params.find(([name]) => name.toLowerCase() === "charset");
       expect(parseContentType(header).charset).toBe(first?.[1].toLowerCase());
-    })
-      .databaseKey("pi-web-tools/content-type-charset")
-      .settings(settings)
-      .runSync();
+    });
   });
 });

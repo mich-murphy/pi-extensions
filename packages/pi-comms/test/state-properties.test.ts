@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
 import type { Delivery, PublicationRecord } from "../state/types.js";
 
 const receiver = { machineId: "beta", sessionId: "receiver", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: "a".repeat(32) };
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled, printBlob: true };
+const settings = propertySettings(200);
 type Step = {
   action: number;
   id: number;
@@ -350,7 +351,6 @@ describe("Hegel bounded state/fault traces against independent models", () => {
       }
       assertAdmissionTrace(steps);
     })
-      .databaseKey("session-communication/ts/admission-model")
       .settings(settings)
       .runSync();
   });
@@ -369,7 +369,6 @@ describe("Hegel bounded state/fault traces against independent models", () => {
       );
       assertSingleDelivery(size, unit);
     })
-      .databaseKey("session-communication/ts/byte-limit")
       .settings(settings)
       .runSync();
   });
@@ -382,7 +381,6 @@ describe("Hegel bounded state/fault traces against independent models", () => {
       );
       assertInterestTrace(actions);
     })
-      .databaseKey("session-communication/ts/interest-model")
       .settings(settings)
       .runSync();
   });

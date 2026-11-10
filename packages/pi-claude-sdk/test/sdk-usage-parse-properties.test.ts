@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { Database, Hegel } from "@hegeldev/hegel";
+import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { Effect } from "effect";
 import { describe, test } from "vitest";
+import { propertySettings } from "../../../test-support/hegel-settings";
 import { ClaudeUsageQueries, inspectClaudeUsage } from "../sdk-usage";
 import type { ClaudeUsageStatus } from "../sdk-usage";
 
-const settings = { testCases: 200, seed: 12_345n, database: Database.disabled };
+const settings = propertySettings(200);
 const FIXED = [
   ["five_hour", "Current session"],
   ["seven_day", "All models weekly"],
@@ -161,23 +162,14 @@ async function assertResetDate(tc: TestCase): Promise<void> {
 
 describe("usage response parsing properties", () => {
   test("window names are unique case-insensitively, first wins, model-scoped last", async () => {
-    await new Hegel(async (tc) => assertDedupe(tc))
-      .databaseKey("pi-claude-sdk/usage-dedupe")
-      .settings(settings)
-      .run();
+    await new Hegel(async (tc) => assertDedupe(tc)).settings(settings).run();
   });
 
   test("utilization outside 0..100 is a parse error", async () => {
-    await new Hegel(async (tc) => assertUtilizationBounds(tc))
-      .databaseKey("pi-claude-sdk/usage-bounds")
-      .settings(settings)
-      .run();
+    await new Hegel(async (tc) => assertUtilizationBounds(tc)).settings(settings).run();
   });
 
   test("reset dates are accepted exactly when they are real calendar dates", async () => {
-    await new Hegel(async (tc) => assertResetDate(tc))
-      .databaseKey("pi-claude-sdk/usage-reset-date")
-      .settings(settings)
-      .run();
+    await new Hegel(async (tc) => assertResetDate(tc)).settings(settings).run();
   });
 });
