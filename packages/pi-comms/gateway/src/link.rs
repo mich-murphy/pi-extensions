@@ -42,6 +42,12 @@ impl Driver {
             },
         })
     }
+    /// The socket address the listener actually bound; `None` for a connecting endpoint.
+    pub(crate) fn local_address(&self) -> Option<std::net::SocketAddr> {
+        self.listener
+            .as_ref()
+            .and_then(|listener| listener.local_addr().ok())
+    }
     pub(crate) fn start(&mut self) {
         if self.listener.is_some()
             || !self.pending.is_empty()

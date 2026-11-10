@@ -39,10 +39,12 @@ async fn main() -> io::Result<()> {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     let mut stdout = io::stdout().lock();
-    serde_json::to_writer(
-        &mut stdout,
-        &serde_json::json!({"event":"ready","socketPath":daemon.socket_path(),"machineId":daemon.machine_id()}),
-    )?;
+    let mut ready = serde_json::json!({"event":"ready","socketPath":daemon.socket_path(),"machineId":daemon.machine_id()});
+    if let Some(address) = daemon.remote_listen_address() {
+        // The bound address, so a configured port 0 is reported as the port the OS chose.
+        ready["remoteListenAddress"] = serde_json::Value::String(address.to_string());
+    }
+    serde_json::to_writer(&mut stdout, &ready)?;
     stdout.write_all(b"\n")?;
     stdout.flush()?;
     drop(stdout);
