@@ -3,7 +3,11 @@ import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
 import * as gs from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
-import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
+import {
+  assertHegel,
+  propertySettings,
+  propertyTimeout,
+} from "../../../test-support/hegel-settings";
 import { createEditor, KEYBOARDS, resetKeyboard } from "./vim-harness";
 import type { Keyboard } from "./vim-harness";
 
@@ -217,7 +221,8 @@ function runTrace(
 describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard) => {
   afterEach(resetKeyboard);
 
-  test("random key traces keep the editor invariants", () => {
+  // 200 traces of up to 20 keys through the real editor: up to 0.95 s under 8 busy processes.
+  test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
         gs.arrays(gs.arrays(gs.sampledFrom(ALPHABET), { maxSize: 12 }), {
