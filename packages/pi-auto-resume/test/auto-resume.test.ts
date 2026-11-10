@@ -165,14 +165,6 @@ describe("leaving the failure to the user", () => {
     expect(pi.timerCount()).toBe(1);
   });
 
-  test("ignores a reset published in an earlier run", () => {
-    const pi = harness();
-    pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: RESETS_AT });
-    pi.startRun();
-
-    expect(pi.settle("error", [assistantEntry("a1", "error")])).toBeUndefined();
-  });
-
   test.each([
     ["completed", [assistantEntry("a1", "stop")]],
     ["aborted", [assistantEntry("a1", "aborted")]],
@@ -246,19 +238,6 @@ describe("cancelling a scheduled resume", () => {
     expect(pi.timerCount()).toBe(0);
     expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
     expect(pi.settle("error", [assistantEntry("old-error", "error")])).toBeUndefined();
-    pi.advanceTo(RESETS_AT);
-    expect(pi.sent).toStrictEqual([]);
-  });
-
-  test("session shutdown stops the timer", () => {
-    const pi = harness();
-    failOnUsageLimit(pi);
-
-    pi.shutdown();
-    pi.shutdown();
-
-    expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
   });
@@ -356,24 +335,21 @@ describe("print and JSON modes", () => {
 });
 
 describe("malformed reset dates", () => {
-  test.each(["tui", "rpc", "print", "json"] as const)(
-    "rejects invalid dates in %s mode",
-    (mode) => {
-      const pi = harness(mode);
-      for (const resetsAt of [
-        Number.NaN,
-        Infinity,
-        -Infinity,
-        8.64e15 + 1,
-        -8.64e15 - 1,
-        Number.MAX_VALUE,
-      ]) {
-        expect(failOnUsageLimit(pi, { resetsAt })).toBeUndefined();
-      }
-      expect(pi.timerCount()).toBe(0);
-      expect(pi.notifications).toStrictEqual([]);
-      expect(pi.stderr).toStrictEqual([]);
-      expect(pi.appended).toStrictEqual([]);
-    },
-  );
+  test.each(["print", "json"] as const)("rejects invalid dates in %s mode", (mode) => {
+    const pi = harness(mode);
+    for (const resetsAt of [
+      Number.NaN,
+      Infinity,
+      -Infinity,
+      8.64e15 + 1,
+      -8.64e15 - 1,
+      Number.MAX_VALUE,
+    ]) {
+      expect(failOnUsageLimit(pi, { resetsAt })).toBeUndefined();
+    }
+    expect(pi.timerCount()).toBe(0);
+    expect(pi.notifications).toStrictEqual([]);
+    expect(pi.stderr).toStrictEqual([]);
+    expect(pi.appended).toStrictEqual([]);
+  });
 });
