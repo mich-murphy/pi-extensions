@@ -17,6 +17,7 @@ import {
   SdkMissingResultError,
   SdkOverageError,
   SdkProtocolError,
+  SdkInternalContinuationError,
   SdkQueryError,
   SdkResultError,
   SdkToolContractError,
@@ -623,12 +624,7 @@ function conclude(
       );
   const checkedTerminal =
     terminal.type !== "failed" && progress.modelRequests > 1
-      ? failed(
-          new SdkProtocolError({
-            messageType: "result",
-            detail: "SDK performed an internal model continuation; Pi owns recovery",
-          }),
-        )
+      ? failed(new SdkInternalContinuationError())
       : terminal;
   reportUsageLimit(checkedTerminal, progress.usageLimitResetsAt, usageLimitObserver);
   recordUsage?.(usage, {

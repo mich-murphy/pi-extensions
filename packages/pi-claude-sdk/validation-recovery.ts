@@ -1,4 +1,9 @@
-import type { ToolCallEventResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type {
+  MessageEndEvent,
+  MessageEndEventResult,
+  ToolCallEventResult,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 /** Reserved bridge operation. Never delegates to or executes another tool. */
@@ -80,3 +85,54 @@ export const validationRecoveryTool: ToolDefinition = {
     throw new Error(validationRecoveryReason(input));
   },
 };
+
+/** Normalize known Pi rejection results only when a provider-authored synthetic call correlates.
+ * Unknown, cancelled, successful, nested and same-named user/tool results remain untouched.
+ */
+export function normalizeValidationResult(
+  message: MessageEndEvent["message"],
+  history: readonly MessageEndEvent["message"][],
+): MessageEndEventResult | undefined {
+  if (
+    message.role !== "toolResult" ||
+    message.toolName !== VALIDATION_ERROR_TOOL ||
+    !message.isError
+  ) {
+    return undefined;
+  }
+  const assistant = history.findLast((entry) => entry.role === "assistant");
+  if (
+    assistant?.role !== "assistant" ||
+    assistant.provider !== "claude-sdk" ||
+    assistant.stopReason !== "toolUse"
+  ) {
+    return undefined;
+  }
+  const call = assistant.content.find(
+    (block) => block.type === "toolCall" && block.id === message.toolCallId,
+  );
+  if (
+    call?.type !== "toolCall" ||
+    call.name !== VALIDATION_ERROR_TOOL ||
+    !VALIDATION_REASONS.some((reason) => reason === call.arguments.error) ||
+    Object.keys(call.arguments).length !== 1
+  ) {
+    return undefined;
+  }
+  const text =
+    message.content.length === 1 && message.content[0]?.type === "text"
+      ? message.content[0].text
+      : undefined;
+  if (
+    text !== `Tool ${VALIDATION_ERROR_TOOL} not found` &&
+    text !== validationRecoveryReason(call.arguments)
+  ) {
+    return undefined;
+  }
+  return {
+    message: {
+      ...message,
+      content: [{ type: "text", text: validationRecoveryReason(call.arguments) }],
+    },
+  };
+}

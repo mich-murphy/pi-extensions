@@ -1,6 +1,8 @@
 import process from "node:process";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type {
+  MessageEndEvent,
+  MessageEndEventResult,
   ExtensionAPI,
   ExtensionContext,
   ToolCallEvent,
@@ -26,13 +28,19 @@ import {
 } from "./sdk-version-status";
 import { createClaudeAgentSdkRunner } from "./sdk/runner";
 import type { UsageLimitObservation } from "./sdk/runner";
-import { blockValidationRecovery, validationRecoveryTool } from "./validation-recovery";
+import {
+  blockValidationRecovery,
+  normalizeValidationResult,
+  validationRecoveryTool,
+  VALIDATION_ERROR_TOOL,
+} from "./validation-recovery";
 
 /** Event data consumed by the provider's safety hooks. */
 export type ClaudeEvents = {
   readonly before_agent_start: {
     readonly systemPromptOptions: { readonly sections: Record<string, string> };
   };
+  readonly message_end: Pick<MessageEndEvent, "message">;
   readonly tool_call: ToolCallEvent;
   readonly tool_result: Pick<ToolResultEvent, "toolName" | "content">;
   readonly context: { readonly messages: Parameters<typeof sanitizeContextMessages>[0] };
@@ -44,10 +52,12 @@ export type ClaudeHandlers = {
   [K in keyof ClaudeEvents]: (
     event: ClaudeEvents[K],
     ctx: Pick<ExtensionContext, "hasUI"> & {
+      readonly sessionManager?: Pick<ExtensionContext["sessionManager"], "getBranch">;
       readonly ui: Pick<ExtensionContext["ui"], "notify">;
     },
   ) => {
     readonly before_agent_start: undefined;
+    readonly message_end: MessageEndEventResult | undefined;
     readonly tool_call: Pick<ToolCallEventResult, "block" | "reason"> | undefined;
     readonly tool_result: Pick<ToolResultEventResult, "content"> | undefined;
     readonly context: Pick<ContextEventResult, "messages">;
@@ -90,6 +100,7 @@ export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand" | "registe
   readonly registerProvider: (name: string, config: ProviderConfig) => void;
   readonly on: {
     (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): unknown;
+    (name: "message_end", handler: ClaudeHandlers["message_end"]): unknown;
     (name: "tool_call", handler: ClaudeHandlers["tool_call"]): unknown;
     (name: "tool_result", handler: ClaudeHandlers["tool_result"]): unknown;
     (name: "context", handler: ClaudeHandlers["context"]): unknown;
@@ -147,7 +158,25 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
   pi.on("before_agent_start", (event) => {
     event.systemPromptOptions.sections["bash-output-safety"] =
       "Bash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.";
+    event.systemPromptOptions.sections["claude-sdk-scratchpad"] =
+      "Claude SDK queries are stateless: native session IDs and suggested scratchpad directories change each turn. Pi owns conversation continuity. Reuse scratch files explicitly recorded in this Pi conversation; a changed native session ID does not make earlier files foreign. Do not move or delete scratch directories just to match a new SDK session ID.";
     return undefined;
+  });
+  pi.on("message_end", (event, ctx) => {
+    const { message } = event;
+    if (
+      message.role !== "toolResult" ||
+      message.toolName !== VALIDATION_ERROR_TOOL ||
+      !message.isError
+    ) {
+      return undefined;
+    }
+    return normalizeValidationResult(
+      message,
+      ctx.sessionManager
+        ?.getBranch()
+        .flatMap((entry) => (entry.type === "message" ? [entry.message] : [])) ?? [],
+    );
   });
   pi.on("tool_call", (event) => {
     const recovery = blockValidationRecovery(event.toolName, event.input);

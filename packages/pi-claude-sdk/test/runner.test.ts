@@ -478,7 +478,10 @@ describe("turn streaming", () => {
       type: "usage",
       usage: { input: 14, output: 5, cacheRead: 3, cacheWrite: 1 },
     });
-    expect(events.at(-1)).toMatchObject({ type: "failed", error: { _tag: "SdkProtocolError" } });
+    expect(events.at(-1)).toMatchObject({
+      type: "failed",
+      error: { _tag: "SdkInternalContinuationError" },
+    });
   });
 
   test("does not repeat terminal usage that matches the last streamed totals", async () => {
@@ -1059,7 +1062,9 @@ describe("turn failures", () => {
     const error = failureOf(await runTurn(queryWith([READ_PACKAGE], unavailable)));
 
     expect(error._tag).toBe("SdkResultError");
-    expect(error.message).toBe("could not hand the requested Pi tool call back to Pi");
+    expect(error.message).toBe(
+      "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+    );
   });
 
   test("does not execute a captured tool call when SDK iteration fails", async () => {

@@ -32,7 +32,6 @@ describe("bash output safety", () => {
   test.each([
     "cat $(which plannotator) 2>/dev/null | head -100",
     'cat "$(command -v plannotator)"',
-    "cat '$(which plannotator)'",
     "cat `which plannotator`",
     'cat "`command -v plannotator`"',
   ])("blocks executable dumps through supported shell substitutions: %s", (command) => {

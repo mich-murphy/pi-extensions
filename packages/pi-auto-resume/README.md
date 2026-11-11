@@ -58,3 +58,28 @@ Modes differ:
 - The wait lives in memory and ends with the Pi process.
 - The provider's reset-time event names no request. If another call to the same provider hits a limit during the final request, its reset time can be applied to the wrong failure.
 - Waiting does not keep the machine awake, and `pi-caffeinate` releases while Pi is idle. After the machine wakes, the next minute check resumes on schedule.
+
+## Troubleshooting and recovery ownership
+
+Pi core retries eligible provider errors first. Auto-resume adds a bounded wait
+only after those retries finish; a core retry/context-edit record is not evidence
+that auto-resume ran. Its visible marker identifies an extension resumption.
+
+- **Connection, DNS, socket or timeout failures:** check connectivity, VPN/proxy
+  and provider availability. Resume unfinished work after connectivity recovers;
+  retries cannot establish whether a remote operation completed.
+- **OAuth refresh `fetch failed`:** this alone indicates a transport failure, not
+  invalid credentials. Do not log in again solely for a failed fetch. Investigate
+  authentication only if the provider actually reports an auth rejection.
+- **HTTP 503 / temporarily unavailable user:** retry after service recovery;
+  this is not the same as a subscription usage limit.
+- **Cancellation or a child turn budget:** these are intentional stops, not
+  transient failures. Check the child's budget and completed work; resume it
+  explicitly only when appropriate. Do not bypass a budget with retries.
+- **Claude internal continuation:** automatic replay is intentionally unsupported.
+  Review completed work and send `continue` when ready; the SDK provider retains
+  Pi-owned tool execution rather than retrying uncertain work.
+
+OpenAI/core transport text and external subagent budget messages belong to their
+providers or harnesses. This extension does not globally rewrite those errors,
+change child allowlists or migrate saved model preferences.

@@ -8,6 +8,7 @@ export type SdkFailureKind =
   | "authentication"
   | "cancelled"
   | "defect"
+  | "internal-continuation"
   | "host-sleep"
   | "network"
   | "protocol"
@@ -58,6 +59,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
     }
     case "SdkProviderDefect": {
       return "defect";
+    }
+    case "SdkInternalContinuationError": {
+      return "internal-continuation";
     }
     case "SdkProtocolError": {
       return "protocol";

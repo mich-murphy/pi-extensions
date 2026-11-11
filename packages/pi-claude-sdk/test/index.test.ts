@@ -65,6 +65,62 @@ describe("extension entry point", () => {
   });
 });
 
+describe("recovery hook overhead", () => {
+  test("does not read history for ordinary messages or successful reserved results", () => {
+    const { emit } = loadExtension();
+    let reads = 0;
+    const ctx = {
+      hasUI: false,
+      ui: { notify: () => undefined },
+      sessionManager: {
+        getBranch: () => {
+          reads++;
+          return [];
+        },
+      },
+    };
+    void emit("message_end", { message: { role: "user", content: "hello", timestamp: 0 } }, ctx);
+    void emit(
+      "message_end",
+      {
+        message: {
+          role: "toolResult",
+          toolCallId: "normal",
+          toolName: "read",
+          content: [],
+          isError: true,
+          timestamp: 0,
+        },
+      },
+      ctx,
+    );
+    void emit(
+      "message_end",
+      {
+        message: {
+          role: "toolResult",
+          toolCallId: "reserved",
+          toolName: "pi_claude_sdk_validation_error",
+          content: [],
+          isError: false,
+          timestamp: 0,
+        },
+      },
+      ctx,
+    );
+    expect(reads).toBe(0);
+  });
+
+  test("scratchpad guidance remains identical across prompt rebuilds", () => {
+    const { emit } = loadExtension();
+    const sections: Record<string, string> = {};
+    void emit("before_agent_start", { systemPromptOptions: { sections } });
+    const before = { ...sections };
+    void emit("before_agent_start", { systemPromptOptions: { sections } });
+    expect(sections).toStrictEqual(before);
+  });
+});
+
 describe("usage limit notices", () => {
   test("publishes the reset time on the shared usage-limit channel", () => {
     const emitted: { channel: string; data: unknown }[] = [];
@@ -97,13 +153,14 @@ describe("bash output safety hooks", () => {
     expect(sections).toStrictEqual({
       "mm-mode": "Router.",
       "bash-output-safety": bashRule,
+      "claude-sdk-scratchpad": expect.stringContaining("native session IDs") as unknown,
     });
   });
 
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {
     const { emit } = loadExtension();
     const refusal: unknown = expect.stringContaining(
-      "Refusing to pipe a discovered executable through cat",
+      "Blocked by executable-output guard: executable data may be printed, or this shell syntax cannot be inspected safely.",
     );
 
     expect(emit("tool_call", bashCall("cat $(which node)"))).toMatchObject({

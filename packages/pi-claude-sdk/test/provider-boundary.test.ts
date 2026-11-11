@@ -307,7 +307,9 @@ describe("public terminal failure privacy", () => {
       yield resultMessage();
     });
     safeError(message, lines);
-    expect(message.errorMessage).toContain("could not hand the requested Pi tool call back to Pi");
+    expect(message.errorMessage).toContain(
+      "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+    );
   });
 });
 

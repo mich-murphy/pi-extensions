@@ -68,9 +68,9 @@ The provider removes API-key, Bedrock, Vertex and Foundry variables from the Cla
 
 - Pi owns the conversation, tools, approvals and tool execution. Claude only proposes tool calls.
 - Claude Code settings, `CLAUDE.md`, hooks, MCP servers and built-in tools are not loaded. See [architecture](docs/architecture.md).
-- A failed turn carries one category: `authentication`, `cancelled`, `defect` (a provider bug), `host-sleep`, `network`, `protocol`, `provider`, `rate-limit`, `server-error`, `timeout`, `tool-contract` or `usage-limit`.
+- A failed turn carries one category: `authentication`, `cancelled`, `defect` (a provider bug), `host-sleep`, `internal-continuation`, `network`, `protocol`, `provider`, `rate-limit`, `server-error`, `timeout`, `tool-contract` or `usage-limit`.
 - Error text never includes raw SDK output.
-- `bash` calls that `cat` a discovered executable, such as `cat $(which tool)`, are blocked. Binary-like or long base64-like `bash` output is replaced with a short quarantine notice before it reaches the model, including results stored in older sessions.
+- Recognized `cat` commands that read paths from `which` or `command -v` substitutions are blocked; literal quoted text and supported quoted heredoc data are not commands. The scanner conservatively refuses unsupported heredoc delimiters (escaped ANSI-C quotes, locale-translated quotes, or substitution-shaped spelling) and excessive nesting rather than guessing which text executes. Plain ANSI-C quoted delimiters are supported. For literal documents, prefer the `write` tool. Binary-like or long base64-like `bash` output is still quarantined, including in older session context. This is a best-effort guard, not a shell sandbox.
 - When stderr is redirected, the provider writes one `[claude-sdk-error]` JSON record per failure with routing fields only. Capture it with `pi 2>claude-sdk-diagnostics.log`.
 - On a usage limit with a known reset time, the provider emits `{ provider: "claude-sdk", resetsAt }` (epoch milliseconds) on Pi's `usage-limit` event channel. `pi-auto-resume` uses it.
 
@@ -80,12 +80,18 @@ The provider removes API-key, Bedrock, Vertex and Foundry variables from the Cla
 - Images must be JPEG, PNG, GIF or WebP. Other images become text notes.
 - Pi records subscription cost as zero.
 - Thinking blocks stream to Pi but are not replayed on later turns.
+- Each SDK query uses a fresh native session ID. Pi owns continuity: reuse scratch paths recorded in the Pi conversation, not a native per-query scratchpad suggestion. A new SDK ID is not a reason to move or delete earlier scratch files. The provider does not enable SDK session persistence.
 
 ## Troubleshooting
 
 - **`ENOENT` or "session working directory is unavailable".** You removed the worktree Pi started in. Exit Pi, change to an existing worktree, then run `pi --session /absolute/path/to/session.jsonl`. To keep the original session intact, run `pi --fork /absolute/path/to/session.jsonl`.
 - **"Claude Code is too old".** Run `claude update`, then check with `/claude-sdk-status`.
 - **Usage limit.** Run `/claude-sdk-usage` to see when the window reopens.
+
+- **Claude continued inside the SDK.** Pi stops the turn rather than accept an internal continuation or automatically replay uncertain work. This is not malformed JSON. Review completed tools and on-disk changes, then send `continue` when ready; do not blindly repeat side-effecting commands. See [the safety boundary](docs/architecture.md#internal-continuation-safety-boundary).
+- **Rejected SDK tool call in a child.** The rejected tool does not execute. Pi records an error and requests a correction. Child tool allowlists can omit the reserved validation helper without preventing correction; the provider does not widen those allowlists. If the child inherits only the provider, without this extension's hooks, Pi may show `Tool pi_claude_sdk_validation_error not found`; replay still supplies the correction. Load the extension in the child for the friendlier diagnostic, not extra tool permissions.
+- **Fable missing from the picker.** Run `pi --list-models claude-sdk` and check `/scoped-models`. Saved `enabledModels`, default-model or compaction preferences may still name removed Fable 5.1. Update those preferences yourself to an available ID such as `claude-sdk/claude-5.2-fable`, then reload. The extension does not migrate global settings automatically.
+- **Unexpected SDK error.** Check `/claude-sdk-status` and Claude Code availability. Raw SDK errors are deliberately not printed. Pi and auto-resume may already retry this bounded failure; after retries stop, inspect completed work before sending `continue`.
 
 ## Further reading
 

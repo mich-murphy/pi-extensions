@@ -48,8 +48,8 @@ const INSTALLED_VERSION_TIMEOUT_MS = 3000;
 const INSTALLED_VERSION_MESSAGES: Readonly<Record<InstalledVersionFailure, string>> = {
   "not-installed":
     "Claude Code is not installed or not on PATH (claude --version failed); install it, run `claude auth login`, or set PI_CLAUDE_SDK_CLAUDE_PATH",
-  "timed-out": `claude --version did not respond within ${INSTALLED_VERSION_TIMEOUT_MS / 1000}s`,
-  failed: "claude --version failed",
+  "timed-out": `claude --version did not respond within ${INSTALLED_VERSION_TIMEOUT_MS / 1000}s; check that Claude Code starts locally`,
+  failed: "claude --version failed; check that Claude Code starts locally",
 };
 
 /** Expected failure while reading the Agent SDK's package metadata. */
@@ -62,7 +62,7 @@ class ClaudeSdkMetadataError extends Schema.TaggedError<ClaudeSdkMetadataError>(
 ) {
   /** Plain-English summary. */
   override get message(): string {
-    return "Could not read the installed Claude Agent SDK package metadata";
+    return "Could not read the installed Claude Agent SDK package metadata; check the extension installation";
   }
 }
 
@@ -88,16 +88,15 @@ class ClaudeVersionParseError extends Schema.TaggedError<ClaudeVersionParseError
   {
     /** Which version could not be parsed. */
     source: Schema.Literals(["expected", "installed"]),
-    /** The unexpected text; only its bounded first line is rendered. */
+    /** The unexpected text; never rendered (it may contain secrets or terminal controls). */
     output: Schema.String,
   },
 ) {
-  /** Plain-English summary quoting the bounded first line of the unexpected text. */
+  /** Plain-English summary without echoing untrusted command output. */
   override get message(): string {
-    const firstLine = (this.output.split("\n", 1)[0] ?? "").trim().slice(0, 80);
     return this.source === "installed"
-      ? `claude --version printed an unexpected version: "${firstLine}"`
-      : `The Agent SDK reports an unexpected expected Claude Code version: "${firstLine}"`;
+      ? "claude --version returned an unexpected format; run `claude update` and /claude-sdk-status"
+      : "The Agent SDK reports an unexpected expected Claude Code version; check the installed SDK package";
   }
 }
 

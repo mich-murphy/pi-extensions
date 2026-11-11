@@ -246,7 +246,7 @@ describe("provider failures", () => {
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Truncated" }]);
     expect(message.errorMessage).toBe(
-      "Claude SDK provider bug: the turn ended without a final result",
+      "Claude SDK provider bug: the turn ended without a final result; report this provider bug with /claude-sdk-status output",
     );
   });
 
@@ -258,7 +258,7 @@ describe("provider failures", () => {
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
     expect(message.errorMessage).toBe(
-      "Claude SDK provider bug: the SDK runner failed unexpectedly",
+      "Claude SDK provider bug: the SDK runner failed unexpectedly; report this provider bug with /claude-sdk-status output",
     );
     expect(message.errorMessage).not.toContain("adapter defect");
   });
