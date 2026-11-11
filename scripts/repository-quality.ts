@@ -56,21 +56,61 @@ function indexedStat(root: string, path: string) {
   }
 }
 
-function existingFile(root: string, path: string): boolean {
-  const stat = indexedStat(root, path);
+function rejectSymlink(path: string, component: string): never {
+  throw new Error(
+    `Indexed symlink ${JSON.stringify(path)} (component ${JSON.stringify(component)}) cannot be checked safely; replace it with a regular source file or directory, or remove it from the index.`,
+  );
+}
+
+type PathStats = Map<string, ReturnType<typeof indexedStat>>;
+
+function checkedStat(root: string, path: string, component: string, stats: PathStats) {
+  if (!stats.has(component)) {
+    stats.set(component, indexedStat(root, component));
+  }
+  const stat = stats.get(component);
   if (stat?.isSymbolicLink() === true) {
-    throw new Error(
-      `Indexed symlink ${JSON.stringify(path)} cannot be checked safely; replace it with a regular source file or remove it from the index.`,
-    );
+    rejectSymlink(path, component);
+  }
+  return stat;
+}
+
+function existingFile(root: string, path: string, stats: PathStats): boolean {
+  const components: string[] = [];
+  let stat: ReturnType<typeof indexedStat>;
+  // Start below Git's canonical root: a checkout reached through a root alias is legitimate.
+  // Cache shared ancestors within selection, not across runs. This is not a TOCTOU sandbox.
+  for (const part of path.split("/")) {
+    components.push(part);
+    stat = checkedStat(root, path, components.join("/"), stats);
+    if (stat === undefined) {
+      return false;
+    }
   }
   return stat?.isFile() ?? false;
 }
 
+function indexedEntry(entry: string): { path: string; symlink: boolean } {
+  // Only the first tab separates metadata; the remaining path may contain literal tabs.
+  return { path: entry.slice(entry.indexOf("\t") + 1), symlink: entry.startsWith("120000 ") };
+}
+
 function indexedFiles(root: string, extension: RegExp): string[] {
-  const indexed = git(["ls-files", "--cached", "-z"], root);
-  return [...new Set(indexed.split("\0").filter(Boolean))]
-    .filter((path) => extension.test(path))
-    .filter((path) => existingFile(root, path));
+  const indexed = git(["ls-files", "--cached", "--stage", "-z"], root);
+  const stats: PathStats = new Map();
+  const files = indexed
+    .split("\0")
+    .filter(Boolean)
+    .map((entry) => indexedEntry(entry))
+    .filter(({ path }) => extension.test(path))
+    .filter(({ path }) => existingFile(root, path, stats))
+    .map(({ path, symlink }) => {
+      if (symlink) {
+        rejectSymlink(path, path);
+      }
+      return path;
+    });
+  return [...new Set(files)];
 }
 
 function completedStatus(result: ReturnType<typeof spawnSync>, tool: Tool): number {

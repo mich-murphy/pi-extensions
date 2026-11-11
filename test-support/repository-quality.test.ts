@@ -149,6 +149,7 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
     for (const name of [
       "space name.json",
       "line\nbreak.json",
+      "tab\tname.json",
       "[bracket].json",
       "!bang.json",
       "-option.json",
@@ -184,6 +185,88 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
     symlinkSync(resolve(f.root, "node_modules"), resolve(worktree, "node_modules"));
     assertSuccess(f.run("format-check", worktree));
     assertSuccess(f.run("markdownlint", resolve(worktree, "config")));
+  } finally {
+    f.close();
+  }
+});
+
+await Promise.all(
+  ["format-check", "format"].map(async (mode) =>
+    test(`${mode} refuses symlink ancestors without reading or changing outside files`, () => {
+      const f = fixture();
+      const outside = mkdtempSync(resolve(tmpdir(), "repository-quality-outside-"));
+      try {
+        f.write("tracked/file.json", "{}\n");
+        f.git("add", "tracked/file.json");
+        rmSync(resolve(f.root, "tracked"), { recursive: true });
+        const target = resolve(outside, "file.json");
+        const original = '{"bad":1}';
+        writeFileSync(target, original);
+        symlinkSync(outside, resolve(f.root, "tracked"));
+        const result = f.run(mode);
+        assert.equal(readFileSync(target, "utf8"), original);
+        assertFailure(result);
+        assert.match(result.stderr, /Indexed symlink/u);
+        assert.match(result.stderr, /tracked\/file\.json/u);
+        assert.doesNotMatch(
+          result.stdout + result.stderr,
+          /Found formatting issues|Formatted.*files/u,
+        );
+      } finally {
+        f.close();
+        rmSync(outside, { recursive: true, force: true });
+      }
+    }),
+  ),
+);
+
+await test("deleted ancestor paths and canonical checkout root aliases remain supported", () => {
+  const f = fixture();
+  const aliases = mkdtempSync(resolve(tmpdir(), "repository-quality-alias-"));
+  try {
+    f.write("tracked/nested/file.json", "{}\n");
+    f.write("normal/file.json", "{}\n");
+    f.git("add", "tracked", "normal");
+    assertSuccess(f.run("format-check"));
+    rmSync(resolve(f.root, "tracked"), { recursive: true });
+    assertSuccess(f.run("format-check"));
+    assertSuccess(f.run("format"));
+    const alias = resolve(aliases, "checkout");
+    symlinkSync(f.root, alias);
+    assertSuccess(f.run("format-check", alias));
+  } finally {
+    f.close();
+    rmSync(aliases, { recursive: true, force: true });
+  }
+});
+
+await test("symlink ancestors pointing inside the checkout are also refused", () => {
+  const f = fixture();
+  try {
+    f.write("tracked/file.json", "{}\n");
+    f.write("actual/file.json", "{}\n");
+    f.git("add", "tracked/file.json");
+    rmSync(resolve(f.root, "tracked"), { recursive: true });
+    symlinkSync("actual", resolve(f.root, "tracked"));
+    const result = f.run("format-check");
+    assertFailure(result);
+    assert.match(result.stderr, /Indexed symlink.*tracked\/file\.json/u);
+  } finally {
+    f.close();
+  }
+});
+
+await test("indexed symlinks cannot become selected regular files through working-copy replacement", () => {
+  const f = fixture();
+  try {
+    f.write("target.json", "{}\n");
+    symlinkSync("target.json", resolve(f.root, "linked.json"));
+    f.git("add", "linked.json");
+    unlinkSync(resolve(f.root, "linked.json"));
+    f.write("linked.json", "{}\n");
+    const result = f.run("format-check");
+    assertFailure(result);
+    assert.match(result.stderr, /Indexed symlink.*linked\.json/u);
   } finally {
     f.close();
   }
