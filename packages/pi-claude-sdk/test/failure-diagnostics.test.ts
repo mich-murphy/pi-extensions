@@ -7,6 +7,7 @@ import {
   InvalidDeferredCallError,
   InvalidDeferredCallLimitError,
   SdkMissingResultError,
+  SdkInternalContinuationError,
   SdkProtocolError,
   SdkProviderDefect,
   SdkQueryError,
@@ -30,6 +31,7 @@ const outOfUsage = new SdkResultError({
 
 describe("claude SDK failure diagnostics", () => {
   test.each([
+    [new SdkInternalContinuationError(), "internal-continuation"],
     [
       new SdkProtocolError({ messageType: "result", detail: "unsupported stop_reason future" }),
       "protocol",
@@ -76,7 +78,7 @@ describe("claude SDK failure diagnostics", () => {
         toolContract: reason,
       });
       expect(formatSdkRunError(error)).toBe(
-        `Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (${reason})`,
+        `Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (${reason}); check tool names and schemas in the active extensions`,
       );
     },
   );
@@ -114,10 +116,10 @@ describe("claude SDK failure diagnostics", () => {
       "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
     );
     expect(formatSdkRunError(new SdkMissingResultError())).toBe(
-      "Claude Agent SDK: the query ended without returning a result",
+      "Claude Agent SDK: the query ended without returning a result; review completed work before sending `continue`",
     );
     expect(formatSdkRunError(new SdkProviderDefect({ reason: "run-rejected" }))).toBe(
-      "Claude SDK provider bug: the SDK runner failed unexpectedly",
+      "Claude SDK provider bug: the SDK runner failed unexpectedly; report this provider bug with /claude-sdk-status output",
     );
   });
 
@@ -132,14 +134,14 @@ describe("claude SDK failure diagnostics", () => {
         errorClass: "process_exited_nonzero",
         exitCode: 2,
       }),
-      "could not start the query (Claude Code exited with code 2)",
+      "could not start the query (Claude Code exited with code 2; run /claude-sdk-status and check Claude Code before continuing)",
     ],
     [
       sdkRejection("Claude Code process terminated by signal SIGKILL", {
         errorClass: "process_killed_by_signal",
         signal: "SIGKILL",
       }),
-      "could not start the query (Claude Code was terminated by SIGKILL)",
+      "could not start the query (Claude Code was terminated by SIGKILL; check whether the process was stopped before continuing)",
     ],
     [
       sdkRejection("Claude Code executable not found at /secret/path", {
@@ -151,7 +153,7 @@ describe("claude SDK failure diagnostics", () => {
       sdkRejection("Claude Code native binary exists at /secret but failed to launch", {
         errorClass: "executable_launch_failed",
       }),
-      "could not start the query (Claude Code is installed but could not be launched)",
+      "could not start the query (Claude Code is installed but could not be launched; check executable permissions and PI_CLAUDE_SDK_CLAUDE_PATH)",
     ],
     [
       sdkRejection("Claude Code process aborted by user", { errorClass: "aborted" }),

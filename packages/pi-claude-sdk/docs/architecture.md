@@ -41,7 +41,7 @@ The provider advertises each Pi tool through an in-process MCP server with its r
 
 - **`PreToolUse` defer.** The hook validates input with Pi's validator and returns `permissionDecision: "defer"`. The query ends with a deferred result, and the provider hands the calls to Pi. The MCP handlers are only a fallback: if one runs, the turn fails with `tool-contract`.
 - **`PostToolBatch`.** The hook catches tool calls that resolved without deferral. It turns them into non-executing corrections and stops the query before another model request. Genuine failures, cancellation and a missing result fail the whole turn and release no calls.
-- **Validation recovery.** Invalid input, unexpected tools and tool calls printed as text become calls to the reserved tool `pi_claude_sdk_validation_error`. It never runs real code. Pi records an error result with fixed correction text and asks the model again. An unconditional `tool_call` guard blocks the reserved name.
+- **Validation recovery.** Invalid input, unexpected tools and tool calls printed as text become calls to the reserved tool `pi_claude_sdk_validation_error`. It never runs real code. Pi records an error result with fixed correction text and asks the model again. An unconditional `tool_call` guard blocks the reserved name. A supported `message_end` transform normalizes known Pi rejection text only when it correlates with the latest Claude provider synthetic call and a known value-free reason. It retains `isError`, call identity and execution metadata; cancelled, successful and unrelated results stay unchanged. This also works when an explicit child allowlist excludes the helper, since unknown tools skip `tool_call` and `tool_result`. No capability is added.
 
 Later turns collapse a reserved call and its result into one fixed text note. Replaying the call verbatim would teach the model to call an undeclared tool.
 
@@ -75,3 +75,26 @@ The provider discards raw SDK `errors` and `result` prose. It does not redact or
 Current models send a Claude Code moving alias (`sonnet`, `opus`, `haiku`). `claude-5.2-fable` sends the full ID `claude-fable-5-2`, because the `fable` alias still resolves to Fable 5.1 in Claude Code 2.1.319. `claude-4.5-haiku` sends the full ID `claude-haiku-4-5`. Any other ID passes through unchanged, so custom IDs keep working. Aliases can move without a code change.
 
 Every turn records the concrete model from the SDK's `message_start`. `/claude-sdk-status` prints each advertised ID, its selector and the last observed model, and flags a model that differs from the expected one. The live upgrade gate checks the same resolutions, context windows and output limits. See [SDK upgrade](sdk-upgrade.md).
+
+## Internal continuation safety boundary
+
+More than one distinct SDK `message_start` request in a Pi turn is a contract
+rejection (`SdkInternalContinuationError`, diagnostic `internal-continuation`),
+not malformed result data. The guard remains even for otherwise successful
+terminal results, and releases no captured Pi tool calls. Earlier streamed text
+may already be visible. A genuine failed terminal result keeps its original
+category, including cancellation, usage limits and turn budgets.
+
+There is deliberately no automatic replay for this category. Request counts do
+not explain the extra request, attest to all SDK-internal effects, or establish
+that replay is idempotent. The SDK MCP fallback fails closed, and Pi executes
+only deferred calls after a successful handoff, but those protections are not
+proof that arbitrary internal continuation is replay-safe. No broad malformed
+result retry rule is added. The user reviews completed work and explicitly sends
+`continue`; Pi replays its own transcript in a new stateless query. This is
+user-controlled continuation, not rollback or an exactly-once execution promise.
+
+The native scratchpad identity also changes with every query. Stable bridge
+prompt guidance tells the model to reuse paths recorded in Pi history and not
+move/delete files merely to match a new native ID. No directories are created,
+renamed or removed by this guidance, and SDK persistence remains disabled.

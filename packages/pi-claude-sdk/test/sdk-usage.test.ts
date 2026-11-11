@@ -121,7 +121,9 @@ describe("claude SDK usage", () => {
       );
 
       expect(error).toMatchObject({ _tag: "ClaudeUsageInspectionError", operation: "parse" });
-      expect(error.message).toBe("Claude returned usage data in an unexpected format");
+      expect(error.message).toBe(
+        "Claude returned usage data in an unexpected format; check /claude-sdk-status for compatibility",
+      );
     }),
   );
 
@@ -144,11 +146,15 @@ describe("claude SDK usage", () => {
       }));
 
       expect(startup).toMatchObject({ operation: "start" });
-      expect(startup.message).toBe("Could not start a Claude session to read usage");
+      expect(startup.message).toBe(
+        "Could not start a Claude session to read usage; check /claude-sdk-status, then retry /claude-sdk-usage",
+      );
       expect(read).toMatchObject({ operation: "read" });
-      expect(read.message).toBe("Claude did not return usage data");
+      expect(read.message).toBe("Claude did not return usage data; retry /claude-sdk-usage");
       expect(close).toMatchObject({ operation: "close" });
-      expect(close.message).toBe("Could not close the Claude usage session");
+      expect(close.message).toBe(
+        "Could not close the Claude usage session; restart Pi if the process remains running",
+      );
     }),
   );
 
@@ -181,7 +187,9 @@ describe("claude SDK usage", () => {
       );
 
       expect(error._tag).toBe("ClaudeUsageTimeoutError");
-      expect(error.message).toBe("Timed out after 1ms waiting for Claude usage");
+      expect(error.message).toBe(
+        "Timed out after 1ms waiting for Claude usage; check /claude-sdk-status before retrying",
+      );
     }),
   );
 

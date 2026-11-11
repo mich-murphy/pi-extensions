@@ -410,7 +410,8 @@ describe("terminal SDK result", () => {
       error: {
         _tag: "SdkResultError",
         terminalReason: "tool_deferred_unavailable",
-        message: "could not hand the requested Pi tool call back to Pi",
+        message:
+          "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
       },
     });
   });
@@ -418,7 +419,7 @@ describe("terminal SDK result", () => {
   test("treats a model refusal as a failure, like Pi's Anthropic provider", () => {
     expect(turnResult({ stop_reason: "refusal" })).toMatchObject({
       _tag: "failed",
-      error: { message: "the model refused to complete the request" },
+      error: { message: "the model refused to complete the request; revise the request" },
     });
   });
 });

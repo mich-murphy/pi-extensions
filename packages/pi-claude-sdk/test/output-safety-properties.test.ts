@@ -172,17 +172,48 @@ const SUBSTITUTIONS = [
   "`which a b`",
   "` command -v y`",
 ];
-const GAPS = ["", " ", " -n ", " 2>/dev/null ", ' "', " '"];
+const GAPS = ["", " ", " -n ", " 2>/dev/null "];
 
 function assertCatDetection(tc: TestCase): void {
   const gap = tc.draw(gs.sampledFrom(GAPS));
   const sub = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
   const sep = tc.draw(gs.sampledFrom(SEPARATORS));
-  const head = tc.draw(gs.sampledFrom(["", "echo hi; ", "x "]));
+  const head = tc.draw(gs.sampledFrom(["", "echo hi; "]));
   const separated = `${head}cat${gap}${sep}${gap}${sub}`;
   assert.equal(inspectBashCommand(separated), undefined);
-  const direct = `${head}cat ${gap}${sub}`;
+  const quote = tc.draw(gs.sampledFrom(["", '"']));
+  const direct = `${head}cat ${gap}${quote}${sub}${quote}`;
   assert.equal(inspectBashCommand(direct)?.includes('file "$(which COMMAND)"'), true);
+}
+
+function assertShellData(tc: TestCase): void {
+  const sub = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
+  const padding = tc.draw(gs.text({ maxSize: 100 }));
+  const data = `${padding} cat ${sub}`;
+  const quoted = `'${data.replaceAll("'", `'"'"'`)}'`;
+  assert.equal(inspectBashCommand(`printf '%s' ${quoted}`), undefined);
+  // Prefix every generated line so none can accidentally terminate the quoted heredoc.
+  const body = data
+    .split("\n")
+    .map((line) => `prose ${line}`)
+    .join("\n");
+  assert.equal(inspectBashCommand(`cat <<'END'\n${body}\nEND`), undefined);
+  assert.notEqual(inspectBashCommand(`cat <<END\n$(cat ${sub})\nEND`), undefined);
+}
+
+function assertReviewSyntax(tc: TestCase): void {
+  const value = tc.draw(gs.integers({ minValue: 0, maxValue: 1000 }));
+  const delimiter = tc
+    .draw(gs.arrays(gs.sampledFrom("ABCDEF".split("")), { minSize: 1, maxSize: 12 }))
+    .join("");
+  const substitution = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
+  assert.equal(inspectBashCommand(`cat "$((which + (${value})))"`), undefined);
+  assert.notEqual(inspectBashCommand(`echo "$((1 + $(cat ${substitution})))"`), undefined);
+  assert.notEqual(inspectBashCommand(`{ cat ${substitution}; }`), undefined);
+  assert.equal(inspectBashCommand(`'{' cat ${substitution}`), undefined);
+  const data = `cat <<$'${delimiter}'\ncat ${substitution}\n${delimiter}`;
+  assert.equal(inspectBashCommand(data), undefined);
+  assert.notEqual(inspectBashCommand(`${data}\ncat ${substitution}`), undefined);
 }
 
 function assertNeverThrows(tc: TestCase): void {
@@ -214,6 +245,22 @@ describe("output safety properties", () => {
   test("inspectBashCommand blocks adjacent cat substitutions and allows separators", () => {
     new Hegel((tc) => {
       assertCatDetection(tc);
+    })
+      .settings(settings)
+      .runSync();
+  });
+
+  test("shell quoting preserves data while unquoted heredoc substitutions execute", () => {
+    new Hegel((tc) => {
+      assertShellData(tc);
+    })
+      .settings(settings)
+      .runSync();
+  });
+
+  test("brace, arithmetic and dollar-quoted heredoc syntax keep execution distinct from data", () => {
+    new Hegel((tc) => {
+      assertReviewSyntax(tc);
     })
       .settings(settings)
       .runSync();

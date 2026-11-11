@@ -75,7 +75,7 @@ describe("startup failures reach the user", () => {
     );
 
     expect(message).toBe(
-      "Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (naming)",
+      "Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (naming); check tool names and schemas in the active extensions",
     );
     expect(started).toBe(false);
   });

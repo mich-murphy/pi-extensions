@@ -21,6 +21,7 @@ import {
   readInstalledSdk,
 } from "./release-contract";
 import type { DeferredResult, LiveContract } from "./release-contract";
+import { assertModelMetadata } from "./sdk-model-metadata";
 
 const model: Model<Api> = {
   id: "claude-5.2-fable",
@@ -137,16 +138,6 @@ async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> 
   }
 }
 
-function expectedThinkingMetadata(canonicalModel: string) {
-  // Haiku 4.5 uses manual thinking budgets, not adaptive thinking or native effort.
-  const adaptive = canonicalModel !== "claude-haiku-4-5";
-  return {
-    supportsAdaptiveThinking: adaptive,
-    supportsEffort: adaptive,
-    supportedEffortLevels: adaptive ? ["low", "medium", "high", "xhigh", "max"] : [],
-  };
-}
-
 const initMessage = Schema.Struct({
   type: Schema.Literal("system"),
   subtype: Schema.Literal("init"),
@@ -198,22 +189,7 @@ describe("installed Claude Agent SDK live contract", () => {
           }, 20_000);
         }),
       ]);
-      for (const entry of models) {
-        const metadata = supportedModels.find(
-          (candidate) => undatedModelId(candidate.value) === entry.sdkModel,
-        );
-        assert(metadata !== undefined, `missing model metadata for ${entry.sdkModel}`);
-        assert(metadata.resolvedModel !== undefined, `missing resolution for ${entry.sdkModel}`);
-        expect(undatedModelId(metadata.resolvedModel)).toBe(entry.canonicalModel);
-        const {
-          supportsAdaptiveThinking = false,
-          supportsEffort = false,
-          supportedEffortLevels = [],
-        } = metadata;
-        expect({ supportsAdaptiveThinking, supportsEffort, supportedEffortLevels }).toStrictEqual(
-          expectedThinkingMetadata(entry.canonicalModel),
-        );
-      }
+      assertModelMetadata(supportedModels);
       metadataVerified = true;
     } finally {
       clearTimeout(timeout);

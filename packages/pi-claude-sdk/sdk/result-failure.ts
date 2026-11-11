@@ -24,15 +24,19 @@ const MESSAGES: Readonly<Record<typeof ResultFailureCategory.Type, string>> = {
   "usage-limit": "Claude usage limit reached; check subscription allowance",
   "rate-limit": "Claude rate limit reached; retry shortly",
   "server-error": "Claude server error; retry shortly",
-  refusal: "the model refused to complete the request",
-  "tool-contract": "could not hand the requested Pi tool call back to Pi",
-  cancelled: "the query was cancelled",
+  refusal: "the model refused to complete the request; revise the request",
+  "tool-contract":
+    "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+  cancelled:
+    "the query was cancelled; resume only when you intend to continue (check child turn budgets)",
   "context-limit": "context_length_exceeded: shorten the conversation",
   request: "Claude rejected the request; check model and input support",
   overloaded: "Claude is temporarily overloaded; retry later",
-  "turn-limit": "the SDK turn limit was reached",
-  "budget-limit": "the SDK budget limit was reached",
-  "output-limit": "the SDK output limit was reached",
+  "turn-limit":
+    "the SDK turn limit was reached; review completed work and resume manually if appropriate",
+  "budget-limit": "the SDK budget limit was reached; review the budget before resuming manually",
+  "output-limit":
+    "the SDK output limit was reached; request a shorter response or adjust the output limit",
 };
 
 const TERMINAL_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type> = new Map([

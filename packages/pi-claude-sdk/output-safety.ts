@@ -1,13 +1,12 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
+import { hasExecutableCat } from "./output-safety-shell";
 
 /** Suspicious shell-output category recognized by the quarantine guard. */
 export type SuspiciousOutputKind = "binary" | "base64";
 
 const MIN_SUSPICIOUS_CHARACTERS = 4096;
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/u;
-const SIMPLE_COMMAND_DISCOVERED_EXECUTABLE_CAT =
-  /\bcat\b[^\n;&|]*(?:\$\(\s*(?:which|command\s+-v)\b[^)]*\)|`\s*(?:which|command\s+-v)\b[^`]*`)/iu;
 
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
   if (text.length < MIN_SUSPICIOUS_CHARACTERS) {
@@ -91,10 +90,10 @@ export function sanitizeBashContent(
  * @returns A blocking explanation when the unsafe pattern is present.
  */
 export function inspectBashCommand(command: string): string | undefined {
-  if (!SIMPLE_COMMAND_DISCOVERED_EXECUTABLE_CAT.test(command)) {
+  if (!hasExecutableCat(command)) {
     return undefined;
   }
-  return 'Refusing to pipe a discovered executable through cat. Inspect it with file "$(which COMMAND)", otool, or strings "$(which COMMAND)" | head instead.';
+  return 'Blocked by executable-output guard: executable data may be printed, or this shell syntax cannot be inspected safely. Inspect executable paths with file "$(which COMMAND)", otool, or strings; use the write tool for literal content.';
 }
 
 /**

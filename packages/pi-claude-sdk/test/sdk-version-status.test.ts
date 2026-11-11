@@ -104,21 +104,23 @@ describe("claude SDK version status", () => {
       );
       const failed = yield* failureOf(installedVersionFailing(new Error("exit 1: secret")));
 
-      expect(timedOut.message).toBe("claude --version did not respond within 3s");
-      expect(failed.message).toBe("claude --version failed");
+      expect(timedOut.message).toBe(
+        "claude --version did not respond within 3s; check that Claude Code starts locally",
+      );
+      expect(failed.message).toBe("claude --version failed; check that Claude Code starts locally");
     }),
   );
 
-  it.effect("quotes the bounded first line of unexpected version output", () =>
+  it.effect("does not echo secrets or controls from unexpected version output", () =>
     Effect.gen(function* () {
-      const longLine = `not a version ${"x".repeat(200)}`;
+      const longLine = `secret-token\u001b[31m ${"x".repeat(200)}`;
       const error = yield* failureOf(
         versionSources("0.3.227", "2.1.227", `${longLine}\nsecond line`),
       );
 
       expect(error._tag).toBe("ClaudeVersionParseError");
       expect(error.message).toBe(
-        `claude --version printed an unexpected version: "${longLine.slice(0, 80)}"`,
+        "claude --version returned an unexpected format; run `claude update` and /claude-sdk-status",
       );
     }),
   );
@@ -138,7 +140,7 @@ describe("claude SDK version status", () => {
 
       expect(unreadable._tag).toBe("ClaudeSdkMetadataError");
       expect(malformed.message).toBe(
-        "Could not read the installed Claude Agent SDK package metadata",
+        "Could not read the installed Claude Agent SDK package metadata; check the extension installation",
       );
     }),
   );
