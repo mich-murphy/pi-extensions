@@ -123,8 +123,16 @@ describe("no-sleep lifecycle", () => {
 
     expect(pi.spawned).toHaveLength(2);
     expect(pi.notifications).toStrictEqual([
-      { message: "No Sleep lost caffeinate unexpectedly (exit code 0)", level: "warning" },
-      { message: "No Sleep lost caffeinate unexpectedly (signal SIGKILL)", level: "warning" },
+      {
+        message:
+          "No Sleep lost caffeinate unexpectedly (exit code 0). Restarting sleep prevention once.",
+        level: "warning",
+      },
+      {
+        message:
+          "No Sleep lost caffeinate unexpectedly (signal SIGKILL). Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources.",
+        level: "warning",
+      },
     ]);
 
     await pi.emit("agent_start");
@@ -155,7 +163,11 @@ describe("no-sleep lifecycle", () => {
 
     expect(pi.spawned).toHaveLength(1);
     expect(pi.notifications).toStrictEqual([
-      { message: "No Sleep: caffeinate is not available (is this macOS?)", level: "error" },
+      {
+        message:
+          "No Sleep: caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable.",
+        level: "error",
+      },
     ]);
   });
 
@@ -167,9 +179,28 @@ describe("no-sleep lifecycle", () => {
     pi.spawned[1]?.child.fail("stop", "EPERM");
 
     expect(pi.notifications).toStrictEqual([
-      { message: "No Sleep: Could not start caffeinate: EAGAIN", level: "error" },
-      { message: "No Sleep: Could not stop caffeinate: EPERM", level: "error" },
+      {
+        message:
+          "No Sleep: Could not start caffeinate (EAGAIN). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+        level: "error",
+      },
+      {
+        message:
+          "No Sleep: Could not stop caffeinate (EPERM). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+        level: "error",
+      },
     ]);
+  });
+
+  test("does not reflect arbitrary system error codes or causes in notifications", () => {
+    const cause = new Error("https://user:password@example.com/ private cause");
+    const error = new CaffeinateProcessError("start", "secret\u001b[2J", cause);
+    expect(error._tag).toBe("CaffeinateProcessError");
+    expect(error.code).toBe("secret\u001b[2J");
+    expect(error.cause).toBe(cause);
+    expect(error.message).toContain("system error");
+    expect(error.message).toContain("Pi can continue");
+    expect(error.message).not.toMatch(/secret|password|\p{Cc}/u);
   });
 
   test("ignores late events from a released child", async () => {

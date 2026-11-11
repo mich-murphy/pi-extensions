@@ -9,6 +9,7 @@ import type {
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { cacheDebugSink, runRecord, usageRecord } from "./cache-debug";
 import type { DebugSink } from "./cache-debug";
+import { diagnosticText } from "./diagnostic-text";
 import { disabledResourceMatcher, INSTRUCTION_FILE_NAMES, toolPath } from "./guard";
 import { readInstructionHeading } from "./instruction-heading";
 import { createContextMenu } from "./menu";
@@ -396,7 +397,7 @@ class SkillToggle {
     if (blocked.length === 0) {
       return undefined;
     }
-    const names = blocked.join(", ");
+    const names = diagnosticText(blocked.join(", "));
     const it = blocked.length === 1 ? "it" : "them";
     return {
       block: true,

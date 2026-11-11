@@ -397,6 +397,9 @@ describe("public adapter transport and notice accounting", () => {
     await writeFile(join(directory, "session-communication.json"), "invalid");
     await host.event("session_start");
     expect(host.statuses.at(-1)).toContain("configuration/startup failed");
+    await host.command("status");
+    expect(host.notifications.at(-1)).toContain("Check <agent dir>/session-communication.json");
+    expect(host.notifications.at(-1)).toContain("then /reload");
     const fixture = await gateway(discoveryReply);
     await writeFile(join(directory, "session-communication.json"), JSON.stringify(fixture.config));
     await host.event("session_start");
@@ -567,7 +570,11 @@ describe("public adapter transport and notice accounting", () => {
         scopeId: "team",
         message: { kind: "request", content: "invalid", format: "text", unexpected: true },
       }),
-    ).resolves.toMatchObject({ tag: "error", code: "invalid_input" });
+    ).resolves.toMatchObject({
+      tag: "error",
+      code: "invalid_input",
+      note: "The session request is invalid. Check the tool arguments and configured scopes. No delivery or work-completion claim. Unknown sends must not be retried as a new message ID.",
+    });
   });
   test("report commits once, holds all eight logical slots across four-wide partial delivery, then releases", async () => {
     const fixture = await gateway(() => undefined);

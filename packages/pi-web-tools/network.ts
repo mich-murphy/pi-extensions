@@ -1,4 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
+import { STATUS_CODES } from "node:http";
 import { BlockList, isIP } from "node:net";
 import { Context, Effect, Layer, Schema } from "effect";
 import { absurd } from "effect/Function";
@@ -177,7 +178,16 @@ export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()
 ) {
   /** Safe user-facing description with the status. */
   override get message(): string {
-    return `Request failed (${this.status}${this.statusText ? ` ${this.statusText}` : ""})`;
+    // Status text is controlled by the remote server; never reflect it into the terminal.
+    const label = this.statusText ? STATUS_CODES[this.status] : undefined;
+    const summary = `Request failed (${this.status}${label === undefined ? "" : ` ${label}`})`;
+    if (this.status === 401) {
+      return `${summary}. The remote site requires authentication; webfetch does not use your browser login. Use a public page or an authorized site-specific tool; do not put credentials in the URL.`;
+    }
+    if (this.status === 404) {
+      return `${summary}. The remote site could not find this page. Check the URL or search for a current public source.`;
+    }
+    return summary;
   }
 }
 

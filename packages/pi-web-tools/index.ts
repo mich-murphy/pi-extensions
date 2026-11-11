@@ -45,7 +45,7 @@ export default function webToolsExtension(pi: WebToolsRegistration): void {
       authentication.register(pi, ctx.modelRegistry);
     } catch {
       ctx.ui.notify(
-        `${WEB_TOOLS_EXTENSION_NAME}: could not register web authentication providers (provider ID conflict or unsupported runtime)`,
+        `${WEB_TOOLS_EXTENSION_NAME}: could not register web authentication providers (provider ID conflict or unsupported runtime). Check for duplicate web-tools extensions and Pi compatibility, then /reload.`,
         "error",
       );
     }

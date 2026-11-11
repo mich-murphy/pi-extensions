@@ -126,7 +126,7 @@ async function invoke(
       ...output({
         tag: "error",
         code: error instanceof ConnectionFailure ? error.code : "invalid_input",
-        note: "No delivery or work-completion claim. Unknown sends must not be retried as a new message ID.",
+        note: `${error instanceof ConnectionFailure ? "Session gateway request failed. Check /session-communication status and the gateway connection." : "The session request is invalid. Check the tool arguments and configured scopes."} No delivery or work-completion claim. Unknown sends must not be retried as a new message ID.`,
       }),
       isError: true,
     };

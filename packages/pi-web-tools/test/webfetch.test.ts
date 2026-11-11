@@ -404,7 +404,7 @@ describe("webfetch tool", () => {
       (error: unknown) => error,
     );
     assert(failure instanceof Error);
-    expect(failure.message).toBe("Request failed (500 echo [redacted])");
+    expect(failure.message).toBe("Request failed (500 Internal Server Error)");
     expectNoLeak(failure, "sekrit-key");
   });
 
@@ -504,7 +504,10 @@ describe("webfetch error messages", () => {
     [new RedirectLocationInvalid(), "Redirect response had an invalid Location header"],
     [new RedirectLimitExceeded({ maxRedirects: 5 }), "Too many redirects while fetching URL"],
     [new RedirectProtocolUnsupported({ protocol: "ftp:" }), "Redirected to unsupported protocol"],
-    [new HttpStatusRejected({ status: 500, statusText: "Oops" }), "Request failed (500 Oops)"],
+    [
+      new HttpStatusRejected({ status: 500, statusText: "Oops" }),
+      "Request failed (500 Internal Server Error)",
+    ],
     [new ResponseTooLarge({ maxBytes: 5 * 1024 * 1024 }), "Response too large (5MB limit)"],
   ])("renders %s as a safe message", async (error, message) => {
     const tool = makeTool({}, Result.fail(error), []);

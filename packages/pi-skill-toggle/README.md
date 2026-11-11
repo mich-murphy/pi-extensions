@@ -46,7 +46,7 @@ A disabled resource is left out of the system prompt. The extension also refuses
 | `bash`                                | Only in subagent sessions, as a best-effort check. |
 | `edit`, `write`, `grep`, `find`, `ls` | Not checked.                                       |
 
-Blocked calls return a message naming the disabled resource. Running `/skill:name` keeps that skill's files readable for the rest of the session. Your `@file` attachments and `!` commands are not checked.
+Blocked calls return a bounded message naming the disabled resource, with terminal controls escaped and URLs omitted. The model must continue without it, not retry through another path or tool; ask the user to re-enable it only when necessary. Running `/skill:name` keeps that skill's files readable for the rest of the session. Your `@file` attachments and `!` commands are not checked.
 
 Subagents follow their parent session. When the parent runs in the same process, it decides which resources the subagent sees and which reads are blocked, live at every call. Otherwise the subagent uses the saved state.
 

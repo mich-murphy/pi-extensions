@@ -106,10 +106,12 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 | Message | Meaning |
 | --- | --- |
 | `Session communication: not enabled · (no user-agent session-communication.json)` | The config file is missing. |
-| `Session communication: not enabled · configuration or startup failed` | The file is invalid or the runtime failed to start. |
+| `Session communication: not enabled · configuration or startup failed` | The file is invalid or the runtime failed to start. The message asks you to check the agent-directory configuration and gateway, then `/reload`. |
 | `Session communication: not enabled · runtime unavailable` | No runtime is running. |
 | `Session communication: enabled · …` | Also lists your identity, scopes, watch state, inbox, receipts, publications and wake notice. |
 | `Session gateway unavailable; no admitted work was replayed…` | `reconnect` failed. |
+
+If configuration or startup fails, check the JSON fields and 32 KiB cap above and confirm that the configured gateway is running and its socket is accessible to your account. After correcting configuration, use `/reload`; reconnect does not reload the file. Use `/session-communication status` for accounting before any further delivery attempt. Unknown sends must never be resent as a new message ID.
 
 ## Limits
 

@@ -55,7 +55,14 @@ export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBina
 ) {
   /** Safe user-facing description with the mime type when known. */
   override get message(): string {
-    return `Unsupported binary content${this.mime === "" ? "" : ` (${this.mime})`}. Try a more text-oriented URL.`;
+    if (this.mime === "application/pdf") {
+      return "Unsupported binary content (application/pdf). webfetch cannot extract PDF text. Use an HTML/text version or ask the user for extracted text; retrying the same PDF will not convert it.";
+    }
+    // A Content-Type header is untrusted and can contain secrets or terminal controls.
+    const label = ["application/zip", "application/octet-stream"].includes(this.mime)
+      ? ` (${this.mime})`
+      : "";
+    return `Unsupported binary content${label}. Try a more text-oriented URL.`;
   }
 }
 

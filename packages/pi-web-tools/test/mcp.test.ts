@@ -347,6 +347,17 @@ describe("provider tool error detail", () => {
     expect(detailOf({ error: { message: "  a\n\n b\t\tc  " } }).detail).toBe("a b c");
   });
 
+  test("omits URLs and terminal/bidi controls from remote error details", () => {
+    const { detail } = detailOf({
+      error: {
+        message: "Denied https://user:password@example.com/?token=secret \u001b[2J\u202e retry",
+      },
+    });
+    expect(detail).toContain("[URL omitted]");
+    expect(detail).not.toMatch(/password|secret|\p{Cc}|\p{Bidi_Control}/u);
+    expect(detail).toContain("retry");
+  });
+
   test("truncates to 200 characters", () => {
     const { detail } = detailOf({ error: { message: "x".repeat(500) } });
     expect(detail).toHaveLength(200);

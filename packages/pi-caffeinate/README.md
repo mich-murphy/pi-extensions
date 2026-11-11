@@ -21,4 +21,4 @@ It runs `/usr/bin/caffeinate -d -i -s -w <pi-pid>`:
 
 ## Troubleshooting
 
-While Pi works, `pmset -g assertions` lists a `caffeinate` entry. If caffeinate fails to start or exits unexpectedly, Pi shows a `No Sleep` message.
+While Pi works, `pmset -g assertions` lists a `caffeinate` entry. If caffeinate fails to start or exits unexpectedly, Pi shows a `No Sleep` message with the failed operation and a next step. Pi can continue working, but sleep prevention may be unavailable. Check `/usr/bin/caffeinate` and macOS process permissions/resources. After an unexpected exit, the message says whether the extension is restarting once or has exhausted that run's restart allowance.
