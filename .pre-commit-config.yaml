@@ -22,9 +22,9 @@ repos:
     hooks:
       - id: format-check
         name: format-check
-        entry: "npx oxfmt --check --threads=2"
+        entry: "npm run format:check"
         language: system
-        types_or: [javascript, jsx, ts, tsx, json]
+        always_run: true
         pass_filenames: false
         priority: 10
         stages: [pre-commit]
@@ -34,6 +34,14 @@ repos:
         language: system
         types_or: [javascript, jsx, ts, tsx]
         pass_filenames: false
+        priority: 10
+        stages: [pre-commit]
+      - id: markdownlint
+        name: markdownlint
+        entry: "npm run markdownlint"
+        language: system
+        pass_filenames: false
+        always_run: true
         priority: 10
         stages: [pre-commit]
       - id: typecheck

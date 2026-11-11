@@ -29,13 +29,32 @@ It runs these steps in order and stops at the first failure:
 
 | Step | Command | Fails on |
 | --- | --- | --- |
-| Format | `oxfmt --check` | Unformatted TypeScript, JSON or config |
-| Lint | `oxlint` | Any finding, including warnings |
+| Format | `npm run format:check` | Unformatted indexed TypeScript, JSON or config |
+| Lint | `npm run lint` | Any finding, including warnings |
 | Types | `npm run typecheck` | Any TypeScript error |
 | Rust | `npm run check:rust` | Gateway fmt, clippy, test or rustdoc failure |
 | Tests | `npm run test:coverage` | A failing test, or coverage below 80% |
 | Fallow | `npm run fallow` | Dead code, duplication or a function over the complexity limit, anywhere in the repo |
 | Markdown | `npm run markdownlint` | Any Markdown lint finding |
+
+### Repository file scope
+
+Formatting, JavaScript/TypeScript lint and Markdown lint use `scripts/repository-quality.ts` to select existing regular files from the **Git index** (`git ls-files --cached -z`). This includes every tracked file of the relevant type, including dotfiles, agent skills/config and newly staged additions. They check the current working-copy content, not the staged blob. Unstaged edits are checked; files deleted from disk or staged for deletion are not. Indexed symlinks of these types fail with an actionable error rather than following a target outside the checkout.
+
+**Stage new source/config/documentation files before checking them:**
+
+```sh
+git add -- path/to/new-file.ts
+npm run format:check
+npm run lint
+npm run markdownlint
+```
+
+Untracked files are not part of these three checks, even if they are production additions. Review `git status --short` before opening a pull request so intended additions are staged. Untracked `.agents/tasks` evidence, `.direnv` caches, dependency directories and generated output therefore cannot contaminate these checks. There is no directory-wide exclusion for tracked agent files or production sources. A fresh clone and a linked Git worktree use the same index policy. These commands require Git and installed local tools (`npm ci`); query or tool failures stop the gate, not fall back to whole-tree discovery. An empty relevant file list succeeds without invoking a tool.
+
+`npm run format` writes the same indexed formatter files; `npm run format:check` checks without writing. Pre-commit uses the same formatter, linter and Markdown commands as `npm run check`. The formatter selects its supported source/config extensions (Markdown remains governed by Markdown lint); the linter selects JavaScript/TypeScript and Vue, and Markdown lint selects `.md`. Git NUL-delimited paths and shell-free tool arguments preserve spaces, newlines and literal glob characters. When adding a new language supported by a pinned tool, update the selector and its fixture tests together.
+
+`npm test` and `npm run test:coverage` first run the offline tooling fixtures (`npm run test:tooling`), then the existing Vitest suite. The tooling fixtures create temporary Git repositories and exercise real local tools; they do not call providers or change your checkout's index. Type checking, Rust, Vitest coverage and Fallow retain their own scope and thresholds; this index policy does not change them. Do not hide gate failures behind `tail` or `tee`: run commands directly, or use `set -o pipefail` when a pipeline is necessary and preserve its failure status.
 
 The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-comms/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
 

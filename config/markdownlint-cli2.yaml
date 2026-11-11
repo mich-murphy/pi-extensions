@@ -1,9 +1,5 @@
-ignores:
-  - "**/node_modules/**"
-  # direnv's local Nix cache holds third-party flake sources.
-  - ".direnv/**"
-  # Cargo/rustdoc output is generated dependency content, not repository documentation.
-  - "packages/pi-comms/gateway/target/**"
+# File scope comes from scripts/repository-quality.ts, not whole-tree globs.
+# Do not add ignores: micromatch ignores can silently drop literal newline paths.
 config:
   line-length: false
   first-line-heading: false
