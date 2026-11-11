@@ -6,33 +6,104 @@ type Scope = { discovered: boolean; blocked: boolean };
 const WORD_END = /[\s;&|()<>]/u;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
 const GROUP_PREFIXES = new Set(["!", "if", "then", "elif", "else", "do", "while", "until"]);
-const COMMAND_PREFIXES = new Set([
-  "!",
-  "if",
-  "then",
-  "elif",
-  "else",
-  "do",
-  "while",
-  "until",
-  "time",
-  "env",
-  "sudo",
-  "exec",
-  "nohup",
-]);
+type WrapperOptions = { flags: readonly string[]; values: readonly string[] };
+const WRAPPERS: Readonly<Record<string, WrapperOptions>> = {
+  command: { flags: ["-p"], values: [] },
+  env: { flags: ["-i", "--ignore-environment"], values: ["-u", "--unset"] },
+  sudo: { flags: ["-n", "-E", "-H"], values: ["-u", "-g"] },
+  exec: { flags: ["-c", "-l"], values: ["-a"] },
+  nohup: { flags: [], values: [] },
+  time: { flags: ["-p"], values: [] },
+};
+
+function wrapperName(text: string): string {
+  // Only known external utilities at conventional absolute locations, not arbitrary basenames
+  // or imaginary external versions of shell builtins (command/exec).
+  return text.replace(/^\/(?:usr\/)?bin\/(?<wrapper>env|sudo|nohup)$/u, "$<wrapper>");
+}
+
+function assignment(word: Word | undefined): boolean {
+  return word !== undefined && /^[A-Za-z_]\w*=/u.test(word.text);
+}
+
+function wrapperEnd(words: readonly Word[], start: number, name: string): number {
+  const options = Object.hasOwn(WRAPPERS, name) ? WRAPPERS[name] : undefined;
+  if (!options) {
+    return start;
+  }
+  let offset = start + 1;
+  while (offset < words.length) {
+    const text = words[offset]?.text ?? "";
+    if (text === "--") {
+      return offset + 1;
+    }
+    if (!text.startsWith("-") || text === "-") {
+      break;
+    }
+    const width = optionWidth(words, offset, name, options);
+    if (width === 0) {
+      // Lookup modes and unknown/semantic options are not transparent wrappers.
+      return start;
+    }
+    offset += width;
+  }
+  return offset;
+}
+
+function optionWidth(
+  words: readonly Word[],
+  offset: number,
+  name: string,
+  options: WrapperOptions,
+): number {
+  const text = words[offset]?.text ?? "";
+  if (options.flags.includes(text) || (name === "env" && text.startsWith("--unset="))) {
+    return 1;
+  }
+  return options.values.includes(text) && words[offset + 1] !== undefined ? 2 : 0;
+}
 
 function commandWords(words: readonly Word[]): readonly Word[] {
   let offset = 0;
+  let shellPrefixes = true;
   while (offset < words.length) {
-    const text = words[offset]?.text ?? "";
-    const wrapped = text === "command" && words[offset + 1]?.text !== "-v";
-    if (!COMMAND_PREFIXES.has(text) && !wrapped && !/^[A-Za-z_]\w*=/u.test(text)) {
+    const word = words[offset];
+    const text = word?.text ?? "";
+    if (shellPrefixes && (GROUP_PREFIXES.has(text) || assignment(word))) {
+      offset += 1;
+      continue;
+    }
+    // Only the unquoted reserved word at shell position times a shell pipeline. An
+    // executable named time (quoted, escaped or after a wrapper) cannot restore that context.
+    shellPrefixes &&= text === "time" && word?.quoted === false;
+    const name = wrapperName(text);
+    const end = wrapperEnd(words, offset, name);
+    if (end === offset) {
       break;
     }
-    offset += 1;
+    offset = end;
+    if (name === "env") {
+      while (assignment(words[offset])) {
+        offset += 1;
+      }
+    }
   }
   return words.slice(offset);
+}
+
+function isDiscovery(words: readonly Word[]): boolean {
+  const name = words[0]?.text.split("/").at(-1);
+  if (name === "which") {
+    return true;
+  }
+  if (words[0]?.text !== "command") {
+    return false;
+  }
+  let offset = 1;
+  while (words[offset]?.text === "-p") {
+    offset += 1;
+  }
+  return words[offset]?.text === "-v";
 }
 
 /**
@@ -67,10 +138,7 @@ class ShellScan {
     const finish = () => {
       const executable = commandWords(words);
       const name = executable[0]?.text.split("/").at(-1);
-      discovered ||=
-        name === "which" ||
-        (name === "command" && executable[1]?.text === "-v") ||
-        words.some((word) => word.discovered);
+      discovered ||= isDiscovery(executable) || words.some((word) => word.discovered);
       this.blocked ||=
         name === "cat" && [...executable.slice(1), ...inputs].some((word) => word.discovered);
       words = [];
