@@ -11,11 +11,11 @@
   ],
   "type": "module",
   "scripts": {
-    "format": "oxfmt --threads=2",
-    "lint": "oxlint --threads=2",
+    "format": "node --experimental-strip-types scripts/repository-quality.ts format",
+    "lint": "node --experimental-strip-types scripts/repository-quality.ts lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "npm run test:tooling && vitest run",
+    "test:coverage": "npm run test:tooling && vitest run --coverage",
     "test:properties": "vitest run --config vitest.properties.config.ts",
     "test:properties:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 HEGEL_SEED=\"${HEGEL_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}\" HEGEL_TEST_CASES=\"${HEGEL_TEST_CASES:-2000}\" && echo \"Hegel properties: HEGEL_SEED=$HEGEL_SEED HEGEL_TEST_CASES=$HEGEL_TEST_CASES\" && cargo test --locked --all-features $(grep -l hegel::test tests/*.rs | sed 's|tests/\\(.*\\)\\.rs|--test \\1|') -- --test-threads=2",
     "bench:skill-toggle-cache": "vitest run packages/pi-skill-toggle/test/cache-benchmark.test.ts",
@@ -29,9 +29,11 @@
     "fallow:health": "fallow health --coverage coverage/coverage-final.json",
     "fallow:dupes": "fallow dupes --fail-on-issues",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
-    "markdownlint": "markdownlint-cli2 --config config/markdownlint-cli2.yaml \"**/*.md\" \"#node_modules\"",
+    "markdownlint": "node --experimental-strip-types scripts/repository-quality.ts markdownlint",
     "check:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
-    "check": "oxfmt --check --threads=2 && oxlint --threads=2 && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint"
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint",
+    "format:check": "node --experimental-strip-types scripts/repository-quality.ts format-check",
+    "test:tooling": "node --experimental-strip-types --test test-support/repository-quality.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",

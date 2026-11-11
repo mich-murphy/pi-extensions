@@ -22,5 +22,11 @@
       ]
     }
   },
-  "include": ["packages/**/*.ts", "vitest.config.ts", "vitest.live.config.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "vitest.config.ts",
+    "vitest.live.config.ts",
+    "scripts/**/*.ts",
+    "test-support/repository-quality.test.ts"
+  ]
 }
