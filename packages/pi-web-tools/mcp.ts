@@ -281,7 +281,11 @@ export function parseMcpToolResult(
 }
 
 function toolErrorDetail(text: string, secrets: readonly (string | undefined)[]): string {
-  const scrubbed = redactSecrets(text, secrets).replaceAll(/\s+/gu, " ").trim();
+  const scrubbed = redactSecrets(text, secrets)
+    .replaceAll(/https?:\/\/[^\s]+/giu, "[URL omitted]")
+    .replaceAll(/\p{Cc}|\p{Bidi_Control}/gu, " ")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
   return scrubbed.length <= MAX_TOOL_ERROR_DETAIL
     ? scrubbed
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;

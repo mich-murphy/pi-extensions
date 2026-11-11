@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { diagnosticText } from "./diagnostic-text";
 import { RepositoryLocator } from "./repository";
 import { parseResourcePath } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
@@ -18,9 +19,9 @@ const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
   EPERM: "the operation is not permitted. Check the permissions of the file and its folder.",
   ENOSPC: "the disk is full. Free some space and try again.",
   EDQUOT: "the disk quota is exhausted. Free some space and try again.",
-  EROFS: "the file system is read-only.",
+  EROFS: "the file system is read-only. Use a writable agent directory.",
   EISDIR: "the path is a folder, not a file. Move the folder away.",
-  ENOTDIR: "part of the path is a file, not a folder.",
+  ENOTDIR: "part of the path is a file, not a folder. Check the agent directory path.",
 };
 
 /** The state file could not be read or replaced because the file system refused. */
@@ -42,8 +43,12 @@ export class ToggleStateUnavailable extends Error {
     readonly code: string,
     override readonly cause: unknown,
   ) {
-    const reason = SYSTEM_ERROR_REASONS[code] ?? `the file system reported ${code}.`;
-    super(`Could not ${operation} Pi skill-toggle state at ${path}: ${reason}`, { cause });
+    const reason =
+      SYSTEM_ERROR_REASONS[code] ??
+      `the file system reported ${diagnosticText(code)}. Check the file and folder permissions, available space and file system status.`;
+    super(`Could not ${operation} Pi skill-toggle state at ${diagnosticText(path)}: ${reason}`, {
+      cause,
+    });
     this.name = "ToggleStateUnavailable";
   }
 }
@@ -63,7 +68,9 @@ export class ToggleStateInvalidJson extends Error {
     readonly path: string,
     override readonly cause: unknown,
   ) {
-    super(`Pi skill-toggle state at ${path} is not valid JSON. ${RESET_ADVICE}`, { cause });
+    super(`Pi skill-toggle state at ${diagnosticText(path)} is not valid JSON. ${RESET_ADVICE}`, {
+      cause,
+    });
     this.name = "ToggleStateInvalidJson";
   }
 }
@@ -84,7 +91,7 @@ export class ToggleStateTooNew extends Error {
     readonly version: number,
   ) {
     super(
-      `Pi skill-toggle state at ${path} was written by a newer pi-skill-toggle (state version ${version}; this version reads up to ${STATE_VERSION}). Update pi-skill-toggle, or remove the file to reset all toggles.`,
+      `Pi skill-toggle state at ${diagnosticText(path)} was written by a newer pi-skill-toggle (state version ${version}; this version reads up to ${STATE_VERSION}). Update pi-skill-toggle, or remove the file to reset all toggles.`,
     );
     this.name = "ToggleStateTooNew";
   }
@@ -107,8 +114,8 @@ export class ToggleStateMalformed extends Error {
   ) {
     super(
       entry === undefined
-        ? `Pi skill-toggle state at ${path} does not have the expected structure. ${RESET_ADVICE}`
-        : `Pi skill-toggle state at ${path} has an invalid entry for ${entry}. Fix or remove that entry, or remove the file to reset all toggles.`,
+        ? `Pi skill-toggle state at ${diagnosticText(path)} does not have the expected structure. ${RESET_ADVICE}`
+        : `Pi skill-toggle state at ${diagnosticText(path)} has an invalid entry for ${diagnosticText(entry)}. Fix or remove that entry, or remove the file to reset all toggles.`,
     );
     this.name = "ToggleStateMalformed";
   }

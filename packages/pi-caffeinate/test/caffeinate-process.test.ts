@@ -82,7 +82,9 @@ describe("caffeinate process adapter", () => {
       operation: "start",
       code: "ENOENT",
     });
-    expect(end.error.message).toBe("caffeinate is not available (is this macOS?)");
+    expect(end.error.message).toBe(
+      "caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable.",
+    );
     child.stop();
   });
 
@@ -93,7 +95,9 @@ describe("caffeinate process adapter", () => {
 
     assert(end._tag === "failed");
     expect(end.error).toMatchObject({ operation: "start", code: "E2BIG" });
-    expect(end.error.message).toBe("Could not start caffeinate: E2BIG");
+    expect(end.error.message).toBe(
+      "Could not start caffeinate (E2BIG). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+    );
     child.stop();
   });
 

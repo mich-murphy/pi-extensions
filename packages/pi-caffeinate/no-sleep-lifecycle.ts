@@ -19,8 +19,8 @@ export class CaffeinateProcessError extends Error {
   ) {
     super(
       operation === "start" && code === "ENOENT"
-        ? "caffeinate is not available (is this macOS?)"
-        : `Could not ${operation} caffeinate: ${code}`,
+        ? "caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable."
+        : `Could not ${operation} caffeinate (${["EAGAIN", "EACCES", "EPERM", "E2BIG", "ESRCH", "ENOMEM", "EMFILE", "ENFILE"].includes(code) ? code : "system error"}). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.`,
       { cause },
     );
     this.name = "CaffeinateProcessError";
@@ -127,7 +127,11 @@ export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDe
         return;
       }
       const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;
-      notify(ctx, `No Sleep lost caffeinate unexpectedly (${outcome})`, "warning");
+      notify(
+        ctx,
+        `No Sleep lost caffeinate unexpectedly (${outcome}). ${restartsLeft > 0 ? "Restarting sleep prevention once." : "Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources."}`,
+        "warning",
+      );
       if (restartsLeft > 0) {
         hold(ctx, restartsLeft - 1);
       }

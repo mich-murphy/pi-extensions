@@ -31,7 +31,8 @@ export default function sessionCommunication(pi: ExtensionAPI): void {
       );
       diagnostic = "enabled";
     } catch {
-      diagnostic = "configuration or startup failed";
+      diagnostic =
+        "configuration or startup failed. Check <agent dir>/session-communication.json (valid configuration, at most 32 KiB), confirm the gateway is running, then /reload";
       ctx.ui.setStatus("session-communication", "Peers: configuration/startup failed");
     }
   });
@@ -69,7 +70,7 @@ export default function sessionCommunication(pi: ExtensionAPI): void {
           await session.reconnect();
         } catch {
           ctx.ui.notify(
-            "Session gateway unavailable; no admitted work was replayed. Use status for bounded accounting.",
+            "Session gateway unavailable; no admitted work was replayed. Check that the configured gateway is running and its socket is accessible, then use /session-communication status for bounded accounting.",
             "warning",
           );
         }
