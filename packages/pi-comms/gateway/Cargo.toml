@@ -28,9 +28,9 @@ x509-parser = { version = "0.18.1", features = ["verify"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
-rcgen = "0.14.10"
-yasna = "0.6.0"
-time = "0.3.47"
+rcgen = "=0.14.10"
+yasna = "=0.6.0"
+time = "=0.3.55"
 hegel = { package = "hegeltest", version = "=0.52.0", features = ["static-engine"] }
 
 # BeautifulRust drop-in lints
