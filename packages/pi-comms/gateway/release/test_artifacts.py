@@ -32,6 +32,11 @@ class ArtifactTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
+        patcher = patch("artifacts.measured_requirements", side_effect=lambda binary, target: (
+            {"minimumMacos": "15.0"} if target.endswith("apple-darwin") else
+            {"requiredGlibc": "2.34", "requiredLibgcc": "3.0", "loader": "/lib/ld-linux.so", "neededLibraries": ["libc.so.6"]}))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         for target in artifacts.TARGETS:
             binary = self.directory / "binary"
             binary.write_bytes(object_bytes(target))
@@ -68,7 +73,7 @@ class ArtifactTests(unittest.TestCase):
             artifacts.verify_manifest(self.path, artifacts.digest(self.path.read_bytes()))
 
     def test_metadata_must_match_catalog(self):
-        self.record["minimumOs"] = "invented"
+        self.record["testedBaseline"] = "invented"
         with self.assertRaisesRegex(ValueError, "differs from release/catalog"):
             artifacts.verify_archive(self.directory / self.record["file"], self.record, self.manifest)
 
@@ -140,6 +145,32 @@ class ArtifactTests(unittest.TestCase):
                 artifacts.native_target()
         with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="aarch64"):
             self.assertEqual(artifacts.native_target(), "aarch64-unknown-linux-gnu")
+
+
+class MeasurementTests(unittest.TestCase):
+    def test_linux_symbols_do_not_lower_tested_baseline(self):
+        with patch("artifacts.command_output", side_effect=[
+            "Name: GLIBC_2.17 Name: GLIBC_2.34 Name: GCC_3.0",
+            "[Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]",
+            "Shared library: [libc.so.6]"]):
+            result = artifacts.measured_requirements(Path("fixture"), "x86_64-unknown-linux-gnu")
+        self.assertEqual(result["requiredGlibc"], "2.34")
+        self.assertEqual(artifacts.TARGETS["x86_64-unknown-linux-gnu"]["testedBaseline"], "glibc-2.39")
+
+    def test_above_baseline_fails(self):
+        with patch("artifacts.command_output", return_value="Name: GLIBC_2.40"):
+            with self.assertRaisesRegex(ValueError, "exceeds"):
+                artifacts.measured_requirements(Path("fixture"), "x86_64-unknown-linux-gnu")
+
+    def test_macos_minimum_is_from_load_command(self):
+        with patch("artifacts.command_output", return_value="Load command 1\n cmd LC_BUILD_VERSION\n platform 1\n minos 15.0\n sdk 15.4\nLoad command 2\ncmd LC_LOAD_DYLIB\n current version 1351.0.0"):
+            self.assertEqual(artifacts.measured_requirements(Path("fixture"), "aarch64-apple-darwin"), {"minimumMacos": "15.0"})
+
+    def test_equivalent_version_components_do_not_raise_requirement(self):
+        self.assertEqual(artifacts.numeric_version("15.0.0"), artifacts.numeric_version("15.0"))
+        self.assertGreater(artifacts.numeric_version("15.1"), artifacts.numeric_version("15.0.0"))
+        with self.assertRaises(ValueError):
+            artifacts.numeric_version("2.-1")
 
 
 if __name__ == "__main__":
