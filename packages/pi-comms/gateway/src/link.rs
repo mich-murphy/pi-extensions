@@ -24,7 +24,8 @@ impl Driver {
     pub(crate) fn new(prepared: Prepared) -> io::Result<Self> {
         let listener = match prepared.endpoint() {
             Endpoint::Listen { address } => {
-                let listener = std::net::TcpListener::bind(address)?;
+                let listener =
+                    std::net::TcpListener::bind(address).map_err(crate::remote::listen_error)?;
                 listener.set_nonblocking(true)?;
                 Some(TcpListener::from_std(listener)?)
             }

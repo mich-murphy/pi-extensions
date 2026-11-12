@@ -74,3 +74,19 @@ fn directional_grants_are_independent_and_default_outgoing_remains_compatible() 
         "no implicit bidirectional grant"
     );
 }
+
+#[test]
+fn loaded_fingerprint_cannot_be_supplied_in_config_json() {
+    for field in [
+        "loadedConfigSha256",
+        "loaded_config_sha256",
+        "expectedConfigSha256",
+    ] {
+        let mut value = valid();
+        value[field] = json!("a".repeat(64));
+        assert!(
+            Config::parse(&serde_json::to_vec(&value).unwrap()).is_err(),
+            "internal hash field {field} must not be accepted"
+        );
+    }
+}

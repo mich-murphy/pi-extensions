@@ -352,10 +352,12 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
     }
     identifier(&value["rid"])?;
     let (required, optional): (&[&str], &[&str]) = match op {
-        "register" if role == Role::LocalClient => {
-            (&["sessionId", "runtimeNonce", "scopeIds", "label"], &[])
-        }
+        "register" if role == Role::LocalClient => (
+            &["sessionId", "runtimeNonce", "scopeIds", "label"],
+            &["expectedConfigSha256"],
+        ),
         "close" if role == Role::LocalClient => (&[], &[]),
+        "gateway.restart" if role == Role::LocalClient => (&["expectedMachineId"], &[]),
         "ping" if role == Role::RemoteLink => (&[], &[]),
         "discover" if matches!(role, Role::LocalClient | Role::RemoteLink) => {
             (&["scopeIds", "watch"], &[])
@@ -373,12 +375,29 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
         "roster.event" => (&["event"], &[]),
         _ => return Err(DecodeError),
     };
+    if op == "result"
+        && value["outcome"]["code"] == "config_mismatch"
+        && !matches!(role, Role::LocalClient | Role::AdapterDelivery)
+    {
+        return Err(DecodeError);
+    }
     let mut required = required.to_vec();
     required.extend(["v", "op", "rid"]);
     let fields = object(value, &required, optional)?;
     for (name, field) in fields {
         match name.as_str() {
             "to" | "from" | "publisher" => peer(field)?,
+            "expectedMachineId" => machine(field)?,
+            "expectedConfigSha256" => {
+                let hash = field.as_str().ok_or(DecodeError)?;
+                if hash.len() != 64
+                    || !hash
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                {
+                    return Err(DecodeError);
+                }
+            }
             "sessionId" => {
                 plain(field, 256)?;
             }
@@ -405,6 +424,9 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
         return Err(DecodeError);
     }
     if op == "result" {
+        if value["forOp"] == "gateway.restart" && role != Role::LocalClient {
+            return Err(DecodeError);
+        }
         result(value)?;
     }
     if op == "roster.event" {
@@ -469,6 +491,7 @@ fn result(value: &Value) -> Result<(), DecodeError> {
         &[
             "register",
             "close",
+            "gateway.restart",
             "ping",
             "discover",
             "unwatch",
@@ -537,7 +560,7 @@ fn error_outcome(value: &Value, op: &str) -> Result<(), DecodeError> {
     let code = text(&value["code"], 64)?;
     let allowed = match code {
         "forbidden" | "overloaded" | "unavailable" => true,
-        "already_registered" | "descriptor_too_large" => op == "register",
+        "already_registered" | "descriptor_too_large" | "config_mismatch" => op == "register",
         "no_route" => matches!(
             op,
             "send" | "deliver" | "state.get" | "state.list" | "interest.add" | "interest.remove"
@@ -579,7 +602,7 @@ fn success(value: &Value, op: &str) -> Result<(), DecodeError> {
             peer(&value["peer"])?;
             scopes(&value["scopeIds"], 4)
         }
-        "close" | "ping" | "unwatch" => {
+        "close" | "gateway.restart" | "ping" | "unwatch" => {
             object(value, &[], &[])?;
             Ok(())
         }
