@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gateway-staging-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Native ${{ matrix.target }}
@@ -63,6 +67,20 @@ jobs:
             --binary "$CARGO_TARGET_DIR/release/pi-gateway" --output staged \
             --revision "$GITHUB_SHA" --target '${{ matrix.target }}'
           "$CARGO_TARGET_DIR/release/pi-gateway" --version --json > staged/version.json
+      - name: Older glibc consumer loader smoke (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Immutable multi-platform Debian bookworm image; this is a loader/version
+          # smoke, not permission to lower the declared supported/tested baseline.
+          image='node@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059'
+          docker pull "$image"
+          docker run --rm --network=none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=32 --memory=128m \
+            --user=65534:65534 \
+            --mount "type=bind,source=$RUNNER_TEMP/gateway-target/release/pi-gateway,target=/candidate/pi-gateway,readonly" \
+            "$image" sh -ec 'test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.36"; getconf GNU_LIBC_VERSION; /candidate/pi-gateway --version --json' \
+            > staged/older-consumer.txt
       - name: Record staging provenance
         shell: bash
         run: |
