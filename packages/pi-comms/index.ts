@@ -5,6 +5,7 @@ import { diagnostics } from "./adapter/presentation.js";
 import { createAdapterRuntime } from "./adapter/runtime.js";
 import { registerTools } from "./adapter/tools.js";
 import { freshId } from "./adapter/transport.js";
+import { doctor } from "./onboarding/doctor.js";
 
 /** Opt-in user configuration only. Never starts/installs a gateway or exports project state. */
 export default function sessionCommunication(pi: ExtensionAPI): void {
@@ -55,27 +56,49 @@ export default function sessionCommunication(pi: ExtensionAPI): void {
   pi.on("session_compact_failed", (event) => {
     owned?.session.afterCompaction(event.aborted);
   });
-  pi.registerCommand("session-communication", {
-    description:
-      "Show bounded collaboration status, or explicitly reconnect the configured gateway",
-    handler: async (args, ctx) => {
-      const action = args.trim() || "status";
-      if (action !== "status" && action !== "reconnect") {
-        ctx.ui.notify("Usage: /session-communication [status|reconnect]", "warning");
-        return;
-      }
-      const session = owned?.session;
-      if (action === "reconnect" && session !== undefined) {
-        try {
-          await session.reconnect();
-        } catch {
+  const registerCommand = (name: string, legacy: boolean): void => {
+    const actions = legacy ? ["status", "reconnect"] : ["status", "doctor", "reconnect"];
+    pi.registerCommand(name, {
+      description: legacy
+        ? "Compatibility alias for /comms status or reconnect"
+        : "Communication status, read-only doctor, or bounded reconnect",
+      getArgumentCompletions: (prefix) => {
+        const items = actions
+          .filter((action) => action.startsWith(prefix))
+          .map((action) => ({ value: action, label: action }));
+        return items.length === 0 ? null : items;
+      },
+      handler: async (args, ctx) => {
+        const action = args.trim() || "status";
+        if (!actions.includes(action)) {
           ctx.ui.notify(
-            "Session gateway unavailable; no admitted work was replayed. Check that the configured gateway is running and its socket is accessible, then use /session-communication status for bounded accounting.",
+            `Usage: /${name} [${actions.join("|")}]${legacy ? "; canonical command: /comms" : ""}`,
             "warning",
           );
+          return;
         }
-      }
-      ctx.ui.notify(diagnostics(session?.status(), diagnostic), "info");
-    },
-  });
+        if (action === "doctor") {
+          ctx.ui.notify(
+            `${await doctor(getAgentDir())}\n${diagnostics(owned?.session.status(), diagnostic)}`,
+            "info",
+          );
+          return;
+        }
+        const session = owned?.session;
+        if (action === "reconnect" && session !== undefined) {
+          try {
+            await session.reconnect();
+          } catch {
+            ctx.ui.notify(
+              "Session gateway unavailable; no admitted work was replayed. Check that the configured gateway is running and its socket is accessible, then use /comms status for bounded accounting.",
+              "warning",
+            );
+          }
+        }
+        ctx.ui.notify(diagnostics(session?.status(), diagnostic), "info");
+      },
+    });
+  };
+  registerCommand("comms", false);
+  registerCommand("session-communication", true);
 }
