@@ -14,7 +14,73 @@ flowchart TD
   LB --> GB["Gateway beta presents its leaf"]
 ```
 
-You need OpenSSL 3 or later, [Nix](https://nixos.org/), and a clock that is correct on both machines.
+Both machines need a correct clock and an installed pi-gateway. Native pairing
+requires neither OpenSSL nor a third signer. The manual recipe below additionally
+uses OpenSSL 3 and a local Rust/Nix build.
+
+## Native pair setup
+
+Use the gateway's `pair OP --input ABS_JSON` commands, or the extension's guided
+setup when available. [The exact input/output contract](../gateway/PAIRING.md)
+includes every JSON field and the returned configuration paths. Exchanges are
+public-only bounded data; never paste private keys into Pi, a model or a transcript.
+
+| Step | Host | Action |
+| --- | --- | --- |
+| Create | Initiator | create names exactly two machines, creates a separate issuerDir and runtimeDir, and returns public offerPath/rootSha256 plus its credential paths. |
+| Join | Peer | Independently confirm the full root SHA256 out of band; join generates the peer key and signed CSR locally. Transfer only the public request. |
+| Issue | Initiator | Independently confirm the peer's full request SHA256 out of band, then issue its leaf and numbered CRL. Transfer the public bundle. |
+| Import | Both | Initiator imports with floorMode=existing; pending peer imports with floorMode=new. Use the returned paths, not assumed filenames. |
+| Activate | Both | Under the native setup lock, write the gateway config and request a machine-bound managed restart. Reconnect/verify local registration and remote link separately. |
+
+The initial directories must not exist and their parent must be private (0700).
+Generated files are 0600. The issuer key is pair-specific and stays outside runtime
+files; it is never loaded by the running gateway. A separate directory is **not**
+protection from code running as the same Unix account. Optionally offload the entire
+issuer directory to protected offline storage after provisioning. No mandatory
+third host is involved. Reusing the root for unrelated peers is unsupported.
+
+Leaves last 90 days, CRLs 30 days, roots 365 days. inspect reports public root/leaf/CRL
+expiry and warns at seven days to the earliest bound. Before expiry, renew on the
+custody host using the original pinned signed request and independently confirmed
+full request hash, then transfer/import on both hosts. Renewal reuses local keys;
+key replacement is not an implicit renewal. Expired leaves may be renewed only by
+this explicit offline authorization, not through unauthenticated TLS. Root expiry
+or issuer/account compromise requires a fresh root and re-pair on both hosts.
+
+Existing import stages immutable credentials and checks both the durable floor and
+any newer already-staged CRL; activationRequired=true is **not** active renewal.
+It does not take the live runtime's floor lock or mutate its floor. Normal managed
+restart persists the newer floor before remote activation, and disconnects local
+sessions so their bounded recovery can re-register. Never replay uncertain sends.
+A failed/unknown restart response requires inspection, not blind retry or PID kills.
+
+To revoke a bound machine, revoke all its issued serials on the custody host,
+transfer/import on the remaining host and activate. The revoked host cannot get a
+new leaf under that pair root. Lost/compromised issuer keys require re-pairing,
+never deletion/reset of floors. Missing existing floors disable remote service;
+local communication stays available. New-floor initialization is create-only and
+an interrupted owned import resumes only its exact bundle without resetting state.
+The validated canonical public bundle is durably retained under runtimeDir before
+the pending record. If the transferred source is lost or overwritten, native
+`pair inspect` returns a hash-verified `pendingBundlePath`; explicitly import that
+path with the original confirmed root/floor mode. A different requested bundle is
+never silently replaced by the cache, and missing pending floors are never repaired.
+
+Known remote TCP listen failures leave local communication available and emit
+`remote degraded: remote-listen-unavailable` on startup stderr. There is no
+background rebind: correct the endpoint and restart. `--diagnose` only validates
+static credentials/floors and cannot prove bind status, so configured is not live
+listener/link readiness.
+
+For existing local DER material, import-existing has explicit new/existing floor
+semantics and never puts the private key into a public exchange. See the contract
+for supported direct-root material and absolute path fields.
+
+## Manual material recipe
+
+The following is an alternative expert provisioning recipe, not a prerequisite for
+native setup. Its optional offline CA custody remains supported.
 
 ## Which side listens
 
@@ -32,7 +98,7 @@ The binary is `target/release/pi-gateway`.
 
 ## 2. Create a private CA
 
-Pick a private working directory. Keep the socket paths short, since they must stay under 100 bytes. Keep `ca/ca.key` off the gateway machines.
+Pick a private working directory. Keep the socket paths short, since they must stay under 100 bytes. For this manual offline recipe, keep `ca/ca.key` off the gateway machines; native initiator custody above does not require a third host.
 
 ```sh
 W=$HOME/pi-comms-pki

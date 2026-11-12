@@ -1,16 +1,27 @@
-import { constants } from "node:fs";
-import { open, lstat } from "node:fs/promises";
+import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
+import { decodeConfiguration, permits, visibleText, loadConfiguration } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
+import { readManaged } from "./backend.js";
+import { regularBytes } from "./files.js";
+import { diagnoseManaged } from "./managed.js";
+import { decodePairing, parseJson } from "./schema.js";
 
 type Inspection =
   | {
       readonly kind: "missing" | "unreadable" | "too-large" | "invalid-json";
       readonly path: string;
     }
-  | { readonly kind: "invalid-fields"; readonly path: string; readonly fields: readonly string[] }
-  | { readonly kind: "valid"; readonly path: string; readonly config: Configuration };
+  | {
+      readonly kind: "invalid-fields";
+      readonly path: string;
+      readonly fields: readonly string[];
+    }
+  | {
+      readonly kind: "valid";
+      readonly path: string;
+      readonly config: Configuration;
+    };
 const baseline = {
   machineId: "machine",
   socketPath: "/tmp/pi-comms.sock",
@@ -38,32 +49,17 @@ function invalidFields(value: unknown): string[] {
   return fields;
 }
 
-/** Bounded regular-file read only. Never follows a symlink or opens a socket/device. */
+/** Bounded regular-file read, following valid Nix/home-manager config links read-only. */
 async function inspectConfiguration(agentDir: string): Promise<Inspection> {
   const path = join(agentDir, "session-communication.json");
   try {
-    const entry = await lstat(path);
-    if (!entry.isFile()) {
-      return { kind: "unreadable", path };
-    }
-    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    let bytes: Buffer;
-    try {
-      const stat = await file.stat();
-      if (!stat.isFile()) {
-        return { kind: "unreadable", path };
-      }
-      if (stat.size > 32_768) {
-        return { kind: "too-large", path };
-      }
-      bytes = Buffer.alloc(32_769);
-      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
-      bytes = bytes.subarray(0, bytesRead);
-    } finally {
-      await file.close();
-    }
-    if (bytes.length > 32_768) {
+    const target = await stat(path);
+    if (target.isFile() && target.size > 32_768) {
       return { kind: "too-large", path };
+    }
+    const bytes = await regularBytes(path, true);
+    if (bytes === undefined) {
+      return { kind: "missing", path };
     }
     let value: unknown;
     try {
@@ -103,7 +99,7 @@ export async function doctor(agentDir: string): Promise<string> {
     }
     case "unreadable": {
       lines.push(
-        "Configuration: not a readable regular file, or symlink not inspected. The runtime loader may follow a config symlink; this inspection does not determine whether a runtime is enabled. Check ownership/access and the runtime status below. No bytes changed.",
+        "Configuration: not a readable bounded regular file (valid config symlinks are followed read-only). This inspection does not determine whether a runtime is enabled. Check ownership/access and the runtime status below. No bytes changed.",
       );
       break;
     }
@@ -127,14 +123,14 @@ export async function doctor(agentDir: string): Promise<string> {
       break;
     }
     case "valid": {
-      lines.push(...(await describeValid(inspection.config)));
+      lines.push(...(await describeValid(inspection.config, agentDir)));
       break;
     }
   }
   return lines.join("\n");
 }
 
-async function describeValid(config: Configuration): Promise<string[]> {
+async function describeValid(config: Configuration, agentDir: string): Promise<string[]> {
   const lines: string[] = [];
   lines.push(
     "Configuration: valid (disk state; an existing runtime may use an earlier snapshot).",
@@ -163,7 +159,45 @@ async function describeValid(config: Configuration): Promise<string[]> {
     );
   }
   lines.push(
+    await remoteSnapshot(agentDir),
+    await pairingExpiry(agentDir),
     "Reconnect preserves this runtime's nonce and volatile state and does not reread config or replay sends. For changed config, /reload currently replaces the runtime and loses inbox/publications/interests/receipts; other sessions are unchanged.",
   );
   return lines;
+}
+
+/** Native snapshot command never binds/connects or changes floor state. */
+export async function remoteSnapshot(agentDir: string): Promise<string> {
+  try {
+    const config = await loadConfiguration(agentDir);
+    if (config === undefined) {
+      return "Remote config snapshot: missing disk configuration; any old runtime may still be active.";
+    }
+    const setup = await readManaged(agentDir, config);
+    return setup === undefined
+      ? "Remote config snapshot: external/manual gateway; no implicit helper selection or invocation."
+      : await diagnoseManaged(setup);
+  } catch {
+    return "Remote config snapshot unavailable; setup ownership/config/credentials may differ. Local runtime status is separate; no remote readiness claim.";
+  }
+}
+
+async function pairingExpiry(agentDir: string): Promise<string> {
+  try {
+    const { setupPaths } = await import("./backend.js");
+    const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
+    if (bytes === undefined) {
+      return "Pair expiry: no setup-managed pairing.";
+    }
+    const value = decodePairing(parseJson(bytes));
+    const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
+      typeof value.inspection?.[key] === "number" ? [[key, value.inspection[key]] as const] : [],
+    );
+    if (deadlines.length === 0) {
+      return "Pair expiry: pending credentials or no saved native inspection; no remote readiness claim.";
+    }
+    return `Pair expiry (saved native inspection): ${deadlines.map(([key, time]) => `${key} ${new Date(time * 1000).toISOString()}${time * 1000 - Date.now() <= 7 * 86_400_000 ? " — renew/re-pair now (within seven days or expired)" : ""}`).join("; ")}. Use /comms setup for renewal/import; old floors are retained.`;
+  } catch {
+    return "Pair expiry: unavailable; existing credentials/floors preserved.";
+  }
 }

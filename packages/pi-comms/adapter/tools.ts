@@ -19,7 +19,11 @@ const peer = Type.Object(
 );
 const work = Type.Union([
   Type.Object({ kind: Type.Literal("request"), origin: peer, requestId: id }),
-  Type.Object({ kind: Type.Literal("publication"), publisher: peer, key: scope }),
+  Type.Object({
+    kind: Type.Literal("publication"),
+    publisher: peer,
+    key: scope,
+  }),
 ]);
 const status = Type.Union(
   [
@@ -120,6 +124,7 @@ async function invoke(
     });
   }
   try {
+    await session.client.recoverForTool();
     return output(await run(session));
   } catch (error) {
     return {
@@ -211,7 +216,9 @@ export function registerTools(
     label: "Take collaboration inbox",
     description:
       "Explicitly transfer a small FIFO inbox batch. Frees payload slots but retains admission receipts. Does not reset native notice accounting. Source/provenance is included; authored references are inert.",
-    parameters: Type.Object({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })) }),
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+    }),
     execute: async (_id, args) =>
       invoke(getSession, (session) => {
         const result = session.take(args.limit ?? 4);
@@ -239,9 +246,22 @@ export function registerTools(
           Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
         ),
       }),
-      Type.Object({ action: Type.Literal("list"), publisher: peer, scopeId: scope }),
-      Type.Object({ action: Type.Literal("put"), scopeId: scope, key: scope, record }),
-      Type.Object({ action: Type.Literal("remove"), scopeId: scope, key: scope }),
+      Type.Object({
+        action: Type.Literal("list"),
+        publisher: peer,
+        scopeId: scope,
+      }),
+      Type.Object({
+        action: Type.Literal("put"),
+        scopeId: scope,
+        key: scope,
+        record,
+      }),
+      Type.Object({
+        action: Type.Literal("remove"),
+        scopeId: scope,
+        key: scope,
+      }),
     ]),
     execute: async (_id, args, signal) =>
       invoke(getSession, async (session) => {

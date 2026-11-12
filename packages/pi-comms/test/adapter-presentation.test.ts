@@ -612,6 +612,16 @@ describe("presentation-only session tool rendering", () => {
       ).join("\n"),
     ).toContain(`${count} ${label}:`);
   });
+  test.each([
+    ["activation_pending", "Activation pending"],
+    ["activation_unconfirmed", "Managed activation unconfirmed"],
+  ])("%s is distinct and explains passive versus explicit activation", (status, footer) => {
+    expect(attentionStatus({ status })).toContain(footer);
+    const detail = diagnostics({ enabled: true, status }, "enabled");
+    expect(detail).toContain("Passive reconnect never restarts a gateway");
+    expect(detail).toContain("Activate saved configuration");
+    expect(detail).toContain("Existing sessions may still use old trust");
+  });
   test("footer is absent when healthy; explicit diagnostics retain exact identity and accounting", () => {
     expect(attentionStatus({ status: "connected" })).toBeUndefined();
     expect(attentionStatus({ status: "unavailable" })).toBe("Peers unavailable");

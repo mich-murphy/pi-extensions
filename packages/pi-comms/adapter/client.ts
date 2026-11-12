@@ -12,16 +12,24 @@ type Descriptor = Extract<
   Extract<Frame, { op: "result"; forOp: "discover" }>["outcome"],
   { tag: "ok" }
 >["value"]["peers"][number];
+export type EnsureGateway = (
+  deadline: number,
+  signal: AbortSignal,
+) => Promise<{ gatewaySha256: string }>;
+
 export type ClientOptions = {
   config: Configuration;
   peer: PeerRef;
   incoming: (request: Request) => Reply;
   statusChanged: () => void;
+  ensureGateway?: EnsureGateway;
 };
 /** One surviving adapter lifetime; reconnect replaces only connection-generation state. */
 export class GatewayClient {
   private connection: Connection | undefined;
   private connecting: Promise<Connection> | undefined;
+  private initialization: AbortController | undefined;
+  private episode: { promise: Promise<void>; controller: AbortController } | undefined;
   private closed = false;
   private readonly lifetime = new AbortController();
   private generation = 0;
@@ -30,7 +38,14 @@ export class GatewayClient {
   private watch: { rid: string; scopes: ReadonlySet<string>; ready: boolean } | undefined;
   private readonly peers = new Map<string, Descriptor>();
   private diagnostic = "disconnected";
+  private generationPending = false;
   constructor(private readonly options: ClientOptions) {}
+  /** Tool preflight reconnects before scope guards; only setup-managed runtimes auto-start. */
+  async recoverForTool(): Promise<void> {
+    if (this.options.ensureGateway !== undefined && this.connection === undefined) {
+      await this.reconnect(this.lifetime.signal);
+    }
+  }
   effectiveScopes(): ReadonlySet<string> {
     return this.scopes;
   }
@@ -97,38 +112,110 @@ export class GatewayClient {
     if (this.connection !== undefined) {
       return this.connection;
     }
-    this.connecting ??= this.initialize();
-    return waitFor(this.connecting, deadline, signal);
+    if (this.connecting === undefined) {
+      const pending = this.initialize();
+      this.connecting = pending;
+      void pending
+        .finally(() => {
+          if (this.connecting === pending) {
+            this.connecting = undefined;
+          }
+        })
+        .catch(() => undefined);
+    }
+    return waitFor(
+      this.connecting,
+      deadline,
+      this.initialization === undefined
+        ? signal
+        : AbortSignal.any([signal, this.initialization.signal]),
+    );
+  }
+  private async expectedConfiguration(
+    deadline: number,
+    signal: AbortSignal,
+    current: () => boolean,
+  ): Promise<string | undefined> {
+    const ensure = this.options.ensureGateway;
+    if (ensure === undefined) {
+      return undefined;
+    }
+    try {
+      const snapshot: unknown = await ensure(deadline, signal);
+      if (
+        typeof snapshot !== "object" ||
+        snapshot === null ||
+        !("gatewaySha256" in snapshot) ||
+        typeof snapshot.gatewaySha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(snapshot.gatewaySha256)
+      ) {
+        throw new ConnectionFailure("protocol_error", false);
+      }
+      return snapshot.gatewaySha256;
+    } catch (error) {
+      if (current()) {
+        this.diagnostic = "activation_unconfirmed";
+        this.options.statusChanged();
+      }
+      throw error;
+    }
   }
   private async initialize(): Promise<Connection> {
     // Session-owned absolute setup budget, independent of the first tool's budget.
     const deadline = performance.now() + 5000;
-    const signal = this.lifetime.signal;
+    const controller = new AbortController();
+    this.initialization = controller;
+    const signal = AbortSignal.any([this.lifetime.signal, controller.signal]);
     const generation = ++this.generation;
+    const current = () => !this.closed && generation === this.generation && !signal.aborted;
     const pending = (async () => {
+      const expected = await this.expectedConfiguration(deadline, signal, current);
+      // An ensure callback may ignore cancellation. Never let its late result open a socket.
+      if (!current()) {
+        throw new ConnectionFailure("cancelled", false);
+      }
       const connection = await connectTransport({
         socketPath: this.options.config.socketPath,
         deadline,
-        ...(signal === undefined ? {} : { signal }),
+        signal,
         incoming: this.options.incoming,
         event: (event) => {
-          this.roster(event);
+          if (current()) {
+            this.roster(event);
+          }
         },
         validateReply: (request, reply) => {
-          this.validateReply(request, reply);
+          if (current()) {
+            this.validateReply(request, reply);
+          }
         },
         disconnected: (code) => {
-          if (generation !== this.generation) {
+          if (!current()) {
             return;
           }
+          const established = this.connection !== undefined;
           this.connection = undefined;
           this.scopes.clear();
           this.watch = undefined;
           this.peers.clear();
-          this.diagnostic = code;
+          this.diagnostic = this.generationPending ? "activation_pending" : code;
           this.options.statusChanged();
+          // One bounded episode per lost established generation; never replay requests.
+          if (established && this.options.ensureGateway !== undefined && !this.closed) {
+            queueMicrotask(() => {
+              void this.reconnect(this.lifetime.signal).catch(() => undefined);
+            });
+          }
         },
       });
+      if (!current()) {
+        connection.close();
+        throw new ConnectionFailure("cancelled", false);
+      }
+      const abort = () => {
+        connection.close();
+      };
+      signal.addEventListener("abort", abort, { once: true });
       try {
         const reply = await connection.request(
           {
@@ -139,32 +226,46 @@ export class GatewayClient {
             runtimeNonce: this.options.peer.runtimeNonce,
             scopeIds: this.options.config.scopeIds,
             label: this.options.config.label,
+            ...(expected === undefined ? {} : { expectedConfigSha256: expected }),
           },
           deadline,
           signal,
         );
-        if (
-          reply.forOp !== "register" ||
-          reply.outcome.tag !== "ok" ||
-          this.closed ||
-          generation !== this.generation
-        ) {
+        if (!current()) {
+          throw new ConnectionFailure("cancelled", false);
+        }
+        if (reply.outcome.tag === "error" && reply.outcome.code === "config_mismatch") {
+          this.generationPending = true;
+          throw new ConnectionFailure("unavailable", false);
+        }
+        if (reply.forOp !== "register" || reply.outcome.tag !== "ok") {
           throw new ConnectionFailure("unavailable", false);
         }
         this.scopes = new Set(reply.outcome.value.scopeIds);
         this.connection = connection;
+        this.generationPending = false;
         this.diagnostic = "connected";
         this.options.statusChanged();
         return connection;
       } catch (error) {
         connection.close();
+        if (current() && expected !== undefined) {
+          this.diagnostic = this.generationPending
+            ? "activation_pending"
+            : "activation_unconfirmed";
+          this.options.statusChanged();
+        }
         throw error;
+      } finally {
+        signal.removeEventListener("abort", abort);
       }
     })();
     try {
       return await pending;
     } finally {
-      this.connecting = undefined;
+      if (this.initialization === controller) {
+        this.initialization = undefined;
+      }
     }
   }
   async operation<A>(run: () => Promise<A>): Promise<A> {
@@ -186,13 +287,34 @@ export class GatewayClient {
     const connection = await this.connect(deadline, signal);
     return connection.request(request, deadline, signal);
   }
-  async reconnect(signal?: AbortSignal): Promise<void> {
-    await this.operation(async () => {
+  /** Fresh is reserved for a separately reviewed control attempt, never passive recovery. */
+  async reconnect(signal?: AbortSignal, fresh = false): Promise<void> {
+    if (this.closed || signal?.aborted === true) {
+      throw new ConnectionFailure("cancelled", false);
+    }
+    if (this.episode !== undefined && !fresh) {
+      return waitFor(
+        this.episode.promise,
+        performance.now() + 60_000,
+        signal ?? this.lifetime.signal,
+      );
+    }
+    if (fresh) {
+      this.episode?.controller.abort();
+      this.fenceTransport();
+    }
+    const controller = new AbortController();
+    const episodeSignal = AbortSignal.any([
+      this.lifetime.signal,
+      controller.signal,
+      ...(signal === undefined ? [] : [signal]),
+    ]);
+    const promise = this.operation(async () => {
       const deadline = performance.now() + 60_000;
       for (let attempt = 0; attempt < 6; attempt += 1) {
         try {
           // eslint-disable-next-line eslint/no-await-in-loop -- One bounded reconnect episode; attempts must be sequential.
-          await this.connect(deadline, signal);
+          await this.connect(deadline, episodeSignal);
           return;
         } catch (error) {
           if (
@@ -205,17 +327,36 @@ export class GatewayClient {
           }
           try {
             // eslint-disable-next-line eslint/no-await-in-loop -- Retry backoff is sequential and consumes the same deadline.
-            await delay(
-              Math.min(4000, 100 * 2 ** attempt),
-              undefined,
-              signal === undefined ? {} : { signal },
-            );
+            await delay(Math.min(4000, 100 * 2 ** attempt), undefined, { signal: episodeSignal });
           } catch {
             throw new ConnectionFailure("cancelled", false);
           }
         }
       }
     });
+    const episode = { promise, controller };
+    this.episode = episode;
+    try {
+      await promise;
+    } finally {
+      if (this.episode === episode) {
+        this.episode = undefined;
+      }
+    }
+  }
+  private fenceTransport(): void {
+    // Fence before close: the old transport's synchronous disconnect callback is stale too.
+    this.generation += 1;
+    this.initialization?.abort();
+    this.initialization = undefined;
+    this.connecting = undefined;
+    this.connection?.close();
+    this.connection = undefined;
+    this.scopes.clear();
+    this.peers.clear();
+    this.watch = undefined;
+    this.diagnostic = "disconnected";
+    this.options.statusChanged();
   }
   reservePushes(count: number): (() => void) | undefined {
     if (this.closed || count < 1 || count > 8 || this.active + count > 8) {
@@ -237,7 +378,12 @@ export class GatewayClient {
     signal?: AbortSignal,
     reserved = false,
   ): Promise<SendOutcome> {
-    const binding = { messageId: message.id, sender: this.options.peer, recipient: to, scopeId };
+    const binding = {
+      messageId: message.id,
+      sender: this.options.peer,
+      recipient: to,
+      scopeId,
+    };
     const combined =
       signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal]);
     const run = async () =>
@@ -254,7 +400,12 @@ export class GatewayClient {
       return reserved ? await run() : await this.operation(run);
     } catch (error) {
       if (error instanceof ConnectionFailure && error.code === "overloaded") {
-        return { tag: "not_admitted", binding, code: "overloaded", resource: "operations" };
+        return {
+          tag: "not_admitted",
+          binding,
+          code: "overloaded",
+          resource: "operations",
+        };
       }
       return { tag: "not_admitted", binding, code: "cancelled" };
     }
@@ -283,7 +434,10 @@ export class GatewayClient {
           op: "result",
           rid: freshId(),
           forOp: "discover",
-          outcome: { tag: "ok", value: { peers: [...this.peers.values()], watching: true } },
+          outcome: {
+            tag: "ok",
+            value: { peers: [...this.peers.values()], watching: true },
+          },
         };
       }
       const rid = freshId();
@@ -294,24 +448,26 @@ export class GatewayClient {
       try {
         const reply = await this.request({ v: 1, op: "discover", rid, scopeIds, watch }, signal);
         if (watch && (reply.forOp !== "discover" || reply.outcome.tag !== "ok")) {
-          this.watch = undefined;
+          this.clearWatch(rid);
         }
         return reply;
       } catch (error) {
-        this.watch = undefined;
-        this.peers.clear();
+        if (watch) {
+          this.clearWatch(rid);
+        }
         throw error;
       }
     });
   }
+  private clearWatch(rid: string): void {
+    if (this.watch?.rid === rid) {
+      this.watch = undefined;
+      this.peers.clear();
+    }
+  }
   close(): void {
     this.closed = true;
     this.lifetime.abort();
-    this.generation += 1;
-    this.connection?.close();
-    this.connection = undefined;
-    this.scopes.clear();
-    this.peers.clear();
-    this.watch = undefined;
+    this.fenceTransport();
   }
 }
