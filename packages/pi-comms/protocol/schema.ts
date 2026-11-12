@@ -138,12 +138,18 @@ const requests = [
   Schema.Struct({
     ...head,
     op: Schema.Literal("register"),
+    expectedConfigSha256: Schema.optionalKey(
+      Schema.String.check(
+        Schema.makeFilter<string>((value) => value.length === 64 && /^[0-9a-f]{64}$/u.test(value)),
+      ),
+    ),
     sessionId: text(256, false),
     runtimeNonce: randomId,
     scopeIds: scopeIds(4),
     label,
   }),
   Schema.Struct({ ...head, op: Schema.Literal("close") }),
+  Schema.Struct({ ...head, op: Schema.Literal("gateway.restart"), expectedMachineId: machineId }),
   Schema.Struct({ ...head, op: Schema.Literal("ping") }),
   Schema.Struct({
     ...head,
@@ -276,10 +282,12 @@ const sendOutcome = Schema.Union([
 const results = [
   result("register", Schema.Struct({ peer: Peer, scopeIds: scopeIds(4) }), [
     ...baseCodes,
+    "config_mismatch",
     "already_registered",
     "descriptor_too_large",
   ]),
   result("close", Schema.Struct({}), baseCodes),
+  result("gateway.restart", Schema.Struct({}), baseCodes),
   result("ping", Schema.Struct({}), baseCodes),
   result("unwatch", Schema.Struct({}), baseCodes),
   result(

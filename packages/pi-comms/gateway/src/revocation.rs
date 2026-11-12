@@ -69,8 +69,31 @@ impl FloorStore {
     /// Rejects unsafe paths/permissions, concurrent owners, malformed/oversized state,
     /// duplicate issuers and unknown versions or fields.
     pub fn open(path: &Path) -> io::Result<Self> {
-        let lock = lock(path)?;
-        let file = private_options().open(path)?;
+        Self::read_state(path, lock(path)?)
+    }
+
+    pub(crate) fn snapshot(path: &Path) -> io::Result<Self> {
+        crate::paths::private_parent(path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
+                    .bits()
+                    .cast_signed(),
+            )
+            .open(path)?;
+        Self::read_state(path, file)
+    }
+
+    fn read_state(path: &Path, lock: File) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
+                    .bits()
+                    .cast_signed(),
+            )
+            .open(path)?;
         validate_file(&file)?;
         let mut bytes = Vec::new();
         file.take(u64::try_from(MAX_STATE_BYTES + 1).map_err(io::Error::other)?)
@@ -116,37 +139,7 @@ impl FloorStore {
     /// Rejects rollback/equivocation, issuer exhaustion, unsafe files and any persistence
     /// failure. A failure must prevent remote activation; no in-memory-only fallback.
     pub fn apply(&mut self, trust: &Trust) -> io::Result<()> {
-        let mut next = self.floors.clone();
-        for bytes in trust.crls() {
-            let (_, crl) = CertificateRevocationList::from_der(bytes).map_err(|_| rejected())?;
-            let number = crl.crl_number().ok_or_else(rejected)?.to_bytes_be();
-            if number.len() > 20 {
-                return Err(rejected());
-            }
-            let issuer = hex(crl.issuer().as_raw());
-            let digest = ring::digest::digest(&ring::digest::SHA256, bytes);
-            let fingerprint = digest.as_ref().try_into().map_err(|_| rejected())?;
-            let floor = Floor {
-                issuer: issuer.clone(),
-                number,
-                this_update: crl.last_update().timestamp(),
-                fingerprint,
-            };
-            if let Some(prior) = next.get(&issuer) {
-                let order =
-                    (floor.number.len(), &floor.number).cmp(&(prior.number.len(), &prior.number));
-                if order.is_lt()
-                    || floor.this_update < prior.this_update
-                    || (order.is_eq() && floor.fingerprint != prior.fingerprint)
-                {
-                    return Err(rejected());
-                }
-            }
-            next.insert(issuer, floor);
-        }
-        if next.len() > MAX_ISSUERS {
-            return Err(rejected());
-        }
+        let next = self.checked(trust)?;
         let bytes = serde_json::to_vec(&State {
             version: 1,
             issuers: next.values().cloned().collect(),
@@ -158,6 +151,14 @@ impl FloorStore {
         self.persist(&bytes)?;
         self.floors = next;
         Ok(())
+    }
+
+    pub(crate) fn check(&self, trust: &Trust) -> io::Result<()> {
+        self.checked(trust).map(|_| ())
+    }
+
+    fn checked(&self, trust: &Trust) -> io::Result<BTreeMap<String, Floor>> {
+        extend_floors(self.floors.clone(), trust)
     }
 
     fn persist(&self, bytes: &[u8]) -> io::Result<()> {
@@ -187,11 +188,11 @@ fn rejected() -> io::Error {
 }
 fn private_options() -> OpenOptions {
     let mut options = OpenOptions::new();
-    options
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+    options.read(true).write(true).mode(0o600).custom_flags(
+        (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
+            .bits()
+            .cast_signed(),
+    );
     options
 }
 fn validate_file(file: &File) -> io::Result<()> {
@@ -239,4 +240,44 @@ fn hex(bytes: &[u8]) -> String {
         output.push(char::from(DIGITS[usize::from(byte & 15)]));
     }
     output
+}
+
+fn extend_floors(
+    mut next: BTreeMap<String, Floor>,
+    trust: &Trust,
+) -> io::Result<BTreeMap<String, Floor>> {
+    for bytes in trust.crls() {
+        let (_, crl) = CertificateRevocationList::from_der(bytes).map_err(|_| rejected())?;
+        let number = crl.crl_number().ok_or_else(rejected)?.to_bytes_be();
+        if number.len() > 20 {
+            return Err(rejected());
+        }
+        let issuer = hex(crl.issuer().as_raw());
+        let digest = ring::digest::digest(&ring::digest::SHA256, bytes);
+        let fingerprint = digest.as_ref().try_into().map_err(|_| rejected())?;
+        let floor = Floor {
+            issuer: issuer.clone(),
+            number,
+            this_update: crl.last_update().timestamp(),
+            fingerprint,
+        };
+        if let Some(prior) = next.get(&issuer) {
+            let order =
+                (floor.number.len(), &floor.number).cmp(&(prior.number.len(), &prior.number));
+            if order.is_lt()
+                || floor.this_update < prior.this_update
+                || (order.is_eq() && floor.fingerprint != prior.fingerprint)
+            {
+                return Err(rejected());
+            }
+        }
+        next.insert(issuer, floor);
+    }
+    if next.len() > MAX_ISSUERS {
+        return Err(rejected());
+    }
+    Ok(next)
+}
+pub(crate) fn check_successor(prior: &Trust, next: &Trust) -> io::Result<()> {
+    extend_floors(extend_floors(BTreeMap::new(), prior)?, next).map(|_| ())
 }

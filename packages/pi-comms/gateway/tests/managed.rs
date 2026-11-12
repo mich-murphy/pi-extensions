@@ -119,8 +119,8 @@ impl Drop for Fixture {
         let _ = fs::remove_dir_all(&self.directory);
     }
 }
-fn register(stream: &mut UnixStream, session: &str) {
-    let body = serde_json::to_vec(&json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":session,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"})).expect("register JSON");
+fn request(stream: &mut UnixStream, value: &Value) {
+    let body = serde_json::to_vec(value).expect("request JSON");
     stream
         .write_all(
             &u32::try_from(body.len())
@@ -129,13 +129,40 @@ fn register(stream: &mut UnixStream, session: &str) {
         )
         .expect("frame length");
     stream.write_all(&body).expect("frame body");
+}
+fn response(stream: &mut UnixStream) -> Value {
     let mut length = [0; 4];
     stream.read_exact(&mut length).expect("response length");
-    let mut response =
-        vec![0; usize::try_from(u32::from_be_bytes(length)).expect("small response")];
-    stream.read_exact(&mut response).expect("response body");
-    let value: Value = serde_json::from_slice(&response).expect("response JSON");
-    assert_eq!(value["outcome"]["tag"], "ok", "valid local registration");
+    let mut body = vec![0; usize::try_from(u32::from_be_bytes(length)).expect("small response")];
+    stream.read_exact(&mut body).expect("response body");
+    serde_json::from_slice(&body).expect("response JSON")
+}
+fn registration(session: &str) -> Value {
+    json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":session,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"})
+}
+fn register(stream: &mut UnixStream, session: &str) {
+    request(stream, &registration(session));
+    assert_eq!(
+        response(stream)["outcome"]["tag"],
+        "ok",
+        "valid legacy local registration"
+    );
+}
+fn fingerprint(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    ring::digest::digest(&ring::digest::SHA256, bytes)
+        .as_ref()
+        .iter()
+        .fold(String::new(), |mut output, byte| {
+            write!(output, "{byte:02x}").expect("writing to String");
+            output
+        })
+}
+fn guarded(stream: &mut UnixStream, session: &str, hash: &str) -> Value {
+    let mut value = registration(session);
+    value["expectedConfigSha256"] = json!(hash);
+    request(stream, &value);
+    response(stream)
 }
 
 #[test]
@@ -330,7 +357,13 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
     );
     assert_eq!(
         value["capabilities"],
-        json!(["managed-on-demand-v1"]),
+        json!([
+            "managed-on-demand-v1",
+            "pairing-v1",
+            "gateway-control-v1",
+            "setup-lock-v1",
+            "config-generation-v1"
+        ]),
         "managed contract advertised"
     );
     assert!(
@@ -576,5 +609,324 @@ async fn authenticated_remote_link_does_not_sustain_last_local_disconnect() {
     assert!(
         !fixture.directory.join("s").exists(),
         "managed socket removed with remote still connected"
+    );
+}
+
+#[test]
+fn interrupted_record_write_preserves_unproven_socket_and_reports_safe_recovery() {
+    for record in [b"".as_slice(), b"{\"socket\":"] {
+        let mut fixture = Fixture::new();
+        let owner = fixture.start();
+        fixture.kill(owner);
+        let socket = fixture.directory.join("s");
+        let before = fs::symlink_metadata(&socket).expect("stale socket");
+        // Fault injection: durable record is empty/torn as if killed between bind
+        // and record sync. Do not forge a matching record or unlink the socket.
+        fs::write(fixture.directory.join("s.managed.lock"), record).expect("inject torn record");
+        let contender = fixture.spawn(&["--managed"]);
+        assert!(
+            fixture.exited(contender, Duration::from_secs(3)),
+            "ambiguous startup bounded"
+        );
+        let mut diagnostic = String::new();
+        fixture.children[contender]
+            .stderr
+            .take()
+            .expect("stderr")
+            .read_to_string(&mut diagnostic)
+            .expect("diagnostic");
+        assert!(
+            diagnostic.contains("managed-ownership-ambiguous")
+                && diagnostic.contains("never unlink an unverified socket"),
+            "actionable fail-closed diagnostic: {diagnostic}"
+        );
+        let after = fs::symlink_metadata(&socket).expect("unproven socket preserved");
+        assert_eq!(
+            (before.dev(), before.ino()),
+            (after.dev(), after.ino()),
+            "never substitutes path/refusal for incarnation proof"
+        );
+    }
+}
+
+#[test]
+fn managed_restart_is_machine_bound_and_closes_two_surviving_participants_after_ack() {
+    let mut fixture = Fixture::new();
+    let owner = fixture.start();
+    let mut first = fixture.connect();
+    let mut second = fixture.connect();
+    register(&mut first, "first");
+    register(&mut second, "second");
+    let wrong = fixture.directory.join("wrong-config");
+    fs::write(&wrong, serde_json::to_vec(&json!({"machineId":"beta","socketPath":fixture.directory.join("s"),"scopeIds":["team"],"policies":[]})).expect("wrong config JSON")).expect("wrong config");
+    let rejected = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--request-restart")
+        .arg(wrong)
+        .output()
+        .expect("wrong-machine restart");
+    assert!(!rejected.status.success(), "machine mismatch must refuse");
+    assert!(
+        fixture.children[owner]
+            .try_wait()
+            .expect("live owner")
+            .is_none(),
+        "mismatch cannot stop gateway"
+    );
+    let accepted = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--request-restart")
+        .arg(fixture.directory.join("config"))
+        .output()
+        .expect("restart CLI");
+    assert!(
+        accepted.status.success(),
+        "exact acknowledgement: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let output: Value = serde_json::from_slice(&accepted.stdout).expect("public control JSON");
+    assert_eq!(output["state"], "restart-requested");
+    assert!(
+        fixture.exited(owner, Duration::from_secs(3)),
+        "managed exits after flushing ACK"
+    );
+    assert_eq!(first.read(&mut [0; 1]).expect("first disconnected"), 0);
+    assert_eq!(second.read(&mut [0; 1]).expect("second disconnected"), 0);
+    assert!(
+        !fixture.directory.join("s").exists(),
+        "normal inode-owned cleanup"
+    );
+}
+
+#[test]
+fn manual_gateway_refuses_restart_control() {
+    let mut fixture = Fixture::new();
+    let owner = fixture.spawn(&[]);
+    fixture.ready(owner);
+    let output = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--request-restart")
+        .arg(fixture.directory.join("config"))
+        .output()
+        .expect("manual restart CLI");
+    assert!(
+        !output.status.success(),
+        "manual owner never accepts control"
+    );
+    let mut participant = fixture.connect();
+    register(&mut participant, "still-manual");
+    assert!(
+        fixture.children[owner]
+            .try_wait()
+            .expect("manual alive")
+            .is_none(),
+        "manual gateway survives refusal"
+    );
+}
+
+#[test]
+fn setup_lock_is_permanent_private_and_releases_on_eof_and_crash() {
+    let fixture = Fixture::new();
+    let path = fixture.directory.join("setup.lock");
+    let spawn = || {
+        Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+            .arg("--setup-lock")
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("setup lock child")
+    };
+    let mut owner = spawn();
+    let mut line = String::new();
+    BufReader::new(owner.stdout.take().expect("lock stdout"))
+        .read_line(&mut line)
+        .expect("lock ready");
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).expect("lock JSON")["state"],
+        "locked"
+    );
+    let before = fs::symlink_metadata(&path).expect("permanent lock");
+    assert_eq!(before.mode() & 0o777, 0o600, "private lock");
+    let conflict = spawn().wait_with_output().expect("conflicting lock");
+    assert!(!conflict.status.success(), "contention fails promptly");
+    drop(owner.stdin.take());
+    assert!(
+        owner.wait().expect("EOF release").success(),
+        "EOF cleanly releases lock"
+    );
+    let mut next = spawn();
+    line.clear();
+    BufReader::new(next.stdout.take().expect("lock stdout"))
+        .read_line(&mut line)
+        .expect("second ready");
+    next.kill().expect("inject lock owner crash");
+    next.wait().expect("reap crashed owner");
+    let mut final_owner = spawn();
+    line.clear();
+    BufReader::new(final_owner.stdout.take().expect("lock stdout"))
+        .read_line(&mut line)
+        .expect("third ready");
+    drop(final_owner.stdin.take());
+    final_owner.wait().expect("final EOF");
+    let after = fs::symlink_metadata(path).expect("lock never unlinked");
+    assert_eq!(
+        (before.dev(), before.ino()),
+        (after.dev(), after.ino()),
+        "no split-lock inode replacement"
+    );
+}
+
+#[test]
+fn stopped_owner_accepts_closed_queued_peer_without_terminating_surviving_or_new_sessions() {
+    let mut fixture = Fixture::new();
+    let owner = fixture.start();
+    let mut survivor = fixture.connect();
+    register(&mut survivor, "survivor");
+    let pid = rustix::process::Pid::from_raw(
+        i32::try_from(fixture.children[owner].id()).expect("child PID fits"),
+    )
+    .expect("child PID");
+    rustix::process::kill_process(pid, rustix::process::Signal::STOP)
+        .expect("stop only owned child");
+    let (_, status) = rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::UNTRACED)
+        .expect("confirm stopped child")
+        .expect("child stopped");
+    assert!(
+        status.stopped(),
+        "kernel confirms owner is stopped before queue injection"
+    );
+    // This connect-and-close is deliberately completed before accept can execute.
+    // Darwin LOCAL_PEEREPID then returns ENOTCONN for the disconnected peer.
+    // The TS launcher's connect/destroy reachability probe can do exactly this.
+    drop(fixture.connect());
+    rustix::process::kill_process(pid, rustix::process::Signal::CONT)
+        .expect("resume only owned child");
+    let mut fresh = fixture.connect();
+    register(&mut fresh, "fresh-after-closed-peer");
+    assert!(
+        fixture.children[owner]
+            .try_wait()
+            .expect("owner status")
+            .is_none(),
+        "one disconnected peer cannot terminate gateway"
+    );
+    assert!(
+        !fixture.exited(owner, Duration::from_millis(100)),
+        "registered survivor keeps owner alive after rejected peer"
+    );
+}
+
+#[test]
+fn guarded_registration_binds_loaded_bytes_not_changed_disk_and_has_no_rejection_effects() {
+    let mut fixture = Fixture::new();
+    let path = fixture.directory.join("config");
+    let mut config: Value =
+        serde_json::from_slice(&fs::read(&path).expect("config")).expect("JSON");
+    config["policies"] = json!([{"machineId":"alpha","scopeId":"team","permissions":["discover"]}]);
+    let loaded = serde_json::to_vec(&config).expect("loaded bytes");
+    fs::write(&path, &loaded).expect("initial config");
+    let old_hash = fingerprint(&loaded);
+    let owner = fixture.start();
+    let mut survivor = fixture.connect();
+    register(&mut survivor, "legacy-survivor");
+
+    // Same JSON meaning, different bytes, after successful startup.
+    let formatted = serde_json::to_vec_pretty(&config).expect("formatted config");
+    let new_hash = fingerprint(&formatted);
+    assert_ne!(old_hash, new_hash, "formatting is part of the generation");
+    fs::write(&path, formatted).expect("change disk after load");
+    let mut rejected = fixture.connect();
+    assert_eq!(
+        guarded(&mut rejected, "candidate", &new_hash)["outcome"],
+        json!({"tag":"error","code":"config_mismatch"}),
+        "must not reread new disk bytes"
+    );
+    // The failed attempt must not reserve the identity. Same socket and identity work.
+    assert_eq!(
+        guarded(&mut rejected, "candidate", &old_hash)["outcome"]["tag"],
+        "ok",
+        "loaded bytes still admitted"
+    );
+    let admitted = rejected;
+
+    // A genuinely narrower policy is likewise not served by this old process.
+    config["policies"][0]["permissions"] = json!(["read"]);
+    let narrowed = serde_json::to_vec(&config).expect("narrowed config");
+    fs::write(&path, &narrowed).expect("commit narrowed config");
+    let mut mismatch = fixture.connect();
+    assert_eq!(
+        guarded(&mut mismatch, "not-in-roster", &fingerprint(&narrowed))["outcome"]["code"],
+        "config_mismatch"
+    );
+    for malformed in ["A".repeat(64), "a".repeat(63), "g".repeat(64)] {
+        let mut stream = fixture.connect();
+        let mut value = registration("malformed");
+        value["expectedConfigSha256"] = json!(malformed);
+        request(&mut stream, &value);
+        assert_eq!(
+            stream.read(&mut [0; 1]).expect("malformed rejected"),
+            0,
+            "strict malformed hash closes connection"
+        );
+    }
+    request(
+        &mut survivor,
+        &json!({"v":1,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":false}),
+    );
+    let snapshot = response(&mut survivor);
+    let peers = snapshot["outcome"]["value"]["peers"]
+        .as_array()
+        .expect("roster");
+    assert_eq!(
+        peers.len(),
+        2,
+        "only legacy survivor and correctly guarded participant registered"
+    );
+    assert!(
+        peers
+            .iter()
+            .all(|peer| peer["peer"]["sessionId"] != "not-in-roster"),
+        "mismatch has no roster effect"
+    );
+    drop(survivor);
+    drop(admitted);
+    assert!(
+        fixture.exited(owner, Duration::from_secs(3)),
+        "connected rejected registration cannot sustain managed lifetime"
+    );
+}
+
+#[test]
+fn matching_fingerprint_manual_registration_fails_but_legacy_still_works() {
+    let mut fixture = Fixture::new();
+    let hash = fingerprint(&fs::read(fixture.directory.join("config")).expect("config bytes"));
+    let owner = fixture.spawn(&[]);
+    fixture.ready(owner);
+    let mut stream = fixture.connect();
+    assert_eq!(
+        guarded(&mut stream, "manual", &hash)["outcome"],
+        json!({"tag":"error","code":"config_mismatch"}),
+        "manual daemon cannot satisfy managed guard even with matching bytes"
+    );
+    register(&mut stream, "manual");
+}
+
+#[test]
+fn rejected_guard_does_not_start_participant_disconnect_grace() {
+    let mut fixture = Fixture::new();
+    let owner = fixture.start();
+    let started = Instant::now();
+    let mut stream = fixture.connect();
+    assert_eq!(
+        guarded(&mut stream, "not-a-participant", &"0".repeat(64))["outcome"]["code"],
+        "config_mismatch"
+    );
+    drop(stream);
+    assert!(
+        fixture.exited(owner, Duration::from_secs(12)),
+        "startup grace remains bounded"
+    );
+    assert!(
+        started.elapsed() >= Duration::from_secs(9),
+        "mismatch must not enter shorter post-participant grace"
     );
 }

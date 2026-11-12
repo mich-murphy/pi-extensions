@@ -125,13 +125,15 @@ impl ManagedGuard {
         let mut bytes = Vec::new();
         (&mut file).take(4097).read_to_end(&mut bytes)?;
         if bytes.len() > 4096 {
-            return Err(io::Error::other("oversized managed ownership record"));
+            return Err(io::Error::other(
+                "managed-ownership-ambiguous: oversized record; stop participating Pi sessions and select a new private socket path; never unlink an unverified socket",
+            ));
         }
         // A nonempty corrupt record is ambiguous even if the socket is absent.
         let record: Option<Record> = if bytes.is_empty() {
             None
         } else {
-            Some(serde_json::from_slice(&bytes).map_err(io::Error::other)?)
+            Some(serde_json::from_slice(&bytes).map_err(|_| io::Error::other("managed-ownership-ambiguous: interrupted/corrupt record; stop participating Pi sessions and select a new private socket path; never unlink an unverified socket"))?)
         };
         match Record::read(socket) {
             Ok(actual) => {
@@ -139,7 +141,9 @@ impl ManagedGuard {
                     .as_ref()
                     .is_some_and(|record| record.matches(&actual))
                 {
-                    return Err(io::Error::other("socket is not recorded managed ownership"));
+                    return Err(io::Error::other(
+                        "managed-ownership-ambiguous: socket incarnation is not recorded; stop participating Pi sessions and select a new private socket path; never unlink an unverified socket",
+                    ));
                 }
                 // Never block on a live listener's saturated backlog while holding
                 // the lifetime lock. EINPROGRESS/EAGAIN and all other ambiguous

@@ -544,16 +544,34 @@ fn controlled_restart_installs_revocation_even_when_no_peer_can_authenticate_and
     );
     beta.terminate();
     fs::write(beta.directory.0.join("current.crl"), older).unwrap();
-    let rejected = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
-        .arg("--config")
+    let protected = fs::read(beta.directory.0.join("floors.json")).unwrap();
+    beta.restart();
+    assert!(
+        beta.bound.is_none(),
+        "rolled-back policy must never bind a remote listener"
+    );
+    let mut local = beta.connect();
+    register(&mut local, "rollback-local", 914);
+    let diagnostic = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--diagnose")
         .arg(beta.directory.0.join("config.json"))
         .output()
         .unwrap();
     assert!(
-        !rejected.status.success(),
-        "rolled-back revoked credential policy must fail at startup"
+        diagnostic.status.success(),
+        "credential degradation is a read-only diagnostic"
     );
-    assert!(rejected.stdout.is_empty(), "rollback must not report ready");
+    let diagnostic: Value = serde_json::from_slice(&diagnostic.stdout).unwrap();
+    assert_eq!(
+        diagnostic["remote"]["state"], "degraded",
+        "local readiness is not remote readiness"
+    );
+    assert_eq!(diagnostic["remote"]["reason"], "revocation-floor-rejected");
+    assert_eq!(
+        protected,
+        fs::read(beta.directory.0.join("floors.json")).unwrap(),
+        "rollback must not reset protected floors"
+    );
 }
 
 #[test]

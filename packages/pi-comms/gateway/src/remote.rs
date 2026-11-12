@@ -67,6 +67,12 @@ impl fmt::Debug for Settings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Preparation {
+    Commit,
+    Snapshot,
+}
+
 #[derive(Debug)]
 enum Crypto {
     Connect(Arc<rustls::ClientConfig>),
@@ -82,6 +88,7 @@ pub struct Prepared {
     own_policy: Policy,
     peer_policy: Policy,
     own_chain: Vec<Vec<u8>>,
+    expires_at: u64,
     floors: Arc<Mutex<FloorStore>>,
     persistence: Arc<Semaphore>,
 }
@@ -172,51 +179,80 @@ impl Settings {
     /// Rejects unsafe files, invalid own credentials/private trust, busy/missing floor
     /// state and incompatible keys. No default trust, enrollment or initialization occurs.
     pub fn prepare(self, own_machine: &str) -> io::Result<Prepared> {
+        self.prepare_mode(own_machine, Preparation::Commit)
+    }
+
+    pub(crate) fn diagnose(self, own_machine: &str) -> io::Result<Prepared> {
+        self.prepare_mode(own_machine, Preparation::Snapshot)
+    }
+
+    fn prepare_mode(self, own_machine: &str, mode: Preparation) -> io::Result<Prepared> {
         let roots = self
             .root_certificates
             .iter()
-            .map(|path| read_private(path))
+            .map(|path| {
+                read_private(path).map_err(|error| credential_error("credential-file", error))
+            })
             .collect::<io::Result<Vec<_>>>()?;
         let crls = self
             .crls
             .iter()
-            .map(|path| read_private(path))
+            .map(|path| {
+                read_private(path).map_err(|error| credential_error("credential-file", error))
+            })
             .collect::<io::Result<Vec<_>>>()?;
         let own_chain = self
             .certificate_chain
             .iter()
-            .map(|path| read_private(path))
+            .map(|path| {
+                read_private(path).map_err(|error| credential_error("credential-file", error))
+            })
             .collect::<io::Result<Vec<_>>>()?;
-        let key = read_private(&self.private_key)?;
-        let trust = Trust::from_der(roots, crls).map_err(io::Error::other)?;
-        let own_policy = Policy::new(trust.clone(), own_machine).map_err(io::Error::other)?;
-        own_policy
+        let key = read_private(&self.private_key)
+            .map_err(|error| credential_error("private-key", error))?;
+        let trust = Trust::from_der(roots, crls)
+            .map_err(|error| credential_error("trust-or-crl", error))?;
+        let own_policy = Policy::new(trust.clone(), own_machine)
+            .map_err(|error| credential_error("identity", error))?;
+        let expires_at = own_policy
             .credential_expiry(&own_chain, unix_now()?)
-            .map_err(io::Error::other)?;
-        let peer_policy = Policy::new(trust.clone(), &self.machine_id).map_err(io::Error::other)?;
+            .map_err(|error| credential_error("leaf-or-crl-invalid", error))?;
+        let peer_policy = Policy::new(trust.clone(), &self.machine_id)
+            .map_err(|error| credential_error("identity", error))?;
         let crypto = match self.endpoint {
             Endpoint::Connect { .. } => Crypto::Connect(Arc::new(
                 peer_policy
                     .client_config(own_chain.clone(), key)
-                    .map_err(io::Error::other)?,
+                    .map_err(|error| credential_error("key-or-chain", error))?,
             )),
             Endpoint::Listen { .. } => Crypto::Listen(Arc::new(
                 peer_policy
                     .server_config(own_chain.clone(), key)
-                    .map_err(io::Error::other)?,
+                    .map_err(|error| credential_error("key-or-chain", error))?,
             )),
         };
         let mut issuers = own_chain.clone();
         for path in &self.issuer_certificates {
-            issuers.push(read_private(path)?);
+            issuers
+                .push(read_private(path).map_err(|error| credential_error("issuer-file", error))?);
         }
         trust
             .validate_revocation_bundle(&issuers, unix_now()?)
-            .map_err(io::Error::other)?;
-        let mut floors = FloorStore::open(&self.revocation_state)?;
+            .map_err(|error| credential_error("crl-invalid", error))?;
+        let mut floors = (if mode == Preparation::Commit {
+            FloorStore::open(&self.revocation_state)
+        } else {
+            FloorStore::snapshot(&self.revocation_state)
+        })
+        .map_err(|error| credential_error("revocation-floor-unavailable", error))?;
         // Installing a CRL that rejects every peer must still protect its floor.
         // Do this before listener binding/readiness, never only after a successful peer.
-        floors.apply(&trust)?;
+        if mode == Preparation::Commit {
+            floors.apply(&trust)
+        } else {
+            floors.check(&trust)
+        }
+        .map_err(|error| credential_error("revocation-floor-rejected", error))?;
         Ok(Prepared {
             machine_id: self.machine_id,
             endpoint: self.endpoint,
@@ -225,12 +261,16 @@ impl Settings {
             own_policy,
             peer_policy,
             own_chain,
+            expires_at,
             floors: Arc::new(Mutex::new(floors)),
             persistence: Arc::new(Semaphore::new(1)),
         })
     }
 }
 impl Prepared {
+    pub(crate) fn expires_at(&self) -> u64 {
+        self.expires_at
+    }
     /// Returns the operator-selected single-pair connection role/address.
     pub fn endpoint(&self) -> Endpoint {
         self.endpoint
@@ -349,7 +389,11 @@ fn read_private(path: &Path) -> io::Result<Vec<u8>> {
     }
     let file = OpenOptions::new()
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed())
+        .custom_flags(
+            (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
+                .bits()
+                .cast_signed(),
+        )
         .open(path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file()
@@ -365,4 +409,74 @@ fn read_private(path: &Path) -> io::Result<Vec<u8>> {
         return Err(rejected());
     }
     Ok(bytes)
+}
+
+#[derive(Debug)]
+struct CredentialFailure {
+    reason: &'static str,
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+impl fmt::Display for CredentialFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.reason)
+    }
+}
+impl std::error::Error for CredentialFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+fn credential_error(
+    reason: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> io::Error {
+    io::Error::other(CredentialFailure {
+        reason,
+        source: Box::new(source),
+    })
+}
+pub(crate) fn degradation(error: &io::Error) -> Option<&'static str> {
+    error
+        .get_ref()?
+        .downcast_ref::<CredentialFailure>()
+        .map(|failure| failure.reason)
+}
+
+// Only known operational errors from the TCP bind call degrade remote startup.
+// Descriptor exhaustion, invalid arguments and subsequent listener setup defects
+// remain fatal; diagnostics never call this or attempt a bind.
+pub(crate) fn listen_error(error: io::Error) -> io::Error {
+    match error.kind() {
+        io::ErrorKind::AddrInUse
+        | io::ErrorKind::AddrNotAvailable
+        | io::ErrorKind::PermissionDenied => credential_error("remote-listen-unavailable", error),
+        _ => error,
+    }
+}
+
+#[cfg(test)]
+mod listen_tests {
+    use super::*;
+    #[test]
+    fn only_known_bind_failures_degrade() {
+        for kind in [
+            io::ErrorKind::AddrInUse,
+            io::ErrorKind::AddrNotAvailable,
+            io::ErrorKind::PermissionDenied,
+        ] {
+            assert_eq!(
+                degradation(&listen_error(io::Error::from(kind))),
+                Some("remote-listen-unavailable")
+            );
+        }
+        for kind in [
+            io::ErrorKind::InvalidInput,
+            io::ErrorKind::OutOfMemory,
+            io::ErrorKind::Other,
+        ] {
+            let error = listen_error(io::Error::from(kind));
+            assert_eq!(error.kind(), kind);
+            assert_eq!(degradation(&error), None);
+        }
+    }
 }
