@@ -27,6 +27,12 @@ const MAX_CONNECTIONS: usize = 30;
 const MAX_OPERATIONS: usize = 256;
 const MAX_LOCAL_OPERATIONS: usize = 8;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lifetime {
+    Manual,
+    Managed,
+}
+
 #[derive(Debug)]
 struct Watch {
     rid: String,
@@ -161,12 +167,47 @@ impl Daemon {
     ///
     /// # Errors
     /// Returns fatal listener errors; connection errors retire only affected routes.
-    pub async fn run(mut self, shutdown: impl Future<Output = ()>) -> io::Result<()> {
+    pub async fn run(self, shutdown: impl Future<Output = ()>) -> io::Result<()> {
+        self.run_lifetime(shutdown, Lifetime::Manual).await
+    }
+
+    /// Runs until shutdown or bounded absence of registered local participants.
+    ///
+    /// Startup allows ten seconds for first registration; after participation,
+    /// an empty local roster allows 750ms for reload/reconnect handoff. Remote
+    /// links and unregistered sockets never extend either interval.
+    ///
+    /// # Errors
+    /// Returns fatal listener or connection-task errors, as with [`Self::run`].
+    pub async fn run_managed(self, shutdown: impl Future<Output = ()>) -> io::Result<()> {
+        self.run_lifetime(shutdown, Lifetime::Managed).await
+    }
+
+    async fn run_lifetime(
+        mut self,
+        shutdown: impl Future<Output = ()>,
+        lifetime: Lifetime,
+    ) -> io::Result<()> {
+        let managed = lifetime == Lifetime::Managed;
         tokio::pin!(shutdown);
+        let mut idle = managed.then(|| Instant::now() + crate::managed::STARTUP_GRACE);
+        let mut participated = false;
         let (events, mut receive) = mpsc::channel(68);
         let mut tasks = JoinSet::new();
         loop {
             self.cleanup();
+            let participants = self.clients.values().any(|client| {
+                client.remote.is_none()
+                    && client.descriptor.is_some()
+                    && !client.closing
+                    && !client.failed
+            });
+            if managed && participants {
+                participated = true;
+                idle = None;
+            } else if managed && participated && idle.is_none() {
+                idle = Some(Instant::now() + crate::managed::DISCONNECT_GRACE);
+            }
             let active = self.remote_id().is_some();
             if !active && let Some(link) = self.link.as_mut() {
                 link.start();
@@ -174,6 +215,7 @@ impl Daemon {
             let deadline = self.deadline();
             tokio::select! {
                 () = &mut shutdown => return Ok(()),
+                () = transport::next_deadline(idle) => return Ok(()),
                 accepted = self.listener.accept() => {
                     let (stream, _) = accepted?;
                     if tasks.len() < MAX_CONNECTIONS + usize::from(self.remote_id().is_some()) && self.clients.values().filter(|client| client.remote.is_none()).count() < MAX_CONNECTIONS { self.accept(stream, &events, &mut tasks)?; }

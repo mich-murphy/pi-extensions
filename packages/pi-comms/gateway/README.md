@@ -14,10 +14,29 @@ The binary is `target/release/pi-gateway`. For a two-machine setup, see [remote 
 
 | Flag | Argument | Effect |
 | --- | --- | --- |
-| `--config` | Absolute path to the JSON config | Runs the gateway. Prints one `ready` line on stdout once bound. |
+| `--config` | Absolute path to the JSON config | Runs the gateway until stopped. Prints one `ready` line on stdout once bound. |
+| `--managed --config` | Absolute path to the JSON config | Runs while registered local sessions participate, with bounded startup and disconnect grace periods. |
+| `--version [--json]` | None | Prints the version and exits without reading configuration or starting a gateway. JSON also reports supported wire versions and capabilities. |
 | `--initialize-revocation-floor` | Absolute path for the new floor file | Creates the floor file and exits. It refuses to overwrite existing state. |
 
-Pass exactly one flag with one argument.
+Choose one command form. `--managed` is valid only before `--config`.
+
+### On-demand lifetime
+
+Managed mode allows 10 seconds for the first local registration. After a local session has registered,
+closing the last registered local connection starts a 750 ms grace period for reload/reconnect handoff.
+A new registration cancels that deadline; otherwise the gateway exits cleanly and removes its socket.
+Remote links and unregistered connections do not keep it running. Manual `--config` mode is unchanged.
+
+Managed mode holds a private, permanent `<socketPath>.managed.lock` file for its lifetime. The file
+records the socket incarnation so a later managed start can recover an exact recorded stale socket
+following a crash. Unknown or replaced sockets, corrupt records and lock contention fail closed.
+Never remove the lock file to bypass an active owner. The lock and record trust the same Unix account,
+like the socket directory; connection refusal alone is not evidence that a listener is dead.
+
+This mode does not install a service or start another process. A launcher must start it on local session
+demand, tolerate shutdown/registration races with bounded retries, and avoid restarting it after a clean
+idle exit. Connection recovery must not replay application messages whose admission is unknown.
 
 ## Configuration
 
