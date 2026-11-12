@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
@@ -14,7 +14,13 @@ import {
 import { diagnoseManaged } from "../onboarding/managed.js";
 import { decodeGateway, decodePairing, decodeRecord, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
-import { dialog, nativeAddress, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
+import {
+  dialog,
+  nativeAddress,
+  nativeFixture,
+  nativeUntil,
+  nativeIncarnation,
+} from "./onboarding-fixtures.js";
 
 type Profile = { agent: string; client?: GatewayClient };
 type Pairing = ReturnType<typeof decodePairing>;
@@ -75,9 +81,9 @@ async function epoch(profile: Profile): Promise<number> {
   return issuer.number[0];
 }
 
-async function socketChanged(path: string, oldInode: number): Promise<boolean> {
-  const socket = await stat(path).catch(() => undefined);
-  return socket !== undefined && socket.ino !== oldInode;
+async function socketChanged(path: string, previous: string | undefined): Promise<boolean> {
+  const current = await nativeIncarnation(path);
+  return current !== undefined && current !== previous;
 }
 
 function freshPeer(current: ReturnType<typeof peerRefs>, previous: ReturnType<typeof peerRefs>) {
@@ -257,7 +263,8 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     ]);
     const cp = await pairing(creator);
     expect(field(cp, "rootSha256")).not.toBe(prior);
-    const oldSocket = await stat(setupPaths(joiner.agent).socket);
+    const oldSocket = await nativeIncarnation(setupPaths(joiner.agent).socket);
+    expect(oldSocket).toBeDefined();
     await command(joiner, [
       "Re-pair with new root",
       "Join a new trusted pair",
@@ -271,7 +278,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     expect(pending.remote).toBeUndefined();
     // Status alone could describe the pre-control socket. Require a new native
     // socket incarnation as well as the callback's fresh guarded registration.
-    await nativeUntil(async () => socketChanged(setupPaths(joiner.agent).socket, oldSocket.ino));
+    await nativeUntil(async () => socketChanged(setupPaths(joiner.agent).socket, oldSocket));
     await nativeUntil(async () => client(joiner).status().connected);
     expect(client(joiner).status().connected).toBe(true);
     await expect(readFile(oldFloor)).resolves.toStrictEqual(before);
