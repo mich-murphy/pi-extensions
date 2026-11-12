@@ -3,6 +3,7 @@
 pub mod budget;
 pub mod config;
 pub mod daemon;
+pub mod managed;
 mod transport;
 pub mod wire;
 
