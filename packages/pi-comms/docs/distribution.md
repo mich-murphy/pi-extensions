@@ -15,17 +15,29 @@ release, not through the same mutable download location.
 
 | Item | Contract |
 | --- | --- |
-| Nix reference | Full source revision, `#pi-gateway` (see below) |
+| Nix reference | Full revision, trusted `narHash`, `#pi-gateway` |
 | Package and app | `packages.<system>.pi-gateway`, `apps.<system>.pi-gateway` |
 | Version | Read from gateway `Cargo.toml`; never separately maintained |
 | Release tag | `gateway-<sourceRevision>` |
 | Asset origin | GitHub Releases, exact revision tag (see below) |
-| Manifest | `manifest.json`, schema 1, pinned SHA-256 in extension metadata |
+| Manifest | `manifest.json`, schema 2, pinned SHA-256 in extension metadata |
 | Archive | `pi-gateway-<version>-<Rust target>.tar.gz` |
 | Members | `pi-gateway` 0755, `release.json` 0644; regular files only |
 
 The Nix reference is
-`github:mich-murphy/pi-extensions/<sourceRevision>#pi-gateway`. Asset origin is
+`github:mich-murphy/pi-extensions/<sourceRevision>?narHash=<encodedSRI>#pi-gateway`.
+The trusted Nix catalog must ship the reviewed source tree's canonical SHA-256
+SRI (`sha256-` plus padded base64 of 32 bytes). Derive it independently from a
+trusted local `git archive <sourceRevision>` extraction using `nix hash path --sri`,
+not solely from a downloaded source's self-reported hash. URL-encode the SRI as
+one query value **before** the package fragment. Acquisition binds both the full
+revision and exact trusted NAR hash before filesystem, network or command effects;
+Nix then verifies fetched source content against that hash. The committed lock
+file alone does not authenticate the top-level source. Keep the Nix catalog null
+until the actual setup-capable source and its content pin are reviewed; historical
+source-fetch verification is not new-source installation evidence.
+
+Asset origin is
 `https://github.com/mich-murphy/pi-extensions/releases/download/<releaseTag>/`.
 Every native job asserts its architecture before building.
 
@@ -36,9 +48,21 @@ auto-adopt an executable from PATH or an unreviewed local checkout.
 
 The manifest records `sourceRevision`, `version`, `releaseTag`, and `artifacts`.
 Each artifact records its target, Nix system, OS, architecture, runner, ABI,
-minimum OS/libc, filename, archive size/SHA-256 and binary size/SHA-256. Embedded
+conservative tested baseline, measured runtime requirements, filename, archive
+size/SHA-256 and binary size/SHA-256. Embedded
 `release.json` contains schema, source, version and target metadata. The manifest
 must contain every target in `gateway/release/targets.json` exactly once.
+
+Schema 2 replaces the unreleased schema 1 `minimumOs` field with `testedBaseline`
+and `requirements`. Linux staging measures `requiredGlibc` and `requiredLibgcc`
+from `readelf -V`, plus the ELF interpreter and needed libraries from `readelf`
+program/dynamic headers. macOS staging reads `minimumMacos` from the executable's
+`LC_BUILD_VERSION` or `LC_VERSION_MIN_MACOSX` load command, not from its CPU type
+or SDK version. Staging fails if measured glibc/macOS requirements exceed the
+conservative baseline. Lower symbol requirements do **not** lower the support
+claim: loader, kernel, libgcc and platform-security behavior still need consumer
+tests. Schema 1 was never publicly released; the updater deliberately requires
+schema 2 rather than silently reinterpreting old metadata.
 
 The downloader must bound network size/time, constrain origin and redirects,
 verify the pinned manifest digest before parsing artifact claims, and verify the
@@ -75,6 +99,10 @@ Actions artifacts, never
 creates or modifies a public GitHub Release. Its token has read-only repository
 permissions. Each native job records compiler identity, object linkage, version
 JSON, source/run/runner metadata, the archive and its artifact record. The
+Linux jobs also run the native executable's loader/version smoke in a pinned
+Debian bookworm image with runtime networking disabled, read-only filesystem,
+no capabilities and an unprivileged UID. This narrow older-glibc smoke does not
+expand the declared baseline or establish full gateway behavior. The
 aggregation job verifies the complete catalog and archives and emits
 `gateway-release-candidate-<revision>`, containing `manifest.json`,
 `manifest.sha256`, archives, records and per-target build evidence. This provenance
@@ -97,7 +125,62 @@ Before enabling a downloadable fallback in a shipped extension:
 
 Until these gates pass, report fallback unavailable; do not ship fabricated
 hashes, treat nonexistent URLs as working acquisition, or send users to Cargo.
-A usable pinned Nix build remains an independent acquisition path.
+A usable pinned Nix build remains an independent acquisition path. The shipped
+`onboarding/catalog.ts` currently has **no reviewed source pin and no native
+manifest pin**. Discovery reports this as unavailable; this state is not a
+production-ready installer. Do not fill it with the earlier foundation source
+if the reviewed setup requires newer pairing capabilities.
+
+## Acquisition implementation and recovery
+
+`discoverGateway` only inspects technical facts and trusted extension metadata;
+`discoverNixExecutable` probes `--version` at fixed absolute system paths with
+a three-second limit, accepting upstream, Determinate and Lix version banners.
+It does not download, build, edit trust settings or change profiles. A successful
+version probe is not a promise that a daemon, network or build will work. If the
+reviewed plan authorizes both paths, the setup coordinator may try pinned Nix
+first and then the pinned native fallback after failure. Acquisition itself never
+silently switches methods: each `AcquisitionPlan` names one exact method and pin.
+Never authorize a fallback implicitly after Apply.
+
+`acquireGateway(approvedPlan, options)` requires `approved: true`, exact catalog
+source/version/manifest pins, a matching automatically detected host target, an
+absolute private `installRoot`, and a bounded absolute `deadlineMs` (at most one
+hour). The plan is copied/frozen before effects; an already-cancelled operation
+has zero filesystem/network effects. `requiredCapabilities` adds flow-specific
+capabilities to mandatory wire 1 and `managed-on-demand-v1` checks. New pairing
+flows must require their helper capability; the old managed binary is insufficient.
+The optional progress callback emits fixed technical stages, not downloaded data.
+Fetch, exec and filesystem seams permit isolated integration tests; production
+uses bounded Node fetch, filesystem operations and absolute `execFile` commands.
+
+Native acquisition authenticates the manifest **before** using any artifact
+claims, restricts HTTPS release/CDN redirects, bounds redirects, downloads and
+gzip output, parses only two regular USTAR members in memory, verifies binary
+hash/size and object architecture, then runs bounded `--version --json` with a
+sanitized environment. There is no system tar, shell extraction or PATH lookup.
+A private per-attempt staging directory is atomically renamed to the versioned
+installation only after verification and the compatibility probe. A failed
+attempt removes only its newly created directory. Existing completed native
+installs are reused only after pinned-manifest/binary reauthentication and a new
+capability probe; mismatched or incomplete existing state is preserved, not adopted.
+
+Nix uses `build --out-link` at a dedicated private **per-attempt versioned** path,
+never the default profile; experimental features are enabled for that command,
+not by editing user settings. The out-link is a retained GC root for the returned
+store executable. Because moving that link would invalidate its automatic GC
+root, Nix roots are not renamed. A completion marker is written only after ABI
+verification. A process crash can leave an incomplete uniquely named attempt;
+a later Apply creates a different attempt, never adopts it, and is not blocked by
+a fixed incomplete directory. Normal failure/abort removes only the current
+attempt. Old incomplete roots and completed rollback roots are preserved for
+explicit ownership-reviewed cleanup, never swept by name alone. Results report
+absolute executable, owned paths, source/version and recovery effects. Nix store
+objects/cache may remain after an aborted build; no user profile is modified.
+
+A configured project binary is never discovered through PATH. Existing custom
+installations are outside this ownership model. No quarantine clearing, trust
+mutation, cache configuration, service registration or public release occurs.
 
 ## Contributor verification
 

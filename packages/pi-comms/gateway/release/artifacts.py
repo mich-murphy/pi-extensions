@@ -10,6 +10,9 @@ from pathlib import Path
 import platform
 import re
 import struct
+import subprocess
+import tempfile
+import resource
 import tarfile
 import tomllib
 
@@ -17,6 +20,14 @@ ROOT = Path(__file__).resolve().parent
 TARGETS = json.loads((ROOT / "targets.json").read_text())
 MAX_ARCHIVE = 64 * 1024 * 1024
 MAX_BINARY = 128 * 1024 * 1024
+
+
+def read_bounded(path, maximum):
+    with path.open("rb") as source:
+        data = source.read(maximum + 1)
+    if len(data) > maximum:
+        raise ValueError("file exceeds size bound")
+    return data
 
 
 def digest(data):
@@ -66,16 +77,81 @@ def check_binary(data, target):
 
 
 def metadata(revision, target):
-    return {"schema": 1, "sourceRevision": source_revision(revision),
+    return {"schema": 2, "sourceRevision": source_revision(revision),
             "version": version(), "target": target, **TARGETS[target]}
 
 
+def command_output(args):
+    maximum = 4 * 1024 * 1024
+
+    def limit_output():
+        resource.setrlimit(resource.RLIMIT_FSIZE, (maximum, maximum))
+
+    with tempfile.TemporaryFile() as output:
+        subprocess.run(args, check=True, stdout=output, stderr=subprocess.STDOUT,
+                       timeout=30, preexec_fn=limit_output)
+        output.seek(0)
+        data = output.read(maximum + 1)
+    if len(data) > maximum:
+        raise ValueError("linkage inspection exceeds bound")
+    return data.decode("utf-8")
+
+
+def numeric_version(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", value):
+        raise ValueError("invalid runtime requirement version")
+    parts = tuple(int(part) for part in value.split("."))
+    return parts + (0,) * (4 - len(parts))
+
+
+def measured_requirements(binary, target):
+    """Measure loader requirements, not a claim of consumer OS support."""
+    if target.endswith("apple-darwin"):
+        commands = command_output(["otool", "-l", str(binary)])
+        versions = []
+        for block in re.split(r"Load command \d+", commands):
+            if re.search(r"cmd LC_BUILD_VERSION\b", block):
+                if not re.search(r"platform (?:1|macos)\b", block):
+                    raise ValueError("Mach-O is not a macOS deployment target")
+                match = re.search(r"\bminos\s+(\d+\.\d+(?:\.\d+)?)", block)
+            elif re.search(r"cmd LC_VERSION_MIN_MACOSX\b", block):
+                match = re.search(r"\bversion\s+(\d+\.\d+(?:\.\d+)?)", block)
+            else:
+                continue
+            if match:
+                versions.append(match[1])
+        if not versions:
+            raise ValueError("missing Mach-O deployment target")
+        minimum = max(versions, key=numeric_version)
+        if numeric_version(minimum) > numeric_version(TARGETS[target]["testedBaseline"]):
+            raise ValueError("Mach-O requirement exceeds tested baseline")
+        return {"minimumMacos": minimum}
+    versions = command_output(["readelf", "-V", str(binary)])
+    glibc = re.findall(r"Name: GLIBC_(\d+(?:\.\d+)+)", versions)
+    gcc = re.findall(r"Name: GCC_(\d+(?:\.\d+)+)", versions)
+    if not glibc:
+        raise ValueError("missing measured GLIBC requirements")
+    required = max(glibc, key=numeric_version)
+    baseline = TARGETS[target]["testedBaseline"].removeprefix("glibc-")
+    if numeric_version(required) > numeric_version(baseline):
+        raise ValueError("GLIBC requirement exceeds tested baseline")
+    program = command_output(["readelf", "-l", str(binary)])
+    dynamic = command_output(["readelf", "-d", str(binary)])
+    loader = re.search(r"Requesting program interpreter: ([^\]]+)\]", program)
+    if not loader or "/nix/store/" in loader[1] or "/nix/store/" in dynamic:
+        raise ValueError("missing or Nix-only native loader")
+    return {"requiredGlibc": required, "requiredLibgcc": max(gcc, key=numeric_version) if gcc else None,
+            "loader": loader[1], "neededLibraries": sorted(re.findall(r"Shared library: \[([^\]]+)\]", dynamic))}
+
+
 def stage(binary, output, revision, target):
-    data = binary.read_bytes()
+    if not 0 < binary.stat().st_size <= MAX_BINARY:
+        raise ValueError("invalid binary size")
+    data = read_bounded(binary, MAX_BINARY)
     if not 0 < len(data) <= MAX_BINARY:
         raise ValueError("invalid binary size")
     check_binary(data, target)
-    info = metadata(revision, target)
+    info = {**metadata(revision, target), "requirements": measured_requirements(binary, target)}
     output.mkdir(parents=True, exist_ok=True)
     name = f"pi-gateway-{info['version']}-{target}.tar.gz"
     archive = output / name
@@ -88,7 +164,7 @@ def stage(binary, output, revision, target):
                     entry.size, entry.mode, entry.mtime = len(content), mode, 0
                     bundle.addfile(entry, io.BytesIO(content))
     record = {**info, "file": name, "size": archive.stat().st_size,
-              "sha256": digest(archive.read_bytes()), "binarySize": len(data),
+              "sha256": digest(read_bounded(archive, MAX_ARCHIVE)), "binarySize": len(data),
               "binarySha256": digest(data)}
     (output / f"{target}.json").write_bytes(canonical(record))
     return record
@@ -98,7 +174,7 @@ def validate_record(record, manifest):
     target = record["target"]
     if target not in TARGETS:
         raise ValueError("unknown target")
-    expected = {"schema": 1, "sourceRevision": manifest["sourceRevision"],
+    expected = {"schema": 2, "sourceRevision": manifest["sourceRevision"],
                 "version": manifest["version"], "target": target, **TARGETS[target]}
     if any(record.get(key) != value for key, value in expected.items()):
         raise ValueError("artifact metadata differs from release/catalog")
@@ -111,17 +187,33 @@ def validate_record(record, manifest):
     for key, maximum in (("size", MAX_ARCHIVE), ("binarySize", MAX_BINARY)):
         if type(record[key]) is not int or not 0 < record[key] <= maximum:
             raise ValueError("artifact size outside bounds")
-    return expected
+    requirements = record.get("requirements")
+    if not isinstance(requirements, dict):
+        raise ValueError("missing measured runtime requirements")
+    baseline = TARGETS[target]["testedBaseline"]
+    if target.endswith("apple-darwin"):
+        if set(requirements) != {"minimumMacos"} or numeric_version(requirements["minimumMacos"]) > numeric_version(baseline):
+            raise ValueError("MacOS requirement exceeds baseline")
+    else:
+        if set(requirements) != {"requiredGlibc", "requiredLibgcc", "loader", "neededLibraries"} or numeric_version(requirements["requiredGlibc"]) > numeric_version(baseline.removeprefix("glibc-")):
+            raise ValueError("GLIBC requirement exceeds baseline")
+        if not requirements["loader"].startswith("/lib") or not isinstance(requirements["neededLibraries"], list):
+            raise ValueError("invalid loader/library requirements")
+    return {**expected, "requirements": requirements}
 
 
 def verify_archive(archive, record, manifest):
     expected = validate_record(record, manifest)
     if archive.stat().st_size != record["size"]:
         raise ValueError("archive size mismatch")
-    data = archive.read_bytes()
+    data = read_bounded(archive, MAX_ARCHIVE)
     if digest(data) != record["sha256"]:
         raise ValueError("archive SHA-256 mismatch")
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as bundle:
+    with gzip.GzipFile(fileobj=io.BytesIO(data)) as compressed:
+        unpacked = compressed.read(MAX_BINARY + 32769)
+    if len(unpacked) > MAX_BINARY + 32768:
+        raise ValueError("decompressed archive exceeds bound")
+    with tarfile.open(fileobj=io.BytesIO(unpacked), mode="r:") as bundle:
         members = []
         for member in bundle:
             members.append(member)
@@ -145,12 +237,14 @@ def verify_archive(archive, record, manifest):
 
 
 def verify_manifest(path, expected_digest):
-    data = path.read_bytes()
+    if path.stat().st_size > 65536:
+        raise ValueError("manifest exceeds size bound")
+    data = read_bounded(path, 65536)
     if len(data) > 65536 or digest(data) != expected_digest:
         raise ValueError("manifest differs from trusted pinned SHA-256")
     manifest = json.loads(data)
     source_revision(manifest["sourceRevision"])
-    if manifest["schema"] != 1 or manifest["releaseTag"] != f"gateway-{manifest['sourceRevision']}":
+    if manifest["schema"] != 2 or manifest["releaseTag"] != f"gateway-{manifest['sourceRevision']}":
         raise ValueError("unsupported manifest or release tag")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?", manifest["version"]):
         raise ValueError("invalid version")
@@ -163,7 +257,7 @@ def verify_manifest(path, expected_digest):
 
 
 def assemble(directory, revision):
-    manifest = {"schema": 1, "sourceRevision": source_revision(revision),
+    manifest = {"schema": 2, "sourceRevision": source_revision(revision),
                 "version": version(), "releaseTag": f"gateway-{revision}",
                 "artifacts": [json.loads((directory / f"{target}.json").read_text())
                               for target in sorted(TARGETS)]}
@@ -171,7 +265,7 @@ def assemble(directory, revision):
         verify_archive(directory / record["file"], record, manifest)
     path = directory / "manifest.json"
     path.write_bytes(canonical(manifest))
-    checksum = digest(path.read_bytes())
+    checksum = digest(read_bounded(path, 65536))
     verify_manifest(path, checksum)
     (directory / "manifest.sha256").write_text(f"{checksum}  manifest.json\n")
     return checksum
