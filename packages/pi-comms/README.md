@@ -2,7 +2,7 @@
 
 Lets live Pi sessions send each other messages, on one machine or across machines.
 
-pi-comms does not export transcripts, transfer files, apply patches or run tasks on a peer. Messages are authored by the model or user. Nothing starts a gateway for you, and nothing is stored when a session ends.
+pi-comms does not export transcripts, transfer files, apply patches or run tasks on a peer. Messages are authored by the model or user. Loading an unconfigured extension is inert. After reviewed setup, participating Pi sessions start a detached shared gateway on demand. Session inboxes/publications are volatile; setup choices and credential/floor state remain on disk.
 
 ```mermaid
 flowchart LR
@@ -27,31 +27,50 @@ Same-machine grants apply across projects on the OS account, not just within a r
 
 ## Install
 
-You need a clone of this repository and a Rust toolchain to build the gateway. `nix develop` in the clone provides one.
+Install the extension:
 
-1. Install the extension:
+```sh
+pi install git:github.com/mich-murphy/pi-extensions
+```
 
-   ```sh
-   pi install git:github.com/mich-murphy/pi-extensions
-   ```
+To [load only some extensions](../../README.md#install), see the root README.
+Run `/comms setup` in a terminal UI or attended RPC client. Choose local-only or
+one remote peer, review the inferred machine identity, `local` scope, `Pi` label
+and grants, optionally Edit or inspect paginated Details, then select **Apply**.
+Escape, Cancel, an invalid RPC answer or a 120-second unanswered dialog makes no
+setup writes, downloads or gateway starts before Apply. Print/JSON setup/reset
+refuse mutation; there is no unattended `--yes` bypass.
 
-   To [load only some extensions](../../README.md#install), see the root README.
+**Acquisition gate:** this source tree ships no reviewed immutable gateway source
+or published artifact-manifest pin. Fresh production Apply therefore reports
+**Blocked**, without writing configuration or choosing a project/PATH binary.
+Once reviewed pins are supplied, acquisition prefers Nix with a private dedicated
+result, then the separately reviewed verified native fallback if available. A
+previously installed, hash-verified setup executable can be reused. A local test
+binary is not a production acquisition route.
 
-2. Build the gateway from the clone:
+For manual operation before that distribution gate is resolved:
 
-   ```sh
-   cd packages/pi-comms/gateway && cargo build --locked --release
-   ```
+1. Build from a trusted checkout using `cd packages/pi-comms/gateway && cargo build --locked --release` (`nix develop` provides the toolchain).
+2. Create a private persistent socket directory and gateway configuration. It has the Pi fields below without `label`; see the [gateway reference](gateway/README.md#configuration).
+3. Start `pi-gateway --config /absolute/path/to/gateway.json` yourself.
+4. Write the Pi configuration below and run `/comms reconnect` to activate an absent runtime. Existing custom/external/symlink configurations are preserved; guided setup does not silently adopt or migrate them.
 
-3. Create a private directory for the socket, such as `mkdir -m 700 ~/pi-comms`. Write a gateway config, `~/pi-comms/gateway.json`. It has the same fields as the Pi config below, without `label`. See the [gateway reference](gateway/README.md#configuration) for its limits.
+Setup-managed gateways run without launchd/systemd definitions: the first
+participating Pi starts the singleton; the last closes it after a bounded grace.
+Closing one Pi never kills the shared process. A crash while Pis remain open
+triggers bounded reconnect-or-spawn/re-registration episodes, keeping their nonce,
+publications and inbox state and never replaying uncertain sends. Exhaustion is
+reported; the next explicit reconnect or tool call can start another bounded
+episode, not a perpetual background retry.
 
-4. Start the gateway and leave it running. It prints a `ready` line once it is listening:
-
-   ```sh
-   ./target/release/pi-gateway --config /home/me/pi-comms/gateway.json
-   ```
-
-5. Write the Pi config below, then run `/reload` in each Pi session.
+The socket/managed ownership lock live under canonical home
+`.pi/comms/<agent-directory-hash>/s` in private owned directories. Paths must fit
+100 UTF-8 bytes. An overlong home requires an explicitly reviewed short persistent
+private location, never a silent temporary-path fallback. Intentionally separate
+agent profiles have separate gateways; ordinary sessions sharing an agent
+directory share one. This is same-account trust across projects, not isolation
+from root or other code running as that account.
 
 ## Configure
 
@@ -103,19 +122,76 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 ## Commands
 
-`/comms [status|doctor|reconnect]` is the canonical command. Status (the default) reports the current runtime without connecting. Doctor reads the user-agent configuration and socket entry, names invalid fields, and gives corrective guidance; it never starts or connects to a gateway. Reconnect starts one bounded reconnect of the existing runtime; it does not reread configuration, replace its nonce/state, or replay sends.
-
-`/session-communication [status|reconnect]` remains a compatibility alias. Configuration changes still require `/reload`, which replaces the runtime and discards its volatile inbox, publications, interests and receipts; reconnect is not a reload.
-
-| Message | Meaning |
+| Command | Behavior |
 | --- | --- |
-| `Session communication: not enabled · (no user-agent session-communication.json)` | The config file is missing. |
-| `Session communication: not enabled · configuration or startup failed` | The file is invalid or the runtime failed to start. The message asks you to check the agent-directory configuration and gateway, then `/reload`. |
-| `Session communication: not enabled · runtime unavailable` | No runtime is running. |
-| `Session communication: enabled · …` | Also lists your identity, scopes, watch state, inbox, receipts, publications and wake notice. |
-| `Session gateway unavailable; no admitted work was replayed…` | `reconnect` failed. |
+| `/comms` or `/comms status` | Current exact runtime identity and bounded accounting; native remote diagnostics are a disk snapshot, not proof of a live link. |
+| `/comms setup` | Native intent/review/Edit/Apply; resumes pairing, repairs an unavailable owned installation, adds a peer to an owned local setup, or diagnoses/preserves external configuration. |
+| `/comms doctor` | Bounded regular-file inspection, including valid config symlinks read-only. Never binds/connects to a gateway or writes configuration/floors. |
+| `/comms reconnect` | Bounded ensure/re-registration. Existing runtimes keep nonce/state and do not replay uncertain sends; an absent runtime can load valid configuration and activate directly. |
+| `/comms reset` | Reviewed disable of unchanged setup-owned participation, reversible configuration backups and resumable owned archives. Preserves executable, keys, CRLs, revocation floors and old pair generations. Never signals the shared gateway. |
 
-If configuration or startup fails, check the JSON fields and 32 KiB cap above and confirm that the configured gateway is running and its socket is accessible to your account. After correcting configuration, use `/reload`; reconnect does not reload the file. Use `/session-communication status` for accounting before any further delivery attempt. Unknown sends must never be resent as a new message ID.
+Managed setup requires the `config-generation-v1` capability. Each connection
+attempt sends the expected SHA256 from that attempt's verified setup snapshot;
+the gateway admits it only when those are the exact config bytes loaded by its
+managed process. A reachable socket alone is not activation proof. Manual clients
+without a managed ensure callback retain legacy registration without the field.
+There is no unguarded fallback if an older gateway rejects the field or closes.
+This fingerprint does **not** attest PKI-content freshness or remote link readiness;
+supported pairing updates select new immutable credential-generation paths.
+
+Fresh Apply discloses an already-present shared socket using read-only inspection
+(no pre-Apply connect), saves the reviewed configuration, and sends at most one
+machine-bound restart request when that prior socket was observed. An uncertain
+restart, generation mismatch or failed guarded admission reports **configuration
+saved; activation pending/unconfirmed**, not connected. Surviving old sessions may
+still use old trust until the old gateway exits. An old instance appearing after
+the review snapshot is also blocked by guarded admission, not silently adopted.
+
+`/comms reconnect` and passive recovery only retry guarded admission within the
+existing bounded episode (six attempts / sixty seconds); they never send restart
+control or replay application requests. To explicitly retire an old instance, use
+`/comms setup` → **Activate saved configuration**, review, then Apply. This sends
+one separate user-approved restart and reconnects the same Pi runtime: nonce,
+inbox, publications, interests and receipts are retained. Incompatible survivors
+with narrowed identity/scope/grants remain refused. A cancelled action does
+nothing; uncertain control is never automatically replayed.
+
+`/session-communication [status|reconnect]` remains a compatibility alias.
+Reconnect is not a blanket `/reload`: it does not replace an existing runtime's
+adapter policy snapshot. Maintenance reloads compatible setup metadata for the
+launcher while retaining the Pi's identity/state. Adding remote grants explicitly
+reviews replacement of **this** Pi runtime and loss of its inbox, publications,
+interests and receipts. Other already-open Pis keep their conservative earlier
+adapter grants; they do not automatically gain the new remote permissions.
+
+Missing configuration on disk does not prove an old runtime is disabled. Reset
+closes this Pi's runtime after disabling owned disk configuration; other running
+Pis are not silently replaced. Unknown/custom/symlink configuration or changed
+ownership hashes fail closed without overwriting external bytes. Interrupted
+Apply/reset reports retained effects; retry reset only for an owned recovery
+ledger. The native permanent flock releases on holder EOF/crash and is never
+removed as a stale PID file.
+
+If a setup-owned executable disappears (including Nix GC) or its bytes/type change,
+`/comms setup` offers an explicit **installation repair**, not an automatic update.
+Inspection never executes the broken file: symlinks, FIFOs/devices and oversized
+files fail promptly. Cancel does not acquire or write. Reviewed Apply uses a fresh
+trusted acquisition route, then the verified new helper's native lock and CAS to
+update only installed/executable metadata. Configuration, keys, floors and old
+unknown files are retained; existing Pi runtimes keep nonce/state. An interrupted
+metadata update has a resumable repair ledger; finish it with setup before reset.
+Externally changed adapter/gateway/pairing bytes refuse repair. With no trusted
+catalog pin, repair is honestly blocked just like a fresh install; it never falls
+back to executing the broken file or choosing a project/PATH binary.
+
+For remote peers, use [guided pairing and maintenance](docs/remote-setup.md).
+Native existing-material import preserves a live existing floor and generates a
+public renewal request, but does not adopt external issuer custody. Its signer
+and update bundle must match the imported runtime's exact pair/offer binding;
+arbitrary external-CA renewal is not automated or proven by guided import.
+A local connected result does not claim a remote link. Expired/bad remote
+credentials degrade the remote side while leaving local communication available.
+Unknown sends must never be resent as a new message ID.
 
 ## Limits
 
