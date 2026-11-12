@@ -23,6 +23,8 @@ flowchart LR
 
 Every session connects to its machine's gateway, including two sessions on the same machine.
 
+Same-machine grants apply across projects on the OS account, not just within a repository. Only explicitly published records are readable; files and whole transcripts are not automatically shared. Authorized new messages can wake a model and incur provider usage. Peer messages are untrusted content.
+
 ## Install
 
 You need a clone of this repository and a Rust toolchain to build the gateway. `nix develop` in the clone provides one.
@@ -101,7 +103,9 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 ## Commands
 
-`/session-communication [status|reconnect]` shows status (the default) or starts one bounded reconnect to the gateway.
+`/comms [status|doctor|reconnect]` is the canonical command. Status (the default) reports the current runtime without connecting. Doctor reads the user-agent configuration and socket entry, names invalid fields, and gives corrective guidance; it never starts or connects to a gateway. Reconnect starts one bounded reconnect of the existing runtime; it does not reread configuration, replace its nonce/state, or replay sends.
+
+`/session-communication [status|reconnect]` remains a compatibility alias. Configuration changes still require `/reload`, which replaces the runtime and discards its volatile inbox, publications, interests and receipts; reconnect is not a reload.
 
 | Message | Meaning |
 | --- | --- |
