@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -38,11 +39,14 @@ import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import { setupCommand } from "../onboarding/setup.js";
 import { saveOwnedPlan } from "../onboarding/update.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
+import { nativeIncarnation, nativeParticipants } from "./onboarding-fixtures.js";
 
 const builtExecutable = resolve("packages/pi-comms/gateway/target/debug/pi-gateway");
 let executable: string;
 let root: string;
 let agent: string;
+let participants: ReturnType<typeof nativeParticipants>;
+let cleanupFailure: { cause: unknown } | undefined;
 
 function backend() {
   return { acquire: vi.fn<SetupBackend["acquire"]>(async () => executable) };
@@ -66,11 +70,15 @@ function ui(answers: (string | undefined)[], mode: DialogContext["mode"] = "rpc"
     },
   };
 }
-async function until(check: () => Promise<boolean>, milliseconds = 5000) {
+async function until(
+  check: () => Promise<boolean>,
+  milliseconds = 5000,
+  diagnostic: () => Promise<string> = async () => "",
+) {
   const deadline = performance.now() + milliseconds;
   while (!(await check())) {
     if (performance.now() >= deadline) {
-      throw new Error("Native condition deadline exceeded");
+      throw new Error(`Native condition deadline exceeded: ${await diagnostic()}`);
     }
     await delay(25);
   }
@@ -79,22 +87,29 @@ function client(
   config: NonNullable<Awaited<ReturnType<typeof loadConfiguration>>>,
   ensureGateway: ReturnType<typeof managedLauncher>,
 ) {
-  return new GatewayClient({
-    config,
-    peer: {
-      machineId: config.machineId,
-      sessionId: freshId(),
-      runtimeNonce: freshId(),
-    },
-    incoming: () => {
-      throw new Error("No unsolicited request expected");
-    },
-    statusChanged: () => undefined,
-    ensureGateway,
-  });
+  return participants.own(
+    new GatewayClient({
+      config,
+      peer: {
+        machineId: config.machineId,
+        sessionId: freshId(),
+        runtimeNonce: freshId(),
+      },
+      incoming: () => {
+        throw new Error("No unsolicited request expected");
+      },
+      statusChanged: () => undefined,
+      ensureGateway,
+    }),
+  );
 }
 describe("actual setup plan/apply lifecycle", () => {
   beforeEach(async () => {
+    // Keep the old paths and stopping owner if a body outlives its cleanup drain.
+    if (cleanupFailure !== undefined) {
+      throw new Error("Prior native cleanup failed; refusing a new fixture", cleanupFailure);
+    }
+    participants = nativeParticipants();
     root = await realpath(await mkdtemp(join(tmpdir(), "pc-")));
     agent = join(root, "agent");
     executable = join(root, "pi-gateway");
@@ -103,9 +118,20 @@ describe("actual setup plan/apply lifecycle", () => {
     vi.stubEnv("HOME", root);
   });
   afterEach(async () => {
-    vi.unstubAllEnvs();
-    await rm(root, { recursive: true, force: true });
-  });
+    // Vitest still runs afterEach when the fail-stop beforeEach above throws.
+    if (cleanupFailure !== undefined) {
+      return;
+    }
+    try {
+      await participants.close();
+      await until(async () => !existsSync(setupPaths(agent).socket), 12_000);
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      cleanupFailure = { cause: error };
+      throw error;
+    }
+  }, 80_000);
   test("cancel and forged attended RPC selection leave no directories, acquisition or runtime", async () => {
     for (const answer of [undefined, "forged-option"]) {
       const injected = backend();
@@ -219,34 +245,79 @@ describe("actual setup plan/apply lifecycle", () => {
       await until(async () => !existsSync(setup.socketPath), 12_000);
     }
   });
-  test("native gateway crash recovers with surviving clients and unchanged peer identities", async () => {
-    const selected = plan();
-    const setup = await applyLocal(agent, selected, backend(), () => undefined);
-    const child = spawn(executable, ["--managed", "--config", setup.gatewayPath], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    await once(child.stdout, "data");
-    const ensure = managedLauncher(setup);
-    const first = client(selected.adapter, ensure);
-    const second = client(selected.adapter, ensure);
-    try {
-      await Promise.all([first.reconnect(), second.reconnect()]);
-      const oldInode = await inode(setup.socketPath);
-      child.kill("SIGKILL");
-      await once(child, "exit");
-      await until(
-        async () => replacementConnected(setup.socketPath, oldInode, first, second),
-        10_000,
-      );
-      const roster = await first.discover(selected.adapter.scopeIds, false);
-      expect(roster.outcome.tag).toBe("ok");
-    } finally {
-      child.kill("SIGTERM");
-      first.close();
-      second.close();
-      await until(async () => !existsSync(setup.socketPath), 12_000);
-    }
-  });
+  // Keep the existing 10s recovery and 12s shutdown bounds inside the runner budget.
+  test(
+    "native gateway crash recovers with surviving clients and unchanged peer identities",
+    async ({ annotate }) =>
+      participants.run(async () => {
+        const started = performance.now();
+        const selected = plan();
+        const setup = await applyLocal(agent, selected, backend(), () => undefined);
+        const ensure = managedLauncher(setup);
+        const first = client(selected.adapter, ensure);
+        const second = client(selected.adapter, ensure);
+        const child = spawn(executable, ["--managed", "--config", setup.gatewayPath], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let ready = "";
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          ready += chunk;
+        });
+        try {
+          await until(
+            async () => ready.includes("\n"),
+            5000,
+            async () => `ready JSON; exit=${child.exitCode}/${child.signalCode}; output=${ready}`,
+          );
+          const announcement = readyAnnouncement(ready);
+          expect(announcement).toMatchObject({
+            event: "ready",
+            socketPath: setup.socketPath,
+            machineId: selected.adapter.machineId,
+          });
+          await annotate(
+            `ready JSON at ${Math.round(performance.now() - started)}ms`,
+            "native-phase",
+          );
+          await Promise.all([first.reconnect(), second.reconnect()]);
+          await annotate(
+            `two registrations at ${Math.round(performance.now() - started)}ms`,
+            "native-phase",
+          );
+          const oldSocket = await nativeIncarnation(setup.socketPath);
+          expect(oldSocket).toBeDefined();
+          const exited = once(child, "exit", { signal: AbortSignal.timeout(5000) });
+          child.kill("SIGKILL");
+          await exited;
+          await until(
+            async () => replacementConnected(setup.socketPath, oldSocket, first, second),
+            10_000,
+            async () =>
+              JSON.stringify({
+                phase: "replacement registration",
+                oldSocket,
+                currentSocket: await nativeIncarnation(setup.socketPath),
+                first: first.status(),
+                second: second.status(),
+              }),
+          );
+          await annotate(
+            `replacement registered at ${Math.round(performance.now() - started)}ms`,
+            "native-phase",
+          );
+          const roster = await first.discover(selected.adapter.scopeIds, false);
+          expect(roster.outcome.tag).toBe("ok");
+        } finally {
+          child.kill("SIGTERM");
+          first.close();
+          second.close();
+          await until(async () => childExited(child));
+          await until(async () => !existsSync(setup.socketPath), 12_000);
+        }
+      }),
+    40_000,
+  );
   test("gateway drift preflight refuses reset before disabling adapter", async () => {
     await applyLocal(agent, plan(), backend(), () => undefined);
     const paths = setupPaths(agent);
@@ -363,13 +434,14 @@ async function hasBackup(path: string) {
 }
 async function replacementConnected(
   path: string,
-  old: number,
+  old: string | undefined,
   first: GatewayClient,
   second: GatewayClient,
 ) {
+  const current = await nativeIncarnation(path);
   return (
-    existsSync(path) &&
-    (await inode(path)) !== old &&
+    current !== undefined &&
+    current !== old &&
     first.status().connected &&
     second.status().connected
   );
@@ -407,4 +479,11 @@ function incompatiblePlan(
     })),
   };
   return { ...selected, adapter: { ...selected.adapter, [field]: changes[field] } };
+}
+
+function readyAnnouncement(output: string): unknown {
+  return JSON.parse(output.split("\n")[0] ?? "");
+}
+function childExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }

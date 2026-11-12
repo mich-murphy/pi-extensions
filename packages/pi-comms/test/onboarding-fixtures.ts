@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { copyFile, chmod, mkdtemp, realpath } from "node:fs/promises";
+import { copyFile, chmod, mkdtemp, realpath, lstat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -56,4 +56,54 @@ export async function nativeAddress(): Promise<string> {
   server.close();
   await closed;
   return `127.0.0.1:${address.port}`;
+}
+
+/** A pathname/inode alone is not an incarnation: Linux can immediately reuse an inode. */
+export async function nativeIncarnation(path: string): Promise<string | undefined> {
+  try {
+    const value = await lstat(path, { bigint: true });
+    if (!value.isSocket()) {
+      throw new Error("Native fixture path is not a socket");
+    }
+    return `${value.dev}:${value.ino}:${value.ctimeNs}`;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/** Fence late participants, then drain the body before deleting any owned fixture files. */
+export function nativeParticipants() {
+  const clients = new Set<{ close: () => void }>();
+  let stopping = false;
+  let settled = true;
+  return {
+    own<T extends { close: () => void }>(client: T): T {
+      if (stopping) {
+        client.close();
+        throw new Error("Native fixture is stopping; late participant refused");
+      }
+      clients.add(client);
+      return client;
+    },
+    async run(body: () => Promise<void>): Promise<void> {
+      settled = false;
+      try {
+        await body();
+      } finally {
+        settled = true;
+      }
+    },
+    async close(): Promise<void> {
+      stopping = true;
+      for (const client of clients) {
+        client.close();
+      }
+      // Closing cancels reconnect episodes, but awaited setup/control work can still finish.
+      // A timed-out body must settle before HOME is restored or secrets are removed.
+      await nativeUntil(async () => settled, 65_000);
+    },
+  };
 }
