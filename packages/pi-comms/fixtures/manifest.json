@@ -2720,6 +2720,387 @@
         "tag": "rejected",
         "connection": "closed"
       }
+    },
+    {
+      "name": "gateway-restart",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/gateway-restart.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "gateway.restart",
+          "rid": "11111111111111111111111111111111",
+          "expectedMachineId": "alpha"
+        }
+      }
+    },
+    {
+      "name": "gateway-restart-remote",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/gateway-restart-remote.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "gateway-restart-ack",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/gateway-restart-ack.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "gateway.restart",
+          "outcome": {
+            "tag": "ok",
+            "value": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "gateway-restart-ack-remote",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/gateway-restart-ack-remote.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "gateway-restart-bad-machine",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/gateway-restart-bad-machine.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "Alpha",
+          "expectedConfigSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    },
+    {
+      "name": "register-config-generation-remote-link",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/register-config-generation-remote-link.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-gateway-forward",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/register-config-generation-gateway-forward.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-adapter-delivery",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/register-config-generation-adapter-delivery.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-short",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-short.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-long",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-long.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-uppercase",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-uppercase.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-nonhex",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-nonhex.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-number",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-number.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-null",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-null.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-config-mismatch",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-config-mismatch.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "register",
+          "outcome": {
+            "tag": "error",
+            "code": "config_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-register-config-mismatch-remote-link",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/error-register-config-mismatch-remote-link.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-config-mismatch-gateway-forward",
+      "boundary": "frame",
+      "role": "gateway-forward",
+      "hexFile": "wire/error-register-config-mismatch-gateway-forward.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-config-mismatch-adapter-delivery",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/error-register-config-mismatch-adapter-delivery.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "register",
+          "outcome": {
+            "tag": "error",
+            "code": "config_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-close",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-close.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-discover",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-discover.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-gateway-restart",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-gateway-restart.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-ping",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-ping.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-unwatch",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-unwatch.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-send",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-send.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-deliver",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-deliver.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-state-get",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-state-get.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-state-list",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-state-list.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-interest-add",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-interest-add.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-config-mismatch-wrong-interest-remove",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-config-mismatch-wrong-interest-remove.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "error-register-config-mismatch-resource",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/error-register-config-mismatch-resource.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "close-config-generation",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/close-config-generation.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-config-generation-trailing-newline",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-config-generation-trailing-newline.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "gateway-restart-config-generation",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/gateway-restart-config-generation.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
     }
   ]
 }

@@ -78,6 +78,9 @@ struct Forward {
 #[derive(Debug)]
 pub struct Daemon {
     config: Config,
+    remote_degraded: Option<&'static str>,
+    managed: bool,
+    restart: Option<(ConnectionId, Instant)>,
     listener: UnixListener,
     socket_inode: u64,
     socket_device: u64,
@@ -105,11 +108,24 @@ impl Daemon {
     /// Rejects unsafe directory ancestry, existing socket paths, overlong paths and bind errors.
     pub fn bind(config: Config) -> io::Result<Self> {
         crate::paths::private_parent(&config.socket_path)?;
-        let link = config
+        let (link, remote_degraded) = match config
             .remote
             .as_ref()
-            .map(|settings| Driver::new(settings.clone().prepare(&config.machine_id)?))
-            .transpose()?;
+            .map(|settings| settings.clone().prepare(&config.machine_id))
+            .transpose()
+        {
+            Ok(prepared) => match prepared.map(Driver::new).transpose() {
+                Ok(link) => (link, None),
+                Err(error) => match crate::remote::degradation(&error) {
+                    Some(reason) => (None, Some(reason)),
+                    None => return Err(error),
+                },
+            },
+            Err(error) => match crate::remote::degradation(&error) {
+                Some(reason) => (None, Some(reason)),
+                None => return Err(error),
+            },
+        };
         let parent = config.socket_path.parent().ok_or_else(denied)?;
         // peer credentials are not process attestation; the socket directory is the boundary.
         let owner = current_uid();
@@ -133,6 +149,9 @@ impl Daemon {
         let socket = std::fs::symlink_metadata(&config.socket_path)?;
         Ok(Self {
             config,
+            remote_degraded,
+            managed: false,
+            restart: None,
             link,
             listener,
             socket_inode: socket.ino(),
@@ -149,6 +168,11 @@ impl Daemon {
     pub fn socket_path(&self) -> &Path {
         &self.config.socket_path
     }
+    /// Returns a sanitized startup credential degradation reason, not live link status.
+    pub fn remote_degraded_reason(&self) -> Option<&'static str> {
+        self.remote_degraded
+    }
+
     /// Returns the remote listener's actually bound address, resolving a configured port 0.
     ///
     /// `None` when no remote is configured or the remote endpoint connects out.
@@ -189,6 +213,7 @@ impl Daemon {
         lifetime: Lifetime,
     ) -> io::Result<()> {
         let managed = lifetime == Lifetime::Managed;
+        self.managed = managed;
         tokio::pin!(shutdown);
         let mut idle = managed.then(|| Instant::now() + crate::managed::STARTUP_GRACE);
         let mut participated = false;
@@ -216,6 +241,7 @@ impl Daemon {
             tokio::select! {
                 () = &mut shutdown => return Ok(()),
                 () = transport::next_deadline(idle) => return Ok(()),
+                () = transport::next_deadline(self.restart.map(|(_, deadline)| deadline)) => return Ok(()),
                 accepted = self.listener.accept() => {
                     let (stream, _) = accepted?;
                     if tasks.len() < MAX_CONNECTIONS + usize::from(self.remote_id().is_some()) && self.clients.values().filter(|client| client.remote.is_none()).count() < MAX_CONNECTIONS { self.accept(stream, &events, &mut tasks)?; }
@@ -229,7 +255,10 @@ impl Daemon {
                 Some(event) = receive.recv() => self.event(event),
                 Some(joined) = tasks.join_next(), if !tasks.is_empty() => {
                     match joined {
-                        Ok(id) => self.disconnect(id),
+                        Ok(id) => {
+                            if self.restart.is_some_and(|(requester, _)| requester == id) { return Ok(()); }
+                            self.disconnect(id);
+                        },
                         Err(error) if error.is_cancelled() => {},
                         Err(_) => return Err(io::Error::other("connection task failed")),
                     }
@@ -250,6 +279,14 @@ impl Daemon {
         events: &mpsc::Sender<Event>,
         tasks: &mut JoinSet<ConnectionId>,
     ) -> io::Result<()> {
+        // A peer may disconnect before accept/credential inspection. Reject that
+        // connection only; it must not terminate the listener or managed grace.
+        if !stream
+            .peer_cred()
+            .is_ok_and(|credentials| credentials.uid() == current_uid())
+        {
+            return Ok(());
+        }
         let id = ConnectionId(self.next_generation);
         self.next_generation = self
             .next_generation
@@ -403,7 +440,7 @@ impl Daemon {
                 watch: watch_generation,
                 source,
                 finish: value["op"] == "result"
-                    && value["forOp"] == "close"
+                    && matches!(value["forOp"].as_str(), Some("close" | "gateway.restart"))
                     && value["outcome"]["tag"] == "ok",
             })
             .is_ok()
@@ -460,6 +497,21 @@ impl Daemon {
             .clients
             .get(&id)
             .is_some_and(|client| client.descriptor.is_some());
+        if request["op"] == "gateway.restart" {
+            if !self.managed
+                || request["expectedMachineId"] != self.config.machine_id
+                || self.restart.is_some()
+            {
+                self.fail(id);
+            } else {
+                self.restart = Some((id, Instant::now() + std::time::Duration::from_secs(2)));
+                self.respond(id, &request, json!({"tag":"ok","value":{}}));
+                if let Some(client) = self.clients.get_mut(&id) {
+                    client.closing = true;
+                }
+            }
+            return;
+        }
         if request["op"] == "register" {
             self.register(id, &request);
             return;
@@ -508,6 +560,12 @@ impl Daemon {
     }
 
     fn register(&mut self, id: ConnectionId, request: &Value) {
+        if let Some(expected) = request.get("expectedConfigSha256")
+            && (!self.managed || self.config.loaded_config_sha256.as_deref() != expected.as_str())
+        {
+            self.reject(id, request, "config_mismatch", None);
+            return;
+        }
         if self
             .clients
             .get(&id)
@@ -1125,6 +1183,52 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn managed_runtime_without_loaded_file_fingerprint_refuses_guarded_registration() {
+        let directory = PathBuf::from("/tmp")
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!(
+                "gw-generation-{}",
+                random_id().expect("isolated nonce")
+            ));
+        std::fs::create_dir(&directory).expect("isolated directory");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("private directory");
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[]})).expect("config JSON")).expect("parsed config");
+        assert!(
+            config.loaded_config_sha256.is_none(),
+            "parse is not a loaded file read"
+        );
+        let mut daemon = Daemon::bind(config).expect("isolated bind");
+        daemon.managed = true;
+        let (stream, _peer) = UnixStream::pair().expect("isolated sockets");
+        let (events, _receive) = mpsc::channel(68);
+        let mut tasks = JoinSet::new();
+        daemon
+            .accept(stream, &events, &mut tasks)
+            .expect("fixture connection");
+        let id = ConnectionId(1);
+        let mut request = json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":"fixture","runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"fixture","expectedConfigSha256":"0".repeat(64)});
+        daemon.handle(id, request.clone());
+        assert!(
+            daemon.descriptor(id).is_none(),
+            "unknown fingerprint never admits guarded participant"
+        );
+        request
+            .as_object_mut()
+            .expect("request object")
+            .remove("expectedConfigSha256");
+        daemon.handle(id, request);
+        assert!(
+            daemon.descriptor(id).is_some(),
+            "legacy still admits without a loaded fingerprint"
+        );
+        drop(daemon);
+        tasks.abort_all();
+        std::fs::remove_dir_all(directory).expect("cleanup isolated fixture");
+    }
 
     #[tokio::test]
     async fn retired_watch_completion_cannot_release_reused_rid_watch_budget() {

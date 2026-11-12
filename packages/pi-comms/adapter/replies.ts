@@ -112,6 +112,7 @@ export function validateBoundReply(request: Request, reply: Reply, self: PeerRef
       interest(request, reply);
       break;
     }
+    case "gateway.restart":
     case "close":
     case "deliver":
     case "ping":

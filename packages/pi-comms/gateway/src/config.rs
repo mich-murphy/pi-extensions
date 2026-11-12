@@ -11,6 +11,9 @@ use crate::wire::{self, Role};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
+    // Set only by read, from the successfully parsed buffer; never refreshed at admission.
+    #[serde(skip)]
+    pub(crate) loaded_config_sha256: Option<String>,
     pub(crate) machine_id: String,
     pub(crate) socket_path: PathBuf,
     pub(crate) scope_ids: Vec<String>,
@@ -82,6 +85,7 @@ fn scope(value: &str) -> bool {
 }
 impl Config {
     /// Reads one explicitly named configuration without inspecting any credential directory.
+    /// Retains SHA256 of the exact successfully parsed bytes for guarded managed admission.
     ///
     /// # Errors
     /// Rejects nonabsolute paths, excessive bytes, ambiguous JSON, unknown fields,
@@ -96,10 +100,21 @@ impl Config {
         file.take(32_765)
             .read_to_end(&mut bytes)
             .map_err(|_| ReadConfigError)?;
-        Self::parse(&bytes)
+        let mut config = Self::parse(&bytes)?;
+        let digest = ring::digest::digest(&ring::digest::SHA256, &bytes);
+        config.loaded_config_sha256 = Some(digest.as_ref().iter().fold(
+            String::with_capacity(64),
+            |mut output, byte| {
+                use std::fmt::Write;
+                write!(output, "{byte:02x}").expect("writing to String cannot fail");
+                output
+            },
+        ));
+        Ok(config)
     }
 
     /// Validates bounded configuration bytes without performing I/O.
+    /// Does not establish a loaded-file fingerprint for guarded managed admission.
     ///
     /// # Errors
     /// Rejects the same schema and semantic failures as [`Self::read`].
@@ -171,5 +186,31 @@ impl Config {
             })
             .cloned()
             .collect()
+    }
+}
+
+impl Config {
+    /// Reports a read-only credential snapshot, never proof of a running gateway or link.
+    ///
+    /// # Errors
+    /// Propagates unexpected noncredential failures rather than hiding them as degradation.
+    pub fn diagnose(&self) -> std::io::Result<serde_json::Value> {
+        let remote = match &self.remote {
+            None => serde_json::json!({"state":"disabled"}),
+            Some(settings) => match settings.clone().diagnose(&self.machine_id) {
+                Ok(prepared) => {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(std::io::Error::other)?
+                        .as_secs();
+                    serde_json::json!({"state":"configured","credentialExpiresAt":prepared.expires_at(),"expiryWarning":prepared.expires_at().saturating_sub(now) <= 7*86400})
+                }
+                Err(error) => match crate::remote::degradation(&error) {
+                    Some(reason) => serde_json::json!({"state":"degraded", "reason":reason}),
+                    None => return Err(error),
+                },
+            },
+        };
+        Ok(serde_json::json!({"version":1,"machineId":self.machine_id,"remote":remote}))
     }
 }
