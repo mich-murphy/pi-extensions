@@ -346,6 +346,7 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
 
 #[test]
 fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
+    const MAX_ATTEMPTS: usize = 65_538;
     let mut fixture = Fixture::new();
     let owner = fixture.start();
     let socket = fixture.directory.join("s");
@@ -358,9 +359,19 @@ fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
     // must reject a contender before any potentially ambiguous socket probe.
     rustix::process::kill_process(pid, rustix::process::Signal::STOP)
         .expect("stop isolated fixture");
-    let mut pending = Vec::new();
+    // Mio requests listen(-1), so the OS cap applies (commonly 4096 on Linux,
+    // 128 on Darwin). Closing a queued client does not drain the stopped owner's
+    // accept queue on either platform. Avoid retaining one FD per queue entry:
+    // a low test-process RLIMIT_NOFILE must not masquerade as saturation.
+    // Allow up to a 64K queue plus Linux's extra entry and the failing probe,
+    // with a separate time bound; unusually larger OS caps fail explicitly.
+    let started = Instant::now();
     let mut saturated = false;
-    for _ in 0..1024 {
+    for _ in 0..MAX_ATTEMPTS {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "accept backlog saturation must complete within five seconds"
+        );
         let client = rustix::net::socket(
             rustix::net::AddressFamily::UNIX,
             rustix::net::SocketType::STREAM,
@@ -373,13 +384,23 @@ fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
             &client,
             &rustix::net::SocketAddrUnix::new(&socket).expect("Unix address"),
         );
-        pending.push(client);
-        if result.is_err() {
+        drop(client);
+        if let Err(error) = result {
+            assert!(
+                matches!(
+                    error,
+                    rustix::io::Errno::AGAIN | rustix::io::Errno::CONNREFUSED
+                ),
+                "expected a full live accept queue, not another connect error: {error}"
+            );
             saturated = true;
             break;
         }
     }
-    assert!(saturated, "fixture must fill the accept backlog");
+    assert!(
+        saturated,
+        "fixture must fill the accept backlog within {MAX_ATTEMPTS} attempts"
+    );
     fixture.rejected();
     assert_eq!(
         fs::symlink_metadata(&socket)
@@ -388,7 +409,6 @@ fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
         metadata.ino(),
         "live recorded socket must survive a saturated probe"
     );
-    drop(pending);
     fixture.kill(owner);
 }
 
