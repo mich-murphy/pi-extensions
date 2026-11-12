@@ -1,0 +1,26 @@
+{
+  "aarch64-apple-darwin": {
+    "nixSystem": "aarch64-darwin",
+    "os": "darwin",
+    "arch": "arm64",
+    "runner": "macos-15",
+    "abi": "macos",
+    "minimumOs": "15.0"
+  },
+  "aarch64-unknown-linux-gnu": {
+    "nixSystem": "aarch64-linux",
+    "os": "linux",
+    "arch": "arm64",
+    "runner": "ubuntu-24.04-arm",
+    "abi": "glibc",
+    "minimumOs": "glibc-2.39"
+  },
+  "x86_64-unknown-linux-gnu": {
+    "nixSystem": "x86_64-linux",
+    "os": "linux",
+    "arch": "x64",
+    "runner": "ubuntu-24.04",
+    "abi": "glibc",
+    "minimumOs": "glibc-2.39"
+  }
+}
