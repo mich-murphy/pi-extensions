@@ -80,15 +80,27 @@ describe("read-only doctor", () => {
     await writeFile(path, JSON.stringify({ ...config, socketPath: `/${"é".repeat(50)}` }));
     await expect(doctor(directory)).resolves.toContain("invalid fields: socketPath");
   });
-  test("oversized and symlink configurations fail closed without following targets", async () => {
+  test("oversized configurations fail closed and valid symlinks are inspected read-only", async () => {
     const { directory, path } = await fixture("x".repeat(32_769));
     const oversized = await doctor(directory);
     expect(oversized).toContain("exceeds 32 KiB");
     await rm(path);
-    await symlink(join(directory, "not-present"), path);
+    const target = join(directory, "store-config.json");
+    await writeFile(
+      target,
+      JSON.stringify({
+        machineId: "host",
+        socketPath: join(directory, "missing.sock"),
+        scopeIds: ["local"],
+        label: "Pi",
+        policies: [],
+      }),
+    );
+    const before = await readFile(target);
+    await symlink(target, path);
     const linked = await doctor(directory);
-    expect(linked).toContain("symlink not inspected");
-    expect(linked).toContain("runtime loader may follow a config symlink");
+    expect(linked).toContain("Configuration: valid");
+    await expect(readFile(target)).resolves.toStrictEqual(before);
     expect(linked).not.toContain("participation is off");
   });
 });

@@ -18,8 +18,8 @@ release, not through the same mutable download location.
 | Nix reference | Full revision, trusted `narHash`, `#pi-gateway` |
 | Package and app | `packages.<system>.pi-gateway`, `apps.<system>.pi-gateway` |
 | Version | Read from gateway `Cargo.toml`; never separately maintained |
-| Release tag | `gateway-<sourceRevision>` |
-| Asset origin | GitHub Releases, exact revision tag (see below) |
+| Release tag | `pi-gateway-v<version>` (immutable; source bound separately) |
+| Asset origin | GitHub Releases, exact semantic version tag (see below) |
 | Manifest | `manifest.json`, schema 2, pinned SHA-256 in extension metadata |
 | Archive | `pi-gateway-<version>-<Rust target>.tar.gz` |
 | Members | `pi-gateway` 0755, `release.json` 0644; regular files only |
@@ -33,9 +33,17 @@ not solely from a downloaded source's self-reported hash. URL-encode the SRI as
 one query value **before** the package fragment. Acquisition binds both the full
 revision and exact trusted NAR hash before filesystem, network or command effects;
 Nix then verifies fetched source content against that hash. The committed lock
-file alone does not authenticate the top-level source. Keep the Nix catalog null
-until the actual setup-capable source and its content pin are reviewed; historical
-source-fetch verification is not new-source installation evidence.
+file alone does not authenticate the top-level source. Pin only an actual
+setup-capable source whose content pin was independently derived and reviewed;
+historical source-fetch verification is not new-source installation evidence.
+The catalog commit is necessarily a descendant of the pinned producer revision
+(no self-referential NAR). The source pin authenticates inputs, not output bytes.
+The flake builds only a filtered subset of `packages/pi-comms/gateway` (excluding
+`target` and `release`), so a newer pinned revision whose changes lie outside that
+subset, such as the Python release helpers, can reuse an existing store output.
+A forced local rebuild of the same derivation produced different bytes: vendored
+panic locations embed the per-build sandbox path. Record the selected Nix
+binary's hash per build; do not compare it across builds, hosts or runners.
 
 Asset origin is
 `https://github.com/mich-murphy/pi-extensions/releases/download/<releaseTag>/`.
@@ -47,6 +55,19 @@ alone is not a GC root. Retain roots for the active and rollback versions. Never
 auto-adopt an executable from PATH or an unreviewed local checkout.
 
 The manifest records `sourceRevision`, `version`, `releaseTag`, and `artifacts`.
+`releaseTag` must equal `pi-gateway-v<version>`; the TypeScript downloader and the
+Python helper both derive it from the trusted version and reject any other tag,
+including the pre-release `gateway-<sourceRevision>` form. The tag does not
+authenticate the source: the full 40-hex `sourceRevision` is checked separately
+against the pin, every artifact record and embedded `release.json`, after the
+manifest SHA-256 pin. Archives and embedded `release.json` carry no tag, so a
+renamed release can reuse byte-identical verified archives with a regenerated
+manifest (and therefore a new manifest pin). A published version is immutable:
+any changed release (new source, binaries or manifest) requires a gateway
+`Cargo.toml` version bump and a new tag; never overwrite or re-point an existing
+`pi-gateway-v<version>` release or its assets. Workflow artifact names such as
+`gateway-<target>` and `gateway-release-candidate-<revision>` are CI staging
+names, not release tags.
 Each artifact records its target, Nix system, OS, architecture, runner, ABI,
 conservative tested baseline, measured runtime requirements, filename, archive
 size/SHA-256 and binary size/SHA-256. Embedded
@@ -116,9 +137,11 @@ Before enabling a downloadable fallback in a shipped extension:
 2. Test real consumer acquisition on each advertised native target, including
    loader/libc compatibility and macOS platform-security behavior. Record native
    service evidence separately; mocks do not establish it.
-3. With explicit publication authorization, create tag `gateway-<revision>` at
-   that exact source and upload the verified manifest and archives without
+3. With explicit publication authorization, create tag `pi-gateway-v<version>`
+   at that exact source and upload the verified manifest and archives without
    rebuilding. Preserve workflow evidence. Do not overwrite existing assets.
+   Publish with `--latest=false`: a gateway component release is versioned
+   independently and must not replace the pi-extensions bundle's Latest release.
 4. Review and pin the exact published manifest SHA-256 and full revision in the
    extension's trusted release metadata, then verify a real consumer download.
    Adjacent `manifest.sha256` is useful for review, not self-authentication.
@@ -126,10 +149,20 @@ Before enabling a downloadable fallback in a shipped extension:
 Until these gates pass, report fallback unavailable; do not ship fabricated
 hashes, treat nonexistent URLs as working acquisition, or send users to Cargo.
 A usable pinned Nix build remains an independent acquisition path. The shipped
-`onboarding/catalog.ts` currently has **no reviewed source pin and no native
-manifest pin**. Discovery reports this as unavailable; this state is not a
-production-ready installer. Do not fill it with the earlier foundation source
-if the reviewed setup requires newer pairing capabilities.
+`onboarding/catalog.ts` pins the reviewed Nix source revision
+`8b894b5367657abc9dddf5d35c7bb0df62472d09`, version `0.1.0`,
+`sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=`. It also pins the
+published native release
+[`pi-gateway-v0.1.0`](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.0)
+from the same revision, with manifest SHA-256
+`04620bae0f5fc038f4e9c2d6ee93c2e13d071109adc1536a901b3110b81965db`. That digest
+was reviewed against the published asset and an independent authentication of
+the original CI-built archives, not taken from the adjacent `manifest.sha256`.
+On the three supported targets, hosts without usable Nix use this native
+fallback. Intel macOS and other unlisted hosts remain unavailable. The macOS
+binary is ad-hoc signed, not Developer ID signed or notarized: `spctl` rejects
+it, and browser quarantine or managed-device policy can block it. Tests of the
+blocked path use an explicit empty catalog, not the shipped one.
 
 ## Acquisition implementation and recovery
 
@@ -159,11 +192,30 @@ claims, restricts HTTPS release/CDN redirects, bounds redirects, downloads and
 gzip output, parses only two regular USTAR members in memory, verifies binary
 hash/size and object architecture, then runs bounded `--version --json` with a
 sanitized environment. There is no system tar, shell extraction or PATH lookup.
-A private per-attempt staging directory is atomically renamed to the versioned
-installation only after verification and the compatibility probe. A failed
-attempt removes only its newly created directory. Existing completed native
-installs are reused only after pinned-manifest/binary reauthentication and a new
-capability probe; mismatched or incomplete existing state is preserved, not adopted.
+Each native attempt writes into a private per-attempt directory
+`.gateway-<version>-<rev>-native-XXXXXX` that is never renamed. After
+verification, the compatibility probe, a create-only completion marker and
+fsync, publication is one exclusive `symlink(2)` of that bare basename at
+`<version>-<rev>-native`. On Darwin and Linux this fails with `EEXIST` for any
+existing entry, so it never replaces or merges into an empty directory, file,
+symlink or other state. Once the link exists the attempt counts as committed:
+later cancellation or a root fsync failure never removes it. If the symlink call
+reports an error but this attempt's own link exists, the payload is retained.
+On a collision, a concurrent winner is adopted only after the same bounded
+reauthentication as reuse; any other entry is preserved untouched and the
+attempt fails. A failed unpublished attempt removes only its own directory.
+Unreferenced older attempts are neither adopted nor swept. Retention only keeps
+state safe: production setup and repair pass a fresh `install-<random>` or
+`repair-install-<random>` root on every call, so a retained committed or
+uncertain payload is neither reused nor swept by a normal retry and stays as
+unreferenced owned state. Only a caller that passes the same `installRoot` again
+gets verified reuse of it. Reuse accepts only a
+link whose target is exactly this pin's attempt-name pattern (no `/`, no
+traversal), pointing at a private, account-owned, non-symlink directory, or a
+legacy private directory at the versioned name; old installs are read without
+migration. Reuse requires the pinned manifest, binary hash and a new capability
+probe. The returned executable is the regular file inside the payload. Older
+pi-comms builds fail closed on the new link layout rather than reinstalling.
 
 Nix uses `build --out-link` at a dedicated private **per-attempt versioned** path,
 never the default profile; experimental features are enabled for that command,

@@ -301,6 +301,12 @@ export function toolPresentation(name: string): ToolRenderers {
 
 export function attentionStatus(value: unknown): string | undefined {
   const status = text(fields(value).status, "disconnected");
+  if (status === "activation_unconfirmed") {
+    return "Managed activation unconfirmed · guarded registration unavailable";
+  }
+  if (status === "activation_pending") {
+    return "Activation pending · running gateway serves another configuration generation";
+  }
   if (status === "connected") {
     return undefined;
   }
@@ -318,6 +324,11 @@ export function diagnostics(value: unknown, diagnostic: string): string {
   const peer = fields(status.peer);
   return [
     `Session communication: ${status.enabled === true ? "enabled" : "not enabled"} · ${preview(status.status)}`,
+    ...(status.status === "activation_pending" || status.status === "activation_unconfirmed"
+      ? [
+          "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /comms setup → Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
+        ]
+      : []),
     `Exact runtime: machine=${visibleText(text(peer.machineId))} session=${visibleText(text(peer.sessionId))} nonce=${visibleText(text(peer.runtimeNonce))}`,
     `Scopes: ${
       items(status.scopes)

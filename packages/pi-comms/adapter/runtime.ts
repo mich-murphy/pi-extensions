@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, ManagedRuntime, Queue } from "effect";
 import type { PeerRef } from "../protocol/schema.js";
+import type { EnsureGateway } from "./client.js";
 import type { Configuration } from "./config.js";
 import { AdapterSession } from "./session.js";
 import type { AdapterHost } from "./session.js";
@@ -14,17 +15,28 @@ export async function createAdapterRuntime(
   peer: PeerRef,
   pi: Pick<ExtensionAPI, "sendMessage">,
   context: () => AdapterHost | undefined,
+  ensureGateway?: EnsureGateway,
 ) {
   const layer = Layer.effect(
     AdapterService,
     Effect.gen(function* () {
-      const queue = yield* Queue.make<undefined>({ capacity: 1, strategy: "dropping" });
+      const queue = yield* Queue.make<undefined>({
+        capacity: 1,
+        strategy: "dropping",
+      });
       const session = yield* Effect.acquireRelease(
         Effect.sync(
           () =>
-            new AdapterSession(config, peer, pi, context, () => {
-              Queue.offerUnsafe(queue, undefined);
-            }),
+            new AdapterSession(
+              config,
+              peer,
+              pi,
+              context,
+              () => {
+                Queue.offerUnsafe(queue, undefined);
+              },
+              ensureGateway,
+            ),
         ),
         (current) =>
           Effect.sync(() => {

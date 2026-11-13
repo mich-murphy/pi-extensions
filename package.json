@@ -46,6 +46,7 @@
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.5",
     "fallow": "3.39.0",
+    "jiti": "2.7.0",
     "markdownlint-cli2": "0.24.0",
     "oxfmt": "0.76.0",
     "oxlint": "1.91.0",

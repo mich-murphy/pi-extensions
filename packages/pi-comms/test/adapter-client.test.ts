@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
+import type { EnsureGateway } from "../adapter/client.js";
 import type { Configuration } from "../adapter/config.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
@@ -15,8 +16,16 @@ import sessionCommunication from "../index.js";
 import type { Frame, Message } from "../protocol/schema.js";
 import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
 
-const peer = { machineId: "alpha", sessionId: "unit", runtimeNonce: "1".repeat(32) };
-const other = { machineId: "beta", sessionId: "sender", runtimeNonce: "2".repeat(32) };
+const peer = {
+  machineId: "alpha",
+  sessionId: "unit",
+  runtimeNonce: "1".repeat(32),
+};
+const other = {
+  machineId: "beta",
+  sessionId: "sender",
+  runtimeNonce: "2".repeat(32),
+};
 const cleanups: (() => Promise<void>)[] = [];
 type Reply = Extract<Frame, { op: "result" }>;
 type Request = Exclude<Frame, { op: "result" | "roster.event" }>;
@@ -26,9 +35,11 @@ async function gateway(
 ) {
   const directory = await mkdtemp(join(tmpdir(), "psc-"));
   const sockets = new Set<Socket>();
+  let connections = 0;
   const requests: Request[] = [];
   const replies: Reply[] = [];
   const server = createServer((socket) => {
+    connections += 1;
     sockets.add(socket);
     socket.on("close", () => {
       sockets.delete(socket);
@@ -58,7 +69,11 @@ async function gateway(
             outcome: {
               tag: "ok",
               value: {
-                peer: { ...peer, sessionId: request.sessionId, runtimeNonce: request.runtimeNonce },
+                peer: {
+                  ...peer,
+                  sessionId: request.sessionId,
+                  runtimeNonce: request.runtimeNonce,
+                },
                 scopeIds: request.scopeIds,
               },
             },
@@ -94,11 +109,16 @@ async function gateway(
     scopeIds: ["team"],
     label: "test",
     policies: [
-      { machineId: "beta", scopeId: "team", permissions: ["discover", "read", "push", "interest"] },
+      {
+        machineId: "beta",
+        scopeId: "team",
+        permissions: ["discover", "read", "push", "interest"],
+      },
     ],
   };
   return {
     config,
+    connections: () => connections,
     requests,
     replies,
     raw: (bytes: Buffer) => {
@@ -114,10 +134,20 @@ async function gateway(
   };
 }
 function authored(id = "3".repeat(32)): Message {
-  return { id, kind: "update", content: "bounded authored content", format: "text" };
+  return {
+    id,
+    kind: "update",
+    content: "bounded authored content",
+    format: "text",
+  };
 }
 function binding(message: Message) {
-  return { messageId: message.id, sender: peer, recipient: other, scopeId: "team" };
+  return {
+    messageId: message.id,
+    sender: peer,
+    recipient: other,
+    scopeId: "team",
+  };
 }
 
 function lostThenDenied() {
@@ -136,7 +166,11 @@ function lostThenDenied() {
       op: "result",
       rid: request.rid,
       forOp: "send",
-      outcome: { tag: "not_admitted", binding: binding(request.message), code: "forbidden" },
+      outcome: {
+        tag: "not_admitted",
+        binding: binding(request.message),
+        code: "forbidden",
+      },
     };
   };
 }
@@ -223,7 +257,11 @@ function toolGateway(request: Request): Reply | undefined {
       op: "result",
       rid: request.rid,
       forOp: "send",
-      outcome: { tag: "admitted", binding: binding(request.message), correlation: "none" },
+      outcome: {
+        tag: "admitted",
+        binding: binding(request.message),
+        correlation: "none",
+      },
     };
   }
   if (request.op === "state.get") {
@@ -243,7 +281,12 @@ function toolGateway(request: Request): Reply | undefined {
       forOp: "state.list",
       outcome: {
         tag: "ok",
-        value: { publisher: request.publisher, scopeId: request.scopeId, revision: 0, items: [] },
+        value: {
+          publisher: request.publisher,
+          scopeId: request.scopeId,
+          revision: 0,
+          items: [],
+        },
       },
     };
   }
@@ -316,9 +359,23 @@ function replyToReport(
     scopeId: request.scopeId,
   };
   const outcome = denied
-    ? { tag: "not_admitted" as const, binding: receipt, code: "forbidden" as const }
-    : { tag: "admitted" as const, binding: receipt, correlation: "none" as const };
-  fixture.sendFrame({ v: 1, op: "result", rid: request.rid, forOp: "send", outcome });
+    ? {
+        tag: "not_admitted" as const,
+        binding: receipt,
+        code: "forbidden" as const,
+      }
+    : {
+        tag: "admitted" as const,
+        binding: receipt,
+        correlation: "none" as const,
+      };
+  fixture.sendFrame({
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "send",
+    outcome,
+  });
 }
 function extensionHost() {
   const handlers = new Map<string, unknown>();
@@ -334,6 +391,7 @@ function extensionHost() {
     sessionManager: { getSessionId: () => peer.sessionId },
     isIdle: () => true,
     ui: {
+      select: async () => undefined,
       notify: (text: string) => {
         notifications.push(text);
       },
@@ -350,7 +408,10 @@ function extensionHost() {
       registerTool: () => undefined,
       registerCommand: (
         name: string,
-        definition: { handler: unknown; getArgumentCompletions?: (prefix: string) => unknown },
+        definition: {
+          handler: unknown;
+          getArgumentCompletions?: (prefix: string) => unknown;
+        },
       ) => {
         commands.set(name, definition);
       },
@@ -376,10 +437,577 @@ function extensionHost() {
   };
 }
 
+function malformedEnsure(value: unknown): EnsureGateway {
+  // Explicit JS/old-plugin seam: TS typing must not turn malformed results into legacy admission.
+  const ensure = vi.fn<EnsureGateway>();
+  const resolve: unknown = Reflect.get(ensure, "mockResolvedValue");
+  assert(typeof resolve === "function");
+  Reflect.apply(resolve, ensure, [value]);
+  return ensure;
+}
+function registerHash(request: Request) {
+  assert.equal(request.op, "register");
+  if (request.op !== "register") {
+    throw new Error("Expected register");
+  }
+  return request.expectedConfigSha256;
+}
+function mismatchReply(request: Request): Reply {
+  assert.equal(request.op, "register");
+  return {
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "register",
+    outcome: { tag: "error", code: "config_mismatch" },
+  };
+}
+function generationReply(request: Request): Reply {
+  if (request.op !== "register") {
+    throw new Error("Expected register");
+  }
+  return request.expectedConfigSha256 === "a".repeat(64)
+    ? mismatchReply(request)
+    : {
+        v: 1,
+        op: "result",
+        rid: request.rid,
+        forOp: "register",
+        outcome: { tag: "ok", value: { peer, scopeIds: request.scopeIds } },
+      };
+}
+function olderGatewayClose(request: Request, socket: Socket) {
+  assert.equal(request.op, "register");
+  assert.equal(registerHash(request), "a".repeat(64));
+  socket.destroy();
+  return undefined;
+}
+function generationEnsure(hashes: string[]) {
+  return vi.fn<NonNullable<ConstructorParameters<typeof GatewayClient>[0]["ensureGateway"]>>(
+    async () => ({ gatewaySha256: hashes.shift() ?? "a".repeat(64) }),
+  );
+}
+
+async function expectFailure(pending: Promise<unknown>, message: string): Promise<void> {
+  await expect(pending).rejects.toThrow(message);
+}
+async function expectPossibleFailure(pending: Promise<unknown>): Promise<void> {
+  await expect(pending).rejects.toMatchObject({ possible: true });
+}
+function holdRegister(
+  first: () => void,
+  second: (value: { request: Request; socket: Socket }) => void,
+) {
+  return (request: Request, socket: Socket): undefined => {
+    if (registerHash(request) === "a".repeat(64)) {
+      first();
+    } else {
+      second({ request, socket });
+    }
+    return undefined;
+  };
+}
+function signalDiscover(received: () => void) {
+  return (request: Request): undefined => {
+    if (request.op === "discover") {
+      received();
+    }
+    return undefined;
+  };
+}
+
 describe("public adapter transport and notice accounting", () => {
   afterEach(async () => {
     for (const close of cleanups.splice(0).toReversed()) {
       await close();
+    }
+  });
+  test.each([
+    undefined,
+    null,
+    {},
+    { gatewaySha256: undefined },
+    { gatewaySha256: "A".repeat(64) },
+    { gatewaySha256: "a".repeat(63) },
+    { gatewaySha256: 123 },
+  ])(
+    "a supplied ensure returning malformed snapshot %j fails before any connection or register",
+    async (value) => {
+      const fixture = await gateway(() => undefined);
+      const client = new GatewayClient({
+        config: fixture.config,
+        peer,
+        ensureGateway: malformedEnsure(value),
+        incoming: () => {
+          throw new Error("Unexpected request");
+        },
+        statusChanged: () => undefined,
+      });
+      try {
+        await expect(client.reconnect()).rejects.toThrow("protocol_error");
+        expect(fixture.connections()).toBe(0);
+        expect(fixture.requests).toHaveLength(0);
+        expect(client.status()).toMatchObject({
+          connected: false,
+          status: "activation_unconfirmed",
+          scopes: [],
+        });
+      } finally {
+        client.close();
+      }
+    },
+  );
+  test("reviewed-control fresh reconnect cannot return the still-open old registration and coalesces callers", async () => {
+    const fixture = await gateway(() => undefined);
+    const entered = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<{ gatewaySha256: string }>();
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
+      .mockImplementation(async () => {
+        entered.resolve(undefined);
+        return release.promise;
+      });
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+      ensureGateway,
+    );
+    try {
+      await session.reconnect();
+      const state = session.state;
+      expect(session.status().connected).toBe(true);
+      // Models ACK before the old server delivers any disconnect. It never closes it itself.
+      let completed = false;
+      const fresh = session.reconnect(true).then(() => {
+        completed = true;
+        return undefined;
+      });
+      await entered.promise;
+      const concurrent = [session.reconnect(), session.reconnect(), session.reconnect()];
+      expect(completed).toBe(false);
+      expect(session.status()).toMatchObject({ connected: false, scopes: [] });
+      expect(fixture.requests).toHaveLength(1);
+      release.resolve({ gatewaySha256: "b".repeat(64) });
+      await Promise.all([fresh, ...concurrent]);
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+      expect(fixture.connections()).toBe(2);
+      expect(fixture.requests.map(registerHash)).toStrictEqual(["a".repeat(64), "b".repeat(64)]);
+      expect(fixture.requests).toStrictEqual([
+        expect.objectContaining({ runtimeNonce: peer.runtimeNonce, sessionId: peer.sessionId }),
+        expect.objectContaining({ runtimeNonce: peer.runtimeNonce, sessionId: peer.sessionId }),
+      ]);
+      expect(session.state).toBe(state);
+      // Passive/control-free repair retains the healthy registration.
+      await session.reconnect();
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+    } finally {
+      session.close();
+    }
+  });
+  test("a second explicit fresh boundary cancels the first fresh episode and requires its newer metadata", async () => {
+    const fixture = await gateway(() => undefined);
+    const firstFresh = Promise.withResolvers<{ gatewaySha256: string }>();
+    const secondFresh = Promise.withResolvers<{ gatewaySha256: string }>();
+    const entered = Promise.withResolvers<undefined>();
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
+      .mockImplementationOnce(async () => firstFresh.promise)
+      .mockImplementation(async () => {
+        entered.resolve(undefined);
+        return secondFresh.promise;
+      });
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await client.reconnect();
+      const superseded = expectFailure(client.reconnect(undefined, true), "cancelled");
+      // A second separately reviewed control changes saved metadata again.
+      let completed = false;
+      const latest = client.reconnect(undefined, true).then(() => {
+        completed = true;
+        return undefined;
+      });
+      await entered.promise;
+      await superseded;
+      firstFresh.resolve({ gatewaySha256: "b".repeat(64) });
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(completed).toBe(false);
+      expect(client.status()).toMatchObject({ connected: false, scopes: [] });
+      expect(fixture.requests.map(registerHash)).toStrictEqual(["a".repeat(64)]);
+      const passive = client.reconnect();
+      secondFresh.resolve({ gatewaySha256: "c".repeat(64) });
+      await Promise.all([latest, passive]);
+      expect(fixture.requests.map(registerHash)).toStrictEqual(["a".repeat(64), "c".repeat(64)]);
+      expect(ensureGateway).toHaveBeenCalledTimes(3);
+      expect(client.status().connected).toBe(true);
+    } finally {
+      client.close();
+    }
+  });
+  test("fresh registration mismatch stays pending after exactly six guarded attempts, never old success", async () => {
+    const reply = vi
+      .fn<(request: Request) => Reply | undefined>()
+      .mockImplementationOnce(generationReply)
+      .mockImplementation(mismatchReply);
+    const fixture = await gateway(reply, true);
+    const ensureGateway = generationEnsure([
+      "b".repeat(64),
+      ...Array.from({ length: 6 }, () => "a".repeat(64)),
+    ]);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await client.reconnect();
+      await expect(client.reconnect(undefined, true)).rejects.toThrow("unavailable");
+      expect(ensureGateway).toHaveBeenCalledTimes(7);
+      expect(fixture.requests.map(registerHash)).toStrictEqual([
+        "b".repeat(64),
+        ...Array.from({ length: 6 }, () => "a".repeat(64)),
+      ]);
+      expect(client.status()).toMatchObject({
+        connected: false,
+        scopes: [],
+        status: "activation_pending",
+      });
+    } finally {
+      client.close();
+    }
+  });
+  test("fresh reconnect fences an in-flight ensure and its stale finally cannot clear the new attempt", async () => {
+    const fixture = await gateway(() => undefined);
+    const old = Promise.withResolvers<{ gatewaySha256: string }>();
+    const next = Promise.withResolvers<{ gatewaySha256: string }>();
+    const entered = Promise.withResolvers<undefined>();
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockImplementationOnce(async () => old.promise)
+      .mockImplementation(async () => {
+        entered.resolve(undefined);
+        return next.promise;
+      });
+    const statusChanged = vi.fn<() => void>();
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged,
+    });
+    try {
+      const prior = expectFailure(client.reconnect(), "cancelled");
+      const fresh = client.reconnect(undefined, true);
+      await entered.promise;
+      await prior;
+      // This ensure deliberately ignores its aborted signal and fails late.
+      old.reject(new Error("stale metadata failure"));
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(statusChanged).toHaveBeenCalledTimes(1); // only the explicit fence
+      const tool = client.request({
+        v: 1,
+        op: "discover",
+        rid: "f".repeat(32),
+        scopeIds: ["team"],
+        watch: false,
+      });
+      // The fake server leaves discover pending; only its connection preflight is relevant.
+      const toolResult = expectFailure(tool, "cancelled");
+      next.resolve({ gatewaySha256: "b".repeat(64) });
+      await fresh;
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+      expect(
+        fixture.requests
+          .filter((request) => request.op === "register")
+          .map((request) => registerHash(request)),
+      ).toStrictEqual(["b".repeat(64)]);
+      client.close();
+      await toolResult;
+      expect(client.status().connected).toBe(false);
+    } finally {
+      client.close();
+    }
+  });
+  test("fresh reconnect cancels a pending register and stale disconnect/finally cannot disturb its successor", async () => {
+    const first = Promise.withResolvers<undefined>();
+    const second = Promise.withResolvers<{ request: Request; socket: Socket }>();
+    const fixture = await gateway(
+      holdRegister(() => {
+        first.resolve(undefined);
+      }, second.resolve),
+      true,
+    );
+    const ensureGateway = generationEnsure(["a".repeat(64), "b".repeat(64)]);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      const prior = expectFailure(client.reconnect(), "cancelled");
+      await first.promise;
+      const fresh = client.reconnect(undefined, true);
+      const registration = await second.promise;
+      await prior;
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      const concurrent = client.reconnect();
+      expect(client.status()).toMatchObject({ connected: false, scopes: [] });
+      const reply = generationReply(registration.request);
+      assert.notEqual(reply, undefined);
+      registration.socket.write(encodeFrame(reply, "adapter-delivery"));
+      await Promise.all([fresh, concurrent]);
+      expect(client.status()).toMatchObject({ connected: true, scopes: ["team"] });
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+      expect(fixture.requests.map(registerHash)).toStrictEqual(["a".repeat(64), "b".repeat(64)]);
+    } finally {
+      client.close();
+    }
+  });
+  test.each([true, false])(
+    "old discover failure (watch=%s) cannot clear a new generation's watch/cache",
+    async (watch) => {
+      const entered = Promise.withResolvers<undefined>();
+      const handler = vi
+        .fn<(request: Request) => Reply | undefined>()
+        .mockImplementationOnce(() => {
+          entered.resolve(undefined);
+          return undefined;
+        })
+        .mockImplementation(discoveryReply);
+      const fixture = await gateway(handler);
+      const ensureGateway = generationEnsure(["a".repeat(64), "b".repeat(64)]);
+      const client = new GatewayClient({
+        config: fixture.config,
+        peer,
+        ensureGateway,
+        incoming: () => {
+          throw new Error("Unexpected request");
+        },
+        statusChanged: () => undefined,
+      });
+      try {
+        await client.reconnect();
+        const old = expectFailure(client.discover(["team"], watch), "cancelled");
+        await entered.promise;
+        const fresh = client.reconnect(undefined, true);
+        // Install synchronously before the old request's rejection continuation runs.
+        const latest = client.discover(["team"], true);
+        await old;
+        await fresh;
+        await expect(latest).resolves.toMatchObject({
+          outcome: { tag: "ok", value: { peers: [{ peer: other }], watching: true } },
+        });
+        expect(client.status().watching).toBe(true);
+        const requests = fixture.requests.length;
+        await expect(client.discover(["team"], true)).resolves.toMatchObject({
+          outcome: { tag: "ok", value: { peers: [{ peer: other }], watching: true } },
+        });
+        expect(fixture.requests).toHaveLength(requests); // new watch/cache survived, no extra discovery
+        expect(ensureGateway).toHaveBeenCalledTimes(2);
+      } finally {
+        client.close();
+      }
+    },
+  );
+  test("lifetime close fences a late successful ensure before any socket or status publication", async () => {
+    const fixture = await gateway(() => undefined);
+    const pending = Promise.withResolvers<{ gatewaySha256: string }>();
+    const ensureGateway = vi.fn<EnsureGateway>(async () => pending.promise);
+    const statusChanged = vi.fn<() => void>();
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged,
+    });
+    const result = expectFailure(client.reconnect(), "cancelled");
+    client.close();
+    const notifications = statusChanged.mock.calls.length;
+    pending.resolve({ gatewaySha256: "a".repeat(64) });
+    await result;
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(fixture.connections()).toBe(0);
+    expect(fixture.requests).toHaveLength(0);
+    expect(statusChanged).toHaveBeenCalledTimes(notifications);
+    expect(client.status()).toMatchObject({ connected: false, scopes: [] });
+  });
+  test("fresh metadata refusal disconnects old trust and does not replay uncertain application work", async () => {
+    const received = Promise.withResolvers<undefined>();
+    const fixture = await gateway(
+      signalDiscover(() => {
+        received.resolve(undefined);
+      }),
+    );
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockResolvedValue({ gatewaySha256: "a".repeat(64) });
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await client.reconnect();
+      const work = expectPossibleFailure(
+        client.request({
+          v: 1,
+          op: "discover",
+          rid: "e".repeat(32),
+          scopeIds: ["team"],
+          watch: false,
+        }),
+      );
+      await received.promise;
+      ensureGateway.mockRejectedValue(new Error("narrowed grants incompatible"));
+      await expect(client.reconnect(undefined, true)).rejects.toThrow(
+        "narrowed grants incompatible",
+      );
+      await work;
+      expect(client.status()).toMatchObject({
+        connected: false,
+        scopes: [],
+        status: "activation_unconfirmed",
+      });
+      expect(fixture.requests.map((request) => request.op)).toStrictEqual(["register", "discover"]);
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+    } finally {
+      client.close();
+    }
+  });
+  test("manual registration omits a generation fingerprint", async () => {
+    const fixture = await gateway(() => undefined);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await client.reconnect();
+      expect(fixture.requests).toHaveLength(1);
+      expect(fixture.requests[0]).not.toHaveProperty("expectedConfigSha256");
+    } finally {
+      client.close();
+    }
+  });
+  test("each bounded connection attempt uses only its own ensure snapshot hash", async () => {
+    const hashes = ["a".repeat(64), "b".repeat(64)];
+    const fixture = await gateway(generationReply, true);
+    const ensureGateway = generationEnsure(hashes);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await client.reconnect();
+      expect(ensureGateway).toHaveBeenCalledTimes(2);
+      expect(fixture.requests.map(registerHash)).toStrictEqual(["a".repeat(64), "b".repeat(64)]);
+      expect(client.status()).toMatchObject({
+        connected: true,
+        status: "connected",
+        scopes: ["team"],
+      });
+    } finally {
+      client.close();
+    }
+  });
+  test("generation mismatch exhausts one bounded episode with distinct pending status and no control replay", async () => {
+    const fixture = await gateway(mismatchReply, true);
+    const ensureGateway = generationEnsure(["a".repeat(64)]);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await expect(client.reconnect()).rejects.toThrow("unavailable");
+      expect(ensureGateway).toHaveBeenCalledTimes(6);
+      expect(fixture.requests.map((request) => request.op)).toStrictEqual(
+        Array.from({ length: 6 }, () => "register"),
+      );
+      expect(client.status()).toMatchObject({
+        connected: false,
+        status: "activation_pending",
+        scopes: [],
+      });
+    } finally {
+      client.close();
+    }
+  });
+  test("an older gateway closing guarded register never triggers unguarded fallback or passive control", async () => {
+    const fixture = await gateway(olderGatewayClose, true);
+    const ensureGateway = generationEnsure(["a".repeat(64)]);
+    const client = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => undefined,
+    });
+    try {
+      await expect(client.reconnect()).rejects.toThrow("unavailable");
+      expect(ensureGateway).toHaveBeenCalledTimes(6);
+      expect(fixture.requests.map(registerHash)).toStrictEqual(
+        Array.from({ length: 6 }, () => "a".repeat(64)),
+      );
+      expect(client.status()).toMatchObject({
+        connected: false,
+        status: "activation_unconfirmed",
+        scopes: [],
+      });
+    } finally {
+      client.close();
     }
   });
   test("public extension registration is inert without config, reports failures, and disposes enabled lifecycle", async () => {
@@ -397,6 +1025,7 @@ describe("public adapter transport and notice accounting", () => {
     expect([...host.commands.keys()]).toStrictEqual(["comms", "session-communication"]);
     expect(host.commands.get("comms")?.getArgumentCompletions?.("re")).toStrictEqual([
       { value: "reconnect", label: "reconnect" },
+      { value: "reset", label: "reset" },
     ]);
     await host.command("");
     expect(host.notifications.at(-1)).toContain("not enabled");
@@ -407,7 +1036,7 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toContain(directory);
     expect(host.notifications.at(-1)).toContain("new sessions will not enable participation");
     await host.command("setup", "comms");
-    expect(host.notifications.at(-1)).toContain("Usage: /comms [status|doctor|reconnect]");
+    expect(host.notifications.at(-1)).toContain("Cancelled");
     await host.command("status extra", "comms");
     expect(host.notifications.at(-1)).toContain("Usage: /comms");
     await host.command("invalid");
@@ -427,7 +1056,7 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toContain(directory);
     await host.command("status");
     expect(host.notifications.at(-1)).toContain("Check <agent dir>/session-communication.json");
-    expect(host.notifications.at(-1)).toContain("then /reload");
+    expect(host.notifications.at(-1)).toContain("then /comms reconnect");
     await writeFile(
       join(directory, "session-communication.json"),
       JSON.stringify({
@@ -466,7 +1095,7 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_shutdown");
     await host.command("status");
     expect(host.notifications.at(-1)).toBe(
-      "Session communication: not enabled · runtime unavailable",
+      "Session communication: not enabled · runtime unavailable\nRemote config snapshot: missing disk configuration; any old runtime may still be active.",
     );
     expect(host.notifications.at(-1)).not.toContain("Session communication: enabled");
   });
@@ -477,7 +1106,10 @@ describe("public adapter transport and notice accounting", () => {
     registerTools(
       {
         registerTool: (definition) => {
-          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+          tools.push({
+            name: definition.name,
+            execute: definition.execute.bind(definition),
+          });
         },
       },
       () => current.session,
@@ -513,7 +1145,9 @@ describe("public adapter transport and notice accounting", () => {
         scopeId: "team",
         message: { kind: "update", content: "denied", format: "text" },
       }),
-    ).resolves.toMatchObject({ outcome: { tag: "not_admitted", code: "forbidden" } });
+    ).resolves.toMatchObject({
+      outcome: { tag: "not_admitted", code: "forbidden" },
+    });
     await expect(executeTool(tools, "session_take", {})).resolves.toMatchObject({ messages: [] });
     const record = {
       category: "context",
@@ -618,7 +1252,12 @@ describe("public adapter transport and notice accounting", () => {
       executeTool(tools, "session_send", {
         to: other,
         scopeId: "team",
-        message: { kind: "request", content: "invalid", format: "text", unexpected: true },
+        message: {
+          kind: "request",
+          content: "invalid",
+          format: "text",
+          unexpected: true,
+        },
       }),
     ).resolves.toMatchObject({
       tag: "error",
@@ -677,7 +1316,11 @@ describe("public adapter transport and notice accounting", () => {
           preparation: "authored",
         },
       }),
-    ).resolves.toMatchObject({ tag: "error", code: "overloaded", resource: "operations" });
+    ).resolves.toMatchObject({
+      tag: "error",
+      code: "overloaded",
+      resource: "operations",
+    });
     await expect(session.send(other, "team", authored())).resolves.toMatchObject({
       tag: "not_admitted",
       code: "overloaded",
@@ -695,7 +1338,10 @@ describe("public adapter transport and notice accounting", () => {
       replyToReport(fixture, request, false);
     }
     const result = await pending;
-    expect(result).toMatchObject({ tag: "ok", value: { publication: { revision: 1 } } });
+    expect(result).toMatchObject({
+      tag: "ok",
+      value: { publication: { revision: 1 } },
+    });
     assert(result.tag === "ok");
     expect(result.value.pushes).toHaveLength(8);
     expect(result.value.pushes[0]).toMatchObject({
@@ -728,7 +1374,13 @@ describe("public adapter transport and notice accounting", () => {
     const abort = new AbortController();
     const first = resultOf(
       client.request(
-        { v: 1, op: "discover", rid: "a".repeat(32), scopeIds: ["team"], watch: false },
+        {
+          v: 1,
+          op: "discover",
+          rid: "a".repeat(32),
+          scopeIds: ["team"],
+          watch: false,
+        },
         abort.signal,
       ),
     );
@@ -745,7 +1397,10 @@ describe("public adapter transport and notice accounting", () => {
     abort.abort();
     releaseRegistration(fixture);
     await expect(first).resolves.toContain("cancelled");
-    await expect(second).resolves.toMatchObject({ forOp: "discover", outcome: { tag: "ok" } });
+    await expect(second).resolves.toMatchObject({
+      forOp: "discover",
+      outcome: { tag: "ok" },
+    });
   });
   test("each connection waiter honors its own deadline without cancelling registration", async () => {
     const fixture = await gateway(discoveryReply, true);
@@ -765,7 +1420,13 @@ describe("public adapter transport and notice accounting", () => {
     await expect.poll(() => fixture.requests.length).toBe(1);
     const short = resultOf(
       client.request(
-        { v: 1, op: "discover", rid: "b".repeat(32), scopeIds: ["team"], watch: false },
+        {
+          v: 1,
+          op: "discover",
+          rid: "b".repeat(32),
+          scopeIds: ["team"],
+          watch: false,
+        },
         undefined,
         performance.now() + 20,
       ),
@@ -803,7 +1464,10 @@ describe("public adapter transport and notice accounting", () => {
     });
     const ready = await client.discover(["team"], true);
     expect(ready).toMatchObject({
-      outcome: { tag: "ok", value: { peers: [{ peer: other }], watching: true } },
+      outcome: {
+        tag: "ok",
+        value: { peers: [{ peer: other }], watching: true },
+      },
     });
     await expect(client.discover(["other"], true)).resolves.toMatchObject({
       outcome: { tag: "error", code: "overloaded", resource: "watch" },
@@ -898,7 +1562,11 @@ describe("public adapter transport and notice accounting", () => {
     await expect.poll(() => notices.length).toBe(1);
     // The notice is what wakes an idle Pi: it must start a turn, steered into the session.
     expect(wakes).toStrictEqual([{ triggerTurn: true, deliverAs: "steer" }]);
-    session.observed({ role: "custom", customType: NOTICE_TYPE, details: { noticeId: "wrong" } });
+    session.observed({
+      role: "custom",
+      customType: NOTICE_TYPE,
+      details: { noticeId: "wrong" },
+    });
     expect(session.status().notice).toBe("submitted_unobserved");
     const taken = session.take(8);
     expect(taken.messages.map((delivery) => delivery.message.id)).toStrictEqual([
@@ -908,7 +1576,11 @@ describe("public adapter transport and notice accounting", () => {
     expect(session.take(8).messages).toHaveLength(0);
     expect(session.state.stats().receipts).toBe(2);
     expect(session.status().notice).toBe("submitted_unobserved");
-    session.observed({ role: "custom", customType: NOTICE_TYPE, details: notices[0]?.details });
+    session.observed({
+      role: "custom",
+      customType: NOTICE_TYPE,
+      details: notices[0]?.details,
+    });
     expect(session.status().notice).toBe("none");
     fixture.sendFrame({
       v: 1,
@@ -953,7 +1625,10 @@ describe("public adapter transport and notice accounting", () => {
       v: 1,
       op: "roster.event",
       rid: request.rid,
-      event: { tag: "upsert", peer: { peer: other, label: "changed", scopeIds: ["team"] } },
+      event: {
+        tag: "upsert",
+        peer: { peer: other, label: "changed", scopeIds: ["team"] },
+      },
     });
     await expect
       .poll(async () => client.discover(["team"], true))
@@ -1011,12 +1686,21 @@ describe("public adapter transport and notice accounting", () => {
       v: 1,
       op: "roster.event",
       rid: request.rid,
-      event: { tag: "upsert", peer: { peer: other, label: "bad scope", scopeIds: ["private"] } },
+      event: {
+        tag: "upsert",
+        peer: { peer: other, label: "bad scope", scopeIds: ["private"] },
+      },
     });
     await expect.poll(() => client.status().status).toBe("protocol_error");
     await expect(
       client.request(
-        { v: 1, op: "discover", rid: "e".repeat(32), scopeIds: ["team"], watch: false },
+        {
+          v: 1,
+          op: "discover",
+          rid: "e".repeat(32),
+          scopeIds: ["team"],
+          watch: false,
+        },
         undefined,
         performance.now() - 1,
       ),
@@ -1092,7 +1776,10 @@ describe("public adapter transport and notice accounting", () => {
         setImmediate(resolve);
       });
       vi.advanceTimersByTime(10);
-      await expect(unanswered).resolves.toMatchObject({ code: "unavailable", possible: true });
+      await expect(unanswered).resolves.toMatchObject({
+        code: "unavailable",
+        possible: true,
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -1116,7 +1803,10 @@ describe("public adapter transport and notice accounting", () => {
     registerTools(
       {
         registerTool: (definition) => {
-          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+          tools.push({
+            name: definition.name,
+            execute: definition.execute.bind(definition),
+          });
         },
       },
       () => current.session,
@@ -1132,7 +1822,12 @@ describe("public adapter transport and notice accounting", () => {
     });
     current.session = owned.session;
     await expect.poll(() => owned.session.client.status().connected).toBe(true);
-    const get = { action: "get", publisher: other, scopeId: "team", key: "notes" };
+    const get = {
+      action: "get",
+      publisher: other,
+      scopeId: "team",
+      key: "notes",
+    };
     await executeTool(tools, "session_state", { ...get, expectedRevision: 7 });
     await executeTool(tools, "session_state", { ...get, expectedRevision: 0 });
     await executeTool(tools, "session_state", get);
@@ -1205,7 +1900,11 @@ describe("public adapter transport and notice accounting", () => {
       session.close();
     });
     await session.start();
-    const work = { kind: "publication" as const, publisher: peer, key: "report" };
+    const work = {
+      kind: "publication" as const,
+      publisher: peer,
+      key: "report",
+    };
     expect(
       session.state.publish({
         scopeId: "team",
@@ -1266,7 +1965,9 @@ describe("public adapter transport and notice accounting", () => {
     });
     await expect.poll(() => fixture.replies.length).toBe(5);
     expect(fixture.replies.slice(0, 4).every((reply) => reply.outcome.tag === "ok")).toBe(true);
-    expect(fixture.replies[4]).toMatchObject({ outcome: { tag: "error", code: "no_route" } });
+    expect(fixture.replies[4]).toMatchObject({
+      outcome: { tag: "error", code: "no_route" },
+    });
     expect(notices).toHaveLength(0);
     session.afterCompaction(true);
     session.afterCompaction();
