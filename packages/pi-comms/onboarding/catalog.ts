@@ -31,14 +31,20 @@ export const GATEWAY_REMOTE_SETUP_CAPABILITIES = [
 // Nix: reviewed immutable producer commit; its NAR hash was derived independently from a
 // local `git archive` of that revision (never from a downloaded self-reported hash). This
 // catalog commit is necessarily a descendant of the pinned revision.
-// Native: deliberately unavailable until the release is published and its manifest is pinned.
+// Native: the published `pi-gateway-v0.1.0` GitHub Release built from the same producer
+// revision. The manifest SHA-256 was reviewed against the published asset and an independent
+// authentication of the original CI-built archives, never taken from the adjacent checksum.
 export const gatewayCatalog: GatewayCatalog = {
   nix: {
     sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
     version: "0.1.0",
     narHash: "sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=",
   },
-  native: null,
+  native: {
+    sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
+    version: "0.1.0",
+    manifestSha256: "04620bae0f5fc038f4e9c2d6ee93c2e13d071109adc1536a901b3110b81965db",
+  },
 };
 
 export function gatewayTarget(
@@ -54,6 +60,11 @@ export function gatewayTarget(
   )[`${platform}/${arch}`];
 }
 
+/** The one trusted gateway version shape, shared by pin validation and release-tag derivation. */
+export function isGatewayVersion(version: unknown): version is string {
+  return typeof version === "string" && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u.test(version);
+}
+
 export function validatePin(
   pin: Pick<GatewayReleasePin, "sourceRevision" | "version"> & {
     manifestSha256?: string;
@@ -62,7 +73,7 @@ export function validatePin(
 ): void {
   if (
     !/^[a-f0-9]{40}$/u.test(pin.sourceRevision) ||
-    !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u.test(pin.version) ||
+    !isGatewayVersion(pin.version) ||
     (pin.manifestSha256 !== undefined && !/^[a-f0-9]{64}$/u.test(pin.manifestSha256)) ||
     (pin.narHash !== undefined &&
       (!/^sha256-[A-Za-z0-9+/]{43}=$/u.test(pin.narHash) ||

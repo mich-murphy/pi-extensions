@@ -19,6 +19,13 @@
       "enablers": ["jiti"],
       "entryPoints": ["scripts/verify-gateway-nix.ts"],
       "entryPointRole": "support"
+    },
+    {
+      // Run by the gateway-release consumer job via `node --import jiti/register`.
+      "name": "gateway-public-native-consumer-ci",
+      "enablers": ["jiti"],
+      "entryPoints": ["scripts/verify-gateway-native.ts"],
+      "entryPointRole": "support"
     }
   ],
   "rules": {

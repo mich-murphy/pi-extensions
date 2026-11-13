@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   MAX_ARCHIVE,
   MAX_BINARY,
+  gatewayReleaseTag,
   sha256,
   jsonObject,
   verifyArtifact,
@@ -478,7 +479,7 @@ async function acquireNative(
   signal: AbortSignal,
   onProgress?: (message: string) => void,
 ): Promise<string> {
-  const origin = `https://github.com/mich-murphy/pi-extensions/releases/download/gateway-${plan.sourceRevision}/`;
+  const origin = `https://github.com/mich-murphy/pi-extensions/releases/download/${gatewayReleaseTag(plan.version)}/`;
   onProgress?.("Downloading and authenticating pinned native gateway");
   const bytes = await download(`${origin}manifest.json`, 65_536, signal, io.fetch);
   const { record } = verifyManifest(

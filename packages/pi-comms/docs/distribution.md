@@ -18,8 +18,8 @@ release, not through the same mutable download location.
 | Nix reference | Full revision, trusted `narHash`, `#pi-gateway` |
 | Package and app | `packages.<system>.pi-gateway`, `apps.<system>.pi-gateway` |
 | Version | Read from gateway `Cargo.toml`; never separately maintained |
-| Release tag | `gateway-<sourceRevision>` |
-| Asset origin | GitHub Releases, exact revision tag (see below) |
+| Release tag | `pi-gateway-v<version>` (immutable; source bound separately) |
+| Asset origin | GitHub Releases, exact semantic version tag (see below) |
 | Manifest | `manifest.json`, schema 2, pinned SHA-256 in extension metadata |
 | Archive | `pi-gateway-<version>-<Rust target>.tar.gz` |
 | Members | `pi-gateway` 0755, `release.json` 0644; regular files only |
@@ -55,6 +55,19 @@ alone is not a GC root. Retain roots for the active and rollback versions. Never
 auto-adopt an executable from PATH or an unreviewed local checkout.
 
 The manifest records `sourceRevision`, `version`, `releaseTag`, and `artifacts`.
+`releaseTag` must equal `pi-gateway-v<version>`; the TypeScript downloader and the
+Python helper both derive it from the trusted version and reject any other tag,
+including the pre-release `gateway-<sourceRevision>` form. The tag does not
+authenticate the source: the full 40-hex `sourceRevision` is checked separately
+against the pin, every artifact record and embedded `release.json`, after the
+manifest SHA-256 pin. Archives and embedded `release.json` carry no tag, so a
+renamed release can reuse byte-identical verified archives with a regenerated
+manifest (and therefore a new manifest pin). A published version is immutable:
+any changed release (new source, binaries or manifest) requires a gateway
+`Cargo.toml` version bump and a new tag; never overwrite or re-point an existing
+`pi-gateway-v<version>` release or its assets. Workflow artifact names such as
+`gateway-<target>` and `gateway-release-candidate-<revision>` are CI staging
+names, not release tags.
 Each artifact records its target, Nix system, OS, architecture, runner, ABI,
 conservative tested baseline, measured runtime requirements, filename, archive
 size/SHA-256 and binary size/SHA-256. Embedded
@@ -124,9 +137,11 @@ Before enabling a downloadable fallback in a shipped extension:
 2. Test real consumer acquisition on each advertised native target, including
    loader/libc compatibility and macOS platform-security behavior. Record native
    service evidence separately; mocks do not establish it.
-3. With explicit publication authorization, create tag `gateway-<revision>` at
-   that exact source and upload the verified manifest and archives without
+3. With explicit publication authorization, create tag `pi-gateway-v<version>`
+   at that exact source and upload the verified manifest and archives without
    rebuilding. Preserve workflow evidence. Do not overwrite existing assets.
+   Publish with `--latest=false`: a gateway component release is versioned
+   independently and must not replace the pi-extensions bundle's Latest release.
 4. Review and pin the exact published manifest SHA-256 and full revision in the
    extension's trusted release metadata, then verify a real consumer download.
    Adjacent `manifest.sha256` is useful for review, not self-authentication.
@@ -136,10 +151,18 @@ hashes, treat nonexistent URLs as working acquisition, or send users to Cargo.
 A usable pinned Nix build remains an independent acquisition path. The shipped
 `onboarding/catalog.ts` pins the reviewed Nix source revision
 `8b894b5367657abc9dddf5d35c7bb0df62472d09`, version `0.1.0`,
-`sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=`, and has **no native
-manifest pin**. Hosts without usable Nix are reported unavailable until the
-native release is published and pinned. Tests of the blocked path use an
-explicit empty catalog, not the shipped one.
+`sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=`. It also pins the
+published native release
+[`pi-gateway-v0.1.0`](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.0)
+from the same revision, with manifest SHA-256
+`04620bae0f5fc038f4e9c2d6ee93c2e13d071109adc1536a901b3110b81965db`. That digest
+was reviewed against the published asset and an independent authentication of
+the original CI-built archives, not taken from the adjacent `manifest.sha256`.
+On the three supported targets, hosts without usable Nix use this native
+fallback. Intel macOS and other unlisted hosts remain unavailable. The macOS
+binary is ad-hoc signed, not Developer ID signed or notarized: `spctl` rejects
+it, and browser quarantine or managed-device policy can block it. Tests of the
+blocked path use an explicit empty catalog, not the shipped one.
 
 ## Acquisition implementation and recovery
 

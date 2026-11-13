@@ -51,6 +51,13 @@ def version():
     return tomllib.loads((ROOT.parent / "Cargo.toml").read_text())["package"]["version"]
 
 
+def release_tag(value):
+    """Immutable semantic GitHub release tag; a changed release requires a version bump."""
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?", value):
+        raise ValueError("invalid version")
+    return f"pi-gateway-v{value}"
+
+
 def native_target():
     arch = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x64"}.get(platform.machine())
     matches = [target for target, spec in TARGETS.items()
@@ -247,10 +254,8 @@ def verify_manifest(path, expected_digest):
         raise ValueError("manifest differs from trusted pinned SHA-256")
     manifest = json.loads(data)
     source_revision(manifest["sourceRevision"])
-    if manifest["schema"] != 2 or manifest["releaseTag"] != f"gateway-{manifest['sourceRevision']}":
+    if manifest["schema"] != 2 or manifest["releaseTag"] != release_tag(manifest["version"]):
         raise ValueError("unsupported manifest or release tag")
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?", manifest["version"]):
-        raise ValueError("invalid version")
     targets = [record["target"] for record in manifest["artifacts"]]
     if sorted(targets) != sorted(TARGETS):
         raise ValueError("release must contain each candidate target exactly once")
@@ -260,8 +265,9 @@ def verify_manifest(path, expected_digest):
 
 
 def assemble(directory, revision):
+    release_version = version()
     manifest = {"schema": 2, "sourceRevision": source_revision(revision),
-                "version": version(), "releaseTag": f"gateway-{revision}",
+                "version": release_version, "releaseTag": release_tag(release_version),
                 "artifacts": [json.loads((directory / f"{target}.json").read_text())
                               for target in sorted(TARGETS)]}
     for record in manifest["artifacts"]:

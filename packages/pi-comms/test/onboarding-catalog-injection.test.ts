@@ -142,12 +142,12 @@ function childRecord(stdout: string): ChildRecord {
  * blocks before acquisition, with no fetch or setup writes. Supported host: exactly the fenced
  * manifest fetch, then a failed Apply that installs nothing.
  */
-function hostExpectation(sourceRevision: string, supported: boolean) {
+function hostExpectation(version: string, supported: boolean) {
   return {
     supported,
     fetches: supported
       ? [
-          `https://github.com/mich-murphy/pi-extensions/releases/download/gateway-${sourceRevision}/manifest.json`,
+          `https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v${version}/manifest.json`,
         ]
       : [],
     warning: supported ? "Apply incomplete" : "No reviewed target",
@@ -236,7 +236,7 @@ describe("setupCommand trusted catalog injection", () => {
         },
       );
       const record = childRecord(stdout);
-      const expected = hostExpectation(pin.sourceRevision, supported);
+      const expected = hostExpectation(pin.version, supported);
       expect(record.denied).toStrictEqual([]);
       expect(record.allowed.filter((file) => path.basename(file) !== "nix")).toStrictEqual([]);
       expect(record.activated).toBe(0);

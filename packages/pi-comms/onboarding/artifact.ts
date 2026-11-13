@@ -1,12 +1,22 @@
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { validatePin } from "./catalog.js";
+import { isGatewayVersion, validatePin } from "./catalog.js";
 import type { GatewayReleasePin } from "./catalog.js";
 
 export const MAX_ARCHIVE = 64 * 1024 * 1024;
 export const MAX_BINARY = 128 * 1024 * 1024;
 export function sha256(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
+}
+/**
+ * Immutable semantic release tag; a published version is never overwritten. Rejects any version
+ * outside the trusted pin shape itself, so no caller can build a tag or URL path from it.
+ */
+export function gatewayReleaseTag(version: string): string {
+  if (!isGatewayVersion(version)) {
+    throw new Error("Invalid trusted gateway pin");
+  }
+  return `pi-gateway-v${version}`;
 }
 export type ArtifactRecord = {
   schema: number;
@@ -80,7 +90,7 @@ function validateManifestIdentity(manifest: ArtifactManifest, pin: GatewayReleas
     manifest.schema !== 2 ||
     manifest.sourceRevision !== pin.sourceRevision ||
     manifest.version !== pin.version ||
-    manifest.releaseTag !== `gateway-${pin.sourceRevision}` ||
+    manifest.releaseTag !== gatewayReleaseTag(pin.version) ||
     !Array.isArray(manifest.artifacts) ||
     manifest.artifacts.length !== 3
   ) {

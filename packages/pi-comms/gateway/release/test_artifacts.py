@@ -72,6 +72,37 @@ class ArtifactTests(CatalogFixture, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "trusted pinned"):
             artifacts.verify_manifest(self.path, "0" * 64)
 
+    def test_release_tag_is_semantic_version_not_revision(self):
+        self.assertEqual(self.manifest["releaseTag"], f"pi-gateway-v{self.manifest['version']}")
+        self.assertEqual(artifacts.release_tag("0.1.0"), "pi-gateway-v0.1.0")
+        self.assertNotIn(REVISION, self.manifest["releaseTag"])
+        for value in ("v0.1.0", "0.1", "../0.1.0", REVISION):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "invalid version"):
+                artifacts.release_tag(value)
+
+    def test_manifest_rejects_tag_not_bound_to_version(self):
+        for tag in (f"gateway-{REVISION}", "v0.1.0", f"pi-gateway-v{REVISION}",
+                    "pi-gateway-v0.1.1", "pi-gateway-0.1.0"):
+            with self.subTest(tag=tag):
+                manifest = {**self.manifest, "releaseTag": tag}
+                self.path.write_bytes(artifacts.canonical(manifest))
+                with self.assertRaisesRegex(ValueError, "release tag"):
+                    artifacts.verify_manifest(self.path, artifacts.digest(self.path.read_bytes()))
+
+    def test_manifest_rejects_version_or_source_not_bound_to_records(self):
+        for change in ({"version": "0.2.0", "releaseTag": "pi-gateway-v0.2.0"},
+                       {"sourceRevision": "b" * 40}):
+            with self.subTest(change=change):
+                self.path.write_bytes(artifacts.canonical({**self.manifest, **change}))
+                with self.assertRaisesRegex(ValueError, "differs from release/catalog"):
+                    artifacts.verify_manifest(self.path, artifacts.digest(self.path.read_bytes()))
+
+    def test_manifest_rejects_invalid_version_before_tag_use(self):
+        self.path.write_bytes(artifacts.canonical({**self.manifest, "version": "main",
+                                                   "releaseTag": "pi-gateway-vmain"}))
+        with self.assertRaisesRegex(ValueError, "invalid version"):
+            artifacts.verify_manifest(self.path, artifacts.digest(self.path.read_bytes()))
+
     def test_catalog_rejects_duplicate_or_missing_target(self):
         self.manifest["artifacts"][1] = self.record
         self.path.write_bytes(artifacts.canonical(self.manifest))
