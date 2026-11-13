@@ -29,7 +29,7 @@ import {
 } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { dialog, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
+import { dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
 const remote = [
@@ -134,7 +134,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
         description: "TEST fresh verified source",
       });
       const blocked = dialog([local, "APPLY"]);
-      await setupCommand(agent, blocked, activate);
+      await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
       expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
       expect(acquire).not.toHaveBeenCalled();
       expect(activate).not.toHaveBeenCalled();
@@ -152,7 +152,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const entries = await readdir(paths.directory);
     const activate = vi.fn<ActivatePlan>();
     const blocked = dialog([...remote, "APPLY"]);
-    await setupCommand(agent, blocked, activate);
+    await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
     expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
     expect(activate).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
@@ -294,7 +294,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
         "info",
       );
       const blocked = dialog(["APPLY"]);
-      await setupCommand(agent, blocked, activate);
+      await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
       expect(blocked.ui.notify).toHaveBeenCalledWith(
         expect.stringContaining("Repair blocked"),
         "warning",

@@ -30,7 +30,7 @@ import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import { decodeManaged, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { builtGateway, dialog, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
+import { builtGateway, dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
 
 type Damage = "missing" | "script" | "fifo" | "symlink" | "oversized";
 async function damage(path: string, kind: Damage, marker: string) {
@@ -206,7 +206,7 @@ describe("explicit owned installation repair with actual native helper", () => {
     const paths = setupPaths(agent);
     const before = await readFile(paths.metadata);
     const ui = dialog(["APPLY"]);
-    await setupCommand(agent, ui, vi.fn<ActivatePlan>());
+    await setupCommand(agent, ui, vi.fn<ActivatePlan>(), undefined, undefined, noPins);
     expect(ui.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Repair blocked"), "warning");
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(before);
     expect(existsSync(join(paths.directory, "repair.json"))).toBe(false);

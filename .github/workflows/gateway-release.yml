@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/gateway-release.yml
+      - scripts/verify-gateway-nix*.ts
       - packages/pi-comms/gateway/**
       # Inputs of the native-backed consumer suite; over-triggering is accepted.
       - packages/pi-comms/adapter/**
@@ -272,6 +273,86 @@ jobs:
           path = pathlib.Path(os.environ["CONSUMER_BINARY"])
           assert hashlib.sha256(path.read_bytes()).hexdigest() == record["binarySha256"]
           PY
+      # Production Nix acquisition with the DEFAULT catalog, then the same six files against that
+      # binary. Runs only after the native suite and its post-test hash passed. Nix builds are not
+      # bit-reproducible, so every hash below is this run's own record, never another build's.
+      - name: Acquire gateway through production Nix path (default catalog)
+        id: nix-acquire
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir consumer-nix
+          nix develop -c node --import jiti/register scripts/verify-gateway-nix.ts prepare \
+            --target '${{ matrix.target }}' --runner-temp "$RUNNER_TEMP" --out consumer-nix/record.json
+      - name: Replace authenticated native fixture with this run's Nix binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix develop -c node --import jiti/register scripts/verify-gateway-nix.ts install-fixture \
+            --record consumer-nix/record.json --runner-temp "$RUNNER_TEMP" \
+            --extracted consumer/extracted.json --fixture "$CONSUMER_BINARY" > consumer-nix/fixture.json
+          cat consumer-nix/fixture.json
+      - name: Native-backed lifecycle, generation and PKI tests against Nix-acquired binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          PI_SESSION_GATEWAY_BINARY="$PWD/$CONSUMER_BINARY" nix develop -c npx vitest run \
+            --coverage.enabled=false --maxWorkers=2 \
+            --reporter=default --reporter=json --outputFile.json=consumer-nix/vitest.json \
+            packages/pi-comms/test/adapter-native.test.ts \
+            packages/pi-comms/test/onboarding-managed.test.ts \
+            packages/pi-comms/test/onboarding-runtime.test.ts \
+            packages/pi-comms/test/onboarding-remote.test.ts \
+            packages/pi-comms/test/onboarding-generation.test.ts \
+            packages/pi-comms/test/onboarding-repair.test.ts 2>&1 | tee consumer-nix/vitest.log
+          python3 - <<'PY'
+          import json, pathlib
+          report = json.loads(pathlib.Path("consumer-nix/vitest.json").read_text())
+          root = pathlib.Path.cwd().resolve()
+          names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
+                   "onboarding-remote", "onboarding-generation", "onboarding-repair"}
+          expected = {f"packages/pi-comms/test/{name}.test.ts" for name in names}
+          files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
+          assert len(files) == 6 and set(files) == expected, files
+          assert report["success"] is True, report["success"]
+          assert all(item["status"] == "passed" for item in report["testResults"])
+          assert report["numFailedTests"] == report["numPendingTests"] == report["numTodoTests"] == 0, report
+          assert report["numFailedTestSuites"] == report["numPendingTestSuites"] == 0, report
+          assert report["numPassedTests"] == report["numTotalTests"] >= 46, report["numTotalTests"]
+          statuses = [test["status"] for item in report["testResults"] for test in item["assertionResults"]]
+          assert len(statuses) == report["numTotalTests"] and set(statuses) == {"passed"}, set(statuses)
+          print(f"nix vitest report: 6 files, {report['numPassedTests']} passed, 0 skipped/todo/failed")
+          PY
+          # The fixture must still be this run's Nix binary, and its store path still GC-rooted.
+          nix develop -c node --import jiti/register scripts/verify-gateway-nix.ts verify-fixture \
+            --record consumer-nix/record.json --runner-temp "$RUNNER_TEMP" \
+            --fixture "$CONSUMER_BINARY" > consumer-nix/post-test.json
+          cat consumer-nix/post-test.json
+      - name: Remove this run's owned Nix root
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix develop -c node --import jiti/register scripts/verify-gateway-nix.ts cleanup \
+            --record consumer-nix/record.json --runner-temp "$RUNNER_TEMP" > consumer-nix/cleanup.json
+          cat consumer-nix/cleanup.json
+      - name: Record retained Nix root
+        if: ${{ failure() && steps.nix-acquire.outcome != 'skipped' }}
+        shell: bash
+        run: |
+          mkdir -p consumer-nix
+          # Never removed on failure: if record.json exists it names the root left for runner teardown.
+          if [ -f consumer-nix/record.json ]; then
+            echo "Nix root named in record.json intentionally retained for runner teardown: a Nix step failed or cleanup was uncertain." > consumer-nix/retained.txt
+          else
+            echo "Nix preparation failed before any owned root was created; nothing retained." > consumer-nix/retained.txt
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && steps.nix-acquire.outcome != 'skipped' }}
+        with:
+          name: gateway-consumer-nix-${{ matrix.target }}
+          path: consumer-nix/
+          if-no-files-found: error
+          retention-days: 14
       - name: Record consumer provenance
         if: ${{ always() }}
         shell: bash

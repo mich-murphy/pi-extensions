@@ -13,7 +13,7 @@ import type { SetupBackend } from "../onboarding/backend.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { builtGateway, dialog, nativeFixture } from "./onboarding-fixtures.js";
+import { builtGateway, dialog, nativeFixture, noPins } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
 describe("orphan installation recovery with actual native flock", () => {
@@ -96,7 +96,7 @@ describe("orphan installation recovery with actual native flock", () => {
       description: "TEST trusted acquisition",
     });
     const blocked = dialog([local, "APPLY"]);
-    await setupCommand(agent, blocked, activate);
+    await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
     expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
     expect(acquire).not.toHaveBeenCalled();
     expect(activate).not.toHaveBeenCalled();

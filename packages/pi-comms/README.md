@@ -41,11 +41,14 @@ Escape, Cancel, an invalid RPC answer or a 120-second unanswered dialog makes no
 setup writes, downloads or gateway starts before Apply. Print/JSON setup/reset
 refuse mutation; there is no unattended `--yes` bypass.
 
-**Acquisition gate:** this source tree ships no reviewed immutable gateway source
-or published artifact-manifest pin. Fresh production Apply therefore reports
-**Blocked**, without writing configuration or choosing a project/PATH binary.
-Once reviewed pins are supplied, acquisition prefers Nix with a private dedicated
-result, then the separately reviewed verified native fallback if available. A
+**Acquisition gate:** this source tree ships one reviewed immutable Nix source pin
+(producer revision `8b894b5`, with a NAR hash derived from a local `git archive`)
+and **no** published native artifact-manifest pin. On a supported target
+(macOS arm64, Linux arm64 or Linux x64) with a usable system Nix, Apply builds
+that pinned gateway into a private dedicated result. On other targets, including
+Intel macOS, or without usable Nix, fresh production Apply reports **Blocked**, without writing configuration or
+choosing a project/PATH binary; the native fallback stays unavailable until its
+release is published and pinned. A
 previously installed, hash-verified setup executable can be reused. A local test
 binary is not a production acquisition route.
 

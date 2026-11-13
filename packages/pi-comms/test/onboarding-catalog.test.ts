@@ -1,10 +1,40 @@
 import { describe, expect, test } from "vitest";
-import { discoverGateway, gatewayTarget, validatePin } from "../onboarding/catalog.js";
+import {
+  discoverGateway,
+  gatewayCatalog,
+  gatewayTarget,
+  validatePin,
+} from "../onboarding/catalog.js";
 
 describe("gateway trusted catalog", () => {
   test("does not invent release availability", () => {
-    expect(discoverGateway({ nixAvailable: true }).preferred).toBeUndefined();
-    expect(discoverGateway({ nixAvailable: true }).unavailableReason).toContain("No reviewed");
+    const empty = { nix: null, native: null };
+    const linux = { platform: "linux", arch: "x64", nixAvailable: true };
+    expect(discoverGateway(linux, empty).preferred).toBeUndefined();
+    expect(discoverGateway(linux, empty).unavailableReason).toContain("No reviewed");
+  });
+  test("ships only a genuine immutable Nix pin and no unpublished native pin", () => {
+    const { nix, native } = gatewayCatalog;
+    expect(native).toBeNull();
+    const reviewed = {
+      sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
+      version: "0.1.0",
+      narHash: "sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=",
+    };
+    expect(nix).toStrictEqual(reviewed);
+    expect(() => {
+      validatePin(reviewed);
+    }).not.toThrow();
+    const nixHost = discoverGateway({ platform: "linux", arch: "arm64", nixAvailable: true });
+    expect(nixHost.preferred).toBe("nix");
+    expect(nixHost.native).toBeNull();
+    const noNix = discoverGateway({ platform: "darwin", arch: "arm64", nixAvailable: false });
+    expect(noNix.preferred).toBeUndefined();
+    expect(noNix.nix).toBeNull();
+    expect(noNix.unavailableReason).toContain("no usable Nix executable");
+    expect(
+      discoverGateway({ platform: "darwin", arch: "x64", nixAvailable: true }).unavailableReason,
+    ).toContain("No reviewed target");
   });
   test("detects supported architectures without assuming Intel Darwin", () => {
     expect(gatewayTarget("darwin", "x64")).toBeUndefined();

@@ -11,8 +11,10 @@ import {
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
+import type { GatewayCatalog } from "./catalog.js";
 import {
   discoverGateway,
+  gatewayCatalog,
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
 } from "./catalog.js";
@@ -35,10 +37,14 @@ import { repairInstallation } from "./repair.js";
 import { upgradeLocal } from "./upgrade.js";
 import type { ActivatePlan } from "./upgrade.js";
 
+/** Trusted catalog selection; production always uses the shipped `gatewayCatalog`. */
+export type SetupOptions = { catalog?: GatewayCatalog };
+
 async function productionBackend(
-  agentDir?: string,
-  remote = false,
-  forceFresh = false,
+  agentDir: string | undefined,
+  remote: boolean,
+  forceFresh: boolean,
+  catalog: GatewayCatalog,
 ): Promise<{ backend?: SetupBackend; description: string }> {
   const requiredCapabilities = remote
     ? GATEWAY_REMOTE_SETUP_CAPABILITIES
@@ -54,9 +60,8 @@ async function productionBackend(
     };
   }
   const nixExecutable = await discoverNixExecutable();
-  const discovered = discoverGateway({
-    nixAvailable: nixExecutable !== undefined,
-  });
+  // Discovery and every acquisition below use the SAME trusted catalog.
+  const discovered = discoverGateway({ nixAvailable: nixExecutable !== undefined }, catalog);
   const pin = selectedSource(discovered);
   if (pin === undefined || discovered.target === undefined) {
     return {
@@ -72,15 +77,18 @@ async function productionBackend(
       acquire: async (installRoot, progress) => {
         progress(`Acquiring ${method} gateway`);
         try {
-          const result = await acquireGateway({
-            ...pin,
-            approved: true,
-            requiredCapabilities,
-            target,
-            installRoot,
-            deadlineMs: Date.now() + 600_000,
-            ...(nixExecutable === undefined ? {} : { nixExecutable }),
-          });
+          const result = await acquireGateway(
+            {
+              ...pin,
+              approved: true,
+              requiredCapabilities,
+              target,
+              installRoot,
+              deadlineMs: Date.now() + 600_000,
+              ...(nixExecutable === undefined ? {} : { nixExecutable }),
+            },
+            { catalog },
+          );
           return result.executable;
         } catch (error) {
           if (fallback === null) {
@@ -89,15 +97,18 @@ async function productionBackend(
           progress(
             "Nix acquisition unavailable; using the separately reviewed pinned native fallback",
           );
-          const result = await acquireGateway({
-            ...fallback,
-            approved: true,
-            requiredCapabilities,
-            method: "native",
-            target,
-            installRoot,
-            deadlineMs: Date.now() + 120_000,
-          });
+          const result = await acquireGateway(
+            {
+              ...fallback,
+              approved: true,
+              requiredCapabilities,
+              method: "native",
+              target,
+              installRoot,
+              deadlineMs: Date.now() + 120_000,
+            },
+            { catalog },
+          );
           return result.executable;
         }
       },
@@ -134,10 +145,12 @@ export async function setupCommand(
     restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
   },
   reconnect?: (fresh?: boolean) => Promise<void>,
+  options: SetupOptions = {},
 ): Promise<void> {
   requireAttendedUI(ctx);
+  const catalog = options.catalog ?? gatewayCatalog;
   const state = await inspectSetup(agentDir);
-  if (await handleExisting(state, agentDir, ctx, activate, reconnect, supplied)) {
+  if (await handleExisting(state, agentDir, ctx, activate, catalog, reconnect, supplied)) {
     return;
   }
   const intent = await chooseIntent(ctx);
@@ -157,7 +170,8 @@ export async function setupCommand(
   const socketState = await inspectSetup(agentDir, socketPath);
   const reviewedState = { ...state, sharedInstance: socketState.sharedInstance };
   const pairingDirectory = join(state.paths.directory, `pair-${randomBytes(12).toString("hex")}`);
-  const acquisition = supplied ?? (await productionBackend(agentDir, remote !== undefined));
+  const acquisition =
+    supplied ?? (await productionBackend(agentDir, remote !== undefined, false, catalog));
   const plan = await reviewLocal(
     ctx,
     {
@@ -206,6 +220,7 @@ async function handleExisting(
   agentDir: string,
   ctx: DialogContext,
   activate: ActivatePlan,
+  catalog: GatewayCatalog,
   reconnect?: (fresh?: boolean) => Promise<void>,
   supplied?: { backend: SetupBackend; description: string },
 ): Promise<boolean> {
@@ -215,7 +230,7 @@ async function handleExisting(
   if (
     state.existing &&
     !state.pending &&
-    (await resumeOwned(agentDir, ctx, activate, reconnect, supplied))
+    (await resumeOwned(agentDir, ctx, activate, catalog, reconnect, supplied))
   ) {
     return true;
   }
@@ -231,6 +246,7 @@ async function resumeOwned(
   agentDir: string,
   ctx: DialogContext,
   activate: ActivatePlan,
+  catalog: GatewayCatalog,
   reconnect?: (fresh?: boolean) => Promise<void>,
   supplied?: { backend: SetupBackend; description: string },
 ): Promise<boolean> {
@@ -238,7 +254,7 @@ async function resumeOwned(
     await repairInstallation(
       agentDir,
       ctx,
-      async (remote) => supplied ?? (await productionBackend(agentDir, remote, true)),
+      async (remote) => supplied ?? (await productionBackend(agentDir, remote, true, catalog)),
       reconnect,
     )
   ) {
