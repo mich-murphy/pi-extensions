@@ -11,7 +11,7 @@ import {
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
-import type { GatewayCatalog } from "./catalog.js";
+import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog.js";
 import {
   discoverGateway,
   gatewayCatalog,
@@ -72,7 +72,7 @@ async function productionBackend(
   const method = pin.method;
   const fallback = method === "nix" ? discovered.native : null;
   return {
-    description: `Acquire ${pin.version} from reviewed ${method} source ${pin.sourceRevision}, ${pin.method === "nix" ? `source NAR hash ${pin.narHash}` : `artifact manifest SHA256 ${pin.manifestSha256}`}; ${fallback === null ? "no published native fallback is available" : `if Nix is unusable/build fails, this Apply also authorizes verified native fallback ${fallback.version} source ${fallback.sourceRevision} manifest SHA256 ${fallback.manifestSha256}`}. Private dedicated install, no shell profile or OS service registration.`,
+    description: acquisitionDescription(pin, fallback),
     backend: {
       acquire: async (installRoot, progress) => {
         progress(`Acquiring ${method} gateway`);
@@ -393,4 +393,23 @@ export async function resetCommand(
       "warning",
     );
   }
+}
+
+/** Review text for the selected route; only a Nix selection can authorize a native fallback. */
+export function acquisitionDescription(
+  pin: ({ method: "nix" } & GatewayNixPin) | ({ method: "native" } & GatewayReleasePin),
+  fallback: GatewayReleasePin | null,
+): string {
+  const content =
+    pin.method === "nix"
+      ? `source NAR hash ${pin.narHash}`
+      : `artifact manifest SHA256 ${pin.manifestSha256}`;
+  let fallbackClause = "";
+  if (pin.method === "nix") {
+    fallbackClause =
+      fallback === null
+        ? "; no published native fallback is available"
+        : `; if Nix is unusable/build fails, this Apply also authorizes verified native fallback ${fallback.version} source ${fallback.sourceRevision} manifest SHA256 ${fallback.manifestSha256}`;
+  }
+  return `Acquire ${pin.version} from reviewed ${pin.method} source ${pin.sourceRevision}, ${content}${fallbackClause}. Private dedicated install, no shell profile or OS service registration.`;
 }

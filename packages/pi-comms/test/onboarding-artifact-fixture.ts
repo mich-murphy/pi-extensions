@@ -40,7 +40,7 @@ export function fixture(
       schema: 2,
       sourceRevision: metadata.sourceRevision,
       version: metadata.version,
-      releaseTag: `gateway-${metadata.sourceRevision}`,
+      releaseTag: `pi-gateway-v${metadata.version}`,
       artifacts: records,
     }),
   );

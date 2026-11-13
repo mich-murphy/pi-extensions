@@ -43,16 +43,22 @@ refuse mutation; there is no unattended `--yes` bypass.
 
 **Acquisition gate:** this source tree ships one reviewed immutable Nix source pin
 (producer revision `8b894b5`, with a NAR hash derived from a local `git archive`)
-and **no** published native artifact-manifest pin. On a supported target
-(macOS arm64, Linux arm64 or Linux x64) with a usable system Nix, Apply builds
-that pinned gateway into a private dedicated result. On other targets, including
-Intel macOS, or without usable Nix, fresh production Apply reports **Blocked**, without writing configuration or
-choosing a project/PATH binary; the native fallback stays unavailable until its
-release is published and pinned. A
-previously installed, hash-verified setup executable can be reused. A local test
-binary is not a production acquisition route.
+and the reviewed manifest pin of the published
+[Pi Gateway v0.1.0](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.0)
+native release, built from the same revision. On a supported target (macOS arm64,
+Linux arm64 or Linux x64), Apply builds the pinned gateway into a private
+dedicated result when a usable system Nix exists. Without usable Nix, or if the
+Nix build fails, the same Apply downloads the native archive and authenticates
+it against the pinned manifest before installing. On other targets, including
+Intel macOS, fresh production Apply reports **Blocked**, without writing
+configuration or choosing a project/PATH binary. The macOS native binary is
+ad-hoc signed, not Developer ID signed or notarized: `spctl` rejects it, and
+browser quarantine or managed-device policy can block it. Setup never clears
+quarantine or bypasses Gatekeeper. A previously installed, hash-verified setup
+executable can be reused. A local test binary is not a production acquisition
+route.
 
-For manual operation before that distribution gate is resolved:
+For manual operation on a blocked host:
 
 1. Build from a trusted checkout using `cd packages/pi-comms/gateway && cargo build --locked --release` (`nix develop` provides the toolchain).
 2. Create a private persistent socket directory and gateway configuration. It has the Pi fields below without `label`; see the [gateway reference](gateway/README.md#configuration).

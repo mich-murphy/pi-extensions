@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/gateway-release.yml
       - scripts/verify-gateway-nix*.ts
+      - scripts/verify-gateway-native.ts
       - packages/pi-comms/gateway/**
       # Inputs of the native-backed consumer suite; over-triggering is accepted.
       - packages/pi-comms/adapter/**
@@ -351,6 +352,26 @@ jobs:
         with:
           name: gateway-consumer-nix-${{ matrix.target }}
           path: consumer-nix/
+          if-no-files-found: error
+          retention-days: 14
+      # PUBLIC release acquisition through production native acquireGateway with the DEFAULT catalog
+      # pin, after every native and Nix stage above. Proves CDN download, manifest pin, digest and
+      # version/capabilities only; the six-file runtime suite is not rerun here. Fails (never skips)
+      # while gatewayCatalog.native is null. Only metadata and logs are uploaded.
+      - name: Acquire gateway from public release through production native path (default catalog)
+        id: public-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir public-native
+          nix develop -c node --import jiti/register scripts/verify-gateway-native.ts \
+            --target '${{ matrix.target }}' --runner-temp "$RUNNER_TEMP" \
+            --out public-native/record.json 2>&1 | tee public-native/verify.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && steps.public-native.outcome != 'skipped' }}
+        with:
+          name: gateway-consumer-public-native-${{ matrix.target }}
+          path: public-native/
           if-no-files-found: error
           retention-days: 14
       - name: Record consumer provenance

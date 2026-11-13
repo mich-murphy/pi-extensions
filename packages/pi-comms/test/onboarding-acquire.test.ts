@@ -135,6 +135,17 @@ describe("approved gateway acquisition", () => {
     ).rejects.toThrow("trusted catalog");
     expect(s.fetcher).not.toHaveBeenCalled();
   });
+  test("downloads only from the exact semantic version release, not the source revision", async () => {
+    const s = await setup();
+    await acquireGateway(s.plan, s.options);
+    const origin =
+      "https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v0.1.0/";
+    expect(s.fetcher.mock.calls.map(([url]) => requestUrl(url))).toStrictEqual([
+      `${origin}manifest.json`,
+      `${origin}${s.f.record.file}`,
+    ]);
+    expect(s.f.record.file).toBe(`pi-gateway-0.1.0-${s.plan.target}.tar.gz`);
+  });
   test("fails malicious/pin-mismatched downloads without execution", async () => {
     const s = await setup();
     s.fetcher.mockImplementation(async () => new Response("malicious"));

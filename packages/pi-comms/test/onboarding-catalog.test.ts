@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { gatewayReleaseTag } from "../onboarding/artifact.js";
 import {
   discoverGateway,
   gatewayCatalog,
@@ -13,28 +14,54 @@ describe("gateway trusted catalog", () => {
     expect(discoverGateway(linux, empty).preferred).toBeUndefined();
     expect(discoverGateway(linux, empty).unavailableReason).toContain("No reviewed");
   });
-  test("ships only a genuine immutable Nix pin and no unpublished native pin", () => {
+  test("ships the genuine immutable Nix pin and the published native manifest pin", () => {
     const { nix, native } = gatewayCatalog;
-    expect(native).toBeNull();
     const reviewed = {
       sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
       version: "0.1.0",
       narHash: "sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=",
     };
+    const published = {
+      sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
+      version: "0.1.0",
+      manifestSha256: "04620bae0f5fc038f4e9c2d6ee93c2e13d071109adc1536a901b3110b81965db",
+    };
     expect(nix).toStrictEqual(reviewed);
+    expect(native).toStrictEqual(published);
     expect(() => {
       validatePin(reviewed);
+      validatePin(published);
     }).not.toThrow();
-    const nixHost = discoverGateway({ platform: "linux", arch: "arm64", nixAvailable: true });
-    expect(nixHost.preferred).toBe("nix");
-    expect(nixHost.native).toBeNull();
-    const noNix = discoverGateway({ platform: "darwin", arch: "arm64", nixAvailable: false });
+    for (const [platform, arch] of [
+      ["darwin", "arm64"],
+      ["linux", "arm64"],
+      ["linux", "x64"],
+    ] as const) {
+      const nixHost = discoverGateway({ platform, arch, nixAvailable: true });
+      expect(nixHost.preferred).toBe("nix");
+      expect(nixHost.nix).toStrictEqual(reviewed);
+      expect(nixHost.native).toStrictEqual(published);
+      const noNix = discoverGateway({ platform, arch, nixAvailable: false });
+      expect(noNix.preferred).toBe("native");
+      expect(noNix.nix).toBeNull();
+      expect(noNix.native).toStrictEqual(published);
+      expect(noNix.unavailableReason).toBeUndefined();
+    }
+    for (const nixAvailable of [true, false]) {
+      const intel = discoverGateway({ platform: "darwin", arch: "x64", nixAvailable });
+      expect(intel.preferred).toBeUndefined();
+      expect(intel.native).toBeNull();
+      expect(intel.unavailableReason).toContain("No reviewed target");
+    }
+  });
+  test("reports a Nix-only catalog unavailable without usable Nix", () => {
+    const nixOnly = { nix: gatewayCatalog.nix, native: null };
+    const noNix = discoverGateway(
+      { platform: "darwin", arch: "arm64", nixAvailable: false },
+      nixOnly,
+    );
     expect(noNix.preferred).toBeUndefined();
-    expect(noNix.nix).toBeNull();
     expect(noNix.unavailableReason).toContain("no usable Nix executable");
-    expect(
-      discoverGateway({ platform: "darwin", arch: "x64", nixAvailable: true }).unavailableReason,
-    ).toContain("No reviewed target");
   });
   test("detects supported architectures without assuming Intel Darwin", () => {
     expect(gatewayTarget("darwin", "x64")).toBeUndefined();
@@ -80,6 +107,31 @@ describe("gateway trusted catalog", () => {
         validatePin({ ...pin, narHash });
       }).toThrow("Invalid trusted gateway pin");
     }
+  });
+  test("rejects non-semver versions in pins and release tags alike", () => {
+    const pin = { sourceRevision: "a".repeat(40), manifestSha256: "b".repeat(64) };
+    for (const version of [
+      "",
+      "0.1",
+      "v0.1.0",
+      "0.1.0\n",
+      "0.1.0\nx",
+      " 0.1.0",
+      "0.1.0/../x",
+      "0.1.0/x",
+      "0.1.0-a/b",
+      "0.1.0?x",
+      "0.1.0#x",
+      "0.1.0%2F",
+      "0.1.0-",
+    ]) {
+      expect(() => {
+        validatePin({ ...pin, version });
+      }).toThrow("Invalid trusted gateway pin");
+      expect(() => gatewayReleaseTag(version)).toThrow("Invalid trusted gateway pin");
+    }
+    expect(gatewayReleaseTag("0.1.0")).toBe("pi-gateway-v0.1.0");
+    expect(gatewayReleaseTag("1.2.3-rc.1")).toBe("pi-gateway-v1.2.3-rc.1");
   });
   test("rejects mutable refs and malformed hashes", () => {
     expect(() => {

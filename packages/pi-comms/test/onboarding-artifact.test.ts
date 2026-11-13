@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { jsonObject, sha256, verifyArtifact, verifyManifest } from "../onboarding/artifact.js";
+import {
+  gatewayReleaseTag,
+  jsonObject,
+  sha256,
+  verifyArtifact,
+  verifyManifest,
+} from "../onboarding/artifact.js";
 import { fixture, tar } from "./onboarding-artifact-fixture.js";
 
 describe("bounded authenticated artifacts", () => {
@@ -13,6 +19,35 @@ describe("bounded authenticated artifacts", () => {
     expect(() =>
       verifyManifest(f.manifest, { ...f.pin, manifestSha256: "0".repeat(64) }, f.record.target),
     ).toThrow("pin mismatch");
+  });
+  test("binds the semantic release tag to the pinned version", () => {
+    const f = fixture();
+    expect(gatewayReleaseTag("0.1.0")).toBe("pi-gateway-v0.1.0");
+    expect(jsonObject(JSON.parse(f.manifest.toString("utf8"))).releaseTag).toBe(
+      "pi-gateway-v0.1.0",
+    );
+  });
+  test.each([
+    ["legacy revision tag", { releaseTag: `gateway-${"a".repeat(40)}` }, {}],
+    ["unprefixed version tag", { releaseTag: "v0.1.0" }, {}],
+    ["tag for another version", { releaseTag: "pi-gateway-v0.1.1" }, {}],
+    [
+      "tag and manifest version differing from pin",
+      { releaseTag: "pi-gateway-v0.2.0", version: "0.2.0" },
+      {},
+    ],
+    ["pin version differing from manifest tag", {}, { version: "0.2.0" }],
+    ["pin source differing from manifest source", {}, { sourceRevision: "b".repeat(40) }],
+    ["manifest source differing from pin", { sourceRevision: "b".repeat(40) }, {}],
+  ])("rejects %s even with a matching trusted digest", (_name, manifestChange, pinChange) => {
+    const f = fixture();
+    const manifest = Buffer.from(
+      JSON.stringify({ ...jsonObject(JSON.parse(f.manifest.toString("utf8"))), ...manifestChange }),
+    );
+    const pin = { ...f.pin, ...pinChange, manifestSha256: sha256(manifest) };
+    expect(() => verifyManifest(manifest, pin, f.record.target)).toThrow(
+      "Invalid release identity/schema",
+    );
   });
   test("rejects archive digest and oversized bytes", () => {
     const f = fixture();
