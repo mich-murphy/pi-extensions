@@ -33,9 +33,17 @@ not solely from a downloaded source's self-reported hash. URL-encode the SRI as
 one query value **before** the package fragment. Acquisition binds both the full
 revision and exact trusted NAR hash before filesystem, network or command effects;
 Nix then verifies fetched source content against that hash. The committed lock
-file alone does not authenticate the top-level source. Keep the Nix catalog null
-until the actual setup-capable source and its content pin are reviewed; historical
-source-fetch verification is not new-source installation evidence.
+file alone does not authenticate the top-level source. Pin only an actual
+setup-capable source whose content pin was independently derived and reviewed;
+historical source-fetch verification is not new-source installation evidence.
+The catalog commit is necessarily a descendant of the pinned producer revision
+(no self-referential NAR). The source pin authenticates inputs, not output bytes.
+The flake builds only a filtered subset of `packages/pi-comms/gateway` (excluding
+`target` and `release`), so a newer pinned revision whose changes lie outside that
+subset, such as the Python release helpers, can reuse an existing store output.
+A forced local rebuild of the same derivation produced different bytes: vendored
+panic locations embed the per-build sandbox path. Record the selected Nix
+binary's hash per build; do not compare it across builds, hosts or runners.
 
 Asset origin is
 `https://github.com/mich-murphy/pi-extensions/releases/download/<releaseTag>/`.
@@ -126,10 +134,12 @@ Before enabling a downloadable fallback in a shipped extension:
 Until these gates pass, report fallback unavailable; do not ship fabricated
 hashes, treat nonexistent URLs as working acquisition, or send users to Cargo.
 A usable pinned Nix build remains an independent acquisition path. The shipped
-`onboarding/catalog.ts` currently has **no reviewed source pin and no native
-manifest pin**. Discovery reports this as unavailable; this state is not a
-production-ready installer. Do not fill it with the earlier foundation source
-if the reviewed setup requires newer pairing capabilities.
+`onboarding/catalog.ts` pins the reviewed Nix source revision
+`8b894b5367657abc9dddf5d35c7bb0df62472d09`, version `0.1.0`,
+`sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=`, and has **no native
+manifest pin**. Hosts without usable Nix are reported unavailable until the
+native release is published and pinned. Tests of the blocked path use an
+explicit empty catalog, not the shipped one.
 
 ## Acquisition implementation and recovery
 

@@ -28,8 +28,18 @@ export const GATEWAY_REMOTE_SETUP_CAPABILITIES = [
   "pairing-v1",
 ] as const;
 
-// Deliberately unavailable until immutable source/candidate review and publication.
-export const gatewayCatalog: GatewayCatalog = { nix: null, native: null };
+// Nix: reviewed immutable producer commit; its NAR hash was derived independently from a
+// local `git archive` of that revision (never from a downloaded self-reported hash). This
+// catalog commit is necessarily a descendant of the pinned revision.
+// Native: deliberately unavailable until the release is published and its manifest is pinned.
+export const gatewayCatalog: GatewayCatalog = {
+  nix: {
+    sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
+    version: "0.1.0",
+    narHash: "sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=",
+  },
+  native: null,
+};
 
 export function gatewayTarget(
   platform = process.platform as string,

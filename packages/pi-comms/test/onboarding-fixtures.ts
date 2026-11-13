@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { vi } from "vitest";
+import type { GatewayCatalog } from "../onboarding/catalog.js";
 import type { DialogContext } from "../onboarding/dialog.js";
 
 export const builtGateway = resolve("packages/pi-comms/gateway/target/debug/pi-gateway");
@@ -107,3 +108,6 @@ export function nativeParticipants() {
     },
   };
 }
+
+/** Explicit no-pin catalog for blocked production-path tests, never the shipped pins. */
+export const noPins: { catalog: GatewayCatalog } = { catalog: { nix: null, native: null } };
