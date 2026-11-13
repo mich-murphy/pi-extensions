@@ -159,11 +159,30 @@ claims, restricts HTTPS release/CDN redirects, bounds redirects, downloads and
 gzip output, parses only two regular USTAR members in memory, verifies binary
 hash/size and object architecture, then runs bounded `--version --json` with a
 sanitized environment. There is no system tar, shell extraction or PATH lookup.
-A private per-attempt staging directory is atomically renamed to the versioned
-installation only after verification and the compatibility probe. A failed
-attempt removes only its newly created directory. Existing completed native
-installs are reused only after pinned-manifest/binary reauthentication and a new
-capability probe; mismatched or incomplete existing state is preserved, not adopted.
+Each native attempt writes into a private per-attempt directory
+`.gateway-<version>-<rev>-native-XXXXXX` that is never renamed. After
+verification, the compatibility probe, a create-only completion marker and
+fsync, publication is one exclusive `symlink(2)` of that bare basename at
+`<version>-<rev>-native`. On Darwin and Linux this fails with `EEXIST` for any
+existing entry, so it never replaces or merges into an empty directory, file,
+symlink or other state. Once the link exists the attempt counts as committed:
+later cancellation or a root fsync failure never removes it. If the symlink call
+reports an error but this attempt's own link exists, the payload is retained.
+On a collision, a concurrent winner is adopted only after the same bounded
+reauthentication as reuse; any other entry is preserved untouched and the
+attempt fails. A failed unpublished attempt removes only its own directory.
+Unreferenced older attempts are neither adopted nor swept. Retention only keeps
+state safe: production setup and repair pass a fresh `install-<random>` or
+`repair-install-<random>` root on every call, so a retained committed or
+uncertain payload is neither reused nor swept by a normal retry and stays as
+unreferenced owned state. Only a caller that passes the same `installRoot` again
+gets verified reuse of it. Reuse accepts only a
+link whose target is exactly this pin's attempt-name pattern (no `/`, no
+traversal), pointing at a private, account-owned, non-symlink directory, or a
+legacy private directory at the versioned name; old installs are read without
+migration. Reuse requires the pinned manifest, binary hash and a new capability
+probe. The returned executable is the regular file inside the payload. Older
+pi-comms builds fail closed on the new link layout rather than reinstalling.
 
 Nix uses `build --out-link` at a dedicated private **per-attempt versioned** path,
 never the default profile; experimental features are enabled for that command,

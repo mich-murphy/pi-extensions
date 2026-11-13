@@ -247,31 +247,25 @@ export async function acquireGateway(
   // All validation/cancellation above is side-effect free.
   options.onProgress?.("Preparing private gateway installation");
   await privateRoot(plan.installRoot, io.fs);
-  const installation = await prepareInstallation(plan, io.fs);
-  const { destination, created, previousExecutable } = installation;
-  const { installDirectory } = installation;
+  if (plan.method === "native" && (await entryExists(nativeDestination(plan), io.fs))) {
+    options.onProgress?.("Reauthenticating existing pinned native gateway");
+    return reuseNative(plan, io, signal);
+  }
+  const installation = await prepareAttempt(plan, io.fs);
   try {
     signal.throwIfAborted();
     const executable =
       plan.method === "nix"
-        ? await acquireNix(plan, destination, io, signal, options.onProgress)
-        : await acquireNative(plan, installation, io, signal, options.onProgress);
-    if (previousExecutable !== undefined && previousExecutable !== executable) {
-      throw new Error("Existing executable identity changed");
-    }
+        ? await acquireNix(plan, installation.installDirectory, io, signal, options.onProgress)
+        : await acquireNative(plan, installation.installDirectory, io, signal, options.onProgress);
     signal.throwIfAborted();
     await probeGateway(executable, plan, io, signal);
-    const finalExecutable = await publishInstallation(
-      plan,
-      installation,
-      executable,
-      io.fs,
-      signal,
-    );
-    return completedAcquisition(plan, finalExecutable, destination);
+    return await publishInstallation(plan, installation, executable, io, signal);
   } catch (error) {
-    if (created) {
-      await io.fs.rm(installDirectory, { recursive: true, force: true });
+    // Only this attempt's own unpublished directory is removed. Once publication may have
+    // happened, the payload is retained for verified reuse instead.
+    if (!installation.retained) {
+      await io.fs.rm(installation.installDirectory, { recursive: true, force: true });
     }
     throw error;
   }
@@ -315,46 +309,44 @@ function acquisitionSignal(plan: AcquisitionPlan, externalSignal?: AbortSignal):
 }
 
 type Installation = {
-  destination: string;
-  created: boolean;
   installDirectory: string;
-  previousExecutable: string | undefined;
+  /** True once publication may have occurred; a retained attempt is never removed. */
+  retained: boolean;
 };
-async function prepareInstallation(
+function nativeDestination(plan: AcquisitionPlanNative): string {
+  return path.join(plan.installRoot, `${plan.version}-${plan.sourceRevision}-native`);
+}
+function nativeAttemptPrefix(plan: AcquisitionPlanNative): string {
+  return `.gateway-${plan.version}-${plan.sourceRevision}-native-`;
+}
+/** Exact private attempt basename: literal prefix plus mkdtemp's six-character suffix. */
+function isNativeAttemptName(plan: AcquisitionPlanNative, name: string): boolean {
+  const prefix = nativeAttemptPrefix(plan);
+  return name.startsWith(prefix) && /^[A-Za-z0-9]{6}$/u.test(name.slice(prefix.length));
+}
+async function entryExists(filename: string, io: AcquisitionSeams["fs"]): Promise<boolean> {
+  try {
+    await io.lstat(filename);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+async function prepareAttempt(
   plan: AcquisitionPlan,
   io: AcquisitionSeams["fs"],
 ): Promise<Installation> {
-  if (plan.method === "nix") {
-    const destination = await io.mkdtemp(
-      path.join(plan.installRoot, `${plan.version}-${plan.sourceRevision}-nix-`),
-    );
-    return {
-      destination,
-      installDirectory: destination,
-      created: true,
-      previousExecutable: undefined,
-    };
-  }
-  const destination = path.join(plan.installRoot, `${plan.version}-${plan.sourceRevision}-native`);
-  const existing = await io.lstat(destination).catch((error: unknown) => {
-    if (errorCode(error) === "ENOENT") {
-      return null;
-    }
-    throw error;
-  });
-  if (existing !== null) {
-    const previousExecutable = await verifyExistingInstallation(plan, destination, io);
-    return { destination, installDirectory: destination, created: false, previousExecutable };
-  }
-  const installDirectory = await io.mkdtemp(path.join(plan.installRoot, ".pending-gateway-"));
-  return { destination, installDirectory, created: true, previousExecutable: undefined };
+  const prefix =
+    plan.method === "nix"
+      ? `${plan.version}-${plan.sourceRevision}-nix-`
+      : nativeAttemptPrefix(plan);
+  const installDirectory = await io.mkdtemp(path.join(plan.installRoot, prefix));
+  return { installDirectory, retained: false };
 }
-async function verifyExistingInstallation(
-  plan: AcquisitionPlanNative,
-  destination: string,
-  io: AcquisitionSeams["fs"],
-): Promise<string> {
-  const stat = await io.lstat(destination);
+function validatePrivateDirectory(stat: Stats): void {
   if (
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
@@ -363,8 +355,40 @@ async function verifyExistingInstallation(
   ) {
     throw new Error("Unsafe existing installation");
   }
+}
+/**
+ * Resolve the published payload: a legacy private directory at the versioned name, or an
+ * exclusive symlink whose bare target is this pin's private attempt directory in the root.
+ */
+async function installedPayload(
+  plan: AcquisitionPlanNative,
+  destination: string,
+  io: AcquisitionSeams["fs"],
+): Promise<string> {
+  const stat = await io.lstat(destination);
+  if (!stat.isSymbolicLink()) {
+    validatePrivateDirectory(stat);
+    return destination;
+  }
+  const target = await io.readlink(destination);
+  if (!isNativeAttemptName(plan, target)) {
+    throw new Error("Unsafe existing installation");
+  }
+  const payload = path.join(plan.installRoot, target);
+  const payloadStat = await io.lstat(payload).catch((error: unknown) => {
+    throw new Error("Unsafe existing installation: published payload missing", { cause: error });
+  });
+  validatePrivateDirectory(payloadStat);
+  return payload;
+}
+async function verifyCompletionMarker(
+  plan: AcquisitionPlanNative,
+  payload: string,
+  executable: string,
+  io: AcquisitionSeams["fs"],
+): Promise<void> {
   // A missing/invalid completion record means interrupted ownership. Never repair or remove implicitly.
-  const markerBytes = await boundedOwnedFile(path.join(destination, "installed.json"), 16_384, io);
+  const markerBytes = await boundedOwnedFile(path.join(payload, "installed.json"), 16_384, io);
   const marker = jsonObject(JSON.parse(markerBytes.toString("utf8")));
   if (marker.sourceRevision !== plan.sourceRevision || marker.version !== plan.version) {
     throw new Error("Existing install identity mismatch; inspect owned state before recovery");
@@ -372,7 +396,40 @@ async function verifyExistingInstallation(
   if (typeof marker.executable !== "string") {
     throw new TypeError("Invalid completion marker");
   }
-  return marker.executable;
+  if (marker.executable !== executable) {
+    throw new Error("Existing executable identity changed");
+  }
+}
+/** Bounded reauthentication of a published native install; never downloads or retries. */
+async function reuseNative(
+  plan: AcquisitionPlanNative,
+  io: AcquisitionSeams,
+  signal: AbortSignal,
+): Promise<AcquisitionResult> {
+  const destination = nativeDestination(plan);
+  const payload = await installedPayload(plan, destination, io.fs);
+  const executable = path.join(payload, "pi-gateway");
+  await verifyCompletionMarker(plan, payload, executable, io.fs);
+  const { record } = verifyManifest(
+    await boundedOwnedFile(path.join(payload, "manifest.json"), 65_536, io.fs),
+    {
+      sourceRevision: plan.sourceRevision,
+      version: plan.version,
+      manifestSha256: plan.manifestSha256,
+    },
+    plan.target,
+  );
+  const binary = await boundedOwnedFile(executable, MAX_BINARY, io.fs);
+  if (binary.length !== record.binarySize || sha256(binary) !== record.binarySha256) {
+    throw new Error("Existing binary integrity mismatch");
+  }
+  signal.throwIfAborted();
+  await probeGateway(executable, plan, io, signal);
+  return completedAcquisition(
+    plan,
+    executable,
+    payload === destination ? [destination] : [destination, payload],
+  );
 }
 
 async function acquireNix(
@@ -416,41 +473,31 @@ async function acquireNix(
 }
 async function acquireNative(
   plan: AcquisitionPlanNative,
-  installation: Installation,
+  installDirectory: string,
   io: AcquisitionSeams,
   signal: AbortSignal,
   onProgress?: (message: string) => void,
 ): Promise<string> {
-  const { destination, installDirectory, created } = installation;
   const origin = `https://github.com/mich-murphy/pi-extensions/releases/download/gateway-${plan.sourceRevision}/`;
   onProgress?.("Downloading and authenticating pinned native gateway");
-  const bytes = created
-    ? await download(`${origin}manifest.json`, 65_536, signal, io.fetch)
-    : await boundedOwnedFile(path.join(destination, "manifest.json"), 65_536, io.fs);
+  const bytes = await download(`${origin}manifest.json`, 65_536, signal, io.fetch);
   const { record } = verifyManifest(
     bytes,
     {
       sourceRevision: plan.sourceRevision,
       version: plan.version,
-      manifestSha256: plan.manifestSha256 ?? "",
+      manifestSha256: plan.manifestSha256,
     },
     plan.target,
   );
   const executable = path.join(installDirectory, "pi-gateway");
-  if (created) {
-    const archive = await download(`${origin}${record.file}`, MAX_ARCHIVE, signal, io.fetch);
-    const binary = verifyArtifact(archive, record);
-    await io.fs.writeFile(executable, binary, { flag: "wx", mode: 0o500 });
-    await io.fs.writeFile(path.join(installDirectory, "manifest.json"), bytes, {
-      flag: "wx",
-      mode: 0o400,
-    });
-  } else {
-    const binary = await boundedOwnedFile(executable, MAX_BINARY, io.fs);
-    if (binary.length !== record.binarySize || sha256(binary) !== record.binarySha256) {
-      throw new Error("Existing binary integrity mismatch");
-    }
-  }
+  const archive = await download(`${origin}${record.file}`, MAX_ARCHIVE, signal, io.fetch);
+  const binary = verifyArtifact(archive, record);
+  await io.fs.writeFile(executable, binary, { flag: "wx", mode: 0o500 });
+  await io.fs.writeFile(path.join(installDirectory, "manifest.json"), bytes, {
+    flag: "wx",
+    mode: 0o400,
+  });
   return executable;
 }
 
@@ -520,38 +567,143 @@ async function publishInstallation(
   plan: AcquisitionPlan,
   installation: Installation,
   executable: string,
-  io: AcquisitionSeams["fs"],
+  io: AcquisitionSeams,
   signal: AbortSignal,
-): Promise<string> {
-  const { destination, installDirectory, created } = installation;
-  const finalExecutable =
-    plan.method === "native" ? path.join(destination, "pi-gateway") : executable;
-  if (created) {
-    await io.writeFile(
-      path.join(installDirectory, "installed.json"),
-      JSON.stringify({
-        sourceRevision: plan.sourceRevision,
-        version: plan.version,
-        executable: finalExecutable,
-      }),
-      { flag: "wx", mode: 0o400 },
+): Promise<AcquisitionResult> {
+  const { installDirectory } = installation;
+  const marker = path.join(installDirectory, "installed.json");
+  await io.fs.writeFile(
+    marker,
+    JSON.stringify({
+      sourceRevision: plan.sourceRevision,
+      version: plan.version,
+      executable,
+    }),
+    { flag: "wx", mode: 0o400 },
+  );
+  if (plan.method === "nix") {
+    return completedAcquisition(plan, executable, [installDirectory]);
+  }
+  const name = path.basename(installDirectory);
+  if (!isNativeAttemptName(plan, name)) {
+    throw new Error("Unexpected private attempt name");
+  }
+  await Promise.all(
+    [executable, path.join(installDirectory, "manifest.json"), marker].map(async (file) =>
+      syncPath(file, "file", io.fs),
+    ),
+  );
+  await syncPath(installDirectory, "directory", io.fs);
+  signal.throwIfAborted();
+  const destination = nativeDestination(plan);
+  try {
+    // symlink(2) is the exclusive commit: it fails with EEXIST for any existing entry and never
+    // replaces or merges into it, unlike rename(2) over an empty directory.
+    await io.fs.symlink(name, destination);
+    installation.retained = true;
+  } catch (error) {
+    return publicationCollision(plan, installation, error, io, signal);
+  }
+  // Committed: later failures or cancellation never remove the published payload or link.
+  try {
+    await syncPath(plan.installRoot, "directory", io.fs);
+  } catch (error) {
+    throw new Error("Gateway install published but not yet durable; retained for verified reuse", {
+      cause: error,
+    });
+  }
+  return completedAcquisition(plan, executable, [destination, installDirectory]);
+}
+
+/**
+ * fsync an owned staged entry. O_NONBLOCK keeps a substituted FIFO from blocking the open, and
+ * the descriptor's own type/owner/mode is checked before any sync.
+ */
+async function syncPath(
+  filename: string,
+  kind: "file" | "directory",
+  io: AcquisitionSeams["fs"],
+): Promise<void> {
+  const handle = await io.open(
+    filename,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const stat = await handle.stat();
+    const expected =
+      kind === "file" ? stat.isFile() : stat.isDirectory() && (stat.mode & 0o077) === 0;
+    if (!expected || stat.uid !== process.getuid?.()) {
+      throw new Error(`Unexpected staged ${kind} type or ownership`);
+    }
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function isOwnLink(
+  destination: string,
+  name: string,
+  io: AcquisitionSeams["fs"],
+): Promise<boolean> {
+  if (!(await entryExists(destination, io))) {
+    return false;
+  }
+  const stat = await io.lstat(destination);
+  return stat.isSymbolicLink() && (await io.readlink(destination)) === name;
+}
+
+async function publicationCollision(
+  plan: AcquisitionPlanNative,
+  installation: Installation,
+  error: unknown,
+  io: AcquisitionSeams,
+  signal: AbortSignal,
+): Promise<AcquisitionResult> {
+  const destination = nativeDestination(plan);
+  let own: boolean;
+  try {
+    own = await isOwnLink(destination, path.basename(installation.installDirectory), io.fs);
+  } catch (inspection) {
+    installation.retained = true;
+    throw new AggregateError(
+      [error, inspection],
+      "Uncertain gateway publication; attempt retained",
+      {
+        cause: inspection,
+      },
     );
   }
-  if (created && plan.method === "native") {
-    signal.throwIfAborted();
-    await io.rename(installDirectory, destination);
+  if (own) {
+    // The link may have been created despite the reported error; never delete its target.
+    installation.retained = true;
+    throw new Error("Uncertain gateway publication; attempt retained for verified reuse", {
+      cause: error,
+    });
   }
-  return finalExecutable;
+  if (errorCode(error) !== "EEXIST") {
+    throw error;
+  }
+  // A concurrent or foreign entry is never replaced, merged or removed. Adopt it only after
+  // the same bounded reauthentication as ordinary reuse.
+  let winner: AcquisitionResult;
+  try {
+    winner = await reuseNative(plan, io, signal);
+  } catch (cause) {
+    throw new Error("Gateway install name collision; existing state preserved", { cause });
+  }
+  await io.fs.rm(installation.installDirectory, { recursive: true, force: true });
+  return winner;
 }
 
 function completedAcquisition(
   plan: AcquisitionPlan,
   executable: string,
-  destination: string,
+  ownedPaths: string[],
 ): AcquisitionResult {
   return {
     executable,
-    ownedPaths: [destination],
+    ownedPaths,
     recoveryEffects:
       plan.method === "nix"
         ? [

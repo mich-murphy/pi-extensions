@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { validateFrame } from "../protocol/wire.js";
+import type { PublishInput } from "../state/types.js";
 import { permits, visibleText } from "./config.js";
 import { toolPresentation } from "./presentation.js";
 import { deliveryText } from "./session.js";
@@ -111,9 +112,14 @@ function output(value: unknown): ToolValue {
     details: { value },
   };
 }
+/**
+ * Local tools touch only this runtime's private in-memory state and never wait on gateway recovery.
+ * Remote, read and discovery tools keep the recovery preflight and effective-grant checks.
+ */
 async function invoke(
   getSession: () => AdapterSession | undefined,
   run: (session: AdapterSession) => unknown,
+  local: (session: AdapterSession) => boolean = () => false,
 ): Promise<ToolValue> {
   const session = getSession();
   if (session === undefined) {
@@ -124,7 +130,13 @@ async function invoke(
     });
   }
   try {
-    await session.client.recoverForTool();
+    if (local(session)) {
+      if (session.client.isClosed()) {
+        throw new ConnectionFailure("cancelled", false);
+      }
+    } else {
+      await session.client.recoverForTool();
+    }
     return output(await run(session));
   } catch (error) {
     return {
@@ -141,6 +153,21 @@ function ownScope(session: AdapterSession, scopeId: string): void {
   if (!session.client.effectiveScopes().has(scopeId)) {
     throw new ConnectionFailure("unavailable", false);
   }
+}
+const offline = (session: AdapterSession): boolean => !session.client.status().connected;
+/**
+ * Own publication put/remove. While connected, the gateway's current grants bound mutation.
+ * Offline, the state store still requires a configured scope; exposure remains guarded because
+ * every remote read re-checks current effective scopes and the configured read policy.
+ */
+function mutateOwn(
+  session: AdapterSession,
+  args: (PublishInput & { action: "put" }) | { action: "remove"; scopeId: string; key: string },
+) {
+  if (!offline(session)) {
+    ownScope(session, args.scopeId);
+  }
+  return args.action === "put" ? session.state.publish(args) : session.state.remove(args);
 }
 
 export function registerTools(
@@ -220,15 +247,19 @@ export function registerTools(
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
     }),
     execute: async (_id, args) =>
-      invoke(getSession, (session) => {
-        const result = session.take(args.limit ?? 4);
-        return {
-          messages: result.messages.map(
-            (delivery) => JSON.parse(deliveryText(delivery)) as unknown,
-          ),
-          note: result.note,
-        };
-      }),
+      invoke(
+        getSession,
+        (session) => {
+          const result = session.take(args.limit ?? 4);
+          return {
+            messages: result.messages.map(
+              (delivery) => JSON.parse(deliveryText(delivery)) as unknown,
+            ),
+            note: result.note,
+          };
+        },
+        () => true,
+      ),
   });
   pi.registerTool({
     name: "session_state",
@@ -264,43 +295,44 @@ export function registerTools(
       }),
     ]),
     execute: async (_id, args, signal) =>
-      invoke(getSession, async (session) => {
-        ownScope(session, args.scopeId);
-        if (args.action === "put") {
-          return session.state.publish(args);
-        }
-        if (args.action === "remove") {
-          return session.state.remove(args);
-        }
-        if (!permits(session.config, args.publisher.machineId, args.scopeId, "read")) {
-          return { tag: "error", code: "forbidden" };
-        }
-        const frame = validateFrame(
-          {
-            v: 1,
-            op: args.action === "get" ? "state.get" : "state.list",
-            rid: freshId(),
-            publisher: args.publisher,
-            scopeId: args.scopeId,
-            ...(args.action === "get"
-              ? {
-                  key: args.key,
-                  ...(args.expectedRevision === undefined
-                    ? {}
-                    : { expectedRevision: args.expectedRevision }),
-                }
-              : {}),
-          },
-          "local-client",
-        );
-        if (frame.op !== "state.get" && frame.op !== "state.list") {
-          throw new Error("Invalid state operation");
-        }
-        return session.client.operation(async () => {
-          const reply = await session.client.request(frame, signal);
-          return reply.outcome;
-        });
-      }),
+      invoke(
+        getSession,
+        async (session) => {
+          if (args.action === "put" || args.action === "remove") {
+            return mutateOwn(session, args);
+          }
+          ownScope(session, args.scopeId);
+          if (!permits(session.config, args.publisher.machineId, args.scopeId, "read")) {
+            return { tag: "error", code: "forbidden" };
+          }
+          const frame = validateFrame(
+            {
+              v: 1,
+              op: args.action === "get" ? "state.get" : "state.list",
+              rid: freshId(),
+              publisher: args.publisher,
+              scopeId: args.scopeId,
+              ...(args.action === "get"
+                ? {
+                    key: args.key,
+                    ...(args.expectedRevision === undefined
+                      ? {}
+                      : { expectedRevision: args.expectedRevision }),
+                  }
+                : {}),
+            },
+            "local-client",
+          );
+          if (frame.op !== "state.get" && frame.op !== "state.list") {
+            throw new Error("Invalid state operation");
+          }
+          return session.client.operation(async () => {
+            const reply = await session.client.request(frame, signal);
+            return reply.outcome;
+          });
+        },
+        (session) => (args.action === "put" || args.action === "remove") && offline(session),
+      ),
   });
   pi.registerTool({
     name: "session_interest",
