@@ -89,7 +89,10 @@ export async function createPrivate(path: string, content: string): Promise<void
   await syncDirectory(dirname(path));
 }
 export async function syncDirectory(path: string): Promise<void> {
-  const directory = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const directory = await open(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
   try {
     const stat = await directory.stat();
     if (!stat.isDirectory()) {

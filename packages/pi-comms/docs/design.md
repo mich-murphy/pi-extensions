@@ -49,6 +49,8 @@ Escape is Pi's own cancel. An aborted run skips `agent_before_settle`, so old me
 
 Admission is not consumption. Replacing the runtime discards the inbox, publications and interests, and there is no offline mailbox.
 
+Local tools do not wait on gateway recovery. While the gateway is unreachable, `session_take` still returns already-admitted messages, and `session_state` `put`/`remove` still change this runtime's own private publications in configured scopes. While connected, those writes are limited to the scopes the gateway granted. Offline, the limit is the configured scopes, so a write can land in a configured scope that the last registration did not grant. Writes made while offline are not exposed until a later registration grants that scope and the read policy allows the reader. When both hold, peers can read them with no further action. Local tools never start recovery. After the bounded automatic reconnect episode gives up, the runtime stays disconnected until a remote tool runs its recovery preflight or `/comms reconnect` succeeds, and until then its publications stay unreadable and it receives no new deliveries. Remote reads, discovery, sends, interests and reports keep the guarded recovery preflight and fail closed.
+
 ## Trust model
 
 - Gateways talk over TLS 1.3 only, with mutual authentication. Session resumption and early data are off.

@@ -49,6 +49,10 @@ export class GatewayClient {
   effectiveScopes(): ReadonlySet<string> {
     return this.scopes;
   }
+  /** Local-only tools skip recovery; they must still fail closed after shutdown. */
+  isClosed(): boolean {
+    return this.closed;
+  }
   status() {
     return {
       status: this.diagnostic,

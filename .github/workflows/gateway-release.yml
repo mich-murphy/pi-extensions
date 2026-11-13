@@ -6,6 +6,18 @@ on:
     paths:
       - .github/workflows/gateway-release.yml
       - packages/pi-comms/gateway/**
+      # Inputs of the native-backed consumer suite; over-triggering is accepted.
+      - packages/pi-comms/adapter/**
+      - packages/pi-comms/onboarding/**
+      - packages/pi-comms/protocol/**
+      - packages/pi-comms/state/**
+      - packages/pi-comms/test/**
+      - packages/pi-comms/fixtures/**
+      - packages/pi-comms/index.ts
+      - packages/pi-comms/package.json
+      - package.json
+      - package-lock.json
+      - vitest.config.ts
       - flake.nix
       - flake.lock
 
@@ -100,6 +112,8 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      manifest-sha256: ${{ steps.assemble.outputs.manifest-sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -107,6 +121,7 @@ jobs:
           pattern: gateway-*
           path: candidates
       - name: Assemble and verify complete catalog
+        id: assemble
         shell: bash
         run: |
           mkdir release
@@ -114,12 +129,163 @@ jobs:
             cp "candidates/gateway-$target/"*.tar.gz release/
             cp "candidates/gateway-$target/$target.json" release/
           done
-          python3 packages/pi-comms/gateway/release/artifacts.py assemble \
-            --directory release --revision "$GITHUB_SHA"
+          pin=$(python3 packages/pi-comms/gateway/release/artifacts.py assemble \
+            --directory release --revision "$GITHUB_SHA")
+          echo "$pin"
+          [[ "$pin" =~ ^[0-9a-f]{64}$ ]]
+          # Consumers authenticate the manifest with this job output, never the adjacent file.
+          echo "manifest-sha256=$pin" >> "$GITHUB_OUTPUT"
           cp -R candidates release/build-evidence
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gateway-release-candidate-${{ github.sha }}
           path: release/
+          if-no-files-found: error
+          retention-days: 14
+
+  # Consumer proof of the EXTRACTED archive binary on each native target. Still
+  # staging only: no release, tag, asset upload, signing key or OIDC token.
+  consumer:
+    name: Consumer ${{ matrix.target }}
+    needs: catalog
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      MANIFEST_SHA256: ${{ needs.catalog.outputs.manifest-sha256 }}
+      CONSUMER_BINARY: packages/pi-comms/gateway/target/debug/pi-gateway
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: gateway-release-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate
+      - name: Authenticate and exclusively extract release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$(python3 packages/pi-comms/gateway/release/artifacts.py native-target)" = '${{ matrix.target }}'
+          python3 -m unittest discover -s packages/pi-comms/gateway/release -p 'test_*.py'
+          # Fresh checkout: the fixture location must not already exist.
+          test ! -e "$CONSUMER_BINARY"
+          mkdir -p packages/pi-comms/gateway/target
+          mkdir -m 700 packages/pi-comms/gateway/target/debug
+          mkdir consumer
+          python3 packages/pi-comms/gateway/release/artifacts.py extract \
+            --manifest "$RUNNER_TEMP/candidate/manifest.json" --manifest-sha256 "$MANIFEST_SHA256" \
+            --directory "$RUNNER_TEMP/candidate" --target '${{ matrix.target }}' \
+            --output "$CONSUMER_BINARY" > consumer/extracted.json
+          cat consumer/extracted.json
+      - name: Side-effect-free version and capability probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_home=$(mktemp -d "$RUNNER_TEMP/probe-XXXXXX")
+          env -i HOME="$probe_home" TMPDIR="$probe_home" PATH=/usr/bin:/bin \
+            "$PWD/$CONSUMER_BINARY" --version --json > consumer/version.json
+          test -z "$(ls -A "$probe_home")"
+          python3 - <<'PY'
+          import json, os, pathlib, tomllib
+          extracted = json.loads(pathlib.Path("consumer/extracted.json").read_text())
+          assert extracted["sourceRevision"] == os.environ["GITHUB_SHA"], extracted
+          assert extracted["manifestSha256"] == os.environ["MANIFEST_SHA256"], extracted
+          version = json.loads(pathlib.Path("consumer/version.json").read_text())
+          cargo = tomllib.loads(pathlib.Path("packages/pi-comms/gateway/Cargo.toml").read_text())["package"]
+          required = {"managed-on-demand-v1", "pairing-v1", "gateway-control-v1", "setup-lock-v1", "config-generation-v1"}
+          assert version["name"] == "pi-gateway" and version["version"] == cargo["version"], version
+          assert version["wireVersions"] == [1], version
+          assert required <= set(version["capabilities"]), version
+          PY
+      - name: Older glibc loader smoke of the extracted binary (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='node@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059'
+          expected=$(python3 -c 'import json; print(json.load(open("consumer/extracted.json"))["binarySha256"])')
+          docker pull "$image"
+          docker run --rm --network=none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=32 --memory=128m \
+            --user="$(id -u):$(id -g)" --env "EXPECTED=$expected" \
+            --mount "type=bind,source=$PWD/$CONSUMER_BINARY,target=/candidate/pi-gateway,readonly" \
+            "$image" sh -ec 'test "$(id -u)" != 0; test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.36"; test "$(sha256sum /candidate/pi-gateway | cut -d" " -f1)" = "$EXPECTED"; getconf GNU_LIBC_VERSION; echo "$EXPECTED"; /candidate/pi-gateway --version --json' \
+            > consumer/older-consumer.txt
+          cat consumer/older-consumer.txt
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 2
+      - name: Install locked Node dependencies
+        run: nix develop -c npm ci
+      - name: Native-backed lifecycle, generation and PKI tests against release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Same six files as the local release-binary proof; no skip or bound changes.
+          PI_SESSION_GATEWAY_BINARY="$PWD/$CONSUMER_BINARY" nix develop -c npx vitest run \
+            --coverage.enabled=false --maxWorkers=2 \
+            --reporter=default --reporter=json --outputFile.json=consumer/vitest.json \
+            packages/pi-comms/test/adapter-native.test.ts \
+            packages/pi-comms/test/onboarding-managed.test.ts \
+            packages/pi-comms/test/onboarding-runtime.test.ts \
+            packages/pi-comms/test/onboarding-remote.test.ts \
+            packages/pi-comms/test/onboarding-generation.test.ts \
+            packages/pi-comms/test/onboarding-repair.test.ts 2>&1 | tee consumer/vitest.log
+          # Exactly the six files ran, nothing skipped, todo or failed, and the suite did not shrink.
+          python3 - <<'PY'
+          import json, os, pathlib
+          report = json.loads(pathlib.Path("consumer/vitest.json").read_text())
+          root = pathlib.Path.cwd().resolve()
+          names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
+                   "onboarding-remote", "onboarding-generation", "onboarding-repair"}
+          expected = {f"packages/pi-comms/test/{name}.test.ts" for name in names}
+          files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
+          assert len(files) == 6 and set(files) == expected, files
+          assert report["success"] is True, report["success"]
+          assert all(item["status"] == "passed" for item in report["testResults"])
+          assert report["numFailedTests"] == report["numPendingTests"] == report["numTodoTests"] == 0, report
+          assert report["numFailedTestSuites"] == report["numPendingTestSuites"] == 0, report
+          assert report["numPassedTests"] == report["numTotalTests"] >= 46, report["numTotalTests"]
+          statuses = [test["status"] for item in report["testResults"] for test in item["assertionResults"]]
+          assert len(statuses) == report["numTotalTests"] and set(statuses) == {"passed"}, set(statuses)
+          print(f"vitest report: 6 files, {report['numPassedTests']} passed, 0 skipped/todo/failed")
+          PY
+          # The file must still be the authenticated binary after the suite.
+          python3 - <<'PY'
+          import hashlib, json, pathlib, os
+          record = json.loads(pathlib.Path("consumer/extracted.json").read_text())
+          path = pathlib.Path(os.environ["CONSUMER_BINARY"])
+          assert hashlib.sha256(path.read_bytes()).hexdigest() == record["binarySha256"]
+          PY
+      - name: Record consumer provenance
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          mkdir -p consumer
+          python3 - <<'PY'
+          import json, os, pathlib
+          keys = ["GITHUB_REPOSITORY", "GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "RUNNER_OS", "RUNNER_ARCH", "MANIFEST_SHA256"]
+          pathlib.Path("consumer/provenance.json").write_text(json.dumps({key: os.environ.get(key) for key in keys}, indent=2) + "\n")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: gateway-consumer-${{ matrix.target }}
+          path: consumer/
           if-no-files-found: error
           retention-days: 14
