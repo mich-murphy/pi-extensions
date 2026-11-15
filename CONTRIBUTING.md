@@ -100,6 +100,21 @@ Turn every counterexample into a regression test with an explicit example before
 
 Do not raise a timeout to fix a slow property. Make the property cheaper. A property that is inherently long wraps its timeout in `propertyTimeout()` so it grows with `HEGEL_TEST_CASES`.
 
+### Terminal properties
+
+Hegel tests code from inside the process. [Bombadil](https://antithesishq.github.io/bombadil/terminal/) tests the real Pi CLI from outside: it types random keys and resizes a real terminal emulator, then checks properties against what is on screen. It reaches the stdin parser, renderer and resize path that in-process tests replace with a fake terminal. It cannot see internal state.
+
+A specification is `packages/<name>/test/*.bombadil.ts`. Bombadil reads every export as a property or action generator. `scripts/bombadil-pi.ts` starts the pinned Pi offline in a throwaway home with only the named extensions loaded.
+
+```sh
+npm run test:bombadil
+BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
+```
+
+The run stops at the first violation and prints the trace directory. Replay it with `bombadil terminal test --reproduce <trace>` and the same command, or reduce it with `bombadil terminal shrink --trace <trace>`. Traces are large and are not deleted. Bombadil's terminal driver is experimental, so these runs are not part of `npm run check`.
+
+Check a new property by breaking the code it guards and confirming the run fails.
+
 ## Verify behaviour in real Pi
 
 Some packages have an agent skill that drives a real, isolated Pi session. Run the matching skill after changing that package's behaviour:
