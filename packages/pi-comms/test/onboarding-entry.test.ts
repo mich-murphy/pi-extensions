@@ -195,6 +195,15 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("session_state", before.get)).resolves.toStrictEqual(before.value);
   });
+  test("reset with nothing configured says so without asking for Apply or writing", async () => {
+    const messages = await host.command("reset", ["APPLY"]);
+    expect(messages.join("\n")).toContain("Nothing to reset");
+    expect(messages.join("\n")).not.toContain("Reset refused");
+    expect(existsSync(setupPaths(agent).directory)).toBe(false);
+    // The unused APPLY answer proves no confirmation dialog was shown.
+    const status = await host.command("status");
+    expect(status.join("\n")).toContain("not enabled");
+  });
   test("reset cancellation keeps current runtime; approved reset disables participation and disposes it", async () => {
     const before = await localPublication(host);
     await host.command("reset", ["Cancel — no changes"]);
@@ -213,6 +222,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await writeFile(path, Buffer.concat([bytes, Buffer.from("\n")]));
     const messages = await host.command("reset", ["APPLY"]);
     expect(messages.join("\n")).toContain("Reset refused before disabling participation");
+    expect(messages.join("\n")).toContain("Configuration changed externally");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("session_state", before.get)).resolves.toStrictEqual(before.value);
   });

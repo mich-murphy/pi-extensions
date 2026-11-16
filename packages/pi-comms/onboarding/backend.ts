@@ -247,6 +247,30 @@ export class ResetFailure extends Error {
   }
 }
 type ResetEntry = { path: string; backup: string; sha256: string };
+/** Whether reset has anything to disable or resume: configuration, an owned file or a ledger. */
+export async function hasResetTarget(agentDir: string): Promise<boolean> {
+  const paths = setupPaths(agentDir);
+  const found = await Promise.all(
+    [...resetPaths(paths), join(paths.directory, "reset.json")].map(async (path) => {
+      try {
+        // lstat: an external symlinked configuration still counts, so reset reports why it refuses.
+        await lstat(path);
+        return true;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          return false;
+        }
+        throw error;
+      }
+    }),
+  );
+  return found.includes(true);
+}
 /** Preflight every invariant before the first rename; durable ledger resumes partial archives. */
 export async function resetLocal(agentDir: string): Promise<string> {
   const paths = setupPaths(agentDir);

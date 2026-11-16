@@ -5,6 +5,7 @@ import type { AcquisitionPlan } from "./acquire.js";
 import { acquireGateway, discoverNixExecutable } from "./acquire.js";
 import {
   applyLocal,
+  hasResetTarget,
   inspectSetup,
   resetLocal,
   ResetFailure,
@@ -372,6 +373,13 @@ export async function resetCommand(
   dispose: () => Promise<void>,
 ): Promise<void> {
   requireAttendedUI(ctx);
+  if (!(await hasResetTarget(agentDir))) {
+    ctx.ui.notify(
+      "Nothing to reset: this agent directory has no communication configuration or setup-owned files. No changes made.",
+      "info",
+    );
+    return;
+  }
   const answer = await selectChoice(
     ctx,
     "Disable this agent directory's participation and close this Pi's runtime. Other already-open Pi sessions remain active. Preserve gateway installation, backups, private keys, CRLs and revocation floors; never kill the shared gateway.",
@@ -394,10 +402,17 @@ export async function resetCommand(
     ctx.ui.notify(
       error instanceof ResetFailure
         ? error.message
-        : "Reset refused before disabling participation: ownership or configuration differs. External files/runtime preserved; use /comms doctor.",
+        : `Reset refused before disabling participation: ${resetRefusal(error)}. External files/runtime preserved; use /comms doctor.`,
       "warning",
     );
   }
+}
+
+/** Reset's own refusals explain themselves; system errors (with a code) may carry paths. */
+function resetRefusal(error: unknown): string {
+  return error instanceof Error && !("code" in error)
+    ? error.message.replace(/\.$/u, "")
+    : "ownership or configuration differs";
 }
 
 /** Review text for the selected route; only a Nix selection can authorize a native fallback. */
