@@ -67,8 +67,13 @@ async function loadedPair(
   return { agentDir, ctx, reconnect, paths, config, setup, pairing };
 }
 type PairContext = NonNullable<Awaited<ReturnType<typeof loadedPair>>>;
+const ISSUER_ACTIONS = "Issuer actions: CSR, renew, revoke, export";
+/**
+ * The pair menu. The pair creator's four issuer actions sit in a submenu, so the menu keeps six
+ * options and fits an 80x20 terminal with its three-line title.
+ */
 async function selectPair({ ctx, pairing }: PairContext) {
-  return selectChoice(
+  const action = await selectChoice(
     ctx,
     `One peer: ${pairing.intent.peerMachineId}. Local up ≠ remote linked.\nExchange PUBLIC offer → CSR → bundle; confirm full SHA256 separately.\nUse public instructions for exact paths/fingerprints; never paste keys.`,
     [
@@ -76,10 +81,22 @@ async function selectPair({ ctx, pairing }: PairContext) {
       "View public exchange instructions",
       "Activate saved configuration",
       "Import public bundle",
-      ...(pairing.intent.kind === "create"
-        ? ["Issue peer CSR", "Renew leaves and CRL", "Revoke a leaf", "Export latest public bundle"]
-        : ["Request renewal instructions"]),
+      pairing.intent.kind === "create" ? ISSUER_ACTIONS : "Request renewal instructions",
       "Re-pair with new root",
+    ],
+  );
+  return action === ISSUER_ACTIONS ? selectIssuerAction(ctx, pairing.intent.peerMachineId) : action;
+}
+async function selectIssuerAction(ctx: DialogContext, peerMachineId: string) {
+  return selectChoice(
+    ctx,
+    `Issuer actions for ${peerMachineId}. Each one is reviewed before Apply; private keys never enter the UI.`,
+    [
+      "Cancel — no changes",
+      "Issue peer CSR",
+      "Renew leaves and CRL",
+      "Revoke a leaf",
+      "Export latest public bundle",
     ],
   );
 }

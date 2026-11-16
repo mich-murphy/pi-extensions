@@ -9,6 +9,8 @@ import { commands, dialogKeys, resize } from "./setup-keys.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
 export {
+  dialogFits,
+  dialogReached,
   escapeClosesDialog,
   noUnreviewedChange,
   noUnreviewedWrite,

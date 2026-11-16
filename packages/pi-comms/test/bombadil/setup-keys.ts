@@ -1,17 +1,23 @@
 // Generators, extractors and properties shared by setup.bombadil.ts and setup-apply.bombadil.ts.
-import { always, next, now } from "@antithesishq/bombadil";
+import { always, eventually, next, now } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
 import type { State } from "@antithesishq/bombadil/terminal";
 import { CharSets, typeFromSet } from "@antithesishq/bombadil/terminal/defaults/actions";
-import { dialogKind, screenRows, typedText } from "../../../../test-support/bombadil-screen.ts";
+import {
+  dialogBorderShown,
+  dialogKind,
+  screenRows,
+  typedText,
+} from "../../../../test-support/bombadil-screen.ts";
 
 const ESCAPE = "\u001B";
 const ui = extract((state: State) => {
   const rows = screenRows(state).map((row) => row.trim());
   return {
     dialog: dialogKind(rows),
+    border: dialogBorderShown(rows),
     cursors: rows.filter((row) => row.startsWith("→ ")).length,
     probe: rows.find((row) => row.startsWith("probe:")) ?? null,
   };
@@ -50,19 +56,27 @@ export const dialogKeys = weighted([
 ]).when(inDialog);
 
 // Pi's fullscreen layout cuts off the bottom of a screen taller than the terminal. Onboarding
-// dialogs are sized to fit 80x20. A tall dialog may push the footer status off screen, but a cut-off
-// dialog loses its hint row and is then not recognised, so probeShown still fails on it.
+// dialogs are sized to fit 80x20 with the footer and probe row, so probeShown and dialogFits check
+// down to 20 rows.
 export const resize = actions(() => [{ Resize: { columns: [80, 140], rows: [20, 50] } }]);
 
 /** Pi never exits or crashes: no key in the generator asks it to. */
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
 
 /**
- * The probe is loaded and reporting whenever no complete dialog fills the screen; without it,
- * noUnreviewedWrite would pass vacuously. A flagged probe stays set, so it shows once the dialog
- * closes.
+ * The probe is loaded and reporting; without it, noUnreviewedWrite would pass vacuously. It is the
+ * last footer row, so a dialog too tall for the terminal also pushes it off screen.
  */
-export const probeShown: Formula = always(() => inDialog() || (ui.current?.probe ?? null) !== null);
+export const probeShown: Formula = always(() => (ui.current?.probe ?? null) !== null);
+
+/** Every dialog shows its bottom border below the hint row: nothing is cut off. */
+export const dialogFits: Formula = always(() => !inDialog() || (ui.current?.border ?? false));
+
+/**
+ * The fuzzer reaches a dialog. Dialogs are recognised by Pi's hint text, so if Pi renames it the
+ * dialog properties would pass without checking anything; this fails instead.
+ */
+export const dialogReached: Formula = eventually(inDialog).within(30, "seconds");
 
 /** No /comms command writes under the agent directory or home before an Apply option is chosen. */
 export const noUnreviewedWrite: Formula = always(

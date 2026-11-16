@@ -16,6 +16,8 @@ import { commands, dialogKeys, inDialog, resize } from "./setup-keys.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
 export {
+  dialogFits,
+  dialogReached,
   escapeClosesDialog,
   noUnreviewedChange,
   noUnreviewedWrite,
@@ -185,10 +187,10 @@ export const applyKeys = weighted([
 ]);
 
 /**
- * The state line is shown whenever no complete dialog fills the screen; without it the properties
- * below would pass vacuously. A tall dialog may push the footer off screen (see setup-keys.ts).
+ * The state line is shown; without it the properties below would pass vacuously. It is a footer
+ * row, so a dialog too tall for the terminal also pushes it off screen.
  */
-export const stateShown: Formula = always(() => inDialog() || (view.current?.cfg ?? null) !== null);
+export const stateShown: Formula = always(() => (view.current?.cfg ?? null) !== null);
 
 /** Nothing is written to the real user's ~/.pi comms locations, only inside the throwaway root. */
 export const nothingOutsideRoot: Formula = always(() => (view.current?.out ?? "ok") === "ok");
