@@ -241,7 +241,7 @@ describe("setupCommand trusted catalog injection", () => {
       expect(record.allowed.filter((file) => path.basename(file) !== "nix")).toStrictEqual([]);
       expect(record.activated).toBe(0);
       expect(
-        record.selects.join("\n").includes("Apply: reviewed acquisition + private config + start."),
+        record.selects.join("\n").includes("Apply: verified gateway, private config, start."),
       ).toBe(expected.supported);
       expect(record.fetches).toStrictEqual(expected.fetches);
       const warnings = record.notices.filter((notice) => notice.level === "warning");
