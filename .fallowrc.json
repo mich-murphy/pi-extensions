@@ -26,6 +26,17 @@
       "enablers": ["jiti"],
       "entryPoints": ["scripts/verify-gateway-native.ts"],
       "entryPointRole": "support"
+    },
+    // Bombadil loads a specification and reads every export as a property or action generator.
+    {
+      "name": "bombadil-terminal-specifications",
+      "enablers": ["@antithesishq/bombadil"],
+      "entryPoints": [
+        "packages/*/test/*.bombadil.ts",
+        "packages/pi-comms/test/bombadil-setup-extension.ts",
+        "scripts/bombadil-pi.ts"
+      ],
+      "entryPointRole": "test"
     }
   ],
   "rules": {
@@ -41,6 +52,12 @@
   },
   // A stray export from a package entry is dead too: Pi reads only the default export
   "includeEntryExports": true,
+  // Bombadil reads every export of a specification by name, so none has a static consumer.
+  "ignoreExports": [
+    { "file": "packages/*/test/*.bombadil.ts", "exports": ["*"] },
+    // Pi loads this test-only extension with --extension and reads its default export.
+    { "file": "packages/pi-comms/test/bombadil-setup-extension.ts", "exports": ["default"] }
+  ],
   "failOnParseError": true,
   "usedClassMembers": [{ "extends": "Error", "members": ["_tag"] }],
   "typeAware": {

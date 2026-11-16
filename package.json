@@ -18,6 +18,8 @@
     "test:coverage": "npm run test:tooling && vitest run --coverage",
     "test:properties": "vitest run --config vitest.properties.config.ts",
     "test:properties:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 HEGEL_SEED=\"${HEGEL_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}\" HEGEL_TEST_CASES=\"${HEGEL_TEST_CASES:-2000}\" && echo \"Hegel properties: HEGEL_SEED=$HEGEL_SEED HEGEL_TEST_CASES=$HEGEL_TEST_CASES\" && cargo test --locked --all-features $(grep -l hegel::test tests/*.rs | sed 's|tests/\\(.*\\)\\.rs|--test \\1|') -- --test-threads=2",
+    "test:bombadil": "bombadil terminal test --exit-on-violation --specification packages/pi-vim/test/vim.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-1m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts packages/pi-vim/index.ts",
+    "test:bombadil:comms": "bombadil terminal test --exit-on-violation --specification packages/pi-comms/test/setup.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts packages/pi-comms/test/bombadil-setup-extension.ts",
     "bench:skill-toggle-cache": "vitest run packages/pi-skill-toggle/test/cache-benchmark.test.ts",
     "test:claude-sdk-pin": "vitest run packages/pi-claude-sdk/test/sdk-release-contract.test.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
@@ -36,6 +38,7 @@
     "test:tooling": "node --experimental-strip-types --test test-support/repository-quality.test.ts"
   },
   "devDependencies": {
+    "@antithesishq/bombadil": "0.7.10",
     "@earendil-works/pi-agent-core": "1.5.0",
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
