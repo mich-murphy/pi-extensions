@@ -5,7 +5,7 @@
 // "TnnLmmm" (scroll-prompts.ts), so the turn owning the top transcript row is known. The context
 // row is "❯ " plus the prompt text on row 0. Pi draws "Jump to latest message" exactly when the
 // transcript is scrolled away from its live end.
-import { always } from "@antithesishq/bombadil";
+import { always, eventually } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
@@ -129,6 +129,15 @@ export const contextIsNearestPromptAbove: Formula = always(() => {
   }
   return current.contextTurn === (found.kind === "reply" ? found.turn : found.turn - 1);
 });
+
+/**
+ * The fuzzer scrolls back. Scrolled-back state is recognised by Pi's "Jump to latest message" text,
+ * so if Pi renames it the properties below would pass without checking anything; this fails instead.
+ */
+export const scrolledBackReached: Formula = eventually(() => view.current?.behind ?? false).within(
+  30,
+  "seconds",
+);
 
 /** Following the live end, there is no context row. */
 export const hiddenAtLiveEnd: Formula = always(() => {

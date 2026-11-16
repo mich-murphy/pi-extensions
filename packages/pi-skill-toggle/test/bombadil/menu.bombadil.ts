@@ -2,7 +2,7 @@
 // menu.fixture.ts. Run with `npm run test:bombadil:skills`. menu.test.ts drives the component
 // in-process at fixed widths; this drives Pi's real input parser, layout, resize path and the state
 // file on disk. Every property reads only the screen.
-import { always, next } from "@antithesishq/bombadil";
+import { always, eventually, next } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
@@ -193,6 +193,15 @@ export const skillToggleKeys = weighted([
   [30, menuKeys],
   [1, resize],
 ]);
+
+/**
+ * The fuzzer opens the menu and a list. Both are recognised by their title and hint text, so if that
+ * text changes the menu properties would pass without checking anything; this fails instead.
+ */
+export const listReached: Formula = eventually(() => ui.current?.level === "list").within(
+  30,
+  "seconds",
+);
 
 /** Pi never exits: no key in the generator asks it to. */
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
