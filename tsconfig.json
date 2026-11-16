@@ -12,6 +12,9 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
+    // Bombadil bundles specifications itself and resolves only real file paths, so a spec imports
+    // shared helpers as `.ts`. Type checking never emits, so this changes nothing at runtime.
+    "allowImportingTsExtensions": true,
     "types": ["node", "vitest/globals"],
     // Pi loads extensions with "@earendil-works/pi-ai" mapped to its extension view (pi-ai compat plus
     // TypeBox's Type/Static/TSchema and a TypeBox-typed StringEnum). Type-check against what runs, as

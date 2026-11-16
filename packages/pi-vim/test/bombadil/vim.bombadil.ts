@@ -10,6 +10,7 @@ import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
 import type { State } from "@antithesishq/bombadil/terminal";
 import { CharSets, typeFromSet } from "@antithesishq/bombadil/terminal/defaults/actions";
+import { screenRows, typedText } from "../../../../test-support/bombadil-screen.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
 
@@ -71,14 +72,6 @@ type Mode = { readonly mode: "INSERT" | "NORMAL"; readonly pending: string };
 
 const LABEL = /^─.* (?<mode>INSERT|NORMAL)(?: (?<pending>\S+))?$/u;
 
-function screenRows(state: State): string[] {
-  const rows: string[] = [];
-  for (let index = 0; index < state.grid.size.rows; index++) {
-    rows.push(state.grid.rowText(index).trimEnd());
-  }
-  return rows;
-}
-
 /** The lowest row holding a border with a mode label, or -1. */
 function labelRow(rows: readonly string[]): number {
   let index = rows.length - 1;
@@ -121,20 +114,7 @@ const editor = extract((state: State) => {
 const exitStatus = extract((state: State) => state.exitStatus);
 
 /** The single key the last action typed, or null for anything else. */
-const lastKey = extract((state: State) => {
-  const action: unknown = state.lastAction;
-  if (typeof action !== "object" || action === null || !("TypeText" in action)) {
-    return null;
-  }
-  const typed: unknown = action.TypeText;
-  if (typeof typed === "string") {
-    return typed;
-  }
-  if (typeof typed === "object" && typed !== null && "text" in typed) {
-    return typeof typed.text === "string" ? typed.text : null;
-  }
-  return null;
-});
+const lastKey = extract((state: State) => typedText(state));
 
 const normalIdle = (): boolean =>
   editor.current?.mode === "NORMAL" && editor.current.pending === "";

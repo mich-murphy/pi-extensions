@@ -9,31 +9,13 @@ import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
 import type { State } from "@antithesishq/bombadil/terminal";
 import { CharSets, typeFromSet } from "@antithesishq/bombadil/terminal/defaults/actions";
+import { dialogKind, screenRows, typedText } from "../../../../test-support/bombadil-screen.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
 
 const ESCAPE = "\u001B";
-// Pi's select and input dialogs end with this hint row; it is the only reliable dialog marker.
-const SELECT_HINT = /^↑↓ navigate {2}enter select {2}escape\/ctrl\+c cancel$/u;
-const INPUT_HINT = /^enter submit {2}escape\/ctrl\+c cancel$/u;
-
-function screenRows(state: State): string[] {
-  const rows: string[] = [];
-  for (let index = 0; index < state.grid.size.rows; index++) {
-    rows.push(state.grid.rowText(index).trim());
-  }
-  return rows;
-}
-
-function dialogKind(rows: readonly string[]): "select" | "input" | null {
-  if (rows.some((row) => SELECT_HINT.test(row))) {
-    return "select";
-  }
-  return rows.some((row) => INPUT_HINT.test(row)) ? "input" : null;
-}
-
 const ui = extract((state: State) => {
-  const rows = screenRows(state);
+  const rows = screenRows(state).map((row) => row.trim());
   return {
     dialog: dialogKind(rows),
     cursors: rows.filter((row) => row.startsWith("→ ")).length,
@@ -44,20 +26,7 @@ const ui = extract((state: State) => {
 const exitStatus = extract((state: State) => state.exitStatus);
 
 /** The text the last action typed, or null for anything else. */
-const lastKey = extract((state: State) => {
-  const action: unknown = state.lastAction;
-  if (typeof action !== "object" || action === null || !("TypeText" in action)) {
-    return null;
-  }
-  const typed: unknown = action.TypeText;
-  if (typeof typed === "string") {
-    return typed;
-  }
-  if (typeof typed === "object" && typed !== null && "text" in typed) {
-    return typeof typed.text === "string" ? typed.text : null;
-  }
-  return null;
-});
+const lastKey = extract((state: State) => typedText(state));
 
 const inDialog = (): boolean => (ui.current?.dialog ?? null) !== null;
 
