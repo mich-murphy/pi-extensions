@@ -45,6 +45,7 @@ function menu(
   resources: readonly ToggleResource[],
   disabled: readonly ToggleResource[] = [],
   keys: KeybindingsManager = testKeybindings(),
+  rows = 40,
 ) {
   initTheme();
   const files = new Map<ToggleResource["id"], ToggleValue>(disabled.map((r) => [r.id, "disabled"]));
@@ -60,7 +61,7 @@ function menu(
         writes.push([id, value]);
       }
     },
-    tui: testTui(),
+    tui: testTui(rows),
     theme: testTheme(),
     keybindings: keys,
     done: () => {
@@ -182,6 +183,18 @@ describe("context menu", () => {
     expect(dialog.text()).toContain("> zzz ");
     dialog.press(ESCAPE);
     expect(dialog.text()).not.toContain("No matches");
+  });
+
+  test("a long list leaves room for Pi's footer and one chat row", () => {
+    const resources = Array.from({ length: 30 }, (_, i) =>
+      resource(`skill-${String(i).padStart(2, "0")}`, "skill", "global"),
+    );
+    for (const rows of [15, 20, 24, 27, 40]) {
+      const dialog = menu(resources, [], testKeybindings(), rows);
+      dialog.open(1);
+      // Pi draws two footer rows and keeps one chat row above the menu.
+      expect(dialog.component.render(100).length + 3).toBeLessThanOrEqual(rows);
+    }
   });
 
   test("keeps states and quoted Unicode excerpts visible at 60 columns", () => {

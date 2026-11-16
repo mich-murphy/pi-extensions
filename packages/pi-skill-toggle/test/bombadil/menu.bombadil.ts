@@ -27,6 +27,8 @@ type Menu = {
   level: "root" | "list" | null;
   titleShown: boolean;
   hintShown: boolean;
+  /** The menu's bottom border, directly below the hint row. */
+  bottomShown: boolean;
   clearing: boolean;
   height: number;
   cursors: number;
@@ -61,6 +63,11 @@ function items(body: readonly string[]): Item[] {
   });
 }
 
+/** Whether the row below the hint row is the menu's bottom border. */
+function bottomBorderBelow(rows: readonly string[], hint: number): boolean {
+  return hint >= 0 && /^─+$/u.test(rows[hint + 1] ?? "");
+}
+
 /** What the menu shows, from trimmed screen rows. Rows outside the menu are ignored. */
 function readMenu(rows: readonly string[], height: number): Menu {
   const top = rows.findIndex((row) => row === ROOT_TITLE || LIST_TITLE.test(row));
@@ -72,6 +79,7 @@ function readMenu(rows: readonly string[], height: number): Menu {
     level: shown,
     titleShown: top >= 0,
     hintShown: hint >= 0,
+    bottomShown: bottomBorderBelow(rows, hint),
     clearing: LIST_HINT.exec(rows[hint] ?? "")?.groups?.cancel === "clear",
     height,
     cursors: body.filter((row) => row.startsWith("→ ")).length,
@@ -189,10 +197,18 @@ export const skillToggleKeys = weighted([
 /** Pi never exits: no key in the generator asks it to. */
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
 
-/** From 20 rows up, an open menu shows both its title and its key hint: nothing is cut off. */
+/**
+ * From 15 rows up, an open menu shows its title, its key hint and its bottom border: nothing is
+ * cut off by Pi's fullscreen layout.
+ */
 export const menuFits: Formula = always(() => {
   const menu = ui.current;
-  return menu === null || menu.height < 20 || menu.titleShown === menu.hintShown;
+  return (
+    menu === null ||
+    menu.level === null ||
+    menu.height < 15 ||
+    (menu.titleShown && menu.bottomShown)
+  );
 });
 
 /** An open menu highlights exactly one row, unless a search matches nothing. */
