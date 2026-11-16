@@ -109,10 +109,16 @@ Bombadil files live in `packages/<name>/test/bombadil/`. A specification is `*.b
 ```sh
 npm run test:bombadil
 npm run test:bombadil:comms
+npm run test:bombadil:comms:apply
+npm run test:bombadil:comms:peers
+npm run test:bombadil:scroll
+npm run test:bombadil:skills
 BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
 ```
 
-`test:bombadil` fuzzes the pi-vim editor. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen.
+`test:bombadil` fuzzes the pi-vim editor and compares each Normal-mode key with a small model of the documented commands. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen, or `probe:UNREVIEWED-CHANGE <path>` if an existing file changes or disappears.
+
+`test:bombadil:comms:apply` and `test:bombadil:comms:peers` run a real gateway, so build it first with `cargo build --locked` in `packages/pi-comms/gateway`. The apply spec copies the debug gateway into the throwaway home so Apply really writes config and starts it, steers the fuzzer through dialogs by option text, and shows disk and socket state in a `state:` footer line. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scroll` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skill-toggle` menu.
 
 To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
 

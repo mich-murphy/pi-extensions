@@ -3,18 +3,30 @@
 // It loads pi-comms through its test backend seam with a backend that refuses every acquisition,
 // so Apply can be fuzzed without building, downloading or starting a gateway. It also turns disk
 // state into screen state, because Bombadil sees only the terminal: while a /comms command runs it
-// polls the agent and home directories and sets the footer status to `probe:UNREVIEWED-WRITE` if a
-// path appears before the user chose an Apply option in that command.
-import { readdirSync } from "node:fs";
+// polls the agent and home directories and, until the user chose an Apply option in that command,
+// sets the footer status to `probe:UNREVIEWED-WRITE <path>` for a new path or
+// `probe:UNREVIEWED-CHANGE <path>` for a changed or deleted one. Directories are compared by
+// presence, small files by mode and SHA256, larger ones by mode, size and mtime. Sockets and the
+// gateway's startup-*.log output are runtime state and are not compared.
+// setup-apply-extension.ts reuses `setupHarness` with a backend that installs a local gateway.
+import { createHash } from "node:crypto";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import registerCommunication from "../../index.js";
+import type { SetupBackend } from "../../onboarding/backend.js";
 
 const STATUS = "bombadil-probe";
 const POLL_MS = 50;
+const SMALL = 65_536;
+const LOG = /(?:^|\/)startup-[0-9a-f]+\.log$/u;
+// Choices that consent to effects: every Apply, and "Keep and reconnect", which may start the
+// gateway again (a startup log and a socket) without an Apply.
+const CONSENT = /^(?:Apply|Keep and reconnect)/u;
 
-function paths(roots: readonly string[], base: string): Set<string> {
+/** Every path under `roots`, relative to `base`. */
+export function paths(roots: readonly string[], base: string): Set<string> {
   const found = new Set<string>();
   for (const root of roots) {
     try {
@@ -28,6 +40,51 @@ function paths(roots: readonly string[], base: string): Set<string> {
   return found;
 }
 
+/** How `path` compares across snapshots, or undefined for runtime state and vanished paths. */
+function fingerprint(path: string): string | undefined {
+  try {
+    const stat = lstatSync(path);
+    if (stat.isSocket()) {
+      return undefined;
+    }
+    if (stat.isDirectory() || LOG.test(path)) {
+      return stat.isDirectory() ? "dir" : "log";
+    }
+    const mode = stat.mode.toString(8);
+    if (!stat.isFile() || stat.size > SMALL) {
+      return `${mode}:${stat.size}:${stat.mtimeMs}`;
+    }
+    return `${mode}:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Every compared path under `roots`, relative to `base`, with its fingerprint. */
+function snapshot(roots: readonly string[], base: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const path of paths(roots, base)) {
+    const print = fingerprint(join(base, path));
+    if (print !== undefined) {
+      found.set(path, print);
+    }
+  }
+  return found;
+}
+
+/** The first path added (`WRITE`), or changed or deleted (`CHANGE`), since `before`. */
+function unreviewed(
+  before: ReadonlyMap<string, string>,
+  after: ReadonlyMap<string, string>,
+): string | undefined {
+  const added = [...after.keys()].find((path) => !before.has(path));
+  if (added !== undefined) {
+    return `WRITE ${added}`;
+  }
+  const changed = [...before].find(([path, print]) => after.get(path) !== print)?.[0];
+  return changed === undefined ? undefined : `CHANGE ${changed}`;
+}
+
 /** A property of `target`, with methods bound to it so they keep their receiver behind a proxy. */
 function forwarded(target: object, property: string | symbol): unknown {
   const value: unknown = Reflect.get(target, property, target);
@@ -38,48 +95,68 @@ function forwarded(target: object, property: string | symbol): unknown {
   return bound;
 }
 
-/** The command context, with `ui.select` reporting when the user picks an Apply option. */
-function withApplyTracking(
-  ctx: ExtensionCommandContext,
-  applied: () => void,
-): ExtensionCommandContext {
-  const select: ExtensionCommandContext["ui"]["select"] = async (...args) => {
-    const answer = await ctx.ui.select(...args);
-    if (typeof answer === "string" && answer.startsWith("Apply")) {
-      applied();
-    }
-    return answer;
-  };
-  const ui = new Proxy(ctx.ui, {
-    get: (target, property) => (property === "select" ? select : forwarded(target, property)),
-  });
-  return new Proxy(ctx, {
-    get: (target, property) => (property === "ui" ? ui : forwarded(target, property)),
+/** `target` with the members in `own` replacing its own. */
+function overriding<T extends object>(target: T, own: Record<PropertyKey, unknown>): T {
+  return new Proxy(target, {
+    get: (object, property) =>
+      Object.hasOwn(own, property) ? own[property] : forwarded(object, property),
   });
 }
 
-export default function bombadilSetupHarness(pi: ExtensionAPI): void {
-  const home = process.env.HOME ?? "";
-  const roots = [getAgentDir(), home];
-  let status: ((text: string) => void) | undefined;
-  let violation: string | undefined;
+/** What setup-apply-extension.ts observes of each /comms command, in order. */
+export type HarnessObserver = {
+  /** Before the probe's baseline, with the command's arguments. */
+  readonly command?: (args: string) => void;
+  /** A select or input dialog opens with this title. */
+  readonly asked?: (title: string) => void;
+  /** The user picked this option, after a consenting choice was recorded. */
+  readonly chose?: (answer: string) => void;
+  readonly notified?: (message: string, type?: "info" | "warning" | "error") => void;
+  /** After the command's handler settles. */
+  readonly finished?: () => void;
+};
 
-  const report = (): void => {
-    status?.(violation === undefined ? "probe:ok" : `probe:UNREVIEWED-WRITE ${violation}`);
+/** The command context, reporting dialogs, consenting choices and notifications. */
+function withApplyTracking(
+  ctx: ExtensionCommandContext,
+  applied: () => void,
+  observer: HarnessObserver,
+): ExtensionCommandContext {
+  const select: ExtensionCommandContext["ui"]["select"] = async (title, ...rest) => {
+    observer.asked?.(title);
+    const answer = await ctx.ui.select(title, ...rest);
+    if (typeof answer === "string") {
+      if (CONSENT.test(answer)) {
+        applied();
+      }
+      observer.chose?.(answer);
+    }
+    return answer;
   };
+  const input: ExtensionCommandContext["ui"]["input"] = async (title, ...rest) => {
+    observer.asked?.(title);
+    return ctx.ui.input(title, ...rest);
+  };
+  const notify: ExtensionCommandContext["ui"]["notify"] = (message, type) => {
+    observer.notified?.(message, type);
+    ctx.ui.notify(message, type);
+  };
+  return overriding(ctx, { ui: overriding(ctx.ui, { select, input, notify }) });
+}
 
-  /** Runs one command, flagging any new path that appears before an Apply was chosen. */
-  const watched = async (run: (applied: () => void) => Promise<void>): Promise<void> => {
-    const baseline = paths(roots, home);
+/** Runs commands, reporting the first unreviewed write or change before an Apply was chosen. */
+function unreviewedProbe(roots: readonly string[], base: string, report: (found: string) => void) {
+  let violation: string | undefined;
+  return async (run: (applied: () => void) => Promise<void>): Promise<void> => {
+    const baseline = snapshot(roots, base);
     let applied = false;
     const check = (): void => {
       if (applied || violation !== undefined) {
         return;
       }
-      const added = [...paths(roots, home)].find((path) => !baseline.has(path));
-      if (added !== undefined) {
-        violation = added;
-        report();
+      violation = unreviewed(baseline, snapshot(roots, base));
+      if (violation !== undefined) {
+        report(violation);
       }
     };
     const timer = setInterval(check, POLL_MS);
@@ -93,29 +170,52 @@ export default function bombadilSetupHarness(pi: ExtensionAPI): void {
       check();
     }
   };
+}
+
+/** Loads pi-comms with `testBackend`, flagging unreviewed writes and changes in the footer. */
+export function setupHarness(
+  pi: ExtensionAPI,
+  testBackend: { backend: SetupBackend; description: string },
+  observer: HarnessObserver = {},
+): void {
+  let status: ((text: string) => void) | undefined;
+  let shown = "probe:ok";
+  const watched = unreviewedProbe(
+    [getAgentDir(), process.env.HOME ?? ""],
+    process.env.HOME ?? "",
+    (found) => {
+      shown = `probe:UNREVIEWED-${found}`;
+      status?.(shown);
+    },
+  );
 
   const register: ExtensionAPI["registerCommand"] = (name, options) => {
     pi.registerCommand(name, {
       ...options,
       handler: async (args, ctx) => {
-        await watched(async (applied) => {
-          await options.handler(args, withApplyTracking(ctx, applied));
-        });
+        observer.command?.(args);
+        try {
+          await watched(async (applied) => {
+            await options.handler(args, withApplyTracking(ctx, applied, observer));
+          });
+        } finally {
+          observer.finished?.();
+        }
       },
     });
   };
-  const host = new Proxy(pi, {
-    get: (target, property) =>
-      property === "registerCommand" ? register : forwarded(target, property),
-  });
 
   pi.on("session_start", (_event, ctx) => {
     status = (text) => {
       ctx.ui.setStatus(STATUS, text);
     };
-    report();
+    status(shown);
   });
-  registerCommunication(host, {
+  registerCommunication(overriding(pi, { registerCommand: register }), testBackend);
+}
+
+export default function bombadilSetupHarness(pi: ExtensionAPI): void {
+  setupHarness(pi, {
     description: "Bombadil test backend: acquisition always refused; nothing is installed.",
     backend: {
       acquire: async () => {
