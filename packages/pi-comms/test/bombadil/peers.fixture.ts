@@ -7,6 +7,7 @@ import { chmodSync, copyFileSync, mkdirSync, realpathSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BombadilLaunch, BombadilRoot } from "../../../../test-support/bombadil.ts";
+import { gatewayBinary } from "./gateway-binary.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -51,6 +52,7 @@ async function stop(child: ChildProcess): Promise<void> {
 }
 
 export default async function peersFixture(root: BombadilRoot): Promise<BombadilLaunch> {
+  const source = gatewayBinary();
   // The gateway rejects symlinked ancestors, and /tmp is a symlink on macOS.
   const directory = join(realpathSync(root.root), "gw");
   mkdirSync(directory, { mode: 0o700 });
@@ -68,7 +70,7 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
   const peerConfig = join(directory, "peer.json");
   writeFileSync(peerConfig, JSON.stringify({ ...adapter, label: "Scripted peer" }));
   const binary = join(directory, "pi-gateway");
-  copyFileSync(join(repo, "packages/pi-comms/gateway/target/debug/pi-gateway"), binary);
+  copyFileSync(source, binary);
   chmodSync(binary, 0o500);
   const gateway = spawn(binary, ["--config", gatewayConfig], {
     stdio: ["ignore", "pipe", "ignore"],

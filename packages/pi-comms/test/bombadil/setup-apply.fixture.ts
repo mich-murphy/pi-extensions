@@ -6,10 +6,9 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { BombadilFixture } from "../../../../test-support/bombadil.ts";
+import { gatewayBinary } from "./gateway-binary.ts";
 
-const gateway = fileURLToPath(new URL("../../gateway/target/debug/pi-gateway", import.meta.url));
 const DUMMIES = ["root.der", "leaf.der", "key.pem", "crl.der", "floor.json", "bundle.json"];
 
 /** Terminates every pi-gateway process whose command line contains `root`. */
@@ -29,6 +28,7 @@ function killGateways(root: string): void {
 }
 
 const fixture: BombadilFixture = (root) => {
+  const gateway = gatewayBinary();
   const fx = join(realpathSync(root.root), "fx");
   mkdirSync(fx, { mode: 0o700 });
   writeFileSync(
