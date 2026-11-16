@@ -183,8 +183,23 @@ function key(value: string, repeat = 1): void {
 function text(value: string): void {
   tmux("send-keys", "-t", "journey:0.0", "-l", value);
 }
+/** Pi's settings, or undefined while Pi is rewriting settings.json (the write is not atomic). */
+function readSettings(): unknown {
+  try {
+    return JSON.parse(readFileSync(join(root, "agent/settings.json"), "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+/** The recorded tuiMode, or undefined while settings.json is partly written. */
 function readMode(): unknown {
-  const value: unknown = JSON.parse(readFileSync(join(root, "agent/settings.json"), "utf8"));
+  const value = readSettings();
+  if (value === undefined) {
+    return undefined;
+  }
   assert.ok(typeof value === "object" && value !== null && "tuiMode" in value);
   return value.tuiMode;
 }
@@ -363,9 +378,9 @@ try {
     });
   }
   await toggleTuiMode("regular", "regular-mode", noSticky);
-  assert.equal(readMode(), "regular");
+  await eventuallyMode("regular");
   await toggleTuiMode("fullscreen", "fullscreen-mode", () => undefined);
-  assert.equal(readMode(), "fullscreen");
+  await eventuallyMode("fullscreen");
   key("F9");
   await eventually("fullscreen-bottom", noSticky);
   key("F6");
