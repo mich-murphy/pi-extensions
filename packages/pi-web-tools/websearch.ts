@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { resolveCredentialSnapshot } from "./credentials";
 import type { CredentialFailure, CredentialResolver, CredentialSnapshot } from "./credentials";
-import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
+import { appendExpandedPreview, appendExpandHint, displayText, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
 import { SearchProviders, searchWithFallback } from "./search";
 import type { SearchChainError } from "./search";
@@ -168,7 +168,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       theme: RenderTheme,
     ) {
       let text = theme.fg("toolTitle", theme.bold("websearch "));
-      text += theme.fg("accent", composition.redactText(args.query));
+      text += theme.fg("accent", composition.redactText(displayText(args.query)));
       if (args.provider) {
         text += theme.fg("muted", ` (${args.provider})`);
       }
@@ -191,7 +191,9 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
         return new Text(
           theme.fg(
             "error",
-            composition.redactText(`✗ ${getTextContent(result.content) || "Search failed"}`),
+            composition.redactText(
+              `✗ ${displayText(getTextContent(result.content)) || "Search failed"}`,
+            ),
           ),
           0,
           0,
