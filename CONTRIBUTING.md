@@ -104,7 +104,7 @@ Do not raise a timeout to fix a slow property. Make the property cheaper. A prop
 
 Hegel tests code from inside the process. [Bombadil](https://antithesishq.github.io/bombadil/terminal/) tests the real Pi CLI from outside: it types random keys and resizes a real terminal emulator, then checks properties against what is on screen. It reaches the stdin parser, renderer and resize path that in-process tests replace with a fake terminal. It cannot see internal state.
 
-A specification is `packages/<name>/test/*.bombadil.ts`. Bombadil reads every export as a property or action generator. `scripts/bombadil-pi.ts` starts the pinned Pi offline in a throwaway home with only the named extensions loaded.
+Bombadil files live in `packages/<name>/test/bombadil/`. A specification is `*.bombadil.ts`; a test-only extension or launch fixture sits beside it. Bombadil reads every export as a property or action generator. `scripts/bombadil-pi.ts` starts the pinned Pi offline in a throwaway home with only the named extensions loaded.
 
 ```sh
 npm run test:bombadil
@@ -112,7 +112,7 @@ npm run test:bombadil:comms
 BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
 ```
 
-`test:bombadil` fuzzes the pi-vim editor. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil-setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen.
+`test:bombadil` fuzzes the pi-vim editor. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen.
 
 To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
 

@@ -1,5 +1,5 @@
 // Bombadil terminal specification for the /comms onboarding dialogs, run against the real Pi CLI.
-// Run with `npm run test:bombadil:comms`. Pi loads test/bombadil-setup-extension.ts, which wires
+// Run with `npm run test:bombadil:comms`. Pi loads test/bombadil/setup-extension.ts, which wires
 // pi-comms to a backend that refuses every acquisition and reports unreviewed disk writes in the
 // footer as `probe:UNREVIEWED-WRITE <path>`. Bombadil sees only the screen, so that status line is
 // how "no changes before Apply" becomes checkable.

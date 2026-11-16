@@ -1,4 +1,4 @@
-// Test-only Pi extension for packages/pi-comms/test/setup.bombadil.ts. Not shipped.
+// Test-only Pi extension for packages/pi-comms/test/bombadil/setup.bombadil.ts. Not shipped.
 //
 // It loads pi-comms through its test backend seam with a backend that refuses every acquisition,
 // so Apply can be fuzzed without building, downloading or starting a gateway. It also turns disk
@@ -9,7 +9,7 @@ import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import registerCommunication from "../index.js";
+import registerCommunication from "../../index.js";
 
 const STATUS = "bombadil-probe";
 const POLL_MS = 50;

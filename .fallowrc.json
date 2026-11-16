@@ -31,11 +31,7 @@
     {
       "name": "bombadil-terminal-specifications",
       "enablers": ["@antithesishq/bombadil"],
-      "entryPoints": [
-        "packages/*/test/*.bombadil.ts",
-        "packages/pi-comms/test/bombadil-setup-extension.ts",
-        "scripts/bombadil-pi.ts"
-      ],
+      "entryPoints": ["packages/*/test/bombadil/*.ts", "scripts/bombadil-pi.ts"],
       "entryPointRole": "test"
     }
   ],
@@ -54,9 +50,9 @@
   "includeEntryExports": true,
   // Bombadil reads every export of a specification by name, so none has a static consumer.
   "ignoreExports": [
-    { "file": "packages/*/test/*.bombadil.ts", "exports": ["*"] },
-    // Pi loads this test-only extension with --extension and reads its default export.
-    { "file": "packages/pi-comms/test/bombadil-setup-extension.ts", "exports": ["default"] }
+    // Bombadil reads every export of a specification; Pi and the launcher read the default export
+    // of test-only extensions and fixtures.
+    { "file": "packages/*/test/bombadil/*.ts", "exports": ["*"] }
   ],
   "failOnParseError": true,
   "usedClassMembers": [{ "extends": "Error", "members": ["_tag"] }],
