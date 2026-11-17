@@ -39,7 +39,7 @@ Preconditions:
   run directory proves each edit.
 - **Two renderings.** `recorder/codex-like` keeps mid-conversation system
   messages in place (like Codex); `recorder/collapse-like` folds them into the
-  head (like `pi-claude-sdk`, which renders the folded prompt as block 0).
+  head (like `pi-claude`, which renders the folded prompt as block 0).
 - **Evidence.** `report.json` rows give, per request: rendered chars, common
   prefix with the previous request, un-reused chars, reuse percent, system patch
   messages, note count and size, roles, and `skillsVisible` (the prompt's list
@@ -55,8 +55,8 @@ Preconditions:
 
 - Offline numbers measure **prompt bytes Pi sends**, not provider billing. Real
   cache tokens come only from live mode or assistant `usage` in real sessions.
-- Live mode (`--live claude-sdk --confirm-subscription-usage`) spends the user's
-  subscription allowance. Follow `verify-pi-claude-sdk` rules: check allowance,
+- Live mode (`--live claude --confirm-subscription-usage`) spends the user's
+  subscription allowance. Follow `verify-pi-claude` rules: check allowance,
   never log in or read credentials. Run one short scenario only.
 - A note is sent only when the user's choice differs from the model's current
   view, so toggling back to what the model already sees sends nothing.

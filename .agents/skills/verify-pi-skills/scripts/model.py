@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[4]
 RECORDER = Path(__file__).resolve().parent / 'recorder-provider.ts'
 # A/B runs: point PI_SKILL_TOGGLE_EXTENSION at another build's index.ts, at launch and drive.
 TOGGLE = Path(os.environ.get('PI_SKILL_TOGGLE_EXTENSION') or ROOT / 'packages/pi-skills/index.ts')
-CLAUDE_SDK = ROOT / 'packages/pi-claude-sdk/index.ts'
+CLAUDE_PROVIDER = ROOT / 'packages/pi-claude/index.ts'
 SCENARIOS = ['steady', 'toggle-mid', 'toggle-back', 'toggle-twice', 'instruction-off', 'guard', 'subagent']
 # Scenarios whose prompts script tool calls; live mode never sends them to a real model.
 SCRIPTED = {'guard', 'subagent'}
@@ -394,8 +394,8 @@ def main():
     ap.add_argument('--evidence', required=True, type=Path)
     ap.add_argument('--scenario', choices=SCENARIOS + ['all'], default='all')
     ap.add_argument('--model', choices=MODELS + ['all'], default='all')
-    ap.add_argument('--live', choices=['claude-sdk'], help='use the real claude-sdk provider (subscription allowance)')
-    ap.add_argument('--live-model', default='claude-sdk/claude-4.5-haiku')
+    ap.add_argument('--live', choices=['claude'], help='use the real claude provider (subscription allowance)')
+    ap.add_argument('--live-model', default='claude/claude-4.5-haiku')
     ap.add_argument('--confirm-subscription-usage', action='store_true', help='required with --live')
     ap.add_argument('--steady-min-reuse', type=float, default=100.0)
     ap.add_argument('--strict', action='store_true', help='also fail any system prompt patch after request 1')
@@ -465,7 +465,7 @@ def main():
                 result['cacheDebug'] = debug_summary(run_dir / 'cache-debug.jsonl')
             diag = run_dir / 'pi.stderr'
             if diag.exists():
-                result['claudeSdkCache'] = [json.loads(x.split(' ', 1)[1]) for x in diag.read_text().splitlines() if x.startswith('[claude-sdk-cache] ')]
+                result['claudeCache'] = [json.loads(x.split(' ', 1)[1]) for x in diag.read_text().splitlines() if x.startswith('[claude-cache] ')]
             report['runs'][run_dir.name] = result
         report['status'] = 'passed' if all(r['status'] == 'passed' for r in report['runs'].values()) else 'failed'
         (evidence / 'report.json').write_text(json.dumps(report, indent=2))
@@ -488,7 +488,7 @@ def main():
         env['HOME'] = str(scratch / 'home')  # Offline: keep the user's ~/.agents and ~/.claude skills out.
     if 'PI_SKILLS_CACHE_DEBUG' in os.environ:
         env['PI_SKILLS_CACHE_DEBUG'] = os.environ['PI_SKILLS_CACHE_DEBUG']
-    provider = CLAUDE_SDK if a.live else RECORDER
+    provider = CLAUDE_PROVIDER if a.live else RECORDER
     pi = state['piCommand']
     base = [*pi, '--no-extensions', '--extension', str(TOGGLE), '--extension', str(provider),
             '--no-prompt-templates', '--no-themes', '--no-mcp', '--approve', '--offline']
@@ -503,7 +503,7 @@ def main():
         return 0 if ok else 1
 
     if a.live and not a.confirm_subscription_usage:
-        print('BLOCKED: --live consumes subscription allowance; add --confirm-subscription-usage after checking allowance with verify-pi-claude-sdk commands')
+        print('BLOCKED: --live consumes subscription allowance; add --confirm-subscription-usage after checking allowance with verify-pi-claude commands')
         return 2
     scenarios = SCENARIOS if a.scenario == 'all' else [a.scenario]
     if a.live:
@@ -539,7 +539,7 @@ def drive_one(evidence, scratch, env, base, scenario, model, label, live):
     sessions.mkdir(parents=True)
     env = dict(env, PI_SKILL_TOGGLE_RECORDER_FILE=str(run_dir / 'requests.jsonl'))
     if live:
-        env['PI_CLAUDE_SDK_CACHE_DIAGNOSTICS'] = '1'
+        env['PI_CLAUDE_CACHE_DIAGNOSTICS'] = '1'
     if env.get(DEBUG_ENV) not in (None, '', '0'):
         # One debug file per run, so records never mix across scenarios.
         env[DEBUG_ENV] = str(run_dir / 'cache-debug.jsonl')

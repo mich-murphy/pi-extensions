@@ -131,7 +131,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 
 | Skill | Use after changing |
 | --- | --- |
-| [verify-pi-claude-sdk](.agents/skills/verify-pi-claude-sdk/SKILL.md) | The Claude provider or the pinned Agent SDK. Needs a Claude subscription |
+| [verify-pi-claude](.agents/skills/verify-pi-claude/SKILL.md) | The Claude provider or the pinned Agent SDK. Needs a Claude subscription |
 | [verify-pi-retry](.agents/skills/verify-pi-retry/SKILL.md) | Resume or retry behaviour |
 | [verify-pi-skills](.agents/skills/verify-pi-skills/SKILL.md) | The toggle menu, saved state, prompt filtering or the read guard |
 | [verify-pi-web](.agents/skills/verify-pi-web/SKILL.md) | Login, logout or web configuration |
@@ -146,7 +146,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 Renovate opens update pull requests on a schedule. Digest, pin and patch updates merge automatically. Two groups always wait for review:
 
 - **Pi packages** (`@earendil-works/*`). A contract change type-checks against the pinned version and fails only in a live session.
-- **The Claude Agent SDK.** Upgrading it needs a live check that CI cannot run. Follow the [SDK upgrade steps](packages/pi-claude-sdk/docs/sdk-upgrade.md).
+- **The Claude Agent SDK.** Upgrading it needs a live check that CI cannot run. Follow the [SDK upgrade steps](packages/pi-claude/docs/sdk-upgrade.md).
 
 ## Pull requests
 
