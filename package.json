@@ -7,7 +7,7 @@
   ],
   "license": "MIT",
   "workspaces": [
-    "packages/*"
+    "packages/pi-*"
   ],
   "type": "module",
   "scripts": {

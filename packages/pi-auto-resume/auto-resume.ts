@@ -14,6 +14,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
+import { onOffCommand } from "../shared/on-off-command";
 
 /**
  * Event-bus channel on which providers publish a usage limit's reset time. Mirrors
@@ -458,24 +459,20 @@ export function registerAutoResume(
     streak = undefined;
   });
 
-  pi.registerCommand(AUTO_RESUME_TYPE, {
-    description:
-      "Turn automatic resume after usage limits and transient provider errors on or off for this session",
-    getArgumentCompletions: (prefix) =>
-      ["on", "off"]
-        .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value })),
-    handler: async (args, ctx) => {
-      const choice = args.trim();
-      if (choice !== "" && choice !== "on" && choice !== "off") {
-        ctx.ui.notify("Usage: /auto-resume [on|off]", "warning");
-        return;
-      }
-      enabled = choice === "" ? !enabled : choice === "on";
-      if (!enabled) {
-        cancel();
-      }
-      ctx.ui.notify(`Auto-resume is ${enabled ? "on" : "off"} for this session.`, "info");
-    },
-  });
+  pi.registerCommand(
+    AUTO_RESUME_TYPE,
+    onOffCommand<AutoResumeContext>({
+      name: AUTO_RESUME_TYPE,
+      label: "Auto-resume",
+      description:
+        "Turn automatic resume after usage limits and transient provider errors on or off for this session",
+      enabled: () => enabled,
+      apply: (next) => {
+        enabled = next;
+        if (!enabled) {
+          cancel();
+        }
+      },
+    }),
+  );
 }
