@@ -12,6 +12,16 @@ The editor starts in Insert mode. Press `Esc` or `Ctrl+[` for Normal mode. The e
 
 After Pi accepts a prompt, the editor returns to Insert mode.
 
+## Commands
+
+| Command | Action |
+| --- | --- |
+| `/vim` | Turn Vim keys on or off for this session. |
+| `/vim on` | Use the Vim editor for this session. |
+| `/vim off` | Restore Pi's default editor for this session. |
+
+Vim keys are on when a session starts. Turning them off keeps the text in the editor.
+
 ## Normal-mode keys
 
 | Key | Action | Notes |

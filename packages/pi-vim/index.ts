@@ -10,6 +10,8 @@ import {
   TUI_KEYBINDINGS,
   truncateToWidth,
 } from "@earendil-works/pi-tui";
+import { onOffCommand } from "../shared/on-off-command";
+import type { OnOffCommand } from "../shared/on-off-command";
 
 type View = {
   readonly line: number;
@@ -273,7 +275,9 @@ class VimEditor extends CustomEditor {
   }
 }
 
-/** Registration capabilities consumed by the Vim editor. */
+type EditorFactory = NonNullable<Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]>;
+
+/** Registration capabilities consumed by the Vim editor and its `/vim` command. */
 export type VimRegistration = {
   readonly on: (
     name: "session_start",
@@ -284,14 +288,41 @@ export type VimRegistration = {
       },
     ) => void,
   ) => unknown;
+  readonly registerCommand: (name: "vim", options: OnOffCommand<VimCommandContext>) => void;
 };
+
+/** Context the `/vim` command reads from Pi. */
+export type VimCommandContext = Pick<ExtensionContext, "mode"> & {
+  readonly ui: Pick<ExtensionContext["ui"], "notify" | "setEditorComponent">;
+};
+
+const vimEditor: EditorFactory = (tui, theme, keybindings) =>
+  new VimEditor(tui, theme, keybindings);
 
 /** Register Vim-style modal editing for Pi's interactive prompt composer. */
 export default function vimMode(pi: VimRegistration): void {
+  let enabled = true;
+
   pi.on("session_start", (_event, ctx) => {
-    if (ctx.mode !== "tui") {
+    if (ctx.mode !== "tui" || !enabled) {
       return;
     }
-    ctx.ui.setEditorComponent((tui, theme, keybindings) => new VimEditor(tui, theme, keybindings));
+    ctx.ui.setEditorComponent(vimEditor);
   });
+
+  pi.registerCommand(
+    "vim",
+    onOffCommand<VimCommandContext>({
+      name: "vim",
+      label: "Vim",
+      description: "Turn Vim keys in the prompt editor on or off for this session",
+      enabled: () => enabled,
+      apply: (next, ctx) => {
+        enabled = next;
+        if (ctx.mode === "tui") {
+          ctx.ui.setEditorComponent(enabled ? vimEditor : undefined);
+        }
+      },
+    }),
+  );
 }

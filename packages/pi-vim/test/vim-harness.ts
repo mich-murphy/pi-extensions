@@ -12,7 +12,7 @@ import vimMode from "../index";
 import type { VimRegistration } from "../index";
 
 const identity = (text: string): string => text;
-const theme: EditorTheme = {
+export const theme: EditorTheme = {
   borderColor: identity,
   selectList: {
     selectedPrefix: identity,
@@ -24,14 +24,33 @@ const theme: EditorTheme = {
 };
 
 type SessionStartHandler = Parameters<VimRegistration["on"]>[1];
+export type VimCommand = Parameters<VimRegistration["registerCommand"]>[1];
 export type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditorComponent"]>[0]>;
 
-export function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory | undefined {
+export type Notice = { readonly message: string; readonly type: string | undefined };
+
+/** A loaded Vim extension with its registered hooks and a record of what it did to Pi's UI. */
+export type VimSession = {
+  /** Every factory passed to `setEditorComponent`, in order; `undefined` restores Pi's editor. */
+  readonly editors: (EditorFactory | undefined)[];
+  readonly notices: Notice[];
+  readonly command: VimCommand;
+  readonly startSession: () => void;
+  readonly runCommand: (args: string) => Promise<void>;
+};
+
+export function loadVim(mode: ExtensionContext["mode"]): VimSession {
   let sessionStart: SessionStartHandler | undefined;
-  const piDouble = {
-    on(event: string, handler: SessionStartHandler): void {
+  let command: VimCommand | undefined;
+  const piDouble: VimRegistration = {
+    on(event, handler): void {
       if (event === "session_start") {
         sessionStart = handler;
+      }
+    },
+    registerCommand(name, options): void {
+      if (name === "vim") {
+        command = options;
       }
     },
   };
@@ -39,18 +58,40 @@ export function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFa
   if (!sessionStart) {
     throw new Error("Vim extension did not register session_start");
   }
+  if (!command) {
+    throw new Error("Vim extension did not register /vim");
+  }
 
-  let editorFactory: EditorFactory | undefined;
+  const editors: (EditorFactory | undefined)[] = [];
+  const notices: Notice[] = [];
   const contextDouble = {
     mode,
     ui: {
-      setEditorComponent(factory: EditorFactory): void {
-        editorFactory = factory;
+      setEditorComponent(factory: EditorFactory | undefined): void {
+        editors.push(factory);
+      },
+      notify(message: string, type?: "info" | "warning" | "error"): void {
+        notices.push({ message, type });
       },
     },
   };
-  sessionStart({}, contextDouble);
-  return editorFactory;
+  const start = sessionStart;
+  const registered = command;
+  return {
+    editors,
+    notices,
+    command: registered,
+    startSession: () => {
+      start({}, contextDouble);
+    },
+    runCommand: async (args) => registered.handler(args, contextDouble),
+  };
+}
+
+export function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory | undefined {
+  const session = loadVim(mode);
+  session.startSession();
+  return session.editors.at(-1);
 }
 
 export function createEditor(): CustomEditor {
