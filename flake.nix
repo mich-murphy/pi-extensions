@@ -17,9 +17,9 @@
     systems = ["aarch64-darwin" "aarch64-linux" "x86_64-linux"];
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     rustVersion = "1.98.0";
-    gatewayMetadata = builtins.fromTOML (builtins.readFile ./packages/pi-comms/gateway/Cargo.toml);
+    gatewayMetadata = builtins.fromTOML (builtins.readFile ./packages/pi-peers/gateway/Cargo.toml);
     toolchainFor = pkgs: (pkgs.extend (import rust-overlay)).rust-bin.stable.${rustVersion}.minimal;
-    gatewayChannel = (builtins.fromTOML (builtins.readFile ./packages/pi-comms/gateway/rust-toolchain.toml)).toolchain.channel;
+    gatewayChannel = (builtins.fromTOML (builtins.readFile ./packages/pi-peers/gateway/rust-toolchain.toml)).toolchain.channel;
   in {
     packages = forAllSystems (pkgs: let
       rustPlatform = pkgs.makeRustPlatform {
@@ -32,10 +32,10 @@
           pname = gatewayMetadata.package.name;
           version = gatewayMetadata.package.version;
           src = pkgs.lib.cleanSourceWith {
-            src = ./packages/pi-comms/gateway;
+            src = ./packages/pi-peers/gateway;
             filter = path: type: !(builtins.elem (baseNameOf path) ["target" "release"]);
           };
-          cargoLock.lockFile = ./packages/pi-comms/gateway/Cargo.lock;
+          cargoLock.lockFile = ./packages/pi-peers/gateway/Cargo.lock;
           cargoBuildFlags = ["--bin" "pi-gateway"];
           # The repository Rust gate owns the full test matrix. This derivation
           # builds the executable without running native property tests.
@@ -65,7 +65,7 @@
       # mkShell includes a C compiler for the gateway build. Hegel's native
       # engine ships as an npm platform package and needs nothing from Nix.
       default = assert pkgs.lib.assertMsg (rustVersion == gatewayChannel)
-      "flake.nix rustVersion (${rustVersion}) must equal channel in packages/pi-comms/gateway/rust-toolchain.toml (${gatewayChannel})";
+      "flake.nix rustVersion (${rustVersion}) must equal channel in packages/pi-peers/gateway/rust-toolchain.toml (${gatewayChannel})";
         pkgs.mkShell {
           packages = [
             pkgs.nodejs_26

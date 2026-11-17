@@ -16,7 +16,7 @@
 import { constants } from "node:fs";
 import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
-import { jsonObject } from "../packages/pi-comms/onboarding/artifact.js";
+import { jsonObject } from "../packages/pi-peers/onboarding/artifact.js";
 
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const CREATE_FLAGS =

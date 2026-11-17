@@ -4,12 +4,12 @@
   // Real Pi subprocess/evaluation entrypoints are launched outside the TS import graph.
   "framework": [
     {
-      "name": "session-communication-offline-pi",
+      "name": "peers-offline-pi",
       "enablers": ["@earendil-works/pi-coding-agent"],
       "entryPoints": [
-        "packages/pi-comms/test/codemode/serve.ts",
-        "packages/pi-comms/test/codemode/trial.ts",
-        "packages/pi-comms/test/codemode/run.ts"
+        "packages/pi-peers/test/codemode/serve.ts",
+        "packages/pi-peers/test/codemode/trial.ts",
+        "packages/pi-peers/test/codemode/run.ts"
       ],
       "entryPointRole": "test"
     },

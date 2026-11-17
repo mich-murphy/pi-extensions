@@ -5,5 +5,5 @@ coverage/
 *.tsbuildinfo
 .hegel/
 __pycache__/
-packages/pi-comms/gateway/target/
+packages/pi-peers/gateway/target/
 .direnv/

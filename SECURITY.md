@@ -18,5 +18,5 @@ Reports are most useful for:
 
 - Credentials leaking into tool output, logs, errors or unofficial endpoints.
 - `pi-web` fetching private or internal addresses, including through redirects or DNS rebinding.
-- `pi-comms` peers connecting or exchanging messages outside their configured trust and policy.
+- `pi-peers` peers connecting or exchanging messages outside their configured trust and policy.
 - `pi-claude` running a tool without Pi's approval, or sending traffic to an endpoint other than Claude's.
