@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { validateFrame } from "../protocol/wire.js";
+import type { PublishInput } from "../state/types.js";
 import { permits, visibleText } from "./config.js";
 import { toolPresentation } from "./presentation.js";
 import { deliveryText } from "./session.js";
@@ -19,7 +20,11 @@ const peer = Type.Object(
 );
 const work = Type.Union([
   Type.Object({ kind: Type.Literal("request"), origin: peer, requestId: id }),
-  Type.Object({ kind: Type.Literal("publication"), publisher: peer, key: scope }),
+  Type.Object({
+    kind: Type.Literal("publication"),
+    publisher: peer,
+    key: scope,
+  }),
 ]);
 const status = Type.Union(
   [
@@ -107,9 +112,14 @@ function output(value: unknown): ToolValue {
     details: { value },
   };
 }
+/**
+ * Local tools touch only this runtime's private in-memory state and never wait on gateway recovery.
+ * Remote, read and discovery tools keep the recovery preflight and effective-grant checks.
+ */
 async function invoke(
   getSession: () => AdapterSession | undefined,
   run: (session: AdapterSession) => unknown,
+  local: (session: AdapterSession) => boolean = () => false,
 ): Promise<ToolValue> {
   const session = getSession();
   if (session === undefined) {
@@ -120,6 +130,13 @@ async function invoke(
     });
   }
   try {
+    if (local(session)) {
+      if (session.client.isClosed()) {
+        throw new ConnectionFailure("cancelled", false);
+      }
+    } else {
+      await session.client.recoverForTool();
+    }
     return output(await run(session));
   } catch (error) {
     return {
@@ -136,6 +153,21 @@ function ownScope(session: AdapterSession, scopeId: string): void {
   if (!session.client.effectiveScopes().has(scopeId)) {
     throw new ConnectionFailure("unavailable", false);
   }
+}
+const offline = (session: AdapterSession): boolean => !session.client.status().connected;
+/**
+ * Own publication put/remove. While connected, the gateway's current grants bound mutation.
+ * Offline, the state store still requires a configured scope; exposure remains guarded because
+ * every remote read re-checks current effective scopes and the configured read policy.
+ */
+function mutateOwn(
+  session: AdapterSession,
+  args: (PublishInput & { action: "put" }) | { action: "remove"; scopeId: string; key: string },
+) {
+  if (!offline(session)) {
+    ownScope(session, args.scopeId);
+  }
+  return args.action === "put" ? session.state.publish(args) : session.state.remove(args);
 }
 
 export function registerTools(
@@ -211,17 +243,23 @@ export function registerTools(
     label: "Take collaboration inbox",
     description:
       "Explicitly transfer a small FIFO inbox batch. Frees payload slots but retains admission receipts. Does not reset native notice accounting. Source/provenance is included; authored references are inert.",
-    parameters: Type.Object({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })) }),
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+    }),
     execute: async (_id, args) =>
-      invoke(getSession, (session) => {
-        const result = session.take(args.limit ?? 4);
-        return {
-          messages: result.messages.map(
-            (delivery) => JSON.parse(deliveryText(delivery)) as unknown,
-          ),
-          note: result.note,
-        };
-      }),
+      invoke(
+        getSession,
+        (session) => {
+          const result = session.take(args.limit ?? 4);
+          return {
+            messages: result.messages.map(
+              (delivery) => JSON.parse(deliveryText(delivery)) as unknown,
+            ),
+            note: result.note,
+          };
+        },
+        () => true,
+      ),
   });
   pi.registerTool({
     name: "session_state",
@@ -239,48 +277,62 @@ export function registerTools(
           Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
         ),
       }),
-      Type.Object({ action: Type.Literal("list"), publisher: peer, scopeId: scope }),
-      Type.Object({ action: Type.Literal("put"), scopeId: scope, key: scope, record }),
-      Type.Object({ action: Type.Literal("remove"), scopeId: scope, key: scope }),
+      Type.Object({
+        action: Type.Literal("list"),
+        publisher: peer,
+        scopeId: scope,
+      }),
+      Type.Object({
+        action: Type.Literal("put"),
+        scopeId: scope,
+        key: scope,
+        record,
+      }),
+      Type.Object({
+        action: Type.Literal("remove"),
+        scopeId: scope,
+        key: scope,
+      }),
     ]),
     execute: async (_id, args, signal) =>
-      invoke(getSession, async (session) => {
-        ownScope(session, args.scopeId);
-        if (args.action === "put") {
-          return session.state.publish(args);
-        }
-        if (args.action === "remove") {
-          return session.state.remove(args);
-        }
-        if (!permits(session.config, args.publisher.machineId, args.scopeId, "read")) {
-          return { tag: "error", code: "forbidden" };
-        }
-        const frame = validateFrame(
-          {
-            v: 1,
-            op: args.action === "get" ? "state.get" : "state.list",
-            rid: freshId(),
-            publisher: args.publisher,
-            scopeId: args.scopeId,
-            ...(args.action === "get"
-              ? {
-                  key: args.key,
-                  ...(args.expectedRevision === undefined
-                    ? {}
-                    : { expectedRevision: args.expectedRevision }),
-                }
-              : {}),
-          },
-          "local-client",
-        );
-        if (frame.op !== "state.get" && frame.op !== "state.list") {
-          throw new Error("Invalid state operation");
-        }
-        return session.client.operation(async () => {
-          const reply = await session.client.request(frame, signal);
-          return reply.outcome;
-        });
-      }),
+      invoke(
+        getSession,
+        async (session) => {
+          if (args.action === "put" || args.action === "remove") {
+            return mutateOwn(session, args);
+          }
+          ownScope(session, args.scopeId);
+          if (!permits(session.config, args.publisher.machineId, args.scopeId, "read")) {
+            return { tag: "error", code: "forbidden" };
+          }
+          const frame = validateFrame(
+            {
+              v: 1,
+              op: args.action === "get" ? "state.get" : "state.list",
+              rid: freshId(),
+              publisher: args.publisher,
+              scopeId: args.scopeId,
+              ...(args.action === "get"
+                ? {
+                    key: args.key,
+                    ...(args.expectedRevision === undefined
+                      ? {}
+                      : { expectedRevision: args.expectedRevision }),
+                  }
+                : {}),
+            },
+            "local-client",
+          );
+          if (frame.op !== "state.get" && frame.op !== "state.list") {
+            throw new Error("Invalid state operation");
+          }
+          return session.client.operation(async () => {
+            const reply = await session.client.request(frame, signal);
+            return reply.outcome;
+          });
+        },
+        (session) => (args.action === "put" || args.action === "remove") && offline(session),
+      ),
   });
   pi.registerTool({
     name: "session_interest",
