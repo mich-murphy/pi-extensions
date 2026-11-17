@@ -1,0 +1,36 @@
+{
+  "name": "pi-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public web fetch and search tools for Pi",
+  "keywords": [
+    "pi-extension",
+    "pi-package",
+    "web-fetch",
+    "web-search"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@mixmark-io/domino": "2.2.0",
+    "effect": "4.1.2",
+    "html-to-text": "10.0.1",
+    "linkedom": "0.18.15",
+    "turndown": "7.2.4",
+    "turndown-plugin-gfm": "1.0.2"
+  },
+  "devDependencies": {
+    "@hegeldev/hegel": "0.5.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

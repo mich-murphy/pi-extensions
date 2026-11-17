@@ -271,7 +271,7 @@
       }
     },
     {
-      "files": ["packages/pi-web-tools/collapsed-text.ts"],
+      "files": ["packages/pi-web/collapsed-text.ts"],
       "rules": { "unicorn/prefer-code-point": "off" }
     }
   ]

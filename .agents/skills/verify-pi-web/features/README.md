@@ -1,0 +1,25 @@
+# pi-web verification map
+
+This maintained map covers baseline behavior and synthetic native authentication in the
+checkout's pinned Pi devDependency. Start each journey with fresh scratch state through the helper; never
+drive a shared instance.
+
+## Features
+
+- [Zero-config registration](zero-config.md): empty profile, tool discovery,
+  usable editor.
+- [Native authentication](native-auth.md): synthetic native login, cancellation,
+  logout with environment fallback, credential lifecycle and reload identity.
+- [Subagent child credentials](subagent-child.md): replayed parent providers
+  in a pi-subagents-style child session; a pinned pre-fix copy must collide.
+- [Model catalog](model-catalog.md): interactive selector plus all-operation
+  catalog; no pi-web dummy models.
+- [Reload and invalid configuration](configuration.md): reload and safe visible
+  startup failure.
+
+## Evidence contract
+
+Require action records, terminal captures, read-only second-view state, and
+successful cleanup. Helpers print retained `/tmp/pi-web-evidence-*` paths.
+Report failures and skipped paths explicitly. No prompts, tool executions, or
+live provider calls are permitted.

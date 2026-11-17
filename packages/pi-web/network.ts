@@ -1,0 +1,847 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { STATUS_CODES } from "node:http";
+import { BlockList, isIP } from "node:net";
+import { Context, Effect, Layer, Schema } from "effect";
+import { absurd } from "effect/Function";
+import { checkDomainPolicy } from "./domain-policy";
+import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
+import { PublicWebTransport } from "./public-web-transport";
+import type { ApprovedAddress } from "./public-web-transport";
+import { withSafeSpan } from "./telemetry";
+import { isPublicHttpUrl } from "./types";
+import type { ContentKind, PublicHttpUrl } from "./types";
+
+const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind>([
+  ["text/html", "html"],
+  ["application/xhtml+xml", "html"],
+  ["image/png", "raster-image"],
+  ["image/jpeg", "raster-image"],
+  ["image/gif", "raster-image"],
+  ["image/webp", "raster-image"],
+  ["image/svg+xml", "svg"],
+  ["application/json", "text"],
+  ["application/xml", "text"],
+  ["application/javascript", "text"],
+  ["application/x-javascript", "text"],
+  ["application/ecmascript", "text"],
+]);
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const UTF8_LABEL = "utf-8";
+const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
+const LEADING_DIGITS_RE = /^\d+/u;
+
+/** A parsed Content-Type header. */
+export type ParsedContentType = {
+  readonly contentType: string;
+  readonly mime: string;
+  readonly charset?: string | undefined;
+  readonly kind: ContentKind;
+};
+
+/** A single outbound public web request. */
+export type PublicWebRequest = {
+  readonly url: PublicHttpUrl;
+  readonly accept: string;
+  readonly userAgent: string;
+  readonly fallbackUserAgent: string;
+  readonly maxRedirects: number;
+  readonly maxResponseBytes: number;
+  /**
+   * Return the first `maxResponseBytes` of an oversized text-like body (flagged `responseTruncated`)
+   * instead of failing. Other content kinds keep failing over the cap.
+   */
+  readonly allowPartialText?: boolean | undefined;
+  readonly blockPrivateHosts: boolean;
+  /** Hostname policy enforced before DNS and transport work on every redirect hop. */
+  readonly domainPolicy: DomainPolicy;
+};
+
+/** A bounded public web response. */
+export type PublicWebResponse = {
+  readonly requestedUrl: PublicHttpUrl;
+  readonly finalUrl: PublicHttpUrl;
+  readonly status: number;
+  readonly headers: Headers;
+  readonly body: Readonly<Buffer>;
+  /** True when the body is only the first `maxResponseBytes` of a larger response. */
+  readonly responseTruncated?: boolean | undefined;
+};
+
+/** A request could not be completed at the network level (DNS, connection, TLS, or body stream). */
+export class PublicWebRequestFailed extends Schema.TaggedError<PublicWebRequestFailed>()(
+  "PublicWebRequestFailed",
+  {
+    /** The host the failing request was sent to; messages name only this, never the URL. */
+    hostname: Schema.String,
+    /** Production clients retain only an allowlisted network code, never raw fetch/stream data. */
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  /** Safe description of the network failure, for example "Could not resolve host example.com". */
+  override get message(): string {
+    return describeNetworkFailure(this.cause, this.hostname);
+  }
+}
+
+/** The URL resolved to localhost or a *.localhost name. */
+export class PrivateHostBlocked extends Schema.TaggedError<PrivateHostBlocked>()(
+  "PrivateHostBlocked",
+  {},
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Blocked private or local host";
+  }
+}
+
+/** The URL is, or resolves to, a non-public IP address. */
+export class PrivateIpBlocked extends Schema.TaggedError<PrivateIpBlocked>()(
+  "PrivateIpBlocked",
+  {},
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Blocked private or local IP address";
+  }
+}
+
+/** The requested URL or a redirect target carries user:password credentials. */
+export class UrlCredentialsUnsupported extends Schema.TaggedError<UrlCredentialsUnsupported>()(
+  "UrlCredentialsUnsupported",
+  {},
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "URL credentials are not supported";
+  }
+}
+
+/** A redirect response had no Location header. */
+export class RedirectLocationMissing extends Schema.TaggedError<RedirectLocationMissing>()(
+  "RedirectLocationMissing",
+  {},
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirect response was missing a Location header";
+  }
+}
+
+/** A redirect Location header did not parse as a public URL. */
+export class RedirectLocationInvalid extends Schema.TaggedError<RedirectLocationInvalid>()(
+  "RedirectLocationInvalid",
+  {},
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirect response had an invalid Location header";
+  }
+}
+
+/** The redirect chain exceeded the configured hop limit. */
+export class RedirectLimitExceeded extends Schema.TaggedError<RedirectLimitExceeded>()(
+  "RedirectLimitExceeded",
+  {
+    /** The configured hop limit. */
+    maxRedirects: Schema.Number,
+  },
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Too many redirects while fetching URL";
+  }
+}
+
+/** A redirect pointed at a non-http(s) protocol. */
+export class RedirectProtocolUnsupported extends Schema.TaggedError<RedirectProtocolUnsupported>()(
+  "RedirectProtocolUnsupported",
+  {
+    /** The rejected protocol, for example "ftp:". */
+    protocol: Schema.String,
+  },
+) {
+  /** Safe user-facing description. */
+  override get message(): string {
+    return "Redirected to unsupported protocol";
+  }
+}
+
+/** The final response had a non-2xx status. */
+export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()(
+  "HttpStatusRejected",
+  {
+    /** The HTTP status code. */
+    status: Schema.Number,
+    /** The HTTP status text, possibly empty. */
+    statusText: Schema.String,
+  },
+) {
+  /** Safe user-facing description with the status. */
+  override get message(): string {
+    // Status text is controlled by the remote server; never reflect it into the terminal.
+    const label = this.statusText ? STATUS_CODES[this.status] : undefined;
+    const summary = `Request failed (${this.status}${label === undefined ? "" : ` ${label}`})`;
+    if (this.status === 401) {
+      return `${summary}. The remote site requires authentication; webfetch does not use your browser login. Use a public page or an authorized site-specific tool; do not put credentials in the URL.`;
+    }
+    if (this.status === 404) {
+      return `${summary}. The remote site could not find this page. Check the URL or search for a current public source.`;
+    }
+    return summary;
+  }
+}
+
+/** The response declared or streamed more bytes than the cap allows. */
+export class ResponseTooLarge extends Schema.TaggedError<ResponseTooLarge>()("ResponseTooLarge", {
+  /** The byte cap that was exceeded. */
+  maxBytes: Schema.Number,
+}) {
+  /** Safe user-facing description with the cap in MB. */
+  override get message(): string {
+    return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit)`;
+  }
+}
+
+/** Expected failures of the public web client. Their messages never contain URLs or causes. */
+export type PublicWebError =
+  | PublicWebRequestFailed
+  | DomainPolicyError
+  | PrivateHostBlocked
+  | PrivateIpBlocked
+  | UrlCredentialsUnsupported
+  | RedirectLocationMissing
+  | RedirectLocationInvalid
+  | RedirectLimitExceeded
+  | RedirectProtocolUnsupported
+  | HttpStatusRejected
+  | ResponseTooLarge;
+
+const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "timeout" | "tls"> =
+  new Map([
+    ["ENOTFOUND", "dns"],
+    ["EAI_AGAIN", "dns"],
+    ["ECONNREFUSED", "refused"],
+    ["ECONNRESET", "reset"],
+    ["UND_ERR_SOCKET", "reset"],
+    ["ETIMEDOUT", "timeout"],
+    ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
+    ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
+    ["CERT_HAS_EXPIRED", "tls"],
+    ["CERT_NOT_YET_VALID", "tls"],
+    ["CERT_REVOKED", "tls"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
+    ["ERR_TLS_CERT_SIGNATURE_ALGORITHM_UNSUPPORTED", "tls"],
+  ]);
+const MAX_CAUSE_DEPTH = 8;
+
+/** Retain only an allowlisted diagnostic code, never reflected messages, stacks, or payloads. */
+export function sanitizeNetworkFailure(cause: unknown): { readonly code: string } | undefined {
+  const code = findNetworkCode(cause);
+  return code === undefined ? undefined : { code };
+}
+
+/**
+ * Describe a failed network request from its error's `cause` chain, naming only the host.
+ * fetch rejects with a generic TypeError whose `cause` (or a deeper one) carries the system code.
+ *
+ * @param cause - The fetch or stream rejection.
+ * @param hostname - The host the request was sent to.
+ * @returns A sentence such as "Could not resolve host example.com".
+ */
+export function describeNetworkFailure(cause: unknown, hostname: string): string {
+  const code = findNetworkCode(cause);
+  const kind = code === undefined ? undefined : networkCodeKind(code);
+  if (kind === undefined) {
+    return `Request to ${hostname} failed`;
+  }
+  switch (kind) {
+    case "dns": {
+      return `Could not resolve host ${hostname}`;
+    }
+    case "refused": {
+      return `Connection refused by ${hostname}`;
+    }
+    case "reset": {
+      return `Connection reset by ${hostname}`;
+    }
+    case "timeout": {
+      return `Connection to ${hostname} timed out`;
+    }
+    case "tls": {
+      return `TLS certificate error for ${hostname} (${code ?? ""})`;
+    }
+    default: {
+      return absurd(kind);
+    }
+  }
+}
+
+function networkCodeKind(
+  code: string,
+): "dns" | "refused" | "reset" | "timeout" | "tls" | undefined {
+  const kind = NETWORK_CODE_KINDS.get(code);
+  if (kind !== undefined) {
+    return kind;
+  }
+  return undefined;
+}
+
+function findNetworkCode(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof current !== "object" || current === null) {
+      return undefined;
+    }
+    if ("code" in current && typeof current.code === "string" && networkCodeKind(current.code)) {
+      return current.code;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return undefined;
+}
+
+/** Parse a Content-Type header into mime, charset, and coarse body kind. */
+export function parseContentType(contentTypeHeader: string | null | undefined): ParsedContentType {
+  const contentType = contentTypeHeader?.trim() ?? "";
+  const [mimePart = ""] = contentType.split(";");
+  const mime = mimePart.trim().toLowerCase();
+  const charsetMatch = /(?:^|;)\s*charset\s*=\s*['"]?(?<charset>[^;'"]+)/iu.exec(contentType);
+  const charset = charsetMatch?.groups?.charset?.trim().toLowerCase();
+  return { contentType, mime, charset, kind: classifyMimeType(mime) };
+}
+
+/** Classify a mime type into the coarse body kinds webfetch handles; unknown and empty types are binary. */
+export function classifyMimeType(mime: string): ContentKind {
+  const normalized = mime.trim().toLowerCase();
+  const exactKind = MIME_KINDS.get(normalized);
+  if (exactKind !== undefined) {
+    return exactKind;
+  }
+  if (
+    normalized.startsWith("text/") ||
+    normalized.endsWith("+xml") ||
+    normalized.endsWith("+json")
+  ) {
+    return "text";
+  }
+  return "binary";
+}
+
+/** Decode a body buffer using the declared charset, falling back to UTF-8. */
+export function decodeTextBuffer(
+  buffer: Readonly<Buffer>,
+  charset?: string,
+  options: { readonly partial?: boolean } = {},
+): { text: string; decoder: string } {
+  // A cut-off body can end inside a UTF-8 sequence; streaming mode drops that tail instead of
+  // turning it into a replacement character.
+  const decode = (label: string) =>
+    new TextDecoder(label).decode(buffer, {
+      stream: options.partial === true && label === UTF8_LABEL,
+    });
+  const normalizedCharset = normalizeCharset(charset);
+  if (normalizedCharset !== undefined) {
+    try {
+      return {
+        text: decode(normalizedCharset),
+        decoder: normalizedCharset,
+      };
+    } catch {
+      // Unknown charset label: fall back to UTF-8 below.
+    }
+  }
+  return {
+    text: decode(UTF8_LABEL),
+    decoder: UTF8_LABEL,
+  };
+}
+
+function normalizeCharset(charset: string | undefined): string | undefined {
+  if (charset === undefined) {
+    return undefined;
+  }
+  const normalized = charset.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "utf8") {
+    return UTF8_LABEL;
+  }
+  return normalized;
+}
+
+/** A response body streamed past its byte cap. */
+export class ResponseBodyTooLarge extends Schema.TaggedError<ResponseBodyTooLarge>()(
+  "ResponseBodyTooLarge",
+  {},
+) {}
+
+/** A response body stream failed mid-read. */
+export class ResponseBodyReadFailed extends Schema.TaggedError<ResponseBodyReadFailed>()(
+  "ResponseBodyReadFailed",
+  {
+    /** The stream error; classify it with describeNetworkFailure. */
+    cause: Schema.Defect(),
+  },
+) {}
+
+/**
+ * Read a response body with a hard byte cap. The reader is cancelled and released however the read
+ * ends: success, cap exceeded, stream failure, or interruption.
+ */
+export function readResponseBodyWithLimit(
+  response: Response,
+  maxBytes: number,
+): Effect.Effect<Buffer, ResponseBodyTooLarge | ResponseBodyReadFailed> {
+  return readCapped(response, maxBytes, "fail").pipe(
+    Effect.flatMap(({ body, truncated }) =>
+      truncated ? Effect.fail(new ResponseBodyTooLarge()) : Effect.succeed(body),
+    ),
+  );
+}
+
+function readCapped(
+  response: Response,
+  maxBytes: number,
+  overflow: "fail" | "truncate",
+): Effect.Effect<{ readonly body: Buffer; readonly truncated: boolean }, ResponseBodyReadFailed> {
+  const { body } = response;
+  if (body === null) {
+    return Effect.succeed({ body: Buffer.alloc(0), truncated: false });
+  }
+  return Effect.acquireUseRelease(
+    Effect.sync(() => body.getReader()),
+    (reader) =>
+      Effect.gen(function* () {
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        while (true) {
+          const chunk = yield* Effect.tryPromise({
+            try: async () => reader.read(),
+            catch: (cause) => new ResponseBodyReadFailed({ cause }),
+          });
+          if (chunk.done) {
+            return { body: Buffer.concat(chunks), truncated: false };
+          }
+          const view = Buffer.from(
+            chunk.value.buffer,
+            chunk.value.byteOffset,
+            chunk.value.byteLength,
+          );
+          if (bytes + view.byteLength > maxBytes) {
+            if (overflow === "truncate") {
+              chunks.push(view.subarray(0, maxBytes - bytes));
+            }
+            return { body: Buffer.concat(chunks), truncated: true };
+          }
+          bytes += view.byteLength;
+          chunks.push(view);
+        }
+      }),
+    (reader) =>
+      Effect.promise(async () => {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }),
+  );
+}
+
+// Non-public ranges blocked for outbound fetches. IPv4-mapped IPv6 (::ffff:a.b.c.d) needs no row,
+// since BlockList checks mapped addresses against the IPv4 rows. The IPv4-compatible row is ::/96,
+// not ::/8: ::/8 contains ::ffff:0:0/96 and would block every mapped address, public ones too.
+const NON_PUBLIC_RANGES: readonly (readonly [
+  network: string,
+  prefixLength: number,
+  family: "ipv4" | "ipv6",
+])[] = [
+  ["0.0.0.0", 8, "ipv4"],
+  ["10.0.0.0", 8, "ipv4"],
+  ["100.64.0.0", 10, "ipv4"],
+  ["127.0.0.0", 8, "ipv4"],
+  ["169.254.0.0", 16, "ipv4"],
+  ["172.16.0.0", 12, "ipv4"],
+  ["192.168.0.0", 16, "ipv4"],
+  ["224.0.0.0", 4, "ipv4"],
+  ["240.0.0.0", 4, "ipv4"],
+  ["192.0.0.0", 24, "ipv4"],
+  ["192.0.2.0", 24, "ipv4"],
+  ["198.18.0.0", 15, "ipv4"],
+  ["198.51.100.0", 24, "ipv4"],
+  ["203.0.113.0", 24, "ipv4"],
+  ["::", 96, "ipv6"],
+  ["64:ff9b::", 96, "ipv6"],
+  ["64:ff9b:1::", 48, "ipv6"],
+  ["2001:db8::", 32, "ipv6"],
+  ["100::", 64, "ipv6"],
+  ["fc00::", 7, "ipv6"],
+  ["fe80::", 10, "ipv6"],
+  ["ff00::", 8, "ipv6"],
+];
+
+const NON_PUBLIC_ADDRESSES = new BlockList();
+for (const [network, prefixLength, family] of NON_PUBLIC_RANGES) {
+  NON_PUBLIC_ADDRESSES.addSubnet(network, prefixLength, family);
+}
+
+/** Returns true when an IP literal (v4 or v6, optionally bracketed) is in a non-public range. */
+export function isPrivateOrLocalIp(input: string): boolean {
+  const ip = stripIpv6Brackets(input);
+  const version = isIP(ip);
+  if (version === 0) {
+    return false;
+  }
+  if (NON_PUBLIC_ADDRESSES.check(ip, version === 4 ? "ipv4" : "ipv6")) {
+    return true;
+  }
+  const embedded = version === 6 ? embeddedIpv4(ip) : undefined;
+  return embedded !== undefined && NON_PUBLIC_ADDRESSES.check(embedded, "ipv4");
+}
+
+/** Expand a valid IPv6 literal to eight 16-bit groups. */
+function ipv6Groups(ip: string): number[] {
+  let text = ip.split("%")[0] ?? ip;
+  const tail = /(?<a>\d+)\.(?<b>\d+)\.(?<c>\d+)\.(?<d>\d+)$/u.exec(text)?.groups;
+  if (tail) {
+    const [a = 0, b = 0, c = 0, d = 0] = [tail.a, tail.b, tail.c, tail.d].map(Number);
+    text = `${text.slice(0, text.lastIndexOf(":") + 1)}${(a * 256 + b).toString(16)}:${(c * 256 + d).toString(16)}`;
+  }
+  const [head = "", rest] = text.split("::");
+  const front = head ? head.split(":") : [];
+  const back = rest === undefined || rest === "" ? [] : rest.split(":");
+  const fill =
+    rest === undefined ? [] : Array.from({ length: 8 - front.length - back.length }, () => "0");
+  return [...front, ...fill, ...back].map((group) => Number.parseInt(group, 16));
+}
+
+/** The IPv4 address a SIIT (::ffff:0:a.b.c.d) or 6to4 (2002:a.b.c.d::/48) address embeds. */
+function embeddedIpv4(ip: string): string | undefined {
+  const g = ipv6Groups(ip);
+  const siit = g.slice(0, 4).every((group) => group === 0) && g[4] === 0xff_ff && g[5] === 0;
+  let pair: (number | undefined)[] = [];
+  if (siit) {
+    pair = [g[6], g[7]];
+  } else if (g[0] === 0x20_02) {
+    pair = [g[1], g[2]];
+  }
+  const [high, low] = pair;
+  if (high === undefined || low === undefined) {
+    return undefined;
+  }
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+}
+
+function stripIpv6Brackets(hostname: string): string {
+  return hostname.replace(/^\[/u, "").replace(/\]$/u, "");
+}
+
+type FetchedResponse = {
+  readonly response: Response;
+  readonly finalUrl: PublicHttpUrl;
+};
+
+/** Outbound port wrapping the platform fetch, so tests can record and script requests. */
+export class HttpFetch extends Context.Service<
+  HttpFetch,
+  {
+    /**
+     * Send one HTTP request. Rejections are unclassified; every caller wraps the call and
+     * translates them into its own typed error.
+     */
+    readonly fetch: (input: string | URL, init: RequestInit) => Promise<Response>;
+  }
+>()("pi-web/network/HttpFetch") {
+  /** The live layer, delegating to globalThis.fetch at call time. */
+  static readonly layer = Layer.succeed(
+    HttpFetch,
+    HttpFetch.of({ fetch: async (input, init) => globalThis.fetch(input, init) }),
+  );
+}
+
+/** Outbound port resolving host names for public-address validation and bound connections. */
+export class DnsLookup extends Context.Service<
+  DnsLookup,
+  {
+    /** Resolve every address of a host in resolver order. */
+    readonly lookup: (hostname: string) => Promise<readonly ApprovedAddress[]>;
+  }
+>()("pi-web/network/DnsLookup") {
+  /** The live layer over the system resolver, in resolver order. */
+  static readonly layer = Layer.succeed(
+    DnsLookup,
+    DnsLookup.of({
+      lookup: async (hostname) => {
+        const records = await dnsLookup(hostname, { all: true, order: "verbatim" });
+        return records.map((record) => {
+          const family = isIP(record.address);
+          if (family !== 4 && family !== 6) {
+            throw new Error("DNS returned a non-IP address");
+          }
+          return { address: record.address, family };
+        });
+      },
+    }),
+  );
+}
+
+/**
+ * Outbound port for fetching public web resources, with SSRF defenses, redirect re-validation, and
+ * a challenge-aware user-agent retry. Interrupting a request aborts it; deadlines belong to the
+ * caller.
+ */
+export class PublicWebClient extends Context.Service<
+  PublicWebClient,
+  {
+    /** Fetch a bounded public web response, following safe redirects. */
+    readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
+  }
+>()("pi-web/network/PublicWebClient") {
+  /** The live client over PublicWebTransport and DnsLookup. */
+  static readonly layer = Layer.effect(
+    PublicWebClient,
+    Effect.gen(function* () {
+      const transport = yield* PublicWebTransport;
+      const dns = yield* DnsLookup;
+
+      const approvedAddresses = (
+        url: URL,
+      ): Effect.Effect<
+        readonly ApprovedAddress[],
+        PublicWebRequestFailed | PrivateHostBlocked | PrivateIpBlocked
+      > => {
+        const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
+        if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+          return Effect.fail(new PrivateHostBlocked());
+        }
+        const literalFamily = isIP(hostname);
+        if (literalFamily === 4 || literalFamily === 6) {
+          return isPrivateOrLocalIp(hostname)
+            ? Effect.fail(new PrivateIpBlocked())
+            : Effect.succeed([{ address: hostname, family: literalFamily }]);
+        }
+        return Effect.gen(function* () {
+          const records = yield* Effect.tryPromise({
+            try: async () => dns.lookup(hostname),
+            catch: (cause) =>
+              new PublicWebRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
+          });
+          if (records.length === 0) {
+            return yield* new PublicWebRequestFailed({
+              hostname,
+              cause: { code: "ENOTFOUND" },
+            });
+          }
+          if (records.some((record) => isPrivateOrLocalIp(record.address))) {
+            return yield* new PrivateIpBlocked();
+          }
+          return records;
+        });
+      };
+
+      const fetchHop = Effect.fnUntraced(function* (
+        url: URL,
+        request: PublicWebRequest,
+        userAgent: string,
+      ): Effect.fn.Return<Response, PublicWebError> {
+        if (url.username || url.password) {
+          return yield* new UrlCredentialsUnsupported();
+        }
+        yield* Effect.fromResult(checkDomainPolicy(url, request.domainPolicy));
+        const hostname = stripIpv6Brackets(url.hostname);
+        const literalFamily = isIP(hostname);
+        let addresses: readonly ApprovedAddress[];
+        if (request.blockPrivateHosts) {
+          addresses = yield* approvedAddresses(url);
+        } else if (literalFamily === 4 || literalFamily === 6) {
+          addresses = [{ address: hostname, family: literalFamily }];
+        } else {
+          addresses = yield* Effect.tryPromise({
+            try: async () => dns.lookup(hostname),
+            catch: (cause) =>
+              new PublicWebRequestFailed({
+                hostname: url.hostname,
+                cause: sanitizeNetworkFailure(cause),
+              }),
+          });
+        }
+        if (addresses.length === 0) {
+          return yield* new PublicWebRequestFailed({
+            hostname: url.hostname,
+            cause: { code: "ENOTFOUND" },
+          });
+        }
+        return yield* Effect.tryPromise({
+          try: async (signal) =>
+            transport.get(url, addresses, {
+              headers: {
+                "User-Agent": userAgent,
+                Accept: request.accept,
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+              },
+              signal,
+            }),
+          catch: (cause) =>
+            new PublicWebRequestFailed({
+              hostname: url.hostname,
+              cause: sanitizeNetworkFailure(cause),
+            }),
+        });
+      });
+
+      const fetchWithUserAgent = Effect.fnUntraced(function* (
+        request: PublicWebRequest,
+        userAgent: string,
+      ): Effect.fn.Return<FetchedResponse, PublicWebError> {
+        let currentUrl = new URL(request.url);
+        for (let redirects = 0; ; redirects += 1) {
+          const response = yield* fetchHop(currentUrl, request, userAgent);
+          if (!REDIRECT_STATUSES.has(response.status)) {
+            const finalUrl = currentUrl.toString();
+            if (isPublicHttpUrl(finalUrl)) {
+              return { response, finalUrl };
+            }
+            return yield* new RedirectLocationInvalid();
+          }
+
+          yield* cancelBody(response);
+          currentUrl = yield* resolveRedirect(response, {
+            currentUrl,
+            redirects,
+            maxRedirects: request.maxRedirects,
+          });
+        }
+      });
+
+      const fetchPastChallenge = Effect.fnUntraced(function* (
+        request: PublicWebRequest,
+      ): Effect.fn.Return<FetchedResponse, PublicWebError> {
+        const fetched = yield* fetchWithUserAgent(request, request.userAgent);
+        if (!isCloudflareChallenge(fetched.response)) {
+          return fetched;
+        }
+        yield* cancelBody(fetched.response);
+        return yield* fetchWithUserAgent(request, request.fallbackUserAgent);
+      });
+
+      const get = Effect.fnUntraced(
+        function* (request: PublicWebRequest): Effect.fn.Return<PublicWebResponse, PublicWebError> {
+          const { response, finalUrl } = yield* fetchPastChallenge(request);
+          // Only text-like kinds can be usefully cut short; everything else keeps the hard cap.
+          const partialAllowed =
+            request.allowPartialText === true &&
+            isPartialReadable(parseContentType(response.headers.get("content-type")).kind);
+          const rejection = checkResponseHead(response, request.maxResponseBytes, partialAllowed);
+          if (rejection !== undefined) {
+            yield* cancelBody(response);
+            return yield* Effect.fail(rejection);
+          }
+
+          const { hostname } = new URL(finalUrl);
+          const { body, truncated } = yield* readCapped(
+            response,
+            request.maxResponseBytes,
+            partialAllowed ? "truncate" : "fail",
+          ).pipe(
+            Effect.flatMap((read) =>
+              read.truncated && !partialAllowed
+                ? Effect.fail(new ResponseTooLarge({ maxBytes: request.maxResponseBytes }))
+                : Effect.succeed(read),
+            ),
+            Effect.catchTag("ResponseBodyReadFailed", (error) =>
+              Effect.fail(
+                new PublicWebRequestFailed({
+                  hostname,
+                  cause: sanitizeNetworkFailure(error.cause),
+                }),
+              ),
+            ),
+          );
+          return {
+            requestedUrl: request.url,
+            finalUrl,
+            status: response.status,
+            headers: response.headers,
+            body,
+            ...(truncated ? { responseTruncated: true } : {}),
+          };
+        },
+        (effect) =>
+          withSafeSpan("PublicWebClient.get", effect, (error) => ({
+            type: error._tag,
+            network:
+              error._tag === "PublicWebRequestFailed"
+                ? sanitizeNetworkFailure(error.cause)
+                : undefined,
+          })),
+      );
+
+      return PublicWebClient.of({ get });
+    }),
+  );
+}
+
+function resolveRedirect(
+  response: Response,
+  hop: { readonly currentUrl: URL; readonly redirects: number; readonly maxRedirects: number },
+): Effect.Effect<URL, PublicWebError> {
+  const { currentUrl, redirects, maxRedirects } = hop;
+  const location = response.headers.get("location");
+  if (location === null || location === "") {
+    return Effect.fail(new RedirectLocationMissing());
+  }
+  if (redirects >= maxRedirects) {
+    return Effect.fail(new RedirectLimitExceeded({ maxRedirects }));
+  }
+  const nextUrl = parseUrl(location, currentUrl);
+  if (nextUrl === undefined) {
+    return Effect.fail(new RedirectLocationInvalid());
+  }
+  if (!HTTP_PROTOCOLS.has(nextUrl.protocol)) {
+    return Effect.fail(new RedirectProtocolUnsupported({ protocol: nextUrl.protocol }));
+  }
+  return Effect.succeed(nextUrl);
+}
+
+function parseUrl(input: string, base: URL): URL | undefined {
+  try {
+    return new URL(input, base);
+  } catch {
+    return undefined;
+  }
+}
+
+function isPartialReadable(kind: ContentKind): boolean {
+  return kind === "html" || kind === "text" || kind === "svg";
+}
+
+function checkResponseHead(
+  response: Response,
+  maxBytes: number,
+  partialAllowed: boolean,
+): HttpStatusRejected | ResponseTooLarge | undefined {
+  if (!response.ok) {
+    return new HttpStatusRejected({ status: response.status, statusText: response.statusText });
+  }
+  const declaredBytes = parseContentLength(response.headers.get("content-length"));
+  if (!partialAllowed && Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+    return new ResponseTooLarge({ maxBytes });
+  }
+  return undefined;
+}
+
+function parseContentLength(header: string | null): number {
+  const digits = LEADING_DIGITS_RE.exec(header ?? "")?.[0];
+  return digits === undefined ? Number.NaN : Number(digits);
+}
+
+function cancelBody(response: Response): Effect.Effect<void> {
+  return Effect.promise(async () => {
+    await response.body?.cancel().catch(() => undefined);
+  });
+}
+
+function isCloudflareChallenge(response: Pick<Response, "status" | "headers">): boolean {
+  return response.status === 403 && response.headers.get("cf-mitigated") === "challenge";
+}
