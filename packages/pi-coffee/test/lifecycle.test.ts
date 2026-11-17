@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
-import type { CaffeinateEnd } from "../no-sleep-lifecycle";
+import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
+import type { CaffeinateEnd } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 class FakeCaffeinate {
@@ -32,7 +32,7 @@ class FakeCaffeinate {
 function harness(platform: NodeJS.Platform = "darwin", hasUI = true) {
   const pi = fakePi(hasUI);
   const spawned: { args: readonly string[]; child: FakeCaffeinate }[] = [];
-  registerNoSleep(pi.pi, {
+  registerCoffee(pi.pi, {
     platform,
     processId: 9876,
     spawnCaffeinate: (args) => {
@@ -44,14 +44,25 @@ function harness(platform: NodeJS.Platform = "darwin", hasUI = true) {
   return { ...pi, spawned };
 }
 
-describe("no-sleep lifecycle", () => {
-  test("does nothing outside macOS", async () => {
+describe("coffee lifecycle", () => {
+  test("registers only /coffee outside macOS and never spawns", async () => {
     const pi = harness("linux");
 
     await pi.emit("agent_start");
+    pi.setIdle(false);
+    await pi.command("on");
+    await pi.command("");
+    await pi.command("");
 
     expect(pi.registeredEvents()).toStrictEqual([]);
+    expect(pi.registeredCommands()).toStrictEqual(["coffee"]);
     expect(pi.spawned).toHaveLength(0);
+    const unavailable = " Sleep prevention is unavailable: it works on macOS only.";
+    expect(pi.notifications).toStrictEqual([
+      { message: `Coffee is on for this session.${unavailable}`, level: "info" },
+      { message: `Coffee is off for this session.${unavailable}`, level: "info" },
+      { message: `Coffee is on for this session.${unavailable}`, level: "info" },
+    ]);
   });
 
   test("runs one caffeinate process until the agent settles", async () => {
@@ -125,12 +136,12 @@ describe("no-sleep lifecycle", () => {
     expect(pi.notifications).toStrictEqual([
       {
         message:
-          "No Sleep lost caffeinate unexpectedly (exit code 0). Restarting sleep prevention once.",
+          "Coffee lost caffeinate unexpectedly (exit code 0). Restarting sleep prevention once.",
         level: "warning",
       },
       {
         message:
-          "No Sleep lost caffeinate unexpectedly (signal SIGKILL). Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources.",
+          "Coffee lost caffeinate unexpectedly (signal SIGKILL). Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources.",
         level: "warning",
       },
     ]);
@@ -165,7 +176,7 @@ describe("no-sleep lifecycle", () => {
     expect(pi.notifications).toStrictEqual([
       {
         message:
-          "No Sleep: caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable.",
+          "Coffee: caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable.",
         level: "error",
       },
     ]);
@@ -181,12 +192,12 @@ describe("no-sleep lifecycle", () => {
     expect(pi.notifications).toStrictEqual([
       {
         message:
-          "No Sleep: Could not start caffeinate (EAGAIN). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+          "Coffee: Could not start caffeinate (EAGAIN). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
         level: "error",
       },
       {
         message:
-          "No Sleep: Could not stop caffeinate (EPERM). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+          "Coffee: Could not stop caffeinate (EPERM). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
         level: "error",
       },
     ]);
@@ -225,5 +236,95 @@ describe("no-sleep lifecycle", () => {
     pi.spawned[0]?.child.fail("start", "EACCES");
 
     expect(pi.notifications).toStrictEqual([]);
+  });
+});
+
+describe("/coffee command", () => {
+  test("completes on and off", async () => {
+    const pi = harness();
+
+    await expect(pi.completions("")).resolves.toStrictEqual([
+      { value: "on", label: "on" },
+      { value: "off", label: "off" },
+    ]);
+    await expect(pi.completions("of")).resolves.toStrictEqual([{ value: "off", label: "off" }]);
+    await expect(pi.completions("x")).resolves.toStrictEqual([]);
+  });
+
+  test("an empty argument toggles, starting from on", async () => {
+    const pi = harness();
+
+    await pi.command("");
+    await pi.command("  ");
+
+    expect(pi.notifications).toStrictEqual([
+      { message: "Coffee is off for this session.", level: "info" },
+      { message: "Coffee is on for this session.", level: "info" },
+    ]);
+  });
+
+  test("rejects any other argument without changing state", async () => {
+    const pi = harness();
+
+    await pi.command("maybe");
+    await pi.emit("agent_start");
+
+    expect(pi.notifications).toStrictEqual([
+      { message: "Usage: /coffee [on|off]", level: "warning" },
+    ]);
+    expect(pi.spawned).toHaveLength(1);
+  });
+
+  test("off stops the running child at once and prevents new ones", async () => {
+    const pi = harness();
+    await pi.emit("agent_start");
+    pi.setIdle(false);
+
+    await pi.command("off");
+    expect(pi.spawned[0]?.child.stops).toBe(1);
+
+    await pi.emit("agent_start");
+    await pi.command("off");
+    expect(pi.spawned).toHaveLength(1);
+    expect(pi.notifications.filter((note) => note.level !== "info")).toStrictEqual([]);
+  });
+
+  test("on while an agent run is active starts sleep prevention immediately", async () => {
+    const pi = harness();
+    await pi.command("off");
+    pi.setIdle(false);
+
+    await pi.command("on");
+    expect(pi.spawned).toHaveLength(1);
+    expect(pi.spawned[0]?.args).toStrictEqual(["-d", "-i", "-s", "-w", "9876"]);
+
+    await pi.command("on");
+    await pi.emit("agent_start");
+    expect(pi.spawned).toHaveLength(1);
+
+    pi.setIdle(true);
+    await pi.emit("agent_settled");
+    expect(pi.spawned[0]?.child.stops).toBe(1);
+  });
+
+  test("on while idle waits for the next agent run", async () => {
+    const pi = harness();
+    await pi.command("off");
+
+    await pi.command("on");
+    expect(pi.spawned).toHaveLength(0);
+
+    await pi.emit("agent_start");
+    expect(pi.spawned).toHaveLength(1);
+  });
+
+  test("session shutdown after off leaves no child to stop", async () => {
+    const pi = harness();
+    await pi.emit("agent_start");
+    await pi.command("off");
+    await pi.emit("session_shutdown");
+
+    expect(pi.spawned).toHaveLength(1);
+    expect(pi.spawned[0]?.child.stops).toBe(1);
   });
 });
