@@ -18,8 +18,8 @@ def main():
     parser.parse_args()
     skill = Path(__file__).resolve().parents[1]
     repo = skill.parents[2]
-    evidence = Path(tempfile.mkdtemp(prefix="pi-auto-resume-evidence-", dir="/tmp"))
-    scratch = Path(tempfile.mkdtemp(prefix="pi-auto-resume-state-", dir="/tmp"))
+    evidence = Path(tempfile.mkdtemp(prefix="pi-retry-evidence-", dir="/tmp"))
+    scratch = Path(tempfile.mkdtemp(prefix="pi-retry-state-", dir="/tmp"))
     print(f"Evidence: {evidence}", flush=True)
     socket = str(scratch / "tmux.sock")
     node, tmux = shutil.which("node"), shutil.which("tmux")
@@ -38,7 +38,7 @@ def main():
         (state / "agent/settings.json").write_text(json.dumps({
             "packages": [], "cacheWarming": "off", "theme": "dark",
             "retry": {"enabled": False}, "compaction": {"enabled": False},
-            "autoResume": {"transient": {"delaysMinutes": [0.05]}}}))
+            "piRetry": {"transient": {"delaysMinutes": [0.05]}}}))
         env = {"HOME": str(state / "home"), "PI_CODING_AGENT_DIR": str(state / "agent"),
                "TMPDIR": str(state / "tmp"), "PATH": os.environ["PATH"], "TERM": "xterm-256color",
                "NODE_DISABLE_COMPILE_CACHE": "1", "PI_OFFLINE": "1", "PI_SKIP_VERSION_CHECK": "1",
@@ -84,7 +84,7 @@ def main():
         assert manifest["version"] == expected, "Run npm install: installed Pi differs from pin"
         entry = manifest["bin"]
         cli = [node, str(installed / (entry if isinstance(entry, str) else entry["pi"]))]
-        flags = ["--no-extensions", "-e", str(repo / "packages/pi-auto-resume/index.ts"),
+        flags = ["--no-extensions", "-e", str(repo / "packages/pi-retry/index.ts"),
                  "-e", str(skill / "scripts/fixture-provider.ts"), "--no-mcp", "--no-skills",
                  "--no-prompt-templates", "--no-context-files", "--no-themes", "--no-tools",
                  "--no-approve", "--offline", "--no-session", "--model", "resume-fixture/fixture"]
@@ -110,7 +110,7 @@ def main():
                 assert any(x["type"] == "message_end" and x["message"].get("stopReason") == "error" and x["message"].get("errorMessage") == "Synthetic terminal failure" for x in events)
                 assert any(x["type"] == "agent_settled" for x in events)
                 entries = [x["entry"] for x in events if x["type"] == "entry_appended"]
-                assert any(x.get("customType") == "auto-resume" and x["data"]["resetsAt"] == records(mode)[0]["resetsAt"] for x in entries)
+                assert any(x.get("customType") == "retry" and x["data"]["resetsAt"] == records(mode)[0]["resetsAt"] for x in entries)
             cases[mode] = {"returncode": proc.returncode, "requests": 1}
         scenarios = {"resume": "limit", "off": "limit", "prompt": "limit", "new": "limit",
                      "reload": "limit", "extensionwork": "limit", "extensionuser": "limit", **{x: x for x in ["plain", "success", "error", "missing", "invalid", "nan", "past", "far", "mismatch", "date", "transient", "aborted"]}}
@@ -124,10 +124,10 @@ def main():
             owned_pids.add(int(t("display-message", "-p", "-t", name, "#{pane_pid}").stdout.strip()))
             wait(name, "startup", "Extensions")
             if name == "off":
-                send(name, "/auto-resume off")
-                wait(name, "disabled", "Auto-resume is off")
-                send(name, "/auto-resume on")
-                wait(name, "enabled", "Auto-resume is on")
+                send(name, "/retry off")
+                wait(name, "disabled", "Retry is off")
+                send(name, "/retry on")
+                wait(name, "enabled", "Retry is on")
             send(name, "fixture task")
             end = time.monotonic() + 15
             while not records(name) and time.monotonic() < end:
@@ -143,13 +143,13 @@ def main():
                     time.sleep(.2)
                 time.sleep(1)
             if scenario == "transient":
-                wait(name, "waiting", "/auto-resume off to cancel")
+                wait(name, "waiting", "/retry off to cancel")
                 assert "Provider error" in capture(name, "waiting"), name
             elif scenario == "limit":
-                wait(name, "waiting", "/auto-resume off to cancel")
+                wait(name, "waiting", "/retry off to cancel")
                 if name == "off":
-                    send(name, "/auto-resume off")
-                    wait(name, "cancelled", "Auto-resume is off")
+                    send(name, "/retry off")
+                    wait(name, "cancelled", "Retry is off")
                 elif name == "prompt":
                     send(name, "replacement prompt")
                     wait(name, "cancelled", "your new prompt takes over")
@@ -161,7 +161,7 @@ def main():
                     send(name, "/" + name)
                     wait(name, "switched", "Reloaded" if name == "reload" else "New session started")
             else:
-                assert "/auto-resume off to cancel" not in capture(name, "settled"), name
+                assert "/retry off to cancel" not in capture(name, "settled"), name
         # Every case is observed beyond its own genuine 60-second interval.
         time.sleep(max(0, max(deadlines) - time.monotonic()))
         for name in scenarios:
@@ -169,23 +169,23 @@ def main():
             rows = records(name)
             expected_count = 2 if name in ["resume", "prompt", "extensionwork", "extensionuser", "transient"] else 1
             assert len(rows) == expected_count, f"{name}: expected {expected_count} requests, got {len(rows)}"
-            assert "/auto-resume off to cancel" not in text, name
+            assert "/retry off to cancel" not in text, name
             if name == "resume":
                 assert rows[1]["at"] >= rows[0]["resetsAt"]
                 assert rows[1]["at"] - rows[0]["at"] >= 59000
                 serialized = json.dumps(rows[1]["messages"])
                 assert "FAILED_ATTEMPT_SENTINEL" not in serialized
-                assert "Auto-resumed" not in serialized and '"customType": "auto-resume"' not in serialized
+                assert "Retried" not in serialized and '"customType": "retry"' not in serialized
                 assert "fixture task" in serialized
-                assert "Auto-resumed after the usage limit reset" in text and "FIXTURE_OK_2" in text
+                assert "Retried after the usage limit reset" in text and "FIXTURE_OK_2" in text
             if name == "transient":
                 assert rows[1]["at"] - rows[0]["at"] >= 59000
                 serialized = json.dumps(rows[1]["messages"])
-                assert "FAILED_ATTEMPT_SENTINEL" not in serialized and "Auto-resumed" not in serialized
+                assert "FAILED_ATTEMPT_SENTINEL" not in serialized and "Retried" not in serialized
                 assert "fixture task" in serialized
-                assert "Auto-resumed after a transient provider error (attempt 1)" in text and "FIXTURE_OK_2" in text
+                assert "Retried after a transient provider error (attempt 1)" in text and "FIXTURE_OK_2" in text
             if name == "aborted":
-                assert "FIXTURE_OK" not in text and "Auto-resumed" not in text, name
+                assert "FIXTURE_OK" not in text and "Retried" not in text, name
             cases[name] = {"requests": len(rows), "observedBeyondTimer": True}
         result["status"] = "passed"
     except Exception as error:

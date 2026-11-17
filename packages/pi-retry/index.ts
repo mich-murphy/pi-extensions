@@ -1,12 +1,12 @@
 import process from "node:process";
-import type { AutoResumeRegistration } from "./auto-resume";
-import { registerAutoResume } from "./auto-resume";
+import type { RetryRegistration } from "./retry";
+import { registerRetry } from "./retry";
 
 const clockTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
-/** Register automatic resume after provider usage limits reset. */
-export default function autoResume(pi: AutoResumeRegistration): void {
-  registerAutoResume(pi, {
+/** Register automatic retry after provider usage limits reset or transient failures. */
+export default function retry(pi: RetryRegistration): void {
+  registerRetry(pi, {
     now: Date.now,
     every: (intervalMs, tick) => {
       const timer = setInterval(tick, intervalMs);

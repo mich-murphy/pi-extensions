@@ -132,7 +132,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 | Skill | Use after changing |
 | --- | --- |
 | [verify-pi-claude-sdk](.agents/skills/verify-pi-claude-sdk/SKILL.md) | The Claude provider or the pinned Agent SDK. Needs a Claude subscription |
-| [verify-pi-auto-resume](.agents/skills/verify-pi-auto-resume/SKILL.md) | Resume or retry behaviour |
+| [verify-pi-retry](.agents/skills/verify-pi-retry/SKILL.md) | Resume or retry behaviour |
 | [verify-pi-skill-toggle](.agents/skills/verify-pi-skill-toggle/SKILL.md) | The toggle menu, saved state, prompt filtering or the read guard |
 | [verify-pi-web-tools](.agents/skills/verify-pi-web-tools/SKILL.md) | Login, logout or web-tools configuration |
 

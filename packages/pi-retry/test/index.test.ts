@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHECK_INTERVAL_MS, USAGE_LIMIT_CHANNEL } from "../auto-resume";
-import autoResume from "../index";
+import piRetry from "../index";
+import { CHECK_INTERVAL_MS, USAGE_LIMIT_CHANNEL } from "../retry";
 import { assistantEntry, fakePi } from "./fake-pi";
 
 describe("extension factory", () => {
@@ -12,7 +12,7 @@ describe("extension factory", () => {
   test("resumes on the real clock once the reset passes", () => {
     vi.useFakeTimers({ now: 0 });
     const pi = fakePi();
-    autoResume(pi.pi);
+    piRetry(pi.pi);
     pi.startRun();
     pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: 2 * CHECK_INTERVAL_MS });
     pi.settle("error", [assistantEntry("a1", "error")]);
@@ -29,7 +29,7 @@ describe("extension factory", () => {
   test("tears down real intervals on tree navigation and shutdown", () => {
     vi.useFakeTimers({ now: 0 });
     const pi = fakePi();
-    autoResume(pi.pi);
+    piRetry(pi.pi);
     const schedule = () => {
       pi.startRun();
       pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: 2 * CHECK_INTERVAL_MS });
@@ -50,7 +50,7 @@ describe("extension factory", () => {
   test("prints the reset time on stderr in print mode", () => {
     const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const pi = fakePi("print");
-    autoResume(pi.pi);
+    piRetry(pi.pi);
     pi.startRun();
     pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: 0 });
     pi.settle("error", [assistantEntry("a1", "error")]);

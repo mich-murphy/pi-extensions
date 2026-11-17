@@ -1,14 +1,14 @@
 ---
-name: verify-pi-auto-resume
-description: Verify pi-auto-resume after provider or lifecycle changes using checkout-pinned Pi CLI, isolated real tmux TUI, print and JSON modes, synthetic usage limits and transient failures. Offline only; no real credentials or provider calls; includes a real minute-long resume timer.
+name: verify-pi-retry
+description: Verify pi-retry after provider or lifecycle changes using checkout-pinned Pi CLI, isolated real tmux TUI, print and JSON modes, synthetic usage limits and transient failures. Offline only; no real credentials or provider calls; includes a real minute-long resume timer.
 ---
 
-# Verify pi-auto-resume
+# Verify pi-retry
 
 Read [the feature map](features/README.md), then run from the checkout root:
 
 ```sh
-.agents/skills/verify-pi-auto-resume/scripts/verify.py all
+.agents/skills/verify-pi-retry/scripts/verify.py all
 ```
 
 Requires installed checkout dependencies (`npm install`), Node, Python 3, and
@@ -19,7 +19,7 @@ with Node. A global Pi is recorded but never executed.
 
 ## Isolation and safety
 
-Each run creates unique `/tmp/pi-auto-resume-state-*` scratch state and a private
+Each run creates unique `/tmp/pi-retry-state-*` scratch state and a private
 tmux socket. Every journey gets separate HOME, agent directory, temporary
 directory, and empty cwd. Pi receives a clean environment, no inherited secrets,
 empty package settings, disabled retries/compaction/cache warming, and explicit
@@ -32,7 +32,7 @@ It records complete model requests, emits the documented `usage-limit` event
 bus payload, and returns canned assistant errors/success. The `transient` and
 `aborted` scenarios publish no notice and fail with `Connection error.`; the
 `aborted` reply stays pending until Escape aborts it. Settings set
-`autoResume.transient.delaysMinutes` to `[0.05]`, so the transient wait is due
+`piRetry.transient.delaysMinutes` to `[0.05]`, so the transient wait is due
 before the first real 60-second check. It never delegates to
 another provider, executes tools, or uses network transports. **Do not replace
 this fixture with a subscription model or real credentials.** `--offline`
@@ -61,7 +61,7 @@ limit event, or merely waiting 60 seconds as a passing resume.
 
 ## Evidence and cleanup
 
-The helper prints and retains `/tmp/pi-auto-resume-evidence-*`. Artifacts:
+The helper prints and retains `/tmp/pi-retry-evidence-*`. Artifacts:
 
 - `launch.json`: pinned version, exact argv, sanitized environment, isolated cwd.
 - `actions.json`: timestamped terminal input.
