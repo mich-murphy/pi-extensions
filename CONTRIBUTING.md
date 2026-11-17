@@ -148,6 +148,24 @@ Renovate opens update pull requests on a schedule. Digest, pin and patch updates
 - **Pi packages** (`@earendil-works/*`). A contract change type-checks against the pinned version and fails only in a live session.
 - **The Claude Agent SDK.** Upgrading it needs a live check that CI cannot run. Follow the [SDK upgrade steps](packages/pi-claude/docs/sdk-upgrade.md).
 
+## Naming
+
+Each extension is named `pi-<word>`, where one word says what it does: `pi-vim`, `pi-retry`, `pi-peers`. Names users see follow the same word:
+
+| What | Convention | Example |
+| --- | --- | --- |
+| Package directory and `name` | `pi-<word>` | `packages/pi-skills` |
+| Slash command | At most one, `/<word>`, with actions as tab-completed arguments | `/claude [status\|usage]` |
+| Session toggle | `/<word> [on\|off]`, built with `packages/shared/on-off-command.ts` | `/coffee off` |
+| Model tools | `<word>_<action>` | `peers_send` |
+| Environment variables | `PI_<WORD>_<SETTING>` | `PI_WEB_PROVIDERS` |
+| Files in the agent directory | `pi-<word>.json` or `pi-<word>/` | `pi-skills.json` |
+| Commit scope | `<word>` | `fix(web): …` |
+
+Check a new command against Pi's built-in commands (type `/` in Pi) first. Pi adds numeric suffixes to duplicate names, so a second `/resume` would turn both into `/resume:1` and `/resume:2`.
+
+When you rename something saved in a session, a settings file or the agent directory, keep reading the old name as a fallback and never rewrite or delete the user's old data.
+
 ## Pull requests
 
 - Write commit messages as `type(scope): summary`, for example `fix(web): handle empty results`.
