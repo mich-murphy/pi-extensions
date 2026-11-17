@@ -56,7 +56,7 @@ Registry entries are plain versioned objects of functions, validated on every re
 
 ## Prompt freezing
 
-Changing a system prompt mid-session invalidates the provider's cache for everything after the change. Some providers, including `pi-claude-sdk`, cannot express a mid-conversation system message and resend a full checkpoint. An appended note costs only its own text. So after the first request the extension keeps the prompt as the model has it and announces toggles in a note.
+Changing a system prompt mid-session invalidates the provider's cache for everything after the change. Some providers, including `pi-claude`, cannot express a mid-conversation system message and resend a full checkpoint. An appended note costs only its own text. So after the first request the extension keeps the prompt as the model has it and announces toggles in a note.
 
 Each run reads the current branch's transcript to learn which resources the prompt lists, then picks an epoch:
 

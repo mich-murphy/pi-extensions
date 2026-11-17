@@ -31,7 +31,7 @@ You can also switch individual extensions on and off with `pi config`.
 
 | Package | What it does | Requires |
 | --- | --- | --- |
-| [pi-claude-sdk](packages/pi-claude-sdk) | Runs Claude models through your Claude Code subscription | Claude Code, signed in |
+| [pi-claude](packages/pi-claude) | Runs Claude models through your Claude Code subscription | Claude Code, signed in |
 | [pi-retry](packages/pi-retry) | Continues a session when a usage limit resets or a transient failure clears | |
 | [pi-coffee](packages/pi-coffee) | Keeps macOS awake while Pi is working | macOS |
 | [pi-skills](packages/pi-skills) | Switches skills and instruction files on or off without deleting them | |

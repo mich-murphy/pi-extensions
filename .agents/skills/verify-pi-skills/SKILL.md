@@ -162,7 +162,7 @@ context isolation or claim the best-effort shell guard blocks all reading forms.
 (it imports `pi_command` from `verify.py`) in RPC mode. An offline recorder
 provider, `scripts/recorder-provider.ts`, stands in for the model: it registers
 `recorder/codex-like` (mid-conversation system messages kept in place, like
-Codex) and `recorder/collapse-like` (folded into the head, like `pi-claude-sdk`),
+Codex) and `recorder/collapse-like` (folded into the head, like `pi-claude`),
 logs every request's full context and `sessionId` to `runs/<run>/requests.jsonl`,
 and replies with canned text or scripted tool calls from prompt markers
 (`READ-FILES: a|b`, `RUN-BASH: cmd`, `SPAWN-CHILD`). Pi executes those calls
@@ -198,9 +198,9 @@ patch and note counts, `skillsVisible`, and `toolOutcomes` for scripted calls.
 2 blocked; `report` exits nonzero if any check fails. `cleanup` removes only the
 scratch directory; evidence stays (mode 0700). Run it after failures too.
 
-Live mode (`--live claude-sdk --confirm-subscription-usage`) loads
-`packages/pi-claude-sdk` instead of the recorder and spends the user's
-subscription allowance: ask first, follow `verify-pi-claude-sdk`, run one short
+Live mode (`--live claude --confirm-subscription-usage`) loads
+`packages/pi-claude` instead of the recorder and spends the user's
+subscription allowance: ask first, follow `verify-pi-claude`, run one short
 caching scenario. Scripted scenarios (`guard`, `subagent`) never run live.
 
 ## Cleanup

@@ -30,7 +30,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import { buildAgentRequest } from "../../pi-claude-sdk/agent-request";
+import { buildAgentRequest } from "../../pi-claude/agent-request";
 import { registerPiSkills } from "../index";
 import { resourcePathId } from "../resource-path";
 import type { ToggleValue } from "../resources";

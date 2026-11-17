@@ -24,9 +24,9 @@
     "test:bombadil:scrollback": "bombadil terminal test --exit-on-violation --specification packages/pi-scrollback/test/bombadil/scroll.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-scrollback/test/bombadil/scroll.fixture.ts packages/pi-scrollback/index.ts",
     "test:bombadil:skills": "bombadil terminal test --exit-on-violation --specification packages/pi-skills/test/bombadil/menu.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-skills/test/bombadil/menu.fixture.ts packages/pi-skills/index.ts",
     "bench:skills-cache": "vitest run packages/pi-skills/test/cache-benchmark.test.ts",
-    "test:claude-sdk-pin": "vitest run packages/pi-claude-sdk/test/sdk-release-contract.test.ts",
+    "test:claude-pin": "vitest run packages/pi-claude/test/sdk-release-contract.test.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "test:claude-sdk-upgrade": "npm run test:live && npm run test:claude-sdk-pin",
+    "test:claude-upgrade": "npm run test:live && npm run test:claude-pin",
     "fallow:audit": "fallow audit --gate new-only --coverage coverage/coverage-final.json",
     "fallow:review": "fallow audit --brief --coverage coverage/coverage-final.json",
     "fallow:dead-code": "fallow dead-code",
@@ -61,14 +61,14 @@
     "vitest": "5.0.5"
   },
   "overrides": {
-    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-darwin-x64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-linux-arm64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-linux-x64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-win32-arm64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
-    "@anthropic-ai/claude-agent-sdk-win32-x64": "file:./packages/pi-claude-sdk/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-darwin-x64": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-win32-arm64": "file:./packages/pi-claude/vendor/no-bundled-claude",
+    "@anthropic-ai/claude-agent-sdk-win32-x64": "file:./packages/pi-claude/vendor/no-bundled-claude",
     "katex": "0.19.1",
     "smol-toml": "1.9.1",
     "undici": "8.12.3"
@@ -84,7 +84,7 @@
   },
   "pi": {
     "extensions": [
-      "./packages/pi-claude-sdk/index.ts",
+      "./packages/pi-claude/index.ts",
       "./packages/pi-retry/index.ts",
       "./packages/pi-coffee/index.ts",
       "./packages/pi-skills/index.ts",
