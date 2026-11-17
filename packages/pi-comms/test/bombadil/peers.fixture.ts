@@ -75,17 +75,25 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
   const gateway = spawn(binary, ["--config", gatewayConfig], {
     stdio: ["ignore", "pipe", "ignore"],
   });
-  await ready(gateway);
-  const peer = spawn(
-    process.execPath,
-    ["--import", "jiti/register", join(here, "peers-peer.ts"), peerConfig],
-    { cwd: repo, stdio: "ignore" },
-  );
+  let peer: ChildProcess | undefined;
+  try {
+    await ready(gateway);
+    peer = spawn(
+      process.execPath,
+      ["--import", "jiti/register", join(here, "peers-peer.ts"), peerConfig],
+      { cwd: repo, stdio: "ignore" },
+    );
+  } catch (error) {
+    // The launcher runs no dispose when the fixture throws, so stop what already started.
+    await stop(gateway);
+    throw error;
+  }
+  const started = peer;
   return {
     args: ["--provider", "scripted", "--model", "peers"],
     omitDefaults: ["--no-tools"],
     dispose: async () => {
-      await stop(peer);
+      await stop(started);
       await stop(gateway);
     },
   };
