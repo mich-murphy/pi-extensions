@@ -35,7 +35,9 @@ const view = extract((state: State) => {
     duplicate: probe?.dup ?? "none",
     final: probe?.final === "yes",
     tokens: peerRows.flatMap((row) => row.match(TOKEN) ?? []),
-    unescaped: peerRows.filter((row) => !row.includes(String.raw`\u001b[31m`)).length,
+    unescaped: peerRows.filter(
+      (row) => !row.includes(String.raw`\u001b[31m`) || !row.includes(String.raw`\u202e`),
+    ).length,
   };
 });
 const exitStatus = extract((state: State) => state.exitStatus);
@@ -72,7 +74,10 @@ export const peerMessageShown: Formula = eventually(
 /** Each message is taken once over the whole run: the probe never records a repeated token. */
 export const noDuplicateMessage: Formula = always(() => view.current?.duplicate === "none");
 
-/** Peer content is inert: its escape sequence is shown as the text `\u001b[31m`, never interpreted. */
+/**
+ * Peer content is inert: its escape sequence and its bidi override are shown as the text
+ * `\u001b[31m` and `\u202e`, never interpreted.
+ */
 export const peerContentEscaped: Formula = always(() => (view.current?.unescaped ?? 0) === 0);
 
 /** After the peer's last message and disconnect, /comms status still renders as connected. */
