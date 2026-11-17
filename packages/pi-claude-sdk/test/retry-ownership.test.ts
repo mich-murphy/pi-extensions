@@ -2,6 +2,7 @@ import type { AssistantMessage, SimpleStreamOptions } from "@earendil-works/pi-a
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import { Result } from "effect";
 import { describe, expect, test } from "vitest";
+import type { BridgeEvent } from "../bridge";
 import {
   InvalidDeferredCallError,
   InvalidDeferredCallLimitError,
@@ -31,7 +32,11 @@ type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 const start = (id: string) =>
   streamEvent({ type: "message_start", message: { id, usage: { input_tokens: 100 } } });
 const stopped = (reason: string) =>
-  streamEvent({ type: "message_delta", delta: { stop_reason: reason }, usage: { output_tokens: 20 } });
+  streamEvent({
+    type: "message_delta",
+    delta: { stop_reason: reason },
+    usage: { output_tokens: 20 },
+  });
 const blockStop = streamEvent({ type: "content_block_stop", index: 0 });
 const messageStop = streamEvent({ type: "message_stop" });
 const apiRetry = {
@@ -57,10 +62,12 @@ const completed = [stopped("end_turn"), messageStop, resultMessage()];
 
 type Observed = { params?: SdkQueryParameters; consumedAfterRetry: boolean };
 
+const DEFAULT_ENVIRONMENT: Readonly<Record<string, string | undefined>> = { PATH: "/bin" };
+
 async function runMessages(
   messages: readonly unknown[],
   options: SimpleStreamOptions = {},
-  sdkEnvironment: Readonly<Record<string, string | undefined>> = { PATH: "/bin" },
+  sdkEnvironment = DEFAULT_ENVIRONMENT,
 ) {
   const observed: Observed = { consumedAfterRetry: false };
   const runner = createClaudeAgentSdkRunner({
@@ -81,13 +88,24 @@ async function runMessages(
   return { events, observed };
 }
 
-function failure(events: readonly { type: string }[]) {
+function failure(events: readonly BridgeEvent[]): SdkTurnFailure {
   const last = events.at(-1);
-  if (last?.type !== "failed" || !("error" in last)) {
+  if (last?.type !== "failed") {
     throw new Error("test setup: expected the turn to fail");
   }
-  return last.error as SdkTurnFailure;
+  return last.error;
 }
+
+async function failureOf(messages: readonly unknown[]): Promise<SdkTurnFailure> {
+  const { events } = await runMessages(messages);
+  return failure(events);
+}
+
+function textsOf(events: readonly BridgeEvent[]): string[] {
+  return events.flatMap((event) => (event.type === "text_delta" ? [event.text] : []));
+}
+
+const parse = (input: unknown) => Result.getOrThrow(parseSdkMessage(input));
 
 function retryable(error: SdkTurnFailure): boolean {
   const message: AssistantMessage = {
@@ -124,9 +142,7 @@ describe("commit point: no resend after output reached Pi", () => {
       ...completed,
     ]);
 
-    expect(events.filter((event) => event.type === "text_delta")).toStrictEqual([
-      { type: "text_delta", text: "PARTIAL" },
-    ]);
+    expect(textsOf(events)).toStrictEqual(["PARTIAL"]);
     const error = failure(events);
     expect(error).toMatchObject({ _tag: "SdkStreamInterruptedError", evidence: "api-retry" });
     expect(retryable(error)).toBe(true);
@@ -145,9 +161,7 @@ describe("commit point: no resend after output reached Pi", () => {
       ...completed,
     ]);
 
-    expect(events.some((event) => event.type === "text_delta" && event.text === "RESENT")).toBe(
-      false,
-    );
+    expect(textsOf(events)).toStrictEqual(["PARTIAL"]);
     expect(failure(events)).toMatchObject({
       _tag: "SdkStreamInterruptedError",
       evidence: "new-attempt",
@@ -198,85 +212,78 @@ describe("commit point: no resend after output reached Pi", () => {
   });
 
   test("typed and pre-output API errors keep their own category", async () => {
-    const typed = failure(
-      (await runMessages([start("a"), apiErrorAssistant("server_error"), apiErrorResult])).events,
-    );
+    const typed = await failureOf([start("a"), apiErrorAssistant("server_error"), apiErrorResult]);
     expect(typed).toMatchObject({ _tag: "SdkResultError", apiError: "server_error" });
     expect(retryable(typed)).toBe(true);
 
-    const untypedBeforeOutput = failure(
-      (await runMessages([apiErrorAssistant("unknown"), apiErrorResult])).events,
-    );
+    const untypedBeforeOutput = await failureOf([apiErrorAssistant("unknown"), apiErrorResult]);
     expect(untypedBeforeOutput._tag).toBe("SdkResultError");
   });
 });
 
 describe("Pi owns retries", () => {
-  test.each([
-    [undefined, "0"],
-    [3, "3"],
-    [2.7, "2"],
-    [0, "0"],
-    [-1, "0"],
-    [Number.NaN, "0"],
-    [Number.POSITIVE_INFINITY, "0"],
-  ])("Pi provider maxRetries %s gives Claude Code %s retries", async (maxRetries, expected) => {
+  test.each<[SimpleStreamOptions, string]>([
+    [{}, "0"],
+    [{ maxRetries: 3 }, "3"],
+    [{ maxRetries: 2.7 }, "2"],
+    [{ maxRetries: 0 }, "0"],
+    [{ maxRetries: -1 }, "0"],
+    [{ maxRetries: Number.NaN }, "0"],
+    [{ maxRetries: Number.POSITIVE_INFINITY }, "0"],
+  ])("Pi options %o give Claude Code %s retries", async (options, expected) => {
     const { observed } = await runMessages(
       [start("a"), ...completed],
-      maxRetries === undefined ? {} : { maxRetries },
+      options,
       // An inherited value must never win over Pi's setting.
       { PATH: "/bin", CLAUDE_CODE_MAX_RETRIES: "10" },
     );
     expect(observed.params?.options?.env?.CLAUDE_CODE_MAX_RETRIES).toBe(expected);
   });
 
-  test("hidden retry and watchdog overrides are stripped and the refusal retry is off", () => {
-    const inherited = {
-      CLAUDE_CODE_MAX_RETRIES: "10",
-      CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES: "3",
-      CLAUDE_CODE_RETRY_WATCHDOG: "1",
-      CLAUDE_CODE_RETRY_WATCHDOG_SCOPE: "all",
-      CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS: "600000",
-      CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS: "600000",
-      CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS: "1000",
-      CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS: "1",
-      CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS: "1",
-      CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS: "1",
-      CLAUDE_CODE_DISABLE_REFUSAL_RETRY: "0",
-    };
-    const environment = subscriptionEnvironment(inherited);
-    for (const name of Object.keys(inherited).filter((key) => key.includes("RETR"))) {
-      if (name !== "CLAUDE_CODE_DISABLE_REFUSAL_RETRY") {
-        expect(environment[name], name).toBeUndefined();
-      }
-    }
+  test.each([
+    "CLAUDE_CODE_MAX_RETRIES",
+    "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES",
+    "CLAUDE_CODE_RETRY_WATCHDOG",
+    "CLAUDE_CODE_RETRY_WATCHDOG_SCOPE",
+    "CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS",
+    "CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS",
+    "CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS",
+  ])("strips the inherited hidden retry override %s", (name) => {
+    expect(subscriptionEnvironment({ [name]: "1" })[name]).toBeUndefined();
+  });
+
+  test("turns off the refusal retry even when inherited as enabled", () => {
+    const environment = subscriptionEnvironment({ CLAUDE_CODE_DISABLE_REFUSAL_RETRY: "0" });
     expect(environment.CLAUDE_CODE_DISABLE_REFUSAL_RETRY).toBe("1");
   });
 });
 
 describe("stream lifecycle parsing", () => {
   test("reads retry notices and real stop reasons without retaining their payloads", () => {
-    const parse = (input: unknown) => Result.getOrThrow(parseSdkMessage(input));
     expect(parse(apiRetry)).toStrictEqual({ type: "api_retry" });
     expect(parse({ type: "system", subtype: "init" })).toStrictEqual({ type: "ignored" });
     expect(parse({ type: "system" })).toStrictEqual({ type: "ignored" });
     expect(parse(stopped("end_turn"))).toMatchObject({ type: "usage", requestStopped: true });
-    for (const reason of [null, ""]) {
-      expect(
-        parse(streamEvent({ type: "message_delta", delta: { stop_reason: reason }, usage: {} })),
-      ).not.toHaveProperty("requestStopped");
-    }
+  });
+
+  test.each([null, ""])("a stop reason of %o does not complete the request", (reason) => {
+    expect(
+      parse(streamEvent({ type: "message_delta", delta: { stop_reason: reason }, usage: {} })),
+    ).not.toHaveProperty("requestStopped");
   });
 
   test("diagnoses an interruption with its evidence and nothing else", () => {
-    expect(diagnoseSdkRunError(new SdkStreamInterruptedError({ evidence: "api-retry" }))).toStrictEqual(
-      {
-        schemaVersion: 1,
-        kind: "stream-interrupted",
-        errorTag: "SdkStreamInterruptedError",
-        streamInterruption: "api-retry",
-      },
-    );
+    expect(
+      diagnoseSdkRunError(new SdkStreamInterruptedError({ evidence: "api-retry" })),
+    ).toStrictEqual({
+      schemaVersion: 1,
+      kind: "stream-interrupted",
+      errorTag: "SdkStreamInterruptedError",
+      streamInterruption: "api-retry",
+    });
   });
 });
 
@@ -309,7 +316,9 @@ const failuresByTag = {
   SdkResultError: ResultFailureCategory.literals.map(
     (category) => new SdkResultError({ terminalReason: undefined, category }),
   ),
-  SdkProtocolError: [new SdkProtocolError({ messageType: "result", detail: "unsupported stop_reason" })],
+  SdkProtocolError: [
+    new SdkProtocolError({ messageType: "result", detail: "unsupported stop_reason" }),
+  ],
   SdkToolContractError: [
     new SdkToolContractError({ reason: "naming" }),
     new SdkToolContractError({ reason: "schema" }),
@@ -328,27 +337,22 @@ const failuresByTag = {
     new SdkProviderDefect({ reason: "no-terminal-event" }),
     new SdkProviderDefect({ reason: "run-rejected" }),
   ],
-} satisfies { readonly [Tag in SdkTurnFailure["_tag"]]: readonly SdkTurnFailure[] };
+} satisfies Readonly<Record<SdkTurnFailure["_tag"], readonly SdkTurnFailure[]>>;
 
+/** Only broken streams and transient API result categories should be retried by Pi. */
 function intendedRetry(error: SdkTurnFailure): boolean {
-  switch (error._tag) {
-    case "SdkStreamInterruptedError": {
-      return true;
-    }
-    case "SdkResultError": {
-      return RETRYABLE_RESULT_CATEGORIES.has(error.category);
-    }
-    default: {
-      return false;
-    }
-  }
+  return (
+    error._tag === "SdkStreamInterruptedError" ||
+    (error._tag === "SdkResultError" && RETRYABLE_RESULT_CATEGORIES.has(error.category))
+  );
 }
 
 describe("Pi retry contract", () => {
-  test.each(Object.values(failuresByTag).flat().map((error) => [formatSdkRunError(error), error]))(
-    "%s",
-    (_message, error) => {
-      expect(retryable(error)).toBe(intendedRetry(error));
-    },
-  );
+  test.each(
+    Object.values(failuresByTag)
+      .flat()
+      .map((error) => [formatSdkRunError(error), error]),
+  )("%s", (_message, error) => {
+    expect(retryable(error)).toBe(intendedRetry(error));
+  });
 });
