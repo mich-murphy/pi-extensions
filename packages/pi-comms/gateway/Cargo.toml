@@ -9,7 +9,7 @@ description = "Explicitly started volatile session routing gateway"
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
-rustix = { version = "1.1.6", features = ["process", "fs"] }
+rustix = { version = "1.1.6", features = ["process", "fs", "net"] }
 tokio = { version = "1.54.1", features = [
   "rt",
   "net",
