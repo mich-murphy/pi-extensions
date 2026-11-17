@@ -96,6 +96,8 @@ function freshPeer(current: ReturnType<typeof peerRefs>, previous: ReturnType<ty
   return peer;
 }
 
+const ISSUER_ACTIONS = "Issuer actions: CSR, renew, revoke, export";
+
 describe("guided remote actions with actual native crypto and loopback mTLS", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let profiles: Profile[];
@@ -138,6 +140,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const cp = await pairing(creator);
     const jp = await pairing(joiner);
     await command(creator, [
+      ISSUER_ACTIONS,
       "Issue peer CSR",
       field(jp, "requestPath"),
       field(jp, "requestSha256"),
@@ -222,6 +225,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const cp = await pairing(creator);
     const jp = await pairing(joiner);
     await command(creator, [
+      ISSUER_ACTIONS,
       "Renew leaves and CRL",
       field(jp, "requestPath"),
       field(jp, "requestSha256"),
@@ -241,7 +245,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
   });
   test("revoke auto-imports its CRL, restarts and removes the revoked remote peer", async () => {
     await linked();
-    await command(creator, ["Revoke a leaf", "join-peer", "APPLY"]);
+    await command(creator, [ISSUER_ACTIONS, "Revoke a leaf", "join-peer", "APPLY"]);
     await nativeUntil(async () => (await epoch(creator)) === 3);
     await nativeUntil(
       async () => !hasPeer(await client(creator).discover(["local"], false), "join-peer"),

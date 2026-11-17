@@ -244,8 +244,12 @@ class ResourceList implements Component, Focusable {
     return fuzzyFilter([...this.resources], this.search.getValue(), (r) => r.label);
   }
 
+  /**
+   * List rows that fit the terminal. Besides the list, the screen holds nine menu rows (borders,
+   * title, search, spacers, scroll indicator, hint), Pi's two footer rows and one chat row.
+   */
   private maxRows(): number {
-    return Math.max(3, Math.min(16, this.options.tui.terminal.rows - 10));
+    return Math.max(3, Math.min(16, this.options.tui.terminal.rows - 12));
   }
 
   private createList(): SelectList {

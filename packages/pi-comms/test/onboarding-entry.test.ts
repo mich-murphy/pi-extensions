@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { freshId } from "../adapter/transport.js";
@@ -195,6 +195,35 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("session_state", before.get)).resolves.toStrictEqual(before.value);
   });
+  test("reset with nothing configured says so without asking for Apply or writing", async () => {
+    const messages = await host.command("reset", ["APPLY"]);
+    expect(messages.join("\n")).toContain("Nothing to reset");
+    expect(messages.join("\n")).not.toContain("Reset refused");
+    expect(existsSync(setupPaths(agent).directory)).toBe(false);
+    // The unused APPLY answer proves no confirmation dialog was shown.
+    const status = await host.command("status");
+    expect(status.join("\n")).toContain("not enabled");
+  });
+  test("reset treats a comms path that is a regular file as nothing to reset", async () => {
+    await mkdir(agent, { recursive: true });
+    await writeFile(join(agent, "comms"), "not a directory\n");
+    const messages = await host.command("reset", ["APPLY"]);
+    expect(messages.join("\n")).toContain("Nothing to reset");
+  });
+  test("a corrupt reset ledger is refused without quoting its content", async () => {
+    const before = await localPublication(host);
+    await writeFile(
+      join(setupPaths(agent).directory, "reset.json"),
+      '{"path": /Users/secret-owner/private}',
+      { mode: 0o600 },
+    );
+    const replies = await host.command("reset", ["APPLY"]);
+    const messages = replies.join("\n");
+    expect(messages).toContain("Reset refused before disabling participation");
+    expect(messages).toContain("ownership or configuration differs");
+    expect(messages).not.toContain("secret-owner");
+    await expect(connected(host)).resolves.toStrictEqual(before.peer);
+  });
   test("reset cancellation keeps current runtime; approved reset disables participation and disposes it", async () => {
     const before = await localPublication(host);
     await host.command("reset", ["Cancel — no changes"]);
@@ -213,6 +242,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await writeFile(path, Buffer.concat([bytes, Buffer.from("\n")]));
     const messages = await host.command("reset", ["APPLY"]);
     expect(messages.join("\n")).toContain("Reset refused before disabling participation");
+    expect(messages.join("\n")).toContain("Configuration changed externally");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("session_state", before.get)).resolves.toStrictEqual(before.value);
   });

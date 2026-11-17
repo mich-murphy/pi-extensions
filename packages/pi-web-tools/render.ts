@@ -23,7 +23,17 @@ export function getTextContent(
     .join("\n");
 }
 
-/** Append a dimmed multi-line preview to a rendered tool result. */
+/**
+ * Untrusted text (page content, search results, server headers, model arguments) as it may reach
+ * the terminal. Control characters other than newline and bidirectional controls are dropped and
+ * tabs become spaces: a page could otherwise clear the screen, set the terminal title or reorder
+ * the text shown. An escape sequence is left as harmless visible text, such as "[2J".
+ */
+export function displayText(value: string): string {
+  return value.replaceAll("\t", " ").replaceAll(/(?!\n)[\p{Cc}\p{Bidi_Control}]/gu, "");
+}
+
+/** Append a dimmed multi-line preview of untrusted text to a rendered tool result. */
 export function appendExpandedPreview(
   base: string,
   preview: {
@@ -37,7 +47,7 @@ export function appendExpandedPreview(
   const lines = text.split("\n");
   let output = base;
   for (const line of lines.slice(0, maxLines)) {
-    output += `\n${theme.fg("dim", line.slice(0, maxColumns))}`;
+    output += `\n${theme.fg("dim", displayText(line).slice(0, maxColumns))}`;
   }
   if (lines.length > maxLines) {
     output += `\n${theme.fg("muted", "...")}`;

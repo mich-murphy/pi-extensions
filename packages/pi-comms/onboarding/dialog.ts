@@ -164,7 +164,7 @@ export async function reviewLocal(
   socketPath: string,
   effectReview: (plan: LocalPlan) => string,
   remote = false,
-  effectSummary = "Full source, private paths and recovery: Review details",
+  effectSummary = "",
 ): Promise<LocalPlan | undefined> {
   requireAttendedUI(ctx);
   let choices: LocalChoices | undefined = initial;
@@ -176,15 +176,17 @@ export async function reviewLocal(
       continue;
     }
     const review = `${localReview(plan, remote)}\n${effectReview(plan)}`;
+    // Kept short so the whole dialog, with Pi's chrome and footer, fits a 20-row terminal.
+    // Everything else is in Review details.
     const compact = [
       `Enable ${short(plan.adapter.machineId)} / ${short(plan.choices.scopeId)} / ${short(plan.adapter.label)}`,
       `Grants: ${plan.choices.permissions.join("/") || "none"}`,
       "ALL projects on this OS account; published records only.",
       "Untrusted messages may wake model + provider cost.",
-      "Shared detached gateway: first Pi starts, last closes.",
       effectSummary,
-      "Exact source, paths and recovery: Review details.",
-    ].join("\n");
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
     // eslint-disable-next-line eslint/no-await-in-loop -- Each native review must finish before subsequent editing/detail UI.
     const answer = await selectChoice(ctx, compact, [
       "Cancel — no changes",
@@ -234,15 +236,38 @@ function short(value: string): string {
   const visible = visibleText(value);
   return visible.length > 18 ? `${visible.slice(0, 17)}…` : visible;
 }
+// A details page is a header, DETAIL_ROWS lines and up to four options. With Pi's dialog chrome
+// and footer that fits a 20-row terminal; DETAIL_COLUMNS fits an 80-column one.
+const DETAIL_ROWS = 4;
+const DETAIL_COLUMNS = 64;
+/** Wraps at spaces; only a word longer than a whole line is split. */
+function wrapLine(line: string, width: number): string[] {
+  const words = line
+    .split(" ")
+    .filter((word) => word !== "")
+    .flatMap((word) => word.match(new RegExp(`.{1,${width}}`, "gu")) ?? []);
+  const rows: string[] = [];
+  let row = "";
+  for (const word of words) {
+    if (row !== "" && row.length + 1 + word.length > width) {
+      rows.push(row);
+      row = word;
+    } else {
+      row = row === "" ? word : `${row} ${word}`;
+    }
+  }
+  rows.push(row);
+  return rows;
+}
 async function reviewDetails(ctx: DialogContext, review: string): Promise<boolean> {
-  const lines = review.split("\n").flatMap((line) => line.match(/.{1,48}/gu) ?? [""]);
-  const count = Math.ceil(lines.length / 8);
+  const lines = review.split("\n").flatMap((line) => wrapLine(line, DETAIL_COLUMNS));
+  const count = Math.ceil(lines.length / DETAIL_ROWS);
   let page = 0;
   for (;;) {
     // eslint-disable-next-line eslint/no-await-in-loop -- Native consent dialogs must remain sequential; cancellation stops subsequent questions.
     const answer = await selectChoice(
       ctx,
-      `Plan details ${page + 1}/${count}\n${lines.slice(page * 8, (page + 1) * 8).join("\n")}`,
+      `Plan details ${page + 1}/${count}\n${lines.slice(page * DETAIL_ROWS, (page + 1) * DETAIL_ROWS).join("\n")}`,
       [
         "Back to review",
         ...(page + 1 < count ? ["Next details"] : []),

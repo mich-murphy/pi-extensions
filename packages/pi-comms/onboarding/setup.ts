@@ -5,9 +5,11 @@ import type { AcquisitionPlan } from "./acquire.js";
 import { acquireGateway, discoverNixExecutable } from "./acquire.js";
 import {
   applyLocal,
+  hasResetTarget,
   inspectSetup,
   resetLocal,
   ResetFailure,
+  ResetRefused,
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
@@ -186,14 +188,19 @@ export async function setupCommand(
         ...(remote === undefined ? [] : [remoteReview(remote, pairingDirectory)]),
         `Private files: ${state.paths.gateway}; ${state.paths.metadata}; ${state.paths.adapter}; ${state.paths.journal}; ${state.paths.prepared}; ${state.paths.installed}; ${state.paths.lock}.`,
         `Owned directory ${state.paths.directory}: create-only install-* staging, startup-*.log (bounded native startup output), reset.json recovery ledger, reversible .previous-*/.disabled-* snapshots. No existing directory is chmodded; unknown artifacts are not removed.`,
-        `Socket: ${socketPath}. Detached shared process, no OS service definition.`,
+        `Socket: ${socketPath}. Detached shared process, no OS service definition: the first participating Pi starts it and the last closes it.`,
         reviewedState.sharedInstance
           ? "A pre-existing shared socket is present (read-only observation, not live readiness). Apply saves configuration then sends exactly ONE machine-bound shared restart request. Other sessions may retain old trust until the old gateway exits. Uncertain restart or generation mismatch means configuration saved; activation pending. No control replay."
           : "No pre-existing shared socket observed. Admission still verifies the exact loaded configuration generation; a concurrent old gateway cannot silently serve this Pi.",
         "Apply acquires a verified gateway into per-attempt staging, then takes its native lock, rechecks unchanged cache/state, preserves any unavailable orphan installation descriptor in a hash-checked .previous-* backup, and writes a recovery ledger/configuration before activating this Pi directly. Failed apply may retain owned files; reset never deletes credentials or revocation floors.",
       ].join("\n"),
     remote !== undefined,
-    `${remote === undefined ? "Local only; no TCP." : `Remote ${remote.peerMachineId}: ${remote.endpoint.mode} ${remote.endpoint.address}.`}\n${acquisition.backend === undefined ? "Acquisition BLOCKED: no usable reviewed pin." : "Apply: reviewed acquisition + private config + start."}\n${reviewedState.sharedInstance ? "Existing shared socket: ONE restart after save; uncertain/mismatch means activation pending. Old sessions may retain old trust until exit." : "Guarded admission requires this exact configuration generation."}`,
+    [
+      `${remote === undefined ? "Local only; no TCP." : `Remote ${remote.peerMachineId}: ${remote.endpoint.mode} ${remote.endpoint.address}.`} ${acquisition.backend === undefined ? "Acquisition BLOCKED: no usable reviewed pin." : "Apply: verified gateway, private config, start."}`,
+      ...(reviewedState.sharedInstance
+        ? ["Shared gateway running: Apply restarts it ONCE; see details."]
+        : []),
+    ].join("\n"),
   );
   if (plan === undefined) {
     ctx.ui.notify("Cancelled — no writes, downloads or gateway starts", "info");
@@ -367,6 +374,13 @@ export async function resetCommand(
   dispose: () => Promise<void>,
 ): Promise<void> {
   requireAttendedUI(ctx);
+  if (!(await hasResetTarget(agentDir))) {
+    ctx.ui.notify(
+      "Nothing to reset: this agent directory has no communication configuration or setup-owned files. No changes made.",
+      "info",
+    );
+    return;
+  }
   const answer = await selectChoice(
     ctx,
     "Disable this agent directory's participation and close this Pi's runtime. Other already-open Pi sessions remain active. Preserve gateway installation, backups, private keys, CRLs and revocation floors; never kill the shared gateway.",
@@ -389,10 +403,20 @@ export async function resetCommand(
     ctx.ui.notify(
       error instanceof ResetFailure
         ? error.message
-        : "Reset refused before disabling participation: ownership or configuration differs. External files/runtime preserved; use /comms doctor.",
+        : `Reset refused before disabling participation: ${resetRefusal(error)}. External files/runtime preserved; use /comms doctor.`,
       "warning",
     );
   }
+}
+
+/**
+ * Reset's own refusals explain themselves. Any other error (a system error, a JSON parse or schema
+ * error) may quote a path or file content, so it gets the generic reason.
+ */
+function resetRefusal(error: unknown): string {
+  return error instanceof ResetRefused
+    ? error.message.replace(/\.$/u, "")
+    : "ownership or configuration differs";
 }
 
 /** Review text for the selected route; only a Nix selection can authorize a native fallback. */

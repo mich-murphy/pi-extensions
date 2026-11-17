@@ -12,7 +12,7 @@ import { checkDomainPolicy } from "./domain-policy";
 import { FetchPage } from "./fetch-page";
 import type { FetchPageError, FetchPageResult } from "./fetch-page";
 import type { FetchProvider } from "./provider-types";
-import { appendExpandedPreview, appendExpandHint, getTextContent } from "./render";
+import { appendExpandedPreview, appendExpandHint, displayText, getTextContent } from "./render";
 import type { RenderTheme } from "./render";
 import { FetchRescueProviders } from "./search";
 import { clampInteger, FETCH_TIMEOUT_SECONDS, WEB_FETCH_FORMATS, WebToolsConfig } from "./settings";
@@ -221,7 +221,10 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       theme: RenderTheme,
     ) {
       let text = theme.fg("toolTitle", theme.bold("webfetch "));
-      text += theme.fg("accent", composition.redactText(redactUrlCredentialsForDisplay(args.url)));
+      text += theme.fg(
+        "accent",
+        composition.redactText(displayText(redactUrlCredentialsForDisplay(args.url))),
+      );
       if (args.format !== undefined && args.format !== "markdown") {
         text += theme.fg("muted", ` (${args.format})`);
       }
@@ -244,7 +247,9 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         return new Text(
           theme.fg(
             "error",
-            composition.redactText(`✗ ${getTextContent(result.content) || "Fetch failed"}`),
+            composition.redactText(
+              `✗ ${displayText(getTextContent(result.content)) || "Fetch failed"}`,
+            ),
           ),
           0,
           0,
@@ -257,7 +262,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
 
       if (options.expanded) {
         if (details?.image === true) {
-          text += `\n${theme.fg("dim", `Image URL: ${details.finalUrl ?? ""}`)}`;
+          text += `\n${theme.fg("dim", `Image URL: ${displayText(details.finalUrl ?? "")}`)}`;
         } else {
           text = appendExpandedPreview(text, {
             text: getTextContent(result.content),
@@ -282,7 +287,7 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   }
   let text = "";
   if (details.mime !== undefined && details.mime !== "") {
-    text += theme.fg("muted", ` (${details.mime})`);
+    text += theme.fg("muted", ` (${displayText(details.mime)})`);
   }
   if (details.bytes > 0) {
     text += theme.fg("dim", ` ${formatSize(details.bytes)}`);

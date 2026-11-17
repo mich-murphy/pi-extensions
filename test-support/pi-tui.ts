@@ -4,10 +4,10 @@ import { KeybindingsManager } from "../node_modules/@earendil-works/pi-coding-ag
 import { theme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
 /** Build a real Pi TUI without touching the host terminal. */
-export function testTui(): TUI {
+export function testTui(rows = 40): TUI {
   const terminal: Terminal = {
     columns: 120,
-    rows: 40,
+    rows,
     kittyProtocolActive: false,
     start: () => undefined,
     stop: () => undefined,

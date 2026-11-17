@@ -100,6 +100,31 @@ Turn every counterexample into a regression test with an explicit example before
 
 Do not raise a timeout to fix a slow property. Make the property cheaper. A property that is inherently long wraps its timeout in `propertyTimeout()` so it grows with `HEGEL_TEST_CASES`.
 
+### Terminal properties
+
+Hegel tests code from inside the process. [Bombadil](https://antithesishq.github.io/bombadil/terminal/) tests the real Pi CLI from outside: it types random keys and resizes a real terminal emulator, then checks properties against what is on screen. It reaches the stdin parser, renderer and resize path that in-process tests replace with a fake terminal. It cannot see internal state.
+
+Bombadil files live in `packages/<name>/test/bombadil/`. A specification is `*.bombadil.ts`; a test-only extension or launch fixture sits beside it. Bombadil reads every export as a property or action generator. `scripts/bombadil-pi.ts` starts the pinned Pi offline in a throwaway home with only the named extensions loaded.
+
+```sh
+npm run test:bombadil
+npm run test:bombadil:comms
+npm run test:bombadil:comms:peers
+npm run test:bombadil:scroll
+npm run test:bombadil:skills
+BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
+```
+
+`test:bombadil` fuzzes the pi-vim editor: mode labels, Escape, width, resize while a command is pending, submit, and `x` on wide characters. Command effects are checked in-process by `vim-properties.test.ts`. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen, or `probe:UNREVIEWED-CHANGE <path>` if an existing file changes or disappears.
+
+`test:bombadil:comms:peers` runs a real gateway. Its script first runs `cargo build --locked` in `packages/pi-comms/gateway`, which does nothing when the debug build is current, and stops if the build fails. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scroll` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skill-toggle` menu.
+
+To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
+
+The run stops at the first violation and prints the trace directory. Replay it with `bombadil terminal test --reproduce <trace>` and the same command, or reduce it with `bombadil terminal shrink --trace <trace>`. Traces are large (150–300 MB per passing run) and are not deleted; they go to `bombadil_terminal_*` directories under `$TMPDIR`. Remove them with `rm -rf "$TMPDIR"/bombadil_terminal_*` when no run is active. Bombadil's terminal driver is experimental, so these runs are not part of `npm run check`. Run them when upgrading the pinned `@earendil-works/pi-coding-agent`, since they read Pi's on-screen text.
+
+Check a new property by breaking the code it guards and confirming the run fails.
+
 ## Verify behaviour in real Pi
 
 Some packages have an agent skill that drives a real, isolated Pi session. Run the matching skill after changing that package's behaviour:
