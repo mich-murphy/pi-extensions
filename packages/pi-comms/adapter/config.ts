@@ -15,7 +15,7 @@ const configuration = Schema.Struct({
   machineId: machine,
   socketPath: Schema.String.check(
     Schema.makeFilter<string>(
-      (value) => isAbsolute(value) && Buffer.byteLength(value) < 104 && !hasControls(value),
+      (value) => isAbsolute(value) && Buffer.byteLength(value) <= 100 && !hasControls(value),
     ),
   ),
   scopeIds: Schema.Array(scope).check(

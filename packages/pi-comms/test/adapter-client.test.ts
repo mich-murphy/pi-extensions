@@ -322,10 +322,15 @@ function replyToReport(
 }
 function extensionHost() {
   const handlers = new Map<string, unknown>();
-  let command: unknown;
+  const commands = new Map<
+    string,
+    { handler: unknown; getArgumentCompletions?: (prefix: string) => unknown }
+  >();
   const notifications: string[] = [];
   const statuses: (string | undefined)[] = [];
   const context = {
+    mode: "rpc",
+    hasUI: true,
     sessionManager: { getSessionId: () => peer.sessionId },
     isIdle: () => true,
     ui: {
@@ -343,8 +348,11 @@ function extensionHost() {
         handlers.set(name, handler);
       },
       registerTool: () => undefined,
-      registerCommand: (_name: string, definition: { handler: unknown }) => {
-        command = definition.handler;
+      registerCommand: (
+        name: string,
+        definition: { handler: unknown; getArgumentCompletions?: (prefix: string) => unknown },
+      ) => {
+        commands.set(name, definition);
       },
       sendMessage: () => undefined,
     },
@@ -352,13 +360,15 @@ function extensionHost() {
   return {
     notifications,
     statuses,
+    commands,
     event: async (name: string, event: unknown = {}) => {
       const handler = handlers.get(name);
       assert(typeof handler === "function");
       const result: unknown = await Reflect.apply(handler, undefined, [event, context]);
       return result;
     },
-    command: async (args: string) => {
+    command: async (args: string, name = "session-communication") => {
+      const command = commands.get(name)?.handler;
       assert(typeof command === "function");
       const result: unknown = await Reflect.apply(command, undefined, [args, context]);
       return result;
@@ -383,8 +393,23 @@ describe("public adapter transport and notice accounting", () => {
       await rm(directory, { recursive: true, force: true });
     });
     await host.event("session_start");
+    expect(host.notifications).toStrictEqual([]);
+    expect([...host.commands.keys()]).toStrictEqual(["comms", "session-communication"]);
+    expect(host.commands.get("comms")?.getArgumentCompletions?.("re")).toStrictEqual([
+      { value: "reconnect", label: "reconnect" },
+    ]);
     await host.command("");
     expect(host.notifications.at(-1)).toContain("not enabled");
+    const legacyStatus = host.notifications.at(-1);
+    await host.command("status", "comms");
+    expect(host.notifications.at(-1)).toBe(legacyStatus);
+    await host.command("doctor", "comms");
+    expect(host.notifications.at(-1)).toContain(directory);
+    expect(host.notifications.at(-1)).toContain("new sessions will not enable participation");
+    await host.command("setup", "comms");
+    expect(host.notifications.at(-1)).toContain("Usage: /comms [status|doctor|reconnect]");
+    await host.command("status extra", "comms");
+    expect(host.notifications.at(-1)).toContain("Usage: /comms");
     await host.command("invalid");
     expect(host.notifications.at(-1)).toContain("Usage:");
     await host.command("reconnect");
@@ -397,15 +422,40 @@ describe("public adapter transport and notice accounting", () => {
     await writeFile(join(directory, "session-communication.json"), "invalid");
     await host.event("session_start");
     expect(host.statuses.at(-1)).toContain("configuration/startup failed");
+    await host.command("doctor", "comms");
+    expect(host.notifications.at(-1)).toContain("invalid JSON");
+    expect(host.notifications.at(-1)).toContain(directory);
     await host.command("status");
     expect(host.notifications.at(-1)).toContain("Check <agent dir>/session-communication.json");
     expect(host.notifications.at(-1)).toContain("then /reload");
+    await writeFile(
+      join(directory, "session-communication.json"),
+      JSON.stringify({
+        machineId: "alpha",
+        socketPath: join(directory, "down"),
+        scopeIds: ["team"],
+        label: "Pi",
+        policies: [],
+      }),
+    );
+    await host.event("session_start");
+    await host.command("doctor", "comms");
+    expect(host.notifications.at(-1)).toContain("Configuration: valid");
+    expect(host.notifications.at(-1)).toContain("absent or inaccessible");
+    expect(host.notifications.at(-1)).not.toContain("connected ·");
+    await host.event("session_shutdown");
     const fixture = await gateway(discoveryReply);
     await writeFile(join(directory, "session-communication.json"), JSON.stringify(fixture.config));
     await host.event("session_start");
     await expect.poll(() => fixture.requests.length).toBe(1);
-    await host.command("reconnect");
+    await host.command("reconnect", "comms");
     expect(host.notifications.at(-1)).toContain("Session communication: enabled");
+    await rm(join(directory, "session-communication.json"));
+    await host.command("doctor", "comms");
+    expect(host.notifications.at(-1)).toContain("missing on disk");
+    expect(host.notifications.at(-1)).toContain("existing runtime may still be active");
+    expect(host.notifications.at(-1)).toContain("Session communication: enabled");
+    expect(host.notifications.at(-1)).not.toContain("participation is off");
     expect(host.statuses.at(-1)).toBeUndefined();
     await host.event("message_end", { message: { role: "custom" } });
     await host.event("agent_before_settle", { entries: [] });
