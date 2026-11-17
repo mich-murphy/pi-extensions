@@ -117,7 +117,7 @@ BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
 
 `test:bombadil` fuzzes the pi-vim editor: mode labels, Escape, width, resize while a command is pending, submit, and `x` on wide characters. Command effects are checked in-process by `vim-properties.test.ts`. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen, or `probe:UNREVIEWED-CHANGE <path>` if an existing file changes or disappears.
 
-`test:bombadil:comms:peers` runs a real gateway. Its script first runs `cargo build --locked` in `packages/pi-comms/gateway`, which does nothing when the debug build is current, and stops if the build fails. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scrollback` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skill-toggle` menu.
+`test:bombadil:comms:peers` runs a real gateway. Its script first runs `cargo build --locked` in `packages/pi-comms/gateway`, which does nothing when the debug build is current, and stops if the build fails. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scrollback` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skills` menu.
 
 To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
 
@@ -133,7 +133,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 | --- | --- |
 | [verify-pi-claude-sdk](.agents/skills/verify-pi-claude-sdk/SKILL.md) | The Claude provider or the pinned Agent SDK. Needs a Claude subscription |
 | [verify-pi-retry](.agents/skills/verify-pi-retry/SKILL.md) | Resume or retry behaviour |
-| [verify-pi-skill-toggle](.agents/skills/verify-pi-skill-toggle/SKILL.md) | The toggle menu, saved state, prompt filtering or the read guard |
+| [verify-pi-skills](.agents/skills/verify-pi-skills/SKILL.md) | The toggle menu, saved state, prompt filtering or the read guard |
 | [verify-pi-web-tools](.agents/skills/verify-pi-web-tools/SKILL.md) | Login, logout or web-tools configuration |
 
 ## Dependencies
