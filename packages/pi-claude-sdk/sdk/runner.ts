@@ -20,6 +20,7 @@ import {
   SdkInternalContinuationError,
   SdkQueryError,
   SdkResultError,
+  SdkStreamInterruptedError,
   SdkToolContractError,
 } from "./errors";
 import type { SdkRunError } from "./errors";
@@ -185,6 +186,16 @@ function reasoningOptions({
   return reasoning ? { effort: reasoning === "minimal" ? "low" : reasoning } : {};
 }
 
+/**
+ * Claude Code retries before output starts are invisible to Pi, and a retry inside Pi's own
+ * retry loop multiplies with it. Default to none; Pi's `retry.provider.maxRetries` opts in.
+ */
+function claudeCodeRetries(requested: number | undefined): number {
+  return requested !== undefined && Number.isFinite(requested) && requested >= 0
+    ? Math.floor(requested)
+    : 0;
+}
+
 function queryParameters(
   turn: Turn,
   {
@@ -251,6 +262,8 @@ function queryParameters(
       mcpServers: { pi: server },
       env: {
         ...env,
+        // Pi owns retries: Claude Code may retry only as often as Pi's provider retry setting.
+        CLAUDE_CODE_MAX_RETRIES: String(claudeCodeRetries(streamOptions?.maxRetries)),
         ...(maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1
           ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxTokens)) }
           : {}),
@@ -327,17 +340,26 @@ type QueryProgress = {
   readonly modelRequestIds: ReadonlySet<string>;
   readonly errorToolResults: number;
   readonly maxAssistantToolUses: number;
+  /** A main-loop request has started and has not yet reported a stop reason. */
+  readonly requestOpen: boolean;
 };
 
 type QueryOutcome = Result.Result<QueryProgress, SdkRunError>;
 
 /** Request ids stay query-local; raw numTurns can also count tool-result messages. */
+type RequestStart = Extract<SdkMessage, { type: "usage" }>["modelRequestStart"];
+
+function startsNewRequest(progress: QueryProgress, start: RequestStart): boolean {
+  const id = start?.id;
+  return start !== undefined && (id === undefined || !progress.modelRequestIds.has(id));
+}
+
 function modelRequestProgress(
   progress: QueryProgress,
-  start: Extract<SdkMessage, { type: "usage" }>["modelRequestStart"],
+  start: RequestStart,
 ): Pick<QueryProgress, "modelRequests" | "modelRequestIds"> {
   const id = start?.id;
-  const started = start !== undefined && (id === undefined || !progress.modelRequestIds.has(id));
+  const started = startsNewRequest(progress, start);
   const ids = new Set(progress.modelRequestIds);
   if (id !== undefined) {
     ids.add(id);
@@ -345,38 +367,43 @@ function modelRequestProgress(
   return { modelRequests: progress.modelRequests + (started ? 1 : 0), modelRequestIds: ids };
 }
 
-function advance(
+type Advanced = { readonly progress: QueryProgress; readonly event: BridgeEvent | undefined };
+
+function advanceUsage(
   progress: QueryProgress,
-  message: SdkMessage,
-): { readonly progress: QueryProgress; readonly event: BridgeEvent | undefined } {
+  message: Extract<SdkMessage, { type: "usage" }>,
+): Advanced {
+  const usage = applyUsage(progress.usage, message.usage);
+  // Authentication must not be hidden by an earlier transient rate-limit error.
+  const apiError =
+    effectiveResultCategory("provider", message.apiError) === "authentication"
+      ? message.apiError
+      : (progress.apiError ?? message.apiError);
+  const started = startsNewRequest(progress, message.modelRequestStart);
+  const toolUses = message.assistantToolUses ?? 0;
+  return {
+    progress: {
+      ...progress,
+      ...modelRequestProgress(progress, message.modelRequestStart),
+      requestOpen: message.requestStopped === true ? false : started || progress.requestOpen,
+      usage,
+      observedModel: progress.observedModel ?? message.model,
+      apiError,
+      assistantToolUses: progress.assistantToolUses + toolUses,
+      maxAssistantToolUses: Math.max(progress.maxAssistantToolUses, toolUses),
+    },
+    event: { type: "usage", usage },
+  };
+}
+
+function advance(progress: QueryProgress, message: SdkMessage): Advanced {
   switch (message.type) {
     case "text_delta":
     case "thinking_delta": {
       return { progress, event: message };
     }
     case "usage": {
-      const usage = applyUsage(progress.usage, message.usage);
-      const observedModel = progress.observedModel ?? message.model;
-      // Authentication must not be hidden by an earlier transient rate-limit error.
-      const apiError =
-        effectiveResultCategory("provider", message.apiError) === "authentication"
-          ? message.apiError
-          : (progress.apiError ?? message.apiError);
-      return {
-        progress: {
-          ...progress,
-          ...modelRequestProgress(progress, message.modelRequestStart),
-          usage,
-          observedModel,
-          apiError,
-          assistantToolUses: progress.assistantToolUses + (message.assistantToolUses ?? 0),
-          maxAssistantToolUses: Math.max(
-            progress.maxAssistantToolUses,
-            message.assistantToolUses ?? 0,
-          ),
-        },
-        event: { type: "usage", usage },
-      };
+      return advanceUsage(progress, message);
     }
     case "result": {
       if (message.usage === undefined) {
@@ -414,6 +441,7 @@ function advance(
         event: undefined,
       };
     }
+    case "api_retry":
     case "ignored": {
       return { progress, event: undefined };
     }
@@ -439,7 +467,29 @@ const initialProgress = (): QueryProgress => ({
   modelRequestIds: new Set(),
   errorToolResults: 0,
   maxAssistantToolUses: 0,
+  requestOpen: false,
 });
+
+/**
+ * The commit point: once a request's output has reached Pi, Claude Code must not resend it.
+ * A cut attempt ends without a stop reason, so a retry notice or a new request while one is
+ * still open means the stream broke. Pi then discards the partial output and retries the turn.
+ * A new request after a completed one (an output-limit resume) is not an interruption.
+ */
+function interruption(
+  progress: QueryProgress,
+  message: SdkMessage,
+): SdkStreamInterruptedError | undefined {
+  if (!progress.requestOpen) {
+    return undefined;
+  }
+  if (message.type === "api_retry") {
+    return new SdkStreamInterruptedError({ evidence: "api-retry" });
+  }
+  return message.type === "usage" && startsNewRequest(progress, message.modelRequestStart)
+    ? new SdkStreamInterruptedError({ evidence: "new-attempt" })
+    : undefined;
+}
 
 function ended(outcome: QueryOutcome, progress: QueryProgress): QueryStep {
   return { _tag: "end", outcome, progress };
@@ -467,6 +517,18 @@ function settle(
 type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted" };
 
 const HALTED: QueryItem = { _tag: "Halted" };
+
+/** A message that must end the query before it is applied: unapproved overage or a resend. */
+function stopBeforeAdvance(
+  progress: QueryProgress,
+  message: SdkMessage,
+  extraUsage: boolean,
+): SdkRunError | undefined {
+  if (message.type === "usage_limit" && message.overage && !extraUsage) {
+    return new SdkOverageError({ resetsAt: message.overage.resetsAt });
+  }
+  return interruption(progress, message);
+}
 
 function step(
   capture: QueryCapture,
@@ -496,10 +558,10 @@ function step(
     if (Result.isFailure(parsed)) {
       return [progress, [ended(Result.fail(parsed.failure), progress)]];
     }
-    if (parsed.success.type === "usage_limit" && parsed.success.overage && !extraUsage) {
-      // Ending the step closes the SDK stream, which aborts the query before another request.
-      const failure = new SdkOverageError({ resetsAt: parsed.success.overage.resetsAt });
-      return [progress, [ended(Result.fail(failure), progress)]];
+    const stopped = stopBeforeAdvance(progress, parsed.success, extraUsage);
+    if (stopped !== undefined) {
+      // Ending the step closes the SDK stream, which aborts the query before another response.
+      return [progress, [ended(Result.fail(stopped), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
@@ -625,7 +687,7 @@ function conclude(
   const checkedTerminal =
     terminal.type !== "failed" && progress.modelRequests > 1
       ? failed(new SdkInternalContinuationError())
-      : terminal;
+      : startedApiFailure(terminal, progress);
   reportUsageLimit(checkedTerminal, progress.usageLimitResetsAt, usageLimitObserver);
   recordUsage?.(usage, {
     ...(observedModel === undefined ? {} : { observedModel }),
@@ -646,6 +708,20 @@ function conclude(
     }),
   });
   return checkedTerminal;
+}
+
+/**
+ * An untyped API error after the response started (a mid-stream error event or an idle stream)
+ * is a broken stream. A failed result releases no tool calls, so Pi can retry the whole turn.
+ */
+function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {
+  return terminal.type === "failed" &&
+    progress.modelRequests > 0 &&
+    terminal.error._tag === "SdkResultError" &&
+    terminal.error.terminalReason === "api_error" &&
+    effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "provider"
+    ? failed(new SdkStreamInterruptedError({ evidence: "api-error" }))
+    : terminal;
 }
 
 function reportUsageLimit(

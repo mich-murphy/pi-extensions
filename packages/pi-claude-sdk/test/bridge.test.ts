@@ -246,7 +246,7 @@ describe("provider failures", () => {
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Truncated" }]);
     expect(message.errorMessage).toBe(
-      "Claude SDK provider bug: the turn ended without a final result; report this provider bug with /claude-sdk-status output",
+      "Claude SDK provider bug: the turn finished without a final result; report this provider bug with /claude-sdk-status output",
     );
   });
 

@@ -116,7 +116,7 @@ describe("claude SDK failure diagnostics", () => {
       "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
     );
     expect(formatSdkRunError(new SdkMissingResultError())).toBe(
-      "Claude Agent SDK: the query ended without returning a result; review completed work before sending `continue`",
+      "Claude Agent SDK: the query finished without returning a result; review completed work before sending `continue`",
     );
     expect(formatSdkRunError(new SdkProviderDefect({ reason: "run-rejected" }))).toBe(
       "Claude SDK provider bug: the SDK runner failed unexpectedly; report this provider bug with /claude-sdk-status output",
@@ -141,7 +141,7 @@ describe("claude SDK failure diagnostics", () => {
         errorClass: "process_killed_by_signal",
         signal: "SIGKILL",
       }),
-      "could not start the query (Claude Code was terminated by SIGKILL; check whether the process was stopped before continuing)",
+      "could not start the query (Claude Code was stopped by signal SIGKILL; check whether the process was stopped before continuing)",
     ],
     [
       sdkRejection("Claude Code executable not found at /secret/path", {

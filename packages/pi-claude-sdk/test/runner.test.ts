@@ -416,6 +416,8 @@ describe("turn streaming", () => {
             },
           },
         }),
+        // The first request completed, so the second is an internal continuation.
+        streamEvent({ type: "message_delta", delta: { stop_reason: "max_tokens" }, usage: {} }),
         streamEvent({
           type: "message_start",
           message: {
@@ -461,7 +463,11 @@ describe("turn streaming", () => {
       queryWith(
         [],
         streamEvent({ type: "message_start", message: { usage: { input_tokens: 10 } } }),
-        streamEvent({ type: "message_delta", usage: { output_tokens: 2 } }),
+        streamEvent({
+          type: "message_delta",
+          delta: { stop_reason: "max_tokens" },
+          usage: { output_tokens: 2 },
+        }),
         streamEvent({ type: "message_start", message: { usage: { input_tokens: 4 } } }),
         resultMessage({
           usage: {
