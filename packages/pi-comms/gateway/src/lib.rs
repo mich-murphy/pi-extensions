@@ -18,3 +18,7 @@ pub mod remote;
 mod link;
 
 mod paths;
+
+pub mod pairing;
+
+pub mod control;

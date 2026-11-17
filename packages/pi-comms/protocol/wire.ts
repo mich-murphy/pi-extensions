@@ -20,7 +20,14 @@ export function frameBodyLength(prefix: Uint8Array): number {
 }
 
 const roleOperations: Record<BoundaryRole, ReadonlySet<string>> = {
-  "local-client": new Set(["register", "close", "discover", "unwatch", ...routed]),
+  "local-client": new Set([
+    "register",
+    "close",
+    "gateway.restart",
+    "discover",
+    "unwatch",
+    ...routed,
+  ]),
   "gateway-forward": routed,
   "adapter-delivery": new Set([
     "deliver",
@@ -33,6 +40,18 @@ const roleOperations: Record<BoundaryRole, ReadonlySet<string>> = {
 };
 
 function checkRole(frame: Frame, role: BoundaryRole): void {
+  if (
+    frame.op === "result" &&
+    frame.outcome.tag === "error" &&
+    frame.outcome.code === "config_mismatch" &&
+    role !== "local-client" &&
+    role !== "adapter-delivery"
+  ) {
+    throw new ProtocolError();
+  }
+  if (frame.op === "result" && frame.forOp === "gateway.restart" && role !== "local-client") {
+    throw new ProtocolError();
+  }
   if (frame.op === "result" || frame.op === "roster.event") {
     return;
   }
