@@ -465,11 +465,20 @@ fn fifo_floor_diagnose_and_existing_import_are_bounded_and_do_not_repair_state()
     );
 }
 
+/// Binds a loopback port below every OS ephemeral range (Linux starts at 32768, macOS at
+/// 49152). Other tests listen on port 0, so they can never be handed this port while the
+/// test has released it and is about to bind it again.
+fn non_ephemeral_listener() -> std::net::TcpListener {
+    (20_000..32_000)
+        .find_map(|port| std::net::TcpListener::bind(("127.0.0.1", port)).ok())
+        .expect("a free non-ephemeral loopback port")
+}
+
 #[test]
 fn occupied_remote_port_degrades_only_remote_and_does_not_rebind() {
     let f = Fixture::new();
     let (_, alpha, _) = f.issued();
-    let occupied = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let occupied = non_ephemeral_listener();
     let address = occupied.local_addr().unwrap();
     let floor = alpha["revocationState"].as_str().unwrap();
     let before = fs::read(floor).unwrap();
