@@ -134,7 +134,7 @@ Some packages have an agent skill that drives a real, isolated Pi session. Run t
 | [verify-pi-claude-sdk](.agents/skills/verify-pi-claude-sdk/SKILL.md) | The Claude provider or the pinned Agent SDK. Needs a Claude subscription |
 | [verify-pi-retry](.agents/skills/verify-pi-retry/SKILL.md) | Resume or retry behaviour |
 | [verify-pi-skills](.agents/skills/verify-pi-skills/SKILL.md) | The toggle menu, saved state, prompt filtering or the read guard |
-| [verify-pi-web-tools](.agents/skills/verify-pi-web-tools/SKILL.md) | Login, logout or web-tools configuration |
+| [verify-pi-web](.agents/skills/verify-pi-web/SKILL.md) | Login, logout or web configuration |
 
 ## Dependencies
 
@@ -150,7 +150,7 @@ Renovate opens update pull requests on a schedule. Digest, pin and patch updates
 
 ## Pull requests
 
-- Write commit messages as `type(scope): summary`, for example `fix(web-tools): handle empty results`.
+- Write commit messages as `type(scope): summary`, for example `fix(web): handle empty results`.
 - Keep each pull request to one change.
 - Update the package README when you change what a user sees or configures.
 

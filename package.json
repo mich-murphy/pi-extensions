@@ -90,7 +90,7 @@
       "./packages/pi-skills/index.ts",
       "./packages/pi-vim/index.ts",
       "./packages/pi-scrollback/index.ts",
-      "./packages/pi-web-tools/index.ts",
+      "./packages/pi-web/index.ts",
       "./packages/pi-comms/index.ts"
     ]
   }

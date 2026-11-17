@@ -17,6 +17,6 @@ This is a personal project, so responses are best effort.
 Reports are most useful for:
 
 - Credentials leaking into tool output, logs, errors or unofficial endpoints.
-- `pi-web-tools` fetching private or internal addresses, including through redirects or DNS rebinding.
+- `pi-web` fetching private or internal addresses, including through redirects or DNS rebinding.
 - `pi-comms` peers connecting or exchanging messages outside their configured trust and policy.
 - `pi-claude-sdk` running a tool without Pi's approval, or sending traffic to an endpoint other than Claude's.

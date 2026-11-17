@@ -19,7 +19,7 @@ To load only some of them, edit the package entry in `~/.pi/agent/settings.json`
   "packages": [
     {
       "source": "git:github.com/mich-murphy/pi-extensions",
-      "extensions": ["packages/pi-vim/index.ts", "packages/pi-web-tools/index.ts"]
+      "extensions": ["packages/pi-vim/index.ts", "packages/pi-web/index.ts"]
     }
   ]
 }
@@ -37,7 +37,7 @@ You can also switch individual extensions on and off with `pi config`.
 | [pi-skills](packages/pi-skills) | Switches skills and instruction files on or off without deleting them | |
 | [pi-vim](packages/pi-vim) | Adds Vim keys to the prompt editor | |
 | [pi-scrollback](packages/pi-scrollback) | Keeps your prompt visible while you scroll back through history | Fullscreen mode |
-| [pi-web-tools](packages/pi-web-tools) | Adds web search and fetch tools that work without an API key | |
+| [pi-web](packages/pi-web) | Adds web search and fetch tools that work without an API key | |
 | [pi-comms](packages/pi-comms) | Lets live Pi sessions message each other | Shared local gateway; reviewed `/comms setup`, optional mTLS peer; fresh acquisition awaits a published trusted pin |
 
 ## Contributing
