@@ -1,4 +1,4 @@
-// Generators, extractors and properties shared by setup.bombadil.ts and setup-apply.bombadil.ts.
+// Generators, extractors and properties for setup.bombadil.ts.
 import { always, eventually, next, now } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";

@@ -8,7 +8,6 @@
 // `probe:UNREVIEWED-CHANGE <path>` for a changed or deleted one. Directories are compared by
 // presence, small files by mode and SHA256, larger ones by mode, size and mtime. Sockets and the
 // gateway's startup-*.log output are runtime state and are not compared.
-// setup-apply-extension.ts reuses `setupHarness` with a backend that installs a local gateway.
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -26,7 +25,7 @@ const LOG = /(?:^|\/)startup-[0-9a-f]+\.log$/u;
 const CONSENT = /^(?:Apply|Keep and reconnect)/u;
 
 /** Every path under `roots`, relative to `base`. */
-export function paths(roots: readonly string[], base: string): Set<string> {
+function paths(roots: readonly string[], base: string): Set<string> {
   const found = new Set<string>();
   for (const root of roots) {
     try {
@@ -103,45 +102,19 @@ function overriding<T extends object>(target: T, own: Record<PropertyKey, unknow
   });
 }
 
-/** What setup-apply-extension.ts observes of each /comms command, in order. */
-export type HarnessObserver = {
-  /** Before the probe's baseline, with the command's arguments. */
-  readonly command?: (args: string) => void;
-  /** A select or input dialog opens with this title. */
-  readonly asked?: (title: string) => void;
-  /** The user picked this option, after a consenting choice was recorded. */
-  readonly chose?: (answer: string) => void;
-  readonly notified?: (message: string, type?: "info" | "warning" | "error") => void;
-  /** After the command's handler settles. */
-  readonly finished?: () => void;
-};
-
-/** The command context, reporting dialogs, consenting choices and notifications. */
+/** The command context, recording when the user picks a consenting option. */
 function withApplyTracking(
   ctx: ExtensionCommandContext,
   applied: () => void,
-  observer: HarnessObserver,
 ): ExtensionCommandContext {
   const select: ExtensionCommandContext["ui"]["select"] = async (title, ...rest) => {
-    observer.asked?.(title);
     const answer = await ctx.ui.select(title, ...rest);
-    if (typeof answer === "string") {
-      if (CONSENT.test(answer)) {
-        applied();
-      }
-      observer.chose?.(answer);
+    if (typeof answer === "string" && CONSENT.test(answer)) {
+      applied();
     }
     return answer;
   };
-  const input: ExtensionCommandContext["ui"]["input"] = async (title, ...rest) => {
-    observer.asked?.(title);
-    return ctx.ui.input(title, ...rest);
-  };
-  const notify: ExtensionCommandContext["ui"]["notify"] = (message, type) => {
-    observer.notified?.(message, type);
-    ctx.ui.notify(message, type);
-  };
-  return overriding(ctx, { ui: overriding(ctx.ui, { select, input, notify }) });
+  return overriding(ctx, { ui: overriding(ctx.ui, { select }) });
 }
 
 /** Runs commands, reporting the first unreviewed write or change before an Apply was chosen. */
@@ -172,12 +145,17 @@ function unreviewedProbe(roots: readonly string[], base: string, report: (found:
   };
 }
 
-/** Loads pi-comms with `testBackend`, flagging unreviewed writes and changes in the footer. */
-export function setupHarness(
-  pi: ExtensionAPI,
-  testBackend: { backend: SetupBackend; description: string },
-  observer: HarnessObserver = {},
-): void {
+const testBackend: { backend: SetupBackend; description: string } = {
+  description: "Bombadil test backend: acquisition always refused; nothing is installed.",
+  backend: {
+    acquire: async () => {
+      throw new Error("Bombadil test backend refuses acquisition");
+    },
+  },
+};
+
+/** Loads pi-comms with the refusing backend, flagging unreviewed writes and changes in the footer. */
+export default function bombadilSetupHarness(pi: ExtensionAPI): void {
   let status: ((text: string) => void) | undefined;
   let shown = "probe:ok";
   const watched = unreviewedProbe(
@@ -193,14 +171,9 @@ export function setupHarness(
     pi.registerCommand(name, {
       ...options,
       handler: async (args, ctx) => {
-        observer.command?.(args);
-        try {
-          await watched(async (applied) => {
-            await options.handler(args, withApplyTracking(ctx, applied, observer));
-          });
-        } finally {
-          observer.finished?.();
-        }
+        await watched(async (applied) => {
+          await options.handler(args, withApplyTracking(ctx, applied));
+        });
       },
     });
   };
@@ -212,15 +185,4 @@ export function setupHarness(
     status(shown);
   });
   registerCommunication(overriding(pi, { registerCommand: register }), testBackend);
-}
-
-export default function bombadilSetupHarness(pi: ExtensionAPI): void {
-  setupHarness(pi, {
-    description: "Bombadil test backend: acquisition always refused; nothing is installed.",
-    backend: {
-      acquire: async () => {
-        throw new Error("Bombadil test backend refuses acquisition");
-      },
-    },
-  });
 }
