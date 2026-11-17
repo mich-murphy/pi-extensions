@@ -24,22 +24,22 @@ import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { acquireGateway } from "../packages/pi-comms/onboarding/acquire.js";
+import { acquireGateway } from "../packages/pi-peers/onboarding/acquire.js";
 import {
   MAX_BINARY,
   gatewayReleaseTag,
   jsonObject,
   sha256,
   verifyManifest,
-} from "../packages/pi-comms/onboarding/artifact.js";
+} from "../packages/pi-peers/onboarding/artifact.js";
 import {
   GATEWAY_MANAGED_CAPABILITY,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
   GATEWAY_WIRE_VERSION,
   gatewayCatalog,
   gatewayTarget,
-} from "../packages/pi-comms/onboarding/catalog.js";
-import type { GatewayReleasePin } from "../packages/pi-comms/onboarding/catalog.js";
+} from "../packages/pi-peers/onboarding/catalog.js";
+import type { GatewayReleasePin } from "../packages/pi-peers/onboarding/catalog.js";
 import { createRecord, currentUid, readRegular, requireAbsent } from "./verify-gateway-nix-io.js";
 import type { RecordWriter } from "./verify-gateway-nix-io.js";
 

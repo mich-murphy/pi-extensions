@@ -38,7 +38,7 @@ You can also switch individual extensions on and off with `pi config`.
 | [pi-vim](packages/pi-vim) | Adds Vim keys to the prompt editor | |
 | [pi-scrollback](packages/pi-scrollback) | Keeps your prompt visible while you scroll back through history | Fullscreen mode |
 | [pi-web](packages/pi-web) | Adds web search and fetch tools that work without an API key | |
-| [pi-comms](packages/pi-comms) | Lets live Pi sessions message each other | Shared local gateway; reviewed `/comms setup`, optional mTLS peer; fresh acquisition awaits a published trusted pin |
+| [pi-peers](packages/pi-peers) | Lets live Pi sessions message each other | Shared local gateway; reviewed `/peers setup`, optional mTLS peer; fresh acquisition awaits a published trusted pin |
 
 ## Contributing
 

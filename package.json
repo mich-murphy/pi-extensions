@@ -17,10 +17,10 @@
     "test": "npm run test:tooling && vitest run",
     "test:coverage": "npm run test:tooling && vitest run --coverage",
     "test:properties": "vitest run --config vitest.properties.config.ts",
-    "test:properties:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 HEGEL_SEED=\"${HEGEL_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}\" HEGEL_TEST_CASES=\"${HEGEL_TEST_CASES:-2000}\" && echo \"Hegel properties: HEGEL_SEED=$HEGEL_SEED HEGEL_TEST_CASES=$HEGEL_TEST_CASES\" && cargo test --locked --all-features $(grep -l hegel::test tests/*.rs | sed 's|tests/\\(.*\\)\\.rs|--test \\1|') -- --test-threads=2",
+    "test:properties:rust": "cd packages/pi-peers/gateway && export CARGO_BUILD_JOBS=2 HEGEL_SEED=\"${HEGEL_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}\" HEGEL_TEST_CASES=\"${HEGEL_TEST_CASES:-2000}\" && echo \"Hegel properties: HEGEL_SEED=$HEGEL_SEED HEGEL_TEST_CASES=$HEGEL_TEST_CASES\" && cargo test --locked --all-features $(grep -l hegel::test tests/*.rs | sed 's|tests/\\(.*\\)\\.rs|--test \\1|') -- --test-threads=2",
     "test:bombadil": "bombadil terminal test --exit-on-violation --specification packages/pi-vim/test/bombadil/vim.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-1m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts packages/pi-vim/index.ts",
-    "test:bombadil:comms": "bombadil terminal test --exit-on-violation --specification packages/pi-comms/test/bombadil/setup.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts packages/pi-comms/test/bombadil/setup-extension.ts",
-    "test:bombadil:comms:peers": "node --experimental-strip-types packages/pi-comms/test/bombadil/gateway-binary.ts && bombadil terminal test --exit-on-violation --specification packages/pi-comms/test/bombadil/peers.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-150s}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-comms/test/bombadil/peers.fixture.ts packages/pi-comms/index.ts packages/pi-comms/test/bombadil/peers-extension.ts",
+    "test:bombadil:peers:setup": "bombadil terminal test --exit-on-violation --specification packages/pi-peers/test/bombadil/setup.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts packages/pi-peers/test/bombadil/setup-extension.ts",
+    "test:bombadil:peers:messages": "node --experimental-strip-types packages/pi-peers/test/bombadil/gateway-binary.ts && bombadil terminal test --exit-on-violation --specification packages/pi-peers/test/bombadil/peers.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-150s}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-peers/test/bombadil/peers.fixture.ts packages/pi-peers/index.ts packages/pi-peers/test/bombadil/peers-extension.ts",
     "test:bombadil:scrollback": "bombadil terminal test --exit-on-violation --specification packages/pi-scrollback/test/bombadil/scroll.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-scrollback/test/bombadil/scroll.fixture.ts packages/pi-scrollback/index.ts",
     "test:bombadil:skills": "bombadil terminal test --exit-on-violation --specification packages/pi-skills/test/bombadil/menu.bombadil.ts --time-limit \"${BOMBADIL_TIME_LIMIT:-2m}\" --quiescence-timeout-ms 100 -- node --experimental-strip-types scripts/bombadil-pi.ts --fixture packages/pi-skills/test/bombadil/menu.fixture.ts packages/pi-skills/index.ts",
     "bench:skills-cache": "vitest run packages/pi-skills/test/cache-benchmark.test.ts",
@@ -35,7 +35,7 @@
     "fallow:dupes": "fallow dupes --fail-on-issues",
     "fallow": "npm run fallow:dead-code && npm run fallow:dupes && npm run fallow:health",
     "markdownlint": "node --experimental-strip-types scripts/repository-quality.ts markdownlint",
-    "check:rust": "cd packages/pi-comms/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
+    "check:rust": "cd packages/pi-peers/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint",
     "format:check": "node --experimental-strip-types scripts/repository-quality.ts format-check",
     "test:tooling": "node --experimental-strip-types --test test-support/repository-quality.test.ts"
@@ -91,7 +91,7 @@
       "./packages/pi-vim/index.ts",
       "./packages/pi-scrollback/index.ts",
       "./packages/pi-web/index.ts",
-      "./packages/pi-comms/index.ts"
+      "./packages/pi-peers/index.ts"
     ]
   }
 }

@@ -25,15 +25,15 @@ import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
-import { acquireGateway, discoverNixExecutable } from "../packages/pi-comms/onboarding/acquire.js";
-import { MAX_BINARY, jsonObject, sha256 } from "../packages/pi-comms/onboarding/artifact.js";
+import { acquireGateway, discoverNixExecutable } from "../packages/pi-peers/onboarding/acquire.js";
+import { MAX_BINARY, jsonObject, sha256 } from "../packages/pi-peers/onboarding/artifact.js";
 import {
   GATEWAY_MANAGED_CAPABILITY,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
   GATEWAY_WIRE_VERSION,
   gatewayCatalog,
   gatewayTarget,
-} from "../packages/pi-comms/onboarding/catalog.js";
+} from "../packages/pi-peers/onboarding/catalog.js";
 import {
   createRecord,
   currentUid,

@@ -96,7 +96,7 @@ await test("clean clone, dirty local artifacts, staged and tracked violations us
     f.write("README.md", "# Fixture\n\nValid text.\n");
     f.write(
       ".gitignore",
-      "node_modules/\n.repository-quality-runner.ts\n.direnv/\ncoverage/\npackages/pi-comms/gateway/target/\n",
+      "node_modules/\n.repository-quality-runner.ts\n.direnv/\ncoverage/\npackages/pi-peers/gateway/target/\n",
     );
     f.git("add", ".");
     f.git("commit", "--quiet", "-m", "fixture");
@@ -107,7 +107,7 @@ await test("clean clone, dirty local artifacts, staged and tracked violations us
       ".direnv/cache",
       "node_modules/dependency",
       "coverage",
-      "packages/pi-comms/gateway/target",
+      "packages/pi-peers/gateway/target",
     ]) {
       f.write(`${dir}/bad.json`, "{bad JSON");
       f.write(`${dir}/bad.md`, "# Bad\n\nhttp://bare.example\n");

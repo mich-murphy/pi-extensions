@@ -56,7 +56,7 @@ Untracked files are not part of these three checks, even if they are production 
 
 `npm test` and `npm run test:coverage` first run the offline tooling fixtures (`npm run test:tooling`), then the existing Vitest suite. The tooling fixtures create temporary Git repositories and exercise real local tools; they do not call providers or change your checkout's index. Type checking, Rust, Vitest coverage and Fallow retain their own scope and thresholds; this index policy does not change them. Do not hide gate failures behind `tail` or `tee`: run commands directly, or use `set -o pipefail` when a pipeline is necessary and preserve its failure status.
 
-The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-comms/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
+The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-peers/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
 
 Fix findings rather than silencing them:
 
@@ -75,11 +75,11 @@ The numbers are project conventions. They keep review tractable; no source gives
 
 ## Property tests
 
-Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches. It runs the TypeScript properties and the Rust gateway properties in `packages/pi-comms/gateway/tests` with the same seed and case count.
+Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches. It runs the TypeScript properties and the Rust gateway properties in `packages/pi-peers/gateway/tests` with the same seed and case count.
 
 Both runs exist because a fixed seed makes the gate reproducible but explores the same inputs every time. Running other seeds locally during an evidence review found a genuine defect that seed 12345 never reached.
 
-Two environment variables change every property, in both languages. The Rust ones read them in `packages/pi-comms/gateway/tests/support/mod.rs`, because the `hegeltest` crate ignores them for a property that pins its own seed. An invalid value fails the run:
+Two environment variables change every property, in both languages. The Rust ones read them in `packages/pi-peers/gateway/tests/support/mod.rs`, because the `hegeltest` crate ignores them for a property that pins its own seed. An invalid value fails the run:
 
 | Variable | Effect |
 | --- | --- |
@@ -108,16 +108,16 @@ Bombadil files live in `packages/<name>/test/bombadil/`. A specification is `*.b
 
 ```sh
 npm run test:bombadil
-npm run test:bombadil:comms
-npm run test:bombadil:comms:peers
+npm run test:bombadil:peers:setup
+npm run test:bombadil:peers:messages
 npm run test:bombadil:scrollback
 npm run test:bombadil:skills
 BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
 ```
 
-`test:bombadil` fuzzes the pi-vim editor: mode labels, Escape, width, resize while a command is pending, submit, and `x` on wide characters. Command effects are checked in-process by `vim-properties.test.ts`. `test:bombadil:comms` fuzzes the `/comms` onboarding dialogs through `packages/pi-comms/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/comms` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen, or `probe:UNREVIEWED-CHANGE <path>` if an existing file changes or disappears.
+`test:bombadil` fuzzes the pi-vim editor: mode labels, Escape, width, resize while a command is pending, submit, and `x` on wide characters. Command effects are checked in-process by `vim-properties.test.ts`. `test:bombadil:peers:setup` fuzzes the `/peers` onboarding dialogs through `packages/pi-peers/test/bombadil/setup-extension.ts`, a test-only extension. It gives setup a backend that refuses every acquisition, so Apply never builds, downloads or starts a gateway. Bombadil sees only the screen, so the extension also watches the agent and home directories during each `/peers` command and shows `probe:UNREVIEWED-WRITE <path>` in the footer if anything appears before an Apply option is chosen, or `probe:UNREVIEWED-CHANGE <path>` if an existing file changes or disappears.
 
-`test:bombadil:comms:peers` runs a real gateway. Its script first runs `cargo build --locked` in `packages/pi-comms/gateway`, which does nothing when the debug build is current, and stops if the build fails. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scrollback` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skills` menu.
+`test:bombadil:peers:messages` runs a real gateway. Its script first runs `cargo build --locked` in `packages/pi-peers/gateway`, which does nothing when the debug build is current, and stops if the build fails. The peers spec connects the driven Pi to a gateway that a scripted adapter peer also joins; an offline scripted model takes each delivered message, and a `peers-probe` footer line counts the takes. `test:bombadil:scrollback` loads a session with twelve marked prompts and checks that the context row names the nearest prompt above the viewport. `test:bombadil:skills` fills a throwaway home with skills and instruction files and fuzzes the `/skills` menu.
 
 To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
 

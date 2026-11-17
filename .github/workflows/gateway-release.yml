@@ -7,16 +7,16 @@ on:
       - .github/workflows/gateway-release.yml
       - scripts/verify-gateway-nix*.ts
       - scripts/verify-gateway-native.ts
-      - packages/pi-comms/gateway/**
+      - packages/pi-peers/gateway/**
       # Inputs of the native-backed consumer suite; over-triggering is accepted.
-      - packages/pi-comms/adapter/**
-      - packages/pi-comms/onboarding/**
-      - packages/pi-comms/protocol/**
-      - packages/pi-comms/state/**
-      - packages/pi-comms/test/**
-      - packages/pi-comms/fixtures/**
-      - packages/pi-comms/index.ts
-      - packages/pi-comms/package.json
+      - packages/pi-peers/adapter/**
+      - packages/pi-peers/onboarding/**
+      - packages/pi-peers/protocol/**
+      - packages/pi-peers/state/**
+      - packages/pi-peers/test/**
+      - packages/pi-peers/fixtures/**
+      - packages/pi-peers/index.ts
+      - packages/pi-peers/package.json
       - package.json
       - package-lock.json
       - vitest.config.ts
@@ -54,17 +54,17 @@ jobs:
       - name: Check native target and release helpers
         shell: bash
         run: |
-          test "$(python3 packages/pi-comms/gateway/release/artifacts.py native-target)" = '${{ matrix.target }}'
-          python3 -m unittest discover -s packages/pi-comms/gateway/release -p 'test_*.py'
+          test "$(python3 packages/pi-peers/gateway/release/artifacts.py native-target)" = '${{ matrix.target }}'
+          python3 -m unittest discover -s packages/pi-peers/gateway/release -p 'test_*.py'
       - name: Build locked native executable with pinned Rust
         shell: bash
         run: |
           export CARGO_TARGET_DIR="$RUNNER_TEMP/gateway-target"
-          channel=$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("packages/pi-comms/gateway/rust-toolchain.toml").read_text())["toolchain"]["channel"])')
+          channel=$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("packages/pi-peers/gateway/rust-toolchain.toml").read_text())["toolchain"]["channel"])')
           rustup toolchain install "$channel" --profile minimal
           # Native runner linker/libc, NOT Nix's store-only runtime closure.
           cargo +"$channel" build --locked --release \
-            --manifest-path packages/pi-comms/gateway/Cargo.toml --bin pi-gateway
+            --manifest-path packages/pi-peers/gateway/Cargo.toml --bin pi-gateway
           mkdir -p staged
           rustc +"$channel" -vV > staged/rustc.txt
           file "$CARGO_TARGET_DIR/release/pi-gateway" > staged/linkage.txt
@@ -77,7 +77,7 @@ jobs:
             echo "Standalone artifact unexpectedly depends on Nix store" >&2
             exit 1
           fi
-          python3 packages/pi-comms/gateway/release/artifacts.py stage \
+          python3 packages/pi-peers/gateway/release/artifacts.py stage \
             --binary "$CARGO_TARGET_DIR/release/pi-gateway" --output staged \
             --revision "$GITHUB_SHA" --target '${{ matrix.target }}'
           "$CARGO_TARGET_DIR/release/pi-gateway" --version --json > staged/version.json
@@ -131,7 +131,7 @@ jobs:
             cp "candidates/gateway-$target/"*.tar.gz release/
             cp "candidates/gateway-$target/$target.json" release/
           done
-          pin=$(python3 packages/pi-comms/gateway/release/artifacts.py assemble \
+          pin=$(python3 packages/pi-peers/gateway/release/artifacts.py assemble \
             --directory release --revision "$GITHUB_SHA")
           echo "$pin"
           [[ "$pin" =~ ^[0-9a-f]{64}$ ]]
@@ -164,7 +164,7 @@ jobs:
     timeout-minutes: 45
     env:
       MANIFEST_SHA256: ${{ needs.catalog.outputs.manifest-sha256 }}
-      CONSUMER_BINARY: packages/pi-comms/gateway/target/debug/pi-gateway
+      CONSUMER_BINARY: packages/pi-peers/gateway/target/debug/pi-gateway
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,14 +178,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          test "$(python3 packages/pi-comms/gateway/release/artifacts.py native-target)" = '${{ matrix.target }}'
-          python3 -m unittest discover -s packages/pi-comms/gateway/release -p 'test_*.py'
+          test "$(python3 packages/pi-peers/gateway/release/artifacts.py native-target)" = '${{ matrix.target }}'
+          python3 -m unittest discover -s packages/pi-peers/gateway/release -p 'test_*.py'
           # Fresh checkout: the fixture location must not already exist.
           test ! -e "$CONSUMER_BINARY"
-          mkdir -p packages/pi-comms/gateway/target
-          mkdir -m 700 packages/pi-comms/gateway/target/debug
+          mkdir -p packages/pi-peers/gateway/target
+          mkdir -m 700 packages/pi-peers/gateway/target/debug
           mkdir consumer
-          python3 packages/pi-comms/gateway/release/artifacts.py extract \
+          python3 packages/pi-peers/gateway/release/artifacts.py extract \
             --manifest "$RUNNER_TEMP/candidate/manifest.json" --manifest-sha256 "$MANIFEST_SHA256" \
             --directory "$RUNNER_TEMP/candidate" --target '${{ matrix.target }}' \
             --output "$CONSUMER_BINARY" > consumer/extracted.json
@@ -204,7 +204,7 @@ jobs:
           assert extracted["sourceRevision"] == os.environ["GITHUB_SHA"], extracted
           assert extracted["manifestSha256"] == os.environ["MANIFEST_SHA256"], extracted
           version = json.loads(pathlib.Path("consumer/version.json").read_text())
-          cargo = tomllib.loads(pathlib.Path("packages/pi-comms/gateway/Cargo.toml").read_text())["package"]
+          cargo = tomllib.loads(pathlib.Path("packages/pi-peers/gateway/Cargo.toml").read_text())["package"]
           required = {"managed-on-demand-v1", "pairing-v1", "gateway-control-v1", "setup-lock-v1", "config-generation-v1"}
           assert version["name"] == "pi-gateway" and version["version"] == cargo["version"], version
           assert version["wireVersions"] == [1], version
@@ -242,12 +242,12 @@ jobs:
           PI_SESSION_GATEWAY_BINARY="$PWD/$CONSUMER_BINARY" nix develop -c npx vitest run \
             --coverage.enabled=false --maxWorkers=2 \
             --reporter=default --reporter=json --outputFile.json=consumer/vitest.json \
-            packages/pi-comms/test/adapter-native.test.ts \
-            packages/pi-comms/test/onboarding-managed.test.ts \
-            packages/pi-comms/test/onboarding-runtime.test.ts \
-            packages/pi-comms/test/onboarding-remote.test.ts \
-            packages/pi-comms/test/onboarding-generation.test.ts \
-            packages/pi-comms/test/onboarding-repair.test.ts 2>&1 | tee consumer/vitest.log
+            packages/pi-peers/test/adapter-native.test.ts \
+            packages/pi-peers/test/onboarding-managed.test.ts \
+            packages/pi-peers/test/onboarding-runtime.test.ts \
+            packages/pi-peers/test/onboarding-remote.test.ts \
+            packages/pi-peers/test/onboarding-generation.test.ts \
+            packages/pi-peers/test/onboarding-repair.test.ts 2>&1 | tee consumer/vitest.log
           # Exactly the six files ran, nothing skipped, todo or failed, and the suite did not shrink.
           python3 - <<'PY'
           import json, os, pathlib
@@ -255,7 +255,7 @@ jobs:
           root = pathlib.Path.cwd().resolve()
           names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
                    "onboarding-remote", "onboarding-generation", "onboarding-repair"}
-          expected = {f"packages/pi-comms/test/{name}.test.ts" for name in names}
+          expected = {f"packages/pi-peers/test/{name}.test.ts" for name in names}
           files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
           assert len(files) == 6 and set(files) == expected, files
           assert report["success"] is True, report["success"]
@@ -300,19 +300,19 @@ jobs:
           PI_SESSION_GATEWAY_BINARY="$PWD/$CONSUMER_BINARY" nix develop -c npx vitest run \
             --coverage.enabled=false --maxWorkers=2 \
             --reporter=default --reporter=json --outputFile.json=consumer-nix/vitest.json \
-            packages/pi-comms/test/adapter-native.test.ts \
-            packages/pi-comms/test/onboarding-managed.test.ts \
-            packages/pi-comms/test/onboarding-runtime.test.ts \
-            packages/pi-comms/test/onboarding-remote.test.ts \
-            packages/pi-comms/test/onboarding-generation.test.ts \
-            packages/pi-comms/test/onboarding-repair.test.ts 2>&1 | tee consumer-nix/vitest.log
+            packages/pi-peers/test/adapter-native.test.ts \
+            packages/pi-peers/test/onboarding-managed.test.ts \
+            packages/pi-peers/test/onboarding-runtime.test.ts \
+            packages/pi-peers/test/onboarding-remote.test.ts \
+            packages/pi-peers/test/onboarding-generation.test.ts \
+            packages/pi-peers/test/onboarding-repair.test.ts 2>&1 | tee consumer-nix/vitest.log
           python3 - <<'PY'
           import json, pathlib
           report = json.loads(pathlib.Path("consumer-nix/vitest.json").read_text())
           root = pathlib.Path.cwd().resolve()
           names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
                    "onboarding-remote", "onboarding-generation", "onboarding-repair"}
-          expected = {f"packages/pi-comms/test/{name}.test.ts" for name in names}
+          expected = {f"packages/pi-peers/test/{name}.test.ts" for name in names}
           files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
           assert len(files) == 6 and set(files) == expected, files
           assert report["success"] is True, report["success"]
