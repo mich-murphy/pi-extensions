@@ -4,8 +4,8 @@ import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { readTransientSettings, registerAutoResume } from "../auto-resume";
-import type { TransientSettings } from "../auto-resume";
+import { readTransientSettings, registerRetry } from "../retry";
+import type { TransientSettings } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = 60_000;
@@ -14,7 +14,7 @@ type Step = { jump: number; event: "none" | "tree" | "shutdown" };
 type Plan = { delaysMinutes: number[]; maxAttempts: number; windowMinutes: number };
 
 /**
- * Independent model of the backoff rules in auto-resume.ts:
+ * Independent model of the backoff rules in retry.ts:
  * - attempt = previous attempts + 1 (line 363); the streak starts at the first failure's time (364)
  * - delay d_k = delays[min(k, len) - 1] (366)
  * - resume time = now + d_k minutes (367)
@@ -25,7 +25,7 @@ function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly
   let attempts = 0;
   let first = 0;
   for (const [index, now] of times.entries()) {
-    // session_tree and session_shutdown clear the streak (auto-resume.ts session_tree / session_shutdown handlers)
+    // session_tree and session_shutdown clear the streak (retry.ts session_tree / session_shutdown handlers)
     attempts = resets[index] === true ? 0 : attempts;
     const attempt = attempts + 1;
     first = attempts === 0 ? now : first;
@@ -39,8 +39,8 @@ function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly
 }
 
 function setup(transient: object) {
-  const pi = fakePi("tui", { autoResume: { transient } });
-  registerAutoResume(pi.pi, pi.deps);
+  const pi = fakePi("tui", { piRetry: { transient } });
+  registerRetry(pi.pi, pi.deps);
   return pi;
 }
 
@@ -145,12 +145,12 @@ function assertReader(shape: number, fields: Record<string, unknown>, junkKeys: 
     junkKeys.map((key) => [key, { maxAttempts: 99, enabled: false }]),
   );
   const inherited = { maxAttempts: 3, delaysMinutes: [7], windowMinutes: 9, enabled: false };
-  const top = wrap(plain, { autoResume: { transient: inherited } });
+  const top = wrap(plain, { piRetry: { transient: inherited } });
   const polluted =
     shape === 0
       ? wrap(
           {
-            autoResume: wrap(
+            piRetry: wrap(
               { transient: wrap({ ...transient, ...junk }, inherited), ...junk },
               { transient: inherited },
             ),
@@ -180,9 +180,9 @@ function drawFields(tc: TestCase): Record<string, unknown> {
 
 function plainShape(shape: number, transient: object, fields: Record<string, unknown>): object {
   if (shape === 0) {
-    return { autoResume: { transient } };
+    return { piRetry: { transient } };
   }
-  return shape === 1 ? { autoResume: fields.enabled } : fields;
+  return shape === 1 ? { piRetry: fields.enabled } : fields;
 }
 
 function wrap(own: object, proto: object): object {

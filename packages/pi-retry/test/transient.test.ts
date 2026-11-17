@@ -1,13 +1,13 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import {
-  AUTO_RESUME_TYPE,
+  RETRY_TYPE,
   CHECK_INTERVAL_MS,
   DEFAULT_TRANSIENT_SETTINGS,
   readTransientSettings,
-  registerAutoResume,
+  registerRetry,
   USAGE_LIMIT_CHANNEL,
-} from "../auto-resume";
+} from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = CHECK_INTERVAL_MS;
@@ -15,7 +15,7 @@ const CONNECTION_ERROR = "Connection error.";
 
 function harness(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
   const pi = fakePi(mode, settings);
-  registerAutoResume(pi.pi, pi.deps);
+  registerRetry(pi.pi, pi.deps);
   return pi;
 }
 
@@ -118,8 +118,8 @@ describe("retrying a transient failure", () => {
         level: "warning",
       },
     ]);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBe(
-      "⏸ Provider error · attempt 1 · auto-resume at t+1m · /auto-resume off to cancel",
+    expect(pi.widgetText(RETRY_TYPE)).toBe(
+      "⏸ Provider error · attempt 1 · retry at t+1m · /retry off to cancel",
     );
 
     pi.advanceTo(MINUTE - 1);
@@ -128,15 +128,15 @@ describe("retrying a transient failure", () => {
     expect(pi.sent).toStrictEqual([
       {
         message: {
-          customType: AUTO_RESUME_TYPE,
-          content: "Auto-resumed after a transient provider error (attempt 1)",
+          customType: RETRY_TYPE,
+          content: "Retried after a transient provider error (attempt 1)",
           display: true,
         },
         options: { triggerTurn: true },
       },
     ]);
     expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
   });
 
   test("never resumes the same stop twice", () => {
@@ -166,7 +166,7 @@ describe("retrying a transient failure", () => {
   });
 
   test("the window caps attempts before the attempt limit", () => {
-    const pi = harness("tui", { autoResume: { transient: { windowMinutes: 10 } } });
+    const pi = harness("tui", { piRetry: { transient: { windowMinutes: 10 } } });
     const clock = { now: 0 };
 
     expect([
@@ -182,7 +182,7 @@ describe("retrying a transient failure", () => {
   });
 
   test("warns once at the cap, then starts a fresh streak", () => {
-    const pi = harness("tui", { autoResume: { transient: { maxAttempts: 1 } } });
+    const pi = harness("tui", { piRetry: { transient: { maxAttempts: 1 } } });
     const clock = { now: 0 };
     failAndResume(pi, clock);
 
@@ -265,7 +265,7 @@ describe("cancelling and superseding a transient wait", () => {
       },
     ],
     [
-      "/auto-resume off",
+      "/retry off",
       (pi: ReturnType<typeof harness>) => {
         void pi.command("off");
       },
@@ -277,12 +277,12 @@ describe("cancelling and superseding a transient wait", () => {
     act(pi);
 
     expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     pi.advanceTo(10 * MINUTE);
     expect(pi.sent).toStrictEqual([]);
   });
 
-  test("/auto-resume off stops later transient waits", async () => {
+  test("/retry off stops later transient waits", async () => {
     const pi = harness();
 
     await pi.command("off");
@@ -296,11 +296,11 @@ describe("cancelling and superseding a transient wait", () => {
     fail(pi);
 
     pi.startRun();
-    pi.publish(USAGE_LIMIT_CHANNEL, { provider: "claude-sdk", resetsAt: 90 * MINUTE });
+    pi.publish(USAGE_LIMIT_CHANNEL, { provider: "claude", resetsAt: 90 * MINUTE });
     pi.settle("error", [assistantEntry("a2", "error", CONNECTION_ERROR)]);
 
     expect(pi.timerCount()).toBe(1);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toContain("Usage limit reached");
+    expect(pi.widgetText(RETRY_TYPE)).toContain("Usage limit reached");
     pi.advanceTo(10 * MINUTE);
     expect(pi.sent).toStrictEqual([]);
     pi.advanceTo(90 * MINUTE);
@@ -317,49 +317,90 @@ describe("cancelling and superseding a transient wait", () => {
   });
 });
 
-describe("autoResume.transient settings", () => {
+describe("piRetry.transient settings", () => {
   test("defaults apply when the key is absent", () => {
     expect(readTransientSettings({})).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
-    expect(readTransientSettings({ autoResume: {} })).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
+    expect(readTransientSettings({ piRetry: {} })).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
   });
 
   test("partial settings fill in from the defaults and allow fractional minutes", () => {
     expect(
       readTransientSettings({
-        autoResume: { transient: { delaysMinutes: [0.05], maxAttempts: 2 } },
+        piRetry: { transient: { delaysMinutes: [0.05], maxAttempts: 2 } },
       }),
     ).toStrictEqual({ ...DEFAULT_TRANSIENT_SETTINGS, delaysMinutes: [0.05], maxAttempts: 2 });
   });
 
   test.each([
-    ["autoResume is not an object", { autoResume: true }],
-    ["transient is not an object", { autoResume: { transient: [] } }],
-    ["enabled is not a boolean", { autoResume: { transient: { enabled: "yes" } } }],
-    ["delays are empty", { autoResume: { transient: { delaysMinutes: [] } } }],
-    ["a delay is not positive", { autoResume: { transient: { delaysMinutes: [1, 0] } } }],
-    ["maxAttempts is fractional", { autoResume: { transient: { maxAttempts: 1.5 } } }],
-    ["windowMinutes is negative", { autoResume: { transient: { windowMinutes: -1 } } }],
+    ["piRetry is not an object", { piRetry: true }],
+    ["transient is not an object", { piRetry: { transient: [] } }],
+    ["enabled is not a boolean", { piRetry: { transient: { enabled: "yes" } } }],
+    ["delays are empty", { piRetry: { transient: { delaysMinutes: [] } } }],
+    ["a delay is not positive", { piRetry: { transient: { delaysMinutes: [1, 0] } } }],
+    ["maxAttempts is fractional", { piRetry: { transient: { maxAttempts: 1.5 } } }],
+    ["windowMinutes is negative", { piRetry: { transient: { windowMinutes: -1 } } }],
   ])("rejects settings when %s", (_case, settings) => {
     expect(readTransientSettings(settings)).toBeUndefined();
   });
 
-  test("invalid settings warn once and fall back to the defaults", () => {
+  test("falls back to autoResume.transient when piRetry is absent", () => {
+    expect(readTransientSettings({ autoResume: { transient: { maxAttempts: 2 } } })).toStrictEqual({
+      ...DEFAULT_TRANSIENT_SETTINGS,
+      maxAttempts: 2,
+    });
+    expect(
+      readTransientSettings({ autoResume: { transient: { maxAttempts: 0 } } }),
+    ).toBeUndefined();
+  });
+
+  test("piRetry takes precedence over autoResume", () => {
+    expect(
+      readTransientSettings({
+        piRetry: { transient: { maxAttempts: 3 } },
+        autoResume: { transient: { maxAttempts: 0, delaysMinutes: [9] } },
+      }),
+    ).toStrictEqual({ ...DEFAULT_TRANSIENT_SETTINGS, maxAttempts: 3 });
+    expect(
+      readTransientSettings({ piRetry: {}, autoResume: { transient: { maxAttempts: 2 } } }),
+    ).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
+  });
+
+  test("the old autoResume key configures the running extension", () => {
+    const pi = harness("tui", { autoResume: { transient: { delaysMinutes: [4] } } });
+
+    fail(pi);
+
+    expect(pi.widgetText(RETRY_TYPE)).toContain("t+4m");
+  });
+
+  test("invalid old autoResume settings warn under the piRetry name", () => {
     const pi = harness("tui", { autoResume: { transient: { maxAttempts: 0 } } });
+
+    fail(pi);
+
+    expect(pi.notifications).toContainEqual({
+      message: "Invalid piRetry.transient settings; using the defaults.",
+      level: "warning",
+    });
+  });
+
+  test("invalid settings warn once and fall back to the defaults", () => {
+    const pi = harness("tui", { piRetry: { transient: { maxAttempts: 0 } } });
 
     expect(fail(pi)).toBeDefined();
     pi.input("interactive");
     fail(pi);
 
     expect(
-      pi.notifications.filter(({ message }) => message.startsWith("Invalid autoResume")),
+      pi.notifications.filter(({ message }) => message.startsWith("Invalid piRetry")),
     ).toStrictEqual([
-      { message: "Invalid autoResume.transient settings; using the defaults.", level: "warning" },
+      { message: "Invalid piRetry.transient settings; using the defaults.", level: "warning" },
     ]);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toContain("t+1m");
+    expect(pi.widgetText(RETRY_TYPE)).toContain("t+1m");
   });
 
   test("enabled false turns off transient retries but not usage-limit resumes", () => {
-    const pi = harness("tui", { autoResume: { transient: { enabled: false } } });
+    const pi = harness("tui", { piRetry: { transient: { enabled: false } } });
 
     expect(fail(pi)).toBeUndefined();
     pi.startRun();
@@ -369,11 +410,11 @@ describe("autoResume.transient settings", () => {
 
   test("settings are reread at each failure", () => {
     const pi = harness();
-    pi.setSettings({ autoResume: { transient: { delaysMinutes: [3] } } });
+    pi.setSettings({ piRetry: { transient: { delaysMinutes: [3] } } });
 
     fail(pi);
 
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toContain("t+3m");
+    expect(pi.widgetText(RETRY_TYPE)).toContain("t+3m");
   });
 
   test("a branch switch starts a fresh failure streak", () => {

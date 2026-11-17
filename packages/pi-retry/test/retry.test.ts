@@ -2,21 +2,22 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import {
-  AUTO_RESUME_TYPE,
+  RETRY_TYPE,
   CHECK_INTERVAL_MS,
+  LEGACY_RETRY_TYPE,
   MAX_WAIT_MS,
-  registerAutoResume,
+  registerRetry,
   USAGE_LIMIT_CHANNEL,
-} from "../auto-resume";
+} from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = CHECK_INTERVAL_MS;
 const RESETS_AT = 90 * MINUTE;
-const NOTICE = { provider: "claude-sdk", resetsAt: RESETS_AT };
+const NOTICE = { provider: "claude", resetsAt: RESETS_AT };
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
   const pi = fakePi(mode);
-  registerAutoResume(pi.pi, pi.deps);
+  registerRetry(pi.pi, pi.deps);
   return pi;
 }
 
@@ -29,8 +30,8 @@ function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: unknown = NOTI
 
 const marker: AgentMessage = {
   role: "custom",
-  customType: AUTO_RESUME_TYPE,
-  content: "Auto-resumed",
+  customType: RETRY_TYPE,
+  content: "Retried",
   display: true,
   timestamp: 0,
 };
@@ -50,8 +51,8 @@ describe("waiting for a usage limit to reset", () => {
         level: "warning",
       },
     ]);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBe(
-      "⏸ Usage limit reached · auto-resume at t+90m · /auto-resume off to cancel",
+    expect(pi.widgetText(RETRY_TYPE)).toBe(
+      "⏸ Usage limit reached · retry at t+90m · /retry off to cancel",
     );
     expect(pi.timerCount()).toBe(1);
   });
@@ -67,14 +68,14 @@ describe("waiting for a usage limit to reset", () => {
     expect(pi.sent).toStrictEqual([
       {
         message: {
-          customType: AUTO_RESUME_TYPE,
-          content: "Auto-resumed after the usage limit reset at t+90m",
+          customType: RETRY_TYPE,
+          content: "Retried after the usage limit reset at t+90m",
           display: true,
         },
         options: { triggerTurn: true },
       },
     ]);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     expect(pi.timerCount()).toBe(0);
   });
 
@@ -99,7 +100,7 @@ describe("waiting for a usage limit to reset", () => {
     const result = failOnUsageLimit(pi, { resetsAt: RESETS_AT + 30 * MINUTE });
 
     expect(result?.entries).toHaveLength(1);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toContain("t+120m");
+    expect(pi.widgetText(RETRY_TYPE)).toContain("t+120m");
   });
 
   test("accepts a reset exactly at the five-hour cap", () => {
@@ -111,7 +112,7 @@ describe("waiting for a usage limit to reset", () => {
 
 describe("leaving the failure to the user", () => {
   test.each([
-    ["the notice has no reset time", { provider: "claude-sdk" }],
+    ["the notice has no reset time", { provider: "claude" }],
     ["the notice is not an object", null],
     ["the published notice is malformed", { resetsAt: "soon" }],
     ["the reset is more than five hours away", { resetsAt: MAX_WAIT_MS + 1 }],
@@ -145,6 +146,22 @@ describe("leaving the failure to the user", () => {
     const pi = harness();
     expect(failOnUsageLimit(pi, { provider: "other", resetsAt: RESETS_AT })).toBeUndefined();
     expect(pi.timerCount()).toBe(0);
+  });
+
+  test.each([
+    ["the old Claude provider id", "claude-sdk"],
+    ["the new Claude provider id", "claude"],
+  ])("a notice under %s matches a failure from the Claude provider", (_case, provider) => {
+    const pi = harness();
+    expect(failOnUsageLimit(pi, { provider, resetsAt: RESETS_AT })).toBeDefined();
+  });
+
+  test("a Claude notice matches a failure saved under the old provider id", () => {
+    const pi = harness();
+    const failed = assistantEntry("a1", "error", undefined, "claude-sdk");
+    pi.startRun();
+    pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
+    expect(pi.settle("error", [userEntry("u1"), failed])).toBeDefined();
   });
 
   test("a retry cannot reuse the failed request's notice", () => {
@@ -189,10 +206,10 @@ describe("cancelling a scheduled resume", () => {
     expect(pi.input("interactive")).toStrictEqual({ action: "continue" });
 
     expect(pi.notifications.at(-1)).toStrictEqual({
-      message: "Auto-resume cancelled: your new prompt takes over.",
+      message: "Retry cancelled: your new prompt takes over.",
       level: "info",
     });
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
   });
@@ -219,7 +236,7 @@ describe("cancelling a scheduled resume", () => {
     pi.input("extension");
     pi.startRun();
     expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
     // A new usage failure gets precisely one fresh timer, not an orphan interval.
@@ -236,14 +253,14 @@ describe("cancelling a scheduled resume", () => {
     pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
     pi.navigateTree();
     expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     expect(pi.settle("error", [assistantEntry("old-error", "error")])).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
   });
 });
 
-describe("/auto-resume", () => {
+describe("/retry", () => {
   test("off cancels a scheduled resume and stops later ones", async () => {
     const pi = harness();
     failOnUsageLimit(pi);
@@ -251,8 +268,8 @@ describe("/auto-resume", () => {
     await pi.command("off");
 
     expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(AUTO_RESUME_TYPE)).toBeUndefined();
-    expect(pi.notifications.at(-1)?.message).toBe("Auto-resume is off for this session.");
+    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
+    expect(pi.notifications.at(-1)?.message).toBe("Retry is off for this session.");
     expect(failOnUsageLimit(pi)).toBeUndefined();
   });
 
@@ -264,9 +281,9 @@ describe("/auto-resume", () => {
     expect(failOnUsageLimit(pi)).toBeDefined();
 
     await pi.command("");
-    expect(pi.notifications.at(-1)?.message).toBe("Auto-resume is off for this session.");
+    expect(pi.notifications.at(-1)?.message).toBe("Retry is off for this session.");
     await pi.command("  ");
-    expect(pi.notifications.at(-1)?.message).toBe("Auto-resume is on for this session.");
+    expect(pi.notifications.at(-1)?.message).toBe("Retry is on for this session.");
   });
 
   test("rejects other arguments", async () => {
@@ -275,7 +292,7 @@ describe("/auto-resume", () => {
     await pi.command("later");
 
     expect(pi.notifications).toStrictEqual([
-      { message: "Usage: /auto-resume [on|off]", level: "warning" },
+      { message: "Usage: /retry [on|off]", level: "warning" },
     ]);
   });
 
@@ -302,13 +319,37 @@ describe("the resume marker", () => {
     expect(pi.context([user])).toBeUndefined();
   });
 
+  test("hides markers saved under the old type from the model", () => {
+    const pi = harness();
+    const user: AgentMessage = { role: "user", content: "go", timestamp: 0 };
+    const legacy: AgentMessage = { ...marker, customType: LEGACY_RETRY_TYPE };
+
+    expect(LEGACY_RETRY_TYPE).toBe("auto-resume");
+    expect(pi.context([user, legacy, marker])).toStrictEqual({ messages: [user] });
+  });
+
+  test("keeps other custom messages in context", () => {
+    const pi = harness();
+    const other: AgentMessage = { ...marker, customType: "other" };
+
+    expect(pi.context([other])).toBeUndefined();
+  });
+
   test("renders as a dim transcript line", () => {
     const pi = harness();
 
-    expect(pi.renderMarker("Auto-resumed after the usage limit reset at t+90m")).toBe(
-      "↻ Auto-resumed after the usage limit reset at t+90m",
+    expect(pi.renderMarker("Retried after the usage limit reset at t+90m")).toBe(
+      "↻ Retried after the usage limit reset at t+90m",
     );
     expect(pi.renderMarker([{ type: "text", text: "x" }])).toBe("↻");
+  });
+
+  test.each([RETRY_TYPE, LEGACY_RETRY_TYPE])("renders markers of type %s", (customType) => {
+    const pi = harness();
+
+    expect(pi.renderMarker("Auto-resumed after the usage limit reset at t+90m", customType)).toBe(
+      "↻ Auto-resumed after the usage limit reset at t+90m",
+    );
   });
 });
 
@@ -328,7 +369,7 @@ describe("print and JSON modes", () => {
     expect(failOnUsageLimit(pi, { resetsAt: MAX_WAIT_MS * 2 })).toBeUndefined();
 
     expect(pi.appended).toStrictEqual([
-      { customType: AUTO_RESUME_TYPE, data: { resetsAt: MAX_WAIT_MS * 2 } },
+      { customType: RETRY_TYPE, data: { resetsAt: MAX_WAIT_MS * 2 } },
     ]);
     expect(pi.stderr).toStrictEqual([]);
   });

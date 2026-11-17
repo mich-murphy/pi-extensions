@@ -1,13 +1,13 @@
-# Auto-resume feature map
+# Retry feature map
 
-Source of truth: `packages/pi-auto-resume/README.md`, `auto-resume.ts`, and the
+Source of truth: `packages/pi-retry/README.md`, `retry.ts`, and the
 public Pi extension lifecycle. Run `scripts/verify.py all` from this skill.
 
 | Feature | Executed journey | Required evidence |
 | --- | --- | --- |
 | Default-on scheduling | `resume` receives a matching usage-limit event and failed assistant turn | Warning and waiting widget before reset |
 | Wall-clock continuation | `resume`, real 60-second production interval | Second request timestamp after reset, rendered marker and canned reply |
-| Context hygiene | `resume` request 2 | Original task present; failed-attempt sentinel and auto-resume marker absent |
+| Context hygiene | `resume` request 2 | Original task present; failed-attempt sentinel and retry marker absent |
 | Commands on/off | `off`: off → on → limit → off | Notifications; wait removed; no request after the interval |
 | New prompt cancels | `prompt` sends replacement text while waiting | Cancellation notification, replacement reply, exactly two requests |
 | New extension work cancels | `extensionwork`, `extensionuser` use public send APIs via fixture slash commands | Replacement reply, no stale third request |
@@ -19,7 +19,7 @@ public Pi extension lifecycle. Run `scripts/verify.py all` from this skill.
 | Past or more than five hours | `past`, `far` | No widget or extra request after interval |
 | Notice provider mismatch | `mismatch` | Unrelated provider notice does not schedule |
 | Invalid JavaScript Date range | `date` | No extension exception, widget, or extra request |
-| Transient failure retry | `transient`: `Connection error.` failure, then success, with `autoResume.transient.delaysMinutes` of `[0.05]` | "Provider error" warning and waiting widget; second request at least 59 seconds later without the failed attempt or marker; rendered marker and canned reply |
+| Transient failure retry | `transient`: `Connection error.` failure, then success, with `piRetry.transient.delaysMinutes` of `[0.05]` | "Provider error" warning and waiting widget; second request at least 59 seconds later without the failed attempt or marker; rendered marker and canned reply |
 | Aborted run is not retried | `aborted`: Escape during a pending `Connection error.` reply | `Operation aborted`, no widget, exactly one request after the interval |
 | One-shot print | `print` | ISO reset report on stderr, failure exit, exactly one request, timely exit |
 | One-shot JSON | `json` | Parseable JSONL, `entry_appended` custom reset entry matching fixture timestamp, exactly one request |

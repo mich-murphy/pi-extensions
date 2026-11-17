@@ -2,14 +2,9 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ProjectedSessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
-import type {
-  AutoResumeHandlers,
-  AutoResumeRegistration,
-  MarkerRenderer,
-  WidgetFactory,
-} from "../auto-resume";
+import type { RetryHandlers, RetryRegistration, MarkerRenderer, WidgetFactory } from "../retry";
 
-type Command = Parameters<AutoResumeRegistration["registerCommand"]>[1];
+type Command = Parameters<RetryRegistration["registerCommand"]>[1];
 type Sent = { readonly message: unknown; readonly options: unknown };
 
 const plainTheme = { fg: (_color: string, text: string) => text };
@@ -28,12 +23,13 @@ export function assistantEntry(
   id: string,
   stopReason: AssistantMessage["stopReason"],
   errorMessage?: string,
+  provider = "claude",
 ): ProjectedSessionEntry {
   const message: AssistantMessage = {
     role: "assistant",
     content: [{ type: "text", text: "partial" }],
     api: "anthropic-messages",
-    provider: "claude-sdk",
+    provider,
     model: "claude",
     usage: {
       input: 0,
@@ -64,7 +60,7 @@ export function userEntry(id: string): ProjectedSessionEntry {
 
 /** Pi double that captures registrations and replays events with a fake context and clock. */
 export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
-  const handlers: Partial<AutoResumeHandlers> = {};
+  const handlers: Partial<RetryHandlers> = {};
   const channels = new Map<string, (data: unknown) => void>();
   const commands = new Map<string, Command>();
   const renderers = new Map<string, MarkerRenderer>();
@@ -97,8 +93,8 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
     },
   };
 
-  const pi: AutoResumeRegistration = {
-    on: (name: keyof AutoResumeHandlers, handler: AutoResumeHandlers[keyof AutoResumeHandlers]) => {
+  const pi: RetryRegistration = {
+    on: (name: keyof RetryHandlers, handler: RetryHandlers[keyof RetryHandlers]) => {
       Object.assign(handlers, { [name]: handler });
     },
     events: {
@@ -122,7 +118,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
     },
   };
 
-  const handler = <K extends keyof AutoResumeHandlers>(name: K): AutoResumeHandlers[K] => {
+  const handler = <K extends keyof RetryHandlers>(name: K): RetryHandlers[K] => {
     const registered = handlers[name];
     if (registered === undefined) {
       throw new Error(`test setup: no ${name} handler registered`);
@@ -180,9 +176,9 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
       handler("session_shutdown")({ type: "session_shutdown" });
     },
     command: async (args: string) => {
-      const command = commands.get("auto-resume");
+      const command = commands.get("retry");
       if (command === undefined) {
-        throw new Error("test setup: no auto-resume command registered");
+        throw new Error("test setup: no retry command registered");
       }
       await command.handler(args, ctx);
       return command;
@@ -203,8 +199,8 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
       const widget = widgets.get(key);
       return widget === undefined ? undefined : renderText(widget(undefined, plainTheme));
     },
-    renderMarker: (content: unknown) => {
-      const renderer = renderers.get("auto-resume");
+    renderMarker: (content: unknown, customType = "retry") => {
+      const renderer = renderers.get(customType);
       return renderer === undefined
         ? undefined
         : renderText(renderer({ content }, undefined, plainTheme));
