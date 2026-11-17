@@ -246,7 +246,18 @@ export class ResetFailure extends Error {
     );
   }
 }
+/** A refusal reset explains itself. Its message is fixed text, never a path or file content. */
+export class ResetRefused extends Error {}
 type ResetEntry = { path: string; backup: string; sha256: string };
+/** Missing, or a path through a regular file: either way nothing is there to reset. */
+function isAbsent(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
+}
 /** Whether reset has anything to disable or resume: configuration, an owned file or a ledger. */
 export async function hasResetTarget(agentDir: string): Promise<boolean> {
   const paths = setupPaths(agentDir);
@@ -257,12 +268,7 @@ export async function hasResetTarget(agentDir: string): Promise<boolean> {
         await lstat(path);
         return true;
       } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "ENOENT"
-        ) {
+        if (isAbsent(error)) {
           return false;
         }
         throw error;
@@ -276,7 +282,7 @@ export async function resetLocal(agentDir: string): Promise<string> {
   const paths = setupPaths(agentDir);
   const executable = await cachedExecutable(paths);
   if (executable === undefined) {
-    throw new Error(
+    throw new ResetRefused(
       "No verified setup executable/committed ownership. Pre-acquisition remnants are not enabled and are preserved.",
     );
   }
@@ -320,7 +326,7 @@ async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
         (entry) => !allowed.has(entry.path) || !entry.backup.startsWith(`${entry.path}.disabled-`),
       )
     ) {
-      throw new Error("Invalid reset recovery ledger; preserved");
+      throw new ResetRefused("Invalid reset recovery ledger; preserved");
     }
     return entries;
   }
@@ -344,12 +350,12 @@ function matchReset(
   label: string,
 ): void {
   if (bytes !== undefined && !allowed.includes(digest(bytes))) {
-    throw new Error(`${label} changed externally; reset refused before mutation`);
+    throw new ResetRefused(`${label} changed externally; reset refused before mutation`);
   }
 }
 async function preflightReset(paths: SetupPaths): Promise<void> {
   if ((await regularBytes(join(paths.directory, "repair.json"))) !== undefined) {
-    throw new Error(
+    throw new ResetRefused(
       "Finish the owned installation repair with /comms setup before reset; repair ledger preserved",
     );
   }
@@ -365,7 +371,7 @@ async function preflightReset(paths: SetupPaths): Promise<void> {
   );
   const recordBytes = metadata ?? prepared ?? pending;
   if (recordBytes === undefined) {
-    throw new Error("No setup ownership record; external files preserved");
+    throw new ResetRefused("No setup ownership record; external files preserved");
   }
   const record = decodeOwnership(parseJson(recordBytes));
   const transition = pending === undefined ? undefined : decodeOwnership(parseJson(pending));

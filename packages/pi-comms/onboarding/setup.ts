@@ -9,6 +9,7 @@ import {
   inspectSetup,
   resetLocal,
   ResetFailure,
+  ResetRefused,
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
@@ -408,9 +409,12 @@ export async function resetCommand(
   }
 }
 
-/** Reset's own refusals explain themselves; system errors (with a code) may carry paths. */
+/**
+ * Reset's own refusals explain themselves. Any other error (a system error, a JSON parse or schema
+ * error) may quote a path or file content, so it gets the generic reason.
+ */
 function resetRefusal(error: unknown): string {
-  return error instanceof Error && !("code" in error)
+  return error instanceof ResetRefused
     ? error.message.replace(/\.$/u, "")
     : "ownership or configuration differs";
 }
