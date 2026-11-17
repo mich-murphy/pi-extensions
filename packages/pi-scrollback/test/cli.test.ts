@@ -35,7 +35,7 @@ const skipJourney = !tmuxAvailable && process.env.CI !== "true";
 
 describe("real isolated Pi CLI", () => {
   test("loads the extension in the exact pinned offline CLI without calling a provider", () => {
-    const root = mkdtempSync(join(tmpdir(), "pi-scroll-context-cli-"));
+    const root = mkdtempSync(join(tmpdir(), "pi-scrollback-cli-"));
     const agent = join(root, "agent");
     mkdirSync(agent);
     writeFileSync(join(agent, "settings.json"), JSON.stringify({ enableInstallTelemetry: false }));
@@ -60,9 +60,9 @@ describe("real isolated Pi CLI", () => {
           "--no-context-files",
           "--no-mcp",
           "--extension",
-          join(repo, "packages/pi-scroll-context/index.ts"),
+          join(repo, "packages/pi-scrollback/index.ts"),
           "--list-models",
-          "scroll-context-nonexistent-model",
+          "scrollback-nonexistent-model",
         ],
         { cwd: root, env, encoding: "utf8", timeout: 30_000 },
       );
@@ -86,7 +86,7 @@ describe("real isolated Pi CLI", () => {
     );
     const result = spawnSync(
       process.execPath,
-      [join(repo, "packages/pi-scroll-context/test/fixtures/native-journey.ts"), host],
+      [join(repo, "packages/pi-scrollback/test/fixtures/native-journey.ts"), host],
       // About 10 s unloaded; the waits inside are condition-based with a 120 s hang guard each, and
       // this outer bound sits above that guard rather than racing it.
       { cwd: repo, encoding: "utf8", timeout: 300_000 },

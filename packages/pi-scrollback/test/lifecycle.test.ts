@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { initTheme } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme";
 import { testTui, testTheme } from "../../../test-support/pi-tui";
 import { createHostAdapter } from "../host";
-import scrollContext from "../index";
+import scrollback from "../index";
 import type { ScrollRegistration } from "../index";
 
 type Context = Parameters<Parameters<ScrollRegistration["on"]>[1]>[1];
@@ -27,7 +27,7 @@ describe("extension lifecycle and incompatible hosts", () => {
       on: (name: string, handler: (event: unknown, ctx: Context) => void) =>
         handlers.set(name, handler),
     };
-    scrollContext(api);
+    scrollback({ ...api, registerCommand: () => undefined });
     const widget = vi.fn<ExtensionUIContext["setWidget"]>();
     const ctx = { mode: "rpc", ui: { setWidget: widget, theme: testTheme() } };
     handlers.get("session_start")?.({}, ctx);

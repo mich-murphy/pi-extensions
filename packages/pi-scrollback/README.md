@@ -1,10 +1,10 @@
-# pi-scroll-context
+# pi-scrollback
 
 Keeps your current prompt visible while you scroll back through a Pi session. A single muted row above the transcript shows the nearest user prompt before the part you are reading.
 
 ## Install
 
-Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). It has no settings or commands.
+Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some extensions](../../README.md#install). It has no settings.
 
 ## Requirements
 
@@ -19,6 +19,16 @@ Scroll up through the transcript. Once the prompt you are reading under scrolls 
 - **Shows** when you scroll back and the prompt that owns the visible content has scrolled off screen.
 - **Hides** while that prompt's own text is still visible.
 - **Returns** the row to the transcript when you scroll back to the live end, including during long streamed output.
+
+## Commands
+
+| Command | Effect |
+| --- | --- |
+| `/scrollback` | Toggles the row on or off for this session |
+| `/scrollback on` | Shows the row for this session. This is the default |
+| `/scrollback off` | Removes the row for this session |
+
+The setting is not saved. A new Pi process starts with the row on.
 
 ## Limitations
 

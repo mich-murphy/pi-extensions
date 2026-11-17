@@ -1,5 +1,5 @@
 // Real native CLI + tmux acceptance journey. No terminal/layout mocks or model requests.
-// node packages/pi-scroll-context/test/fixtures/native-journey.ts [absolute Pi package directory]
+// node packages/pi-scrollback/test/fixtures/native-journey.ts [absolute Pi package directory]
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -21,7 +21,7 @@ assert.ok(
 const manifest = rawManifest;
 const bin = manifest.bin;
 assert.ok(typeof bin === "object" && bin !== null && "pi" in bin && typeof bin.pi === "string");
-const root = mkdtempSync(join(tmpdir(), "pi-scroll-context-native-"));
+const root = mkdtempSync(join(tmpdir(), "pi-scrollback-native-"));
 const socket = join(root, "tmux.sock");
 for (const part of ["home", "agent", "sessions", "cwd", "tmp"]) {
   mkdirSync(join(root, part));
@@ -67,7 +67,7 @@ const entries: Record<string, unknown>[] = [
   {
     type: "session",
     version: 3,
-    id: "scroll-context-native",
+    id: "scrollback-native",
     timestamp: new Date(timestamp).toISOString(),
     cwd: join(root, "cwd"),
   },
@@ -131,7 +131,7 @@ const baseCommand = [
   "--tui-mode",
   "fullscreen",
 ];
-const command = [...baseCommand, "--extension", join(repo, "packages/pi-scroll-context/index.ts")];
+const command = [...baseCommand, "--extension", join(repo, "packages/pi-scrollback/index.ts")];
 // Pi queries tmux for extended-keys after startup and adds a warning row only if it is off. That row
 // would arrive at a machine-dependent moment and change the transcript height, so the server is
 // configured the way Pi wants and the warning never exists.

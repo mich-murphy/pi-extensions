@@ -1,4 +1,4 @@
-// Bombadil terminal specification for pi-scroll-context: random transcript scrolling, resizes and
+// Bombadil terminal specification for pi-scrollback: random transcript scrolling, resizes and
 // editor typing against the real Pi CLI, replaying the session from scroll.fixture.ts.
 //
 // Every property reads only the screen. Prompt rows start with "Pnn:" and reply rows with
