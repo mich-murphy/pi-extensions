@@ -87,3 +87,4 @@ When stderr is redirected, each failed turn also writes a `[claude-sdk-error]` J
 | `operation` | `start` or `iterate`, for transport failures. |
 | `terminalReason` | The SDK's terminal reason, when given. |
 | `toolContract` | `naming` or `schema`, for tool catalog failures. |
+| `streamInterruption` | `api-retry`, `new-attempt` or `api-error`: what showed that a started response stream broke. |

@@ -48,6 +48,29 @@ export class SdkInternalContinuationError extends Schema.TaggedError<SdkInternal
   }
 }
 
+/** What showed that an attempt's response stream broke after it had started reaching Pi. */
+const StreamInterruptionEvidence = Schema.Literals([
+  /** Claude Code announced a retry while the attempt had no stop reason. */
+  "api-retry",
+  /** A new main-loop request started while the previous one had no stop reason. */
+  "new-attempt",
+  /** The query failed with an untyped API error after its response started. */
+  "api-error",
+]);
+
+/**
+ * The response stream broke after it started. Nothing was handed to Pi, so Pi can discard the
+ * partial output and retry the whole turn. The message is worded to match Pi's retry rules.
+ */
+export class SdkStreamInterruptedError extends Schema.TaggedError<SdkStreamInterruptedError>()(
+  "SdkStreamInterruptedError",
+  { evidence: StreamInterruptionEvidence },
+) {
+  override get message(): string {
+    return "Claude response stream was interrupted; retry shortly";
+  }
+}
+
 /** Error returned by a terminal SDK result. */
 export class SdkResultError extends Schema.TaggedError<SdkResultError>()("SdkResultError", {
   /** The SDK terminal reason when one was supplied. */
@@ -167,7 +190,7 @@ function describeQueryFailure(reason: SdkQueryFailureReason): string {
       return `Claude Code exited with code ${reason.exitCode}; run /claude-sdk-status and check Claude Code before continuing`;
     }
     case "ProcessKilled": {
-      return `Claude Code was terminated by ${reason.signal}; check whether the process was stopped before continuing`;
+      return `Claude Code was stopped by signal ${reason.signal}; check whether the process was stopped before continuing`;
     }
     case "Unclassified": {
       return "unexpected SDK error";
@@ -225,7 +248,7 @@ export class SdkMissingResultError extends Schema.TaggedError<SdkMissingResultEr
 ) {
   /** Safe summary of the missing result. */
   override get message(): string {
-    return "the query ended without returning a result; review completed work before sending `continue`";
+    return "the query finished without returning a result; review completed work before sending `continue`";
   }
 }
 
@@ -267,6 +290,7 @@ export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkO
 /** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
   | SdkInternalContinuationError
+  | SdkStreamInterruptedError
   | SdkInstrumentationError
   | SdkToolContractError
   | InvalidDeferredCallLimitError
@@ -292,7 +316,7 @@ export class SdkProviderDefect extends Schema.TaggedError<SdkProviderDefect>()(
   /** Safe summary of the broken invariant. */
   override get message(): string {
     return this.reason === "no-terminal-event"
-      ? "the turn ended without a final result; report this provider bug with /claude-sdk-status output"
+      ? "the turn finished without a final result; report this provider bug with /claude-sdk-status output"
       : "the SDK runner failed unexpectedly; report this provider bug with /claude-sdk-status output";
   }
 }

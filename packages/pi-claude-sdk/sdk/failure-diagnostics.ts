@@ -1,6 +1,11 @@
 import { absurd } from "effect/Function";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
-import type { SdkQueryError, SdkTurnFailure } from "./errors";
+import type {
+  SdkQueryError,
+  SdkResultError,
+  SdkStreamInterruptedError,
+  SdkTurnFailure,
+} from "./errors";
 import { effectiveResultCategory, safeTerminalReason } from "./result-failure";
 
 /** Stable operational categories for Claude Agent SDK failures. */
@@ -15,6 +20,7 @@ export type SdkFailureKind =
   | "provider"
   | "rate-limit"
   | "server-error"
+  | "stream-interrupted"
   | "timeout"
   | "tool-contract"
   | "usage-limit";
@@ -32,6 +38,8 @@ export type SdkFailureDiagnostic = {
   /** SDK terminal reason when a result supplied one. */
   readonly terminalReason?: string;
   readonly toolContract?: "naming" | "schema";
+  /** What showed that a started response stream broke. */
+  readonly streamInterruption?: SdkStreamInterruptedError["evidence"];
 };
 
 const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] = [
@@ -52,6 +60,41 @@ function textKind(text: string): SdkFailureKind {
   return TEXT_KINDS.find(([, pattern]) => pattern.test(text))?.[0] ?? "provider";
 }
 
+function queryFailureKind({ cause, reason }: SdkQueryError): SdkFailureKind {
+  if (reason._tag === "WorkingDirectoryUnavailable") {
+    return "provider";
+  }
+  return reason._tag === "Cancelled"
+    ? "cancelled"
+    : textKind(cause instanceof Error ? cause.message : String(cause));
+}
+
+type ResultKind =
+  | "authentication"
+  | "usage-limit"
+  | "rate-limit"
+  | "server-error"
+  | "cancelled"
+  | "tool-contract";
+
+const RESULT_KINDS: ReadonlySet<string> = new Set<ResultKind>([
+  "authentication",
+  "usage-limit",
+  "rate-limit",
+  "server-error",
+  "cancelled",
+  "tool-contract",
+]);
+
+function isResultKind(category: string): category is ResultKind {
+  return RESULT_KINDS.has(category);
+}
+
+function resultFailureKind(error: SdkResultError): SdkFailureKind {
+  const category = effectiveResultCategory(error.category, error.apiError);
+  return isResultKind(category) ? category : "provider";
+}
+
 function failureKind(error: SdkTurnFailure): SdkFailureKind {
   switch (error._tag) {
     case "SdkInstrumentationError": {
@@ -63,6 +106,9 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
     case "SdkInternalContinuationError": {
       return "internal-continuation";
     }
+    case "SdkStreamInterruptedError": {
+      return "stream-interrupted";
+    }
     case "SdkProtocolError": {
       return "protocol";
     }
@@ -71,24 +117,10 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
       return "tool-contract";
     }
     case "SdkQueryError": {
-      const { cause, reason } = error;
-      if (reason._tag === "WorkingDirectoryUnavailable") {
-        return "provider";
-      }
-      return reason._tag === "Cancelled"
-        ? "cancelled"
-        : textKind(cause instanceof Error ? cause.message : String(cause));
+      return queryFailureKind(error);
     }
     case "SdkResultError": {
-      const category = effectiveResultCategory(error.category, error.apiError);
-      return category === "authentication" ||
-        category === "usage-limit" ||
-        category === "rate-limit" ||
-        category === "server-error" ||
-        category === "cancelled" ||
-        category === "tool-contract"
-        ? category
-        : "provider";
+      return resultFailureKind(error);
     }
     case "SdkOverageError": {
       return "usage-limit";
@@ -110,6 +142,7 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     errorTag: error._tag,
     ...(error._tag === "SdkToolContractError" ? { toolContract: error.reason } : {}),
     ...(error._tag === "SdkQueryError" ? { operation: error.operation } : {}),
+    ...(error._tag === "SdkStreamInterruptedError" ? { streamInterruption: error.evidence } : {}),
     ...(error._tag === "SdkResultError" && error.terminalReason !== undefined
       ? { terminalReason: safeTerminalReason(error.terminalReason) }
       : {}),

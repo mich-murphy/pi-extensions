@@ -76,11 +76,44 @@ Current models send a Claude Code moving alias (`sonnet`, `opus`, `haiku`). `cla
 
 Every turn records the concrete model from the SDK's `message_start`. `/claude-sdk-status` prints each advertised ID, its selector and the last observed model, and flags a model that differs from the expected one. The live upgrade gate checks the same resolutions, context windows and output limits. See [SDK upgrade](sdk-upgrade.md).
 
+## Retry ownership
+
+A retry is safe only until output has reached Pi. After that, only Pi can retry,
+because only Pi can discard what it has already shown. Pi's own Anthropic
+provider follows the same rule.
+
+- **Before output.** Claude Code retries 429, 5xx and connection failures before
+  any `message_start` reaches Pi. The runner sets `CLAUDE_CODE_MAX_RETRIES` from
+  Pi's `retry.provider.maxRetries`, and to `0` when that is unset, so these
+  retries do not multiply inside Pi's visible retry loop. Inherited retry,
+  watchdog and overloaded-wait overrides are removed.
+- **Commit point.** A main-loop request is open from its `message_start` until a
+  `message_delta` reports a stop reason. A cut attempt ends with `message_stop`
+  but no stop reason. While a request is open, a `system/api_retry` notice or a
+  new `message_start` means Claude Code is resending it, so the runner ends the
+  query at once with `SdkStreamInterruptedError` (diagnostic
+  `stream-interrupted`). A mid-stream `overloaded` error resends without an
+  `api_retry` notice, which is why a new request is checked too.
+- **Untyped API error after output.** A failed `api_error` result with no typed
+  API error, after a request started, is also an interruption (a mid-stream error
+  event or an idle stream).
+- **Refusal retry.** `CLAUDE_CODE_DISABLE_REFUSAL_RETRY=1` stops Claude Code from
+  sending a hidden follow-up after a refusal; Pi surfaces the refusal.
+
+An interruption releases no captured tool calls, and the resent request was the
+same request, so Pi's automatic retry discards the partial output and starts the
+turn again. The error text is worded to match Pi's retry rules. Pi decides what
+to retry by matching error text, so `test/retry-ownership.test.ts` runs every
+provider error message through Pi's installed classifier and fails if any result
+differs from the intended one.
+
 ## Internal continuation safety boundary
 
-More than one distinct SDK `message_start` request in a Pi turn is a contract
-rejection (`SdkInternalContinuationError`, diagnostic `internal-continuation`),
-not malformed result data. The guard remains even for otherwise successful
+A second distinct SDK `message_start` request after the first one completed is a
+contract rejection (`SdkInternalContinuationError`, diagnostic
+`internal-continuation`), not malformed result data. A second request while the
+first is still open is an interruption instead; see
+[retry ownership](#retry-ownership). The guard remains even for otherwise successful
 terminal results, and releases no captured Pi tool calls. Earlier streamed text
 may already be visible. A genuine failed terminal result keeps its original
 category, including cancellation, usage limits and turn budgets.

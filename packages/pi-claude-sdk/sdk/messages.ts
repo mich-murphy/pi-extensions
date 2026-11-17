@@ -80,7 +80,11 @@ export type SdkMessage =
       readonly assistantToolUses?: number;
       /** Main-loop message_start only; identifiers stay local and are never diagnostics. */
       readonly modelRequestStart?: { readonly id?: string };
+      /** The request reported a stop reason, so its response stream completed. */
+      readonly requestStopped?: true;
     }
+  /** Claude Code announced it will resend the current API request. */
+  | { readonly type: "api_retry" }
   | { readonly type: "tool_results"; readonly errorToolResults: number }
   | {
       readonly type: "usage_limit";
@@ -265,8 +269,24 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
   ],
   [
     "stream_event.message_delta",
-    messageParser(Schema.Struct({ event: Schema.Struct({ usage: usageSchema }) }), ({ event }) =>
-      Result.succeed({ type: "usage", usage: event.usage }),
+    messageParser(
+      Schema.Struct({
+        event: Schema.Struct({
+          usage: usageSchema,
+          delta: lenientOptional(
+            Schema.Struct({ stop_reason: lenientOptional(Schema.NullOr(Schema.String)) }),
+          ),
+        }),
+      }),
+      ({ event }) =>
+        Result.succeed({
+          type: "usage",
+          usage: event.usage,
+          // A cut stream ends with message_stop but no stop reason; only a real one completes it.
+          ...(typeof event.delta?.stop_reason === "string" && event.delta.stop_reason !== ""
+            ? { requestStopped: true as const }
+            : {}),
+        }),
     ),
   ],
   [
@@ -305,6 +325,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
     ),
   ],
   ["rate_limit_event", rateLimitMessage],
+  ["system.api_retry", () => Result.succeed({ type: "api_retry" })],
   [
     "result",
     messageParser(resultSchema, (result) => {
@@ -325,6 +346,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
 const decodeNode = Schema.decodeUnknownOption(
   Schema.Struct({
     type: Schema.String,
+    subtype: Schema.optional(Schema.Unknown),
     event: Schema.optional(Schema.Unknown),
     delta: Schema.optional(Schema.Unknown),
   }),
@@ -332,6 +354,9 @@ const decodeNode = Schema.decodeUnknownOption(
 
 function kindOf(input: unknown): string | undefined {
   const message = Option.getOrUndefined(decodeNode(input));
+  if (message?.type === "system") {
+    return typeof message.subtype === "string" ? `system.${message.subtype}` : "system";
+  }
   if (message?.type !== "stream_event") {
     return message?.type;
   }

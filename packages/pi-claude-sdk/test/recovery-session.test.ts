@@ -228,8 +228,16 @@ function continuationRunner(counts: { queries: number }) {
     claudeExecutable: "/usr/bin/claude",
     async *runSdkQuery(params) {
       counts.queries++;
+      // A completed first request followed by a second: a continuation, not a broken stream.
       for (const id of ["one", "two"]) {
         yield streamEvent({ type: "message_start", message: { id, usage: { input_tokens: 1 } } });
+        if (id === "one") {
+          yield streamEvent({
+            type: "message_delta",
+            delta: { stop_reason: "max_tokens" },
+            usage: {},
+          });
+        }
       }
       await deliverToolUse(installedHook(params), {
         id: "effect",

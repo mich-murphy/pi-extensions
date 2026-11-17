@@ -23,6 +23,19 @@ const STRIPPED_VARIABLES: ReadonlySet<string> = new Set([
   "MCP_TOOL_TIMEOUT",
   // Would send the subscription OAuth token to another host; routing is subscription-only.
   "ANTHROPIC_BASE_URL",
+  // Pi owns retries. The runner sets CLAUDE_CODE_MAX_RETRIES from Pi's provider retry setting;
+  // these would otherwise add hidden retries or waits inside each of Pi's attempts
+  // (evidence: strings of Claude Code 2.1.325).
+  "CLAUDE_CODE_MAX_RETRIES",
+  "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES",
+  "CLAUDE_CODE_RETRY_WATCHDOG",
+  "CLAUDE_CODE_RETRY_WATCHDOG_SCOPE",
+  "CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS",
+  "CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS",
+  "CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS",
+  "CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS",
+  "CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS",
+  "CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS",
 ]);
 
 /**
@@ -46,6 +59,8 @@ const FORCED_VARIABLES: Readonly<Record<string, string>> = {
   CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
   // A refusal fallback would silently switch model; Pi surfaces the refusal instead.
   CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1",
+  // A refusal retry sends a hidden follow-up request after output already reached Pi.
+  CLAUDE_CODE_DISABLE_REFUSAL_RETRY: "1",
 };
 
 const DEFAULT_ENTRYPOINT = "pi-claude-sdk";
