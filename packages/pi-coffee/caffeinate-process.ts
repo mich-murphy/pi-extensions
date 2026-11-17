@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { CaffeinateProcessError } from "./no-sleep-lifecycle";
-import type { CaffeinateEnd, CaffeinateProcess } from "./no-sleep-lifecycle";
+import { CaffeinateProcessError } from "./coffee-lifecycle";
+import type { CaffeinateEnd, CaffeinateProcess } from "./coffee-lifecycle";
 
 /**
  * Classify a Node system error (one with `syscall` and `code`) as a caffeinate failure.
@@ -20,7 +20,7 @@ function failed(operation: CaffeinateProcessError["operation"], cause: unknown):
  *
  * @param command - Executable to spawn.
  * @param killGraceMs - Time a stopped child gets to honour SIGTERM before SIGKILL.
- * @returns Spawn function for the no-sleep lifecycle.
+ * @returns Spawn function for the coffee lifecycle.
  */
 export function caffeinateSpawner(
   command: string,

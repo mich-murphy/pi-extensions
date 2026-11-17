@@ -3,8 +3,8 @@ import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { CaffeinateProcessError, registerNoSleep } from "../no-sleep-lifecycle";
-import type { CaffeinateEnd } from "../no-sleep-lifecycle";
+import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
+import type { CaffeinateEnd } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 const ACTIONS = [
@@ -49,7 +49,7 @@ type Model = { held: number | undefined; budget: number; spawns: number; notes: 
 function setup() {
   const pi = fakePi();
   const children: Child[] = [];
-  registerNoSleep(pi.pi, {
+  registerCoffee(pi.pi, {
     platform: "darwin",
     processId: 1,
     spawnCaffeinate: () => {
@@ -149,7 +149,7 @@ function assertLifecycle(actions: readonly { action: Action; pick: number }[]): 
   }
 }
 
-describe("no-sleep lifecycle properties", () => {
+describe("coffee lifecycle properties", () => {
   test("random event sequences match the held-child model", () => {
     new Hegel((tc) => {
       const actions = tc.draw(

@@ -1,4 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { onOffCommand } from "../shared/on-off-command";
+import type { OnOffCommand } from "../shared/on-off-command";
 
 /** Node could not start (spawn) or stop (signal) a caffeinate child. */
 export class CaffeinateProcessError extends Error {
@@ -52,8 +54,8 @@ export type CaffeinateProcess = {
   readonly stop: () => void;
 };
 
-/** Runtime and process dependencies used by the no-sleep lifecycle. */
-export type NoSleepDependencies = {
+/** Runtime and process dependencies used by the coffee lifecycle. */
+export type CoffeeDependencies = {
   /** Current operating-system platform. */
   readonly platform: NodeJS.Platform;
   /** PID that caffeinate watches, so a crashed Pi never leaves the Mac awake. */
@@ -62,53 +64,87 @@ export type NoSleepDependencies = {
   readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
 };
 
+/** Context capabilities consumed by sleep prevention and the `/coffee` command. */
+export type CoffeeContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {
+  readonly ui: Pick<ExtensionContext["ui"], "notify">;
+};
+
 /** Lifecycle callbacks consumed by sleep prevention. */
-export type NoSleepHandlers = {
+export type CoffeeHandlers = {
   [K in "agent_start" | "agent_settled" | "session_shutdown"]: (
     event: { readonly type: K },
-    ctx: Pick<ExtensionContext, "hasUI" | "isIdle"> & {
-      readonly ui: Pick<ExtensionContext["ui"], "notify">;
-    },
+    ctx: CoffeeContext,
   ) => void | Promise<void>;
 };
 
 /** Pi capabilities consumed by sleep prevention. */
-export type NoSleepRegistration = {
+export type CoffeeRegistration = {
+  readonly registerCommand: (name: string, options: OnOffCommand<CoffeeContext>) => void;
   readonly on: {
-    (name: "agent_start", handler: NoSleepHandlers["agent_start"]): unknown;
-    (name: "agent_settled", handler: NoSleepHandlers["agent_settled"]): unknown;
-    (name: "session_shutdown", handler: NoSleepHandlers["session_shutdown"]): unknown;
+    (name: "agent_start", handler: CoffeeHandlers["agent_start"]): unknown;
+    (name: "agent_settled", handler: CoffeeHandlers["agent_settled"]): unknown;
+    (name: "session_shutdown", handler: CoffeeHandlers["session_shutdown"]): unknown;
   };
-};
-
-type NoSleepContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {
-  readonly ui: Pick<ExtensionContext["ui"], "notify">;
 };
 
 const UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START = 1;
 
-function notify(ctx: NoSleepContext, message: string, level: "warning" | "error"): void {
+function notify(ctx: CoffeeContext, message: string, level: "warning" | "error"): void {
   if (ctx.hasUI) {
     ctx.ui.notify(message, level);
   }
 }
 
 /**
- * Hold a macOS sleep assertion while Pi is doing agent work.
+ * Register `/coffee [on|off]`, which turns sleep prevention on or off for the session.
  *
- * @param pi - Pi extension API used to subscribe to lifecycle events.
+ * @param pi - Pi extension API used to register the command.
+ * @param platform - Current operating-system platform, named in the confirmation off macOS.
+ * @param setEnabled - Apply the new session state; called before the confirmation is shown.
+ * @returns A reader for the current session state.
+ */
+function registerCoffeeCommand(
+  pi: CoffeeRegistration,
+  platform: NodeJS.Platform,
+  setEnabled: (enabled: boolean, ctx: CoffeeContext) => void,
+): () => boolean {
+  let enabled = true;
+  const unavailable =
+    platform === "darwin" ? "" : " Sleep prevention is unavailable: it works on macOS only.";
+  pi.registerCommand(
+    "coffee",
+    onOffCommand<CoffeeContext>({
+      name: "coffee",
+      label: "Coffee",
+      description: "Turn sleep prevention while Pi works on or off for this session",
+      enabled: () => enabled,
+      apply: (next, ctx) => {
+        enabled = next;
+        setEnabled(enabled, ctx);
+      },
+      note: () => unavailable,
+    }),
+  );
+  return () => enabled;
+}
+
+/**
+ * Hold a macOS sleep assertion while Pi is doing agent work, unless `/coffee off` turned it off.
+ *
+ * @param pi - Pi extension API used to subscribe to lifecycle events and register `/coffee`.
  * @param dependencies - Platform and process operations owned by this extension runtime.
  */
-export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDependencies): void {
+export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDependencies): void {
   if (dependencies.platform !== "darwin") {
+    registerCoffeeCommand(pi, dependencies.platform, () => undefined);
     return;
   }
 
-  // The only state. A released child is forgotten at once: macOS counts sleep assertions per
-  // process, so it may overlap its successor, and `-w` bounds its lifetime whatever happens.
+  // A released child is forgotten at once: macOS counts sleep assertions per process, so it may
+  // overlap its successor, and `-w` bounds its lifetime whatever happens.
   let held: CaffeinateProcess | undefined;
 
-  const hold = (ctx: NoSleepContext, restartsLeft: number): void => {
+  const hold = (ctx: CoffeeContext, restartsLeft: number): void => {
     const child = dependencies.spawnCaffeinate([
       "-d",
       "-i",
@@ -123,13 +159,13 @@ export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDe
       }
       held = undefined;
       if (end._tag === "failed") {
-        notify(ctx, `No Sleep: ${end.error.message}`, "error");
+        notify(ctx, `Coffee: ${end.error.message}`, "error");
         return;
       }
       const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;
       notify(
         ctx,
-        `No Sleep lost caffeinate unexpectedly (${outcome}). ${restartsLeft > 0 ? "Restarting sleep prevention once." : "Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources."}`,
+        `Coffee lost caffeinate unexpectedly (${outcome}). ${restartsLeft > 0 ? "Restarting sleep prevention once." : "Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources."}`,
         "warning",
       );
       if (restartsLeft > 0) {
@@ -138,15 +174,29 @@ export function registerNoSleep(pi: NoSleepRegistration, dependencies: NoSleepDe
     });
   };
 
+  const holdOnce = (ctx: CoffeeContext): void => {
+    if (held === undefined) {
+      hold(ctx, UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START);
+    }
+  };
+
   const release = (): void => {
     const child = held;
     held = undefined;
     child?.stop();
   };
 
+  const isEnabled = registerCoffeeCommand(pi, dependencies.platform, (enabled, ctx) => {
+    if (!enabled) {
+      release();
+    } else if (!ctx.isIdle()) {
+      holdOnce(ctx);
+    }
+  });
+
   pi.on("agent_start", (_event, ctx) => {
-    if (held === undefined) {
-      hold(ctx, UNEXPECTED_EXIT_RESTARTS_PER_AGENT_START);
+    if (isEnabled()) {
+      holdOnce(ctx);
     }
   });
   pi.on("agent_settled", (_event, ctx) => {

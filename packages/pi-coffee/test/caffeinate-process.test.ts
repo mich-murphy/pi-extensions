@@ -5,8 +5,8 @@ import { join } from "node:path";
 import process from "node:process";
 import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
-import noSleep from "../index";
-import type { CaffeinateEnd, CaffeinateProcess } from "../no-sleep-lifecycle";
+import type { CaffeinateEnd, CaffeinateProcess } from "../coffee-lifecycle";
+import coffee from "../index";
 import { fakePi } from "./fake-pi";
 
 const KILL_GRACE_MS = 50;
@@ -48,7 +48,7 @@ describe("caffeinate process adapter", () => {
   test(
     "escalates to SIGKILL when the child ignores SIGTERM",
     async () => {
-      const directory = mkdtempSync(join(tmpdir(), "no-sleep-"));
+      const directory = mkdtempSync(join(tmpdir(), "coffee-"));
       const ready = join(directory, "ready");
       try {
         const child = spawnNode([
@@ -106,12 +106,12 @@ describe("caffeinate process adapter", () => {
   });
 });
 
-describe("no-sleep entry point", () => {
+describe("coffee entry point", () => {
   test.runIf(process.platform === "darwin")(
     "holds a real caffeinate assertion while the agent works",
     async () => {
       const pi = fakePi();
-      noSleep(pi.pi);
+      coffee(pi.pi);
 
       await pi.emit("agent_start");
       await vi.waitFor(() => {
@@ -127,10 +127,11 @@ describe("no-sleep entry point", () => {
     OBSERVE_TEST_TIMEOUT_MS,
   );
 
-  test.runIf(process.platform !== "darwin")("registers nothing outside macOS", () => {
+  test.runIf(process.platform !== "darwin")("registers only /coffee outside macOS", () => {
     const pi = fakePi();
-    noSleep(pi.pi);
+    coffee(pi.pi);
 
     expect(pi.registeredEvents()).toStrictEqual([]);
+    expect(pi.registeredCommands()).toStrictEqual(["coffee"]);
   });
 });

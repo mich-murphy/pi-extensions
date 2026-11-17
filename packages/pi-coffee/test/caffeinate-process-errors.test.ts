@@ -2,7 +2,7 @@ import { ChildProcess } from "node:child_process";
 import process from "node:process";
 import { describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
-import type { CaffeinateEnd } from "../no-sleep-lifecycle";
+import type { CaffeinateEnd } from "../coffee-lifecycle";
 
 // Waits poll observable state and return as soon as it holds; the budget is only a hang guard.
 const OBSERVE = { timeout: 20_000 };
