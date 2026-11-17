@@ -1,32 +1,43 @@
 minimum_prek_version: "0.5.0"
+# Stages: pre-commit runs the fast checks (each well under a few seconds); pre-push runs the
+# coverage suite and checks that read its output; manual runs the expensive suites:
+#   prek run --stage manual --all-files
+default_install_hook_types: [pre-commit, pre-push]
+priorities:
+  hygiene: 0
+  checks: 10
+  build: 20
+  tests: 30
+  after-tests: 40
 repos:
   - repo: builtin
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
-        priority: 0
+        priority: hygiene
         stages: [pre-commit]
       - id: end-of-file-fixer
-        priority: 0
+        priority: hygiene
         stages: [pre-commit]
       - id: check-merge-conflict
-        priority: 0
+        priority: hygiene
         stages: [pre-commit]
       - id: check-added-large-files
-        priority: 0
+        priority: hygiene
         stages: [pre-commit]
       - id: check-yaml
-        priority: 0
+        priority: hygiene
         stages: [pre-commit]
   - repo: local
     hooks:
+      # --- pre-commit: fast, whole-repository checks ---
       - id: format-check
         name: format-check
         entry: "npm run format:check"
         language: system
         always_run: true
         pass_filenames: false
-        priority: 10
+        priority: checks
         stages: [pre-commit]
       - id: lint
         name: lint
@@ -34,7 +45,7 @@ repos:
         language: system
         types_or: [javascript, jsx, ts, tsx]
         pass_filenames: false
-        priority: 10
+        priority: checks
         stages: [pre-commit]
       - id: markdownlint
         name: markdownlint
@@ -42,14 +53,57 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        priority: 10
+        priority: checks
         stages: [pre-commit]
       - id: typecheck
         name: typecheck
         entry: "npm run typecheck"
         language: system
+        types_or: [javascript, jsx, ts, tsx, json]
         pass_filenames: false
+        priority: checks
+        stages: [pre-commit]
+      - id: fallow-dead-code
+        name: fallow dead-code
+        entry: "npm run fallow:dead-code"
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json]
+        pass_filenames: false
+        priority: checks
+        stages: [pre-commit]
+      - id: fallow-dupes
+        name: fallow dupes
+        entry: "npm run fallow:dupes"
+        language: system
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+        priority: checks
+        stages: [pre-commit]
+      - id: cargo-fmt
+        name: cargo fmt (gateway)
+        entry: "bash -c 'cd packages/pi-peers/gateway && cargo fmt --all -- --check'"
+        language: system
+        files: ^packages/pi-peers/gateway/
+        types: [rust]
+        pass_filenames: false
+        priority: checks
+        stages: [pre-commit]
+      - id: test-tooling
+        name: repository-quality tooling tests
+        entry: "npm run test:tooling"
+        language: system
+        files: ^(scripts/repository-quality\.ts|test-support/repository-quality\.test\.ts|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        priority: checks
+        stages: [pre-commit]
+      # --- pre-push: tests and the checks that read coverage ---
+      - id: gateway-build
+        name: build gateway (native adapter tests need it)
+        entry: "bash -c 'cd packages/pi-peers/gateway && CARGO_BUILD_JOBS=2 cargo build --locked'"
+        language: system
         always_run: true
+        pass_filenames: false
+        priority: build
         stages: [pre-push]
       - id: test
         name: test
@@ -57,4 +111,80 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        priority: tests
         stages: [pre-push]
+      - id: fallow-health
+        name: fallow health
+        entry: "npm run fallow:health"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: after-tests
+        stages: [pre-push]
+      # --- manual: expensive suites (prek run --stage manual --all-files) ---
+      - id: rust
+        name: gateway fmt, clippy, tests and docs
+        entry: "npm run check:rust"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: build
+        stages: [manual]
+      - id: properties
+        name: Hegel properties (random seed, 2000 cases)
+        entry: "npm run test:properties"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: tests
+        require_serial: true
+        stages: [manual]
+      - id: properties-rust
+        name: Hegel gateway properties (random seed, 2000 cases)
+        entry: "npm run test:properties:rust"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: after-tests
+        stages: [manual]
+      # Bombadil drives a real terminal; each suite gets its own priority so they never overlap.
+      - id: bombadil-vim
+        name: Bombadil pi-vim
+        entry: "npm run test:bombadil"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 50
+        stages: [manual]
+      - id: bombadil-scrollback
+        name: Bombadil pi-scrollback
+        entry: "npm run test:bombadil:scrollback"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 51
+        stages: [manual]
+      - id: bombadil-skills
+        name: Bombadil pi-skills
+        entry: "npm run test:bombadil:skills"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 52
+        stages: [manual]
+      - id: bombadil-peers-setup
+        name: Bombadil pi-peers setup
+        entry: "npm run test:bombadil:peers:setup"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 53
+        stages: [manual]
+      - id: bombadil-peers-messages
+        name: Bombadil pi-peers messages (real gateway)
+        entry: "npm run test:bombadil:peers:messages"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 54
+        stages: [manual]

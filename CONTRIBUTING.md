@@ -37,6 +37,22 @@ It runs these steps in order and stops at the first failure:
 | Fallow | `npm run fallow` | Dead code, duplication or a function over the complexity limit, anywhere in the repo |
 | Markdown | `npm run markdownlint` | Any Markdown lint finding |
 
+### Git hooks
+
+[prek](https://prek.j178.dev/) runs the same commands as Git hooks. Install them once with `prek install`, which adds both the pre-commit and pre-push hooks.
+
+| Stage | Runs | Typical time |
+| --- | --- | --- |
+| `pre-commit` | File hygiene, format, lint, Markdown lint, types, Fallow dead code and duplication, gateway `cargo fmt`, and the tooling fixtures when their files change | A few seconds |
+| `pre-push` | Gateway build, the coverage suite, then Fallow health against that coverage | About two minutes |
+| `manual` | `npm run check:rust`, both Hegel property suites with a random seed, and every Bombadil suite in turn | Fifteen minutes or more |
+
+Run the manual stage before a change that touches terminal behaviour, the gateway or a property:
+
+```sh
+prek run --stage manual --all-files
+```
+
 ### Repository file scope
 
 Formatting, JavaScript/TypeScript lint and Markdown lint use `scripts/repository-quality.ts` to select existing regular files from the **Git index** (`git ls-files --cached -z`). This includes every tracked file of the relevant type, including dotfiles, agent skills/config and newly staged additions. They check the current working-copy content, not the staged blob. Unstaged edits are checked; files deleted from disk or staged for deletion are not. Indexed symlinks of these types fail with an actionable error rather than following a target outside the checkout.
