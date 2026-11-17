@@ -4,6 +4,8 @@
 //
 // Every property reads only what is on screen: the mode label on the editor's bottom border, the
 // grid cells between the editor's borders, and the hardware cursor Pi places at the edit point.
+// Command effects are checked in-process by vim-properties.test.ts; this spec checks what only a
+// real terminal shows: labels, Escape, width, resize, submit and wide-character deletes.
 import { always, next } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
@@ -160,59 +162,60 @@ export const vimKeys = weighted([
   [20, typeFromSet(ESCAPE)],
   [10, typeFromSet(PRINTABLE)],
   [10, typeFromSet(CharSet.fromLiterals(...INERT))],
-  // From idle Normal mode: clear the buffer and type a short line the model can follow.
+  // From idle Normal mode: clear the buffer and type a short line, some with wide characters.
   [8, actions(() => [{ TypeText: { Regexp: "(dd){0,2}cc([a-z]{1,5}|漢|字|😀|é| ){1,8}" } }])],
+  [4, actions(() => [{ TypeText: { Regexp: "(dd){0,2}cc(漢|字|😀|[a-z]){2,6}" } }])],
   // A line longer than any terminal width in RESIZE, so it wraps.
   [2, actions(() => [{ TypeText: { Regexp: "[a-z]{4,9}( [a-z]{4,9}){14,24}" } }])],
   [8, typeFromSet(EDITING)],
   [2, actions(() => [RESIZE])],
+  // Resize while d, c or di is pending, and start those commands often enough to get there.
   [10, actions(() => [RESIZE]).when(() => (editor.current?.pending ?? "") !== "")],
-  // Escape leaves the cursor on the last character, where x, dw and D act like their neighbours;
-  // move it back into the line so that off-by-one edits show.
-  [15, typeFromSet(CharSet.fromLiterals("0", "b", "h")).when(() => normalIdle())],
-  // Start and finish the two- and three-key commands often enough for the model to check them.
   [6, typeFromSet(CharSet.fromLiterals("d", "c")).when(() => normalIdle())],
-  // Lines the word commands are modelled on (lowercase and spaces), and lines of wide characters.
-  [6, actions(() => [{ TypeText: { Regexp: "(dd){0,2}cc[a-z]{1,5}( [a-z]{1,5}){1,4}" } }])],
-  [4, actions(() => [{ TypeText: { Regexp: "(dd){0,2}cc(漢|字|😀|[a-z]){2,6}" } }])],
-  [
-    10,
-    typeFromSet(CharSet.fromLiterals("x", "D", "h", "l", "w", "b", "0", "$")).when(() =>
-      normalIdle(),
-    ),
-  ],
-  [
-    20,
-    typeFromSet(CharSet.fromLiterals("d", "c", "w", "i")).when(
-      () => (editor.current?.pending ?? "") !== "",
-    ),
-  ],
-  // `dw` and `cw` from a word start with another word after it, where an over-long delete shows.
-  // Weighted well above the rest together, so most word-start states lead on to `dw` or `cw`.
-  [60, typeFromSet(CharSet.fromLiterals("0", "b")).when(() => onWordLine() && !atWordStart())],
-  // `x` and `D` on a wide character, where deleting half of it or a neighbour shows.
-  [40, actions(towardWide).when(() => wideColumns().length > 0 && !onWide())],
-  [150, typeFromSet(CharSet.fromLiterals("x", "x", "D")).when(() => onWide())],
-  [300, typeFromSet(CharSet.fromLiterals("d", "d", "c")).when(() => atWordStart())],
-  [
-    300,
-    typeFromSet(CharSet.fromLiterals("w")).when(() =>
-      ["d", "c"].includes(editor.current?.pending ?? ""),
-    ),
-  ],
+  [10, typeFromSet(CharSet.fromLiterals("d", "c", "w", "i")).when(() => pendingShown())],
+  // Escape leaves the cursor on the last character; move it back so `x` acts inside the line.
+  [10, typeFromSet(CharSet.fromLiterals("0", "b", "h")).when(() => normalIdle())],
+  // `x` on a wide character, where deleting half of it or a neighbour shows.
+  [20, actions(towardWide).when(() => wideColumns().length > 0 && !onWide())],
+  [60, typeFromSet(CharSet.fromLiterals("x")).when(() => onWide())],
 ]);
 
-/** On a model line in idle Normal mode, the columns where a wide character starts. */
+const graphemes = (cells: readonly string[]): string[] => cells.filter((cell) => cell !== "");
+const textOf = (screen: Screen): string =>
+  screen.rows
+    .map((row) => graphemes(row).join(""))
+    .join("\n")
+    .trim();
+const compact = (screen: Screen): string => screen.rows.flat().join("").replaceAll(/\s/gu, "");
+const normalIdle = (): boolean =>
+  editor.current?.mode === "NORMAL" && editor.current.pending === "";
+const pendingShown = (): boolean => (editor.current?.pending ?? "") !== "";
+
+/** One unwrapped, fully drawn line in idle Normal mode. */
+function oneIdleLine(screen: Screen | null): screen is Screen {
+  return normalIdle() && screen !== null && screen.rows.length === 1 && !screen.clipped;
+}
+
+/** On one idle line, the cursor rests on a drawn character (not a hidden trailing space). */
+function onDrawnCharacter(screen: Screen | null): screen is Screen {
+  if (!oneIdleLine(screen) || screen.cursor.row !== 0) {
+    return false;
+  }
+  const cells = screen.rows[0] ?? [];
+  return screen.cursor.col < cells.length && cells[screen.cursor.col] !== "";
+}
+
+/** On one idle line, the columns where a wide character starts. */
 function wideColumns(): number[] {
   const screen = editor.current;
-  if (!normalIdle() || !isModelState(screen)) {
+  if (!onDrawnCharacter(screen)) {
     return [];
   }
   const cells = screen.rows[0] ?? [];
   return cells.flatMap((cell, index) => (cell !== "" && cells[index + 1] === "" ? [index] : []));
 }
 
-/** The cursor rests on a wide character of a model line. */
+/** The cursor rests on a wide character of one idle line. */
 function onWide(): boolean {
   return wideColumns().includes(editor.current?.cursor.col ?? -1);
 }
@@ -223,249 +226,6 @@ function towardWide() {
   const key = wideColumns().some((wide) => wide > col) ? "l" : "h";
   return [{ TypeText: { CharSet: CharSet.fromLiterals(key) } }];
 }
-
-/** Idle Normal mode on a one-line buffer of two or more lowercase words. */
-function onWordLine(): boolean {
-  const screen = editor.current;
-  const line = (screen?.rows[0] ?? []).join("");
-  return normalIdle() && isModelState(screen) && /^[a-z ]+$/u.test(line) && /\S \S/u.test(line);
-}
-
-/** On a word line, the cursor on a word start with a later word. */
-function atWordStart(): boolean {
-  const screen = editor.current;
-  if (screen === null || !onWordLine()) {
-    return false;
-  }
-  const line = (screen.rows[0] ?? []).join("");
-  const col = screen.cursor.col;
-  const starts = /\S/u.test(line[col] ?? "") && (col === 0 || line[col - 1] === " ");
-  return starts && / \S/u.test(line.slice(col));
-}
-
-// The reference model: one buffer line as graphemes, the cursor as a grapheme index.
-type Line = readonly string[];
-type Effect = { lines: Line[]; row: number; col: number; insert: boolean };
-type Prediction = Effect & { mode: Mode; pending: string };
-
-const graphemes = (cells: readonly string[]): string[] => cells.filter((cell) => cell !== "");
-const isBlank = (line: Line, col: number): boolean => !/\S/u.test(line[col] ?? "");
-const cut = (line: Line, from: number, to: number): Line => [
-  ...line.slice(0, from),
-  ...line.slice(to),
-];
-/** pi-vim's clamp: Normal mode never rests past the last character. */
-const stay = (line: Line, col: number): Effect => ({
-  lines: [line],
-  row: 0,
-  col: col > 0 && col >= line.length ? col - 1 : col,
-  insert: false,
-});
-const enter = (line: Line, col: number): Effect => ({ lines: [line], row: 0, col, insert: true });
-
-/** Pi's word end for lowercase words and spaces: skip spaces, then the word. */
-function wordEnd(line: Line, col: number): number {
-  let index = col;
-  while (index < line.length && line[index] === " ") {
-    index++;
-  }
-  while (index < line.length && line[index] !== " ") {
-    index++;
-  }
-  return index;
-}
-
-/** Pi's previous word start for lowercase words and spaces. */
-function wordStart(line: Line, col: number): number {
-  let index = col;
-  while (index > 0 && line[index - 1] === " ") {
-    index--;
-  }
-  while (index > 0 && line[index - 1] !== " ") {
-    index--;
-  }
-  return index;
-}
-
-function nextWord(line: Line, col: number): Effect {
-  let index = isBlank(line, col) ? col : wordEnd(line, col);
-  while (index < line.length && line[index] === " ") {
-    index++;
-  }
-  return stay(line, index);
-}
-
-function innerWord(line: Line, col: number, insert: boolean): Effect {
-  const finish = insert ? enter : stay;
-  if (isBlank(line, col)) {
-    return finish(line, col);
-  }
-  const start = wordStart(line, wordEnd(line, col));
-  return finish(cut(line, start, wordEnd(line, start)), start);
-}
-
-type Command = (line: Line, col: number) => Effect | null;
-
-/** Word commands are modelled only where Pi's word boundaries are plain: lowercase and spaces. */
-const words =
-  (command: Command): Command =>
-  (line, col) =>
-    line.every((grapheme) => /^[a-z ]$/u.test(grapheme)) ? command(line, col) : null;
-
-// `u` depends on Pi's undo history and `j`/`k` browse prompt history from a one-line buffer, so
-// neither has a screen-only prediction.
-const EFFECTS: ReadonlyMap<string, Command> = new Map<string, Command>([
-  ["h", (line, col) => stay(line, Math.max(0, col - 1))],
-  ["l", (line, col) => stay(line, Math.min(line.length, col + 1))],
-  ["0", (line) => stay(line, 0)],
-  ["$", (line) => stay(line, line.length)],
-  ["x", (line, col) => stay(cut(line, col, col + 1), col)],
-  ["D", (line, col) => stay(line.slice(0, col), col)],
-  ["C", (line, col) => enter(line.slice(0, col), col)],
-  ["dd", () => stay([], 0)],
-  ["cc", () => enter([], 0)],
-  ["i", enter],
-  ["a", (line, col) => enter(line, Math.min(line.length, col + 1))],
-  ["A", (line) => enter(line, line.length)],
-  ["I", (line) => enter(line, 0)],
-  ["o", (line) => ({ lines: [line, []], row: 1, col: 0, insert: true })],
-  ["O", (line) => ({ lines: [[], line], row: 0, col: 0, insert: true })],
-  ["w", words(nextWord)],
-  ["b", words((line, col) => stay(line, wordStart(line, col)))],
-  ["dw", words((line, col) => stay(cut(line, col, wordEnd(line, col)), col))],
-  ["cw", words((line, col) => enter(cut(line, col, wordEnd(line, col)), col))],
-  ["diw", words((line, col) => innerWord(line, col, false))],
-  ["ciw", words((line, col) => innerWord(line, col, true))],
-  ["u", () => null],
-  ["j", () => null],
-  ["k", () => null],
-]);
-const PREFIXES: ReadonlySet<string> = new Set(["d", "c", "di", "ci"]);
-
-function isPrintableKey(key: string): boolean {
-  const code = key.codePointAt(0);
-  return code !== undefined && code >= 0x20 && code !== 0x7f && String.fromCodePoint(code) === key;
-}
-
-/**
- * A non-printable key cancels a pending command and is dropped; alone it is Pi's. Pi's app
- * shortcuts on modified keys (Ctrl+Up, Alt+Up, ...) never reach the editor, so the model leaves
- * those out.
- */
-function cancelsPending(pending: string, key: string): boolean {
-  const appShortcut = key.includes(";") || (key.length > 1 && key[1] !== "[");
-  return pending !== "" && !appShortcut;
-}
-
-const unchanged = (line: Line, col: number, pending: string): Prediction => ({
-  lines: [line],
-  row: 0,
-  col,
-  insert: false,
-  mode: "NORMAL",
-  pending,
-});
-
-/** Escape, control sequences and multi-character text. */
-function predictNonPrintable(
-  line: Line,
-  col: number,
-  pending: string,
-  key: string,
-): Prediction | null {
-  if (key === "\u001B") {
-    return unchanged(line, col, "");
-  }
-  // Typed text of several characters reaches the editor one key at a time: not one step.
-  const several =
-    !key.startsWith("\u001B") && String.fromCodePoint(key.codePointAt(0) ?? 0) !== key;
-  return !several && cancelsPending(pending, key) ? unchanged(line, col, "") : null;
-}
-
-/** What Normal mode with `pending` typed shows after `key`, or null when the model cannot say. */
-function predict(line: Line, col: number, pending: string, key: string): Prediction | null {
-  if (!isPrintableKey(key)) {
-    return predictNonPrintable(line, col, pending, key);
-  }
-  const sequence = pending + key;
-  const command = EFFECTS.get(sequence);
-  if (command === undefined) {
-    return unchanged(line, col, PREFIXES.has(sequence) ? sequence : "");
-  }
-  const effect = command(line, col);
-  return effect && { ...effect, mode: effect.insert ? "INSERT" : "NORMAL", pending: "" };
-}
-
-/** The graphemes drawn two cells wide in a row. */
-function wideGraphemes(cells: readonly string[]): Set<string> {
-  return new Set(cells.filter((cell, index) => cell !== "" && cells[index + 1] === ""));
-}
-
-function shows(after: Screen, expected: Prediction, wide: ReadonlySet<string>): boolean {
-  if (
-    after.mode !== expected.mode ||
-    after.pending !== expected.pending ||
-    after.rows.length !== expected.lines.length
-  ) {
-    return false;
-  }
-  const text = expected.lines.every(
-    (line, index) =>
-      graphemes(after.rows[index] ?? [])
-        .join("")
-        .trimEnd() === line.join("").trimEnd(),
-  );
-  const column = (expected.lines[expected.row] ?? [])
-    .slice(0, expected.col)
-    .reduce((sum, grapheme) => sum + (wide.has(grapheme) ? 2 : 1), 0);
-  return text && after.cursor.row === expected.row && after.cursor.col === column;
-}
-
-/** One unwrapped, fully drawn line in Normal mode with the cursor on it. */
-function isModelState(screen: Screen | null): screen is Screen {
-  const cells = screen?.rows[0];
-  return (
-    screen !== null &&
-    cells !== undefined &&
-    screen.mode === "NORMAL" &&
-    screen.rows.length === 1 &&
-    !screen.clipped &&
-    screen.cursor.row === 0 &&
-    screen.cursor.col < screen.width - 1 &&
-    cells[screen.cursor.col] !== ""
-  );
-}
-
-/**
- * The screen cannot show trailing spaces, so the buffer is the drawn graphemes plus some number of
- * spaces that keep the line unwrapped. The step passes when the model agrees for one such count.
- */
-function followsModel(before: Screen, key: string, after: Screen): boolean {
-  const cells = before.rows[0] ?? [];
-  const drawn = graphemes(cells);
-  const wide = wideGraphemes(cells);
-  const col = before.cursor.col;
-  const index = graphemes(cells.slice(0, col)).length + Math.max(0, col - cells.length);
-  const least = index > 0 && index >= drawn.length ? index - drawn.length + 1 : 0;
-  const most = Math.max(least, before.width - 2 - cells.length);
-  for (let spaces = least; spaces <= most; spaces++) {
-    const line = [...drawn, ...Array.from({ length: spaces }, () => " ")];
-    const expected = predict(line, index, before.pending, key);
-    if (expected === null || shows(after, expected, wide)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-const textOf = (screen: Screen): string =>
-  screen.rows
-    .map((row) => graphemes(row).join(""))
-    .join("\n")
-    .trim();
-const compact = (screen: Screen): string => screen.rows.flat().join("").replaceAll(/\s/gu, "");
-const normalIdle = (): boolean =>
-  editor.current?.mode === "NORMAL" && editor.current.pending === "";
 
 /** Pi never exits or crashes: no key in the generator asks it to. */
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
@@ -479,18 +239,24 @@ export const escapeEntersNormal: Formula = always(
 );
 
 /**
- * From Normal mode on a one-line buffer, each key's effect on text, cursor, mode and pending
- * command matches the README's table, including keys typed after a pending `d`, `c` or `di`.
+ * `x` removes exactly the character under the cursor, whole, however many cells it is drawn in.
+ * Pi's real terminal width rules decide which cells a wide character covers.
  */
-export const normalModeFollowsModel: Formula = always(() => {
+export const xDeletesOneCharacter: Formula = always(() => {
   const before = editor.current;
-  if (!isModelState(before)) {
+  if (!onDrawnCharacter(before)) {
     return true;
   }
+  const cells = before.rows[0] ?? [];
+  const index = graphemes(cells.slice(0, before.cursor.col)).length;
+  const expected = graphemes(cells).toSpliced(index, 1).join("").trimEnd();
   return next(() => {
-    const key = lastKey.current;
     const after = editor.current;
-    return key === null || after === null || followsModel(before, key, after);
+    return (
+      lastKey.current !== "x" ||
+      after === null ||
+      graphemes(after.rows.flat()).join("").trimEnd() === expected
+    );
   });
 });
 
