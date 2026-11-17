@@ -190,6 +190,9 @@ export const vimKeys = weighted([
   // `dw` and `cw` from a word start with another word after it, where an over-long delete shows.
   // Weighted well above the rest together, so most word-start states lead on to `dw` or `cw`.
   [60, typeFromSet(CharSet.fromLiterals("0", "b")).when(() => onWordLine() && !atWordStart())],
+  // `x` and `D` on a wide character, where deleting half of it or a neighbour shows.
+  [40, actions(towardWide).when(() => wideColumns().length > 0 && !onWide())],
+  [150, typeFromSet(CharSet.fromLiterals("x", "x", "D")).when(() => onWide())],
   [300, typeFromSet(CharSet.fromLiterals("d", "d", "c")).when(() => atWordStart())],
   [
     300,
@@ -198,6 +201,28 @@ export const vimKeys = weighted([
     ),
   ],
 ]);
+
+/** On a model line in idle Normal mode, the columns where a wide character starts. */
+function wideColumns(): number[] {
+  const screen = editor.current;
+  if (!normalIdle() || !isModelState(screen)) {
+    return [];
+  }
+  const cells = screen.rows[0] ?? [];
+  return cells.flatMap((cell, index) => (cell !== "" && cells[index + 1] === "" ? [index] : []));
+}
+
+/** The cursor rests on a wide character of a model line. */
+function onWide(): boolean {
+  return wideColumns().includes(editor.current?.cursor.col ?? -1);
+}
+
+/** One step toward the nearest wide character: `l` if one lies to the right, else `h`. */
+function towardWide() {
+  const col = editor.current?.cursor.col ?? 0;
+  const key = wideColumns().some((wide) => wide > col) ? "l" : "h";
+  return [{ TypeText: { CharSet: CharSet.fromLiterals(key) } }];
+}
 
 /** Idle Normal mode on a one-line buffer of two or more lowercase words. */
 function onWordLine(): boolean {
