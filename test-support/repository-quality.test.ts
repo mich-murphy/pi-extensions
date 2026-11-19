@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+// oxlint-disable-next-line import/no-unassigned-import -- run for its side effect: it clears git hook variables before any fixture spawns git
+import "./isolate-git.ts";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runner = resolve(checkout, "scripts/repository-quality.ts");
