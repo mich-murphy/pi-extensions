@@ -145,13 +145,7 @@ export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDepen
   let held: CaffeinateProcess | undefined;
 
   const hold = (ctx: CoffeeContext, restartsLeft: number): void => {
-    const child = dependencies.spawnCaffeinate([
-      "-d",
-      "-i",
-      "-s",
-      "-w",
-      String(dependencies.processId),
-    ]);
+    const child = dependencies.spawnCaffeinate(["-i", "-s", "-w", String(dependencies.processId)]);
     held = child;
     child.onEnd((end) => {
       if (held !== child) {
