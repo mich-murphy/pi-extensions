@@ -71,7 +71,7 @@ describe("coffee lifecycle", () => {
     await pi.emit("agent_start");
     await pi.emit("agent_start");
     expect(pi.spawned).toHaveLength(1);
-    expect(pi.spawned[0]?.args).toStrictEqual(["-d", "-i", "-s", "-w", "9876"]);
+    expect(pi.spawned[0]?.args).toStrictEqual(["-i", "-s", "-w", "9876"]);
 
     await pi.emit("agent_end");
     expect(pi.spawned[0]?.child.stops).toBe(0);
@@ -296,7 +296,7 @@ describe("/coffee command", () => {
 
     await pi.command("on");
     expect(pi.spawned).toHaveLength(1);
-    expect(pi.spawned[0]?.args).toStrictEqual(["-d", "-i", "-s", "-w", "9876"]);
+    expect(pi.spawned[0]?.args).toStrictEqual(["-i", "-s", "-w", "9876"]);
 
     await pi.command("on");
     await pi.emit("agent_start");

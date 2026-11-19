@@ -20,14 +20,15 @@ Sleep prevention is on when a session starts. The command confirms each change w
 
 Pi holds the Mac awake from the start of agent work, including retries and compaction. It releases when Pi settles and is idle, or when the session shuts down. If the process exits unexpectedly, it restarts once. caffeinate exits when Pi exits, so a crashed Pi cannot leave the Mac awake.
 
-It runs `/usr/bin/caffeinate -d -i -s -w <pi-pid>`:
+It runs `/usr/bin/caffeinate -i -s -w <pi-pid>`:
 
 | Flag | Prevents |
 | --- | --- |
-| `-d` | Display sleep. |
 | `-i` | Idle sleep. |
 | `-s` | System sleep, only on AC power. |
 | `-w` | Outliving Pi: caffeinate exits when Pi does. |
+
+The display still sleeps on its normal schedule. An agent needs the Mac awake, not a lit screen.
 
 ## Troubleshooting
 

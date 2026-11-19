@@ -25,7 +25,7 @@ async function ended(child: CaffeinateProcess): Promise<CaffeinateEnd> {
 }
 
 function caffeinateIsRunning(): boolean {
-  return spawnSync("pgrep", ["-f", `caffeinate -d -i -s -w ${process.pid}`]).status === 0;
+  return spawnSync("pgrep", ["-f", `caffeinate -i -s -w ${process.pid}`]).status === 0;
 }
 
 describe("caffeinate process adapter", () => {
