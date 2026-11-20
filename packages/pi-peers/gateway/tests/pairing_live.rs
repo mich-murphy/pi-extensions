@@ -474,6 +474,22 @@ fn non_ephemeral_listener() -> std::net::TcpListener {
         .expect("a free non-ephemeral loopback port")
 }
 
+/// Retries `attempt` until it succeeds, failing with `expectation` after five seconds.
+///
+/// A test thread that spawns a process gives the child a copy of every open descriptor until
+/// its exec closes them, so a listener this test drops can stay bound, and keep accepting, for
+/// a moment afterwards. Only something that keeps holding the port fails the deadline.
+fn eventually<T>(expectation: &str, mut attempt: impl FnMut() -> Option<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(value) = attempt() {
+            return value;
+        }
+        assert!(Instant::now() < deadline, "{expectation}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 #[test]
 fn occupied_remote_port_degrades_only_remote_and_does_not_rebind() {
     let f = Fixture::new();
@@ -506,10 +522,18 @@ fn occupied_remote_port_degrades_only_remote_and_does_not_rebind() {
         "static credential validation is not bind status"
     );
     drop(occupied);
-    let reclaimed = std::net::TcpListener::bind(address).unwrap();
+    let reclaimed = eventually("the freed port stays free of the gateway", || {
+        std::net::TcpListener::bind(address).ok()
+    });
     std::thread::sleep(Duration::from_millis(150));
     assert!(gateway.child.try_wait().unwrap().is_none());
     drop(reclaimed);
+    eventually("no background rebind", || {
+        std::net::TcpStream::connect(address).is_err().then_some(())
+    });
+    // Once every copy of the listener is closed, nothing in this test binds the port again,
+    // so a later listener could only be the gateway retrying.
+    std::thread::sleep(Duration::from_millis(150));
     assert!(
         std::net::TcpStream::connect(address).is_err(),
         "no background rebind"
