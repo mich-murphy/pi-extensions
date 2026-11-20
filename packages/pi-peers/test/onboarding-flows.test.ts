@@ -5,6 +5,7 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { describe, expect, test, vi } from "vitest";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
+import { UnsafeInstallFolder } from "../onboarding/acquire.js";
 import { MenuModel } from "../onboarding/menu/model.js";
 import type { Row, Screen } from "../onboarding/menu/model.js";
 import { outcomeLines, runWithProgress, storedOutcome } from "../onboarding/menu/progress.js";
@@ -16,7 +17,7 @@ import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, setupForm } from "../onboarding/menu/setup-form.js";
 import type { SetupDraft } from "../onboarding/menu/setup-form.js";
 import { PeersMenu } from "../onboarding/menu/tui.js";
-import { safeReason } from "../onboarding/outcome.js";
+import { attempt, failedWith, INCOMPLETE_NEXT, safeReason } from "../onboarding/outcome.js";
 import { defaultChoices } from "../onboarding/plan.js";
 import { NO_CHANGES } from "../onboarding/route.js";
 import { setupCommand } from "../onboarding/setup.js";
@@ -219,6 +220,35 @@ describe("progress and stored outcomes", () => {
       "w",
     );
     expect(safeReason(new Error('quote {"secret": 1}'), "w")).toBe("w");
+  });
+  test("an unsafe install folder failure names the folder and the fix, not Doctor", async () => {
+    const refusal = new UnsafeInstallFolder(
+      "/home/dev/scratch",
+      "can be changed by other users",
+      "Run chmod go-w /home/dev/scratch, or use a Pi agent directory outside it",
+    );
+    const outcome = failedWith("Setup failed", refusal, INCOMPLETE_NEXT, ["generic"], "withheld");
+    expect(outcome.headline).toBe("✗ Setup failed — unsafe install folder /home/dev/scratch");
+    expect(outcome.next).toBe(
+      "Nothing you had before was changed. /home/dev/scratch can be changed by other users. Run chmod go-w /home/dev/scratch, or use a Pi agent directory outside it, then try again.",
+    );
+    expect(outcome.next).not.toContain("Doctor");
+    expect(outcome.technical).toStrictEqual([
+      "Gateway install stopped before any download or settings change: /home/dev/scratch can be changed by other users.",
+    ]);
+    const repaired = await attempt("Repair failed", INCOMPLETE_NEXT, async () => {
+      throw refusal;
+    });
+    expect(repaired.headline).toBe("✗ Repair failed — unsafe install folder /home/dev/scratch");
+    expect(
+      failedWith("Setup failed", new SyntaxError("x"), INCOMPLETE_NEXT, [], "withheld"),
+    ).toStrictEqual({
+      ok: false,
+      headline: "✗ Setup failed — withheld",
+      facts: [],
+      next: INCOMPLETE_NEXT,
+      technical: [],
+    });
   });
   test("storedOutcome rejects other shapes and bounds tampered data", () => {
     expect(storedOutcome({ ok: "yes", headline: "x", facts: [] })).toBeUndefined();

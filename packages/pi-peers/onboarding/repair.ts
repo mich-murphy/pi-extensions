@@ -12,7 +12,7 @@ import { actionForm, BLOCKED_HELP, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import type { Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
-import { failed, INCOMPLETE_NEXT, pendingOutcome, safeReason, SAVED_NEXT } from "./outcome.js";
+import { failedWith, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
 import { replaceOwned } from "./owned-file.js";
 import type { Acquisition, Reconnect } from "./route.js";
 import {
@@ -175,7 +175,7 @@ async function repairWork(
       step(message.startsWith("Acquiring") ? STEPS[0] : STEPS[1]);
     });
   } catch (error) {
-    return failed("Repair failed", safeReason(error), INCOMPLETE_NEXT);
+    return failedWith("Repair failed", error, INCOMPLETE_NEXT);
   }
   step(STEPS[2]);
   try {

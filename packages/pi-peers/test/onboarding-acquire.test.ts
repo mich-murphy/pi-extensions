@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { acquireGateway } from "../onboarding/acquire.js";
+import { acquireGateway, UnsafeInstallFolder } from "../onboarding/acquire.js";
 import type {
   AcquisitionPlan,
   AcquisitionResult,
@@ -273,7 +273,35 @@ describe("approved gateway acquisition", () => {
   test("never adopts existing installations or follows symlink roots", async () => {
     const s = await setup();
     await fs.symlink(s.root, s.plan.installRoot);
-    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("ancestor");
+    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeInstallFolder);
+    expect(s.fetcher).not.toHaveBeenCalled();
+  });
+  test("names a group-writable folder on the install path and how to fix it", async () => {
+    const s = await setup();
+    const shared = path.join(s.root, "shared");
+    await fs.mkdir(shared, { mode: 0o700 });
+    await fs.chmod(shared, 0o775);
+    const error: unknown = await acquireGateway(
+      { ...s.plan, installRoot: path.join(shared, "agent", "install") },
+      s.options,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(UnsafeInstallFolder);
+    expect(error).toMatchObject({
+      folder: shared,
+      problem: "can be changed by other users",
+      fix: `Run chmod go-w ${shared}, or use a Pi agent directory outside it`,
+    });
+    await expect(fs.readdir(shared)).resolves.toStrictEqual([]);
+    expect(s.fetcher).not.toHaveBeenCalled();
+  });
+  test("names an install root that is not private", async () => {
+    const s = await setup();
+    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await fs.chmod(s.plan.installRoot, 0o750);
+    await expect(acquireGateway(s.plan, s.options)).rejects.toMatchObject({
+      folder: s.plan.installRoot,
+      problem: "is not private to this account",
+    });
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("rejects untrusted redirect and oversized stream", async () => {
