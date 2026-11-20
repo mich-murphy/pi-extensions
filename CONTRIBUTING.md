@@ -89,6 +89,45 @@ The numbers are project conventions. They keep review tractable; no source gives
 
 **Complexity.** Fallow flags a function above cyclomatic complexity 20, cognitive complexity 15 or a CRAP score of 30, and above 60 lines. These are Fallow's defaults, and `.fallowrc.json` does not override them. They are looser than McCabe's original limit of 10. [NIST SP 500-235](http://www.mccabe.com/pdf/mccabe-nist235r.pdf) allows limits up to 15 when the project has operational advantages such as experienced staff. SonarSource's [cognitive complexity paper](https://www.sonarsource.com/docs/CognitiveComplexity.pdf) defines the metric and gives no threshold. The limits here are not claimed to be evidence-based.
 
+## Remove a test that adds no detection
+
+A test that repeats other tests costs time to read and maintain and adds no protection. [Fallow mutation testing](https://docs.fallow.tools) changes the code in small ways (mutants) and records which tests fail on each change. A test *kills* a mutant when it fails on it. A *unique kill* is a mutant that this test kills and no other test does.
+
+**The rule.** A test with no unique kill can be removed after a person reads it and finds no reason below to keep it. Mutation evidence finds the candidates; it never removes a test on its own.
+
+Keep a test with no unique kill when:
+
+- It is the regression test of a fixed defect or of a property counterexample.
+- It is the readable example of a contract that a property test or a large test otherwise covers.
+- It is a property test. The kill matrix replays one fixed seed; the nightly run draws inputs that seed never reaches.
+- It is a boundary row that a property's generator does not draw, such as a width below the property's range.
+- It checks behaviour that mutants cannot reach: a child process, a real terminal, the gateway binary, a type-level contract, or an error message that a user reads.
+- Its kills are shared only with other candidates. Removing all of them together loses the detection, so remove at most one of them.
+- Its evidence is incomplete: a covering mutant timed out, broke the whole file at import, or has `kill_matrix_complete: false`.
+- Another package's tests are its only co-killers. Each package's tests must still detect a change to that package on their own.
+
+Low complexity does not mark a test as removable. Read each candidate.
+
+### Run a removal pass
+
+Run every mutation operator: the default set misses changes such as `every` to `some`. `.fallowrc.json` names all of them. Run mutation in the Docker sandbox, which keeps mutated code that writes files, spawns processes or opens sockets away from your checkout:
+
+```sh
+# 1. Save the baseline kill matrix of one package.
+npm run mutation -- packages/pi-retry --kill-matrix --format json --quiet > .fallow/reports/pi-retry.json
+# 2. Read each test with kills and no unique kill in kill_matrix.tests, and remove the ones the rule allows.
+# 3. Prove that no detection is lost. The run lists each mutant that the baseline detected and this run does not.
+npm run mutation -- packages/pi-retry --kill-matrix --format json --quiet --compare /reports/pi-retry.json
+# 4. Prove that no coverage is lost.
+npm run test:coverage
+```
+
+The `--compare` run must list no lost mutant, and line and branch coverage must not fall. `--compare` accepts only a complete report. `config/fallow-mutation.jsonc` hides the live tests, which the default Vitest config never lists, so the report stays complete. Give every test a title that is unique in its file and does not change between processes, for example no temporary path: Fallow attributes kills by title.
+
+A package with thousands of mutants takes up to an hour. To check named tests without a full matrix, pass `--kill-matrix-for <file>` or `--kill-matrix-for '<file>::<describe> > <test>'`.
+
+The weekly [tests audit](.github/workflows/tests-audit.yml) runs `--kill-matrix-for` on the test files changed in the past week and lists the tests with no unique kill in its job summary. It never fails and removes nothing.
+
 ## Property tests
 
 Property tests use `@hegeldev/hegel`. Every property takes its settings from `propertySettings()` in `test-support/hegel-settings.ts`. The pull request gate replays seed 12345 with each property's own case count, so it is deterministic. A nightly workflow runs only the property tests with a random seed and 2,000 cases, to find inputs the fixed seed never reaches. It runs the TypeScript properties and the Rust gateway properties in `packages/pi-peers/gateway/tests` with the same seed and case count.

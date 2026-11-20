@@ -328,78 +328,77 @@ describe("native-auth integration", () => {
   describe("request-local native credential snapshots", () => {
     test.each([
       {
+        name: "both siblings finish",
         cancel: (_controller: AbortController) => {
           /* finish both siblings */
         },
         expected: "[redacted]",
       },
       {
+        name: "the old sibling is cancelled",
         cancel: (controller: AbortController) => {
           controller.abort();
         },
         expected: "Web search cancelled",
       },
-    ])(
-      "rotation with reversed completion and old sibling cancellation=%s",
-      async ({ cancel, expected }) => {
-        const arrivals = [deferred<undefined>(), deferred<undefined>()] as const;
-        const responses = [
-          deferred<ProviderHttpResponse>(),
-          deferred<ProviderHttpResponse>(),
-        ] as const;
-        let index = 0;
-        const t = await tools({
-          http: () => {
-            const current = index++;
-            arrivals[current]?.resolve(undefined);
-            const response = responses[current];
-            assert(response !== undefined);
-            return Effect.tryPromise({
-              try: async () => response.promise,
-              catch: () => new ProviderProtocolInvalid({ reason: "synthetic failure" }),
-            });
-          },
-        });
-        await t.login("exa", "old-synthetic-key");
-        const updates: unknown[] = [];
-        const controller = new AbortController();
-        const old = t.search.execute(
-          "old",
-          { query: "old-synthetic-key", provider: "exa" },
-          controller.signal,
-          (update) => {
-            updates.push(update);
-          },
-          t.context,
-        );
-        const oldOutcome = old.then((result) => result.details.query, errorMessage);
-        await arrivals[0].promise;
-        await t.login("exa", "new-synthetic-key");
-        const newer = t.search.execute(
-          "new",
-          { query: "new-synthetic-key", provider: "exa" },
-          undefined,
-          (update) => {
-            updates.push(update);
-          },
-          t.context,
-        );
-        await arrivals[1].promise;
-        cancel(controller);
-        responses[1].resolve({ bodyText: JSON.stringify(searchPayload("new-synthetic-key")) });
-        const newResult = await newer;
-        responses[0].resolve({ bodyText: JSON.stringify(searchPayload("old-synthetic-key")) });
-        const previous = await oldOutcome;
-        expect(t.requests.map((request) => request.headers["x-api-key"])).toStrictEqual([
-          "old-synthetic-key",
-          "new-synthetic-key",
-        ]);
-        expect(JSON.stringify({ newResult, previous, updates })).not.toContain("old-synthetic-key");
-        expect(JSON.stringify({ newResult, previous, updates })).not.toContain("new-synthetic-key");
-        expect(textOf(newResult)).toContain("[redacted]");
-        expect(previous).toBe(expected);
-      },
-    );
+    ])("rotation with reversed completion when $name", async ({ cancel, expected }) => {
+      const arrivals = [deferred<undefined>(), deferred<undefined>()] as const;
+      const responses = [
+        deferred<ProviderHttpResponse>(),
+        deferred<ProviderHttpResponse>(),
+      ] as const;
+      let index = 0;
+      const t = await tools({
+        http: () => {
+          const current = index++;
+          arrivals[current]?.resolve(undefined);
+          const response = responses[current];
+          assert(response !== undefined);
+          return Effect.tryPromise({
+            try: async () => response.promise,
+            catch: () => new ProviderProtocolInvalid({ reason: "synthetic failure" }),
+          });
+        },
+      });
+      await t.login("exa", "old-synthetic-key");
+      const updates: unknown[] = [];
+      const controller = new AbortController();
+      const old = t.search.execute(
+        "old",
+        { query: "old-synthetic-key", provider: "exa" },
+        controller.signal,
+        (update) => {
+          updates.push(update);
+        },
+        t.context,
+      );
+      const oldOutcome = old.then((result) => result.details.query, errorMessage);
+      await arrivals[0].promise;
+      await t.login("exa", "new-synthetic-key");
+      const newer = t.search.execute(
+        "new",
+        { query: "new-synthetic-key", provider: "exa" },
+        undefined,
+        (update) => {
+          updates.push(update);
+        },
+        t.context,
+      );
+      await arrivals[1].promise;
+      cancel(controller);
+      responses[1].resolve({ bodyText: JSON.stringify(searchPayload("new-synthetic-key")) });
+      const newResult = await newer;
+      responses[0].resolve({ bodyText: JSON.stringify(searchPayload("old-synthetic-key")) });
+      const previous = await oldOutcome;
+      expect(t.requests.map((request) => request.headers["x-api-key"])).toStrictEqual([
+        "old-synthetic-key",
+        "new-synthetic-key",
+      ]);
+      expect(JSON.stringify({ newResult, previous, updates })).not.toContain("old-synthetic-key");
+      expect(JSON.stringify({ newResult, previous, updates })).not.toContain("new-synthetic-key");
+      expect(textOf(newResult)).toContain("[redacted]");
+      expect(previous).toBe(expected);
+    });
 
     test("reflected credentials are redacted from fetch details, progress, content and spill files", async () => {
       const secret = "spill-synthetic-key";

@@ -30,7 +30,7 @@ describe("credential wait lifecycle", () => {
       message: "URL must start with http:// or https://",
     },
   ])(
-    "early fetch validation never echoes secrets or resolves unrelated auth: $url",
+    "early fetch validation never echoes secrets or resolves unrelated auth: $message",
     async ({ environment, url, message }) => {
       let resolutions = 0;
       const settings = settingsFrom(environment);

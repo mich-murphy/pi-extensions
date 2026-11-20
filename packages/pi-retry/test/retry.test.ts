@@ -183,12 +183,16 @@ describe("leaving the failure to the user", () => {
   });
 
   test.each([
-    ["completed", [assistantEntry("a1", "stop")]],
-    ["aborted", [assistantEntry("a1", "aborted")]],
-    ["error", [userEntry("u1")]],
-    ["error", [assistantEntry("a1", "stop"), userEntry("u2")]],
-    ["error", [assistantEntry("a1", "error"), userEntry("u2")]],
-  ] as const)("does nothing when the run ended %s without a failed reply", (outcome, entries) => {
+    ["completed", "after a reply", [assistantEntry("a1", "stop")]],
+    ["aborted", "after an aborted reply", [assistantEntry("a1", "aborted")]],
+    ["error", "on a user entry", [userEntry("u1")]],
+    ["error", "on a user entry after a reply", [assistantEntry("a1", "stop"), userEntry("u2")]],
+    [
+      "error",
+      "on a user entry after a failed reply",
+      [assistantEntry("a1", "error"), userEntry("u2")],
+    ],
+  ] as const)("does nothing when the run ended %s %s", (outcome, _ending, entries) => {
     const pi = harness();
     pi.startRun();
     pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: RESETS_AT });

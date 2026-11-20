@@ -61,8 +61,39 @@
     "projects": ["tsconfig.json"],
     "require": "best-effort"
   },
+  // The pi-scrollback journey drives the system tmux and skips without it off CI.
+  "ignoreBinaries": ["tmux"],
   "health": {
     "coverage": "coverage/coverage-final.json"
+  },
+  // Every operator, opt-in ones included: the default set misses changes such as `every` to `some`.
+  "mutation": {
+    "runner": "vitest",
+    "operators": [
+      "arithmetic-operator",
+      "relational-operator",
+      "logical-operator",
+      "negate-condition",
+      "unary-operator",
+      "update-operator",
+      "removed-call",
+      "return-value",
+      "boolean-literal",
+      "string-literal",
+      "optional-chaining",
+      "regex-literal",
+      "removed-chain-link",
+      "block-statement",
+      "array-literal",
+      "object-literal",
+      "method-expression",
+      "switch-case",
+      "call-expression",
+      "throw-statement",
+      "regex-constructor",
+      "regex-assertion",
+      "nullish-fallback"
+    ]
   },
   "duplicates": {
     "mode": "strict",
