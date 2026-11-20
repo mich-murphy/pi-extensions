@@ -122,9 +122,11 @@ npm run mutation -- packages/pi-retry --kill-matrix --format json --quiet --comp
 npm run test:coverage
 ```
 
-The `--compare` run must list no lost mutant, and line and branch coverage must not fall. `--compare` accepts only a complete report. `config/fallow-mutation.jsonc` hides the live tests, which the default Vitest config never lists, so the report stays complete. Give every test a title that is unique in its file and does not change between processes, for example no temporary path: Fallow attributes kills by title.
+The `--compare` run must list no lost mutant, and line and branch coverage must not fall. `--compare` accepts only a complete report. `config/fallow-mutation.jsonc` hides the live tests and the helper scripts under `test/`, which the default Vitest config never lists, so the report stays complete. Give every test a title that is unique in its file and does not change between processes, for example no temporary path: Fallow attributes kills by title.
 
 A package with thousands of mutants takes up to an hour. To check named tests without a full matrix, pass `--kill-matrix-for <file>` or `--kill-matrix-for '<file>::<describe> > <test>'`.
+
+A package whose tests start real processes takes far longer: a full pi-peers kill matrix runs for days, because every covering test runs against each mutant. Hide the slow test files for the pass. Write a temporary Vitest config that excludes them and pass it with `--runner-config`, and list the same files under `ignorePatterns` in a temporary copy of `config/fallow-mutation.jsonc` so the report stays complete. Use the same temporary configs for the baseline and the `--compare` run, and do not commit them. The evidence stays conservative: hiding a test can only make another test look more unique, never less. The hidden tests are not reviewed in that pass. On a busy host, pass `--setup-timeout 15m`.
 
 The weekly [tests audit](.github/workflows/tests-audit.yml) runs `--kill-matrix-for` on the test files changed in the past week and lists the tests with no unique kill in its job summary. It never fails and removes nothing.
 

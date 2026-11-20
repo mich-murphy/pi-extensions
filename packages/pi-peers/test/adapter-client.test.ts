@@ -522,17 +522,18 @@ describe("public adapter transport and notice accounting", () => {
       await close();
     }
   });
+  // %j renders undefined, {} and an undefined field alike, so a label keeps each test id unique.
   test.each([
-    undefined,
-    null,
-    {},
-    { gatewaySha256: undefined },
-    { gatewaySha256: "A".repeat(64) },
-    { gatewaySha256: "a".repeat(63) },
-    { gatewaySha256: 123 },
-  ])(
-    "a supplied ensure returning malformed snapshot %j fails before any connection or register",
-    async (value) => {
+    ["undefined", undefined],
+    ["null", null],
+    ["an empty object", {}],
+    ["an undefined digest", { gatewaySha256: undefined }],
+    ["an uppercase digest", { gatewaySha256: "A".repeat(64) }],
+    ["a short digest", { gatewaySha256: "a".repeat(63) }],
+    ["a numeric digest", { gatewaySha256: 123 }],
+  ] as const)(
+    "a supplied ensure returning malformed snapshot (%s) fails before any connection or register",
+    async (_label, value) => {
       const fixture = await gateway(() => undefined);
       const client = new GatewayClient({
         config: fixture.config,

@@ -202,7 +202,7 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test.each(cases)(
-    "$name started calls do not retain a preparing label when argsComplete remains false",
+    "$name $call: started calls do not retain a preparing label when argsComplete remains false",
     (entry) => {
       expect(
         render(entry.name, "call", entry.args, undefined, false, 100, {
@@ -213,7 +213,7 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test.each(cases)(
-    "$name restored completed calls make no phase claim when public activity flags are absent",
+    "$name $call: restored completed calls make no phase claim when public activity flags are absent",
     (entry) => {
       const output = render(entry.name, "call", entry.args, result(entry.value), false, 100, {
         argsComplete: false,
@@ -293,7 +293,7 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test.each(cases)(
-    "$name incomplete arguments, partial, absent and error results are defensive",
+    "$name $call: incomplete arguments, partial, absent and error results are defensive",
     (entry) => {
       expect(
         render(entry.name, "call", undefined, undefined, false, 40, { argsComplete: false }).join(
