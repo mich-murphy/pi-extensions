@@ -180,6 +180,14 @@ repos:
         always_run: true
         priority: 53
         stages: [manual]
+      - id: bombadil-peers-success
+        name: Bombadil pi-peers setup success (real gateway)
+        entry: "npm run test:bombadil:peers:success"
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 55
+        stages: [manual]
       - id: bombadil-peers-messages
         name: Bombadil pi-peers messages (real gateway)
         entry: "npm run test:bombadil:peers:messages"
