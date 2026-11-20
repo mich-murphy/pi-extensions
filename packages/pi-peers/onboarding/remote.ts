@@ -1,7 +1,5 @@
 import { isIP } from "node:net";
 import { isAbsolute, join } from "node:path";
-import { chooseRemoteTrust, inputChoice, selectChoice } from "./dialog.js";
-import type { DialogContext } from "./dialog.js";
 import { createPrivate, regularBytes, privateDirectory } from "./files.js";
 import { credentials, pairAction } from "./pair.js";
 import type { Credentials } from "./pair.js";
@@ -25,182 +23,65 @@ export type RemoteIntent = {
     floorMode: "new" | "existing";
   };
 };
-async function required(
-  ctx: DialogContext,
-  title: string,
-  placeholder: string,
-): Promise<string | undefined> {
-  const value = await inputChoice(ctx, title, placeholder);
-  return value === undefined || value === "" ? undefined : value;
+const MACHINE = /^[a-z][a-z0-9-]{0,31}$/u;
+const ADDRESS = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u;
+
+/** Inline validators: each returns a plain error, or undefined when the value is usable. */
+export function machineError(value: string): string | undefined {
+  return MACHINE.test(value)
+    ? undefined
+    : "Use lowercase letters, digits and dashes, starting with a letter (at most 32).";
 }
-async function endpointChoice(ctx: DialogContext): Promise<RemoteIntent["endpoint"] | undefined> {
-  const role = await selectChoice(
-    ctx,
-    "Remote endpoint — one peer only, no inferred public listener",
-    ["Connect to peer", "Listen for peer", "Cancel"],
-  );
-  if (role === undefined || role === "Cancel") {
-    return undefined;
-  }
-  const address = await required(
-    ctx,
-    role === "Connect to peer" ? "Peer IP:port" : "Local listener IP:port (explicit TCP exposure)",
-    "127.0.0.1:7443",
-  );
-  if (address === undefined) {
-    return undefined;
-  }
-  const match = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u.exec(address);
-  if (
-    !match ||
-    !isIP(match.groups?.ipv6 ?? match.groups?.ipv4 ?? "") ||
-    Number(match.groups?.port) < 1 ||
-    Number(match.groups?.port) > 65_535
-  ) {
-    throw new Error("Expected explicit IPv4:port or [IPv6]:port");
-  }
-  return { mode: role === "Connect to peer" ? "connect" : "listen", address };
+export function addressError(value: string): string | undefined {
+  const match = ADDRESS.exec(value);
+  const port = Number(match?.groups?.port);
+  return match !== null &&
+    isIP(match.groups?.ipv6 ?? match.groups?.ipv4 ?? "") !== 0 &&
+    port >= 1 &&
+    port <= 65_535
+    ? undefined
+    : "Use an IP address and port, like 192.168.1.20:7443 or [fe80::1]:7443.";
 }
-async function joinPreview(ctx: DialogContext) {
-  const offerPath = await required(
-    ctx,
-    "Absolute path to initiator's PUBLIC offer file",
-    "/path/to/offer.json",
-  );
-  if (offerPath === undefined) {
-    return undefined;
-  }
-  if (!isAbsolute(offerPath)) {
-    throw new Error("Expected absolute public offer path");
-  }
-  const bytes = await regularBytes(offerPath, true);
-  if (bytes === undefined) {
-    throw new Error("Public offer missing");
-  }
-  const offer = decodeRecord(parseJson(bytes));
-  if (
-    typeof offer.machineId !== "string" ||
-    typeof offer.peerMachineId !== "string" ||
-    !/^[a-z][a-z0-9-]{0,31}$/u.test(offer.machineId) ||
-    !/^[a-z][a-z0-9-]{0,31}$/u.test(offer.peerMachineId)
-  ) {
-    throw new Error("Public offer has invalid machine identifiers");
-  }
-  const confirmedRootSha256 = await required(
-    ctx,
-    "Independently confirm initiator's full root SHA256 via a trusted separate channel (not this transferred file)",
-    "64 lowercase hex characters",
-  );
-  if (confirmedRootSha256 === undefined) {
-    return undefined;
-  }
-  if (!/^[a-f0-9]{64}$/u.test(confirmedRootSha256)) {
-    throw new Error("Full independently confirmed root SHA256 required");
-  }
-  // These names are untrusted suggestions; native signed/bound validation after Apply is authoritative.
-  return {
-    offerPath,
-    confirmedRootSha256,
-    peerMachineId: offer.machineId,
-    localMachineId: offer.peerMachineId,
-  };
+export function sha256Error(value: string): string | undefined {
+  return /^[a-f0-9]{64}$/u.test(value)
+    ? undefined
+    : "Use the full SHA256: 64 lowercase hex characters.";
 }
-async function credentialPaths(ctx: DialogContext): Promise<Record<string, string> | undefined> {
-  const paths: Record<string, string> = {};
-  for (const [key, description] of [
-    ["rootCertificate", "Trusted pair root certificate DER"],
-    ["certificate", "This machine's leaf certificate DER"],
-    ["privateKey", "This machine's PRIVATE key file (path only; never paste key bytes)"],
-    ["crl", "Current complete numbered CRL DER"],
-    [
-      "revocationState",
-      "Existing revocation-floor file; missing existing floors MUST NOT be recreated",
-    ],
-  ]) {
-    // eslint-disable-next-line eslint/no-await-in-loop -- Native consent dialogs must remain sequential; cancellation stops subsequent questions.
-    const path = await required(ctx, `${description} — absolute path`, "/absolute/path");
-    if (path === undefined) {
-      return undefined;
+export function pathError(value: string): string | undefined {
+  return isAbsolute(value) ? undefined : "Use an absolute path, starting with /.";
+}
+
+export type OfferPreview = { readonly peerMachineId: string; readonly localMachineId: string };
+/**
+ * Read-only preview of a public offer: who made it and which machine it is for. These names are
+ * untrusted suggestions; native signed validation after Apply is authoritative. Never quotes the
+ * file's content in an error.
+ */
+export async function readOffer(path: string): Promise<OfferPreview | string> {
+  const invalid = pathError(path);
+  if (invalid !== undefined) {
+    return invalid;
+  }
+  let offer: Record<string, unknown>;
+  try {
+    const bytes = await regularBytes(path, true);
+    if (bytes === undefined) {
+      return "No file at that path.";
     }
-    if (!isAbsolute(path)) {
-      throw new Error("Credential paths must be absolute");
-    }
-    paths[key ?? ""] = path;
+    offer = decodeRecord(parseJson(bytes));
+  } catch {
+    return "That file could not be read as a public offer.";
   }
-  return paths;
-}
-async function existingMaterial(ctx: DialogContext): Promise<RemoteIntent["existing"] | undefined> {
-  const paths = await credentialPaths(ctx);
-  if (paths === undefined) {
-    return undefined;
+  const { machineId, peerMachineId } = offer;
+  if (
+    typeof machineId !== "string" ||
+    typeof peerMachineId !== "string" ||
+    !MACHINE.test(machineId) ||
+    !MACHINE.test(peerMachineId)
+  ) {
+    return "That offer has invalid machine names.";
   }
-  const floor = await selectChoice(
-    ctx,
-    "Revocation floor provenance — choose existing for any previously configured trust",
-    [
-      "Existing floor — never initialize missing state (recommended)",
-      "Genuinely initial material — explicitly create a NEW floor",
-      "Cancel",
-    ],
-  );
-  if (floor === undefined || floor === "Cancel") {
-    return undefined;
-  }
-  const confirmedRootSha256 = await required(
-    ctx,
-    "Independently confirmed root DER SHA256 from trusted channel",
-    "64 lowercase hex characters",
-  );
-  if (confirmedRootSha256 === undefined) {
-    return undefined;
-  }
-  if (!/^[a-f0-9]{64}$/u.test(confirmedRootSha256)) {
-    throw new Error("Full root SHA256 required");
-  }
-  return {
-    rootCertificate: paths.rootCertificate ?? "",
-    certificate: paths.certificate ?? "",
-    privateKey: paths.privateKey ?? "",
-    crl: paths.crl ?? "",
-    revocationState: paths.revocationState ?? "",
-    confirmedRootSha256,
-    floorMode: floor.startsWith("Existing") ? "existing" : "new",
-  };
-}
-/** Only public facts and file paths; native helper is authoritative after the one consolidated Apply. */
-export async function remoteIntent(ctx: DialogContext): Promise<RemoteIntent | undefined> {
-  const kind = await chooseRemoteTrust(ctx);
-  if (kind === undefined) {
-    return undefined;
-  }
-  const preview = kind === "join" ? await joinPreview(ctx) : undefined;
-  if (kind === "join" && preview === undefined) {
-    return undefined;
-  }
-  const peerMachineId =
-    preview?.peerMachineId ??
-    (await required(ctx, "Peer's exact certificate-bound machine identity", "peer-machine"));
-  if (peerMachineId === undefined) {
-    return undefined;
-  }
-  if (!/^[a-z][a-z0-9-]{0,31}$/u.test(peerMachineId)) {
-    throw new Error("Peer identity must be lowercase letter-led, at most 32 characters");
-  }
-  const endpoint = await endpointChoice(ctx);
-  if (endpoint === undefined) {
-    return undefined;
-  }
-  const existing = kind === "existing" ? await existingMaterial(ctx) : undefined;
-  if (kind === "existing" && existing === undefined) {
-    return undefined;
-  }
-  return {
-    kind,
-    peerMachineId,
-    endpoint,
-    ...preview,
-    ...(existing === undefined ? {} : { existing }),
-  };
+  return { peerMachineId: machineId, localMachineId: peerMachineId };
 }
 export function remoteReview(intent: RemoteIntent, directory: string): string {
   return [
@@ -244,6 +125,18 @@ function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
       ],
     },
   };
+}
+/**
+ * An edited local plan that keeps an existing pair: the peer's grants follow the edited scope and
+ * permissions, and the saved remote connection (credentials and address) is kept unchanged.
+ */
+export function keptPair(
+  plan: LocalPlan,
+  intent: RemoteIntent,
+  remote: LocalPlan["gateway"]["remote"],
+): LocalPlan {
+  const granted = grantedPlan(plan, intent);
+  return remote === undefined ? granted : { ...granted, gateway: { ...granted.gateway, remote } };
 }
 export function configured(
   plan: LocalPlan,

@@ -56,11 +56,13 @@ function suggestedMachineId(hostname: string): string {
   }
   return value.slice(0, 32).replace(/-+$/u, "");
 }
+/** The label defaults to the machine name, so other sessions can tell computers apart. */
 export function defaultChoices(hostname: string): LocalChoices {
+  const machineId = suggestedMachineId(hostname);
   return {
-    machineId: suggestedMachineId(hostname),
+    machineId,
     scopeId: "local",
-    label: "Pi",
+    label: machineId,
     permissions: [...permissions],
   };
 }
@@ -116,7 +118,7 @@ export function localReview(plan: LocalPlan, remote = false): string {
     `Machine: ${visibleText(plan.adapter.machineId)}; scope: ${visibleText(plan.choices.scopeId)}; label: ${visibleText(plan.adapter.label)}`,
     `Same-machine grants: ${plan.choices.permissions.join(", ") || "none"}`,
     remote
-      ? "Remote settings and TCP exposure are reviewed below. Scope is account-wide, not a project boundary."
+      ? "Remote: one paired peer, granted the same permissions in both directions. Scope is account-wide, not a project boundary."
       : "Remote: none; no TCP listener. Scope is account-wide, not a project boundary.",
     consent,
     lifetime,

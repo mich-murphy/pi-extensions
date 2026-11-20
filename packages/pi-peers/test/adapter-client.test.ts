@@ -1024,10 +1024,10 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications).toStrictEqual([]);
     expect([...host.commands.keys()]).toStrictEqual(["peers"]);
     expect(host.commands.get("peers")?.getArgumentCompletions?.("re")).toStrictEqual([
-      { value: "reconnect", label: "reconnect" },
-      { value: "reset", label: "reset" },
+      { value: "reconnect", label: "reconnect", description: "Retry connecting this Pi" },
+      { value: "reset", label: "reset", description: "Disable peers for this agent directory" },
     ]);
-    await host.command("");
+    await host.command("status");
     expect(host.notifications.at(-1)).toContain("not enabled");
     const legacyStatus = host.notifications.at(-1);
     await host.command("status", "peers");
@@ -1050,13 +1050,12 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_shutdown");
     await writeFile(join(directory, "pi-peers.json"), "invalid");
     await host.event("session_start");
-    expect(host.statuses.at(-1)).toContain("configuration/startup failed");
+    expect(host.statuses.at(-1)).toBe("Peers: setup failed");
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("invalid JSON");
     expect(host.notifications.at(-1)).toContain(directory);
     await host.command("status");
-    expect(host.notifications.at(-1)).toContain("Check <agent dir>/pi-peers.json");
-    expect(host.notifications.at(-1)).toContain("then /peers reconnect");
+    expect(host.notifications.at(-1)).toContain("configuration or startup failed");
     await writeFile(
       join(directory, "pi-peers.json"),
       JSON.stringify({
@@ -1078,12 +1077,12 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_start");
     await expect.poll(() => fixture.requests.length).toBe(1);
     await host.command("reconnect", "peers");
-    expect(host.notifications.at(-1)).toContain("Session communication: enabled");
+    expect(host.notifications.at(-1)).toContain("Connected as");
     await rm(join(directory, "pi-peers.json"));
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("missing on disk");
     expect(host.notifications.at(-1)).toContain("existing runtime may still be active");
-    expect(host.notifications.at(-1)).toContain("Session communication: enabled");
+    expect(host.notifications.at(-1)).toContain("Connected as");
     expect(host.notifications.at(-1)).not.toContain("participation is off");
     expect(host.statuses.at(-1)).toBe("Peers: connected");
     await host.event("message_end", { message: { role: "custom" } });
@@ -1094,10 +1093,10 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_shutdown");
     await host.event("session_shutdown");
     await host.command("status");
-    expect(host.notifications.at(-1)).toBe(
-      "Session communication: not enabled · runtime unavailable\nRemote config snapshot: missing disk configuration; any old runtime may still be active.",
-    );
-    expect(host.notifications.at(-1)).not.toContain("Session communication: enabled");
+    expect(host.notifications.at(-1)).toContain("Peers is unavailable in this session");
+    // /peers status is the plain status text only; the remote snapshot lives in /peers doctor.
+    expect(host.notifications.at(-1)).not.toContain("Remote config snapshot");
+    expect(host.notifications.at(-1)).not.toContain("Connected as");
   });
   test("public tools share the scoped runtime and reserve report fanout before publication", async () => {
     const fixture = await gateway(toolGateway);

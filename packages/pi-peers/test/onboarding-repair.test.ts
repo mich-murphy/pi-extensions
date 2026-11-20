@@ -187,14 +187,17 @@ describe("explicit owned installation repair with actual native helper", () => {
       const external = await changedProjection(path);
       const acquire = vi.fn<SetupBackend["acquire"]>(async () => builtGateway);
       const ui = dialog(["APPLY"]);
-      await expect(
-        setupCommand(agent, ui, vi.fn<ActivatePlan>(), {
-          backend: { acquire },
-          description: "TEST",
-        }),
-      ).rejects.toThrow("configuration changed");
+      await setupCommand(agent, ui, vi.fn<ActivatePlan>(), {
+        backend: { acquire },
+        description: "TEST",
+      });
+      expect(ui.ui.notify).toHaveBeenCalledWith(
+        expect.stringContaining("Setup blocked: setup files changed"),
+        "warning",
+      );
+      const offered = vi.mocked(ui.ui.select).mock.calls.flatMap(([, options]) => options);
+      expect(offered.some((option) => option.includes("Ready"))).toBe(false);
       expect(acquire).not.toHaveBeenCalled();
-      expect(ui.ui.select).not.toHaveBeenCalled();
       await expect(readFile(path, "utf8")).resolves.toBe(external);
     },
   );

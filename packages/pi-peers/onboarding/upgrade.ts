@@ -1,98 +1,389 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { loadConfiguration } from "../adapter/config.js";
-import { activateSavedConfiguration } from "./activation.js";
-import { readManaged, setupPaths } from "./backend.js";
-import { currentPlan, pairingInstructions } from "./continue.js";
-import { reviewAction, selectChoice } from "./dialog.js";
-import type { DialogContext } from "./dialog.js";
+import { loadConfiguration, visibleText } from "../adapter/config.js";
+import type { Configuration } from "../adapter/config.js";
+import { activationScreen } from "./activation.js";
+import { inspectSetup, readManaged, setupPaths } from "./backend.js";
+import {
+  currentPlan,
+  exchangeFacts,
+  exchangeNext,
+  loadedPair,
+  pairRows,
+  savedChoices,
+} from "./continue.js";
+import type { PairContext } from "./continue.js";
 import { regularBytes } from "./files.js";
 import { requestManagedRestart } from "./managed.js";
 import type { ManagedSetup } from "./managed.js";
-import type { LocalPlan } from "./plan.js";
-import { prepareRemote, remoteIntent, remoteReview } from "./remote.js";
+import { actionForm, opener, withTechnical } from "./menu/forms.js";
+import type { Progress } from "./menu/forms.js";
+import type { Row, Screen } from "./menu/model.js";
+import type { Outcome, Step } from "./menu/progress.js";
+import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
+import { manageForm, peerGrantText } from "./menu/setup-form.js";
+import { afterSave, attempt, INCOMPLETE_NEXT, pendingOutcome } from "./outcome.js";
+import { localPlan, localReview } from "./plan.js";
+import type { LocalChoices, LocalPlan } from "./plan.js";
+import { keptPair, prepareRemote, remoteReview } from "./remote.js";
+import type { RemoteIntent } from "./remote.js";
+import type { ActivatePlan, Reconnect, Restart } from "./route.js";
+import { decodePairing, parseJson } from "./schema.js";
 import { saveOwnedPlan } from "./update.js";
 
-export type ActivatePlan = (
-  plan: LocalPlan,
-  setup: ManagedSetup,
-  replace?: boolean,
-) => Promise<void>;
-/** An owned local-only installation may add a peer; custom/external configs are never adopted. */
-export async function upgradeLocal(
-  agentDir: string,
-  ctx: DialogContext,
-  activate: ActivatePlan,
-  reconnect?: (fresh?: boolean) => Promise<void>,
-): Promise<boolean> {
-  const config = await loadConfiguration(agentDir);
-  if (config === undefined) {
-    return false;
-  }
-  const setup = await readManaged(agentDir, config);
-  if (setup === undefined) {
-    return false;
-  }
-  const choice = await selectChoice(
-    ctx,
-    "Setup-owned local participation already configured. Keep current runtime or explicitly review adding one remote peer.",
-    [
-      "Cancel — no changes",
-      "Keep and reconnect",
-      "Activate saved configuration",
-      "Add one remote peer",
-    ],
-  );
-  if (choice === "Activate saved configuration") {
-    await activateSavedConfiguration(setup, ctx, reconnect);
-    return true;
-  }
-  if (choice === "Keep and reconnect") {
+export type { ActivatePlan } from "./route.js";
+
+const RECONNECT_STEPS = ["Reconnecting this Pi"] as const;
+const ADD_STEPS = [
+  "Creating the pair",
+  "Saving and restarting the gateway once",
+  "Replacing this Pi's connection",
+] as const;
+
+async function keepWork(reconnect: Reconnect | undefined, step: Step): Promise<Outcome> {
+  step(RECONNECT_STEPS[0]);
+  try {
     await reconnect?.();
-    return true;
+  } catch {
+    return {
+      ok: false,
+      headline: "✗ Reconnect failed — the gateway did not accept this Pi yet",
+      facts: [],
+      next: "Choose Doctor to see why, or Setup › Activate saved configuration.",
+    };
   }
-  if (choice !== "Add one remote peer") {
-    return true;
-  }
-  const intent = await remoteIntent(ctx);
-  if (intent === undefined) {
-    return true;
-  }
-  if (intent.localMachineId !== undefined && intent.localMachineId !== config.machineId) {
-    throw new Error(
-      "Offer targets another machine identity; existing identity is preserved. Use the correct offer/profile.",
-    );
-  }
+  return {
+    ok: true,
+    headline: "✓ Reconnected with the saved settings",
+    facts: [],
+    next: "Nothing was changed. Open another Pi session to collaborate.",
+  };
+}
+
+type Upgrade = Pick<Manage, "agentDir" | "setup" | "activate">;
+
+async function addWork(
+  upgrade: Upgrade,
+  intent: RemoteIntent,
+  directory: string,
+  step: Step,
+): Promise<Outcome> {
+  const { agentDir, setup, activate } = upgrade;
   const paths = setupPaths(agentDir);
-  const directory = join(paths.directory, `pair-${randomBytes(12).toString("hex")}`);
-  const consent = await reviewAction(
-    ctx,
-    `Add remote ${intent.peerMachineId}: ${intent.endpoint.mode} ${intent.endpoint.address}.\nALL projects on this account; published records only.\nUntrusted peer messages may wake model + provider cost.\nApply replaces THIS Pi runtime: loses inbox/publications/interests/receipts.\nOther Pis keep old conservative grants until restarted.\nShared gateway briefly restarts; no send replay.`,
-    `${remoteReview(intent, directory)}\nPreserve machine identity/scopes/local grants. Reuse hash-verified setup executable. Write fresh pair generation; CAS only unchanged owned config/metadata. Explicitly replace this Pi runtime only while idle, with new nonce and volatile inbox/publications/interests/receipts lost. Other already-open Pi runtimes retain their earlier conservative adapter policies; compatible identity/scopes can reconnect to updated gateway. No blanket /reload, process/PID killing, credential/floor deletion or uncertain-send replay. Gateway: ${paths.gateway}; adapter: ${paths.adapter}; metadata: ${paths.metadata}.`,
-    "Apply — add peer, restart gateway and replace this Pi runtime",
-  );
-  if (!consent) {
-    return true;
-  }
+  step(ADD_STEPS[0]);
+  const config = await loadConfiguration(agentDir);
   const bytes = await regularBytes(paths.gateway);
-  if (bytes === undefined) {
-    throw new Error("Owned gateway projection missing");
+  if (config === undefined || bytes === undefined) {
+    throw new Error("Saved settings changed; review again");
   }
   const next = await prepareRemote(setup.executable, directory, currentPlan(config, bytes), intent);
   const pairing = await regularBytes(join(directory, "pairing.json"));
   if (pairing === undefined) {
     throw new Error("Pairing manifest missing");
   }
+  step(ADD_STEPS[1]);
   await saveOwnedPlan(agentDir, setup, next, pairing.toString("utf8"), true);
   const restart = await requestManagedRestart(setup);
-  const updated = await readManaged(agentDir, next.adapter);
-  if (updated === undefined) {
-    throw new Error("Updated setup ownership missing");
+  const technical = [
+    `Remote addition saved; shared restart ${restart}; local connection is separate from remote link readiness.`,
+  ];
+  step(ADD_STEPS[2]);
+  try {
+    const updated = await readManaged(agentDir, next.adapter);
+    if (updated === undefined) {
+      throw new Error("Updated setup ownership missing");
+    }
+    await activate(next, updated, true);
+  } catch (error) {
+    return afterSave(error, technical);
   }
-  await activate(next, updated, true);
-  ctx.ui.notify(
-    `Remote addition saved; shared restart ${restart}; this Pi runtime explicitly replaced. ${await pairingInstructions(agentDir)} Local connection is separate from remote link readiness.`,
-    "info",
+  const saved = decodePairing(parseJson(pairing));
+  return {
+    ok: true,
+    headline: `✓ Remote peer added — ${visibleText(intent.peerMachineId)}`,
+    facts: exchangeFacts(saved),
+    next: exchangeNext(saved),
+    technical: [...technical, "This Pi runtime explicitly replaced."],
+  };
+}
+
+function addForm(upgrade: Upgrade, machine: string, progress: Progress): Screen {
+  const draft = remoteDraft();
+  const directory = join(
+    setupPaths(upgrade.agentDir).directory,
+    `pair-${randomBytes(12).toString("hex")}`,
   );
-  return true;
+  return actionForm({
+    title: "Add peer",
+    note: `Link one other computer to ${visibleText(machine)}. Nothing changes until you choose Add peer.`,
+    rows: () => remoteRows(draft),
+    details: () => {
+      const gate = remoteGate(draft, machine);
+      return withTechnical(
+        [
+          "Applies to every project on this account. Peer messages may wake the model, which costs provider usage.",
+          "This Pi reconnects with a fresh identity, so its inbox and publications are lost. Other open sessions keep their old grants until they restart.",
+          "The shared gateway restarts once; nothing is resent.",
+        ],
+        [
+          ...(gate.kind === "ready" ? [remoteReview(gate.value, directory)] : []),
+          `Preserve machine identity/scopes/local grants. Reuse hash-verified setup executable. Write fresh pair generation; CAS only unchanged owned config/metadata. Explicitly replace this Pi runtime only while idle, with new nonce. No blanket /reload, process/PID killing, credential/floor deletion or uncertain-send replay.`,
+        ],
+      );
+    },
+    consent: () => ({
+      label: "Add peer",
+      action: "Apply",
+      gate: remoteGate(draft, machine),
+      description: "Add the peer, restart the gateway once and replace this Pi's connection.",
+      run: (intent) => {
+        progress("Adding", ADD_STEPS, async (step) =>
+          attempt("Adding the peer failed", INCOMPLETE_NEXT, async () =>
+            addWork(upgrade, intent, directory, step),
+          ),
+        );
+      },
+    }),
+  });
+}
+
+const EDIT_STEPS = [
+  "Saving the settings",
+  "Restarting the shared gateway once",
+  "Reconnecting this Pi",
+] as const;
+
+type Manage = {
+  readonly agentDir: string;
+  readonly config: Configuration;
+  readonly setup: ManagedSetup;
+  readonly activate: ActivatePlan;
+  readonly reconnect: Reconnect | undefined;
+  readonly restart: Restart;
+  readonly pair: PairContext | undefined;
+  /** The reviewed read-only observation: is a shared gateway live? Apply refuses if it changed. */
+  shared: boolean;
+};
+
+/** JSON with sorted object keys, so equal settings compare equal whatever their key order. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === "object" && item !== null && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.entries(item).toSorted(([left], [right]) => left.localeCompare(right)),
+        )
+      : item,
+  );
+}
+
+/**
+ * Rebuilds the full saved configuration from edited choices, keeping the socket and any pair's
+ * remote connection. Undefined when the saved files can't be read or the saved settings hold more
+ * than the form shows (a rebuild would silently drop it), so Apply is never offered then.
+ */
+async function rebuilder(
+  manage: Manage,
+): Promise<((choices: LocalChoices) => LocalPlan) | undefined> {
+  const { config, pair } = manage;
+  try {
+    const bytes = await regularBytes(setupPaths(manage.agentDir).gateway);
+    if (bytes === undefined) {
+      return undefined;
+    }
+    const saved = currentPlan(config, bytes);
+    const rebuild = (choices: LocalChoices): LocalPlan => {
+      const local = localPlan(choices, config.socketPath);
+      return pair === undefined
+        ? local
+        : keptPair(local, pair.pairing.intent, saved.gateway.remote);
+    };
+    const again = rebuild(saved.choices);
+    return canonical(again.adapter) === canonical(saved.adapter) &&
+      canonical(again.gateway) === canonical(saved.gateway)
+      ? rebuild
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function changed(plan: LocalPlan): [string, string][] {
+  return [
+    ["Machine", visibleText(plan.choices.machineId)],
+    ["Scope", visibleText(plan.choices.scopeId)],
+    ["Label", visibleText(plan.choices.label)],
+    ["Permissions", plan.choices.permissions.join(", ") || "none"],
+  ];
+}
+
+const EDIT_PENDING_NEXT =
+  "Choose Setup › Activate saved configuration, or start a new Pi session to use them.";
+
+/** Saves edited settings (owned-file CAS), restarts a live shared gateway once, then replaces. */
+async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Outcome> {
+  const { agentDir, setup, activate } = manage;
+  step(EDIT_STEPS[0]);
+  const observed = await inspectSetup(agentDir, setup.socketPath);
+  if (observed.sharedInstance !== manage.shared) {
+    manage.shared = observed.sharedInstance;
+    return {
+      ok: false,
+      headline: "✗ Gateway state changed — review again",
+      facts: [],
+      next: "Nothing was changed. Open Review details, then choose Apply again.",
+    };
+  }
+  await saveOwnedPlan(agentDir, setup, plan, undefined, true);
+  const technical = [
+    `Edited settings saved with owned config/metadata CAS; shared restart ${manage.shared ? "requested once" : "not needed (no live gateway)"}. No uncertain send or control request is replayed.`,
+  ];
+  try {
+    if (manage.shared) {
+      step(EDIT_STEPS[1]);
+      if ((await manage.restart(setup)) === "uncertain") {
+        return pendingOutcome("Settings saved", EDIT_PENDING_NEXT, [
+          ...technical,
+          "Shared restart outcome uncertain; this Pi runtime was not replaced.",
+        ]);
+      }
+    }
+    step(EDIT_STEPS[2]);
+    const updated = await readManaged(agentDir, plan.adapter);
+    if (updated === undefined) {
+      throw new Error("Updated setup ownership missing");
+    }
+    await activate(plan, updated, true);
+  } catch (error) {
+    return afterSave(error, technical);
+  }
+  return {
+    ok: true,
+    headline: `✓ Settings changed — connected as ${visibleText(plan.adapter.machineId)}`,
+    facts: changed(plan),
+    next: "Other open Pi sessions keep the old settings until they restart.",
+    technical: [...technical, "This Pi runtime explicitly replaced while idle."],
+  };
+}
+
+function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
+  return withTechnical(
+    [
+      "Applies to every project on this account. Peer messages may wake the model, which costs provider usage.",
+      manage.shared
+        ? "Apply saves the changes, restarts the shared gateway once and reconnects this Pi. Other sessions briefly disconnect and keep the old settings until they restart."
+        : "Apply saves the changes and connects this Pi with them. Other sessions keep the old settings until they restart.",
+      "This Pi reconnects with a fresh identity, so its inbox and publications are lost. Keys, pair files and the gateway install are kept.",
+      ...(manage.pair === undefined
+        ? []
+        : [
+            `${peerGrantText(manage.pair.pairing.intent.peerMachineId)} Its connection details are kept.`,
+          ]),
+    ],
+    [
+      ...(plan === undefined ? [] : [localReview(plan, manage.pair !== undefined)]),
+      `Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. Socket ${visibleText(manage.config.socketPath)} unchanged. ${manage.shared ? "Exactly ONE machine-bound shared restart request; an uncertain outcome is never replayed." : "No live shared socket observed; no restart request."} This Pi runtime is replaced only while idle, with a new nonce. No credential/floor deletion or send replay.`,
+    ],
+  );
+}
+
+function actionRows(manage: Manage, progress: Progress): Row[] {
+  const { setup, reconnect, pair } = manage;
+  return [
+    {
+      id: "keep",
+      label: "Keep and reconnect",
+      value: "",
+      description: "Keep the saved settings and reconnect this Pi. Nothing is written.",
+      activation: {
+        kind: "consent",
+        action: "Reconnect",
+        run: () => {
+          progress(
+            "Reconnecting",
+            RECONNECT_STEPS,
+            async (step) => keepWork(reconnect, step),
+            undefined,
+            "reconnect",
+          );
+        },
+      },
+    },
+    opener(
+      "activate",
+      "Activate saved configuration",
+      "Restart the gateway once so it uses the saved settings.",
+      () => activationScreen(setup, progress, reconnect),
+    ),
+    ...(pair === undefined
+      ? [
+          opener("add", "Add one remote peer", "Link one other computer.", () =>
+            addForm(manage, manage.config.machineId, progress),
+          ),
+        ]
+      : pairRows(pair, progress)),
+  ];
+}
+
+/**
+ * An owned installation's Manage form: its saved settings as editable rows with one Apply, then
+ * keep, activate, and either add one remote peer or the pairing actions. Custom and external
+ * configurations are never adopted. Undefined when this is not an owned installation.
+ */
+export async function manageRoute(
+  agentDir: string,
+  activate: ActivatePlan,
+  reconnect: Reconnect | undefined,
+  restart: Restart = requestManagedRestart,
+): Promise<((progress: Progress) => Screen) | undefined> {
+  const config = await loadConfiguration(agentDir);
+  if (config === undefined) {
+    return undefined;
+  }
+  const setup = await readManaged(agentDir, config);
+  if (setup === undefined) {
+    return undefined;
+  }
+  const pair = await loadedPair(agentDir, reconnect);
+  const observed = await inspectSetup(agentDir, setup.socketPath);
+  const manage: Manage = {
+    agentDir,
+    config,
+    setup,
+    activate,
+    reconnect,
+    restart,
+    pair,
+    shared: observed.sharedInstance,
+  };
+  const rebuild = await rebuilder(manage);
+  const machine = visibleText(config.machineId);
+  return (progress) =>
+    manageForm({
+      saved: savedChoices(config),
+      note:
+        pair === undefined
+          ? `Peers is set up on this computer as ${machine}. Nothing changes until you choose Apply.`
+          : `Set up as ${machine}, paired with ${visibleText(pair.pairing.intent.peerMachineId)}. Nothing changes until you choose Apply.`,
+      ...(pair === undefined
+        ? {}
+        : {
+            fixedMachine:
+              "Can't change here: the pair's certificates name this machine. Re-pair or Reset to rename it.",
+            peer: pair.pairing.intent.peerMachineId,
+          }),
+      ...(rebuild === undefined ? {} : { rebuild }),
+      shared: () => manage.shared,
+      details: (plan) => editDetails(manage, plan),
+      apply: (plan) => {
+        progress(
+          "Applying",
+          manage.shared ? EDIT_STEPS : [EDIT_STEPS[0], EDIT_STEPS[2]],
+          async (step) =>
+            attempt("Changing settings failed", INCOMPLETE_NEXT, async () =>
+              editWork(manage, plan, step),
+            ),
+        );
+      },
+      actions: () => actionRows(manage, progress),
+    });
 }
