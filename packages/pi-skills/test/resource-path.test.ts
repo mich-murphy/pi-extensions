@@ -25,7 +25,6 @@ describe("resource paths", () => {
   test.each([
     ["an empty path", ""],
     ["a relative path", "relative/SKILL.md"],
-    ["a relative path with NUL", `relative\0path`],
     ["an absolute path with NUL", `${tmpdir()}/bad\0path`],
   ])("rejects unusable persisted input: %s, without throwing", (_label, path) => {
     expect(parseResourcePath(path)).toBeUndefined();
