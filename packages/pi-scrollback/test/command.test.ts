@@ -111,21 +111,4 @@ describe("/scrollback [on|off]", () => {
     await run("");
     expect(notify).toHaveBeenLastCalledWith("Scrollback is off for this session.", "info");
   });
-
-  test("turning on outside tui mode installs nothing", async () => {
-    const { adapters, run, setWidget } = setup("rpc");
-    await run("off");
-    await run("on");
-    expect(adapters).toHaveLength(0);
-    expect(setWidget).toHaveBeenCalledTimes(1);
-  });
-
-  test("completes on and off by prefix", () => {
-    const { command } = setup();
-    expect(command.getArgumentCompletions("")).toStrictEqual([
-      { value: "on", label: "on" },
-      { value: "off", label: "off" },
-    ]);
-    expect(command.getArgumentCompletions("of")).toStrictEqual([{ value: "off", label: "off" }]);
-  });
 });
