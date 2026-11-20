@@ -18,6 +18,51 @@ Both machines need a correct clock and an installed pi-gateway. Native pairing
 requires neither OpenSSL nor a third signer. The manual recipe below additionally
 uses OpenSSL 3 and a local Rust/Nix build.
 
+## Guided setup
+
+On each machine, type `/peers`, choose **Setup** and set **Mode** to
+`One remote peer`. More rows appear:
+
+| Row | Values |
+| --- | --- |
+| Trust | `Create new pair` on the first machine, `Join a pair` on the second, or `Use existing files`. |
+| Peer machine | The other machine's name. It must differ from this machine. |
+| Connection | `Listen for peer` on one side, `Connect to peer` on the other. |
+| Address | An IP address and port, for example `192.0.2.10:7443`. |
+| Offer path, Root SHA256 | Join only: the public offer from the first machine and its full 64-character hash. Confirm the hash out of band. |
+| Credential paths, floor, Root SHA256 | Existing files only: absolute paths to your DER material. |
+
+Each row is checked as you edit it. The Apply row shows `Missing: <field>` until
+everything required is filled in. Esc goes back one level without applying.
+After Apply, the result screen lists the remote link and the next step, such as
+issuing the peer's certificate. `/peers doctor` reports whether the remote
+credentials look valid and when the pairing expires; it does not prove the live
+link is up. The footer shows `Peers: connected` once this session reaches its
+local gateway, and `Peers: activation pending` while the gateway still runs older
+settings.
+
+To change a remote setup later, choose **Setup** again. It reads `Manage` and
+opens `Peers › Setup` with the saved Label and Permissions as editable rows.
+Machine is read-only because the pair's certificates name it, and Scope is
+read-only because the paired computer uses it; re-pair to change either.
+Permissions are also the paired computer's grants, so changing them also changes
+what it may do with this Pi; the Permissions row, the Apply row and Review
+details say so. Apply reads `No changes` until you edit a row. The same screen lists the pairing actions:
+
+| Row | Opens |
+| --- | --- |
+| View public exchange instructions | `Peers › Setup › Exchange`: the public files to send and the next step. |
+| Activate saved configuration | `Peers › Setup › Activate`: one gateway restart so it uses the saved settings. |
+| Import public bundle | `Peers › Setup › Import`: bundle file and its root SHA256. |
+| Issuer actions | Creator only. `Peers › Setup › Issuer` with Issue peer CSR, Renew leaves and CRL, Revoke a leaf and Export latest public bundle. |
+| Request renewal instructions | Joiner only. How to ask the creator to renew. |
+| Re-pair with new root | `Peers › Setup › Re-pair`: a new pair for the same two machines. |
+
+Each step has Review details and one consent row; its result screen says what
+changed and what to send next. To stop using peers,
+choose **Reset**, review, then `Turn off peers`; keys and revocation state are
+kept.
+
 ## Native pair setup
 
 Use the gateway's `pair OP --input ABS_JSON` commands, or the extension's guided

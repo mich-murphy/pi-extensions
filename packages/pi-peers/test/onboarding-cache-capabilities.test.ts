@@ -19,7 +19,7 @@ import {
 } from "../onboarding/catalog.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import type { LocalPlan } from "../onboarding/plan.js";
-import { repairInstallation } from "../onboarding/repair.js";
+import { repairRoute } from "../onboarding/repair.js";
 import {
   decodeCached,
   decodeManaged,
@@ -29,19 +29,37 @@ import {
 } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
+import {
+  consentOutcome,
+  dialog,
+  nativeFixture,
+  nativeUntil,
+  noPins,
+} from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
 const remote = [
-  "Configure one remote peer",
-  "Create a new trusted pair",
-  "remote-peer",
-  "Listen for peer",
-  "127.0.0.1:7443",
+  "Mode=One remote peer",
+  "Trust=Create new pair",
+  "Peer machine=remote-peer",
+  "Connection=Listen for peer",
+  "Address=127.0.0.1:7443",
 ];
 
 const without = (capability: string) =>
   GATEWAY_LOCAL_SETUP_CAPABILITIES.filter((value) => value !== capability);
+
+/** The repair screen, which must exist for a damaged installation. */
+async function requiredRepair(
+  agent: string,
+  acquisition: Parameters<typeof repairRoute>[1],
+): Promise<NonNullable<Awaited<ReturnType<typeof repairRoute>>>["screen"]> {
+  const found = await repairRoute(agent, acquisition);
+  if (found === undefined) {
+    throw new Error("Expected a repair route");
+  }
+  return found.screen;
+}
 
 function requiredField(output: Record<string, unknown>, key: string): string {
   const value = output[key];
@@ -284,13 +302,13 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       const entries = await readdir(paths.directory);
       const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
       const activate = vi.fn<ActivatePlan>();
-      const cancelled = dialog(["Cancel — no changes"]);
+      const cancelled = dialog(["Back", undefined]);
       await setupCommand(agent, cancelled, activate, {
         backend: { acquire },
         description: "TEST trusted repair",
       });
       expect(cancelled.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Repair cancelled"),
+        expect.stringContaining("Cancelled — no changes made"),
         "info",
       );
       const blocked = dialog(["APPLY"]);
@@ -311,11 +329,9 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
   );
   test("compatible committed helper is healthy and does not offer an update just for a new version", async () => {
     await applyLocal(agent, plan(), { acquire: async () => fixture.executable }, () => undefined);
-    const acquisition = vi.fn<Parameters<typeof repairInstallation>[2]>();
-    const ctx = dialog(["APPLY"]);
-    await expect(repairInstallation(agent, ctx, acquisition)).resolves.toBe(false);
+    const acquisition = vi.fn<Parameters<typeof repairRoute>[1]>();
+    await expect(repairRoute(agent, acquisition)).resolves.toBeUndefined();
     expect(acquisition).not.toHaveBeenCalled();
-    expect(ctx.ui.select).not.toHaveBeenCalled();
   });
   test("approved old-cap repair uses actual NEW native lock and retains live nonce/state/config without control", async () => {
     const selected = plan();
@@ -417,15 +433,11 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       },
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("guarded activation pending or unconfirmed"),
+      expect.stringContaining("Installation repaired — not active yet"),
       "warning",
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("/peers setup → Activate saved configuration"),
-      "warning",
-    );
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("no control request was sent"),
+      expect.stringContaining("Setup › Activate saved configuration"),
       "warning",
     );
     expect(acquire).toHaveBeenCalledOnce();
@@ -446,12 +458,12 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await setupCommand(
       agent,
       dialog([
-        "Configure one remote peer",
-        "Join a new trusted pair",
-        offer,
-        root,
-        "Connect to peer",
-        "127.0.0.1:7443",
+        "Mode=One remote peer",
+        "Trust=Join a pair",
+        `Offer file=${offer}`,
+        `Root SHA256=${root}`,
+        "Connection=Connect to peer",
+        "Address=127.0.0.1:7443",
         "APPLY",
       ]),
       vi.fn<ActivatePlan>(),
@@ -472,18 +484,20 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       .fn<SetupBackend["acquire"]>()
       .mockResolvedValueOnce(executable)
       .mockResolvedValue(fixture.executable);
-    const acquisition = vi.fn<Parameters<typeof repairInstallation>[2]>(async () => ({
+    const acquisition = vi.fn<Parameters<typeof repairRoute>[1]>(async () => ({
       backend: { acquire },
       description: "TEST pending pairing repair",
     }));
-    await repairInstallation(agent, dialog(["Cancel — no changes"]), acquisition);
+    const route = async () => requiredRepair(agent, acquisition);
+    // Opening the screen and its details, without consent, starts nothing.
+    await expect(consentOutcome(await route(), "review")).resolves.toBeUndefined();
     expect(acquisition).toHaveBeenCalledWith(true);
     expect(acquire).not.toHaveBeenCalled();
-    await expect(repairInstallation(agent, dialog(["APPLY"]), acquisition)).rejects.toThrow(
-      "capability",
-    );
+    const refused = await consentOutcome(await route());
+    expect(refused?.ok).toBe(false);
+    expect(refused?.headline).toContain("capability");
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(metadata);
-    await repairInstallation(agent, dialog(["APPLY"]), acquisition);
+    await expect(consentOutcome(await route())).resolves.toMatchObject({ ok: true });
     expect(acquire).toHaveBeenCalledTimes(2);
     await expect(Promise.all(owned.map(async (path) => readFile(path)))).resolves.toStrictEqual(
       before,

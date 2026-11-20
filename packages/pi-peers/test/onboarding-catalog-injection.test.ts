@@ -61,16 +61,16 @@ for (const name of ["spawn", "exec", "fork", "execFileSync", "execSync", "spawnS
 syncBuiltinESMExports();
 const jiti = createJiti(import.meta.url);
 const { setupCommand } = await jiti.import(setupSource);
-const answers = ["Local only — no remote connections (recommended)", "APPLY"];
+const answers = ["APPLY"];
 const ctx = {
   mode: "rpc",
   hasUI: true,
   signal: undefined,
   ui: {
     select: async (title, options) => {
-      record.selects.push(title);
+      record.selects.push(title, ...options);
       const value = answers.shift();
-      return value === "APPLY" ? options.find((item) => item.startsWith("Apply —")) : value;
+      return value === "APPLY" ? options.find((item) => item === "Apply: Ready") : value;
     },
     input: async () => undefined,
     notify: (message, level) => {
@@ -150,7 +150,7 @@ function hostExpectation(version: string, supported: boolean) {
           `https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v${version}/manifest.json`,
         ]
       : [],
-    warning: supported ? "Apply incomplete" : "No reviewed target",
+    warning: supported ? "Setup failed" : "Blocked",
   };
 }
 async function entriesIfPresent(directory: string): Promise<string[]> {
@@ -240,9 +240,7 @@ describe("setupCommand trusted catalog injection", () => {
       expect(record.denied).toStrictEqual([]);
       expect(record.allowed.filter((file) => path.basename(file) !== "nix")).toStrictEqual([]);
       expect(record.activated).toBe(0);
-      expect(
-        record.selects.join("\n").includes("Apply: verified gateway, private config, start."),
-      ).toBe(expected.supported);
+      expect(record.selects.join("\n").includes("Apply: Ready")).toBe(expected.supported);
       expect(record.fetches).toStrictEqual(expected.fetches);
       const warnings = record.notices.filter((notice) => notice.level === "warning");
       expect(warnings).toHaveLength(1);

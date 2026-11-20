@@ -6,11 +6,15 @@ import { decodeConfiguration } from "../adapter/config.js";
 import { executableDigest, setupPaths } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_REMOTE_SETUP_CAPABILITIES } from "./catalog.js";
-import { reviewAction } from "./dialog.js";
-import type { DialogContext } from "./dialog.js";
 import { createPrivate, digest, durableUnlink, regularBytes, withSetupLock } from "./files.js";
 import { validateExecutable } from "./managed.js";
+import { actionForm, BLOCKED_HELP, withTechnical } from "./menu/forms.js";
+import type { Progress } from "./menu/forms.js";
+import type { Screen } from "./menu/model.js";
+import type { Outcome, Step } from "./menu/progress.js";
+import { failed, INCOMPLETE_NEXT, pendingOutcome, safeReason, SAVED_NEXT } from "./outcome.js";
 import { replaceOwned } from "./owned-file.js";
+import type { Acquisition, Reconnect } from "./route.js";
 import {
   cachedSchema,
   managedSchema,
@@ -149,55 +153,109 @@ async function healthy(owned: Owned): Promise<boolean> {
   }
 }
 
-/** Missing, damaged or mandatory-capability-incompatible ownership needs explicit repair, not version updates. */
-export async function repairInstallation(
+const STEPS = [
+  "Getting the verified gateway",
+  "Updating the install record",
+  "Reconnecting this Pi",
+] as const;
+
+const REPAIR_TECHNICAL = (owned: Owned): string =>
+  `Missing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, pairing or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration/pairing hashes before any metadata mutation. No configuration/key/floor rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits.`;
+
+async function repairWork(
   agentDir: string,
-  ctx: DialogContext,
-  acquisition: (remote: boolean) => Promise<{ backend?: SetupBackend; description: string }>,
-  reconnect?: () => Promise<void>,
-): Promise<boolean> {
+  owned: Owned,
+  backend: SetupBackend,
+  reconnect: Reconnect | undefined,
+  step: Step,
+): Promise<Outcome> {
+  step(STEPS[0]);
+  try {
+    await applyRepair(agentDir, owned, backend, (message) => {
+      step(message.startsWith("Acquiring") ? STEPS[0] : STEPS[1]);
+    });
+  } catch (error) {
+    return failed("Repair failed", safeReason(error), INCOMPLETE_NEXT);
+  }
+  step(STEPS[2]);
+  try {
+    await reconnect?.();
+  } catch {
+    return pendingOutcome("Installation repaired", SAVED_NEXT, [
+      "Installation repaired; guarded activation pending or unconfirmed. No runtime/state was replaced and no control request was sent. An older live gateway may reject guarded admission. Passive reconnect never retires it; Setup › Activate saved configuration offers a separate explicitly reviewed restart.",
+    ]);
+  }
+  return {
+    ok: true,
+    headline: "✓ Installation repaired",
+    facts: [],
+    next: "Your settings, keys and this session were kept. Choose Status to check the connection.",
+    technical: [
+      "Owned metadata committed. No runtime/nonce/state was replaced and no control request was sent. Remote readiness must be checked separately.",
+    ],
+  };
+}
+
+/** A repair route: the screen, and whether its acquisition is blocked. */
+export type RepairRoute = {
+  readonly blocked: boolean;
+  readonly screen: (progress: Progress) => Screen;
+};
+
+/**
+ * Missing, damaged or mandatory-capability-incompatible ownership needs explicit repair, not
+ * version updates. Undefined when the installation is healthy. Inspection is read-only and throws
+ * when owned files changed externally.
+ */
+export async function repairRoute(
+  agentDir: string,
+  acquisition: (remote: boolean) => Promise<Acquisition>,
+  reconnect?: Reconnect,
+): Promise<RepairRoute | undefined> {
   const owned = await inspectOwned(agentDir);
   if (owned === undefined || (owned.ledger === undefined && (await healthy(owned)))) {
-    return false;
+    return undefined;
   }
-  const route =
+  const route: Acquisition =
     owned.ledger === undefined
       ? await acquisition(owned.remote)
       : {
           description: `Resume already reviewed owned repair using ${owned.ledger.nextInstalled.executable}, rechecking its recorded SHA256.`,
           backend: { acquire: async () => owned.ledger?.nextInstalled.executable ?? "" },
         };
-  const approved = await reviewAction(
-    ctx,
-    `Repair unavailable or mandatory-capability-incompatible setup-owned gateway installation only.\nPreserve adapter, gateway, keys, floors and THIS Pi nonce/state.\n${route.backend === undefined ? "Acquisition BLOCKED: no reviewed trusted pin." : "Apply: trusted reacquisition, verified lock, metadata CAS."}`,
-    `${route.description}\nMissing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, pairing or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration/pairing hashes before any metadata mutation. No configuration/key/floor rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits. Passive /peers reconnect never retires it; /peers setup → Activate saved configuration offers a separate explicitly reviewed restart. Existing sessions may still use old trust until retirement.`,
-    "Apply — repair owned installation only",
-  );
-  if (!approved) {
-    ctx.ui.notify("Repair cancelled — no changes made", "info");
-    return true;
-  }
-  if (route.backend === undefined) {
-    ctx.ui.notify(`Repair blocked — ${route.description} No changes made.`, "warning");
-    return true;
-  }
-  await applyRepair(agentDir, owned, route.backend, (message) => {
-    ctx.ui.notify(message, "info");
-  });
-  try {
-    await reconnect?.();
-  } catch {
-    ctx.ui.notify(
-      "Installation repaired; guarded activation pending or unconfirmed. No runtime/state was replaced and no control request was sent. An older live gateway may reject guarded admission. Passive /peers reconnect never retires it; /peers setup → Activate saved configuration offers a separate explicitly reviewed restart. Existing sessions may still use old trust until retirement.",
-      "warning",
-    );
-    return true;
-  }
-  ctx.ui.notify(
-    "Installation repaired; owned metadata committed. No runtime/nonce/state was replaced and no control request was sent. Guarded local activation and remote readiness must be checked separately. If activation remains pending/unconfirmed, passive /peers reconnect never retires an older gateway; /peers setup → Activate saved configuration offers a separate explicitly reviewed restart. Existing sessions may still use old trust until retirement.",
-    "info",
-  );
-  return true;
+  const { backend } = route;
+  return {
+    blocked: backend === undefined,
+    screen: (progress) =>
+      actionForm({
+        title: "Setup",
+        note: "The gateway program setup installed is missing, changed or too old. Repair replaces only that program; your settings, keys and this session are kept.",
+        details: () =>
+          withTechnical(
+            [
+              "Repair downloads a verified gateway and records it as this setup's program.",
+              "Settings, keys, revocation floors and this session are kept. Nothing is restarted.",
+            ],
+            [route.description, REPAIR_TECHNICAL(owned)],
+          ),
+        detailsDescription: "What repair downloads, changes and keeps.",
+        consent: () => ({
+          label: "Repair installation",
+          action: "Repair",
+          gate:
+            backend === undefined
+              ? { kind: "blocked", reason: "no verified gateway download" }
+              : { kind: "ready", value: backend },
+          description: "Replace only the gateway program, then reconnect this Pi.",
+          blockedHelp: BLOCKED_HELP,
+          run: (chosen) => {
+            progress("Repairing", STEPS, async (step) =>
+              repairWork(agentDir, owned, chosen, reconnect, step),
+            );
+          },
+        }),
+      }),
+  };
 }
 async function repairLedger(
   owned: Owned,

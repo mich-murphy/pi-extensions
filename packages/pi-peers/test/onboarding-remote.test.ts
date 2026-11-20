@@ -96,7 +96,7 @@ function freshPeer(current: ReturnType<typeof peerRefs>, previous: ReturnType<ty
   return peer;
 }
 
-const ISSUER_ACTIONS = "Issuer actions: CSR, renew, revoke, export";
+const ISSUER_ACTIONS = "Issuer actions";
 
 describe("guided remote actions with actual native crypto and loopback mTLS", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
@@ -142,14 +142,14 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     await command(creator, [
       ISSUER_ACTIONS,
       "Issue peer CSR",
-      field(jp, "requestPath"),
-      field(jp, "requestSha256"),
+      `Request file=${field(jp, "requestPath")}`,
+      `Request SHA256=${field(jp, "requestSha256")}`,
       "APPLY",
     ]);
     await command(joiner, [
       "Import public bundle",
-      field(cp, "bundlePath"),
-      field(cp, "rootSha256"),
+      `Bundle file=${field(cp, "bundlePath")}`,
+      `Root SHA256=${field(cp, "rootSha256")}`,
       "APPLY",
     ]);
     await nativeUntil(async () => (await epoch(creator)) === 2 && (await epoch(joiner)) === 2);
@@ -166,21 +166,21 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     profiles.push(creator, joiner);
     address = await nativeAddress();
     await command(creator, [
-      "Configure one remote peer",
-      "Create a new trusted pair",
-      "join-peer",
-      "Listen for peer",
-      address,
+      "Mode=One remote peer",
+      "Trust=Create new pair",
+      "Peer machine=join-peer",
+      "Connection=Listen for peer",
+      `Address=${address}`,
       "APPLY",
     ]);
     const cp = await pairing(creator);
     await command(joiner, [
-      "Configure one remote peer",
-      "Join a new trusted pair",
-      field(cp, "offerPath"),
-      field(cp, "rootSha256"),
-      "Connect to peer",
-      address,
+      "Mode=One remote peer",
+      "Trust=Join a pair",
+      `Offer file=${field(cp, "offerPath")}`,
+      `Root SHA256=${field(cp, "rootSha256")}`,
+      "Connection=Connect to peer",
+      `Address=${address}`,
       "APPLY",
     ]);
   });
@@ -227,14 +227,14 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     await command(creator, [
       ISSUER_ACTIONS,
       "Renew leaves and CRL",
-      field(jp, "requestPath"),
-      field(jp, "requestSha256"),
+      `Request file=${field(jp, "requestPath")}`,
+      `Request SHA256=${field(jp, "requestSha256")}`,
       "APPLY",
     ]);
     await command(joiner, [
       "Import public bundle",
-      field(cp, "bundlePath"),
-      field(cp, "rootSha256"),
+      `Bundle file=${field(cp, "bundlePath")}`,
+      `Root SHA256=${field(cp, "rootSha256")}`,
       "APPLY",
     ]);
     await nativeUntil(async () => sameEpoch([creator, joiner], 3));
@@ -245,7 +245,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
   });
   test("revoke auto-imports its CRL, restarts and removes the revoked remote peer", async () => {
     await linked();
-    await command(creator, [ISSUER_ACTIONS, "Revoke a leaf", "join-peer", "APPLY"]);
+    await command(creator, [ISSUER_ACTIONS, "Revoke a leaf", "Machine=join-peer", "APPLY"]);
     await nativeUntil(async () => (await epoch(creator)) === 3);
     await nativeUntil(
       async () => !hasPeer(await client(creator).discover(["local"], false), "join-peer"),
@@ -259,10 +259,10 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const prior = field(await pairing(creator), "rootSha256");
     await command(creator, [
       "Re-pair with new root",
-      "Create a new trusted pair",
-      "join-peer",
-      "Listen for peer",
-      address,
+      "Trust=Create new pair",
+      "Peer machine=join-peer",
+      "Connection=Listen for peer",
+      `Address=${address}`,
       "APPLY",
     ]);
     const cp = await pairing(creator);
@@ -271,11 +271,11 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     expect(oldSocket).toBeDefined();
     await command(joiner, [
       "Re-pair with new root",
-      "Join a new trusted pair",
-      field(cp, "offerPath"),
-      field(cp, "rootSha256"),
-      "Connect to peer",
-      address,
+      "Trust=Join a pair",
+      `Offer file=${field(cp, "offerPath")}`,
+      `Root SHA256=${field(cp, "rootSha256")}`,
+      "Connection=Connect to peer",
+      `Address=${address}`,
       "APPLY",
     ]);
     const pending = await gateway(joiner);
@@ -308,29 +308,27 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const entries = await readdir(paths.directory);
     const ctx = dialog([
       "Re-pair with new root",
-      "Join a new trusted pair",
-      wrong,
-      field(cp, "rootSha256"),
-      "Connect to peer",
-      address,
+      "Trust=Join a pair",
+      `Offer file=${wrong}`,
+      `Root SHA256=${field(cp, "rootSha256")}`,
+      "Connection=Connect to peer",
+      `Address=${address}`,
       "APPLY",
     ]);
-    await expect(
-      setupCommand(
-        joiner.agent,
-        ctx,
-        async () => {
-          throw new Error("Must not replace runtime");
-        },
-        undefined,
-        async () => client(joiner).reconnect(),
-      ),
-    ).rejects.toThrow("Offer targets another machine identity");
-    expect(ctx.ui.select).not.toHaveBeenCalledWith(
-      expect.stringContaining("Re-pair BOTH"),
-      expect.anything(),
-      expect.anything(),
+    await setupCommand(
+      joiner.agent,
+      ctx,
+      async () => {
+        throw new Error("Must not replace runtime");
+      },
+      undefined,
+      async () => client(joiner).reconnect(),
     );
+    const offered = vi.mocked(ctx.ui.select).mock.calls.flatMap(([, options]) => options);
+    expect(offered).toContain(
+      "Re-pair: Invalid: the offer is for another-local, not this computer",
+    );
+    expect(offered).not.toContain("Re-pair: Ready");
     await expect(Promise.all(owned.map(async (path) => readFile(path)))).resolves.toStrictEqual(
       before,
     );
@@ -346,11 +344,11 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const fresh = { agent: creator.agent };
     profiles.push(fresh);
     await command(fresh, [
-      "Configure one remote peer",
-      "Create a new trusted pair",
-      "join-peer",
-      "Listen for peer",
-      address,
+      "Mode=One remote peer",
+      "Trust=Create new pair",
+      "Peer machine=join-peer",
+      "Connection=Listen for peer",
+      `Address=${address}`,
       "APPLY",
     ]);
     const next = await pairing(fresh);
@@ -379,18 +377,18 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const external = { agent: join(fixture.root, "existing") };
     profiles.push(external);
     await command(external, [
-      "Configure one remote peer",
-      "Use existing trust material",
-      "join-peer",
-      "Connect to peer",
-      address,
-      firstPath(material.rootCertificates),
-      firstPath(material.certificateChain),
-      material.privateKey,
-      firstPath(material.crls),
-      path,
-      "Existing floor — never initialize missing state (recommended)",
-      field(cp, "rootSha256"),
+      "Mode=One remote peer",
+      "Trust=Use existing files",
+      "Peer machine=join-peer",
+      "Connection=Connect to peer",
+      `Address=${address}`,
+      `Root certificate=${firstPath(material.rootCertificates)}`,
+      `Leaf certificate=${firstPath(material.certificateChain)}`,
+      `Private key path=${material.privateKey}`,
+      `Revocation list=${firstPath(material.crls)}`,
+      `Revocation floor file=${path}`,
+      "Floor=Existing",
+      `Root SHA256=${field(cp, "rootSha256")}`,
       "APPLY",
     ]);
     const actual = await remoteMaterial(external);

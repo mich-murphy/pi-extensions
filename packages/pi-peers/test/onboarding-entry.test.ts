@@ -15,6 +15,7 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
   const commands = new Map<string, unknown>();
   const tools = new Map<string, unknown>();
   const notifications: string[] = [];
+  const entries: string[] = [];
   const answers: (string | undefined)[] = [];
   let idle = true;
   const ui = dialog(answers);
@@ -44,11 +45,16 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
       commands.set(name, definition.handler);
     },
     sendMessage: () => undefined,
+    appendEntry: (type: string) => {
+      entries.push(type);
+    },
+    registerEntryRenderer: () => undefined,
   };
   Reflect.apply(communication, undefined, testBackend === undefined ? [api] : [api, testBackend]);
   return {
     commands,
     notifications,
+    entries,
     setIdle: (value: boolean) => {
       idle = value;
     },
@@ -96,7 +102,7 @@ function identity(messages: string[]) {
 async function connected(host: ReturnType<typeof extensionHost>) {
   await nativeUntil(async () => {
     const messages = await host.command("status");
-    return messages.some((message) => message.includes("enabled · connected"));
+    return messages.some((message) => message.includes("Connected as"));
   });
   return identity(await host.command("status"));
 }
@@ -123,10 +129,10 @@ async function upgrade(host: ReturnType<typeof extensionHost>) {
   const address = await nativeAddress();
   return host.command("setup", [
     "Add one remote peer",
-    "Create a new trusted pair",
-    "upgrade-peer",
-    "Listen for peer",
-    address,
+    "Trust=Create new pair",
+    "Peer machine=upgrade-peer",
+    "Connection=Listen for peer",
+    `Address=${address}`,
     "APPLY",
   ]);
 }
@@ -163,6 +169,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
   });
   test("reviewed local-to-remote upgrade replaces THIS idle runtime and loses only its reviewed volatile state", async () => {
     const before = await localPublication(host);
+    expect(host.entries).toContain("peers-report");
     await host.command("setup", ["Keep and reconnect"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await host.command("setup", ["Add one remote peer", "Cancel"]);
@@ -170,15 +177,15 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     const cancelledAddress = await nativeAddress();
     await host.command("setup", [
       "Add one remote peer",
-      "Create a new trusted pair",
-      "upgrade-peer",
-      "Listen for peer",
-      cancelledAddress,
-      "Cancel — no changes",
+      "Trust=Create new pair",
+      "Peer machine=upgrade-peer",
+      "Connection=Listen for peer",
+      `Address=${cancelledAddress}`,
+      "Back",
     ]);
     await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
     const messages = await upgrade(host);
-    expect(messages.join("\n")).toContain("this Pi runtime explicitly replaced");
+    expect(messages.join("\n")).toContain("Remote peer added — upgrade-peer");
     const after = await connected(host);
     expect(after.runtimeNonce).not.toBe(before.peer.runtimeNonce);
     expect(after.machineId).toBe(before.peer.machineId);
@@ -191,7 +198,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     const before = await localPublication(host);
     host.setIdle(false);
     const messages = await upgrade(host);
-    expect(messages.join("\n")).toContain("this Pi is busy and was not replaced");
+    expect(messages.join("\n")).toContain("is busy and was not replaced");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
   });
@@ -219,17 +226,17 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     );
     const replies = await host.command("reset", ["APPLY"]);
     const messages = replies.join("\n");
-    expect(messages).toContain("Reset refused before disabling participation");
-    expect(messages).toContain("ownership or configuration differs");
+    expect(messages).toContain("Reset refused — ownership or configuration differs");
+    expect(messages).toContain("Nothing was turned off");
     expect(messages).not.toContain("secret-owner");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
   });
   test("reset cancellation keeps current runtime; approved reset disables participation and disposes it", async () => {
     const before = await localPublication(host);
-    await host.command("reset", ["Cancel — no changes"]);
+    await host.command("reset", ["Back"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     const messages = await host.command("reset", ["APPLY"]);
-    expect(messages.join("\n")).toContain("Participation disabled");
+    expect(messages.join("\n")).toContain("Peers turned off");
     expect(existsSync(setupPaths(agent).adapter)).toBe(false);
     await nativeUntil(async () => !existsSync(setupPaths(agent).socket));
     const status = await host.command("status");
@@ -241,8 +248,8 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     const bytes = await readFile(path);
     await writeFile(path, Buffer.concat([bytes, Buffer.from("\n")]));
     const messages = await host.command("reset", ["APPLY"]);
-    expect(messages.join("\n")).toContain("Reset refused before disabling participation");
-    expect(messages.join("\n")).toContain("Configuration changed externally");
+    expect(messages.join("\n")).toContain("Reset refused — Configuration changed externally");
+    expect(messages.join("\n")).toContain("Nothing was turned off");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
   });
@@ -265,7 +272,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
       { mode: 0o600 },
     );
     const messages = await host.command("reset", ["APPLY"]);
-    expect(messages.join("\n")).toContain("participation is disabled on disk");
+    expect(messages.join("\n")).toContain("Reset partly done — peers is off");
     expect(existsSync(paths.adapter)).toBe(false);
     await nativeUntil(async () => !existsSync(paths.socket));
     const status = await host.command("status");

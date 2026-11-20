@@ -192,7 +192,7 @@ describe("managed generation admission with actual native helper", () => {
           outcome: { tag: "error", code: "forbidden" },
         });
         expect(ctx.ui.notify).toHaveBeenCalledWith(
-          expect.stringContaining("Configured and connected locally"),
+          expect.stringContaining("Peers set up — connected as"),
           "info",
         );
         await nativeUntil(async () => !survivor.status().connected);
@@ -230,7 +230,7 @@ describe("managed generation admission with actual native helper", () => {
         expect(restart).toHaveBeenCalledOnce();
         expect(activate).not.toHaveBeenCalled();
         expect(ctx.ui.notify).toHaveBeenCalledWith(
-          expect.stringContaining("Configuration saved; activation pending"),
+          expect.stringContaining("Settings saved — not active yet"),
           "warning",
         );
         expect(ctx.ui.notify).not.toHaveBeenCalledWith(
@@ -286,7 +286,7 @@ describe("managed generation admission with actual native helper", () => {
       await setupCommand(agent, ctx, activate, undefined, reconnect);
       expect(reconnect).toHaveBeenCalledExactlyOnceWith(true);
       expect(ctx.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("activation pending or unconfirmed"),
+        expect.stringContaining("Activation not confirmed"),
         "warning",
       );
       expect(ctx.ui.notify).not.toHaveBeenCalledWith(
@@ -322,7 +322,7 @@ describe("managed generation admission with actual native helper", () => {
       expect(restart).toHaveBeenCalledOnce();
       expect(activate).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Configuration saved; activation pending"),
+        expect.stringContaining("Settings saved — not active yet"),
         "warning",
       );
       expect(ctx.ui.notify).not.toHaveBeenCalledWith(
@@ -356,7 +356,7 @@ describe("managed generation admission with actual native helper", () => {
       });
       expect(publication.tag).toBe("ok");
       const before = session.status();
-      const cancel = dialog(["Activate saved configuration", "Cancel — no changes"]);
+      const cancel = dialog(["Activate saved configuration", "Back", "Back", undefined]);
       const entries = await readdir(setupPaths(agent).directory);
       const metadata = await readFile(setupPaths(agent).metadata);
       await setupCommand(agent, cancel, activate, undefined, async (fresh) =>

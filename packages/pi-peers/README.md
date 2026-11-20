@@ -34,52 +34,93 @@ pi install git:github.com/mich-murphy/pi-extensions
 ```
 
 To [load only some extensions](../../README.md#install), see the root README.
-Run `/peers setup` in a terminal UI or attended RPC client. Choose local-only or
-one remote peer, review the inferred machine identity, `local` scope, `Pi` label
-and grants, optionally Edit or inspect paginated Details, then select **Apply**.
-Escape, Cancel, an invalid RPC answer or a 120-second unanswered dialog makes no
-setup writes, downloads or gateway starts before Apply. Print/JSON setup/reset
-refuse mutation; there is no unattended `--yes` bypass.
 
-**Acquisition gate:** this source tree ships one reviewed immutable Nix source pin
-(producer revision `8b894b5`, with a NAR hash derived from a local `git archive`)
-and the reviewed manifest pin of the published
-[Pi Gateway v0.1.0](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.0)
-native release, built from the same revision. On a supported target (macOS arm64,
-Linux arm64 or Linux x64), Apply builds the pinned gateway into a private
-dedicated result when a usable system Nix exists. Without usable Nix, or if the
-Nix build fails, the same Apply downloads the native archive and authenticates
-it against the pinned manifest before installing. On other targets, including
-Intel macOS, fresh production Apply reports **Blocked**, without writing
-configuration or choosing a project/PATH binary. The macOS native binary is
-ad-hoc signed, not Developer ID signed or notarized: `spctl` rejects it, and
-browser quarantine or managed-device policy can block it. Setup never clears
-quarantine or bypasses Gatekeeper. A previously installed, hash-verified setup
-executable can be reused. A local test binary is not a production acquisition
-route.
+## Set up
 
-For manual operation on a blocked host:
+Type `/peers` in the terminal UI to open the **Peers** menu. Its rows are
+Status, Setup, Doctor, Reconnect and Reset, and each shows its current value
+(for example `Connected`, `Not set up` or `Activation pending`). Typing `/peers`
+followed by a space lists every action, and `/peers <action>` still runs one directly.
 
-1. Build from a trusted checkout using `cd packages/pi-peers/gateway && cargo build --locked --release` (`nix develop` provides the toolchain).
-2. Create a private persistent socket directory and gateway configuration. It has the Pi fields below without `label`; see the [gateway reference](gateway/README.md#configuration).
-3. Start `pi-gateway --config /absolute/path/to/gateway.json` yourself.
-4. Write the Pi configuration below and run `/peers reconnect` to activate an absent runtime. Existing custom/external/symlink configurations are preserved; guided setup does not silently adopt or migrate them.
+Choose **Setup** to open the `Peers › Setup` form. Nothing changes until you
+choose Apply. Each row shows its current or default value; press Enter to edit it
+in place:
 
-Setup-managed gateways run without launchd/systemd definitions: the first
-participating Pi starts the singleton; the last closes it after a bounded grace.
-Closing one Pi never kills the shared process. A crash while Pis remain open
-triggers bounded reconnect-or-spawn/re-registration episodes, keeping their nonce,
-publications and inbox state and never replaying uncertain sends. Exhaustion is
-reported; the next explicit reconnect or tool call can start another bounded
-episode, not a perpetual background retry.
+| Row | Default | Notes |
+| --- | --- | --- |
+| Mode | `Local only` | Switch to `One remote peer` to show the remote rows. |
+| Machine | Inferred from this host | Lowercase name for this machine. |
+| Scope | `local` | Group of sessions that can see each other. |
+| Label | The machine name | Name other sessions see. |
+| Permissions | e.g. `4 of 4 on` | Opens a toggle list. |
+| Socket | Default path | Shown only when the default path is too long. |
+| Remote rows | | Trust, peer machine, connection and address; see [Connect two machines](docs/remote-setup.md). |
+| Review details | | The full plan, including technical details. |
+| Apply | `Ready`, `Missing: <field>`, `Invalid: <check>` or `Blocked: <reason>` | Runs only when Ready. |
 
-The socket/managed ownership lock live under canonical home
-`.pi/pi-peers/<agent-directory-hash>/s` in private owned directories. Paths must fit
-100 UTF-8 bytes. An overlong home requires an explicitly reviewed short persistent
-private location, never a silent temporary-path fallback. Intentionally separate
-agent profiles have separate gateways; ordinary sessions sharing an agent
-directory share one. This is same-account trust across projects, not isolation
-from root or other code running as that account.
+Invalid values show an error on the row and keep the form open. Esc always goes
+back one level, and Esc on the Peers menu closes it without changes. Esc on a
+result screen returns to the Peers menu. In an RPC client, cancelling a dialog or
+leaving it unanswered for 120 seconds also goes back, and every list below the
+menu offers `Back`.
+
+Apply shows `Peers › Setup › Applying`, with a row per step (`✓` done, `…`
+running, `·` waiting). Esc hides this view while the work continues. When it
+finishes, `Peers › Setup › Result` says `✓ Peers set up — connected as <machine>`
+or `✗ Setup failed — <reason>`, then lists the machine, scope, permissions,
+config file, gateway, remote link and the next step. The same summary is kept in
+the session transcript, not sent to the model.
+
+Once peers is set up, the Setup row reads `Manage`. Choosing it opens
+`Peers › Setup` filled in from the saved configuration:
+
+| Row | Notes |
+| --- | --- |
+| Machine, Scope, Label, Permissions | The saved values, edited as in the fresh form. When a pair exists, Machine and Scope are read-only (the pair's certificates name this machine and the paired computer uses this scope), and Permissions also changes what the paired computer may do with this Pi. |
+| Review details | What Apply will save and restart. |
+| Apply | `No changes` until you edit a row, then `Ready`, `Invalid: <check>` or `Blocked: <reason>`. Settings edited by hand read `Blocked: settings were edited by hand — change pi-peers.json by hand or Reset`. Apply saves only setup-owned files, restarts a running shared gateway once (the row says so) and reconnects this Pi while it is idle. |
+| Keep and reconnect | Reconnects with the saved settings; nothing is written. |
+| Activate saved configuration | Opens `Peers › Setup › Activate`: restarts the gateway once so it uses the saved settings. |
+| Add one remote peer | Local-only setups: opens `Peers › Setup › Add peer` with the remote rows. |
+| Pairing rows | Paired setups instead show View public exchange instructions, Import public bundle, Issuer actions (the pair's creator) or Request renewal instructions (the joiner), and Re-pair with new root. Each opens its own screen with one consent row. |
+
+If the installed gateway needs repair, Setup reads `Repair needed` and opens the
+repair screen. An interrupted setup, a configuration written by hand
+(`Managed outside setup`) or unreadable setup files open a read-only report
+that points to Doctor and Reset.
+
+Choose **Reset** to turn peers off for this agent directory. The review lists
+what changes and what is kept; nothing happens until you choose `Turn off peers`.
+When there is nothing to turn off, Reset reads `Nothing to reset` and shows
+`Nothing to reset: peers is not set up for this Pi profile. No changes made.`
+
+Every action shows its progress and result under its own breadcrumb:
+
+| Action | Progress | Result |
+| --- | --- | --- |
+| Setup Apply | `Peers › Setup › Applying` | `Peers › Setup › Result` |
+| Reconnect | `Peers › Reconnect › Reconnecting` | `Peers › Reconnect › Result` |
+| Reset | `Peers › Reset › Turning off` | `Peers › Reset › Result` |
+
+A result's first line starts with `✓` (done), `!` (settings saved but not active
+yet) or `✗` (failed), followed by the facts, a `Next:` step and any technical
+details. While an action runs, Setup reads `Applying…`, Reconnect and Reset read
+`Busy`, and `/peers setup`, `/peers reset` and `/peers reconnect` refuse with
+`Peers is busy with another action. Try again when it finishes. No changes made.`
+
+The footer always shows how this session is doing while peers is set up,
+including when it is connected:
+
+| Footer | Meaning |
+| --- | --- |
+| `Peers: setting up…` | Apply is running. |
+| `Peers: connected` | This session is connected. |
+| `Peers: activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them. |
+| `Peers: unavailable` | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`. |
+| `Peers: setup failed` | This session couldn't start peers. Run `/peers doctor`. |
+
+There is no footer when peers is not set up. Print and JSON modes show status
+and doctor reports but refuse setup and reset.
 
 ## Configure
 
@@ -133,11 +174,92 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 | Command | Behavior |
 | --- | --- |
-| `/peers` or `/peers status` | Current exact runtime identity and bounded accounting; native remote diagnostics are a disk snapshot, not proof of a live link. |
-| `/peers setup` | Native intent/review/Edit/Apply; resumes pairing, repairs an unavailable owned installation, adds a peer to an owned local setup, or diagnoses/preserves external configuration. |
-| `/peers doctor` | Bounded regular-file inspection, including valid config symlinks read-only. Never binds/connects to a gateway or writes configuration/floors. |
-| `/peers reconnect` | Bounded ensure/re-registration. Existing runtimes keep nonce/state and do not replay uncertain sends; an absent runtime can load valid configuration and activate directly. |
-| `/peers reset` | Reviewed disable of unchanged setup-owned participation, reversible configuration backups and resumable owned archives. Preserves executable, keys, CRLs, revocation floors and old pair generations. Never signals the shared gateway. |
+| `/peers` | Opens the Peers menu in the terminal UI; prints status elsewhere. |
+| `/peers status` | Plain status for this session: machine, scopes, inbox and the next step. Exact identifiers are under Technical details. It does not check remote credentials; `/peers doctor` does. |
+| `/peers setup` | Opens the Peers menu with Setup open; Esc returns to the menu. For an existing setup, the form is filled in from the saved configuration, with repair, pairing, adding a peer or activating saved settings where needed. |
+| `/peers doctor` | Read-only checks of the config file, gateway, permissions, remote credentials and pairing expiry, each with what to do next, ending with `Live: <status headline>`. Never starts or connects to the gateway or writes files. |
+| `/peers reconnect` | Retries the connection without losing this session's inbox or state, and never resends uncertain messages. |
+| `/peers reset` | Opens the Peers menu with Reset open; `Turn off peers` disables setup-owned participation. Keeps the executable, keys and revocation state; never stops the shared gateway. |
+
+## Limits
+
+| Limit | Value |
+| --- | --- |
+| Frame size | 32 KiB |
+| Message `content` | 24,576 characters, and 24 KiB of authored data per frame |
+| `refs` per message | 8 |
+| Inbox | 64 messages, 1 MiB |
+| Receipts kept | 1,024, for at least 10 minutes |
+| Publications | 16, 512 KiB |
+| Relations and interests | 256 |
+| Recipients per report | 8 |
+| Sessions per gateway | 30 |
+| Send attempts | 3 within 15 seconds |
+
+## Delivery receipts
+
+- `admitted`: the receiving session's inbox holds the message. It does not mean read, accepted or done.
+- `not_admitted`: the attempt is known not to have been admitted.
+- `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message.
+
+See [design](docs/design.md#receipts-and-idempotency).
+
+## Use from codemode
+
+- Start with discovery and publication listing and reading. Keep full `PeerRef`s and revisions for later calls.
+- Call simple reads, `peers_take` and single sends directly.
+- Do not rebuild `peers_report` in a script.
+- Never rerun sends or reports after a script fails. Cancelling a script does not undo effects.
+- `peers_take` consumes the inbox. A later script failure does not restore it.
+
+## Safety and setup details
+
+Setup asks before every change. Esc, Cancel, an invalid RPC answer or a
+120-second unanswered dialog makes no setup writes, downloads or gateway starts.
+Print/JSON setup/reset refuse mutation; there is no unattended `--yes` bypass.
+Review details discloses that same-machine grants are account-wide, that peer
+messages can wake the model at provider cost, and the gateway's acquisition
+source and hash.
+
+**Acquisition gate:** this source tree ships one reviewed immutable Nix source pin
+(producer revision `8b894b5`, with a NAR hash derived from a local `git archive`)
+and the reviewed manifest pin of the published
+[Pi Gateway v0.1.0](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.0)
+native release, built from the same revision. On a supported target (macOS arm64,
+Linux arm64 or Linux x64), Apply builds the pinned gateway into a private
+dedicated result when a usable system Nix exists. Without usable Nix, or if the
+Nix build fails, the same Apply downloads the native archive and authenticates
+it against the pinned manifest before installing. On other targets, including
+Intel macOS, fresh production Apply reports **Blocked**, without writing
+configuration or choosing a project/PATH binary. The macOS native binary is
+ad-hoc signed, not Developer ID signed or notarized: `spctl` rejects it, and
+browser quarantine or managed-device policy can block it. Setup never clears
+quarantine or bypasses Gatekeeper. A previously installed, hash-verified setup
+executable can be reused. A local test binary is not a production acquisition
+route.
+
+For manual operation on a blocked host:
+
+1. Build from a trusted checkout using `cd packages/pi-peers/gateway && cargo build --locked --release` (`nix develop` provides the toolchain).
+2. Create a private persistent socket directory and gateway configuration. It has the Pi fields below without `label`; see the [gateway reference](gateway/README.md#configuration).
+3. Start `pi-gateway --config /absolute/path/to/gateway.json` yourself.
+4. Write the Pi configuration below and run `/peers reconnect` to activate an absent runtime. Existing custom/external/symlink configurations are preserved; guided setup does not silently adopt or migrate them.
+
+Setup-managed gateways run without launchd/systemd definitions: the first
+participating Pi starts the singleton; the last closes it after a bounded grace.
+Closing one Pi never kills the shared process. A crash while Pis remain open
+triggers bounded reconnect-or-spawn/re-registration episodes, keeping their nonce,
+publications and inbox state and never replaying uncertain sends. Exhaustion is
+reported; the next explicit reconnect or tool call can start another bounded
+episode, not a perpetual background retry.
+
+The socket/managed ownership lock live under canonical home
+`.pi/pi-peers/<agent-directory-hash>/s` in private owned directories. Paths must fit
+100 UTF-8 bytes. An overlong home requires an explicitly reviewed short persistent
+private location, never a silent temporary-path fallback. Intentionally separate
+agent profiles have separate gateways; ordinary sessions sharing an agent
+directory share one. This is same-account trust across projects, not isolation
+from root or other code running as that account.
 
 Managed setup requires the `config-generation-v1` capability. Each connection
 attempt sends the expected SHA256 from that attempt's verified setup snapshot;
@@ -159,7 +281,8 @@ the review snapshot is also blocked by guarded admission, not silently adopted.
 `/peers reconnect` and passive recovery only retry guarded admission within the
 existing bounded episode (six attempts / sixty seconds); they never send restart
 control or replay application requests. To explicitly retire an old instance, use
-`/peers setup` → **Activate saved configuration**, review, then Apply. This sends
+`/peers setup` → **Activate saved configuration**, review, then
+**Restart and activate**. This sends
 one separate user-approved restart and reconnects the same Pi runtime: nonce,
 inbox, publications, interests and receipts are retained. Incompatible survivors
 with narrowed identity/scope/grants remain refused. A cancelled action does
@@ -200,37 +323,6 @@ arbitrary external-CA renewal is not automated or proven by guided import.
 A local connected result does not claim a remote link. Expired/bad remote
 credentials degrade the remote side while leaving local communication available.
 Unknown sends must never be resent as a new message ID.
-
-## Limits
-
-| Limit | Value |
-| --- | --- |
-| Frame size | 32 KiB |
-| Message `content` | 24,576 characters, and 24 KiB of authored data per frame |
-| `refs` per message | 8 |
-| Inbox | 64 messages, 1 MiB |
-| Receipts kept | 1,024, for at least 10 minutes |
-| Publications | 16, 512 KiB |
-| Relations and interests | 256 |
-| Recipients per report | 8 |
-| Sessions per gateway | 30 |
-| Send attempts | 3 within 15 seconds |
-
-## Delivery receipts
-
-- `admitted`: the receiving session's inbox holds the message. It does not mean read, accepted or done.
-- `not_admitted`: the attempt is known not to have been admitted.
-- `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message.
-
-See [design](docs/design.md#receipts-and-idempotency).
-
-## Use from codemode
-
-- Start with discovery and publication listing and reading. Keep full `PeerRef`s and revisions for later calls.
-- Call simple reads, `peers_take` and single sends directly.
-- Do not rebuild `peers_report` in a script.
-- Never rerun sends or reports after a script fails. Cancelling a script does not undo effects.
-- `peers_take` consumes the inbox. A later script failure does not restore it.
 
 ## More
 
