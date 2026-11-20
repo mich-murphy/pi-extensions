@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { AcquisitionPlan } from "./acquire.js";
-import { acquireGateway, discoverNixExecutable } from "./acquire.js";
+import { acquireGateway, discoverNixExecutable, UnsafeInstallFolder } from "./acquire.js";
 import {
   applyLocal,
   inspectSetup,
@@ -38,6 +38,7 @@ import type { SetupChoice, SetupDraft } from "./menu/setup-form.js";
 import {
   afterSave,
   failed,
+  failedWith,
   INCOMPLETE_NEXT,
   pendingOutcome,
   safeReason,
@@ -107,15 +108,13 @@ async function productionBackend(
           );
           return result.executable;
         } catch (error) {
-          if (fallback === null) {
-            throw error;
-          }
+          const native = nativeFallback(error, fallback);
           progress(
             "Nix acquisition unavailable; using the separately reviewed pinned native fallback",
           );
           const result = await acquireGateway(
             {
-              ...fallback,
+              ...native,
               approved: true,
               requiredCapabilities,
               method: "native",
@@ -130,6 +129,14 @@ async function productionBackend(
       },
     },
   };
+}
+/** The pinned native fallback after a failed Nix acquisition, or the original error when none applies. */
+function nativeFallback<T>(error: unknown, fallback: T | null): T {
+  // The native fallback installs under the same folders, so it would be refused too.
+  if (fallback === null || error instanceof UnsafeInstallFolder) {
+    throw error;
+  }
+  return fallback;
 }
 function selectedSource(
   discovered: ReturnType<typeof discoverGateway>,
@@ -590,11 +597,12 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
   } catch (error) {
     return saved
       ? afterSave(error, [SAVED])
-      : failed(
+      : failedWith(
           "Setup failed",
-          safeReason(error, "Apply did not finish; details withheld"),
+          error,
           INCOMPLETE_NEXT,
           [INCOMPLETE],
+          "Apply did not finish; details withheld",
         );
   }
 }

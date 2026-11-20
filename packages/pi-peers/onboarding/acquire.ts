@@ -174,6 +174,16 @@ async function readBoundedResponse(
   }
   return Buffer.concat(parts);
 }
+/** A folder on the install path that setup refuses to install under: it names the folder and the fix. */
+export class UnsafeInstallFolder extends Error {
+  constructor(
+    readonly folder: string,
+    readonly problem: string,
+    readonly fix: string,
+  ) {
+    super(`Unsafe install folder ${folder}: ${problem}`);
+  }
+}
 async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<void> {
   if (!path.isAbsolute(root) || path.normalize(root) !== root || root === path.parse(root).root) {
     throw new Error("Install root must be an approved absolute private path");
@@ -186,14 +196,21 @@ async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<vo
     await ensureSafeAncestor(current, io);
   }
   const stat = await io.lstat(root);
-  if (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0) {
-    throw new Error("Install root must be private and owned by this account");
+  if (stat.uid !== process.getuid?.()) {
+    throw new UnsafeInstallFolder(
+      root,
+      "belongs to another user",
+      "Use a Pi agent directory inside folders you own",
+    );
+  }
+  if ((stat.mode & 0o077) !== 0) {
+    throw new UnsafeInstallFolder(root, "is not private to this account", `Run chmod 700 ${root}`);
   }
 }
 async function ensureSafeAncestor(current: string, io: AcquisitionSeams["fs"]): Promise<void> {
   try {
     const stat = await io.lstat(current);
-    validateAncestorStat(stat);
+    validateAncestorStat(current, stat);
   } catch (error) {
     if (errorCode(error) !== "ENOENT") {
       throw error;
@@ -531,15 +548,28 @@ function errorCode(error: unknown): unknown {
   return error instanceof Error && "code" in error ? error.code : undefined;
 }
 
-function validateAncestorStat(stat: Stats): void {
+function validateAncestorStat(folder: string, stat: Stats): void {
   const uid = process.getuid?.();
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    (stat.uid !== 0 && stat.uid !== uid) ||
-    ((stat.mode & 0o022) !== 0 && !(stat.uid === 0 && (stat.mode & 0o1000) !== 0))
-  ) {
-    throw new Error("Unsafe install ancestor");
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new UnsafeInstallFolder(
+      folder,
+      "is a symbolic link or not a folder",
+      "Use a Pi agent directory whose path has only real folders",
+    );
+  }
+  if (stat.uid !== 0 && stat.uid !== uid) {
+    throw new UnsafeInstallFolder(
+      folder,
+      "belongs to another user",
+      "Use a Pi agent directory inside folders you own",
+    );
+  }
+  if ((stat.mode & 0o022) !== 0 && !(stat.uid === 0 && (stat.mode & 0o1000) !== 0)) {
+    throw new UnsafeInstallFolder(
+      folder,
+      "can be changed by other users",
+      `Run chmod go-w ${folder}, or use a Pi agent directory outside it`,
+    );
   }
 }
 

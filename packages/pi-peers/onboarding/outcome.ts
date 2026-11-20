@@ -1,3 +1,4 @@
+import { UnsafeInstallFolder } from "./acquire.js";
 import type { Outcome } from "./menu/progress.js";
 
 /** Our own refusals explain themselves; anything that may quote a path or file content does not. */
@@ -27,6 +28,30 @@ export function failed(
   return { ok: false, headline: `✗ ${what} — ${reason}`, facts: [], next, technical };
 }
 
+/**
+ * A failed action from `error`. An unsafe install folder is our own refusal of a path the user
+ * chose, so it names that folder and the fix; anything else keeps the safe reason and `next`.
+ */
+export function failedWith(
+  what: string,
+  error: unknown,
+  next: string,
+  technical: readonly string[] = [],
+  fallback?: string,
+): Outcome {
+  if (error instanceof UnsafeInstallFolder) {
+    return failed(
+      what,
+      `unsafe install folder ${error.folder}`,
+      `Nothing you had before was changed. ${error.folder} ${error.problem}. ${error.fix}, then try again.`,
+      [
+        `Gateway install stopped before any download or settings change: ${error.folder} ${error.problem}.`,
+      ],
+    );
+  }
+  return failed(what, safeReason(error, fallback), next, technical);
+}
+
 export const INCOMPLETE_NEXT =
   "Nothing you had before was changed. Choose Doctor to see what failed, then try Apply again.";
 export const SAVED_NEXT =
@@ -41,7 +66,7 @@ export async function attempt(
   try {
     return await work();
   } catch (error) {
-    return failed(what, safeReason(error), next);
+    return failedWith(what, error, next);
   }
 }
 
