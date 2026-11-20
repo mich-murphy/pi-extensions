@@ -40,9 +40,8 @@ const CONSENT_ROWS = new Set([
 const NOT_READY = /^(?:No changes|Missing: |Invalid: |Blocked: )/u;
 // Root-action outcome headlines, by the breadcrumb their outcome view must carry.
 const ROOT_OUTCOMES: Readonly<Record<string, RegExp>> = {
-  "Peers › Reconnect › Result": /^(?:✓ Reconnected — |✗ Reconnect failed — |✗ Failed — )/u,
-  "Peers › Reset › Result":
-    /^(?:✓ Peers turned off|✗ Reset refused — |✗ Reset partly done — |✗ Failed — )/u,
+  "Peers › Reconnect › Result": /^(?:✓ Reconnected — |✗ Reconnect failed: |✗ Failed: )/u,
+  "Peers › Reset › Result": /^(?:✓ Peers turned off|✗ Reset failed: |✗ Failed: )/u,
 };
 
 export type Screen = PeersView & {

@@ -21,6 +21,7 @@ import {
   validatePin,
 } from "./catalog.js";
 import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog.js";
+import { foreignFolder, linkedFolder, openFolder, Refusal, sharedFolder } from "./refusal.js";
 
 export type AcquisitionPlanCommon = Readonly<{
   /** Only a reviewed Apply may construct this value. Cancellation before Apply does not call acquisition. */
@@ -112,7 +113,7 @@ async function download(
   for (let redirects = 0; redirects <= 3; redirects++) {
     validateDownloadOrigin(current);
     // eslint-disable-next-line no-await-in-loop -- Ordered redirect/stream/ancestor steps cannot run concurrently.
-    const response = await fetcher(current, { signal, redirect: "manual", credentials: "omit" });
+    const response = await fetchOnce(current, signal, fetcher);
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       // eslint-disable-next-line no-await-in-loop -- Ordered redirect/stream/ancestor steps cannot run concurrently.
       await response.body?.cancel();
@@ -126,6 +127,27 @@ async function download(
     return readBoundedResponse(response, maximum, signal);
   }
   throw new Error("Too many artifact redirects");
+}
+/** One request; a network failure (not a cancellation) is the user's connection to fix. */
+async function fetchOnce(
+  url: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+): Promise<Response> {
+  try {
+    return await fetcher(url, { signal, redirect: "manual", credentials: "omit" });
+  } catch (error) {
+    signal.throwIfAborted();
+    throw downloadFailed(error);
+  }
+}
+function downloadFailed(cause: unknown): Refusal {
+  const refusal = new Refusal(
+    "the gateway download failed",
+    "Check your internet connection, then try again",
+  );
+  refusal.cause = cause;
+  return refusal;
 }
 function validateDownloadOrigin(url: string): void {
   const parsed = new URL(url);
@@ -150,7 +172,7 @@ async function readBoundedResponse(
 ): Promise<Buffer> {
   if (!response.ok || !response.body || Number(response.headers.get("content-length")) > maximum) {
     await response.body?.cancel();
-    throw new Error("Artifact download unavailable or oversized");
+    throw downloadFailed(undefined);
   }
   const reader = response.body.getReader();
   const parts: Uint8Array[] = [];
@@ -174,16 +196,6 @@ async function readBoundedResponse(
   }
   return Buffer.concat(parts);
 }
-/** A folder on the install path that setup refuses to install under: it names the folder and the fix. */
-export class UnsafeInstallFolder extends Error {
-  constructor(
-    readonly folder: string,
-    readonly problem: string,
-    readonly fix: string,
-  ) {
-    super(`Unsafe install folder ${folder}: ${problem}`);
-  }
-}
 async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<void> {
   if (!path.isAbsolute(root) || path.normalize(root) !== root || root === path.parse(root).root) {
     throw new Error("Install root must be an approved absolute private path");
@@ -197,14 +209,10 @@ async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<vo
   }
   const stat = await io.lstat(root);
   if (stat.uid !== process.getuid?.()) {
-    throw new UnsafeInstallFolder(
-      root,
-      "belongs to another user",
-      "Use a Pi agent directory inside folders you own",
-    );
+    throw foreignFolder(root);
   }
   if ((stat.mode & 0o077) !== 0) {
-    throw new UnsafeInstallFolder(root, "is not private to this account", `Run chmod 700 ${root}`);
+    throw openFolder(root);
   }
 }
 async function ensureSafeAncestor(current: string, io: AcquisitionSeams["fs"]): Promise<void> {
@@ -551,25 +559,13 @@ function errorCode(error: unknown): unknown {
 function validateAncestorStat(folder: string, stat: Stats): void {
   const uid = process.getuid?.();
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
-    throw new UnsafeInstallFolder(
-      folder,
-      "is a symbolic link or not a folder",
-      "Use a Pi agent directory whose path has only real folders",
-    );
+    throw linkedFolder(folder);
   }
   if (stat.uid !== 0 && stat.uid !== uid) {
-    throw new UnsafeInstallFolder(
-      folder,
-      "belongs to another user",
-      "Use a Pi agent directory inside folders you own",
-    );
+    throw foreignFolder(folder);
   }
   if ((stat.mode & 0o022) !== 0 && !(stat.uid === 0 && (stat.mode & 0o1000) !== 0)) {
-    throw new UnsafeInstallFolder(
-      folder,
-      "can be changed by other users",
-      `Run chmod go-w ${folder}, or use a Pi agent directory outside it`,
-    );
+    throw sharedFolder(folder);
   }
 }
 

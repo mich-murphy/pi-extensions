@@ -67,7 +67,7 @@ menu offers `Back`.
 Apply shows `Peers › Setup › Applying`, with a row per step (`✓` done, `…`
 running, `·` waiting). Esc hides this view while the work continues. When it
 finishes, `Peers › Setup › Result` says `✓ Peers set up — connected as <machine>`
-or `✗ Setup failed — <reason>`, then lists the machine, scope, permissions,
+or `✗ Setup failed: <reason>` with one fix on the `Next:` line, then lists the machine, scope, permissions,
 config file, gateway, remote link and the next step. The same summary is kept in
 the session transcript, not sent to the model.
 

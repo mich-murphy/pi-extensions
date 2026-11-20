@@ -226,7 +226,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     );
     const replies = await host.command("reset", ["APPLY"]);
     const messages = replies.join("\n");
-    expect(messages).toContain("Reset refused — ownership or configuration differs");
+    expect(messages).toContain("Reset failed: the record of an earlier reset is damaged");
     expect(messages).toContain("Nothing was turned off");
     expect(messages).not.toContain("secret-owner");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
@@ -248,7 +248,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     const bytes = await readFile(path);
     await writeFile(path, Buffer.concat([bytes, Buffer.from("\n")]));
     const messages = await host.command("reset", ["APPLY"]);
-    expect(messages.join("\n")).toContain("Reset refused — Configuration changed externally");
+    expect(messages.join("\n")).toContain("Reset failed: pi-peers.json was edited by hand");
     expect(messages.join("\n")).toContain("Nothing was turned off");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
@@ -272,7 +272,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
       { mode: 0o600 },
     );
     const messages = await host.command("reset", ["APPLY"]);
-    expect(messages.join("\n")).toContain("Reset partly done — peers is off");
+    expect(messages.join("\n")).toContain("Reset failed: peers is off, but cleanup did not finish");
     expect(existsSync(paths.adapter)).toBe(false);
     await nativeUntil(async () => !existsSync(paths.socket));
     const status = await host.command("status");

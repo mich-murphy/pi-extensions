@@ -38,7 +38,7 @@ export type SetupRoute = {
 };
 
 export type Notice = { readonly message: string; readonly level: "info" | "warning" };
-export const NO_CHANGES: Notice = { message: "Cancelled — no changes made.", level: "info" };
+export const NO_CHANGES: Notice = { message: "Cancelled. Nothing was changed.", level: "info" };
 
 export const SETUP_STEPS = [
   "Getting the verified gateway",
@@ -46,5 +46,4 @@ export const SETUP_STEPS = [
   "Starting the gateway and connecting",
 ] as const;
 
-export const NOTHING_TO_RESET =
-  "Nothing to reset: peers is not set up for this Pi profile. No changes made.";
+export const NOTHING_TO_RESET = "Nothing to reset: peers is not set up.";

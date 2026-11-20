@@ -230,7 +230,7 @@ describe("managed generation admission with actual native helper", () => {
         expect(restart).toHaveBeenCalledOnce();
         expect(activate).not.toHaveBeenCalled();
         expect(ctx.ui.notify).toHaveBeenCalledWith(
-          expect.stringContaining("Settings saved — not active yet"),
+          expect.stringContaining("Settings saved but not active yet"),
           "warning",
         );
         expect(ctx.ui.notify).not.toHaveBeenCalledWith(
@@ -286,8 +286,8 @@ describe("managed generation admission with actual native helper", () => {
       await setupCommand(agent, ctx, activate, undefined, reconnect);
       expect(reconnect).toHaveBeenCalledExactlyOnceWith(true);
       expect(ctx.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Activation not confirmed"),
-        "warning",
+        expect.stringContaining("Activation failed"),
+        "error",
       );
       expect(ctx.ui.notify).not.toHaveBeenCalledWith(
         expect.stringContaining("Saved configuration activated"),
@@ -322,7 +322,7 @@ describe("managed generation admission with actual native helper", () => {
       expect(restart).toHaveBeenCalledOnce();
       expect(activate).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Settings saved — not active yet"),
+        expect.stringContaining("Settings saved but not active yet"),
         "warning",
       );
       expect(ctx.ui.notify).not.toHaveBeenCalledWith(

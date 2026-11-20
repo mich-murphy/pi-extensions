@@ -115,7 +115,9 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
     const { plan, previous } = await reviewed(entry.reviewed);
     await changePair(join(setupPaths(agent).directory, "pairing.json"), entry.mutation);
     const before = await snapshot(agent);
-    await expect(saveOwnedPlan(agent, previous, plan)).rejects.toThrow("Managed snapshots changed");
+    await expect(saveOwnedPlan(agent, previous, plan)).rejects.toThrow(
+      "the saved settings changed",
+    );
     await expect(snapshot(agent)).resolves.toStrictEqual(before);
   });
   test("pairing drift also refuses a reviewed pairing replacement before journal creation", async () => {
@@ -124,7 +126,7 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
     const before = await snapshot(agent);
     await expect(
       saveOwnedPlan(agent, previous, plan, '{"public":"approved replacement"}'),
-    ).rejects.toThrow("Managed snapshots changed");
+    ).rejects.toThrow("the saved settings changed");
     await expect(snapshot(agent)).resolves.toStrictEqual(before);
   });
 });

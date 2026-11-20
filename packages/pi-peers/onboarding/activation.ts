@@ -4,6 +4,7 @@ import { actionForm, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import type { Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
+import { failed } from "./outcome.js";
 import type { Reconnect } from "./route.js";
 
 const STEPS = ["Restarting the gateway once", "Reconnecting this Pi"] as const;
@@ -37,15 +38,14 @@ async function activateSaved(
       ],
     };
   }
-  return {
-    ok: false,
-    headline: "✗ Activation not confirmed — settings saved, not active yet",
-    facts: [],
-    next: "Choose Reconnect later. If it still waits, another session may still use the old gateway until it closes.",
-    technical: [
-      `Restart ${restart}. Configuration saved; activation pending or unconfirmed. The running gateway may serve another generation or reject guarded registration. Existing sessions may still use old trust until it exits. Passive reconnect only retries guarded admission. No automatic control replay.`,
-    ],
-  };
+  return failed(
+    "Activation failed",
+    restart === "acknowledged"
+      ? "this Pi could not reconnect"
+      : "the gateway did not confirm the restart",
+    "Your settings are saved. Choose Reconnect in a minute, or close other Pi sessions first.",
+    [`Restart ${restart}.`],
+  );
 }
 
 /** `Activate saved configuration`: one restart of the shared gateway, then this Pi reconnects. */

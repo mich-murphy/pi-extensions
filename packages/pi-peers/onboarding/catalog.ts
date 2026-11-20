@@ -91,14 +91,14 @@ export function discoverGateway(
   let preferred: "nix" | "native" | undefined;
   let unavailableReason: string | undefined;
   if (target === undefined) {
-    unavailableReason = "No reviewed target for this OS/architecture";
+    unavailableReason = "no verified gateway for this OS and CPU";
   } else if (options.nixAvailable && catalog.nix !== null) {
     preferred = "nix";
   } else if (catalog.native === null) {
     unavailableReason =
       catalog.nix === null
-        ? "No reviewed immutable gateway source or published artifact pin is shipped"
-        : "Pinned Nix source exists, but no usable Nix executable or published native fallback is available";
+        ? "this pi-peers version ships no verified gateway"
+        : "Nix is not installed and there is no verified download for this platform";
   } else {
     preferred = "native";
   }

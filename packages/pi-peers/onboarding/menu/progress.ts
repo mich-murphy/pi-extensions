@@ -32,10 +32,18 @@ export function outcomeLines(outcome: Outcome): string[] {
   ];
 }
 
-/** One notification: the headline and the next step. */
+/** One notification: the headline and the next step. Pi adds its own `Error:` or `Warning:`. */
 export function outcomeText(outcome: Outcome): string {
-  const headline = clean(outcome.headline);
+  const headline = clean(outcome.headline).replace(/^[✗!] /u, "");
   return outcome.next === undefined ? headline : `${headline}. ${clean(outcome.next)}`;
+}
+
+/** Notification level: a failure is an error, saved-but-not-active a warning. */
+export function outcomeLevel(outcome: Outcome): "info" | "warning" | "error" {
+  if (outcome.ok) {
+    return "info";
+  }
+  return outcome.headline.startsWith("!") ? "warning" : "error";
 }
 
 function pair(value: unknown): readonly [string, string] | undefined {
@@ -88,7 +96,7 @@ async function settle(work: (step: Step) => Promise<Outcome>, step: Step): Promi
   try {
     return await work(step);
   } catch {
-    return { ok: false, headline: "✗ Failed — unexpected error; details withheld", facts: [] };
+    return { ok: false, headline: "✗ Failed: unexpected error", facts: [] };
   }
 }
 

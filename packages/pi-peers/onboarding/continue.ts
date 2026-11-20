@@ -22,7 +22,7 @@ import type { Row, Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
 import type { RemoteOptions } from "./menu/remote-form.js";
-import { attempt, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
+import { attempt, failed, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
 import { credentials, pairAction } from "./pair.js";
 import type { PairOperation } from "./pair.js";
 import type { LocalChoices, LocalPlan } from "./plan.js";
@@ -161,17 +161,14 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
         : input;
     output = await pairAction(setup.executable, paths.directory, operation, prepared);
   } catch {
-    return {
-      ok: false,
-      headline: `✗ Pairing ${operation} failed — the pairing step refused`,
-      facts: [],
-      next: "Nothing was changed. Check the file paths and fingerprints, then try again.",
-    };
+    return failed(
+      `Pairing ${operation} failed`,
+      "the files or fingerprint were not accepted",
+      "Check the file paths and fingerprint, then try again.",
+    );
   }
   const facts = publicFacts(output);
-  const technical = [
-    `Pair ${operation}: ${JSON.stringify(output)}. Public material only. Current Pi runtime/nonce/volatile state was preserved, not silently reloaded.`,
-  ];
+  const technical = [`Pair ${operation} output (public files only): ${JSON.stringify(output)}`];
   if (operation === "export") {
     return {
       ok: true,
@@ -208,18 +205,20 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
     if (restart === "uncertain") {
       return pendingOutcome(`Pairing ${operation} saved`, SAVED_NEXT, [
         ...technical,
-        "Activation/revocation NOT confirmed — reconnect and inspect; no control replay.",
+        "The gateway restart was not confirmed.",
       ]);
     }
   } catch {
     return saved
       ? pendingOutcome(`Pairing ${operation} saved`, SAVED_NEXT, technical)
       : {
-          ok: false,
-          headline: `✗ Pairing ${operation} failed — settings were not saved`,
+          ...failed(
+            `Pairing ${operation} failed`,
+            "the new keys could not be saved",
+            INCOMPLETE_NEXT,
+            technical,
+          ),
           facts,
-          next: INCOMPLETE_NEXT,
-          technical,
         };
   }
   return {

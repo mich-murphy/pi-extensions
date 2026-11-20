@@ -14,6 +14,7 @@ import type { Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { failedWith, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
 import { replaceOwned } from "./owned-file.js";
+import { Refusal, SETTINGS_CHANGED } from "./refusal.js";
 import type { Acquisition, Reconnect } from "./route.js";
 import {
   cachedSchema,
@@ -59,12 +60,16 @@ async function inspectOwned(agentDir: string) {
       ].map(async (path) => regularBytes(path)),
     );
   if (pending !== undefined || prepared !== undefined || reset !== undefined) {
-    throw new Error(
-      "Interrupted setup/reset preserved; installation repair will not migrate its ownership",
+    throw new Refusal(
+      "a previous setup or reset did not finish",
+      "Choose Reset in /peers, then Setup again",
     );
   }
   if (installed === undefined || adapter === undefined || gateway === undefined) {
-    throw new Error("Repair requires committed owned metadata and unchanged configuration");
+    throw new Refusal(
+      "setup files are missing or were edited by hand",
+      "Choose Reset in /peers, then Setup again",
+    );
   }
   const record = decodeManaged(parseJson(metadata));
   const cache = decodeCached(parseJson(installed));
@@ -182,7 +187,7 @@ async function repairWork(
     await reconnect?.();
   } catch {
     return pendingOutcome("Installation repaired", SAVED_NEXT, [
-      "Installation repaired; guarded activation pending or unconfirmed. No runtime/state was replaced and no control request was sent. An older live gateway may reject guarded admission. Passive reconnect never retires it; Setup › Activate saved configuration offers a separate explicitly reviewed restart.",
+      "The gateway did not accept this Pi yet.",
     ]);
   }
   return {
@@ -300,7 +305,7 @@ async function applyRepair(
       digest(current.metadata) !== digest(owned.metadata) ||
       digest(current.installed) !== digest(owned.installed)
     ) {
-      throw new Error("Repair snapshots changed; acquired file retained, configuration preserved");
+      throw SETTINGS_CHANGED();
     }
     const journal = join(owned.paths.directory, "repair.json");
     if (owned.ledger === undefined) {

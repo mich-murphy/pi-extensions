@@ -97,7 +97,10 @@ describe("orphan installation recovery with actual native flock", () => {
     });
     const blocked = dialog([local, "APPLY"]);
     await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
-    expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
+    expect(blocked.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Setup unavailable"),
+      "warning",
+    );
     expect(acquire).not.toHaveBeenCalled();
     expect(activate).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
@@ -146,7 +149,7 @@ describe("orphan installation recovery with actual native flock", () => {
     async (drift) => {
       const { paths, marker, acquire, expectedInstalled } = await driftCase(drift);
       await expect(applyLocal(agent, plan(), { acquire }, () => undefined)).rejects.toThrow(
-        /changed|preserved|JSON/u,
+        /changed|already set up|JSON/u,
       );
       expect(acquire).toHaveBeenCalledOnce();
       expect(existsSync(marker)).toBe(false);
@@ -189,7 +192,7 @@ describe("orphan installation recovery with actual native flock", () => {
     await expect(reusableExecutable(agent)).rejects.toThrow("ENOENT");
     const acquire = vi.fn<SetupBackend["acquire"]>();
     await expect(applyLocal(agent, plan(), { acquire }, () => undefined)).rejects.toThrow(
-      "preserved",
+      "already set up",
     );
     expect(acquire).not.toHaveBeenCalled();
   });
@@ -198,7 +201,7 @@ describe("orphan installation recovery with actual native flock", () => {
     await writeFile(paths.prepared, "pending");
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
     await expect(applyLocal(agent, plan(), { acquire }, () => undefined)).rejects.toThrow(
-      "preserved",
+      "already set up",
     );
     expect(acquire).not.toHaveBeenCalled();
     await expect(readFile(paths.prepared, "utf8")).resolves.toBe("pending");

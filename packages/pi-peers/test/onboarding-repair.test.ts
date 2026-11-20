@@ -192,7 +192,7 @@ describe("explicit owned installation repair with actual native helper", () => {
         description: "TEST",
       });
       expect(ui.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Setup blocked: setup files changed"),
+        expect.stringContaining("Setup blocked: its saved files were changed"),
         "warning",
       );
       const offered = vi.mocked(ui.ui.select).mock.calls.flatMap(([, options]) => options);
@@ -210,7 +210,10 @@ describe("explicit owned installation repair with actual native helper", () => {
     const before = await readFile(paths.metadata);
     const ui = dialog(["APPLY"]);
     await setupCommand(agent, ui, vi.fn<ActivatePlan>(), undefined, undefined, noPins);
-    expect(ui.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Repair blocked"), "warning");
+    expect(ui.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Repair unavailable"),
+      "warning",
+    );
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(before);
     expect(existsSync(join(paths.directory, "repair.json"))).toBe(false);
   });

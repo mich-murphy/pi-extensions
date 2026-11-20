@@ -4,6 +4,7 @@ import { createPrivate, digest, regularBytes, withSetupLock, durableUnlink } fro
 import type { ManagedSetup } from "./managed.js";
 import { replaceOwned } from "./owned-file.js";
 import type { LocalPlan } from "./plan.js";
+import { SETTINGS_CHANGED } from "./refusal.js";
 import { decodeManaged, parseJson } from "./schema.js";
 
 export async function saveOwnedPlan(
@@ -27,11 +28,11 @@ export async function saveOwnedPlan(
       digest(gateway) !== previous.gatewaySha256 ||
       (pairing === undefined ? undefined : digest(pairing)) !== previous.pairingSha256
     ) {
-      throw new Error("Managed snapshots changed");
+      throw SETTINGS_CHANGED();
     }
     const current = decodeManaged(parseJson(metadata));
     if (!sameManaged(current, previous)) {
-      throw new Error("Managed metadata changed since review; update refused");
+      throw SETTINGS_CHANGED();
     }
     const nextAdapter = `${JSON.stringify(plan.adapter, null, 2)}\n`;
     const nextGateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;

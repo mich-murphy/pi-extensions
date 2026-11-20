@@ -153,7 +153,10 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       });
       const blocked = dialog([local, "APPLY"]);
       await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
-      expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
+      expect(blocked.ui.notify).toHaveBeenCalledWith(
+        expect.stringContaining("Setup unavailable"),
+        "warning",
+      );
       expect(acquire).not.toHaveBeenCalled();
       expect(activate).not.toHaveBeenCalled();
       expect(existsSync(marker)).toBe(false);
@@ -171,7 +174,10 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const activate = vi.fn<ActivatePlan>();
     const blocked = dialog([...remote, "APPLY"]);
     await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
-    expect(blocked.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Blocked"), "warning");
+    expect(blocked.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Setup unavailable"),
+      "warning",
+    );
     expect(activate).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
@@ -204,7 +210,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => executable);
     const prepare = vi.fn<(executable: string, plan: LocalPlan) => Promise<LocalPlan>>();
     await expect(applyLocal(agent, plan(), { acquire }, () => undefined, prepare)).rejects.toThrow(
-      "capability",
+      "out of date",
     );
     expect(acquire).toHaveBeenCalledOnce();
     expect(prepare).not.toHaveBeenCalled();
@@ -238,9 +244,9 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const metadata = await readFile(paths.metadata);
     const entries = await readdir(paths.directory);
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
-    await expect(reusableExecutable(agent)).rejects.toThrow("capability");
+    await expect(reusableExecutable(agent)).rejects.toThrow("out of date");
     await expect(applyLocal(agent, plan(), { acquire }, () => undefined)).rejects.toThrow(
-      "preserved",
+      "already set up",
     );
     expect(acquire).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
@@ -287,7 +293,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const { paths, marker, lockLog } = await committedMask([]);
     const metadata = await readFile(paths.metadata);
     const entries = await readdir(paths.directory);
-    await expect(resetLocal(agent)).rejects.toThrow("capability");
+    await expect(resetLocal(agent)).rejects.toThrow("out of date");
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(lockLog)).toBe(false);
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(metadata);
@@ -308,13 +314,13 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
         description: "TEST trusted repair",
       });
       expect(cancelled.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Cancelled — no changes made"),
+        expect.stringContaining("Cancelled. Nothing was changed"),
         "info",
       );
       const blocked = dialog(["APPLY"]);
       await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
       expect(blocked.ui.notify).toHaveBeenCalledWith(
-        expect.stringContaining("Repair blocked"),
+        expect.stringContaining("Repair unavailable"),
         "warning",
       );
       expect(acquire).not.toHaveBeenCalled();
@@ -433,7 +439,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       },
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Installation repaired — not active yet"),
+      expect.stringContaining("Installation repaired but not active yet"),
       "warning",
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -495,7 +501,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     expect(acquire).not.toHaveBeenCalled();
     const refused = await consentOutcome(await route());
     expect(refused?.ok).toBe(false);
-    expect(refused?.headline).toContain("capability");
+    expect(refused?.headline).toContain("out of date");
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(metadata);
     await expect(consentOutcome(await route())).resolves.toMatchObject({ ok: true });
     expect(acquire).toHaveBeenCalledTimes(2);
@@ -530,7 +536,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     async (drift) => {
       const { paths, marker, acquire } = await driftDuringAcquire(drift);
       await expect(applyLocal(agent, plan(), { acquire }, () => undefined)).rejects.toThrow(
-        /JSON|changed|preserved/u,
+        /JSON|changed|already set up/u,
       );
       expect(acquire).toHaveBeenCalledOnce();
       expect(existsSync(marker)).toBe(false);

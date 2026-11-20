@@ -26,6 +26,7 @@ import { validateExecutable, managedLauncher } from "./managed.js";
 import { replaceOwned } from "./owned-file.js";
 import { defaultChoices } from "./plan.js";
 import type { LocalPlan } from "./plan.js";
+import { Refusal } from "./refusal.js";
 import { decodeManaged, decodeCached, decodeOwnership, decodeReset, parseJson } from "./schema.js";
 
 export type SetupBackend = {
@@ -162,10 +163,10 @@ export async function applyLocal(
       JSON.stringify(await bootstrapSnapshot(paths, requiredCapabilities)) !==
       JSON.stringify(before)
     ) {
-      throw new Error("Setup cache/state changed during acquisition; nothing overwritten");
+      throw new Refusal("setup files changed during the download", "Try again");
     }
     if ((await executableDigest(executable)) !== acquiredDigest) {
-      throw new Error("Acquired executable changed; nothing overwritten");
+      throw new Refusal("the downloaded gateway changed before it was used", "Try again");
     }
     const state = await inspectSetup(agentDir);
     if (
@@ -173,8 +174,9 @@ export async function applyLocal(
       state.pending ||
       (await regularBytes(join(paths.directory, "repair.json"))) !== undefined
     ) {
-      throw new Error(
-        "Setup state changed or an interrupted apply exists; run /peers doctor or reset. Nothing overwritten.",
+      throw new Refusal(
+        "another setup or reset did not finish",
+        "Choose Reset in /peers, then Setup again",
       );
     }
     const installed = JSON.stringify({ executable, sha256: acquiredDigest });
@@ -235,15 +237,9 @@ export async function applyLocal(
 }
 export class ResetFailure extends Error {
   constructor(readonly disabled: boolean) {
-    super(
-      disabled
-        ? "Reset partially completed: participation is disabled on disk; retry /peers reset to finish owned archives. Credentials and floors retained."
-        : "Reset refused before disabling participation; external files/runtime preserved.",
-    );
+    super(disabled ? "Reset stopped after turning peers off" : "Reset stopped before any change");
   }
 }
-/** A refusal reset explains itself. Its message is fixed text, never a path or file content. */
-export class ResetRefused extends Error {}
 type ResetEntry = { path: string; backup: string; sha256: string };
 /** Missing, or a path through a regular file: either way nothing is there to reset. */
 function isAbsent(error: unknown): boolean {
@@ -278,9 +274,7 @@ export async function resetLocal(agentDir: string): Promise<string> {
   const paths = setupPaths(agentDir);
   const executable = await cachedExecutable(paths);
   if (executable === undefined) {
-    throw new ResetRefused(
-      "No verified setup executable/committed ownership. Pre-acquisition remnants are not enabled and are preserved.",
-    );
+    throw new Refusal("setup never finished, so peers is not on", "Choose Setup to start again");
   }
   return withSetupLock(paths.lock, executable, async () => {
     const entries = await resetEntries(paths);
@@ -315,14 +309,23 @@ async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
   const path = join(paths.directory, "reset.json");
   const interrupted = await regularBytes(path);
   if (interrupted !== undefined) {
-    const entries = [...decodeReset(parseJson(interrupted))];
+    const damaged = new Refusal(
+      "the record of an earlier reset is damaged",
+      `Move ${path} aside, then try again`,
+    );
+    let entries: ResetEntry[];
+    try {
+      entries = [...decodeReset(parseJson(interrupted))];
+    } catch {
+      throw damaged;
+    }
     const allowed = new Set(resetPaths(paths));
     if (
       entries.some(
         (entry) => !allowed.has(entry.path) || !entry.backup.startsWith(`${entry.path}.disabled-`),
       )
     ) {
-      throw new ResetRefused("Invalid reset recovery ledger; preserved");
+      throw damaged;
     }
     return entries;
   }
@@ -346,14 +349,12 @@ function matchReset(
   label: string,
 ): void {
   if (bytes !== undefined && !allowed.includes(digest(bytes))) {
-    throw new ResetRefused(`${label} changed externally; reset refused before mutation`);
+    throw new Refusal(`${label} was edited by hand`, "Undo the edit, then try again");
   }
 }
 async function preflightReset(paths: SetupPaths): Promise<void> {
   if ((await regularBytes(join(paths.directory, "repair.json"))) !== undefined) {
-    throw new ResetRefused(
-      "Finish the owned installation repair with /peers setup before reset; repair ledger preserved",
-    );
+    throw new Refusal("a gateway repair is unfinished", "Choose Setup to finish the repair first");
   }
   const [metadata, prepared, pending, adapter, gateway, pairing] = await Promise.all(
     [
@@ -367,21 +368,21 @@ async function preflightReset(paths: SetupPaths): Promise<void> {
   );
   const recordBytes = metadata ?? prepared ?? pending;
   if (recordBytes === undefined) {
-    throw new ResetRefused("No setup ownership record; external files preserved");
+    throw new Refusal("pi-peers.json was written by hand", "Remove it by hand to turn peers off");
   }
   const record = decodeOwnership(parseJson(recordBytes));
   const transition = pending === undefined ? undefined : decodeOwnership(parseJson(pending));
   matchReset(
     adapter,
     [record.adapterSha256, transition?.adapterSha256, transition?.previousAdapterSha256],
-    "Configuration",
+    "pi-peers.json",
   );
   matchReset(
     gateway,
     [record.gatewaySha256, transition?.gatewaySha256, transition?.previousGatewaySha256],
-    "Gateway config",
+    "gateway.json",
   );
-  matchReset(pairing, [record.pairingSha256, transition?.pairingSha256], "Pairing metadata");
+  matchReset(pairing, [record.pairingSha256, transition?.pairingSha256], "pairing.json");
 }
 async function validateResetEntries(paths: SetupPaths, entries: ResetEntry[]): Promise<void> {
   const valid = await Promise.all(
@@ -448,8 +449,9 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
     ].map(async (path) => regularBytes(path)),
   );
   if (projections.some((bytes) => bytes !== undefined)) {
-    throw new Error(
-      "Setup state changed: committed or interrupted projections preserved; bootstrap refused",
+    throw new Refusal(
+      "peers is already set up or a setup did not finish",
+      "Open /peers again to review the saved setup",
     );
   }
   const installed = await regularBytes(paths.installed);
