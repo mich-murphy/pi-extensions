@@ -21,7 +21,13 @@ export type ManagedSetup = {
   gatewayPath: string;
   socketPath: string;
 };
-export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
+export type ManagedSnapshot = {
+  readonly state: "disabled" | "configured" | "degraded";
+  readonly reason?: string;
+  readonly text: string;
+};
+/** Native disk-credential diagnosis of the managed gateway configuration (not link readiness). */
+export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnapshot> {
   const { stdout } = await execute(setup.executable, ["--diagnose", setup.gatewayPath], {
     timeout: 5000,
     maxBuffer: 16_384,
@@ -39,7 +45,16 @@ export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
   ) {
     throw new Error("Native diagnostic contract mismatch");
   }
-  return `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. This is disk credential validation, NOT live gateway/link readiness; local availability is separate.`;
+  const known = state === "disabled" || state === "configured" ? state : "degraded";
+  return {
+    state: known,
+    ...(typeof reason === "string" ? { reason } : {}),
+    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. This is disk credential validation, NOT live gateway/link readiness; local availability is separate.`,
+  };
+}
+export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
+  const snapshot = await managedSnapshot(setup);
+  return snapshot.text;
 }
 export function gatewayEnvironment(): NodeJS.ProcessEnv {
   return {

@@ -13,7 +13,7 @@ import type { EnsureGateway } from "./client.js";
 import { GatewayClient } from "./client.js";
 import { permits, visibleText } from "./config.js";
 import type { Configuration } from "./config.js";
-import { attentionStatus } from "./presentation.js";
+import { footerStatus } from "./presentation.js";
 import { freshId } from "./transport.js";
 import type { Reply, Request } from "./transport.js";
 
@@ -109,7 +109,7 @@ export class AdapterSession {
     };
   }
   private updateStatus(): void {
-    this.context()?.ui.setStatus("peers", attentionStatus(this.client.status()));
+    this.context()?.ui.setStatus("peers", footerStatus(this.client.status(), true));
   }
   private incoming(request: Request): Reply {
     if (request.op === "deliver") {
