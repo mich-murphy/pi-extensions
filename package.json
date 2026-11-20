@@ -52,7 +52,7 @@
     "@types/node": "26.6.6",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.0.5",
-    "fallow": "3.39.0",
+    "fallow": "3.43.2",
     "jiti": "2.7.0",
     "markdownlint-cli2": "0.24.0",
     "oxfmt": "0.76.0",
