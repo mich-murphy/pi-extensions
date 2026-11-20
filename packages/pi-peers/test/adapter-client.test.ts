@@ -1085,7 +1085,7 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toContain("existing runtime may still be active");
     expect(host.notifications.at(-1)).toContain("Session communication: enabled");
     expect(host.notifications.at(-1)).not.toContain("participation is off");
-    expect(host.statuses.at(-1)).toBeUndefined();
+    expect(host.statuses.at(-1)).toBe("Peers: connected");
     await host.event("message_end", { message: { role: "custom" } });
     await host.event("agent_before_settle", { entries: [] });
     await host.event("agent_settled");

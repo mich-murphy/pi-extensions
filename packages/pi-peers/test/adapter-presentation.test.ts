@@ -7,7 +7,7 @@ import {
   propertySettings,
   propertyTimeout,
 } from "../../../test-support/hegel-settings";
-import { attentionStatus, diagnostics, toolPresentation } from "../adapter/presentation.js";
+import { diagnostics, footerStatus, toolPresentation } from "../adapter/presentation.js";
 import { registerTools } from "../adapter/tools.js";
 import { createState } from "../state/core.js";
 
@@ -613,21 +613,23 @@ describe("presentation-only session tool rendering", () => {
     ).toContain(`${count} ${label}:`);
   });
   test.each([
-    ["activation_pending", "Activation pending"],
-    ["activation_unconfirmed", "Managed activation unconfirmed"],
-  ])("%s is distinct and explains passive versus explicit activation", (status, footer) => {
-    expect(attentionStatus({ status })).toContain(footer);
-    const detail = diagnostics({ enabled: true, status }, "enabled");
-    expect(detail).toContain("Passive reconnect never restarts a gateway");
-    expect(detail).toContain("Activate saved configuration");
-    expect(detail).toContain("Existing sessions may still use old trust");
-  });
-  test("footer is absent when healthy; explicit diagnostics retain exact identity and accounting", () => {
-    expect(attentionStatus({ status: "connected" })).toBeUndefined();
-    expect(attentionStatus({ status: "unavailable" })).toBe("Peers unavailable");
-    expect(attentionStatus({ status: "disconnected" })).toBe("Peers unavailable · disconnected");
-    expect(attentionStatus({ status: "unavailable\u001b[31m" })).not.toContain("\u001b");
-    expect(attentionStatus(undefined)).toContain("disconnected");
+    ["activation_pending", "Peers: activation pending"],
+    ["activation_unconfirmed", "Peers: activation pending"],
+  ])(
+    "%s has a plain footer; diagnostics explain passive versus explicit activation",
+    (status, footer) => {
+      expect(footerStatus({ status }, true)).toBe(footer);
+      const detail = diagnostics({ enabled: true, status }, "enabled");
+      expect(detail).toContain("Passive reconnect never restarts a gateway");
+      expect(detail).toContain("Activate saved configuration");
+      expect(detail).toContain("Existing sessions may still use old trust");
+    },
+  );
+  test("footer uses contract strings; explicit diagnostics retain exact identity and accounting", () => {
+    expect(footerStatus({ status: "connected" }, true)).toBe("Peers: connected");
+    expect(footerStatus({ status: "unavailable" }, true)).toBe("Peers: unavailable");
+    expect(footerStatus({ status: "disconnected" }, true)).toBe("Peers: unavailable");
+    expect(footerStatus({ status: "unavailable\u001b[31m" }, true)).toBe("Peers: unavailable");
     expect(diagnostics(undefined, "not enabled")).toBe("Session communication: not enabled");
     expect(diagnostics(undefined, "enabled")).toBe(
       "Session communication: not enabled · runtime unavailable",

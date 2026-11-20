@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { doctor } from "../onboarding/doctor.js";
+import { doctor, doctorReport, doctorRowText, remoteSnapshot } from "../onboarding/doctor.js";
 
 const directories: string[] = [];
 async function fixture(content?: string) {
@@ -102,5 +102,116 @@ describe("read-only doctor", () => {
     expect(linked).toContain("Configuration: valid");
     await expect(readFile(target)).resolves.toStrictEqual(before);
     expect(linked).not.toContain("participation is off");
+  });
+});
+
+const internal =
+  /nonce|generation|receipt|operation|relation|guarded|registration|\bCAS\b|ledger|floor|projection|snapshot/iu;
+function valid(directory: string): string {
+  return JSON.stringify({
+    machineId: "host",
+    socketPath: join(directory, "absent.sock"),
+    scopeIds: ["local"],
+    label: "Pi",
+    policies: [
+      {
+        machineId: "host",
+        scopeId: "local",
+        permissions: ["discover", "read", "push", "interest"],
+      },
+    ],
+  });
+}
+describe("plain-language doctor report", () => {
+  afterEach(async () => {
+    await Promise.all(
+      directories
+        .splice(0)
+        .map(async (directory) => rm(directory, { recursive: true, force: true })),
+    );
+  });
+  const writers: Record<string, (directory: string, path: string) => Promise<void>> = {
+    missing: async () => undefined,
+    "invalid JSON": async (_directory, path) => writeFile(path, "{"),
+    "invalid fields": async (_directory, path) =>
+      writeFile(path, JSON.stringify({ machineId: "X" })),
+    oversized: async (_directory, path) => writeFile(path, "x".repeat(32_769)),
+    valid: async (directory, path) => writeFile(path, valid(directory)),
+  };
+  test.each(Object.keys(writers))(
+    "%s: rows are plain, problems say what to do, details stay technical",
+    async (name) => {
+      const { directory, path } = await fixture();
+      await writers[name]?.(directory, path);
+      const report = await doctorReport(directory);
+      expect(report.rows.length).toBeGreaterThan(0);
+      for (const row of report.rows) {
+        expect(`${row.label} ${row.value}`).not.toMatch(internal);
+      }
+      for (const row of report.rows.filter((entry) => entry.level !== "ok")) {
+        expect(row.value).toMatch(/\/peers|Fix|Check|Move|Shrink/u);
+        expect(row.value.split(/[.!?](?:\s|$)/u).filter(Boolean).length).toBeLessThanOrEqual(3);
+      }
+      expect(report.next).toBeDefined();
+      expect(report.next).not.toMatch(internal);
+      expect(report.technical.length).toBeGreaterThan(0);
+      const text = await doctor(directory);
+      expect(text.indexOf("Technical details:")).toBeGreaterThan(0);
+    },
+  );
+  test("valid config with a stopped gateway warns but is not an error", async () => {
+    const { directory, path } = await fixture();
+    await writeFile(path, valid(directory));
+    const report = await doctorReport(directory);
+    expect(report.ok).toBe(true);
+    expect(report.rows.find((row) => row.label === "Gateway")).toMatchObject({
+      level: "warn",
+    });
+    expect(report.rows.find((row) => row.label === "Permissions")).toMatchObject({ level: "ok" });
+    expect(report.next).toContain("first item marked");
+  });
+  test("broken config is not ok and leaves bytes unchanged", async () => {
+    const { directory, path } = await fixture("{");
+    const report = await doctorReport(directory);
+    expect(report.ok).toBe(false);
+    expect(report.rows[0]).toMatchObject({
+      label: "Config file",
+      level: "error",
+    });
+    await expect(readFile(path, "utf8")).resolves.toBe("{");
+  });
+  test("in the menu, setup steps say Choose Setup; notify keeps /peers setup", async () => {
+    const { directory } = await fixture();
+    const menu = await doctorReport(directory, { inMenu: true });
+    const notify = await doctorReport(directory);
+    const config = (report: typeof menu) =>
+      report.rows.filter((row) => row.label === "Config file").map((row) => row.value);
+    expect(config(menu).join("\n")).toContain("Choose Setup to create it.");
+    expect(config(notify).join("\n")).toContain("Run /peers setup to create it.");
+    for (const row of menu.rows) {
+      expect(row.value).not.toContain("/peers setup");
+      expect(row.value).not.toContain("Open /peers");
+    }
+  });
+  test("doctorRowText renders the level mark, label and value", async () => {
+    expect(doctorRowText({ label: "Gateway", value: "Socket found", level: "ok" })).toBe(
+      "✓ Gateway: Socket found",
+    );
+    expect(doctorRowText({ label: "Pairing", value: "Expires soon", level: "warn" })).toBe(
+      "! Pairing: Expires soon",
+    );
+    expect(doctorRowText({ label: "Config file", value: "Bad", level: "error" })).toBe(
+      "✗ Config file: Bad",
+    );
+    const { directory } = await fixture();
+    const report = await doctorReport(directory);
+    const text = await doctor(directory);
+    for (const row of report.rows) {
+      expect(text).toContain(doctorRowText(row));
+    }
+  });
+  test("remoteSnapshot keeps its legacy one-line form", async () => {
+    const { directory } = await fixture();
+    await expect(remoteSnapshot(directory)).resolves.toContain("Remote config snapshot");
   });
 });

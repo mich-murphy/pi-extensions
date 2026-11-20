@@ -156,7 +156,7 @@ async function createSession(fixture: Fixture, arm: Arm, recorder: (pi: Extensio
 const STATUS_KEY = "peers";
 const READY_BUDGET_MS = 30_000;
 /** UI context whose only behaviour is reporting the adapter's own "connected" status event
- *  (the adapter clears its attention status exactly when the register reply was processed). */
+ *  (the adapter sets `Peers: connected`, or clears its status, once the register reply was processed). */
 function isUiContext(value: Partial<ExtensionUIContext>): value is ExtensionUIContext {
   return typeof value.setStatus === "function" && typeof value.notify === "function";
 }
@@ -165,7 +165,7 @@ function readinessUi(onConnected: () => void): ExtensionUIContext {
   const ui: Partial<ExtensionUIContext> = {
     notify: () => undefined,
     setStatus: (key: string, text: string | undefined) => {
-      if (key === STATUS_KEY && text === undefined) {
+      if (key === STATUS_KEY && (text === undefined || text === "Peers: connected")) {
         onConnected();
       }
     },

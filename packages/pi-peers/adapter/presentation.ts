@@ -299,20 +299,6 @@ export function toolPresentation(name: string): ToolRenderers {
   };
 }
 
-export function attentionStatus(value: unknown): string | undefined {
-  const status = text(fields(value).status, "disconnected");
-  if (status === "activation_unconfirmed") {
-    return "Managed activation unconfirmed · guarded registration unavailable";
-  }
-  if (status === "activation_pending") {
-    return "Activation pending · running gateway serves another configuration generation";
-  }
-  if (status === "connected") {
-    return undefined;
-  }
-  return status === "unavailable" ? "Peers unavailable" : `Peers unavailable · ${preview(status)}`;
-}
-
 /** Explicit command only: exact identities, bounded accounting, no transcript or payload export. */
 export function diagnostics(value: unknown, diagnostic: string): string {
   if (value === undefined) {
@@ -326,7 +312,7 @@ export function diagnostics(value: unknown, diagnostic: string): string {
     `Session communication: ${status.enabled === true ? "enabled" : "not enabled"} · ${preview(status.status)}`,
     ...(status.status === "activation_pending" || status.status === "activation_unconfirmed"
       ? [
-          "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /peers setup → Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
+          "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /peers setup, then Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
         ]
       : []),
     `Exact runtime: machine=${visibleText(text(peer.machineId))} session=${visibleText(text(peer.sessionId))} nonce=${visibleText(text(peer.runtimeNonce))}`,
@@ -340,4 +326,204 @@ export function diagnostics(value: unknown, diagnostic: string): string {
     `Publications: ${text(status.publications, "0")} / ${text(status.publicationBytes, "0")} bytes · revision=${text(status.revision, "0")} · interests=${text(status.interests, "0")} · relations=${text(status.relations, "0")}`,
     `Wake notice: ${preview(status.notice)} · inbox admission does not imply reading or work completion.`,
   ].join("\n");
+}
+
+export type StatusState = "off" | "connected" | "pending" | "unavailable" | "failed";
+/** Plain-language status: primary text first, internal identifiers only in `technical`. */
+export type StatusSummary = {
+  readonly state: StatusState;
+  readonly headline: string;
+  readonly rows: [label: string, value: string][];
+  readonly next?: string;
+  readonly technical: string[];
+};
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+/** Control-free single line without terminal escapes; truncation never appends ANSI resets. */
+function plain(value: unknown, limit = 64): string {
+  const flat = visibleText(text(value, "")).replaceAll(/\s+/gu, " ").trim();
+  const characters = Array.from(graphemes.segment(flat), (part) => part.segment);
+  return characters.length > limit ? `${characters.slice(0, limit - 1).join("")}…` : flat;
+}
+function tally(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+function plural(amount: number, one: string, many: string): string {
+  return `${amount} ${amount === 1 ? one : many}`;
+}
+function runtimeTechnical(status: Fields): string[] {
+  const peer = fields(status.peer);
+  const notice = text(status.notice, "none");
+  return [
+    `Runtime status: ${plain(status.status, 96) || "unknown"}`,
+    `Exact runtime: machine=${plain(peer.machineId, 96)} session=${plain(peer.sessionId, 96)} nonce=${plain(peer.runtimeNonce, 96)}`,
+    `Inbox: ${tally(status.inboxMessages)} messages / ${tally(status.inboxBytes)} bytes · receipts=${tally(status.receipts)} · operations=${tally(status.operations)}`,
+    `Publications: ${tally(status.publications)} / ${tally(status.publicationBytes)} bytes · revision=${tally(status.revision)} · interests=${tally(status.interests)} · relations=${tally(status.relations)}`,
+    `Wake notice: ${plain(notice, 96)} · inbox admission does not imply reading or work completion.`,
+  ];
+}
+/** `inMenu`: the reader is already inside the Peers menu, so point at its rows instead of slash commands. */
+export type PresentationOptions = { readonly inMenu?: boolean };
+function setupStep(options: PresentationOptions, purpose: string): string {
+  return options.inMenu === true ? `Choose Setup ${purpose}.` : `Run /peers setup ${purpose}.`;
+}
+function offline(diagnostic: string, options: PresentationOptions): StatusSummary {
+  const technical = [`Diagnostic: ${plain(diagnostic, 400) || "none"}`];
+  if (diagnostic === "enabled") {
+    return {
+      state: "unavailable",
+      headline: "Peers is unavailable in this session",
+      rows: [],
+      next: "Run /peers reconnect. If that fails, run /peers doctor.",
+      technical,
+    };
+  }
+  if (diagnostic.includes("failed")) {
+    return {
+      state: "failed",
+      headline: "Peers could not start in this session",
+      rows: [],
+      next: "Run /peers doctor to see what to fix, then /peers reconnect.",
+      technical,
+    };
+  }
+  if (diagnostic === "participation disabled") {
+    return {
+      state: "off",
+      headline: "Peers is turned off",
+      rows: [],
+      next: setupStep(options, "to turn it back on"),
+      technical,
+    };
+  }
+  return {
+    state: "off",
+    headline: "Peers is not set up",
+    rows: [],
+    next: setupStep(options, "to connect this session to others"),
+    technical,
+  };
+}
+/** `status` is the session's status object (or undefined); `diagnostic` is the command-level reason. */
+export function statusSummary(
+  status: unknown,
+  diagnostic: string,
+  options: PresentationOptions = {},
+): StatusSummary {
+  if (!isFields(status)) {
+    return offline(diagnostic, options);
+  }
+  const technical = runtimeTechnical(status);
+  if (status.enabled === false) {
+    return {
+      state: "off",
+      headline: "Peers is turned off",
+      rows: [],
+      next: setupStep(options, "to turn it back on"),
+      technical,
+    };
+  }
+  const machine = plain(fields(status.peer).machineId) || "this machine";
+  const scopes = items(status.scopes)
+    .slice(0, 4)
+    .map((scope) => plain(scope))
+    .filter((scope) => scope.length > 0);
+  const inbox = tally(status.inboxMessages);
+  const rows: [string, string][] = [
+    ["Machine", machine],
+    ["Scopes", scopes.join(", ") || "none"],
+    [
+      "Peers seen",
+      status.watching === true ? "Watching for other sessions" : "Unknown — not watching",
+    ],
+    ["Inbox", inbox === 0 ? "Empty" : `${plural(inbox, "message", "messages")} waiting`],
+  ];
+  return liveSummary(
+    text(status.status, "disconnected"),
+    { machine, scopes, rows, technical },
+    options,
+  );
+}
+/** What a status with peers enabled shows besides its code. */
+type LiveFacts = {
+  readonly machine: string;
+  readonly scopes: readonly string[];
+  readonly rows: [string, string][];
+  readonly technical: string[];
+};
+/** The summary for an enabled status, by its runtime code. */
+function liveSummary(code: string, facts: LiveFacts, options: PresentationOptions): StatusSummary {
+  if (code === "connected") {
+    return connectedSummary(facts);
+  }
+  if (code === "activation_pending" || code === "activation_unconfirmed") {
+    return pendingSummary(code === "activation_pending", facts, options);
+  }
+  return {
+    state: "unavailable",
+    headline: "Peers is unavailable right now",
+    rows: facts.rows,
+    next: "Run /peers reconnect. If it keeps failing, run /peers doctor.",
+    technical: facts.technical,
+  };
+}
+function connectedSummary({ machine, scopes, rows, technical }: LiveFacts): StatusSummary {
+  const scopeText =
+    scopes.length === 0
+      ? ""
+      : ` · ${scopes.length === 1 ? "scope" : "scopes"} ${scopes.join(", ")}`;
+  return {
+    state: "connected",
+    headline: `Connected as ${machine}${scopeText}`,
+    rows,
+    next: "Open another Pi session to collaborate.",
+    technical,
+  };
+}
+/** `waiting`: activation_pending (the gateway must restart); otherwise activation_unconfirmed. */
+function pendingSummary(
+  waiting: boolean,
+  { rows, technical }: LiveFacts,
+  options: PresentationOptions,
+): StatusSummary {
+  return {
+    state: "pending",
+    headline: waiting
+      ? "Settings saved · waiting for the gateway to restart"
+      : "Settings saved · not yet confirmed by the gateway",
+    rows,
+    next: waiting
+      ? setupStep(options, "and then Activate saved configuration")
+      : `Run /peers reconnect. If it still waits, ${setupStep(options, "to activate").replace(/^./u, (first) => first.toLowerCase())}`,
+    technical: [
+      ...technical,
+      "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /peers setup, then Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
+    ],
+  };
+}
+/** Plain multi-line text for notify; technical lines go last, under their own heading. */
+export function statusText(summary: StatusSummary): string {
+  return [
+    summary.headline,
+    ...summary.rows.map(([label, value]) => `${label}: ${value}`),
+    ...(summary.next === undefined ? [] : [`Next: ${summary.next}`]),
+    ...(summary.technical.length === 0
+      ? []
+      : ["Technical details:", ...summary.technical.map((line) => `  ${line}`)]),
+  ].join("\n");
+}
+/** Footer status for key `peers`; absent when peers is not configured. Never includes authored text. */
+export function footerStatus(status: unknown, configured: boolean): string | undefined {
+  if (!configured) {
+    return undefined;
+  }
+  if (!isFields(status)) {
+    return "Peers: setup failed";
+  }
+  const code = fields(status).status;
+  if (code === "connected") {
+    return "Peers: connected";
+  }
+  return code === "activation_pending" || code === "activation_unconfirmed"
+    ? "Peers: activation pending"
+    : "Peers: unavailable";
 }
