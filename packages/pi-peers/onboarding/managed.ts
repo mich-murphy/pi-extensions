@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { EnsureGateway } from "../adapter/client.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
+import { Refusal } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 const execute = promisify(execFile);
@@ -86,7 +87,10 @@ export async function validateExecutable(
       capabilities.includes(capability),
     )
   ) {
-    throw new Error("Gateway lacks managed-on-demand-v1 capability");
+    throw new Refusal(
+      "the gateway program is out of date",
+      "Run pi update, then choose Setup in /peers",
+    );
   }
 }
 async function reachable(path: string, signal: AbortSignal): Promise<boolean> {

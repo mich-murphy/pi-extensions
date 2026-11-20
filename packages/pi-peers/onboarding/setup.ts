@@ -2,13 +2,12 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { AcquisitionPlan } from "./acquire.js";
-import { acquireGateway, discoverNixExecutable, UnsafeInstallFolder } from "./acquire.js";
+import { acquireGateway, discoverNixExecutable } from "./acquire.js";
 import {
   applyLocal,
   inspectSetup,
   resetLocal,
   ResetFailure,
-  ResetRefused,
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
@@ -27,7 +26,7 @@ import type { ManagedSetup } from "./managed.js";
 import { report, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import type { MenuModel } from "./menu/model.js";
-import { outcomeText } from "./menu/progress.js";
+import { outcomeLevel, outcomeText } from "./menu/progress.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft } from "./menu/remote-form.js";
 import { peersMenu } from "./menu/root.js";
@@ -39,13 +38,16 @@ import {
   afterSave,
   failed,
   failedWith,
+  GATEWAY_CHANGED,
   INCOMPLETE_NEXT,
   pendingOutcome,
+  REVIEW_AGAIN,
   safeReason,
   SAVED_NEXT,
 } from "./outcome.js";
 import { localReview } from "./plan.js";
 import type { LocalPlan } from "./plan.js";
+import { Refusal, UnsafeFolder } from "./refusal.js";
 import type { RemoteIntent } from "./remote.js";
 import { remoteReview, prepareRemote } from "./remote.js";
 import { repairRoute } from "./repair.js";
@@ -81,8 +83,8 @@ async function productionBackend(
   const pin = selectedSource(discovered);
   if (pin === undefined || discovered.target === undefined) {
     return {
-      description: `Acquisition blocked: ${discovered.unavailableReason ?? "No usable verified acquisition route"}. No project/PATH gateway is selected.`,
-      blocked: discovered.unavailableReason ?? "No usable verified acquisition route",
+      description: `Setup unavailable: ${discovered.unavailableReason ?? BLOCKED}. No gateway from the project or PATH is used.`,
+      blocked: discovered.unavailableReason ?? BLOCKED,
     };
   }
   const target = discovered.target;
@@ -133,7 +135,7 @@ async function productionBackend(
 /** The pinned native fallback after a failed Nix acquisition, or the original error when none applies. */
 function nativeFallback<T>(error: unknown, fallback: T | null): T {
   // The native fallback installs under the same folders, so it would be refused too.
-  if (fallback === null || error instanceof UnsafeInstallFolder) {
+  if (fallback === null || error instanceof UnsafeFolder) {
     throw error;
   }
   return fallback;
@@ -165,11 +167,12 @@ export type Supplied = {
 };
 type SetupState = Awaited<ReturnType<typeof inspectSetup>>;
 
-const BLOCKED = "no verified gateway download";
+const BLOCKED = "no verified gateway download for this platform";
+const MANUAL = "See the pi-peers README for manual setup.";
 
 function blockedNotice(acquisition: Acquisition): Notice {
   return {
-    message: `Blocked — ${acquisition.blocked ?? BLOCKED}. See the pi-peers README for manual setup. No changes made.`,
+    message: `Setup unavailable: ${acquisition.blocked ?? BLOCKED}. ${MANUAL}`,
     level: "warning",
   };
 }
@@ -191,20 +194,20 @@ function reportRoute(
 
 /** An unreadable or externally changed setup file: Status, Doctor and Reset still work. */
 function unreadableRoute(error: unknown): SetupRoute {
-  const reason = safeReason(error, "");
-  const what = reason === "" ? "setup files unreadable" : "setup files changed";
+  const reason = safeReason(error);
+  const what = reason === "" ? "saved files are unreadable" : "saved files were changed";
   return reportRoute(
-    `Blocked: ${what} — choose Doctor`,
-    "Setup can't read its saved files safely, so it changes nothing.",
+    "Blocked",
+    `Setup can't continue: its ${what}.`,
     withTechnical(
       [
-        `Setup stopped because its ${what.replace("setup files ", "files are ")}. Nothing was changed.`,
-        "Next: choose Doctor to see which file, fix or move it aside, then open Setup again.",
+        `Setup can't continue: its ${what}.`,
+        "Next: choose Doctor to find the file, then fix it or move it aside.",
       ],
       reason === "" ? [] : [reason],
     ),
     {
-      message: `Setup blocked: ${what}. Choose Doctor in /peers. No changes made.`,
+      message: `Setup blocked: its ${what}. Run /peers doctor to find the file.`,
       level: "warning",
     },
   );
@@ -212,22 +215,18 @@ function unreadableRoute(error: unknown): SetupRoute {
 
 const PENDING_LINES = withTechnical(
   [
-    "A previous setup or reset was interrupted, so setup changes nothing until that is resolved. Your files and keys were kept.",
-    "Next: choose Doctor to see what was interrupted, then Reset to turn peers off safely. Keys and revocation floors are kept.",
+    "A previous setup or reset did not finish. Your files and keys were kept.",
+    "Next: choose Reset to turn peers off, then Setup to start again.",
   ],
-  [
-    "Interrupted setup ownership ledger exists. Existing files preserved; reset can disable unchanged owned participation without deleting credentials/floors.",
-  ],
+  ["An interrupted setup record exists."],
 );
 
 const EXTERNAL_LINES = withTechnical(
   [
-    "Peers is configured outside setup (for example a hand-written or linked pi-peers.json), so setup won't change it.",
-    "Next: edit that file yourself, choose Doctor to check it, or Reconnect to use it now.",
+    "pi-peers.json was written by hand, so setup won't change it.",
+    "Next: edit the file yourself, then choose Reconnect.",
   ],
-  [
-    "Existing configuration preserved (including custom, external and symlink configurations). Automatic migration/overwrite is not performed.",
-  ],
+  ["Hand-written, external and linked configurations are never overwritten."],
 );
 
 async function existingRoute(
@@ -240,8 +239,7 @@ async function existingRoute(
 ): Promise<SetupRoute> {
   if (state.pending) {
     return reportRoute("Interrupted", "A previous setup was interrupted.", PENDING_LINES, {
-      message:
-        "Setup was interrupted earlier. Choose Doctor, then Reset, in /peers. No changes made.",
+      message: "A previous setup did not finish. Choose Reset in /peers, then Setup again.",
       level: "warning",
     });
   }
@@ -259,7 +257,7 @@ async function existingRoute(
       cancelled: () =>
         repair.blocked
           ? {
-              message: `Repair blocked — ${BLOCKED} for this platform. No changes made.`,
+              message: `Repair unavailable: ${BLOCKED}. ${MANUAL}`,
               level: "warning",
             }
           : NO_CHANGES,
@@ -285,7 +283,7 @@ async function existingRoute(
     "Peers is configured by hand, so setup changes nothing.",
     EXTERNAL_LINES,
     {
-      message: "Peers is configured outside setup, so setup changes nothing. No changes made.",
+      message: "pi-peers.json was written by hand, so setup won't change it.",
       level: "info",
     },
   );
@@ -309,21 +307,12 @@ async function applyChoice(
   const { agentDir, state, draft } = fresh;
   const { backend } = acquisition;
   if (backend === undefined) {
-    return failed(
-      "Setup failed",
-      BLOCKED,
-      "Nothing was changed. See the pi-peers README for manual setup.",
-    );
+    return failed("Setup failed", BLOCKED, MANUAL);
   }
   const socket = await inspectSetup(agentDir, choice.plan.adapter.socketPath);
   if (socket.sharedInstance !== choice.shared) {
     draft.shared = socket.sharedInstance;
-    return {
-      ok: false,
-      headline: "✗ Gateway state changed — review again",
-      facts: [],
-      next: "Nothing was changed. Open Review details, then choose Apply again.",
-    };
+    return failed("Setup failed", GATEWAY_CHANGED, REVIEW_AGAIN);
   }
   return applyReviewed(
     {
@@ -434,7 +423,7 @@ export async function prepareSetup(
 }
 
 async function unavailable(): Promise<Outcome> {
-  return failed("Not available here", "use the full menu", "Run /peers.");
+  return failed("Not available here", "open the full menu", "Run /peers.");
 }
 
 /** `/peers setup` without the rest of the root: the Setup screen pushed, driven to completion. */
@@ -462,7 +451,7 @@ export async function setupCommand(
       reconnect: unavailable,
       started: () => undefined,
       finished: (outcome) => {
-        ctx.ui.notify(outcomeText(outcome), outcome.ok ? "info" : "warning");
+        ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
         holder.model?.close();
       },
     },
@@ -550,10 +539,7 @@ function stepLabel(message: string): string {
   return message.startsWith("Applying") ? SETUP_STEPS[1] : message;
 }
 
-const SAVED =
-  "Configuration saved; activation pending: guarded gateway registration unavailable or the running gateway serves another configuration generation. Existing sessions may still use old trust until it exits. No restart or application request was replayed; use /peers reconnect.";
-const INCOMPLETE =
-  "Apply incomplete or local connection unavailable. No existing configuration was overwritten. Inspect /peers doctor; owned partial files may remain. /peers reconnect retries without replaying uncertain sends; /peers reset disables unchanged owned configuration and preserves credentials/floors.";
+const SAVED = "The gateway did not accept this Pi yet. Nothing was sent twice.";
 
 async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outcome> {
   const { agentDir, state, plan, backend, remote, pairingDirectory, activate, restart } = reviewed;
@@ -585,7 +571,7 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
     step(SETUP_STEPS[2]);
     if (state.sharedInstance && (await restart(setup)) === "uncertain") {
       return pendingOutcome("Settings saved", SAVED_NEXT, [
-        "Configuration saved; activation pending: shared restart outcome uncertain. Existing sessions may still use old trust until the old gateway exits. No restart or application request was replayed; passive reconnect only retries guarded admission; Setup › Activate saved configuration offers a separate reviewed restart.",
+        "The gateway restart was not confirmed. Nothing was sent twice.",
       ]);
     }
     const actual = await loadConfiguration(agentDir);
@@ -595,15 +581,7 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
     await activate({ ...plan, adapter: actual }, setup);
     return await success(agentDir, plan, state, remote);
   } catch (error) {
-    return saved
-      ? afterSave(error, [SAVED])
-      : failedWith(
-          "Setup failed",
-          error,
-          INCOMPLETE_NEXT,
-          [INCOMPLETE],
-          "Apply did not finish; details withheld",
-        );
+    return saved ? afterSave(error, [SAVED]) : failedWith("Setup failed", error, INCOMPLETE_NEXT);
   }
 }
 
@@ -622,41 +600,35 @@ export async function resetOutcome(
       facts: path ? [["Saved copy", visibleText(backup)]] : [],
       next: "Other open Pi sessions stay connected until they close. Choose Setup to turn peers back on.",
       technical: [
-        "Participation disabled for new sessions; this runtime closed. Gateway exits after the last participant closes. Credentials and floors retained.",
+        "The gateway exits after the last session closes. Keys and revocation floors were kept.",
         ...(path ? [] : [backup]),
       ],
     };
   } catch (error) {
     if (error instanceof ResetFailure && error.disabled) {
       await dispose();
-      return {
-        ok: false,
-        headline: "✗ Reset partly done — peers is off",
-        facts: [],
-        next: "Choose Reset again to finish. Keys and revocation floors are kept.",
-        technical: [error.message],
-      };
+      return failed(
+        "Reset failed",
+        "peers is off, but cleanup did not finish",
+        "Choose Reset again to finish.",
+      );
     }
-    return {
-      ok: false,
-      headline: `✗ Reset refused — ${error instanceof ResetFailure ? "nothing was turned off" : resetRefusal(error)}`,
-      facts: [],
-      next: "Nothing was turned off. Choose Doctor to see what differs.",
-      technical: [
-        "Reset refused before disabling participation. External files/runtime preserved.",
-      ],
-    };
+    if (error instanceof ResetFailure) {
+      return failed(
+        "Reset failed",
+        "files changed during reset",
+        "Nothing was turned off. Try again.",
+      );
+    }
+    if (error instanceof Refusal) {
+      return failed("Reset failed", error.reason, `Nothing was turned off. ${error.fix}.`);
+    }
+    return failedWith(
+      "Reset failed",
+      error,
+      "Nothing was turned off. Run /peers doctor to check your files.",
+    );
   }
-}
-
-/**
- * Reset's own refusals explain themselves. Any other error (a system error, a JSON parse or schema
- * error) may quote a path or file content, so it gets the generic reason.
- */
-function resetRefusal(error: unknown): string {
-  return error instanceof ResetRefused
-    ? error.message.replace(/\.$/u, "")
-    : "ownership or configuration differs";
 }
 
 /** Review text for the selected route; only a Nix selection can authorize a native fallback. */

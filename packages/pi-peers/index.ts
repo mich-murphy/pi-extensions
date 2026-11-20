@@ -4,7 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { loadConfiguration, visibleText } from "./adapter/config.js";
 import type { Configuration } from "./adapter/config.js";
 import { footerStatus, statusSummary, statusText } from "./adapter/presentation.js";
-import type { StatusState } from "./adapter/presentation.js";
+import type { StatusState, StatusSummary } from "./adapter/presentation.js";
 import { createAdapterRuntime } from "./adapter/runtime.js";
 import { registerTools } from "./adapter/tools.js";
 import { freshId } from "./adapter/transport.js";
@@ -14,12 +14,17 @@ import { doctor, doctorReport, doctorRowText } from "./onboarding/doctor.js";
 import type { DoctorReport } from "./onboarding/doctor.js";
 import type { ManagedSetup } from "./onboarding/managed.js";
 import type { MenuModel } from "./onboarding/menu/model.js";
-import { outcomeLines, outcomeText, storedOutcome } from "./onboarding/menu/progress.js";
+import {
+  outcomeLevel,
+  outcomeLines,
+  outcomeText,
+  storedOutcome,
+} from "./onboarding/menu/progress.js";
 import type { Outcome } from "./onboarding/menu/progress.js";
 import { peersMenu } from "./onboarding/menu/root.js";
 import type { ActionKind, RootState } from "./onboarding/menu/root.js";
 import { runMenu } from "./onboarding/menu/run.js";
-import { NotActive, safeReason } from "./onboarding/outcome.js";
+import { NotActive, refusalText } from "./onboarding/outcome.js";
 import { NO_CHANGES, NOTHING_TO_RESET } from "./onboarding/route.js";
 import type { ActivatePlan, SetupRoute } from "./onboarding/route.js";
 import { prepareSetup, resetOutcome } from "./onboarding/setup.js";
@@ -39,14 +44,22 @@ const STATE_VALUES: Record<StatusState, string> = {
   unavailable: "Unavailable",
   failed: "Setup failed",
 };
-const BUSY = "Peers is busy with another action. Try again when it finishes. No changes made.";
-/** Why a runtime started for an ended session was dropped. */
-const STALE = "Settings saved; not active in this session. A new Pi session uses them.";
-const START_TECHNICAL =
-  "Activation unavailable: no runtime was replaced and no uncertain sends were replayed.";
-const REGISTER_TECHNICAL =
-  "Managed activation unavailable or unconfirmed; no admitted work was replayed. Passive reconnect never restarts a shared gateway. If an old generation survives, Setup › Activate saved configuration offers one explicitly reviewed restart; /peers status shows bounded accounting.";
-const STALE_TECHNICAL = "The session ended during reconnect; its new runtime was disposed.";
+const BUSY = "Peers is busy with another action. Try again when it finishes.";
+/** Why a runtime started for an ended session was dropped: the next step of the saved outcome. */
+const STALE = "This session ended. Start a new Pi session to use the new settings.";
+const START_TECHNICAL = "This Pi could not start its connection.";
+const NOT_ACCEPTED = "The gateway did not accept this Pi. Nothing was sent twice.";
+const STALE_TECHNICAL = "The session ended during reconnect.";
+
+/** After a reconnect: what to do next. Not set up or turned off points at Setup, not Doctor. */
+function reconnectNext(connected: boolean, after: StatusSummary): string {
+  if (connected) {
+    return after.next ?? "Open another Pi session to collaborate.";
+  }
+  return after.state === "off" && after.next !== undefined
+    ? after.next
+    : "Run /peers doctor to check the gateway.";
+}
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
 /** A reconnect's result; `technical` holds the internal reason for a failure. */
@@ -230,15 +243,11 @@ export default function registerCommunication(
       await runtime.session.reconnect();
     } catch {
       await ensureCurrent(started);
-      throw new Error(
-        "Configuration saved; activation pending: guarded gateway registration unavailable. Existing sessions may still use old trust until the old gateway exits; no control request was replayed.",
-      );
+      throw new Error(NOT_ACCEPTED);
     }
     await ensureCurrent(started);
     if (!runtime.session.status().connected) {
-      throw new Error(
-        "Configuration saved; activation pending: guarded gateway registration failed. Existing sessions may still use the old configuration until that gateway exits.",
-      );
+      throw new Error(NOT_ACCEPTED);
     }
   };
   /** Starts the saved runtime when none runs; the reason goes to technical detail on failure. */
@@ -267,7 +276,7 @@ export default function registerCommunication(
     try {
       await session.reconnect(fresh);
     } catch {
-      return { connected: false, technical: [REGISTER_TECHNICAL] };
+      return { connected: false, technical: [NOT_ACCEPTED] };
     }
     if (generation !== started) {
       return { connected: false, technical: [STALE_TECHNICAL] };
@@ -280,12 +289,11 @@ export default function registerCommunication(
     const after = summary();
     return {
       ok: connected,
-      headline: `${connected ? "✓ Reconnected" : "✗ Reconnect failed"} — ${after.headline}`,
+      headline: connected
+        ? `✓ Reconnected — ${after.headline}`
+        : `✗ Reconnect failed: ${after.headline.charAt(0).toLowerCase()}${after.headline.slice(1)}`,
       facts: after.rows,
-      // At most two plain sentences in a notification; internals stay under technical details.
-      next: connected
-        ? (after.next ?? "Open another Pi session to collaborate.")
-        : "Run /peers doctor to see why; nothing was changed.",
+      next: reconnectNext(connected, after),
       technical: [...technical, ...after.technical],
     };
   };
@@ -321,13 +329,13 @@ export default function registerCommunication(
       pi.appendEntry("peers-report", outcome);
     }
     if (hidden || ctx.mode !== "tui") {
-      ctx.ui.notify(outcomeText(outcome), outcome.ok ? "info" : "warning");
+      ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
     }
   };
   const reconnectGuarded = (ctx: ExtensionContext) => async (fresh?: boolean) => {
     const result = await reconnectCurrent(ctx, fresh);
     if (!result.connected) {
-      throw new Error("Guarded registration unavailable; activation pending or unconfirmed");
+      throw new Error(NOT_ACCEPTED);
     }
   };
   /** Everything the root shows, read fresh; a read that fails never closes the menu. */
@@ -423,9 +431,7 @@ export default function registerCommunication(
   const menuCommand = async (action: string, ctx: ExtensionContext): Promise<void> => {
     if (!attended(ctx)) {
       ctx.ui.notify(
-        action === ""
-          ? statusText(summary())
-          : `/peers ${action} needs the interactive TUI or an attended RPC client; no changes made.`,
+        action === "" ? statusText(summary()) : `/peers ${action} needs an interactive session.`,
         action === "" ? "info" : "warning",
       );
       return;
@@ -443,8 +449,8 @@ export default function registerCommunication(
     } catch (error) {
       // Never quote a parse or system error: it may contain file content or a path.
       ctx.ui.notify(
-        safeReason(error, "The peers menu could not open; no changes made. Run /peers doctor."),
-        "warning",
+        refusalText(error, "The peers menu could not open. Run /peers doctor to check your files."),
+        "error",
       );
     }
   };
@@ -480,7 +486,7 @@ export default function registerCommunication(
           return;
         }
         const outcome = await track(reconnectOutcome(ctx));
-        ctx.ui.notify(outcomeText(outcome), outcome.ok ? "info" : "warning");
+        ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
         return;
       }
       ctx.ui.notify(statusText(summary()), "info");

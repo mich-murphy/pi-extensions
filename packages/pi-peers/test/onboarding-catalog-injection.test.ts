@@ -150,7 +150,7 @@ function hostExpectation(version: string, supported: boolean) {
           `https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v${version}/manifest.json`,
         ]
       : [],
-    warning: supported ? "Setup failed" : "Blocked",
+    warning: supported ? "Setup failed" : "Setup unavailable",
   };
 }
 async function entriesIfPresent(directory: string): Promise<string[]> {
@@ -242,7 +242,7 @@ describe("setupCommand trusted catalog injection", () => {
       expect(record.activated).toBe(0);
       expect(record.selects.join("\n").includes("Apply: Ready")).toBe(expected.supported);
       expect(record.fetches).toStrictEqual(expected.fetches);
-      const warnings = record.notices.filter((notice) => notice.level === "warning");
+      const warnings = record.notices.filter((notice) => notice.level !== "info");
       expect(warnings).toHaveLength(1);
       expect(warnings[0]?.message).toContain(expected.warning);
       // Failed or blocked acquisition installs nothing: no configuration, ledger or install

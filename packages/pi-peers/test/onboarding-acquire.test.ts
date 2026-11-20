@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { acquireGateway, UnsafeInstallFolder } from "../onboarding/acquire.js";
+import { acquireGateway } from "../onboarding/acquire.js";
 import type {
   AcquisitionPlan,
   AcquisitionResult,
@@ -13,6 +13,7 @@ import type {
 import { sha256 } from "../onboarding/artifact.js";
 import { executableDigest } from "../onboarding/backend.js";
 import { gatewayTarget } from "../onboarding/catalog.js";
+import { UnsafeFolder } from "../onboarding/refusal.js";
 import { fixture } from "./onboarding-artifact-fixture.js";
 
 const roots: string[] = [];
@@ -273,7 +274,7 @@ describe("approved gateway acquisition", () => {
   test("never adopts existing installations or follows symlink roots", async () => {
     const s = await setup();
     await fs.symlink(s.root, s.plan.installRoot);
-    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeInstallFolder);
+    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeFolder);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("names a group-writable folder on the install path and how to fix it", async () => {
@@ -285,11 +286,11 @@ describe("approved gateway acquisition", () => {
       { ...s.plan, installRoot: path.join(shared, "agent", "install") },
       s.options,
     ).catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(UnsafeInstallFolder);
+    expect(error).toBeInstanceOf(UnsafeFolder);
     expect(error).toMatchObject({
       folder: shared,
-      problem: "can be changed by other users",
-      fix: `Run chmod go-w ${shared}, or use a Pi agent directory outside it`,
+      reason: `${shared} is writable by other users`,
+      fix: `Run chmod go-w ${shared}, then try again`,
     });
     await expect(fs.readdir(shared)).resolves.toStrictEqual([]);
     expect(s.fetcher).not.toHaveBeenCalled();
@@ -300,7 +301,7 @@ describe("approved gateway acquisition", () => {
     await fs.chmod(s.plan.installRoot, 0o750);
     await expect(acquireGateway(s.plan, s.options)).rejects.toMatchObject({
       folder: s.plan.installRoot,
-      problem: "is not private to this account",
+      reason: `${s.plan.installRoot} is readable by other users`,
     });
     expect(s.fetcher).not.toHaveBeenCalled();
   });

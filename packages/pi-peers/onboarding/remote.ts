@@ -4,6 +4,7 @@ import { createPrivate, regularBytes, privateDirectory } from "./files.js";
 import { credentials, pairAction } from "./pair.js";
 import type { Credentials } from "./pair.js";
 import type { LocalPlan } from "./plan.js";
+import { Refusal } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 export type RemoteIntent = {
@@ -96,7 +97,10 @@ export function remoteReview(intent: RemoteIntent, directory: string): string {
 }
 function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
   if (intent.peerMachineId === plan.adapter.machineId) {
-    throw new Error("A trusted pair needs two different machine identities");
+    throw new Refusal(
+      "this computer and the peer have the same machine name",
+      "Give one of them a different machine name",
+    );
   }
   const grant = {
     machineId: intent.peerMachineId,
@@ -147,7 +151,10 @@ export function configured(
     material.machineId !== plan.adapter.machineId ||
     material.peerMachineId !== intent.peerMachineId
   ) {
-    throw new Error("Credential identities differ from reviewed identities");
+    throw new Refusal(
+      "the certificate files name a different machine",
+      "Check the certificate files, then try again",
+    );
   }
   const granted = grantedPlan(plan, intent);
   return {

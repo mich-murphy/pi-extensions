@@ -263,7 +263,7 @@ function applyRows(options: SetupFormOptions): Row[] {
     }
     const local = localGate(draft.choices, draft.socket, draft.socketRequired);
     return [
-      `Apply is not ready — ${gateText(state)}`,
+      `Apply is not ready: ${gateText(state)}`,
       ...(local.kind === "ready"
         ? options.details({ plan: local.value, shared: draft.shared }).split("\n")
         : []),
@@ -427,7 +427,7 @@ export function manageForm(options: ManageFormOptions): Screen {
         permissionsRow(choices, set, `${PERMISSIONS_HELP}${grants}`),
         detailsRow(
           () => [
-            ...(state.kind === "ready" ? [] : [`Apply is not ready — ${gateText(state)}`]),
+            ...(state.kind === "ready" ? [] : [`Apply is not ready: ${gateText(state)}`]),
             ...options.details(state.kind === "ready" ? state.value : undefined),
           ],
           "What Apply will change and restart.",

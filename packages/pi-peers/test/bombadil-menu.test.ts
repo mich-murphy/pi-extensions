@@ -105,7 +105,7 @@ describe("readPeers", () => {
     const fail = readPeers(
       screen([
         "Peers › Setup › Result",
-        "✗ Setup failed — acquisition refused",
+        "✗ Setup failed: unexpected error",
         "Enter close · Esc back",
       ]),
       20,
@@ -141,12 +141,12 @@ describe("outcomes and the probe", () => {
       ["✓ Settings changed — connected as alpha", "ok"],
       ["✓ Peers turned off", "ok"],
       ["✓ Reconnected — Connected as alpha", "ok"],
-      ["✗ Reconnect failed — Peers is unavailable right now", "fail"],
-      ["! Settings saved — not active yet", "pending"],
-      ["✗ Gateway state changed — review again", "fail"],
-      ["✗ Setup failed — no verified gateway download", "fail"],
-      ["✗ Changing settings failed — busy", "fail"],
-      ["✗ Failed — unexpected error; details withheld", "fail"],
+      ["✗ Reconnect failed: peers is unavailable right now", "fail"],
+      ["! Settings saved but not active yet", "pending"],
+      ["✗ Changing settings failed: the gateway started or stopped since you reviewed", "fail"],
+      ["✗ Setup failed: no verified gateway download for this platform", "fail"],
+      ["✗ Reset failed: pi-peers.json was edited by hand", "fail"],
+      ["✗ Failed: unexpected error", "fail"],
       ["✓ Config file: ok", null],
       ["Machine: alpha", null],
     ];
@@ -177,7 +177,7 @@ describe("outcomes and the probe", () => {
     const late = readPeers(
       screen([
         "Peers › Setup › Result",
-        "! Settings saved — not active yet",
+        "! Settings saved but not active yet",
         "Machine: alpha",
         "Next: Choose Reconnect.",
         "Enter close · Esc back",

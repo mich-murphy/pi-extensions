@@ -12,7 +12,7 @@ describe("gateway trusted catalog", () => {
     const empty = { nix: null, native: null };
     const linux = { platform: "linux", arch: "x64", nixAvailable: true };
     expect(discoverGateway(linux, empty).preferred).toBeUndefined();
-    expect(discoverGateway(linux, empty).unavailableReason).toContain("No reviewed");
+    expect(discoverGateway(linux, empty).unavailableReason).toContain("ships no verified gateway");
   });
   test("ships the genuine immutable Nix pin and the published native manifest pin", () => {
     const { nix, native } = gatewayCatalog;
@@ -51,7 +51,7 @@ describe("gateway trusted catalog", () => {
       const intel = discoverGateway({ platform: "darwin", arch: "x64", nixAvailable });
       expect(intel.preferred).toBeUndefined();
       expect(intel.native).toBeNull();
-      expect(intel.unavailableReason).toContain("No reviewed target");
+      expect(intel.unavailableReason).toContain("no verified gateway for this OS and CPU");
     }
   });
   test("reports a Nix-only catalog unavailable without usable Nix", () => {
@@ -61,7 +61,7 @@ describe("gateway trusted catalog", () => {
       nixOnly,
     );
     expect(noNix.preferred).toBeUndefined();
-    expect(noNix.unavailableReason).toContain("no usable Nix executable");
+    expect(noNix.unavailableReason).toContain("Nix is not installed");
   });
   test("detects supported architectures without assuming Intel Darwin", () => {
     expect(gatewayTarget("darwin", "x64")).toBeUndefined();

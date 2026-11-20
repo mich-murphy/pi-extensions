@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, unlink } from "node:fs/promises";
 import { dirname, parse, resolve as absolutePath, join } from "node:path";
+import { foreignFolder, linkedFolder, openFolder, SETUP_BUSY } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 export function digest(bytes: string | Buffer): string {
@@ -50,7 +51,7 @@ export async function privateDirectory(path: string): Promise<void> {
       // eslint-disable-next-line eslint/no-await-in-loop -- Ownership checks and durable filesystem mutations must be ordered before the next step.
       const entry = await lstat(current);
       if (!entry.isDirectory() || entry.isSymbolicLink()) {
-        throw new Error("Unsafe setup directory ancestor");
+        throw linkedFolder(current);
       }
     } catch (error) {
       if (
@@ -65,13 +66,14 @@ export async function privateDirectory(path: string): Promise<void> {
     }
   }
   const stat = await lstat(path);
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    (stat.mode & 0o077) !== 0 ||
-    stat.uid !== process.getuid?.()
-  ) {
-    throw new Error("Setup directory must be private, owned, and not a symlink");
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw linkedFolder(path);
+  }
+  if (stat.uid !== process.getuid?.()) {
+    throw foreignFolder(path);
+  }
+  if ((stat.mode & 0o077) !== 0) {
+    throw openFolder(path);
   }
 }
 export async function createPrivate(path: string, content: string): Promise<void> {
@@ -139,11 +141,11 @@ export async function withSetupLock<A>(
     await new Promise<void>((resolve, reject) => {
       let bytes = "";
       const timer = setTimeout(() => {
-        reject(new Error("Setup lock acquisition timed out"));
+        reject(SETUP_BUSY());
       }, 5000);
       const fail = () => {
         clearTimeout(timer);
-        reject(new Error("Setup is busy or native lock unavailable; no stale lock is deleted"));
+        reject(SETUP_BUSY());
       };
       child.once("error", fail);
       child.once("exit", fail);

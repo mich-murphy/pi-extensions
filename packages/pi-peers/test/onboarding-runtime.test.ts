@@ -199,10 +199,10 @@ describe("actual setup plan/apply lifecycle", () => {
       return executable;
     });
     await expect(applyLocal(agent, selected, injected, () => undefined)).rejects.toThrow(
-      "Setup state changed",
+      "already set up",
     );
     await expect(readFile(setupPaths(agent).adapter, "utf8")).resolves.toBe("external");
-    await expect(resetLocal(agent)).rejects.toThrow("No verified setup executable");
+    await expect(resetLocal(agent)).rejects.toThrow("setup never finished");
     await expect(pendingSetup(agent)).resolves.toBe(false);
   });
   test("interrupted acquisition is explicitly recoverable and does not enable participation", async () => {
@@ -220,7 +220,7 @@ describe("actual setup plan/apply lifecycle", () => {
     ).rejects.toThrow("offline");
     await expect(loadConfiguration(agent)).resolves.toBeUndefined();
     await expect(pendingSetup(agent)).resolves.toBe(false);
-    await expect(resetLocal(agent)).rejects.toThrow("No verified setup executable");
+    await expect(resetLocal(agent)).rejects.toThrow("setup never finished");
     await expect(pendingSetup(agent)).resolves.toBe(false);
     await applyLocal(agent, plan(), backend(), () => undefined);
   });
@@ -323,7 +323,7 @@ describe("actual setup plan/apply lifecycle", () => {
     const paths = setupPaths(agent);
     const before = await readFile(paths.adapter);
     await writeFile(paths.gateway, "external gateway bytes");
-    await expect(resetLocal(agent)).rejects.toThrow("Gateway config changed externally");
+    await expect(resetLocal(agent)).rejects.toThrow("gateway.json was edited by hand");
     await expect(readFile(paths.adapter)).resolves.toStrictEqual(before);
     expect(existsSync(join(paths.directory, "reset.json"))).toBe(false);
   });

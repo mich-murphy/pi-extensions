@@ -212,8 +212,8 @@ describe("registerCommunication: actions while an Apply runs", () => {
     await first;
     const outcome = shown.find((item) => item.options.includes("Close"));
     expect(outcome?.title).toContain("Peers › Setup › Result");
-    expect(outcome?.title).toContain("! Settings saved — not active yet");
-    expect(outcome?.title).toContain("Settings saved; not active in this session");
+    expect(outcome?.title).toContain("! Settings saved but not active yet");
+    expect(outcome?.title).toContain("This session ended");
     expect(existsSync(setupPaths(agent).adapter)).toBe(true);
     // No runtime was created, so nothing starts the gateway or is left undisposed.
     await delay(300);
@@ -228,8 +228,8 @@ describe("registerCommunication: actions while an Apply runs", () => {
     const shown: Shown[] = [];
     await host.command("setup", applyOnce, shown);
     const outcome = shown.find((item) => item.options.includes("Close"));
-    expect(outcome?.title).toContain("! Settings saved — not active yet");
-    expect(outcome?.title).toContain("Settings saved; not active in this session");
+    expect(outcome?.title).toContain("! Settings saved but not active yet");
+    expect(outcome?.title).toContain("This session ended");
     expect(runtimes.disposed).toStrictEqual([true]);
     const status = await host.command("status");
     expect(status.join("\n")).not.toContain("Connected as");
@@ -257,7 +257,7 @@ describe("registerCommunication: commands outside an Apply", () => {
   test.each(["print", "json"])("%s: setup and reset refuse in plain words", async (mode) => {
     for (const action of ["setup", "reset"]) {
       await expect(host.command(action, applyOnce, [], mode)).resolves.toStrictEqual([
-        `/peers ${action} needs the interactive TUI or an attended RPC client; no changes made.`,
+        `/peers ${action} needs an interactive session.`,
       ]);
     }
     expect(consented).toStrictEqual([]);
@@ -267,7 +267,7 @@ describe("registerCommunication: commands outside an Apply", () => {
   test("/peers reconnect notifies once, in at most two plain sentences", async () => {
     const [message, ...rest] = await host.command("reconnect");
     expect(rest).toStrictEqual([]);
-    expect(message).toMatch(/^✗ Reconnect failed — /u);
+    expect(message).toMatch(/^Reconnect failed: /u);
     expect(message?.split(/\.(?:\s|$)/u).filter((part) => part.trim() !== "")).toHaveLength(2);
     expect(message).not.toMatch(/generation|bounded|replayed|accounting/u);
   });

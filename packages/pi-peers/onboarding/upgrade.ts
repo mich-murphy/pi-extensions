@@ -22,9 +22,18 @@ import type { Row, Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
 import { manageForm, peerGrantText } from "./menu/setup-form.js";
-import { afterSave, attempt, INCOMPLETE_NEXT, pendingOutcome } from "./outcome.js";
+import {
+  afterSave,
+  attempt,
+  failed,
+  GATEWAY_CHANGED,
+  INCOMPLETE_NEXT,
+  pendingOutcome,
+  REVIEW_AGAIN,
+} from "./outcome.js";
 import { localPlan, localReview } from "./plan.js";
 import type { LocalChoices, LocalPlan } from "./plan.js";
+import { SETTINGS_CHANGED } from "./refusal.js";
 import { keptPair, prepareRemote, remoteReview } from "./remote.js";
 import type { RemoteIntent } from "./remote.js";
 import type { ActivatePlan, Reconnect, Restart } from "./route.js";
@@ -45,12 +54,11 @@ async function keepWork(reconnect: Reconnect | undefined, step: Step): Promise<O
   try {
     await reconnect?.();
   } catch {
-    return {
-      ok: false,
-      headline: "✗ Reconnect failed — the gateway did not accept this Pi yet",
-      facts: [],
-      next: "Choose Doctor to see why, or Setup › Activate saved configuration.",
-    };
+    return failed(
+      "Reconnect failed",
+      "the gateway did not accept this Pi",
+      "Choose Setup › Activate saved configuration.",
+    );
   }
   return {
     ok: true,
@@ -74,7 +82,7 @@ async function addWork(
   const config = await loadConfiguration(agentDir);
   const bytes = await regularBytes(paths.gateway);
   if (config === undefined || bytes === undefined) {
-    throw new Error("Saved settings changed; review again");
+    throw SETTINGS_CHANGED();
   }
   const next = await prepareRemote(setup.executable, directory, currentPlan(config, bytes), intent);
   const pairing = await regularBytes(join(directory, "pairing.json"));
@@ -226,16 +234,13 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
   const observed = await inspectSetup(agentDir, setup.socketPath);
   if (observed.sharedInstance !== manage.shared) {
     manage.shared = observed.sharedInstance;
-    return {
-      ok: false,
-      headline: "✗ Gateway state changed — review again",
-      facts: [],
-      next: "Nothing was changed. Open Review details, then choose Apply again.",
-    };
+    return failed("Changing settings failed", GATEWAY_CHANGED, REVIEW_AGAIN);
   }
   await saveOwnedPlan(agentDir, setup, plan, undefined, true);
   const technical = [
-    `Edited settings saved with owned config/metadata CAS; shared restart ${manage.shared ? "requested once" : "not needed (no live gateway)"}. No uncertain send or control request is replayed.`,
+    manage.shared
+      ? "Settings saved. The shared gateway was asked to restart once."
+      : "Settings saved.",
   ];
   try {
     if (manage.shared) {
@@ -243,7 +248,7 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
       if ((await manage.restart(setup)) === "uncertain") {
         return pendingOutcome("Settings saved", EDIT_PENDING_NEXT, [
           ...technical,
-          "Shared restart outcome uncertain; this Pi runtime was not replaced.",
+          "The gateway restart was not confirmed.",
         ]);
       }
     }
