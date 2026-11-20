@@ -30,6 +30,6 @@
     "vitest.config.ts",
     "vitest.live.config.ts",
     "scripts/**/*.ts",
-    "test-support/repository-quality.test.ts"
+    "test-support/**/*.ts"
   ]
 }
