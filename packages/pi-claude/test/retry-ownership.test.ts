@@ -348,10 +348,11 @@ function intendedRetry(error: SdkTurnFailure): boolean {
 }
 
 describe("Pi retry contract", () => {
+  // Several failures share a message, so the case number keeps each test id unique.
   test.each(
     Object.values(failuresByTag)
       .flat()
-      .map((error) => [formatSdkRunError(error), error]),
+      .map((error, index) => [`case ${index + 1}: ${formatSdkRunError(error)}`, error]),
   )("%s", (_message, error) => {
     expect(retryable(error)).toBe(intendedRetry(error));
   });

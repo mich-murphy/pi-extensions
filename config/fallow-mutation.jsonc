@@ -1,0 +1,7 @@
+// Mutation runs only. Live tests need provider credentials and run under vitest.live.config.ts,
+// so the default Vitest config never lists them. Fallow would count them as undiscovered test
+// files and mark every run partial, and `--compare` accepts only complete reports.
+{
+  "extends": "../.fallowrc.json",
+  "ignorePatterns": ["packages/*/test/**/*.live.ts"],
+}
