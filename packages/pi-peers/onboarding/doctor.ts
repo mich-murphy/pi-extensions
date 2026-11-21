@@ -389,12 +389,6 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
   }
 }
 
-/** Legacy one-line remote snapshot, used by `/peers status`. */
-export async function remoteSnapshot(agentDir: string): Promise<string> {
-  const check = await remoteCheck(agentDir);
-  return check.detail;
-}
-
 const WEEK = 7 * 86_400_000;
 async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<Check> {
   const SETUP = setupStep(options);

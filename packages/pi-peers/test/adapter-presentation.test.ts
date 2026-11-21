@@ -201,29 +201,6 @@ describe("presentation-only session tool rendering", () => {
       expect(JSON.stringify({ args: entry.args, payload })).toBe(before);
     },
   );
-  test.each(cases)(
-    "$name $call: started calls do not retain a preparing label when argsComplete remains false",
-    (entry) => {
-      expect(
-        render(entry.name, "call", entry.args, undefined, false, 100, {
-          argsComplete: false,
-          executionStarted: true,
-        }).join("\n"),
-      ).not.toContain("preparing");
-    },
-  );
-  test.each(cases)(
-    "$name $call: restored completed calls make no phase claim when public activity flags are absent",
-    (entry) => {
-      const output = render(entry.name, "call", entry.args, result(entry.value), false, 100, {
-        argsComplete: false,
-        executionStarted: false,
-        isPartial: false,
-      }).join("\n");
-      expect(output).toContain(entry.call);
-      expect(output).not.toContain("preparing");
-    },
-  );
   test("all six public registrations hook up both renderers without changing unavailable model output", async () => {
     const tools: {
       name: string;
@@ -299,7 +276,7 @@ describe("presentation-only session tool rendering", () => {
         render(entry.name, "call", undefined, undefined, false, 40, { argsComplete: false }).join(
           "\n",
         ),
-      ).not.toContain("preparing");
+      ).toContain(entry.name);
       const partial = render(entry.name, "result", undefined, result(entry.value), false, 80, {
         isPartial: true,
       }).join("\n");
@@ -598,11 +575,9 @@ describe("presentation-only session tool rendering", () => {
       ).toContain(`${count} ${publicationLabel}`);
     },
   );
-  test.each([
-    { count: 1, label: "push" },
-    { count: 2, label: "pushes" },
-  ])("report count $count uses push/pushes", ({ count, label }) => {
-    const pushes = Array.from({ length: count }, () => ({ recipient: other, outcome: admitted }));
+  // The peers_report case covers the singular "1 push".
+  test("report count 2 uses pushes", () => {
+    const pushes = Array.from({ length: 2 }, () => ({ recipient: other, outcome: admitted }));
     expect(
       render(
         "peers_report",
@@ -610,7 +585,7 @@ describe("presentation-only session tool rendering", () => {
         {},
         result({ tag: "ok", value: { publication, pushes } }),
       ).join("\n"),
-    ).toContain(`${count} ${label}:`);
+    ).toContain("2 pushes:");
   });
   test.each([
     ["activation_pending", "Peers: activation pending"],

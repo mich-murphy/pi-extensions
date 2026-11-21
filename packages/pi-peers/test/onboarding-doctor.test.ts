@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { doctor, doctorReport, doctorRowText, remoteSnapshot } from "../onboarding/doctor.js";
+import { doctor, doctorReport, doctorRowText } from "../onboarding/doctor.js";
 
 const directories: string[] = [];
 async function fixture(content?: string) {
@@ -209,9 +209,5 @@ describe("plain-language doctor report", () => {
     for (const row of report.rows) {
       expect(text).toContain(doctorRowText(row));
     }
-  });
-  test("remoteSnapshot keeps its legacy one-line form", async () => {
-    const { directory } = await fixture();
-    await expect(remoteSnapshot(directory)).resolves.toContain("Remote config snapshot");
   });
 });

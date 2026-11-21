@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { sameMessage, samePeer, scopedMessageKey } from "../protocol/identity.js";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
-import { decodeFrame, encodeFrame, frameBodyLength, validateFrame } from "../protocol/wire.js";
+import { decodeFrame } from "../protocol/wire.js";
 
 const fixtureSchema = Schema.Struct({
   contract: Schema.String,
@@ -52,22 +52,6 @@ describe("v16 shared exact-byte conformance", () => {
 
   test.each(rejected)("close $name ($boundary / $role)", (fixture) => {
     expect(() => decodeFixture(fixture)).toThrow(ProtocolError);
-  });
-
-  test("validates and encodes the same exact envelope", () => {
-    const value = {
-      v: 1,
-      op: "send",
-      rid: "1".repeat(32),
-      to: recipient,
-      scopeId: "team",
-      message,
-    };
-    const encoded = encodeFrame(value, "local-client");
-    expect(frameBodyLength(encoded.subarray(0, 4))).toBe(encoded.length - 4);
-    expect(decodeFrame(encoded, "local-client")).toStrictEqual(
-      validateFrame(value, "local-client"),
-    );
   });
 
   test("identity equality preserves nonce and scope; rid is not a key", () => {

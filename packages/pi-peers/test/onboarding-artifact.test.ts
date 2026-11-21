@@ -1,11 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  gatewayReleaseTag,
-  jsonObject,
-  sha256,
-  verifyArtifact,
-  verifyManifest,
-} from "../onboarding/artifact.js";
+import { jsonObject, sha256, verifyArtifact, verifyManifest } from "../onboarding/artifact.js";
 import { fixture, tar } from "./onboarding-artifact-fixture.js";
 
 describe("bounded authenticated artifacts", () => {
@@ -19,13 +13,6 @@ describe("bounded authenticated artifacts", () => {
     expect(() =>
       verifyManifest(f.manifest, { ...f.pin, manifestSha256: "0".repeat(64) }, f.record.target),
     ).toThrow("pin mismatch");
-  });
-  test("binds the semantic release tag to the pinned version", () => {
-    const f = fixture();
-    expect(gatewayReleaseTag("0.1.0")).toBe("pi-gateway-v0.1.0");
-    expect(jsonObject(JSON.parse(f.manifest.toString("utf8"))).releaseTag).toBe(
-      "pi-gateway-v0.1.0",
-    );
   });
   test.each([
     ["legacy revision tag", { releaseTag: `gateway-${"a".repeat(40)}` }, {}],

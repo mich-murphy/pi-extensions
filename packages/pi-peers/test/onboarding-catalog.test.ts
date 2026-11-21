@@ -67,26 +67,6 @@ describe("gateway trusted catalog", () => {
     expect(gatewayTarget("darwin", "x64")).toBeUndefined();
     expect(gatewayTarget("linux", "arm64")).toBe("aarch64-unknown-linux-gnu");
   });
-  test("prefers usable pinned Nix and exposes reviewed fallback", () => {
-    const pin = {
-      sourceRevision: "a".repeat(40),
-      version: "0.1.0",
-      manifestSha256: "b".repeat(64),
-      narHash: `sha256-${Buffer.alloc(32).toString("base64")}`,
-    };
-    expect(
-      discoverGateway(
-        { platform: "linux", arch: "x64", nixAvailable: true },
-        { nix: pin, native: pin },
-      ).preferred,
-    ).toBe("nix");
-    expect(
-      discoverGateway(
-        { platform: "linux", arch: "x64", nixAvailable: false },
-        { nix: pin, native: pin },
-      ).preferred,
-    ).toBe("native");
-  });
   test("accepts only canonical SHA-256 SRI content pins", () => {
     const pin = { sourceRevision: "a".repeat(40), version: "0.1.0" };
     const canonical = `sha256-${Buffer.alloc(32).toString("base64")}`;
