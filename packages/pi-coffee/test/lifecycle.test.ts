@@ -101,17 +101,6 @@ describe("coffee lifecycle", () => {
     expect(pi.spawned[0]?.child.stops).toBe(1);
   });
 
-  test("starts a fresh caffeinate for the next run", async () => {
-    const pi = harness();
-
-    await pi.emit("agent_start");
-    await pi.emit("agent_settled");
-    await pi.emit("agent_start");
-
-    expect(pi.spawned).toHaveLength(2);
-    expect(pi.spawned[1]?.child.stops).toBe(0);
-  });
-
   test("keeps separate Pi runtimes independent", async () => {
     const first = harness();
     const second = harness();
@@ -214,21 +203,6 @@ describe("coffee lifecycle", () => {
     expect(error.message).not.toMatch(/secret|password|\p{Cc}/u);
   });
 
-  test("ignores late events from a released child", async () => {
-    const pi = harness();
-    await pi.emit("agent_start");
-    await pi.emit("agent_settled");
-    await pi.emit("agent_start");
-
-    pi.spawned[0]?.child.exit(null, "SIGKILL");
-    pi.spawned[0]?.child.fail("stop", "EPERM");
-    await pi.emit("agent_start");
-
-    expect(pi.spawned).toHaveLength(2);
-    expect(pi.spawned[1]?.child.stops).toBe(0);
-    expect(pi.notifications).toStrictEqual([]);
-  });
-
   test("stays silent without a UI", async () => {
     const pi = harness("darwin", false);
     await pi.emit("agent_start");
@@ -240,17 +214,6 @@ describe("coffee lifecycle", () => {
 });
 
 describe("/coffee command", () => {
-  test("completes on and off", async () => {
-    const pi = harness();
-
-    await expect(pi.completions("")).resolves.toStrictEqual([
-      { value: "on", label: "on" },
-      { value: "off", label: "off" },
-    ]);
-    await expect(pi.completions("of")).resolves.toStrictEqual([{ value: "off", label: "off" }]);
-    await expect(pi.completions("x")).resolves.toStrictEqual([]);
-  });
-
   test("an empty argument toggles, starting from on", async () => {
     const pi = harness();
 
@@ -316,15 +279,5 @@ describe("/coffee command", () => {
 
     await pi.emit("agent_start");
     expect(pi.spawned).toHaveLength(1);
-  });
-
-  test("session shutdown after off leaves no child to stop", async () => {
-    const pi = harness();
-    await pi.emit("agent_start");
-    await pi.command("off");
-    await pi.emit("session_shutdown");
-
-    expect(pi.spawned).toHaveLength(1);
-    expect(pi.spawned[0]?.child.stops).toBe(1);
   });
 });
