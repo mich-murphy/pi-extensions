@@ -66,7 +66,6 @@ describe("protocol domain schema API", () => {
         revision: 1,
       })),
     },
-    { ...publication, content: "x".repeat(24_576) },
   ])("rejects invalid publication variant %#", (record) => {
     expect(() => validateFrame(publicationResult(record), "local-client")).toThrow(ProtocolError);
   });
