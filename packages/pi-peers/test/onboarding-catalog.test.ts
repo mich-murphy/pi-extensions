@@ -116,9 +116,9 @@ describe("gateway trusted catalog", () => {
   test("rejects mutable refs and malformed hashes", () => {
     expect(() => {
       validatePin({ sourceRevision: "main", version: "0.1.0" });
-    }).toThrow(/.+/u);
+    }).toThrow("Invalid trusted gateway pin");
     expect(() => {
       validatePin({ sourceRevision: "a".repeat(40), version: "0.1.0", manifestSha256: "adjacent" });
-    }).toThrow(/.+/u);
+    }).toThrow("Invalid trusted gateway pin");
   });
 });

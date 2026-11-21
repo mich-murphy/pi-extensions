@@ -596,7 +596,7 @@ describe("presentation-only session tool rendering", () => {
       expect(footerStatus({ status }, true)).toBe(footer);
       const detail = diagnostics({ enabled: true, status }, "enabled");
       expect(detail).toContain("Passive reconnect never restarts a gateway");
-      expect(detail).toContain("Activate saved configuration");
+      expect(detail).toContain("/peers setup, then Activate saved configuration");
       expect(detail).toContain("Existing sessions may still use old trust");
     },
   );

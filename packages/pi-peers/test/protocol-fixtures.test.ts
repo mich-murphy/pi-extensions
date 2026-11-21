@@ -54,7 +54,7 @@ describe("v16 shared exact-byte conformance", () => {
     expect(() => decodeFixture(fixture)).toThrow(ProtocolError);
   });
 
-  test("identity equality preserves nonce and scope; rid is not a key", () => {
+  test("peer identity includes the nonce; a message key includes scope and direction", () => {
     expect(samePeer(sender, { ...sender })).toBe(true);
     expect(samePeer(sender, { ...sender, runtimeNonce: "b".repeat(32) })).toBe(false);
     expect(scopedMessageKey(sender, recipient, "one", message.id)).not.toBe(

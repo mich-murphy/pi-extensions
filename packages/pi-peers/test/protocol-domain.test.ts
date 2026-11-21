@@ -71,14 +71,23 @@ describe("protocol domain schema API", () => {
   });
 
   test("authored aggregate includes resource labels and locators", () => {
-    const record = {
-      ...publication,
-      content: "x".repeat(24_560),
-      refs: [
-        { kind: "resource", machineId: "alpha", locator: "long-resource-locator", label: "Label" },
-      ],
+    // Label "Label" and locator "long-resource-locator" add 26 bytes; each alone decides the edge.
+    const resource = {
+      kind: "resource",
+      machineId: "alpha",
+      locator: "long-resource-locator",
+      label: "Label",
     };
-    expect(() => validateFrame(publicationResult(record), "local-client")).toThrow(ProtocolError);
+    const record = (content: number) => ({
+      ...publication,
+      content: "x".repeat(content),
+      refs: [resource],
+    });
+    const atCap = CAP - "ReportSummary".length - "Label".length - "long-resource-locator".length;
+    expect(() => validateFrame(publicationResult(record(atCap)), "local-client")).not.toThrow();
+    expect(() => validateFrame(publicationResult(record(atCap + 1)), "local-client")).toThrow(
+      ProtocolError,
+    );
   });
 
   describe("authored content cap of 24,576 UTF-8 bytes", () => {

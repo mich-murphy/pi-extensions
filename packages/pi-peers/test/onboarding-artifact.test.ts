@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { jsonObject, sha256, verifyArtifact, verifyManifest } from "../onboarding/artifact.js";
+import {
+  jsonObject,
+  MAX_ARCHIVE,
+  sha256,
+  verifyArtifact,
+  verifyManifest,
+} from "../onboarding/artifact.js";
 import { fixture, tar } from "./onboarding-artifact-fixture.js";
 
 describe("bounded authenticated artifacts", () => {
@@ -36,9 +42,17 @@ describe("bounded authenticated artifacts", () => {
       "Invalid release identity/schema",
     );
   });
-  test("rejects archive digest and oversized bytes", () => {
+  test("rejects an archive of the wrong size, the wrong digest, or over the size limit", () => {
     const f = fixture();
-    expect(() => verifyArtifact(Buffer.alloc(0), f.record)).toThrow("integrity");
+    expect(() => verifyArtifact(Buffer.alloc(0), f.record)).toThrow("Archive integrity mismatch");
+    expect(() => verifyArtifact(f.archive, { ...f.record, sha256: "0".repeat(64) })).toThrow(
+      "Archive integrity mismatch",
+    );
+    // Its record matches size and digest, so only the size limit rejects it before decompression.
+    const oversized = Buffer.alloc(MAX_ARCHIVE + 1);
+    expect(() =>
+      verifyArtifact(oversized, { ...f.record, size: oversized.length, sha256: sha256(oversized) }),
+    ).toThrow("Archive integrity mismatch");
   });
   test.each(["../pi-gateway", "/pi-gateway", "extra"])("rejects unsafe member %s", (name) => {
     const f = fixture();
@@ -50,24 +64,37 @@ describe("bounded authenticated artifacts", () => {
       verifyArtifact(archive, { ...f.record, size: archive.length, sha256: sha256(archive) }),
     ).toThrow("Unsafe");
   });
-  test("rejects duplicate members and corrupt embedded metadata", () => {
-    const f = fixture();
-    for (const members of [
+  test.each([
+    [
+      "a duplicate member",
       [
-        ["pi-gateway", f.binary, 0o755],
-        ["pi-gateway", f.binary, 0o755],
+        ["pi-gateway", "binary", 0o755],
+        ["pi-gateway", "binary", 0o755],
       ],
+      "Unsafe archive member",
+    ],
+    [
+      "corrupt embedded metadata",
       [
-        ["pi-gateway", f.binary, 0o755],
-        ["release.json", Buffer.from("{}"), 0o644],
+        ["pi-gateway", "binary", 0o755],
+        ["release.json", "emptyObject", 0o644],
       ],
-    ] as [string, Buffer, number][][]) {
-      const archive = tar(members);
+      "Embedded metadata mismatch",
+    ],
+  ] as [string, [string, "binary" | "emptyObject", number][], string][])(
+    "rejects %s",
+    (_name, members, message) => {
+      const f = fixture();
+      const contents: Record<"binary" | "emptyObject", Buffer> = {
+        binary: f.binary,
+        emptyObject: Buffer.from("{}"),
+      };
+      const archive = tar(members.map(([name, content, mode]) => [name, contents[content], mode]));
       expect(() =>
         verifyArtifact(archive, { ...f.record, size: archive.length, sha256: sha256(archive) }),
-      ).toThrow(/.+/u);
-    }
-  });
+      ).toThrow(message);
+    },
+  );
   test.each([
     ["x86_64-unknown-linux-gnu", "/lib64/ld-linux-x86-64.so.2"],
     ["aarch64-unknown-linux-gnu", "/lib/ld-linux-aarch64.so.1"],

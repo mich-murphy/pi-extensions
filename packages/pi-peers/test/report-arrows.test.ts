@@ -36,11 +36,6 @@ describe("report text never uses → as a separator", () => {
     expect(arrows(diagnostics(status, diagnostic))).toStrictEqual([]);
   });
 
-  test("the pending diagnostics name the menu step in plain words", () => {
-    const detail = diagnostics({ enabled: true, status: "activation_unconfirmed" }, "enabled");
-    expect(detail).toContain("/peers setup, then Activate saved configuration");
-  });
-
   test.each([
     ["pending", pendingOutcome("Settings saved")],
     ["after save", afterSave(new Error("busy"), ["detail"])],
