@@ -75,6 +75,54 @@ function sendFrame(contentBytes: number): unknown {
   };
 }
 
+/** A string of exactly `bytes` UTF-8 bytes, of three-byte `€` characters when `wide`. */
+function filled(bytes: number, wide: boolean): string {
+  return wide ? `${"€".repeat(Math.floor(bytes / 3))}${"x".repeat(bytes % 3)}` : "x".repeat(bytes);
+}
+
+/** A publication whose authored fields (title, summary, content, label, locator) have these sizes. */
+function publicationFrame(sizes: {
+  title: number;
+  summary: number;
+  content: number;
+  label: number;
+  locator: number;
+  wide: boolean;
+}): unknown {
+  const peer = { machineId: "alpha", sessionId: "s", runtimeNonce: nonce };
+  return {
+    v: 1,
+    op: "result",
+    rid,
+    forOp: "state.get",
+    outcome: {
+      tag: "ok",
+      value: {
+        publisher: peer,
+        scopeId: "team",
+        publication: {
+          key: "report",
+          revision: 1,
+          category: "context",
+          title: filled(sizes.title, sizes.wide),
+          summary: filled(sizes.summary, sizes.wide),
+          content: filled(sizes.content, sizes.wide),
+          format: "text",
+          preparation: "authored",
+          refs: [
+            {
+              kind: "resource",
+              machineId: "alpha",
+              locator: filled(sizes.locator, sizes.wide),
+              label: filled(sizes.label, sizes.wide),
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
 function makeDescriptor(sessionId: string) {
   return {
     peer: { machineId: "beta", sessionId, runtimeNonce: nonce },
@@ -139,6 +187,25 @@ describe("Hegel size-bound edges", () => {
       once(`${offset}`, () => {
         assertFrameEdge(sendFrame(AUTHORED_MAX + offset), "local-client", offset <= 0);
       });
+    });
+  });
+
+  // Every authored field has at least 4 bytes and the total lies within 3 bytes of the cap, so
+  // leaving any one field out of the sum flips some case from rejected to accepted.
+  test("the sum of title, summary, content, label and locator bytes is accepted iff <= 24576", () => {
+    property("aggregate", (tc) => {
+      const offset = tc.draw(edge, "offset");
+      const title = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "title bytes");
+      const summary = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "summary bytes");
+      const label = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "label bytes");
+      const locator = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "locator bytes");
+      const wide = tc.draw(gs.booleans(), "multi-byte text");
+      const content = AUTHORED_MAX + offset - title - summary - label - locator;
+      assertFrameEdge(
+        publicationFrame({ title, summary, content, label, locator, wide }),
+        "local-client",
+        offset <= 0,
+      );
     });
   });
 
