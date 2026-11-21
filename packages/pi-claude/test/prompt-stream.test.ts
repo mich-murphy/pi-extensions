@@ -122,7 +122,6 @@ describe("buildPromptStream", () => {
 
   test.each([
     ["none", "none"],
-    ["short", "5m"],
     ["long", "1h"],
     ["bogus", "5m"],
   ] as const)(

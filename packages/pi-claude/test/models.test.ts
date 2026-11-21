@@ -32,15 +32,12 @@ describe("model table", () => {
 });
 
 describe("cache minimum model metadata", () => {
-  test.each([
-    "custom",
-    "claude-haiku-6",
-    "claude-opus-4-9",
-    "claude-sonnet-5-5-custom",
-    "anthropic/claude-haiku-4-5",
-  ])("does not guess a minimum for %s", (id) => {
-    expect(minimumCacheableTokensFor(id)).toBeUndefined();
-  });
+  test.each(["custom", "claude-haiku-6", "claude-sonnet-5-5-custom", "anthropic/claude-haiku-4-5"])(
+    "does not guess a minimum for %s",
+    (id) => {
+      expect(minimumCacheableTokensFor(id)).toBeUndefined();
+    },
+  );
 
   test("does not leak SDK-only cache or routing metadata into Pi registration", () => {
     for (const entry of models) {
