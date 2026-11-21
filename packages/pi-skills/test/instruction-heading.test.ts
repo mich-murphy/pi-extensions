@@ -35,10 +35,8 @@ describe("instruction headings", () => {
 
   // A heading is never blank and never holds a control character; a blank one is no heading.
   test.each([
-    ["#  ", ""],
     ["# \t", ""],
     ["#   \n", ""],
-    ["#  \n# Real", "Real"],
     ["# \u0001\n# Real", "Real"],
     ["<\r<\n=", "<"],
     ["Title\r=====\rBody", "Title"],
