@@ -120,7 +120,7 @@ describe("provider commands", () => {
       const [notice] = await runCommand("status");
 
       expect(notice?.level).toBe("error");
-      expect(notice?.text).toContain("Claude Code is not installed or not on PATH");
+      expect(notice?.text).toContain("Claude Code (`claude`) was not found");
     });
 
     test("says nothing without a UI", async () => {

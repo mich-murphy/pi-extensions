@@ -44,8 +44,8 @@ const MINUTE_MS = 60 * 1000;
 
 /** Claude Agent SDK failures that {@link isRetryableAssistantError} does not recognise. */
 const TRANSIENT_ERROR_MESSAGES: ReadonlySet<string> = new Set([
-  "Claude Agent SDK: the query failed; retry or check Claude Code status",
-  "Claude Agent SDK: could not start the query (unexpected SDK error)",
+  "Claude Code stopped with an error but did not say why.",
+  "Claude Code failed to start with an unexpected error.",
 ]);
 
 /** `piRetry.transient` settings: backoff after transient provider or network failures. */
@@ -303,9 +303,12 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     const time = formatTime(plan.resetsAt);
     const [notice, label] =
       plan.reason === "usage-limit"
-        ? [`Usage limit reached. Pi will continue automatically at ${time}.`, "Usage limit reached"]
+        ? [
+            `Usage limit reached. Pi will continue at ${time}; \`/retry off\` cancels.`,
+            "Usage limit reached",
+          ]
         : [
-            `Provider error. Pi will retry automatically at ${time} (attempt ${String(plan.attempt)}).`,
+            `Provider error. Pi will retry at ${time} (attempt ${String(plan.attempt)}); \`/retry off\` cancels.`,
             `Provider error · attempt ${String(plan.attempt)}`,
           ];
     ctx.ui.notify(notice, "warning");

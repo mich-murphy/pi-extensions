@@ -9,7 +9,7 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
   content: [
     {
       type: "text" as const,
-      text: "Pi's PreToolUse defer decision was not honored by the Claude Agent SDK; this tool call did not run and was not forwarded to Pi.",
+      text: "The tool did not run: Claude Code did not pass this call to Pi.",
     },
   ],
   isError: true,
@@ -137,7 +137,7 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
       capture(call.tool_use_id, call.tool_name, call.tool_input, false);
     }
     batchStopped = true;
-    return { continue: false, stopReason: "Pi owns tool execution and validation recovery." };
+    return { continue: false, stopReason: "Stopped so that Pi can run the requested tools." };
   };
   return {
     hook,

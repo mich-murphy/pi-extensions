@@ -49,7 +49,7 @@ describe("Extra Usage guard", () => {
     const error = lastFailure(events);
     expect(error).toBeInstanceOf(SdkOverageError);
     expect(error.message).toBe(
-      `This turn would be billed to Extra Usage; plan limits are exhausted until ${new Date(RESET * 1000).toISOString()}. Set PI_CLAUDE_ALLOW_EXTRA_USAGE=1 to allow.`,
+      `Plan limit hit until ${new Date(RESET * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC; stopped to avoid Extra Usage. To allow it, set \`PI_CLAUDE_ALLOW_EXTRA_USAGE=1\` and restart Pi.`,
     );
     expect(diagnoseSdkRunError(error).kind).toBe("usage-limit");
     expect(formatSdkRunError(error)).toContain("Extra Usage");

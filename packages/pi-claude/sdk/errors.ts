@@ -34,7 +34,7 @@ export class SdkProtocolError extends Schema.TaggedError<SdkProtocolError>()("Sd
 }) {
   /** Safe summary of the malformed message. */
   override get message(): string {
-    return `sent a malformed ${this.messageType} message (${this.detail}); check /claude status before continuing`;
+    return `Claude Code sent a reply Pi could not read (${this.messageType}: ${this.detail}). Run \`/claude status\` to check versions.`;
   }
 }
 
@@ -44,7 +44,7 @@ export class SdkInternalContinuationError extends Schema.TaggedError<SdkInternal
   {},
 ) {
   override get message(): string {
-    return "Claude continued inside the SDK instead of returning control to Pi. This turn stopped to avoid unsafe automatic replay. Review completed work, then send `continue` when ready.";
+    return "Claude kept going without Pi, so the turn stopped. Review completed work, then send `continue`.";
   }
 }
 
@@ -67,7 +67,7 @@ export class SdkStreamInterruptedError extends Schema.TaggedError<SdkStreamInter
   { evidence: StreamInterruptionEvidence },
 ) {
   override get message(): string {
-    return "Claude response stream was interrupted; retry shortly";
+    return "The response stream was interrupted before Claude finished.";
   }
 }
 
@@ -98,7 +98,7 @@ export class InvalidDeferredCallLimitError extends Schema.TaggedError<InvalidDef
 ) {
   /** Safe summary naming the final invalid call. */
   override get message(): string {
-    return `Claude exceeded the invalid Pi tool-call limit after ${this.attempts} attempts: invalid Pi tool requests; check the active tool catalog before continuing`;
+    return `Claude made ${this.attempts} invalid tool calls, so the turn stopped.`;
   }
 }
 
@@ -169,31 +169,36 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
   }
 }
 
-function describeQueryFailure(reason: SdkQueryFailureReason): string {
+function describeQueryFailure(
+  reason: SdkQueryFailureReason,
+  operation: "start" | "iterate",
+): string {
   switch (reason._tag) {
     case "Cancelled": {
-      return "cancelled";
+      return "The request was cancelled.";
     }
     case "ExecutableNotFound": {
-      return "Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_PATH";
+      return "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.";
     }
     case "ClaudeCodeTooOld": {
-      return `Claude Code ${reason.version} is too old (${MIN_CLAUDE_CODE_VERSION} or newer is required); run \`claude update\``;
+      return `Claude Code ${reason.version} is too old; ${MIN_CLAUDE_CODE_VERSION} or newer is required. Run \`claude update\`.`;
     }
     case "ExecutableLaunchFailed": {
-      return "Claude Code is installed but could not be launched; check executable permissions and PI_CLAUDE_PATH";
+      return "Claude Code is installed but would not launch. Check `claude` or `PI_CLAUDE_PATH`.";
     }
     case "WorkingDirectoryUnavailable": {
-      return "session working directory is unavailable; restart Pi from an existing worktree and resume this session";
+      return "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.";
     }
     case "ProcessExited": {
-      return `Claude Code exited with code ${reason.exitCode}; run /claude status and check Claude Code before continuing`;
+      return `Claude Code quit unexpectedly (exit code ${reason.exitCode}). Run \`/claude status\` to check it.`;
     }
     case "ProcessKilled": {
-      return `Claude Code was stopped by signal ${reason.signal}; check whether the process was stopped before continuing`;
+      return `Claude Code was stopped by signal ${reason.signal}.`;
     }
     case "Unclassified": {
-      return "unexpected SDK error";
+      return operation === "start"
+        ? "Claude Code failed to start with an unexpected error."
+        : "Claude Code stopped mid-turn with an unexpected error.";
     }
     default: {
       return absurd(reason);
@@ -234,10 +239,7 @@ export class SdkQueryError extends Schema.TaggedError<SdkQueryError>()("SdkQuery
 
   /** Safe summary naming the phase and classified reason. */
   override get message(): string {
-    const reason = describeQueryFailure(this.reason);
-    return this.operation === "start"
-      ? `could not start the query (${reason})`
-      : `the query stopped before finishing (${reason})`;
+    return describeQueryFailure(this.reason, this.operation);
   }
 }
 
@@ -248,7 +250,7 @@ export class SdkMissingResultError extends Schema.TaggedError<SdkMissingResultEr
 ) {
   /** Safe summary of the missing result. */
   override get message(): string {
-    return "the query finished without returning a result; review completed work before sending `continue`";
+    return "Claude Code stopped without a final result. Review completed work, then send `continue`.";
   }
 }
 
@@ -260,8 +262,8 @@ export class SdkInstrumentationError extends Schema.TaggedError<SdkInstrumentati
   /** Static summary that never contains callback or payload data. */
   override get message(): string {
     return this.operation === "replacement"
-      ? "request instrumentation returned an invalid SDK-adapted payload; check the extension that modifies requests"
-      : "request instrumentation did not complete; check the observing extension or cancellation state";
+      ? "An extension returned an invalid request for Claude, so nothing was sent."
+      : "An extension that watches requests to Claude failed, so the turn stopped.";
   }
 }
 
@@ -270,7 +272,9 @@ export class SdkToolContractError extends Schema.TaggedError<SdkToolContractErro
   { reason: Schema.Literals(["naming", "schema"]) },
 ) {
   override get message(): string {
-    return `Pi tool catalog cannot be advertised faithfully (${this.reason}); check tool names and schemas in the active extensions`;
+    return this.reason === "naming"
+      ? "Two tools share a name, or one has none, so nothing was sent to Claude."
+      : "A tool's parameter schema cannot be sent to Claude, so nothing was sent.";
   }
 }
 
@@ -282,8 +286,10 @@ export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkO
   /** Actionable summary; contains only a reset time. */
   override get message(): string {
     const until =
-      this.resetsAt === undefined ? "they reset" : new Date(this.resetsAt).toISOString();
-    return `This turn would be billed to Extra Usage; plan limits are exhausted until ${until}. Set PI_CLAUDE_ALLOW_EXTRA_USAGE=1 to allow.`;
+      this.resetsAt === undefined
+        ? "it resets"
+        : `${new Date(this.resetsAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    return `Plan limit hit until ${until}; stopped to avoid Extra Usage. To allow it, set \`PI_CLAUDE_ALLOW_EXTRA_USAGE=1\` and restart Pi.`;
   }
 }
 
@@ -316,8 +322,8 @@ export class SdkProviderDefect extends Schema.TaggedError<SdkProviderDefect>()(
   /** Safe summary of the broken invariant. */
   override get message(): string {
     return this.reason === "no-terminal-event"
-      ? "the turn finished without a final result; report this provider bug with /claude status output"
-      : "the SDK runner failed unexpectedly; report this provider bug with /claude status output";
+      ? "pi-claude bug: the turn finished without a final result. Report it with `/claude status` output."
+      : "pi-claude bug: the Claude runner failed unexpectedly. Report it with `/claude status` output.";
   }
 }
 

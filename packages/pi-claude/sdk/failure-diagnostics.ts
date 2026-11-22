@@ -151,9 +151,7 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
 
 /** Format a failed turn's safe summary for Pi's error message. */
 export function formatSdkRunError(error: SdkTurnFailure): string {
-  return error._tag === "SdkProviderDefect"
-    ? `Claude SDK provider bug: ${error.message}`
-    : `Claude Agent SDK: ${error.message}`;
+  return error.message;
 }
 
 /** Emit one message-free JSON diagnostic; the default sink skips terminal stderr. */

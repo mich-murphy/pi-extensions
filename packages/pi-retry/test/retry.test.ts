@@ -47,7 +47,7 @@ describe("waiting for a usage limit to reset", () => {
     });
     expect(pi.notifications).toStrictEqual([
       {
-        message: "Usage limit reached. Pi will continue automatically at t+90m.",
+        message: "Usage limit reached. Pi will continue at t+90m; `/retry off` cancels.",
         level: "warning",
       },
     ]);

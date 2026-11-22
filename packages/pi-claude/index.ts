@@ -207,7 +207,7 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
     }
     if (ctx.hasUI) {
       ctx.ui.notify(
-        `Quarantined ${sanitized.detected}-like bash output before it entered context. Compact or start a new session if similar output was recorded earlier.`,
+        `Quarantined ${sanitized.detected}-like bash output; it was kept out of the context.`,
         "warning",
       );
     }

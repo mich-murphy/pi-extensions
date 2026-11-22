@@ -1042,7 +1042,7 @@ describe("turn failures", () => {
           reason: { _tag: "WorkingDirectoryUnavailable" },
         });
         expect(error.message).toBe(
-          "could not start the query (session working directory is unavailable; restart Pi from an existing worktree and resume this session)",
+          "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.",
         );
         expect(error.message).not.toContain(cwd);
       } finally {
@@ -1069,7 +1069,7 @@ describe("turn failures", () => {
 
     expect(error._tag).toBe("SdkResultError");
     expect(error.message).toBe(
-      "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+      "Claude's tool call could not be passed back to Pi, so it did not run.",
     );
   });
 
@@ -1125,7 +1125,9 @@ describe("turn failures", () => {
       _tag: "SdkResultError",
       apiError: "authentication_failed",
     });
-    expect(error.error.message).toBe("Claude Code authentication failed; run `claude` to sign in");
+    expect(error.error.message).toBe(
+      "Claude could not verify your account or cloud credentials. Run `claude auth login` to sign in.",
+    );
   });
 
   test.each([
@@ -1146,7 +1148,7 @@ describe("turn failures", () => {
     );
     const terminal = events.at(-1);
     assert(terminal?.type === "failed");
-    expect(terminal.error.message).toContain("authentication failed");
+    expect(terminal.error.message).toContain("could not verify your account");
   });
 
   test("reports a query that cannot start", async () => {
@@ -1567,7 +1569,7 @@ describe("rate-limit classification", () => {
     assert(error._tag === "SdkResultError");
     expect(error).toMatchObject({ apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
-    expect(error.message).toBe("Claude rate limit reached; retry shortly");
+    expect(error.message).toBe("Claude hit a rate limit: too many requests in a short time.");
     expect(observations).toStrictEqual([]);
   });
 
@@ -1603,7 +1605,9 @@ describe("rate-limit classification", () => {
     assert(error._tag === "SdkResultError");
     expect(error).toMatchObject({ category: "usage-limit", apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("usage-limit");
-    expect(error.message).toBe("Claude usage limit reached; check subscription allowance");
+    expect(error.message).toBe(
+      "Claude usage or billing limit reached; `/claude usage` shows your limits.",
+    );
     expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
   });
 });

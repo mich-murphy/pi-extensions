@@ -380,12 +380,12 @@ describe("terminal SDK result", () => {
 
   test("surfaces the SDK's own error result instead of silently reporting an empty stop", () => {
     expect(failedResult({ errors: ["context deadline exceeded", 7, "retry later"] }).message).toBe(
-      "the query failed; retry or check Claude Code status",
+      "Claude Code stopped with an error but did not say why.",
     );
     expect(failedResult({ result: "The model refused to respond." }).message).toBe(
-      "the query failed; retry or check Claude Code status",
+      "Claude Code stopped with an error but did not say why.",
     );
-    expect(failedResult({}).message).toBe("the query failed; retry or check Claude Code status");
+    expect(failedResult({}).message).toBe("Claude Code stopped with an error but did not say why.");
     expect(failedResult({ terminal_reason: "model_error" }).terminalReason).toBe("model_error");
   });
 
@@ -398,7 +398,9 @@ describe("terminal SDK result", () => {
 
     expect(result).toMatchObject({
       _tag: "failed",
-      error: { message: "the query failed; retry or check Claude Code status" },
+      error: {
+        message: "Claude Code stopped with an error but did not say why.",
+      },
     });
   });
 
@@ -410,8 +412,7 @@ describe("terminal SDK result", () => {
       error: {
         _tag: "SdkResultError",
         terminalReason: "tool_deferred_unavailable",
-        message:
-          "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+        message: "Claude's tool call could not be passed back to Pi, so it did not run.",
       },
     });
   });
@@ -419,7 +420,7 @@ describe("terminal SDK result", () => {
   test("treats a model refusal as a failure, like Pi's Anthropic provider", () => {
     expect(turnResult({ stop_reason: "refusal" })).toMatchObject({
       _tag: "failed",
-      error: { message: "the model refused to complete the request; revise the request" },
+      error: { message: "Claude declined to answer this request." },
     });
   });
 });

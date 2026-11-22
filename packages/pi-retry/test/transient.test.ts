@@ -44,10 +44,10 @@ describe("classifying a failed reply", () => {
     CONNECTION_ERROR,
     "terminated",
     "OAuth refresh failed for openai: fetch failed",
-    "Claude Agent SDK: the query failed; retry or check Claude Code status",
+    "Claude Code stopped with an error but did not say why.",
     "Our servers are currently overloaded. Please try again later.",
     "OpenAI Responses stream ended before a terminal response event",
-    "Claude Agent SDK: could not start the query (unexpected SDK error)",
+    "Claude Code failed to start with an unexpected error.",
   ])("resumes after %s", (errorMessage) => {
     const pi = harness();
 
@@ -114,7 +114,7 @@ describe("retrying a transient failure", () => {
     });
     expect(pi.notifications).toStrictEqual([
       {
-        message: "Provider error. Pi will retry automatically at t+1m (attempt 1).",
+        message: "Provider error. Pi will retry at t+1m (attempt 1); `/retry off` cancels.",
         level: "warning",
       },
     ]);
