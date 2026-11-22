@@ -34,7 +34,7 @@ export async function pairAction(
   const path = join(directory, `pair-input-${randomBytes(16).toString("hex")}.json`);
   const bytes = JSON.stringify(input);
   if (Buffer.byteLength(bytes) > 32_764) {
-    throw new Error("Pairing input too large");
+    throw new Error("The pairing details are too large");
   }
   await createPrivate(path, bytes);
   try {
@@ -45,7 +45,7 @@ export async function pairAction(
     });
     const output = decodeRecord(parseJson(stdout));
     if (output.version !== 1 || output.operation !== operation) {
-      throw new Error("Pairing contract mismatch");
+      throw new Error("The gateway program gave an unexpected pairing reply");
     }
     return output;
   } finally {

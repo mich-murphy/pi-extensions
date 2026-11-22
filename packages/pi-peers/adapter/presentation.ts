@@ -299,6 +299,12 @@ export function toolPresentation(name: string): ToolRenderers {
   };
 }
 
+/** Activation-pending technical lines, shared by diagnostics and the status summary. */
+const ACTIVATION_PENDING_DETAILS: readonly string[] = [
+  "Saved but not active yet. Passive reconnect never restarts a gateway; nothing is resent.",
+  "/peers setup, then Activate saved configuration, restarts it once.",
+  "Existing sessions may still use old trust.",
+];
 /** Explicit command only: exact identities, bounded accounting, no transcript or payload export. */
 export function diagnostics(value: unknown, diagnostic: string): string {
   if (value === undefined) {
@@ -311,9 +317,7 @@ export function diagnostics(value: unknown, diagnostic: string): string {
   return [
     `Session communication: ${status.enabled === true ? "enabled" : "not enabled"} · ${preview(status.status)}`,
     ...(status.status === "activation_pending" || status.status === "activation_unconfirmed"
-      ? [
-          "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /peers setup, then Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
-        ]
+      ? ACTIVATION_PENDING_DETAILS
       : []),
     `Exact runtime: machine=${visibleText(text(peer.machineId))} session=${visibleText(text(peer.sessionId))} nonce=${visibleText(text(peer.runtimeNonce))}`,
     `Scopes: ${
@@ -494,10 +498,7 @@ function pendingSummary(
     next: waiting
       ? setupStep(options, "and then Activate saved configuration")
       : `Run /peers reconnect. If it still waits, ${setupStep(options, "to activate").replace(/^./u, (first) => first.toLowerCase())}`,
-    technical: [
-      ...technical,
-      "Configuration saved; activation pending until guarded registration succeeds. Passive reconnect never restarts a gateway; /peers setup, then Activate saved configuration offers one explicitly reviewed restart. Existing sessions may still use old trust. No application requests are replayed.",
-    ],
+    technical: [...technical, ...ACTIVATION_PENDING_DETAILS],
   };
 }
 /** Plain multi-line text for notify; technical lines go last, under their own heading. */

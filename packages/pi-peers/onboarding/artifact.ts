@@ -74,13 +74,13 @@ export function verifyManifest(
   }
   const manifest: unknown = JSON.parse(data.toString("utf8"));
   if (!isManifest(manifest)) {
-    throw new Error("Invalid release shape");
+    throw new Error("The gateway release manifest has an unexpected format");
   }
   validateManifestIdentity(manifest, pin);
   validateArtifactIdentities(manifest, pin);
   const record = manifest.artifacts.find((item) => item.target === target);
   if (!record) {
-    throw new Error("Missing native target");
+    throw new Error("The gateway release has no build for this platform");
   }
   return { manifest, record };
 }
@@ -94,7 +94,7 @@ function validateManifestIdentity(manifest: ArtifactManifest, pin: GatewayReleas
     !Array.isArray(manifest.artifacts) ||
     manifest.artifacts.length !== 3
   ) {
-    throw new Error("Invalid release identity/schema");
+    throw new Error("The gateway release manifest has the wrong name or version");
   }
 }
 function validateArtifactIdentities(manifest: ArtifactManifest, pin: GatewayReleasePin): void {
@@ -111,7 +111,7 @@ function validateArtifactIdentities(manifest: ArtifactManifest, pin: GatewayRele
       item.version !== pin.version ||
       item.file !== `pi-gateway-${pin.version}-${item.target}.tar.gz`
     ) {
-      throw new Error("Invalid artifact identity");
+      throw new Error("The gateway release lists an unexpected file");
     }
     validateArtifactContentClaims(item);
   }
@@ -123,11 +123,11 @@ function validateArtifactContentClaims(item: ArtifactRecord): void {
   ];
   for (const [size, max] of sizes) {
     if (!Number.isSafeInteger(size) || size <= 0 || size > max) {
-      throw new Error("Invalid artifact size");
+      throw new Error("The gateway release lists an invalid file size");
     }
   }
   if (!/^[a-f0-9]{64}$/u.test(item.sha256) || !/^[a-f0-9]{64}$/u.test(item.binarySha256)) {
-    throw new Error("Invalid artifact digest");
+    throw new Error("The gateway release lists an invalid checksum");
   }
 }
 
@@ -137,7 +137,7 @@ function text(bytes: Buffer): string {
 function octal(bytes: Buffer): number {
   const value = text(bytes).trim();
   if (!/^[0-7]+$/u.test(value)) {
-    throw new Error("Invalid tar integer");
+    throw new Error("The gateway archive has a malformed header");
   }
   return Number.parseInt(value, 8);
 }
@@ -154,7 +154,7 @@ export function verifyArtifact(archive: Buffer, record: ArtifactRecord): Buffer 
   const binary = members.get("pi-gateway");
   const release = members.get("release.json");
   if (!binary || !release) {
-    throw new Error("Missing archive members");
+    throw new Error("The gateway archive is missing files");
   }
   validateEmbeddedMetadata(release, record);
   if (binary.length !== record.binarySize || sha256(binary) !== record.binarySha256) {
@@ -177,7 +177,7 @@ function parseTarMembers(tar: Buffer): Map<string, Buffer> {
     validateTarHeader(header, name, size, members);
     offset += 512;
     if (offset + size > tar.length) {
-      throw new Error("Truncated archive");
+      throw new Error("The gateway archive is cut short");
     }
     members.set(name, tar.subarray(offset, offset + size));
     offset += Math.ceil(size / 512) * 512;
@@ -187,7 +187,7 @@ function parseTarMembers(tar: Buffer): Map<string, Buffer> {
     tar.length - offset < 1024 ||
     !tar.subarray(offset).every((byte) => byte === 0)
   ) {
-    throw new Error("Invalid archive trailer/members");
+    throw new Error("The gateway archive has unexpected contents");
   }
   return members;
 }

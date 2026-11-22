@@ -46,7 +46,7 @@ const STATE_VALUES: Record<StatusState, string> = {
 };
 const BUSY = "Peers is busy with another action. Try again when it finishes.";
 /** Why a runtime started for an ended session was dropped: the next step of the saved outcome. */
-const STALE = "This session ended. Start a new Pi session to use the new settings.";
+const STALE = "This session ended. Start a new Pi session to use the saved settings.";
 const START_TECHNICAL = "This Pi could not start its connection.";
 const NOT_ACCEPTED = "The gateway did not accept this Pi. Nothing was sent twice.";
 const STALE_TECHNICAL = "The session ended during reconnect.";
@@ -217,8 +217,8 @@ export default function registerCommunication(
     return async (plan, setup, replace) => {
       await ensureCurrent(started);
       if (owned !== undefined && replace !== true) {
-        throw new Error(
-          "An existing runtime must be explicitly disabled before replacement; volatile state would be lost",
+        throw new NotActive(
+          "This Pi still uses its earlier connection. Start a new Pi session to use the saved settings.",
         );
       }
       if (owned !== undefined) {
@@ -469,7 +469,7 @@ export default function registerCommunication(
     handler: async (args, ctx) => {
       const action = args.trim();
       if (action !== "" && !ACTIONS.includes(action)) {
-        ctx.ui.notify(`Usage: /peers [${ACTIONS.join("|")}]`, "warning");
+        ctx.ui.notify(`Unknown /peers action. Usage: /peers [${ACTIONS.join("|")}]`, "warning");
         return;
       }
       if (action === "" || action === "setup" || action === "reset") {

@@ -481,7 +481,7 @@ function effectReview(
     shared
       ? "A pre-existing shared socket is present (read-only observation, not live readiness). Apply saves configuration then sends exactly ONE machine-bound shared restart request. Other sessions may retain old trust until the old gateway exits. Uncertain restart or generation mismatch means configuration saved; activation pending. No control replay."
       : "No pre-existing shared socket observed. Admission still verifies the exact loaded configuration generation; a concurrent old gateway cannot silently serve this Pi.",
-    "Apply acquires a verified gateway into per-attempt staging, then takes its native lock, rechecks unchanged cache/state, preserves any unavailable orphan installation descriptor in a hash-checked .previous-* backup, and writes a recovery ledger/configuration before activating this Pi directly. Failed apply may retain owned files; reset never deletes credentials or revocation floors.",
+    "Apply acquires a verified gateway into per-attempt staging, then takes its native lock, rechecks unchanged cache/state, preserves any unavailable orphan installation descriptor in a hash-checked .previous-* backup, and writes a recovery ledger/configuration before activating this Pi directly. Failed apply may retain owned files; reset never deletes credentials or revocation records.",
   ].join("\n");
 }
 
@@ -558,7 +558,7 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
             const prepared = await prepareRemote(executable, pairingDirectory, selected, remote);
             const manifest = await regularBytes(join(pairingDirectory, "pairing.json"));
             if (manifest === undefined) {
-              throw new Error("Pairing manifest missing");
+              throw new Error("The pairing step did not write pairing.json");
             }
             await createPrivate(
               join(state.paths.directory, "pairing.json"),
@@ -576,7 +576,7 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
     }
     const actual = await loadConfiguration(agentDir);
     if (actual === undefined) {
-      throw new Error("Configuration commit missing");
+      throw new Error("pi-peers.json is missing after saving");
     }
     await activate({ ...plan, adapter: actual }, setup);
     return await success(agentDir, plan, state, remote);
@@ -600,7 +600,7 @@ export async function resetOutcome(
       facts: path ? [["Saved copy", visibleText(backup)]] : [],
       next: "Other open Pi sessions stay connected until they close. Choose Setup to turn peers back on.",
       technical: [
-        "The gateway exits after the last session closes. Keys and revocation floors were kept.",
+        "The gateway exits after the last session closes. Keys and revocation records were kept.",
         ...(path ? [] : [backup]),
       ],
     };

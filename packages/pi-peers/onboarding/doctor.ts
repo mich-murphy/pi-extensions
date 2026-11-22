@@ -128,7 +128,7 @@ export async function doctorReport(
     case "missing": {
       rows.push(line("Config file", `Not found at ${path}. ${SETUP} to create it.`, "warn"));
       technical.push(
-        "Configuration: missing on disk; new sessions will not enable participation. An existing runtime may still be active; see its status below. Use the package README for manual setup.",
+        "Configuration: pi-peers.json is missing on disk; new sessions will not connect. This session may still be connected.",
       );
       break;
     }
@@ -141,7 +141,7 @@ export async function doctorReport(
         ),
       );
       technical.push(
-        "Configuration: not a readable bounded regular file (valid config symlinks are followed read-only). This inspection does not determine whether a runtime is enabled. Check ownership/access and the runtime status below. No bytes changed.",
+        "Configuration: not a readable regular file. Check its owner and permissions. Nothing was changed.",
       );
       break;
     }
@@ -154,7 +154,7 @@ export async function doctorReport(
         ),
       );
       technical.push(
-        "Configuration: exceeds 32 KiB. Reduce it before starting a runtime; existing bytes preserved.",
+        "Configuration: exceeds 32 KiB. Shrink it, then run /peers reconnect. Nothing was changed.",
       );
       break;
     }
@@ -167,7 +167,7 @@ export async function doctorReport(
         ),
       );
       technical.push(
-        "Configuration: invalid JSON. Repair syntax in the displayed file; no contents are printed or rewritten.",
+        "Configuration: invalid JSON. Fix the syntax in the file above. Nothing was changed.",
       );
       break;
     }
@@ -246,7 +246,7 @@ function stateSetLines(active: StateSet, ignored: StateSet | undefined): string[
   if (active.kind === "legacy") {
     return [
       `State set: legacy (session-communication.json, ${visibleText(active.directory)}, ~/.pi/comms). It keeps working as a whole and is never moved, rewritten or deleted.`,
-      "To migrate: run /peers reset, move the legacy config and directory aside yourself (the directory keeps credentials and floors), then /peers setup writes pi-peers.json, pi-peers/ and ~/.pi/pi-peers.",
+      "To migrate: run /peers reset, move the legacy config and directory aside yourself (the directory keeps credentials and revocation records), then /peers setup writes pi-peers.json, pi-peers/ and ~/.pi/pi-peers.",
     ];
   }
   return [
@@ -265,7 +265,7 @@ async function socketCheck(socketPath: string): Promise<Check> {
     return entry.isSocket()
       ? {
           row: line("Gateway", "Socket found. Run /peers status to see the live connection."),
-          detail: "Socket entry: present (not proof of gateway readiness/identity).",
+          detail: "Socket entry: present (this does not prove the gateway is ready).",
         }
       : {
           row: line(
@@ -273,7 +273,8 @@ async function socketCheck(socketPath: string): Promise<Check> {
             "Something other than the gateway is at its socket path. Move that file aside yourself, then run /peers reconnect.",
             "error",
           ),
-          detail: "Socket entry: not a Unix socket; do not delete or replace unknown entries.",
+          detail:
+            "Socket entry: not a Unix socket. Doctor never deletes it; move it aside yourself.",
         };
   } catch {
     return {
@@ -283,7 +284,7 @@ async function socketCheck(socketPath: string): Promise<Check> {
         "warn",
       ),
       detail:
-        "Socket entry: absent or inaccessible. Start the configured external gateway, then /peers reconnect. Doctor never starts or connects to it.",
+        "Socket entry: absent or inaccessible. Start a self-run gateway first, then run /peers reconnect.",
     };
   }
 }
@@ -294,7 +295,7 @@ async function describeValid(
   options: DoctorOptions,
 ): Promise<{ rows: DoctorRow[]; technical: string[] }> {
   const technical = [
-    "Configuration: valid (disk state; an existing runtime may use an earlier snapshot).",
+    "Configuration: valid (on disk; a running session may still use an earlier copy).",
     `Socket: ${visibleText(config.socketPath)}`,
     `Requested scopes: ${config.scopeIds.map((scope) => visibleText(scope)).join(", ")}`,
   ];
@@ -310,7 +311,7 @@ async function describeValid(
   );
   if (missing.length > 0) {
     technical.push(
-      "Some same-machine grants are absent; this may be intentional. Both gateway and adapter policies must allow the desired actions. Doctor does not broaden them.",
+      "Some actions are off for this machine; this may be intentional. Doctor never widens them.",
     );
   }
   const remote = await remoteCheck(agentDir, options);
@@ -318,7 +319,7 @@ async function describeValid(
   technical.push(
     remote.detail,
     pairing.detail,
-    "Reconnect preserves this runtime's nonce and volatile state and does not reread config or replay sends. For changed config, /reload currently replaces the runtime and loses inbox/publications/interests/receipts; other sessions are unchanged.",
+    "Reconnect keeps this session's state and does not reread pi-peers.json. /reload loads changed settings but clears this session's inbox, publications, interests and receipts.",
   );
   return {
     rows: [
@@ -347,7 +348,7 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
       return {
         row: line("Remote link", `No saved settings to check. ${SETUP} first.`, "warn"),
         detail:
-          "Remote config snapshot: missing disk configuration; any old runtime may still be active.",
+          "Remote config snapshot: pi-peers.json is missing; a running session may still use it.",
       };
     }
     const setup = await readManaged(agentDir, config);
@@ -355,7 +356,7 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
       return {
         row: line("Remote link", "Not managed by setup (you run the gateway yourself)"),
         detail:
-          "Remote config snapshot: external/manual gateway; no implicit helper selection or invocation.",
+          "Remote config snapshot: you run the gateway yourself, so doctor does not check it.",
       };
     }
     const { state, text: detail } = await managedSnapshot(setup);
@@ -384,7 +385,7 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
         "warn",
       ),
       detail:
-        "Remote config snapshot unavailable; setup ownership/config/credentials may differ. Local runtime status is separate; no remote readiness claim.",
+        "Remote config snapshot unavailable: the setup files could not be read. The local connection is separate.",
     };
   }
 }
@@ -396,7 +397,7 @@ async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<C
     const { setupPaths } = await import("./backend.js");
     const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
     if (bytes === undefined) {
-      return { detail: "Pair expiry: no setup-managed pairing." };
+      return { detail: "Pair expiry: no pairing saved by setup." };
     }
     const value = decodePairing(parseJson(bytes));
     const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
@@ -405,12 +406,11 @@ async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<C
     if (deadlines.length === 0) {
       return {
         row: line("Pairing", "No expiry dates saved yet"),
-        detail:
-          "Pair expiry: pending credentials or no saved native inspection; no remote readiness claim.",
+        detail: "Pair expiry: no saved expiry dates yet (pairing pending).",
       };
     }
     const now = Date.now();
-    const detail = `Pair expiry (saved native inspection): ${deadlines.map(([key, time]) => `${key} ${new Date(time * 1000).toISOString()}${time * 1000 - now <= WEEK ? " — renew/re-pair now (within seven days or expired)" : ""}`).join("; ")}. Use /peers setup for renewal/import; old floors are retained.`;
+    const detail = `Pair expiry (saved native inspection): ${deadlines.map(([key, time]) => `${key} ${new Date(time * 1000).toISOString()}${time * 1000 - now <= WEEK ? " — renew or re-pair now" : ""}`).join("; ")}. Use /peers setup to renew or import; old revocation records are kept.`;
     const earliest = Math.min(...deadlines.map(([, time]) => time * 1000));
     const date = new Date(earliest).toISOString().slice(0, 10);
     if (earliest <= now) {
@@ -429,7 +429,7 @@ async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<C
   } catch {
     return {
       row: line("Pairing", `Couldn't read the pairing details. ${SETUP} to review them.`, "warn"),
-      detail: "Pair expiry: unavailable; existing credentials/floors preserved.",
+      detail: "Pair expiry: could not read the saved dates; credentials were kept.",
     };
   }
 }

@@ -358,7 +358,7 @@ describe("actual setup plan/apply lifecycle", () => {
       const ensure = reloadManagedLauncher(agent, selected.adapter, setup);
       await saveOwnedPlan(agent, setup, incompatiblePlan(selected, field), undefined, true);
       await expect(ensure(Date.now() + 2000, new AbortController().signal)).rejects.toThrow(
-        "explicit runtime replacement required",
+        "Start a new Pi session to use the saved settings.",
       );
       expect(existsSync(setup.socketPath)).toBe(false);
     },

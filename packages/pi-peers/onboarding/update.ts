@@ -38,7 +38,7 @@ export async function saveOwnedPlan(
     const nextGateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;
     if (!allowAdapterChange && digest(nextAdapter) !== previous.adapterSha256) {
       throw new Error(
-        "Live adapter policy replacement needs explicit state-loss consent; maintenance preserves its existing hash",
+        "This change would also change this Pi's peer permissions, so nothing was saved.",
       );
     }
     const next = {

@@ -1035,7 +1035,9 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toBe(legacyStatus);
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain(directory);
-    expect(host.notifications.at(-1)).toContain("new sessions will not enable participation");
+    expect(host.notifications.at(-1)).toContain(
+      "pi-peers.json is missing on disk; new sessions will not connect",
+    );
     await host.command("setup", "peers");
     expect(host.notifications.at(-1)).toContain("Cancelled");
     await host.command("status extra", "peers");
@@ -1082,7 +1084,7 @@ describe("public adapter transport and notice accounting", () => {
     await rm(join(directory, "pi-peers.json"));
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("missing on disk");
-    expect(host.notifications.at(-1)).toContain("existing runtime may still be active");
+    expect(host.notifications.at(-1)).toContain("This session may still be connected");
     expect(host.notifications.at(-1)).toContain("Connected as");
     expect(host.notifications.at(-1)).not.toContain("participation is off");
     expect(host.statuses.at(-1)).toBe("Peers: connected");
@@ -1262,7 +1264,34 @@ describe("public adapter transport and notice accounting", () => {
     ).resolves.toMatchObject({
       tag: "error",
       code: "invalid_input",
-      note: "The session request is invalid. Check the tool arguments and configured scopes. No delivery or work-completion claim. Unknown sends must not be retried as a new message ID.",
+      note: "This request was rejected. Check the tool arguments and configured scopes. If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.",
+    });
+  });
+  test("a tool call on a closed client reports a cancelled request", async () => {
+    const fixture = await gateway(toolGateway);
+    const tools: CapturedTool[] = [];
+    const owned = await createAdapterRuntime(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+    );
+    cleanups.push(async () => {
+      await owned.dispose();
+    });
+    registerTools(
+      {
+        registerTool: (definition) => {
+          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+        },
+      },
+      () => owned.session,
+    );
+    owned.session.client.close();
+    await expect(executeTool(tools, "peers_take", {})).resolves.toStrictEqual({
+      tag: "error",
+      code: "cancelled",
+      note: "The request was cancelled. If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.",
     });
   });
   test("report commits once, holds all eight logical slots across four-wide partial delivery, then releases", async () => {

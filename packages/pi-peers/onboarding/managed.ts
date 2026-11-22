@@ -50,7 +50,7 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
   return {
     state: known,
     ...(typeof reason === "string" ? { reason } : {}),
-    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. This is disk credential validation, NOT live gateway/link readiness; local availability is separate.`,
+    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
   };
 }
 export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
@@ -136,7 +136,7 @@ export function managedLauncher(
     startupDemand(deadline, signal);
     const config = await regularBytes(current.gatewayPath);
     if (config === undefined || digest(config) !== current.gatewaySha256) {
-      throw new Error("Managed gateway configuration changed; run /peers doctor");
+      throw new Error("gateway.json changed since setup, so the gateway was not started");
     }
     startupDemand(deadline, signal);
     await privateDirectory(dirname(current.gatewayPath));
@@ -149,7 +149,7 @@ export function managedLauncher(
     try {
       const logStat = await log.stat();
       if (!logStat.isFile() || logStat.uid !== process.getuid?.() || (logStat.mode & 0o077) !== 0) {
-        throw new Error("Unsafe startup log");
+        throw new Error("The gateway startup log is not private");
       }
       startupDemand(deadline, signal);
       const child = spawn(current.executable, ["--managed", "--config", current.gatewayPath], {

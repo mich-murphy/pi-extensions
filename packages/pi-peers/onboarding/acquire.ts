@@ -119,14 +119,14 @@ async function download(
       await response.body?.cancel();
       const location = response.headers.get("location");
       if (location === null || location.length === 0) {
-        throw new Error("Missing release redirect");
+        throw new Error("The gateway release page did not redirect to a download");
       }
       current = new URL(location, current).href;
       continue;
     }
     return readBoundedResponse(response, maximum, signal);
   }
-  throw new Error("Too many artifact redirects");
+  throw new Error("The gateway download redirected too many times");
 }
 /** One request; a network failure (not a cancellation) is the user's connection to fix. */
 async function fetchOnce(
@@ -162,7 +162,7 @@ function validateDownloadOrigin(url: string): void {
     ].includes(parsed.hostname) ||
     parsed.port
   ) {
-    throw new Error("Untrusted artifact origin");
+    throw new Error("The gateway download redirected to an untrusted origin");
   }
 }
 async function readBoundedResponse(
@@ -187,7 +187,7 @@ async function readBoundedResponse(
       }
       size += item.value.length;
       if (size > maximum) {
-        throw new Error("Artifact download exceeds bound");
+        throw new Error("The gateway download is larger than expected");
       }
       parts.push(item.value);
     }
@@ -198,7 +198,7 @@ async function readBoundedResponse(
 }
 async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<void> {
   if (!path.isAbsolute(root) || path.normalize(root) !== root || root === path.parse(root).root) {
-    throw new Error("Install root must be an approved absolute private path");
+    throw new Error("The gateway install folder must be a private absolute path");
   }
   // Do not follow user-controlled directory symlinks into unrelated state.
   let current = path.parse(root).root;
@@ -238,12 +238,12 @@ async function boundedOwnedFile(
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.uid !== process.getuid?.() || stat.size > maximum) {
-      throw new Error("Unsafe installed file");
+      throw new Error("An installed gateway file is not a private regular file");
     }
     const buffer = Buffer.alloc(stat.size + 1);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     if (bytesRead !== stat.size) {
-      throw new Error("Installed file changed during read");
+      throw new Error("An installed gateway file changed while it was checked");
     }
     return buffer.subarray(0, bytesRead);
   } finally {
@@ -402,7 +402,9 @@ async function installedPayload(
   }
   const payload = path.join(plan.installRoot, target);
   const payloadStat = await io.lstat(payload).catch((error: unknown) => {
-    throw new Error("Unsafe existing installation: published payload missing", { cause: error });
+    throw new Error("Unsafe existing installation: its gateway files are missing", {
+      cause: error,
+    });
   });
   validatePrivateDirectory(payloadStat);
   return payload;
@@ -417,13 +419,13 @@ async function verifyCompletionMarker(
   const markerBytes = await boundedOwnedFile(path.join(payload, "installed.json"), 16_384, io);
   const marker = jsonObject(JSON.parse(markerBytes.toString("utf8")));
   if (marker.sourceRevision !== plan.sourceRevision || marker.version !== plan.version) {
-    throw new Error("Existing install identity mismatch; inspect owned state before recovery");
+    throw new Error("The installed gateway does not match its record; it was kept");
   }
   if (typeof marker.executable !== "string") {
     throw new TypeError("Invalid completion marker");
   }
   if (marker.executable !== executable) {
-    throw new Error("Existing executable identity changed");
+    throw new Error("The recorded gateway path does not match; it was not run");
   }
 }
 /** Bounded reauthentication of a published native install; never downloads or retries. */
@@ -493,7 +495,7 @@ async function acquireNix(
   );
   const executable = await io.fs.realpath(path.join(link, "bin/pi-gateway"));
   if (!executable.startsWith("/nix/store/") || !executable.endsWith("/bin/pi-gateway")) {
-    throw new Error("Unexpected Nix output");
+    throw new Error("Nix built the gateway at an unexpected path");
   }
   return executable;
 }
@@ -548,7 +550,7 @@ async function probeGateway(
       capabilities.includes(capability),
     )
   ) {
-    throw new Error("Gateway ABI/capability mismatch");
+    throw new Error("The gateway program is too old or incompatible (capability mismatch)");
   }
 }
 
@@ -585,7 +587,7 @@ function trustedNixExecutable(nix: string | undefined): string {
       ].includes(nix)
     )
   ) {
-    throw new Error("No trusted system Nix executable");
+    throw new Error("No trusted Nix install was found");
   }
   return nix;
 }
@@ -613,7 +615,7 @@ async function publishInstallation(
   }
   const name = path.basename(installDirectory);
   if (!isNativeAttemptName(plan, name)) {
-    throw new Error("Unexpected private attempt name");
+    throw new Error("Unexpected gateway staging folder name");
   }
   await Promise.all(
     [executable, path.join(installDirectory, "manifest.json"), marker].map(async (file) =>
@@ -635,7 +637,7 @@ async function publishInstallation(
   try {
     await syncPath(plan.installRoot, "directory", io.fs);
   } catch (error) {
-    throw new Error("Gateway install published but not yet durable; retained for verified reuse", {
+    throw new Error("The gateway install was not confirmed on disk; it was kept for reuse", {
       cause: error,
     });
   }
@@ -695,7 +697,7 @@ async function publicationCollision(
     installation.retained = true;
     throw new AggregateError(
       [error, inspection],
-      "Uncertain gateway publication; attempt retained",
+      "The gateway install could not be confirmed; it was kept",
       {
         cause: inspection,
       },
@@ -704,7 +706,7 @@ async function publicationCollision(
   if (own) {
     // The link may have been created despite the reported error; never delete its target.
     installation.retained = true;
-    throw new Error("Uncertain gateway publication; attempt retained for verified reuse", {
+    throw new Error("The gateway install could not be confirmed; it was kept for reuse", {
       cause: error,
     });
   }
@@ -717,7 +719,7 @@ async function publicationCollision(
   try {
     winner = await reuseNative(plan, io, signal);
   } catch (cause) {
-    throw new Error("Gateway install name collision; existing state preserved", { cause });
+    throw new Error("Another gateway install has the same name; nothing was replaced", { cause });
   }
   await io.fs.rm(installation.installDirectory, { recursive: true, force: true });
   return winner;

@@ -70,10 +70,10 @@ export function defaultChoices(hostname: string): LocalChoices {
 /** Validate the intersection of adapter and native gateway contracts, not just the adapter. */
 export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan {
   if (Buffer.byteLength(socketPath) > 100) {
-    throw new Error("Socket path must be at most 100 UTF-8 bytes");
+    throw new Error("The socket path is longer than 100 bytes");
   }
   if (new Set(choices.permissions).size !== choices.permissions.length) {
-    throw new Error("Duplicate permissions");
+    throw new Error("A permission is listed twice");
   }
   const policies =
     choices.permissions.length === 0

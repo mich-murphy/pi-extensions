@@ -219,7 +219,7 @@ describe("presentation-only session tool rendering", () => {
       const value = {
         tag: "error",
         code: "unavailable",
-        note: "Session communication is not enabled or configured. Use /peers status.",
+        note: "Peers is not set up or not running in this session. Ask the user to run `/peers status`.",
       };
       await expect(tool.execute("id", {})).resolves.toStrictEqual(result(value));
     }
