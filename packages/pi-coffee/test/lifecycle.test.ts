@@ -124,13 +124,12 @@ describe("coffee lifecycle", () => {
     expect(pi.spawned).toHaveLength(2);
     expect(pi.notifications).toStrictEqual([
       {
-        message:
-          "Coffee lost caffeinate unexpectedly (exit code 0). Restarting sleep prevention once.",
+        message: "Coffee: caffeinate stopped unexpectedly (exit code 0). Restarting it.",
         level: "warning",
       },
       {
         message:
-          "Coffee lost caffeinate unexpectedly (signal SIGKILL). Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources.",
+          "Coffee: caffeinate stopped again (signal SIGKILL). Sleep is allowed until the next agent run.",
         level: "warning",
       },
     ]);
@@ -164,8 +163,7 @@ describe("coffee lifecycle", () => {
     expect(pi.spawned).toHaveLength(1);
     expect(pi.notifications).toStrictEqual([
       {
-        message:
-          "Coffee: caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable.",
+        message: "Coffee: /usr/bin/caffeinate was not found, so sleep prevention is unavailable.",
         level: "error",
       },
     ]);
@@ -181,12 +179,12 @@ describe("coffee lifecycle", () => {
     expect(pi.notifications).toStrictEqual([
       {
         message:
-          "Coffee: Could not start caffeinate (EAGAIN). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+          "Coffee: Could not start caffeinate (EAGAIN). Sleep is allowed until the next agent run.",
         level: "error",
       },
       {
         message:
-          "Coffee: Could not stop caffeinate (EPERM). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.",
+          "Coffee: Could not stop caffeinate (EPERM). It may keep the Mac awake until Pi exits.",
         level: "error",
       },
     ]);
@@ -199,7 +197,7 @@ describe("coffee lifecycle", () => {
     expect(error.code).toBe("secret\u001b[2J");
     expect(error.cause).toBe(cause);
     expect(error.message).toContain("system error");
-    expect(error.message).toContain("Pi can continue");
+    expect(error.message).toContain("Sleep is allowed until the next agent run.");
     expect(error.message).not.toMatch(/secret|password|\p{Cc}/u);
   });
 

@@ -21,8 +21,8 @@ export class CaffeinateProcessError extends Error {
   ) {
     super(
       operation === "start" && code === "ENOENT"
-        ? "caffeinate is not available at /usr/bin/caffeinate. Check the macOS installation; Pi can continue, but sleep prevention is unavailable."
-        : `Could not ${operation} caffeinate (${["EAGAIN", "EACCES", "EPERM", "E2BIG", "ESRCH", "ENOMEM", "EMFILE", "ENFILE"].includes(code) ? code : "system error"}). Check macOS process permissions and resources; Pi can continue, but sleep prevention may be unavailable.`,
+        ? "/usr/bin/caffeinate was not found, so sleep prevention is unavailable."
+        : `Could not ${operation} caffeinate (${["EAGAIN", "EACCES", "EPERM", "E2BIG", "ESRCH", "ENOMEM", "EMFILE", "ENFILE"].includes(code) ? code : "system error"}). ${operation === "start" ? "Sleep is allowed until the next agent run." : "It may keep the Mac awake until Pi exits."}`,
       { cause },
     );
     this.name = "CaffeinateProcessError";
@@ -159,7 +159,9 @@ export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDepen
       const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;
       notify(
         ctx,
-        `Coffee lost caffeinate unexpectedly (${outcome}). ${restartsLeft > 0 ? "Restarting sleep prevention once." : "Sleep prevention is unavailable until the next agent run; check macOS process permissions and resources."}`,
+        restartsLeft > 0
+          ? `Coffee: caffeinate stopped unexpectedly (${outcome}). Restarting it.`
+          : `Coffee: caffeinate stopped again (${outcome}). Sleep is allowed until the next agent run.`,
         "warning",
       );
       if (restartsLeft > 0) {

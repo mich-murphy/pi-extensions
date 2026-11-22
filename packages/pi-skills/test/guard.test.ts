@@ -541,7 +541,7 @@ describe("pi-skills guard", () => {
       expect(guard.call("read", { path: "agents.md" })).toMatchObject({
         block: true,
         reason:
-          "The user disabled AGENTS.md in /skills on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you truly need it.",
+          "The user disabled AGENTS.md in /skills on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you need it.",
       });
       expect(
         guard.call("bash", { command: "cat .AGENTS/skills/x/../deploy/SKILL.md" }, subagent),
@@ -583,7 +583,7 @@ describe("pi-skills guard", () => {
       ).toMatchObject({
         block: true,
         reason:
-          'The user disabled skill "deploy" in /skills on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you truly need it.',
+          'The user disabled skill "deploy" in /skills on purpose. Continue without it, do not retry it with any path or tool, and ask the user to re-enable it only if you need it.',
       });
       expect(guard.call("read", { path: "web/AGENTS.md" })).toBeUndefined();
       expect(guard.call("read", { path: "README.md" }, subagent)).toBeUndefined();
@@ -649,7 +649,7 @@ describe("pi-skills guard", () => {
       ).toStrictEqual({
         block: true,
         reason:
-          'This command reads AGENTS.md, skill "deploy", which the user disabled in /skills on purpose. Continue without them, do not retry them with any path or tool, and ask the user to re-enable them only if you truly need them.',
+          'This command reads AGENTS.md, skill "deploy", which the user disabled in /skills on purpose; it did not run. Continue without them, do not retry them with any path or tool, and ask the user to re-enable them only if you need them.',
       });
       for (const command of [
         "cat web/AGENTS.md",
@@ -695,7 +695,18 @@ describe("pi-skills guard", () => {
       const guard = guarded(failing, main);
       guard.start([deploySkill(main)], [join(main, "AGENTS.md")]);
 
-      expect(guard.call("read", { path: "AGENTS.md" })).toMatchObject({ block: true });
+      expect(guard.call("read", { path: "AGENTS.md" })).toStrictEqual({
+        block: true,
+        reason:
+          "pi-skills could not read its settings, so AGENTS.md is blocked for now. Continue without it; the user has been told.",
+      });
+      expect(
+        guard.call("bash", { command: "cat AGENTS.md .agents/skills/deploy/SKILL.md" }, subagent),
+      ).toStrictEqual({
+        block: true,
+        reason:
+          'pi-skills could not read its settings, so AGENTS.md, skill "deploy" are blocked for now. This command did not run. Continue without them; the user has been told.',
+      });
       expect(guard.call("read", { path: "README.md" })).toBeUndefined();
       expect(guard.notifications).toHaveLength(1);
     });

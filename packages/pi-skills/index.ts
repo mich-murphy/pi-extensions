@@ -184,7 +184,7 @@ function parentSessionId(sessionManager: SessionIdentity): string | undefined {
 }
 
 const STATE_FAILURE_CONSEQUENCE = {
-  load: "The prompt was left unchanged. Recognized reads of loaded instructions and skills are blocked until it is fixed.",
+  load: "Until the file is fixed, the prompt is unchanged and all skill and instruction reads are blocked.",
   update: "The toggle was not saved.",
 } as const;
 
@@ -215,6 +215,8 @@ class PiSkills {
   private parentId: string | undefined;
   /** Set while answering a child, so a cyclic parent chain cannot recurse forever. */
   private answering = false;
+  /** Whether the last guard check could not load toggle state, so it blocked every listed resource. */
+  private stateUnavailable = false;
   /** What this session decides for its subagents, registered under its session id. */
   private readonly policy: SessionPolicy = {
     version: 1,
@@ -367,7 +369,7 @@ class PiSkills {
     this.reportPromptFailure(
       ctx,
       result.unmatched.length > 0
-        ? `pi-skills could not update the ${result.unmatched.join(" and ")} prompt section. Another extension may have rewritten it.`
+        ? `pi-skills could not hide disabled ${result.unmatched.join(" and ")}: another extension may have changed the prompt.`
         : undefined,
     );
     return result.systemPrompt === event.systemPrompt
@@ -400,9 +402,16 @@ class PiSkills {
     }
     const names = diagnosticText(blocked.join(", "));
     const it = blocked.length === 1 ? "it" : "them";
+    if (this.stateUnavailable) {
+      const is = blocked.length === 1 ? "is" : "are";
+      return {
+        block: true,
+        reason: `pi-skills could not read its settings, so ${names} ${is} blocked for now.${shell ? " This command did not run." : ""} Continue without ${it}; the user has been told.`,
+      };
+    }
     return {
       block: true,
-      reason: `${shell ? `This command reads ${names}, which the user disabled` : `The user disabled ${names}`} in /skills on purpose. Continue without ${it}, do not retry ${it} with any path or tool, and ask the user to re-enable ${it} only if you truly need ${it}.`,
+      reason: `${shell ? `This command reads ${names}, which the user disabled in /skills on purpose; it did not run.` : `The user disabled ${names} in /skills on purpose.`} Continue without ${it}, do not retry ${it} with any path or tool, and ask the user to re-enable ${it} only if you need ${it}.`,
     };
   }
 
@@ -427,7 +436,7 @@ class PiSkills {
       return;
     }
     if (ctx.mode !== "tui") {
-      ctx.ui.notify("/skills requires TUI mode", "error");
+      ctx.ui.notify("`/skills` works only in the interactive TUI.", "error");
       return;
     }
     const loadedResources = toggleResources(ctx.getSystemPromptOptions(), this.contributedSkills);
@@ -436,7 +445,7 @@ class PiSkills {
       await this.nestedInstructions(ctx.cwd, loadedResources),
     );
     if (resources.length === 0) {
-      ctx.ui.notify("No user-managed instructions or skills are loaded", "info");
+      ctx.ui.notify("No instructions or skills that can be toggled are loaded.", "info");
       return;
     }
     const loaded = this.overridesFrom("load", this.store.load(), ctx);
@@ -504,6 +513,7 @@ class PiSkills {
   ): (path: string) => string | undefined {
     const result = this.store.load();
     const loaded = ctx === undefined ? okValue(result) : this.overridesFrom("load", result, ctx);
+    this.stateUnavailable = result._tag === "err";
     const matcher = disabledResourceMatcher(
       this.resources,
       loaded,
