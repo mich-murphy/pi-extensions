@@ -11,14 +11,14 @@ export class CredentialFailure extends Schema.TaggedError<CredentialFailure>()(
 ) {
   override get message(): string {
     const advice = {
-      unavailable: "Pi credential access is unavailable. Reload Pi and check /login.",
+      unavailable: "No API key. Ask the user to run `/login` or check the provider's key variable.",
       resolution:
-        "Pi could not resolve the stored key. Check the credential source; if it uses !command, restart Pi after correcting it.",
+        "Could not read the stored key. Ask the user to check its source, then restart Pi.",
       invalid:
-        "The key is empty or contains control characters. Check /login or the provider environment key.",
-      timeout: "Pi credential resolution timed out. Check the credential source before retrying.",
+        "The key is empty or has control characters. Ask the user to check it with `/login`.",
+      timeout: "Reading the key timed out. Ask the user to check its source.",
       incompatible:
-        "The authentication provider changed or is incompatible. Check for conflicting extensions, then reload Pi.",
+        "pi-web's login is missing or was replaced. Ask the user to check extensions, then `/reload`.",
     };
     return `credential ${this.reason}: ${advice[this.reason]}`;
   }

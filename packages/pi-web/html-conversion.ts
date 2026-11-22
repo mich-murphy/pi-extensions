@@ -10,7 +10,7 @@ export class EmptyHtmlDocument extends Schema.TaggedError<EmptyHtmlDocument>()(
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "The page has no HTML content";
+    return "The page has no HTML content. It may need JavaScript to render; try another source.";
   }
 }
 
@@ -30,7 +30,7 @@ export class HtmlConversionFailed extends Schema.TaggedError<HtmlConversionFaile
 ) {
   /** Safe user-facing description; never includes the cause. */
   override get message(): string {
-    return "Could not convert the page's HTML: it is too deeply nested";
+    return "The page's HTML is too deeply nested to convert. Try format `html` for the raw source.";
   }
 }
 

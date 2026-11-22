@@ -125,11 +125,13 @@ describe("parseWebFetchParams", () => {
   });
 
   test("rejects empty, non-http, and credentialed URLs", () => {
-    expect(inputErrorFor("   ")).toBe("URL cannot be empty");
+    expect(inputErrorFor("   ")).toBe(
+      "URL cannot be empty. Pass a full http:// or https:// address.",
+    );
     expect(inputErrorFor("ftp://example.com")).toBe("URL must start with http:// or https://");
     expect(inputErrorFor("example.com")).toBe("URL must start with http:// or https://");
     expect(inputErrorFor("https://user:pass@example.com")).toBe(
-      "URL credentials are not supported",
+      "URL credentials are not supported. Remove the user:password part from the URL.",
     );
   });
 

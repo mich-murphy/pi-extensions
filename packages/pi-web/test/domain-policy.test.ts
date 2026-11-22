@@ -42,7 +42,7 @@ describe("checkDomainPolicy", () => {
     assert(Result.isFailure(denied));
     expect(denied.failure).toBeInstanceOf(DomainDenied);
     expect(denied.failure.message).toBe(
-      "Fetching from evil.example.com is denied by the webfetch domain policy",
+      "Fetching from evil.example.com is denied by the webfetch domain policy (`PI_WEB_FETCH_DENY_DOMAINS`).",
     );
 
     const notAllowed = checkDomainPolicy(publicUrl("https://other.example"), {
@@ -52,7 +52,7 @@ describe("checkDomainPolicy", () => {
     assert(Result.isFailure(notAllowed));
     expect(notAllowed.failure).toBeInstanceOf(DomainNotAllowed);
     expect(notAllowed.failure.message).toBe(
-      "Fetching from other.example is not in the webfetch allowed domains list",
+      "Fetching from other.example is not in the webfetch allowed domains list (`PI_WEB_FETCH_ALLOW_DOMAINS`).",
     );
   });
 });

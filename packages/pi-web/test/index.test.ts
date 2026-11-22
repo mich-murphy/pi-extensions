@@ -49,7 +49,7 @@ describe("webExtension", () => {
     vi.stubEnv("PI_WEB_PROVIDERS", "exa,google");
     const { pi, tools, emit, registry, notifications } = await fakePi();
     webExtension(pi);
-    await expect(tools[0]?.execute()).rejects.toThrow("configuration error");
+    await expect(tools[0]?.execute()).rejects.toThrow("is not configured");
     await emit("session_start");
     expect(notifications.some((message) => message.includes("unknown provider"))).toBe(true);
     expect(typeof registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)?.auth.apiKey?.login).toBe(
@@ -65,7 +65,7 @@ describe("webExtension", () => {
     expect(registry.getProvider(WEB_AUTH_PROVIDERS.parallel.id)?.name).toBe("Unrelated");
     expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();
     expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toContain("provider ID conflict");
+    expect(notifications[0]).toContain("Remove a duplicate pi-web");
     await emit("session_shutdown");
   });
 });

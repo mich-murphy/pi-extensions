@@ -158,14 +158,14 @@ function parseProviderList(
     }
     if (!isSearchProviderName(normalized)) {
       return invalid(
-        `${PROVIDERS_ENV} contains unknown provider "${normalized}"; expected a comma-separated subset of ${SEARCH_PROVIDERS.join(", ")}`,
+        `\`${PROVIDERS_ENV}\` has unknown provider "${normalized}"; use ${SEARCH_PROVIDERS.join(", ")}.`,
       );
     }
     providers.add(normalized);
   }
 
   if (providers.size === 0) {
-    return invalid(`${PROVIDERS_ENV} must name at least one provider`);
+    return invalid(`\`${PROVIDERS_ENV}\` is empty. Name a provider or unset it.`);
   }
   return Result.succeed([...providers]);
 }
@@ -179,7 +179,7 @@ function parseEndpointOverride(
   }
   const parsed = parsePublicHttpUrl(value);
   if (Result.isFailure(parsed)) {
-    return invalid(`${envName} must be a public http:// or https:// URL without credentials`);
+    return invalid(`\`${envName}\` must be a public http(s) URL without credentials.`);
   }
   return Result.succeed(parsed.success);
 }
@@ -212,7 +212,7 @@ function parseDomainList(
     const normalized = trimmed.replace(/\.$/u, "");
     if (!isBareHostname(normalized)) {
       return invalid(
-        `${envName} contains a malformed entry; expected comma-separated bare hostnames such as example.com (no scheme, wildcard, port, path or credentials)`,
+        `\`${envName}\` needs comma-separated bare hostnames such as example.com (no scheme, port or wildcard).`,
       );
     }
     domains.add(normalized);

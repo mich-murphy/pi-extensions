@@ -4,6 +4,8 @@ Adds web search and fetch tools to [Pi](https://pi.dev) that work without an API
 
 Without a key, search uses the free hosted endpoints that Exa and Parallel provide over MCP (Model Context Protocol). With a key, it uses that provider's official REST API instead.
 
+The free endpoints share one rate limit across everyone who uses them without a key, so they can be limited even when your own account has allowance left. When that happens, `websearch` says the free tier is rate limited and names the `/login pi-web-<provider>` command that adds a key.
+
 ## Install
 
 ```bash

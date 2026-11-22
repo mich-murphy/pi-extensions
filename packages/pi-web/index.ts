@@ -46,7 +46,7 @@ export default function webExtension(pi: WebToolsRegistration): void {
       authentication.register(pi, ctx.modelRegistry);
     } catch {
       ctx.ui.notify(
-        `${WEB_EXTENSION_NAME}: could not register web authentication providers (provider ID conflict or unsupported runtime). Check for duplicate pi-web extensions and Pi compatibility, then /reload.`,
+        `${WEB_EXTENSION_NAME}: could not register web authentication. Remove a duplicate pi-web or update Pi.`,
         "error",
       );
     }
@@ -65,7 +65,7 @@ export default function webExtension(pi: WebToolsRegistration): void {
   if (Result.isFailure(parsed)) {
     const { message } = parsed.failure;
     pi.on("session_start", (_event, ctx) => {
-      ctx.ui.notify(`${WEB_EXTENSION_NAME}: ${message}`, "error");
+      ctx.ui.notify(`${WEB_EXTENSION_NAME}: ${message} Restart Pi after changing it.`, "error");
     });
     pi.registerTool(createFailingTool("websearch", "Web Search", message));
     pi.registerTool(createFailingTool("webfetch", "Web Fetch", message));
@@ -116,7 +116,9 @@ function createFailingTool(name: string, label: string, message: string) {
     description: `Unavailable: ${message}`,
     parameters: { type: "object", properties: {} },
     async execute() {
-      throw new Error(`pi-web configuration error: ${message}`);
+      throw new Error(
+        `pi-web is not configured: ${message} Ask the user to fix it and restart Pi.`,
+      );
     },
   };
 }
