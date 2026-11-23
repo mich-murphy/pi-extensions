@@ -92,7 +92,7 @@ describe("claude SDK version status", () => {
 
       expect(error).toMatchObject({ _tag: "ClaudeInstalledVersionError", reason: "not-installed" });
       expect(error.message).toBe(
-        "Claude Code is not installed or not on PATH (claude --version failed); install it, run `claude auth login`, or set PI_CLAUDE_PATH",
+        "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
       );
     }),
   );
@@ -105,9 +105,9 @@ describe("claude SDK version status", () => {
       const failed = yield* failureOf(installedVersionFailing(new Error("exit 1: secret")));
 
       expect(timedOut.message).toBe(
-        "claude --version did not respond within 3s; check that Claude Code starts locally",
+        "`claude --version` did not answer within 3s. Check that `claude` starts.",
       );
-      expect(failed.message).toBe("claude --version failed; check that Claude Code starts locally");
+      expect(failed.message).toBe("`claude --version` failed. Check that `claude` starts.");
     }),
   );
 
@@ -120,7 +120,7 @@ describe("claude SDK version status", () => {
 
       expect(error._tag).toBe("ClaudeVersionParseError");
       expect(error.message).toBe(
-        "claude --version returned an unexpected format; run `claude update` and /claude status",
+        "`claude --version` printed an unexpected format. Run `claude update`.",
       );
     }),
   );
@@ -140,7 +140,7 @@ describe("claude SDK version status", () => {
 
       expect(unreadable._tag).toBe("ClaudeSdkMetadataError");
       expect(malformed.message).toBe(
-        "Could not read the installed Claude Agent SDK package metadata; check the extension installation",
+        "Could not read the Claude Agent SDK package version. Reinstall pi-claude.",
       );
     }),
   );

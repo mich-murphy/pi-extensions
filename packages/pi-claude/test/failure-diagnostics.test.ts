@@ -12,6 +12,7 @@ import {
   SdkProviderDefect,
   SdkQueryError,
   SdkResultError,
+  SdkStreamInterruptedError,
   SdkToolContractError,
 } from "../sdk/errors";
 import {
@@ -19,6 +20,7 @@ import {
   formatSdkRunError,
   writeSdkFailureDiagnostic,
 } from "../sdk/failure-diagnostics";
+import { ResultFailureCategory } from "../sdk/result-failure";
 
 function sdkRejection(message: string, fields: Readonly<Record<string, unknown>>): Error {
   return Object.assign(new Error(message), fields);
@@ -67,21 +69,19 @@ describe("claude SDK failure diagnostics", () => {
     expect(diagnoseSdkRunError(error).kind).toBe(expectedKind);
   });
 
-  test.each(["naming", "schema"] as const)(
-    "catalog %s failures have bounded value-free diagnostics",
-    (reason) => {
-      const error = new SdkToolContractError({ reason });
-      expect(diagnoseSdkRunError(error)).toStrictEqual({
-        schemaVersion: 1,
-        kind: "tool-contract",
-        errorTag: "SdkToolContractError",
-        toolContract: reason,
-      });
-      expect(formatSdkRunError(error)).toBe(
-        `Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (${reason}); check tool names and schemas in the active extensions`,
-      );
-    },
-  );
+  test.each([
+    ["naming", "Two tools share a name, or one has none, so nothing was sent to Claude."],
+    ["schema", "A tool's parameter schema cannot be sent to Claude, so nothing was sent."],
+  ] as const)("catalog %s failures have bounded value-free diagnostics", (reason, expected) => {
+    const error = new SdkToolContractError({ reason });
+    expect(diagnoseSdkRunError(error)).toStrictEqual({
+      schemaVersion: 1,
+      kind: "tool-contract",
+      errorTag: "SdkToolContractError",
+      toolContract: reason,
+    });
+    expect(formatSdkRunError(error)).toBe(expected);
+  });
 
   test("emits structured routing fields without the provider message or cause", () => {
     const error = SdkQueryError.fromCause(
@@ -107,71 +107,71 @@ describe("claude SDK failure diagnostics", () => {
       apiError: "authentication_failed",
     });
     expect(formatSdkRunError(error)).toBe(
-      "Claude Agent SDK: Claude Code authentication failed; run `claude` to sign in",
+      "Claude could not verify your account or cloud credentials. Run `claude auth login` to sign in.",
     );
   });
 
-  test("prefixes the SDK name once onto the safe summary", () => {
+  test("returns the safe summary without an SDK prefix", () => {
     expect(formatSdkRunError(outOfUsage)).toBe(
-      "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
+      "Claude usage or billing limit reached; `/claude usage` shows your limits.",
     );
     expect(formatSdkRunError(new SdkMissingResultError())).toBe(
-      "Claude Agent SDK: the query finished without returning a result; review completed work before sending `continue`",
+      "Claude Code stopped without a final result. Review completed work, then send `continue`.",
     );
     expect(formatSdkRunError(new SdkProviderDefect({ reason: "run-rejected" }))).toBe(
-      "Claude SDK provider bug: the SDK runner failed unexpectedly; report this provider bug with /claude status output",
+      "pi-claude bug: the Claude runner failed unexpectedly. Report it with `/claude status` output.",
     );
   });
 
   test.each([
-    [new AbortError("aborted"), "could not start the query (cancelled)"],
+    [new AbortError("aborted"), "The request was cancelled."],
     [
       Object.assign(new Error("spawn claude ENOENT /secret/path"), { code: "ENOENT" }),
-      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_PATH)",
+      "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
     ],
     [
       sdkRejection("Claude Code process exited with code 2\nstderr: token=abc", {
         errorClass: "process_exited_nonzero",
         exitCode: 2,
       }),
-      "could not start the query (Claude Code exited with code 2; run /claude status and check Claude Code before continuing)",
+      "Claude Code quit unexpectedly (exit code 2). Run `/claude status` to check it.",
     ],
     [
       sdkRejection("Claude Code process terminated by signal SIGKILL", {
         errorClass: "process_killed_by_signal",
         signal: "SIGKILL",
       }),
-      "could not start the query (Claude Code was stopped by signal SIGKILL; check whether the process was stopped before continuing)",
+      "Claude Code was stopped by signal SIGKILL.",
     ],
     [
       sdkRejection("Claude Code executable not found at /secret/path", {
         errorClass: "executable_not_found",
       }),
-      "could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_PATH)",
+      "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
     ],
     [
       sdkRejection("Claude Code native binary exists at /secret but failed to launch", {
         errorClass: "executable_launch_failed",
       }),
-      "could not start the query (Claude Code is installed but could not be launched; check executable permissions and PI_CLAUDE_PATH)",
+      "Claude Code is installed but would not launch. Check `claude` or `PI_CLAUDE_PATH`.",
     ],
     [
       sdkRejection("Claude Code process aborted by user", { errorClass: "aborted" }),
-      "could not start the query (cancelled)",
+      "The request was cancelled.",
     ],
     [
       new Error("Claude Code process exited with code 2"),
-      "could not start the query (unexpected SDK error)",
+      "Claude Code failed to start with an unexpected error.",
     ],
     [
       sdkRejection("exited", { errorClass: "process_exited_nonzero" }),
-      "could not start the query (unexpected SDK error)",
+      "Claude Code failed to start with an unexpected error.",
     ],
     [
       new Error("proxy https://user:pass@host failed"),
-      "could not start the query (unexpected SDK error)",
+      "Claude Code failed to start with an unexpected error.",
     ],
-    ["plain string", "could not start the query (unexpected SDK error)"],
+    ["plain string", "Claude Code failed to start with an unexpected error."],
   ] as const)("classifies a query cause into a safe phrase: %s", (cause, expected) => {
     const error = SdkQueryError.fromCause("start", cause);
 
@@ -186,7 +186,7 @@ describe("claude SDK failure diagnostics", () => {
       cause: new Error("ENOENT /secret/network/timeout/worktree"),
     });
     const message = formatSdkRunError(error);
-    expect(message).toContain("restart Pi from an existing worktree and resume this session");
+    expect(message).toContain("Restart Pi from an existing folder");
     expect(message).not.toContain("/secret");
     expect(message).not.toContain("executable not found");
     expect(diagnoseSdkRunError(error)).toStrictEqual({
@@ -203,9 +203,7 @@ describe("claude SDK failure diagnostics", () => {
   test("never renders the raw cause of an iteration failure", () => {
     const error = SdkQueryError.fromCause("iterate", new Error("transport disconnected: secret"));
 
-    expect(formatSdkRunError(error)).toBe(
-      "Claude Agent SDK: the query stopped before finishing (unexpected SDK error)",
-    );
+    expect(formatSdkRunError(error)).toBe("Claude Code stopped mid-turn with an unexpected error.");
   });
 });
 
@@ -233,22 +231,26 @@ function failedAssistant(
   };
 }
 
+// Pi decides retry and overflow from the error text, so every reworded message must keep its class.
+const RETRYABLE_CATEGORIES: ReadonlySet<string> = new Set([
+  "rate-limit",
+  "overloaded",
+  "server-error",
+]);
+
 describe("Pi retry compatibility", () => {
-  test.each(["rate-limit", "overloaded", "server-error"] as const)(
-    "%s is retryable",
-    (category) => {
-      expect(isRetryableAssistantError(failedAssistant(category))).toBe(true);
-    },
-  );
+  test.each(ResultFailureCategory.literals)("%s keeps its retry and overflow class", (category) => {
+    const message = failedAssistant(category);
+    expect(isRetryableAssistantError(message)).toBe(RETRYABLE_CATEGORIES.has(category));
+    expect(isContextOverflow(message, 200_000)).toBe(category === "context-limit");
+  });
 
-  test.each(["usage-limit", "authentication", "context-limit"] as const)(
-    "%s is not retryable",
-    (category) => {
-      expect(isRetryableAssistantError(failedAssistant(category))).toBe(false);
-    },
-  );
-
-  test("context-limit still reads as context overflow", () => {
-    expect(isContextOverflow(failedAssistant("context-limit"))).toBe(true);
+  test("an interrupted response stream stays retryable and is not an overflow", () => {
+    const message = {
+      ...failedAssistant("provider"),
+      errorMessage: formatSdkRunError(new SdkStreamInterruptedError({ evidence: "api-retry" })),
+    };
+    expect(isRetryableAssistantError(message)).toBe(true);
+    expect(isContextOverflow(message, 200_000)).toBe(false);
   });
 });

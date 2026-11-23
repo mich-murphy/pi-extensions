@@ -27,7 +27,7 @@ export function validationRecoveryReason(input: unknown): string {
     "error" in input &&
     input.error === "uncaptured_tool_batch"
   ) {
-    return "Tool did not execute: the SDK resolved it without Pi permission deferral. Request the declared tool again; Pi owns execution.";
+    return "The tool did not run: Claude Code handled the call without passing it to Pi. Call the declared mcp__pi__ tool again.";
   }
   if (
     typeof input === "object" &&
@@ -35,7 +35,7 @@ export function validationRecoveryReason(input: unknown): string {
     "error" in input &&
     input.error === "sdk_input_rejected"
   ) {
-    return "SDK input was rejected before Pi permission deferral, possibly during JSON parsing. No tool executed. Request a declared tool with valid JSON parameters matching its schema.";
+    return "The tool did not run: Claude Code rejected its input, possibly as invalid JSON. Call a declared mcp__pi__ tool again with valid JSON that matches its schema.";
   }
   if (
     typeof input === "object" &&
@@ -43,7 +43,7 @@ export function validationRecoveryReason(input: unknown): string {
     "error" in input &&
     input.error === "printed_tool_call"
   ) {
-    return "Your last reply printed a tool call as text, so nothing executed. Invoke the declared mcp__pi__ tool directly instead of writing a <call> tag or JSON.";
+    return "Your last reply printed a tool call as text, so nothing ran. Call the declared mcp__pi__ tool directly instead of writing a <call> tag or JSON.";
   }
   const unexpected =
     typeof input === "object" &&
@@ -51,8 +51,8 @@ export function validationRecoveryReason(input: unknown): string {
     "error" in input &&
     input.error === "unexpected_sdk_tool";
   return unexpected
-    ? "Rejected SDK tool did not execute. Use only a declared MCP tool with parameters matching its schema."
-    : "Rejected tool input did not execute: invoke a declared MCP tool directly with parameters matching its schema. Do not request the validation-error tool.";
+    ? "That tool is not available, so it did not run. Call only a declared mcp__pi__ tool, with parameters that match its schema."
+    : `The tool did not run: its parameters do not match its schema. Call the declared mcp__pi__ tool again with valid parameters. Do not call ${VALIDATION_ERROR_TOOL}.`;
 }
 
 /** Blocks even a later replacement of the reserved tool before its executor runs. */
@@ -70,7 +70,7 @@ export const validationRecoveryTool: ToolDefinition = {
   name: VALIDATION_ERROR_TOOL,
   label: "Rejected SDK tool call",
   description:
-    "Provider-owned validation error. Do not request this tool; correct the rejected tool call using the available tool catalog.",
+    "Reports a rejected tool call. Do not call this tool; fix the rejected call using the declared tools.",
   exposure: "model-only",
   annotations: {
     readOnlyHint: true,

@@ -46,10 +46,9 @@ type InstalledVersionFailure = typeof InstalledVersionFailure.Type;
 const INSTALLED_VERSION_TIMEOUT_MS = 3000;
 
 const INSTALLED_VERSION_MESSAGES: Readonly<Record<InstalledVersionFailure, string>> = {
-  "not-installed":
-    "Claude Code is not installed or not on PATH (claude --version failed); install it, run `claude auth login`, or set PI_CLAUDE_PATH",
-  "timed-out": `claude --version did not respond within ${INSTALLED_VERSION_TIMEOUT_MS / 1000}s; check that Claude Code starts locally`,
-  failed: "claude --version failed; check that Claude Code starts locally",
+  "not-installed": "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
+  "timed-out": `\`claude --version\` did not answer within ${INSTALLED_VERSION_TIMEOUT_MS / 1000}s. Check that \`claude\` starts.`,
+  failed: "`claude --version` failed. Check that `claude` starts.",
 };
 
 /** Expected failure while reading the Agent SDK's package metadata. */
@@ -62,7 +61,7 @@ class ClaudeSdkMetadataError extends Schema.TaggedError<ClaudeSdkMetadataError>(
 ) {
   /** Plain-English summary. */
   override get message(): string {
-    return "Could not read the installed Claude Agent SDK package metadata; check the extension installation";
+    return "Could not read the Claude Agent SDK package version. Reinstall pi-claude.";
   }
 }
 
@@ -95,8 +94,8 @@ class ClaudeVersionParseError extends Schema.TaggedError<ClaudeVersionParseError
   /** Plain-English summary without echoing untrusted command output. */
   override get message(): string {
     return this.source === "installed"
-      ? "claude --version returned an unexpected format; run `claude update` and /claude status"
-      : "The Agent SDK reports an unexpected expected Claude Code version; check the installed SDK package";
+      ? "`claude --version` printed an unexpected format. Run `claude update`."
+      : "pi-claude's Agent SDK lists a Claude Code version it cannot read. Reinstall pi-claude.";
   }
 }
 

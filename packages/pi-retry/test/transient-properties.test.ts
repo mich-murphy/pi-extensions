@@ -90,7 +90,7 @@ function assertSchedule(plan: Plan, steps: readonly Step[]): void {
     } else {
       assert.equal(
         message,
-        `Provider error. Pi will retry automatically at t+${want.resetsAt / MINUTE}m (attempt ${want.attempt}).`,
+        `Provider error. Pi will retry at t+${want.resetsAt / MINUTE}m (attempt ${want.attempt}); \`/retry off\` cancels.`,
       );
       assert.ok(want.attempt <= plan.maxAttempts);
     }

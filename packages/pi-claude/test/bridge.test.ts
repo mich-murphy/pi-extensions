@@ -218,7 +218,7 @@ describe("provider failures", () => {
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Partial" }]);
     expect(message.errorMessage).toBe(
-      "Claude Agent SDK: Claude usage limit reached; check subscription allowance",
+      "Claude usage or billing limit reached; `/claude usage` shows your limits.",
     );
   });
 
@@ -246,7 +246,7 @@ describe("provider failures", () => {
     expect(reason).toBe("error");
     expect(message.content).toStrictEqual([{ type: "text", text: "Truncated" }]);
     expect(message.errorMessage).toBe(
-      "Claude SDK provider bug: the turn finished without a final result; report this provider bug with /claude status output",
+      "pi-claude bug: the turn finished without a final result. Report it with `/claude status` output.",
     );
   });
 
@@ -258,7 +258,7 @@ describe("provider failures", () => {
     const { reason, message } = terminalOf(events);
     expect(reason).toBe("error");
     expect(message.errorMessage).toBe(
-      "Claude SDK provider bug: the SDK runner failed unexpectedly; report this provider bug with /claude status output",
+      "pi-claude bug: the Claude runner failed unexpectedly. Report it with `/claude status` output.",
     );
     expect(message.errorMessage).not.toContain("adapter defect");
   });

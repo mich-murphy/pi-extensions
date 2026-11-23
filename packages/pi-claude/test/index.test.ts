@@ -160,7 +160,7 @@ describe("bash output safety hooks", () => {
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {
     const { emit } = loadExtension();
     const refusal: unknown = expect.stringContaining(
-      "Blocked by executable-output guard: executable data may be printed, or this shell syntax cannot be inspected safely.",
+      "Blocked, so the command did not run: it may print an executable, or its shell syntax cannot be checked.",
     );
 
     expect(emit("tool_call", bashCall("cat $(which node)"))).toMatchObject({

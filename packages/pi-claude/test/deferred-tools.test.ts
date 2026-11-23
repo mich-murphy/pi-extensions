@@ -134,7 +134,9 @@ describe("schema-faithful deferred tools", () => {
     expect(compileToolCatalog(tools).map((entry) => entry.sdkName)).toStrictEqual(
       catalog.map((entry) => entry.sdkName),
     );
-    expect(() => compileToolCatalog([declaration, declaration])).toThrow("naming");
+    expect(() => compileToolCatalog([declaration, declaration])).toThrow(
+      "Two tools share a name, or one has none, so nothing was sent to Claude.",
+    );
   });
 
   test.each(["oneOf", "$ref", "not", "patternProperties", "format", "default", "secretProperty"])(
@@ -315,7 +317,9 @@ describe("schema-faithful deferred tools", () => {
       });
     }
     expect(capture.calls.map((call) => call.name)).toStrictEqual(names);
-    expect(() => compileToolCatalog([{ ...declaration, name: "" }])).toThrow("naming");
+    expect(() => compileToolCatalog([{ ...declaration, name: "" }])).toThrow(
+      "Two tools share a name, or one has none, so nothing was sent to Claude.",
+    );
   });
 
   test("the fallback never executes Pi and remains a failure", async () => {

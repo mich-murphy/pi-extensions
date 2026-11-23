@@ -48,8 +48,8 @@ function quarantineNotice(kind: SuspiciousOutputKind, characters: number): strin
   const advice =
     kind === "binary"
       ? "Use file, otool, or strings instead of cat for executables."
-      : "Write encoded data to a file and inspect its type or metadata instead of printing it.";
-  return `[${label} bash output quarantined before it entered model context (${characters.toLocaleString("en-US")} characters). ${advice} If similar output was recorded before this guard loaded, compact or start a new session.]`;
+      : "Write encoded data to a file and check its type or size instead of printing it.";
+  return `[${label} bash output quarantined and kept out of context (${characters.toLocaleString("en-US")} characters). ${advice}]`;
 }
 
 /** Result of inspecting shell tool content. */
@@ -93,7 +93,7 @@ export function inspectBashCommand(command: string): string | undefined {
   if (!hasExecutableCat(command)) {
     return undefined;
   }
-  return 'Blocked by executable-output guard: executable data may be printed, or this shell syntax cannot be inspected safely. Inspect executable paths with file "$(which COMMAND)", otool, or strings; use the write tool for literal content.';
+  return 'Blocked, so the command did not run: it may print an executable, or its shell syntax cannot be checked. Use file "$(which COMMAND)", otool or strings; use the write tool for literal content.';
 }
 
 /**

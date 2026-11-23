@@ -43,7 +43,7 @@ describe("startup failures reach the user", () => {
     }, installed);
 
     expect(message).toBe(
-      "Claude Agent SDK: the query stopped before finishing (Claude Code 2.1.316 is too old (2.1.317 or newer is required); run `claude update`)",
+      "Claude Code 2.1.316 is too old; 2.1.317 or newer is required. Run `claude update`.",
     );
   });
 
@@ -74,9 +74,7 @@ describe("startup failures reach the user", () => {
       [unnamed],
     );
 
-    expect(message).toBe(
-      "Claude Agent SDK: Pi tool catalog cannot be advertised faithfully (naming); check tool names and schemas in the active extensions",
-    );
+    expect(message).toBe("Two tools share a name, or one has none, so nothing was sent to Claude.");
     expect(started).toBe(false);
   });
 
@@ -95,7 +93,7 @@ describe("startup failures reach the user", () => {
       );
 
       expect(message).toBe(
-        "Claude Agent SDK: could not start the query (Claude Code executable not found; install Claude Code, run `claude auth login`, or set PI_CLAUDE_PATH)",
+        "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
       );
       expect(started).toBe(false);
     } finally {

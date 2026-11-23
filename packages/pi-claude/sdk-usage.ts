@@ -66,12 +66,10 @@ export type ClaudeUsageStatus = {
 const UsageInspectionOperation = Schema.Literals(["start", "read", "parse", "close"]);
 
 const USAGE_FAILURE_MESSAGES: Readonly<Record<typeof UsageInspectionOperation.Type, string>> = {
-  start:
-    "Could not start a Claude session to read usage; check /claude status, then retry /claude usage",
-  read: "Claude did not return usage data; retry /claude usage",
-  parse:
-    "Claude returned usage data in an unexpected format; check /claude status for compatibility",
-  close: "Could not close the Claude usage session; restart Pi if the process remains running",
+  start: "Could not start a Claude session to read usage.",
+  read: "Claude did not return usage data.",
+  parse: "Claude returned usage data in a format pi-claude does not recognize.",
+  close: "Could not close the Claude usage session. Restart Pi if `claude` keeps running.",
 };
 
 /** Expected failure while starting, reading, parsing, or closing a Claude usage session. */
@@ -100,7 +98,7 @@ class ClaudeUsageTimeoutError extends Schema.TaggedError<ClaudeUsageTimeoutError
 ) {
   /** Plain-English summary naming the wait. */
   override get message(): string {
-    return `Timed out after ${Duration.format(this.timeout)} waiting for Claude usage; check /claude status before retrying`;
+    return `Timed out after ${Duration.format(this.timeout)} waiting for Claude usage.`;
   }
 }
 

@@ -135,26 +135,28 @@ describe("public terminal failure privacy", () => {
       expect(JSON.stringify(parsed)).not.toContain(PRIVATE);
       const message = await turn(messagesQuery(sdkResult));
       safeError(message, lines);
-      expect(message.errorMessage).toContain("the query failed; retry or check Claude Code status");
+      expect(message.errorMessage).toContain(
+        "Claude Code stopped with an error but did not say why.",
+      );
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain('"terminalReason":"unrecognized"');
     },
   );
 
   test.each([
-    [{ terminal_reason: "blocking_limit" }, "usage limit reached", "usage-limit"],
+    [{ terminal_reason: "blocking_limit" }, "usage or billing limit reached", "usage-limit"],
     [
       { terminal_reason: "tool_deferred_unavailable", is_error: false },
       "back to Pi",
       "tool-contract",
     ],
-    [{ stop_reason: "refusal", is_error: false }, "model refused", "provider"],
-    [{ terminal_reason: "prompt_too_long" }, "context_length_exceeded", "provider"],
+    [{ stop_reason: "refusal", is_error: false }, "declined to answer", "provider"],
+    [{ terminal_reason: "prompt_too_long" }, "prompt is too long", "provider"],
     [{ terminal_reason: "budget_exhausted" }, "budget limit", "provider"],
     [{ terminal_reason: "max_turns" }, "turn limit", "provider"],
     [{ terminal_reason: "structured_output_retry_exhausted" }, "output limit", "provider"],
     [{ terminal_reason: "aborted_tools" }, "cancelled", "cancelled"],
-    [{ terminal_reason: "image_error" }, "check model and input", "provider"],
+    [{ terminal_reason: "image_error" }, "the model or part of the input", "provider"],
     [{ subtype: "error_max_turns" }, "turn limit", "provider"],
     [{ subtype: "error_max_budget_usd" }, "budget limit", "provider"],
     [{ subtype: "error_max_structured_output_retries" }, "output limit", "provider"],
@@ -177,9 +179,9 @@ describe("public terminal failure privacy", () => {
     ["authentication_failed", "sign in", "authentication"],
     ["rate_limit", "rate limit", "rate-limit"],
     ["overloaded", "overloaded", "provider"],
-    ["invalid_request", "check model and input", "provider"],
+    ["invalid_request", "the model or part of the input", "provider"],
     ["max_output_tokens", "output limit", "provider"],
-    [PRIVATE, "query failed", "provider"],
+    [PRIVATE, "did not say why", "provider"],
   ])("keeps typed API categories without copying raw details: %s", async (error, summary, kind) => {
     const lines = captureDiagnostics();
     const message = await turn(
@@ -209,19 +211,19 @@ describe("public terminal failure privacy", () => {
         ),
       );
       safeError(message, lines);
-      expect(message.errorMessage).toContain("context_length_exceeded");
+      expect(message.errorMessage).toContain("prompt is too long");
       expect(isContextOverflow(message)).toBe(true);
     },
   );
 
   test.each([
-    ["blocking_limit", "usage limit", "usage-limit"],
+    ["blocking_limit", "usage or billing limit", "usage-limit"],
     ["tool_deferred_unavailable", "back to Pi", "tool-contract"],
     ["budget_exhausted", "budget limit", "provider"],
     ["max_turns", "turn limit", "provider"],
     ["structured_output_retry_exhausted", "output limit", "provider"],
     ["aborted_tools", "cancelled", "cancelled"],
-    ["image_error", "check model and input", "provider"],
+    ["image_error", "the model or part of the input", "provider"],
   ])("terminal %s remains authoritative over generic API errors", async (reason, summary, kind) => {
     const lines = captureDiagnostics();
     const messages = await Promise.all(
@@ -291,7 +293,7 @@ describe("public terminal failure privacy", () => {
       });
     });
     safeError(message, lines);
-    expect(message.errorMessage).toContain("unexpected SDK error");
+    expect(message.errorMessage).toContain("unexpected error");
   });
 
   test("unprotected invalid-tool failures do not copy model-supplied names", async () => {
@@ -308,7 +310,7 @@ describe("public terminal failure privacy", () => {
     });
     safeError(message, lines);
     expect(message.errorMessage).toContain(
-      "could not hand the requested Pi tool call back to Pi; check the active tool catalog before continuing",
+      "Claude's tool call could not be passed back to Pi, so it did not run.",
     );
   });
 });
@@ -475,7 +477,7 @@ describe("public SDK-adapted instrumentation", () => {
         { onPayload: () => replacement },
       );
       safeError(message, lines);
-      expect(message.errorMessage).toContain("invalid SDK-adapted payload");
+      expect(message.errorMessage).toContain("returned an invalid request");
       expect(started).toBe(0);
       expect(lines[0]).toContain('"errorTag":"SdkInstrumentationError"');
     },
@@ -581,7 +583,7 @@ describe("public SDK-adapted instrumentation", () => {
     );
     safeError(message, lines);
     expect(message.content).toStrictEqual([]);
-    expect(message.errorMessage).toContain("instrumentation");
+    expect(message.errorMessage).toContain("watches requests");
   });
 
   test("abandoning an awaited payload callback starts no SDK query", async () => {
@@ -617,7 +619,7 @@ describe("public SDK-adapted instrumentation", () => {
       },
     });
     expect(seen).toStrictEqual([raw]);
-    expect(message.errorMessage).toContain("malformed result");
+    expect(message.errorMessage).toContain("Pi could not read (result");
     expect(message.errorMessage).not.toContain(PRIVATE);
   });
 
