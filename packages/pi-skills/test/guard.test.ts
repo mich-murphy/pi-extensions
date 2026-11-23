@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionUIContext, Skill } from "@earendil-works/pi-coding-agent";
 import { afterEach, assert, describe, expect, test } from "vitest";
+import { resolveToCwd } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/path-utils.js";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
 import { disabledResourceMatcher, toolPath } from "../guard";
 import { isSubagentSession, registerPiSkills } from "../index";
@@ -28,7 +29,6 @@ import type { ToggleStateStore } from "../state";
 
 const temporaryDirectories: string[] = [];
 
-/** Probe the temporary directory's file system, where these tests create their checkouts. */
 function temporaryFileSystemIgnoresCase(): boolean {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-case-"));
   try {
@@ -47,7 +47,6 @@ function write(path: string, content = "content\n"): string {
   return path;
 }
 
-/** A main checkout with a linked worktree, laid out the way `git worktree add` leaves it. */
 function repository(): {
   readonly main: string;
   readonly worktree: string;
@@ -186,7 +185,6 @@ function loadedState(store: ToggleStateStore) {
 
 const subagent = "01a137ea-c2a1-7378-87e6-ab5374db4a3b";
 
-/** Checkouts with disabled root and nested instructions plus a default-disabled project skill. */
 function caseFixture() {
   const checkouts = repository();
   const { main } = checkouts;
@@ -288,7 +286,6 @@ describe("pi-skills guard", () => {
 
     test("explicitly loaded nested and standalone skills own their files independently of a disabled parent", () => {
       const { main, worktree } = repository();
-      // Native recursion stops at the outer SKILL.md, but configured paths can load all three.
       const outer = skillResource(write(join(main, "custom/outer/SKILL.md")), "outer");
       const inner = skillResource(write(join(main, "custom/outer/inner/SKILL.md")), "inner");
       const helper = skillResource(write(join(main, "custom/outer/helper.md")), "helper");
@@ -417,7 +414,6 @@ describe("pi-skills guard", () => {
       expect(toolPath("@~/AGENTS.md", "/repo")).toBe(join(home, "AGENTS.md"));
       expect(toolPath("~/./proj/AGENTS.md", "/repo")).toBe(join(home, "proj/AGENTS.md"));
       expect(toolPath("@~/./proj/../AGENTS.md", "/repo")).toBe(join(home, "AGENTS.md"));
-      // `~user` and a mid-path `~` are not expanded by Pi either.
       expect(toolPath("~user/AGENTS.md", "/repo")).toBe("/repo/~user/AGENTS.md");
       expect(toolPath("x/~/AGENTS.md", "/repo")).toBe("/repo/x/~/AGENTS.md");
     });
@@ -426,7 +422,32 @@ describe("pi-skills guard", () => {
       expect(toolPath("file:///abs/AGENTS.md", "/repo")).toBe("/abs/AGENTS.md");
       expect(toolPath("@file:///abs/web/../AGENTS.md", "/repo")).toBe("/abs/AGENTS.md");
       expect(toolPath("file:///a%20b/AGENTS.md", "/repo")).toBe("/a b/AGENTS.md");
-      // An unparseable URL cannot be read by Pi; the guard must not throw on it.
+      expect(toolPath("file://host/abs/AGENTS.md", "/repo")).toBe("/repo/file:/host/abs/AGENTS.md");
+    });
+
+    test("toolPath mirrors Pi's resolveToCwd from utils/paths for every input Pi can read", () => {
+      for (const input of [
+        "@web/AGENTS.md",
+        "./x/../AGENTS.md",
+        "/abs/AGENTS.md",
+        "~",
+        "~/AGENTS.md",
+        "@~/./proj/../AGENTS.md",
+        "~user/AGENTS.md",
+        "x/~/AGENTS.md",
+        "file:///abs/AGENTS.md",
+        "@file:///a%20b/AGENTS.md",
+        "a\u00A0b\u3000c/AGENTS.md",
+      ]) {
+        expect({ input, path: toolPath(input, "/repo") }).toStrictEqual({
+          input,
+          path: resolveToCwd(input, "/repo"),
+        });
+      }
+    });
+
+    test("an unparseable file URL, which Pi cannot read, stays an ordinary relative path", () => {
+      expect(() => resolveToCwd("file://host/abs/AGENTS.md", "/repo")).toThrow("File URL host");
       expect(toolPath("file://host/abs/AGENTS.md", "/repo")).toBe("/repo/file:/host/abs/AGENTS.md");
     });
 
@@ -449,7 +470,6 @@ describe("pi-skills guard", () => {
       linkSync(rootAgents.id, hardAgents);
       const hardSkill = join(other, "skill-copy.md");
       linkSync(deploy.id, hardSkill);
-      // Persisted-only disabled file, not loaded this session.
       const hardWeb = join(other, "web-copy.md");
       linkSync(join(main, "web/AGENTS.md"), hardWeb);
       const unrelated = write(join(other, "plain.md"));
@@ -493,7 +513,6 @@ describe("pi-skills guard", () => {
             'skill "deploy"',
           );
         }
-        // A missing leaf takes the on-disk casing of its nearest existing ancestor.
         expect(matcher.match(join(main, ".AGENTS/skills/DEPLOY/missing/notes.md"))).toBe(
           'skill "deploy"',
         );
@@ -516,7 +535,6 @@ describe("pi-skills guard", () => {
           expect(matcher.match(join(checkout, ".AGENTS/skills/DEPLOY/SKILL.md"))).toBeUndefined();
           expect(matcher.match(join(checkout, "AGENTS.md"))).toBe("AGENTS.md");
         }
-        // Missing differently-cased paths cannot name a protected file either.
         expect(matcher.match(join(main, "Agents.Md"))).toBeUndefined();
       },
     );

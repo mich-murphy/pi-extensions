@@ -1,4 +1,3 @@
-/** Bound untrusted resource names and local paths before displaying a diagnostic. */
 export function diagnosticText(value: string): string {
   const safe = value
     .replaceAll(/https?:\/\/[^\s]+/giu, "[URL omitted]")

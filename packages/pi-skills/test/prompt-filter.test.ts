@@ -60,7 +60,7 @@ describe("hideResources on Pi 0.86 and newer", () => {
 });
 
 describe("hideResources on Pi 0.85 and older", () => {
-  test("removes resources by path without affecting same-named resources or the options", () => {
+  test("removes resources by path without affecting same-named resources or mutating the live options Pi 0.85 and older share", () => {
     const options: BuildSystemPromptOptions = {
       cwd: "/work",
       selectedTools: ["read"],
@@ -90,7 +90,6 @@ describe("hideResources on Pi 0.85 and older", () => {
       contextFiles: contextFiles.slice(0, 1),
       skills: [first],
     };
-    // Pi renders the skills section with the reader it selected, so the fixture must too.
     const systemPrompt = `base${renderProjectContext(contextFiles.slice(0, 1))}${formatSkillsForPrompt([first], "bash")}\ncwd`;
 
     const result = hideResources(

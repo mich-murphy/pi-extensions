@@ -20,6 +20,7 @@ import type { ToggleValue } from "../resources";
 import { ToggleStateFile } from "../state";
 import type { ToggleStateResult } from "../state";
 import { assertProperty } from "./hegel-property";
+import { timeoutOverTenfold } from "./test-timeouts";
 
 const ERROR_TAGS = new Set([
   "ToggleStateUnavailable",
@@ -83,8 +84,6 @@ const jsonWith = (options: gs.RecursiveOptions): gs.PrintableGenerator<unknown> 
   );
 
 const json = jsonWith({});
-// The json inside entries is drawn once per entry of a nested map, so it gets a small leaf budget;
-// otherwise a document multiplies a 100-leaf budget by the entries and the generator dominates the run.
 const entryJson = jsonWith({ maxLeaves: 8 });
 
 const toggleish = gs.oneOf<unknown>(
@@ -121,7 +120,6 @@ function inTemporaryDirectory(run: (directory: string) => void): void {
   }
 }
 
-/** Every value a successful load returns satisfies the documented type invariants. */
 function assertWellFormed(result: ToggleStateResult): void {
   if (result._tag === "err") {
     stats.err += 1;
@@ -158,7 +156,6 @@ function assertBothOutcomes(): void {
 
 type Loader = (content: string) => ToggleStateResult;
 
-/** One temp directory per property run; each case overwrites the same state file. */
 function withLoader(run: (load: Loader) => void): void {
   inTemporaryDirectory((directory) => {
     const path = join(directory, "state.json");
@@ -179,7 +176,6 @@ type Fixture = {
   readonly paths: readonly ResourcePath[];
   readonly repository: string;
   readonly root: string;
-  /** Every explicit choice by resource path, whether it is stored as a file or repository entry. */
   readonly model: Map<ResourcePath, ToggleValue>;
 };
 
@@ -187,7 +183,6 @@ function snapshot(statePath: string): string | undefined {
   return existsSync(statePath) ? readFileSync(statePath, "utf8") : undefined;
 }
 
-/** Slots inside the fake checkout are stored repository-relative; the others by absolute path. */
 function inRepository(fixture: Fixture, path: string): boolean {
   return path.startsWith(`${fixture.root}/`);
 }
@@ -209,7 +204,6 @@ function assertLoads(fixture: Fixture, model: ReadonlyMap<ResourcePath, ToggleVa
   }
 }
 
-/** Absolute entries whose file is gone are pruned by the next update; repository ones never are. */
 function prune(fixture: Fixture): void {
   for (const path of fixture.model.keys()) {
     if (!inRepository(fixture, path) && !existsSync(path)) {
@@ -230,7 +224,6 @@ function applySet(fixture: Fixture, path: ResourcePath, value: ToggleValue | "de
   assertLoads(fixture, fixture.model);
 }
 
-/** Set then clear an unset path: the state file returns to its prior bytes (or to an empty state). */
 function probe(fixture: Fixture, path: ResourcePath): void {
   const stale = [...fixture.model.keys()].some(
     (key) => !inRepository(fixture, key) && !existsSync(key),
@@ -257,10 +250,6 @@ type Workspace = {
   readonly paths: readonly ResourcePath[];
 };
 
-/**
- * One directory tree serves every case of a property: building and removing a tree per case was most of
- * the run. `resetWorkspace` returns it to the state a fresh tree has.
- */
 function withWorkspace(run: (workspace: Workspace) => void): void {
   inTemporaryDirectory((directory) => {
     const root = join(directory, "checkout");
@@ -326,8 +315,6 @@ function drawSteps(tc: TestCase): (readonly [number, Action])[] {
 }
 
 describe("state properties", () => {
-  // The cost is the recursive JSON generator rather than load(), about 1.5s alone and up to 6.2s with
-  // the CPU saturated. The timeout is at least ten times that and grows with HEGEL_TEST_CASES.
   test(
     "loading arbitrary JSON-ish documents never throws and yields well-formed overrides",
     () => {
@@ -338,10 +325,9 @@ describe("state properties", () => {
       });
       assertBothOutcomes();
     },
-    propertyTimeout(90_000),
+    propertyTimeout(timeoutOverTenfold(90_000, 6200)),
   );
 
-  // One state file write and load per case: 0.5 s with 8 busy processes plus other suites running.
   test(
     "loading arbitrary text never throws",
     () => {
@@ -351,11 +337,9 @@ describe("state properties", () => {
         });
       });
     },
-    propertyTimeout(30_000),
+    propertyTimeout(timeoutOverTenfold(30_000, 500)),
   );
 
-  // Real file-system work per step, up to 10.5 s with 8 busy processes plus other suites running: over
-  // ten times that, scaled by case count.
   test(
     "set/clear sequences match a map model, survive reload, and round-trip file bytes",
     () => {
@@ -365,7 +349,7 @@ describe("state properties", () => {
         });
       });
     },
-    propertyTimeout(150_000),
+    propertyTimeout(timeoutOverTenfold(150_000, 10_500)),
   );
 
   test("a stale entry is pruned by the next update (example)", () => {

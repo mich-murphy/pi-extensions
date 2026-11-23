@@ -31,7 +31,6 @@ import { ToggleStateFile } from "./state";
 import type { ToggleStateResult, ToggleStateStore } from "./state";
 import type { ToggleNote } from "./toggle-note";
 
-/** Context capabilities used by the toggle command. */
 export type ToggleCommandContext = Pick<
   ExtensionCommandContext,
   "cwd" | "mode" | "getSystemPromptOptions"
@@ -41,16 +40,13 @@ export type ToggleCommandContext = Pick<
   };
 };
 
-/** UI capabilities used to report failures. */
 export type UiContext = { readonly ui: Readonly<Pick<ExtensionUIContext, "notify">> };
 
-/** Session identity, which handlers report when Pi provides it. */
 export type SessionIdentity = {
   readonly getSessionId?: () => string;
   readonly getHeader?: () => { readonly parentSession?: string } | null;
 };
 
-/** Session capabilities the guard reads. */
 export type GuardContext = UiContext & {
   readonly cwd: string;
   readonly sessionManager: SessionIdentity & {
@@ -58,7 +54,6 @@ export type GuardContext = UiContext & {
   };
 };
 
-/** Session capabilities the prompt filter reads. */
 export type PromptContext = UiContext & {
   readonly model: ModelRef | undefined;
   readonly sessionManager: SessionIdentity & {
@@ -67,16 +62,13 @@ export type PromptContext = UiContext & {
   };
 };
 
-/** What the prompt filter hands back to Pi. */
 export type PromptFilterResult = { systemPrompt: string } | { message: ToggleNote } | undefined;
 
-/** The part of a `tool_call` event the guard reads. */
 export type GuardedToolCall = {
   readonly toolName: string;
   readonly input: Readonly<Record<string, unknown>>;
 };
 
-/** Event callbacks consumed by pi-skills. */
 export type ToggleHandlers = {
   readonly resources_discover: (
     event: unknown,
@@ -102,7 +94,6 @@ export type ToggleHandlers = {
   readonly session_shutdown: (event: unknown, ctx: unknown) => void;
 };
 
-/** Pi registration capabilities used by pi-skills. */
 export type ToggleRegistration = Pick<ExtensionAPI, "getCommands" | "exec"> & {
   readonly on: {
     (name: "resources_discover", handler: ToggleHandlers["resources_discover"]): unknown;
@@ -122,17 +113,10 @@ export type ToggleRegistration = Pick<ExtensionAPI, "getCommands" | "exec"> & {
   ) => void;
 };
 
-/** Register the pi-skills extension with its default persistent store. */
 export default function piSkills(pi: ToggleRegistration): void {
   registerPiSkills(pi, new ToggleStateFile());
 }
 
-/**
- * Register the /skills command and event handlers with an injected store.
- *
- * @param debug - Cache diagnostics sink, read from `PI_SKILLS_CACHE_DEBUG` (or the former
- *   `PI_SKILL_TOGGLE_CACHE_DEBUG`) by default.
- */
 export function registerPiSkills(
   pi: ToggleRegistration,
   store: ToggleStateStore,
@@ -165,17 +149,10 @@ export function registerPiSkills(
   }
 }
 
-/**
- * Whether a session is a subagent's child session.
- *
- * Subagent extensions record the parent's session id. Pi's own `/new` and `/fork` record the
- * parent's session file path instead, so those sessions stay main sessions.
- */
 export function isSubagentSession(ctx: Pick<GuardContext, "sessionManager">): boolean {
   return parentSessionId(ctx.sessionManager) !== undefined;
 }
 
-/** The parent session id a subagent's header records, if any. */
 function parentSessionId(sessionManager: SessionIdentity): string | undefined {
   const parent = sessionManager.getHeader?.()?.parentSession;
   return parent !== undefined && parent !== "" && !isAbsolute(parent) && !parent.endsWith(".jsonl")
@@ -203,21 +180,14 @@ function createFailureReporter(): (ctx: UiContext, failure: string | undefined) 
 
 class PiSkills {
   private contributedSkills: ReadonlySet<ResourcePath> = new Set();
-  /** Resources Pi loaded for the latest run, before the prompt filter hid any. */
   private resources: readonly ToggleResource[] = [];
-  /** Skills the user invoked with `/skill:name` in this session. */
   private readonly manualSkills = new Set<string>();
   private readonly reportStateFailure = createFailureReporter();
   private readonly reportPromptFailure = createFailureReporter();
-  /** The session this instance serves, once a handler has seen it. */
   private sessionId: string | undefined;
-  /** The parent session id, when this is a subagent session. */
   private parentId: string | undefined;
-  /** Set while answering a child, so a cyclic parent chain cannot recurse forever. */
   private answering = false;
-  /** Whether the last guard check could not load toggle state, so it blocked every listed resource. */
   private stateUnavailable = false;
-  /** What this session decides for its subagents, registered under its session id. */
   private readonly policy: SessionPolicy = {
     version: 1,
     match: (path) => this.answer(path, () => this.guardMatch()(path)),
@@ -234,7 +204,6 @@ class PiSkills {
     private readonly debug: DebugSink | undefined,
   ) {}
 
-  /** Contribute project skills, timing the discovery when diagnostics are on. */
   async discover(
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
   ): Promise<{ skillPaths: string[] } | undefined> {
@@ -265,8 +234,6 @@ class PiSkills {
         ) {
           return [];
         }
-        // Pi 0.85 and current Pi expose every loaded skill this way; `enableSkillCommands`
-        // controls interactive command registration, not this public resource inventory.
         return [command.name.slice("skill:".length)];
       }),
     );
@@ -277,7 +244,6 @@ class PiSkills {
     return skillPaths.length > 0 ? { skillPaths } : undefined;
   }
 
-  /** Register this session, so its subagents can follow it, and note its parent. */
   learnSession(sessionManager: SessionIdentity): void {
     const id = sessionManager.getSessionId?.();
     if (sessionManager.getHeader !== undefined) {
@@ -291,7 +257,6 @@ class PiSkills {
     registerSession(id, this.policy);
   }
 
-  /** Unregister the session when it shuts down. */
   forgetSession(): void {
     if (this.sessionId !== undefined) {
       unregisterSession(this.sessionId, this.policy);
@@ -313,12 +278,6 @@ class PiSkills {
       : this.filterLegacy(event, ctx, hidden);
   }
 
-  /**
-   * Pi 0.86+: keep a cached prompt frozen and announce toggles as appended notes.
-   *
-   * Pi diffs the filtered options against the transcript's prompt, so the options keep every
-   * toggle resource as the model has it unless the prompt is being written anyway.
-   */
   private filterSections(
     event: PromptFilterEvent,
     ctx: PromptContext,
@@ -351,7 +310,6 @@ class PiSkills {
     return plan.note === undefined ? undefined : { message: plan.note };
   }
 
-  /** Pi 0.85: replace the rendered sections that list hidden resources. */
   private filterLegacy(
     event: PromptFilterEvent,
     ctx: UiContext,
@@ -377,7 +335,6 @@ class PiSkills {
       : { systemPrompt: result.systemPrompt };
   }
 
-  /** Refuse `read` of a disabled resource, and subagent `bash` commands that print one. */
   guardToolCall(
     event: GuardedToolCall,
     ctx: GuardContext,
@@ -415,7 +372,6 @@ class PiSkills {
     };
   }
 
-  /** Remember a skill the user invoked explicitly, so its own files stay readable. */
   recordManualSkill(
     event: { readonly text: string; readonly source: InputSource },
     ctx: GuardContext,
@@ -486,14 +442,12 @@ class PiSkills {
     );
   }
 
-  /** The registered policy of this subagent's parent session, if it runs in this process. */
   private parentPolicy(): SessionPolicy | undefined {
     return this.parentId === undefined || this.parentId === this.sessionId
       ? undefined
       : sessionPolicy(this.parentId);
   }
 
-  /** Answer a child once at a time; a re-entrant question from a cycle gets the fallback. */
   private answer<T>(fallback: T, decide: (parent: SessionPolicy | undefined) => T): T {
     if (this.answering) {
       return fallback;
@@ -506,7 +460,6 @@ class PiSkills {
     }
   }
 
-  /** This session's own matcher. Without state, every listed resource is blocked. */
   private ownMatch(
     ctx: UiContext | undefined,
     parent: SessionPolicy | undefined,
@@ -528,18 +481,12 @@ class PiSkills {
     return (path) => matcher.match(path);
   }
 
-  /**
-   * The read matcher. A registered parent blocks what it would block itself; for resources this
-   * session loaded, the parent decides visibility and this session finds which resource owns a
-   * path, so a child's own copy of a skill the parent enabled or invoked stays readable.
-   */
   private guardMatch(ctx?: UiContext): (path: string) => string | undefined {
     const parent = this.parentPolicy();
     const own = this.ownMatch(ctx, parent);
     return parent === undefined ? own : (path) => parent.match(path) ?? own(path);
   }
 
-  /** Whether this session wants a resource a child asks about visible: by id, then skill name. */
   private ownDesiredVisible(resource: SessionResource): boolean | undefined {
     const own =
       this.resources.find(({ id, kind }) => kind === resource.kind && id === resource.id) ??
@@ -557,7 +504,6 @@ class PiSkills {
     return loaded === undefined ? undefined : new ResourcePolicy(loaded).value(own) === "enabled";
   }
 
-  /** A subagent hides what its parent hides; resources the parent does not know keep their own state. */
   private desiredHidden(own: ReadonlySet<ResourcePath>): ReadonlySet<ResourcePath> {
     const parent = this.parentPolicy();
     if (parent === undefined) {
@@ -585,7 +531,6 @@ class PiSkills {
       : [];
   }
 
-  /** Instruction files tracked in the current worktree that Pi did not load. */
   private async nestedInstructions(
     cwd: string,
     loaded: readonly ToggleResource[],
@@ -656,7 +601,6 @@ class PiSkills {
   }
 }
 
-/** Whether a subagent's parent wants one of the subagent's resources visible, if it knows it. */
 function parentVisible(parent: SessionPolicy, resource: ToggleResource): boolean | undefined {
   return parent.desiredVisible({
     id: resource.id,
@@ -669,7 +613,6 @@ function okValue(result: ToggleStateResult): ToggleOverrides | undefined {
   return result._tag === "ok" ? result.value : undefined;
 }
 
-/** Toggle resources the user's overrides disable. */
 function disabledIds(
   loaded: ToggleOverrides,
   resources: readonly ToggleResource[],
@@ -682,7 +625,6 @@ function disabledIds(
   );
 }
 
-/** Place nested instructions after the loaded project instructions, before project skills. */
 function withNestedInstructions(
   loaded: readonly ToggleResource[],
   nested: readonly ToggleResource[],

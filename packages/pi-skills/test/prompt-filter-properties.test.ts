@@ -9,9 +9,7 @@ import { assertProperty } from "./hegel-property";
 
 type ContextFile = { readonly path: string; readonly content: string };
 
-/** Text with newlines and markup characters, which the rendered sections must carry verbatim. */
 const text = gs.text({ alphabet: "ab \n<>&\"'", maxSize: 10 });
-/** Text around the sections never contains `<`, so a section can only match where it was put. */
 const outside = gs.text({ alphabet: "xy \n", maxSize: 6 });
 
 function skillAt(index: number, description: string): Skill {
@@ -26,7 +24,6 @@ function skillAt(index: number, description: string): Skill {
   };
 }
 
-/** Pi 0.85's project context block, written out from its documented markup. */
 function renderContext(files: readonly ContextFile[]): string {
   if (files.length === 0) {
     return "";
@@ -48,7 +45,6 @@ type Scenario = {
   readonly head: string;
   readonly middle: string;
   readonly tail: string;
-  /** Paths hidden by the first and the second filter. */
   readonly hiddenA: ReadonlySet<string>;
   readonly hiddenB: ReadonlySet<string>;
 };

@@ -12,13 +12,10 @@ function reads(command: string): readonly string[] {
   return pathsReadByCommand(command, cwd).toSorted();
 }
 
-// ---- Generators -----------------------------------------------------------------------------
-
 const SAFE = /^[a-z0-9._]$/u;
 const escapeBackslash = (char: string): string => `\\${char}`;
 const escapeDouble = (char: string): string => ('$`"\\'.includes(char) ? `\\${char}` : char);
 
-/** Encode a chunk of characters so a shell reads it back as exactly those characters. */
 function encodeChunk(chunk: readonly string[], scheme: number): string {
   const safe = chunk.every((char) => SAFE.test(char));
   const escaped = chunk.map((char) => escapeBackslash(char));
@@ -46,7 +43,6 @@ function encodeChunk(chunk: readonly string[], scheme: number): string {
 
 type Quoted = { readonly word: string; readonly source: string };
 
-/** A literal word, and shell source that denotes exactly that word. */
 const quoted = gs.composite((tc): Quoted => {
   const first = tc.draw(gs.sampledFrom("abc/.~*{$".split("")));
   const rest = tc.draw(gs.text({ alphabet: "abc/. *?[{}~$`'\"\\#;&|<>()=,", maxSize: 8 }));
@@ -63,7 +59,6 @@ const quoted = gs.composite((tc): Quoted => {
 
 type Braced = { readonly source: string; readonly words: readonly string[] };
 
-/** A brace expression, with the words bash expands it to written out directly. */
 function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
   return gs.composite((tc): Braced => {
     const text = (): Braced => {
@@ -155,7 +150,6 @@ function inSingleQuotes(script: string): string {
   return `'${script.replaceAll("'", String.raw`'\''`)}'`;
 }
 
-/** Ways to run a command that must not change which files it reads. */
 const WRAPS: readonly ((command: string) => string)[] = [
   (command) => `${command}; true`,
   (command) => `true && ${command}`,
@@ -173,8 +167,6 @@ const WRAPS: readonly ((command: string) => string)[] = [
 function wrapped(index: number, command: string): string {
   return WRAPS[index]?.(command) ?? "";
 }
-
-// ---- Properties -----------------------------------------------------------------------------
 
 describe("pathsReadByCommand properties", () => {
   test("never throws and only returns absolute normalized paths", () => {
@@ -208,9 +200,6 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
-  // Found by HEGEL_SEED=15001035743802267891 at 2000 cases. `balanced` skips a double-quoted string up to
-  // the next `"` without honouring `\"`, so the `)` inside the string closes the substitution early and
-  // the file `")` that cat reads is never reported. Fails until `balanced` handles escapes in quotes.
   test("a substitution keeps a double-quoted string that holds an escaped quote and a parenthesis", () => {
     assert.deepEqual(reads(String.raw`echo $(cat "\")")`), [resolve(cwd, '")')]);
     assert.deepEqual(reads(String.raw`echo $(cat a\;"\")")`), [resolve(cwd, 'a;")')]);
@@ -229,8 +218,6 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
-  // `${name:-word}` ends at its own closing brace however the word is quoted, and the substitutions
-  // inside it run: the generator had never produced one, which is how the next bug hid.
   test("a parameter expansion default keeps its quoting and its substitutions", () => {
     assertProperty(
       "shell-reads",
@@ -255,7 +242,6 @@ describe("pathsReadByCommand properties", () => {
     );
   });
 
-  // Arithmetic and an unquoted heredoc body run their substitutions; a quoted delimiter makes the body literal.
   test("a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not", () => {
     assertProperty(
       "shell-reads",
@@ -327,7 +313,6 @@ describe("pathsReadByCommand properties", () => {
     });
   });
 
-  // A generated word, quoted any way a shell allows, in each construct the lexer must see through.
   test("a word in a trap action, coproc, source or default is reported", () => {
     assertProperty(
       "shell-reads",
@@ -356,7 +341,6 @@ describe("pathsReadByCommand properties", () => {
       (tc) => {
         const word = tc.draw(gs.text({ alphabet: "abc./ ", minSize: 1, maxSize: 6 }), "word");
         const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", "=", ":+", "+"]), "operator");
-        // Single quotes are ordinary characters inside double quotes, so no escaping is needed.
         assert.deepEqual(reads(`cat "\${x${operator}${word}}"`), [resolve(cwd, word)]);
       },
     );
@@ -379,7 +363,6 @@ describe("pathsReadByCommand properties", () => {
       "brace expansion matches an independently generated expansion",
       (tc) => {
         const tree = tc.draw(braced(2), "tree");
-        // More than 256 words are left unresolved; a separate property pins that.
         tc.assume(tree.words.length <= 256);
         const expected = [
           ...new Set(tree.words.filter((word) => word !== "").map((word) => resolve(cwd, word))),

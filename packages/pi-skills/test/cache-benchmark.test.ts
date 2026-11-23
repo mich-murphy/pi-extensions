@@ -1,11 +1,3 @@
-/**
- * Deterministic prompt-cache reuse benchmark for pi-skills.
- *
- * Runs real in-process Pi sessions (`createAgentSession`) against pi-ai's faux provider, with
- * the extension registered through an inline extension factory and an in-memory toggle store.
- * Every provider request is captured and rendered three ways, then compared with the previous
- * request of the same session. Only invariants that hold today are asserted; the rest is data.
- */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,7 +81,6 @@ function createFixture(): Fixture {
 
 let storeCount = 0;
 
-/** A real state file the benchmark mutates between prompts, with injectable load failures. */
 class MemoryStore implements ToggleStateStore {
   failLoads = 0;
   private readonly file: ToggleStateFile;
@@ -293,7 +284,6 @@ async function startSession(fixture: Fixture, store: MemoryStore): Promise<Run> 
 }
 
 async function compact(run: Run): Promise<string> {
-  // Compaction may summarize history and a split turn prefix separately.
   run.faux.setResponses(
     Array.from({ length: 3 }, () => fauxAssistantMessage("Summary: earlier turns edited files.")),
   );
@@ -339,7 +329,6 @@ function queueResponses(run: Run, step: Step, index: number): void {
   ]);
 }
 
-/** Runs one step; returns the compaction outcome when the step compacted first. */
 async function runStep(run: Run, step: Step, index: number): Promise<string | undefined> {
   const compaction = step.compactBefore === true ? await compact(run) : undefined;
   if (step.switchModel !== undefined) {
@@ -531,7 +520,6 @@ const SCENARIOS: readonly Scenario[] = [
 
 const NON_TOGGLE_SCENARIOS = new Set(["a-steady", "k-toggle-before-first-prompt"]);
 
-/** Mean reuse ratio per rendering across scenarios that toggle mid-session. */
 function toggleMeans(reports: readonly ScenarioReport[]): Readonly<Record<Rendering, number>> {
   const toggles = reports.filter((report) => !NON_TOGGLE_SCENARIOS.has(report.name));
   const mean = (rendering: Rendering): number =>
@@ -589,14 +577,12 @@ function firstRequestTexts(contexts: readonly TranscriptContext[]): readonly str
   return first === undefined ? [] : RENDERINGS.map((rendering) => render(first, rendering).text);
 }
 
-/** Requests of a steady session that do not reuse the whole previous request. */
 function steadyReuseViolations(report: ScenarioReport | undefined): readonly string[] {
   if (report === undefined) {
     return ["missing a-steady report"];
   }
   return RENDERINGS.flatMap((rendering) =>
     report.renderings[rendering].perRequest.slice(1).flatMap((request, index) => {
-      // The trailing "Continue" block is replaced by the next entry, so it never matches.
       const expected =
         request.reusedBlocks === undefined
           ? request.previousChars

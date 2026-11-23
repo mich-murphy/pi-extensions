@@ -33,12 +33,6 @@ function skillNamesAtPaths(
   );
 }
 
-/**
- * Load Pi's actual native winners without installing a missing package.
- *
- * DefaultPackageManager owns native roots, settings exclusions, package filters, and ordering.
- * Returning `skip` for a missing package keeps this inspection local and side-effect free.
- */
 async function reservedNativeSkillNames(
   cwd: string,
   agentDir: string,
@@ -61,13 +55,6 @@ async function reservedNativeSkillNames(
   };
 }
 
-/**
- * Find supplemental project skills from the working directory through the Git root.
- *
- * Pi 0.85 and every supported later release already discover cwd `.pi/skills`, ancestor
- * `.agents/skills`, the agent directory, and home `.agents/skills`. Those roots are deliberately
- * not submitted again. Native winners also keep their names ahead of supplemental copies.
- */
 export async function discoverProjectSkillPaths(
   cwd: string,
   agentDir = getAgentDir(),

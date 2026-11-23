@@ -14,8 +14,6 @@ function paths(...names: string[]): readonly string[] {
   return names.map((name) => resolve(cwd, name)).toSorted();
 }
 
-// Each expectation was taken from real `bash -c` with `cat` replaced by a function that prints its
-// arguments, so the paths are what bash actually hands to cat.
 describe("brace expansion", () => {
   test("alternatives become separate words", () => {
     assert.deepEqual(reads("cat {a,secret}"), paths("a", "secret"));
@@ -37,7 +35,6 @@ describe("brace expansion", () => {
     assert.deepEqual(reads("cat {a..c}"), paths("a", "b", "c"));
     assert.deepEqual(reads("cat {1..10..3}"), paths("1", "4", "7", "10"));
     assert.deepEqual(reads("cat {c..a..2}"), paths("a", "c"));
-    // Words that start with a dash are options, never files.
     assert.deepEqual(reads("cat {-2..2}"), paths("0", "1", "2"));
     assert.deepEqual(reads("cat {a..a}"), paths("a"));
   });

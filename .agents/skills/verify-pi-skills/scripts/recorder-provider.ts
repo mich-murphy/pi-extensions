@@ -1,63 +1,6 @@
-/**
- * Offline recorder provider for the verify-pi-skills skill's model journeys.
- *
- * Registers `recorder/codex-like` (mid-conversation system messages supported) and
- * `recorder/collapse-like` (not supported). Every request's full TranscriptContext and
- * session id is appended as one JSONL line to `$PI_SKILL_TOGGLE_RECORDER_FILE`. The reply is
- * canned text, or the tool calls a prompt scripts (see `scriptedCalls`). No network access.
- */
 import { appendFileSync } from "node:fs";
 import { env } from "node:process";
-
-// Pi's extension alias resolves pi-ai to its compat entry, which does not export
-// createAssistantMessageEventStream, so a minimal async-iterable stream is used instead.
-class RecorderStream<E, R> implements AsyncIterable<E> {
-  private readonly events: E[] = [];
-  private readonly waiters: ((value: IteratorResult<E>) => void)[] = [];
-  private finished = false;
-  private resolveResult!: (value: R) => void;
-  private readonly final = new Promise<R>((resolve) => {
-    this.resolveResult = resolve;
-  });
-
-  push(event: E): void {
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter({ value: event, done: false });
-    } else {
-      this.events.push(event);
-    }
-  }
-
-  end(result: R): void {
-    this.finished = true;
-    this.resolveResult(result);
-    for (const waiter of this.waiters.splice(0)) {
-      waiter({ value: undefined, done: true });
-    }
-  }
-
-  async result(): Promise<R> {
-    return this.final;
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<E> {
-    return {
-      next: async () => {
-        const event = this.events.shift();
-        if (event !== undefined) {
-          return { value: event, done: false };
-        }
-        if (this.finished) {
-          return { value: undefined, done: true };
-        }
-        return new Promise<IteratorResult<E>>((resolve) => {
-          this.waiters.push(resolve);
-        });
-      },
-    };
-  }
-}
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
 const API = "skills-recorder";
 const READ_FILES = "READ-FILES: ";
@@ -86,7 +29,6 @@ function textOf(content: unknown): string {
     .join("\n");
 }
 
-/** The rest of each line after a marker, wherever the marker appears in the line. */
 function markedLines(text: string, marker: string): string[] {
   return text.split("\n").flatMap((line) => {
     const at = line.indexOf(marker);
@@ -106,12 +48,6 @@ function fileAndShellCalls(text: string): ScriptedCall[] {
   ];
 }
 
-/**
- * Tool calls the recorder makes for the pending user prompt, or none for a plain reply.
- *
- * - A `SPAWN-CHILD` line calls the `subagent` tool; every line after it becomes the child's task.
- * - Otherwise each `READ-FILES: a|b` line reads each path, and each `RUN-BASH: cmd` line runs it.
- */
 function scriptedCalls(messages: readonly RecorderMessage[]): readonly ScriptedCall[] {
   let lastAssistant = -1;
   for (const [position, { role }] of messages.entries()) {
@@ -189,7 +125,7 @@ export default function registerRecorder(pi: RecorderApi): void {
       context: { readonly messages: readonly RecorderMessage[] },
       options?: RecorderOptions,
     ) => {
-      const stream = new RecorderStream<unknown, unknown>();
+      const stream = createAssistantMessageEventStream();
       requests += 1;
       const index = requests;
       void (async () => {

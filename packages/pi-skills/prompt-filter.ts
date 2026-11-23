@@ -1,39 +1,21 @@
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, Skill, SourceInfo } from "@earendil-works/pi-coding-agent";
 
-/** Rendered prompt section that holds toggleable resources. */
 export type PromptSection = "instructions" | "skills";
 
-/** How hidden resources were kept from the model. */
 export type PromptFilterResult =
-  /** Pi 0.86+ renders the prompt from the filtered options. Nothing is returned to Pi. */
   | { readonly _tag: "options-filtered" }
-  /** Pi 0.85 and older need replacement text. Unmatched sections still show hidden resources. */
   | {
       readonly _tag: "prompt-filtered";
       readonly systemPrompt: string;
       readonly unmatched: readonly PromptSection[];
     };
 
-/**
- * The part of `before_agent_start` this filter reads.
- *
- * Pi 0.86+ types the options as normalized, with every collection present. The
- * looser input type covers that and the pre-0.86 shape the legacy path handles,
- * which the current release no longer describes.
- */
 export type PromptFilterEvent = {
   readonly systemPrompt: string;
   readonly systemPromptOptions: BuildSystemPromptOptions;
 };
 
-/**
- * Hide instruction files and skills from the prompt Pi is about to send.
- *
- * @param event - Pi's `before_agent_start` event.
- * @param isHidden - Whether the resource at a Pi-reported path must be hidden.
- * @returns The strategy that applied, with replacement text when Pi needs it.
- */
 export function hideResources(
   event: PromptFilterEvent,
   isHidden: (path: string) => boolean,
@@ -44,8 +26,6 @@ export function hideResources(
   const shownContextFiles = contextFiles.filter((file) => !isHidden(file.path));
   const shownSkills = skills.filter((skill) => !isHidden(skill.filePath));
 
-  // Pi 0.86 introduced `sections` together with a per-run copy of the options that extensions
-  // may mutate. Older releases share their live options object, which must stay untouched.
   if ("sections" in options) {
     options.contextFiles = shownContextFiles;
     options.skills = shownSkills;
@@ -78,7 +58,6 @@ type PromptSkill = Readonly<Omit<Skill, "sourceInfo">> & {
   readonly sourceInfo: Readonly<SourceInfo>;
 };
 
-/** Mirror of the project context section rendered by Pi 0.85 and older. */
 function renderContext(contextFiles: readonly ContextFile[]): string {
   if (contextFiles.length === 0) {
     return "";
@@ -90,12 +69,10 @@ function renderContext(contextFiles: readonly ContextFile[]): string {
   return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${blocks.join("")}</project_context>\n`;
 }
 
-/** Pi advertises skills only when a tool that can read their files is active. */
 function renderSkills(skills: readonly PromptSkill[], tools: readonly string[]): string {
   const reader = (["read", "bash"] as const).find((tool) => tools.includes(tool));
   if (!reader) {
     return "";
   }
-  // Pi 0.85 added the reader argument. Older releases ignore it.
   return formatSkillsForPrompt([...skills], reader);
 }
