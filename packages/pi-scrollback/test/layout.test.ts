@@ -231,9 +231,15 @@ describe("native chat viewport", () => {
     f.transcript.scrollTo(40);
     const later = f.render();
     expect(plain(later.lines)[0]?.trim()).toBe("❯ second prompt");
-    // Pi 1.6 passes the previous frame's cache when only the scroll position moved.
+    const previousFrameCacheForScrollOnlyFrame = later.renderCache;
     f.transcript.scrollTo(8);
-    const reused = renderLayoutFrame(f.root, 40, 12, () => undefined, later.renderCache);
+    const reused = renderLayoutFrame(
+      f.root,
+      40,
+      12,
+      () => undefined,
+      previousFrameCacheForScrollOnlyFrame,
+    );
     expect(plain(reused.lines)[0]?.trim()).toBe("❯ first prompt");
     f.transcript.scrollTo(40);
     const back = renderLayoutFrame(f.root, 40, 12, () => undefined, reused.renderCache);
