@@ -1,24 +1,3 @@
-/**
- * CI consumer proof of the production Nix acquisition path on a native runner.
- *
- *   node --import jiti/register scripts/verify-gateway-nix.ts <command> [options]
- *
- *   prepare         --target T --runner-temp DIR --out RECORD
- *   install-fixture --record RECORD --runner-temp DIR --extracted EXTRACTED --fixture PATH
- *   verify-fixture  --record RECORD --runner-temp DIR --fixture PATH
- *   cleanup         --record RECORD --runner-temp DIR
- *
- * `prepare` runs the default catalog through production `acquireGateway` (no seams) with an
- * isolated HOME/TMPDIR inside a fresh private root under RUNNER_TEMP. The root's identity is
- * recorded before acquisition so a failed attempt still names what it retained. The per-attempt
- * out-link inside that root is the GC root for the store executable; `cleanup` removes only that
- * exact root and is run only after every Nix-backed check passed. Binary hashes are per run and
- * per platform: Nix builds are not bit-reproducible, so no cross-build hash is compared.
- *
- * The owned root, its marker, the exclusively created `preparing` record and the private HOME/TMPDIR
- * all exist before any child process (including Nix discovery) starts. Every input read is
- * non-blocking, non-following, fstat-checked and bounded (see `verify-gateway-nix-io.ts`).
- */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { BigIntStats } from "node:fs";
@@ -48,7 +27,6 @@ const ROOT_NAME = /^gateway-nix-[A-Za-z0-9]{6}$/u;
 const STORE_EXECUTABLE = /^\/nix\/store\/[a-z0-9]{32}-[^/]+\/bin\/pi-gateway$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
-/** Same bound production `exec` gives a Nix command. */
 const ACQUISITION_MS = 600_000;
 const REQUIRED_CAPABILITIES = [GATEWAY_MANAGED_CAPABILITY, ...GATEWAY_REMOTE_SETUP_CAPABILITIES];
 const IDENTITY_KEYS = ["root", "dev", "ino", "uid", "nonce"] as const;
@@ -68,7 +46,6 @@ function isSha256(value: unknown): value is string {
   return typeof value === "string" && SHA256.test(value);
 }
 
-/** A directory owned by `uid` with no group or other access. */
 function isPrivateDirectory(stat: BigIntStats, uid: number): boolean {
   return stat.isDirectory() && stat.uid === BigInt(uid) && (stat.mode & 0o077n) === 0n;
 }
@@ -77,7 +54,6 @@ async function readStoreExecutable(executable: string): Promise<Buffer> {
   if (!STORE_EXECUTABLE.test(executable)) {
     throw new Error("Not a Nix store gateway executable");
   }
-  // Store files are owned by root or the build user: trusted by location and mode, not by uid.
   const { bytes } = await readRegular(executable, MAX_BINARY, "trusted-store");
   return bytes;
 }
@@ -90,8 +66,6 @@ async function run(file: string, args: string[], home: string): Promise<string> 
   });
   return stdout;
 }
-
-// ---- Diagnostics -------------------------------------------------------------------------------
 
 function messageOf(item: unknown): string {
   if (item instanceof Error) {
@@ -106,7 +80,6 @@ function causesOf(item: unknown): unknown[] {
   return causes.filter((cause) => cause !== undefined);
 }
 
-/** Breadth-first over causes and aggregated errors, at most eight messages. */
 function collectMessages(pending: unknown[], messages: string[]): string[] {
   if (pending.length === 0 || messages.length >= 8) {
     return messages;
@@ -115,7 +88,6 @@ function collectMessages(pending: unknown[], messages: string[]): string[] {
   return collectMessages([...rest, ...causesOf(item)], [...messages, messageOf(item)]);
 }
 
-/** Bounded diagnostic text; tokens are never part of it, and token-shaped strings are redacted. */
 function describe(error: unknown): string {
   return collectMessages(
     [error].filter((item) => item !== undefined),
@@ -126,9 +98,6 @@ function describe(error: unknown): string {
     .slice(0, 8000);
 }
 
-// ---- prepare: owned root before any child process ----------------------------------------------
-
-/** An early local step after `mkdtemp`: its failure names the retained root and keeps the cause. */
 async function namingRoot<T>(root: string, step: string, action: () => Promise<T>): Promise<T> {
   try {
     return await action();
@@ -137,7 +106,6 @@ async function namingRoot<T>(root: string, step: string, action: () => Promise<T
   }
 }
 
-/** Owned root, marker and exclusively created record; no child process runs here. */
 async function createOwnedRoot(runnerTemp: string, out: string) {
   const root = await fs.mkdtemp(path.join(await canonicalTemp(runnerTemp), "gateway-nix-"));
   const stat = await namingRoot(root, "Cannot inspect fresh root", async () =>
@@ -159,7 +127,6 @@ async function createOwnedRoot(runnerTemp: string, out: string) {
       mode: 0o400,
     }),
   );
-  // Whatever already exists at `out` is someone else's: never touched. The root is reported instead.
   const writer: RecordWriter = await namingRoot(
     root,
     `Cannot exclusively create record ${out}`,
@@ -168,11 +135,6 @@ async function createOwnedRoot(runnerTemp: string, out: string) {
   return { identity, writer };
 }
 
-/**
- * Private HOME/TMPDIR/install root inside the owned root. This is a dedicated CLI process:
- * production exec derives HOME/TMPDIR from the environment at call time, so Nix discovery and every
- * later Nix command see only the private profile.
- */
 async function privateProfile(root: string) {
   const dirs = {
     home: path.join(root, "home"),
@@ -185,7 +147,6 @@ async function privateProfile(root: string) {
   return dirs;
 }
 
-/** Production discovery and acquisition with the default catalog pin: no seams. */
 async function acquireThroughNix(pin: NixPin, target: string, installRoot: string) {
   const nixExecutable = await discoverNixExecutable();
   if (nixExecutable === undefined) {
@@ -226,7 +187,6 @@ function hasRequiredCapabilities(version: Record<string, unknown>): boolean {
   return REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability));
 }
 
-/** Pinned name and version, the supported wire version and every required capability. */
 function verifyGatewayVersion(version: Record<string, unknown>, expected: string): void {
   if (
     !isPinnedGateway(version, expected) ||
@@ -237,7 +197,6 @@ function verifyGatewayVersion(version: Record<string, unknown>, expected: string
   }
 }
 
-/** This run's store bytes and hash, re-probed version/ABI, and the Nix version used. */
 async function probeAcquired(executable: string, nix: string, home: string, expected: string) {
   const binary = await readStoreExecutable(executable);
   const version = jsonObject(JSON.parse(await run(executable, ["--version", "--json"], home)));
@@ -274,7 +233,6 @@ async function acquireInRoot(
   target: string,
 ): Promise<object> {
   const base = { ...identity, target, ...pin };
-  // Emitted before acquisition so failure evidence always names the retained root.
   await namingRoot(identity.root, "Cannot write preparing record", async () =>
     writer.write({ ...base, status: "preparing" }),
   );
@@ -314,9 +272,6 @@ async function prepare(target: string, runnerTemp: string, out: string): Promise
   }
 }
 
-// ---- Owned record: schema, root identity, marker, acquired state -------------------------------
-
-/** An exact direct child of canonical RUNNER_TEMP with this run's root name. */
 function namesOwnedRoot(root: unknown, runnerTemp: string): root is string {
   return (
     typeof root === "string" &&
@@ -337,7 +292,6 @@ function recordSchema(record: Record<string, unknown>, runnerTemp: string) {
   return { root, uid: currentUid(), nonce };
 }
 
-/** The root is still the same private directory, by device and inode, that the record names. */
 async function rootIdentity(root: string, uid: number, record: Record<string, unknown>) {
   const stat = await fs.lstat(root, { bigint: true });
   const dev = String(stat.dev);
@@ -363,7 +317,6 @@ function acquiredState(record: Record<string, unknown>) {
   return { executable, binarySha256 };
 }
 
-/** Load a record only if its root is still this run's exact private root and marker. */
 async function ownedRecord(recordPath: string, runnerTemp: string): Promise<NixRecord> {
   const record = await readOwnedJson(recordPath);
   const named = recordSchema(record, await canonicalTemp(runnerTemp));
@@ -372,9 +325,6 @@ async function ownedRecord(recordPath: string, runnerTemp: string): Promise<NixR
   return { ...identity, ...acquiredState(record) };
 }
 
-// ---- Fixture ------------------------------------------------------------------------------------
-
-/** The Nix store executable is still present (GC root held) and is this run's binary. */
 async function storeBinary(record: NixRecord): Promise<Buffer> {
   const binary = await readStoreExecutable(record.executable);
   if (sha256(binary) !== record.binarySha256) {
@@ -395,10 +345,6 @@ function isWriterPrivate(stat: BigIntStats): boolean {
   return stat.isDirectory() && stat.uid === BigInt(currentUid()) && (stat.mode & 0o022n) === 0n;
 }
 
-/**
- * The fixture directory is canonical (no symlinked ancestor), owned, and private from other
- * writers; its exact mode is not assumed.
- */
 async function requireFixtureParent(fixture: string): Promise<void> {
   const parentPath = path.dirname(fixture);
   const parent = await fs.lstat(parentPath, { bigint: true });
@@ -408,7 +354,6 @@ async function requireFixtureParent(fixture: string): Promise<void> {
   }
 }
 
-/** Replace the verified file, only if the path still names it, with an exclusive new 0500 copy. */
 async function replaceFixture(fixture: string, verified: BigIntStats, binary: Buffer) {
   const again = await fs.lstat(fixture, { bigint: true });
   if (!sameFile(again, verified)) {
@@ -437,8 +382,6 @@ async function verifyFixture(record: NixRecord, fixture: string) {
   }
   return { fixtureSha256: record.binarySha256, mode: "0500", storeExecutable: record.executable };
 }
-
-// ---- CLI ----------------------------------------------------------------------------------------
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -471,7 +414,6 @@ const commands = new Map<string, () => Promise<unknown>>([
     "cleanup",
     async () => {
       const { root } = await owned();
-      // Only the exact validated root: its out-link GC root goes with it; no global GC or profile.
       await fs.rm(root, { recursive: true });
       await requireAbsent(root);
       return { removed: root };

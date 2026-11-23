@@ -1,13 +1,3 @@
-/**
- * Renders the weekly tests audit from `fallow mutation --kill-matrix-for` JSON reports.
- *
- *   node --experimental-strip-types scripts/tests-audit.ts <report.json>...
- *
- * A target test with kills and no unique kill adds no detection: every code change that it
- * catches, another test catches too. A target test that runs the code and kills nothing catches no
- * change in scope. Neither is removed automatically; see "Remove a test that adds no detection" in
- * CONTRIBUTING.md. The Markdown goes to stdout, for the job summary.
- */
 import { readFileSync } from "node:fs";
 
 type Json = Record<string, unknown>;

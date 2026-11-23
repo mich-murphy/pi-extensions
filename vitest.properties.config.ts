@@ -3,8 +3,6 @@ import { readFileSync, globSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import base from "./vitest.config";
 
-// Runs only the files that use Hegel. Unlike the pull-request gate, which replays seed 12345, this run
-// picks a random seed unless HEGEL_SEED is set, and prints it with the case count so a failure replays.
 const envOr = (name: string, fallback: () => string): string => {
   const value = process.env[name];
   return value === undefined || value === "" ? fallback() : value;
@@ -25,7 +23,6 @@ export default defineConfig({
   test: {
     ...base.test,
     include: files,
-    // Property files with long properties set their own timeout, scaled by the case count.
     testTimeout: 5000 * Math.max(1, Number(testCases) / 200),
     coverage: { enabled: false },
   },

@@ -1,34 +1,34 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { defineConfig } from "vitest/config";
 
-// Pi aliases an extension's pi-tui import to its own copy, so both share module state such as
-// keybindings and the keyboard protocol. npm may install a second copy beside pi-coding-agent's.
-// Resolving pi-tui from pi-coding-agent gives tests the same single copy.
-const piTui = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent")).resolve(
-  "@earendil-works/pi-tui",
-);
+const piTuiSharedWithPiCodingAgent = createRequire(
+  import.meta.resolve("@earendil-works/pi-coding-agent"),
+).resolve("@earendil-works/pi-tui");
 
-// Pi also maps an extension's "@earendil-works/pi-ai" import (root only) to its extension view: pi-ai
-// compat plus TypeBox's Type and a TypeBox-typed StringEnum. Tests load the same module Pi does.
 const piAiExtensionView = new URL(
   "node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/pi-ai-extension-view.js",
   import.meta.url,
 ).pathname;
+if (!existsSync(piAiExtensionView)) {
+  throw new Error(
+    `Pi moved its pi-ai extension view; tests would load a different pi-ai than Pi gives extensions: ${piAiExtensionView}`,
+  );
+}
+
+const SERIALIZE_CPU_HEAVY_NATIVE_CLI_BOOT_FILES_ON_SHARED_CI_RUNNERS = process.env.CI === "true";
 
 export default defineConfig({
   resolve: {
     alias: [
-      { find: "@earendil-works/pi-tui", replacement: piTui },
+      { find: "@earendil-works/pi-tui", replacement: piTuiSharedWithPiCodingAgent },
       { find: /^@earendil-works\/pi-ai$/u, replacement: piAiExtensionView },
     ],
   },
   test: {
     include: ["packages/*/test/**/*.test.ts"],
-    // Keeps git hook variables away from tests that spawn git; see the file for why.
     setupFiles: ["test-support/isolate-git.ts"],
-    // Native CLI boot tests are CPU-heavy under V8 coverage.
-    // Serialize files on shared CI runners; retain every assertion, timeout and coverage gate.
-    fileParallelism: process.env.CI !== "true",
+    fileParallelism: !SERIALIZE_CPU_HEAVY_NATIVE_CLI_BOOT_FILES_ON_SHARED_CI_RUNNERS,
     maxWorkers: 2,
     coverage: {
       provider: "v8",

@@ -172,6 +172,7 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
       "!bang.json",
       "-option.json",
       ".agents/config.json",
+      "tab\tname.json",
     ]) {
       f.write(name, '{"bad":1}');
       assertFailure(f.run("format-check"));
@@ -182,7 +183,7 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
     assertSuccess(f.run("format-check"));
     f.write("line\nbreak.md", "# Bad\n\nhttp://bare.example\n");
     assertFailure(f.run("markdownlint"));
-    const worktree = resolve(f.root, "linked worktree");
+    const worktree = resolve(f.root, "linked worktree ending in a space ");
     f.git("worktree", "add", "--quiet", "--detach", worktree, "HEAD");
     symlinkSync(resolve(f.root, "node_modules"), resolve(worktree, "node_modules"));
     assertSuccess(f.run("format-check", worktree));
