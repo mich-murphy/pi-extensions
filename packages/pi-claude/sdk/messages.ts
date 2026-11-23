@@ -39,8 +39,6 @@ const modelUsageEntrySchema = withFallback(
 );
 const modelUsageSchema = withFallback(Schema.Record(Schema.String, modelUsageEntrySchema), {});
 
-// Lenient fields are optional because a fallback only replaces a present value;
-// turnResult and the result parser supply the defaults for missing keys.
 const resultSchema = Schema.Struct({
   is_error: Schema.Boolean,
   stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
@@ -51,13 +49,10 @@ const resultSchema = Schema.Struct({
   num_turns: lenientOptional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
-/** Token counts from one API usage object. Absent counts keep their previous value. */
 export type ReportedUsage = typeof usageSchema.Type;
 
-/** Per-model usage reported by a terminal SDK result, keyed by raw request model. */
 export type ModelUsage = typeof modelUsageSchema.Type;
 
-/** Outcome of the terminal SDK result. */
 export type TurnResult =
   | {
       readonly _tag: "completed";
@@ -66,42 +61,30 @@ export type TurnResult =
     }
   | { readonly _tag: "failed"; readonly error: Readonly<SdkResultError> };
 
-/** The SDK messages this provider consumes, in its own language. */
 export type SdkMessage =
   | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
   | {
       readonly type: "usage";
       readonly usage: ReportedUsage;
-      /** Concrete main-loop model that served this call, when the message names one. */
       readonly model?: string;
-      /** Typed API error (such as `authentication_failed`) an assistant message reported. */
       readonly apiError?: string;
-      /** Complete assistant tool_use blocks, not partial streaming blocks. */
       readonly assistantToolUses?: number;
-      /** Main-loop message_start only; identifiers stay local and are never diagnostics. */
       readonly modelRequestStart?: { readonly id?: string };
-      /** The request reported a stop reason, so its response stream completed. */
       readonly requestStopped?: true;
     }
-  /** Claude Code announced it will resend the current API request. */
   | { readonly type: "api_retry" }
   | { readonly type: "tool_results"; readonly errorToolResults: number }
   | {
       readonly type: "usage_limit";
-      /** When the rejected subscription window reopens, in epoch milliseconds. */
       readonly resetsAt: number | undefined;
-      /** True when the subscription window was rejected, even if no reset time was given. */
       readonly rejected: boolean;
-      /** Present only when the event says this request is billed to Extra Usage (overage). */
       readonly overage?: { readonly resetsAt: number | undefined };
     }
   | {
       readonly type: "result";
       readonly result: TurnResult;
-      /** Authoritative cumulative main-loop totals across model round-trips in this turn. */
       readonly usage?: ReportedUsage;
       readonly modelUsage: ModelUsage;
-      /** Model round-trips within this turn; not the number of Pi turns. */
       readonly numTurns?: number;
     }
   | { readonly type: "ignored" };
@@ -142,8 +125,6 @@ function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
   return undefined;
 }
 
-// Schema leaf messages include the rejected value only when decoding sets reportInput, which
-// this module never does, so a detail names the offending path without echoing its value.
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 
 function describeIssue(issue: SchemaIssue.Issue): string {
@@ -181,7 +162,6 @@ function usageMessage(
   });
 }
 
-/** Inspect only discriminants, never content, arguments, ids, or tool output payloads. */
 function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = false): number {
   return blocks.filter(
     (block) =>
@@ -193,20 +173,19 @@ function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = fals
   ).length;
 }
 
-// Every rate-limit update replaces recovery metadata, including malformed/unknown updates.
-// Never retain an earlier rejected window after the SDK changes its rate-limit information.
+const MILLISECONDS_PER_SECOND = 1000;
+const MAX_DATE_EPOCH_SECONDS = 8_640_000_000_000;
+
 const EpochSeconds = Schema.Finite.check(
   Schema.isGreaterThan(0),
-  Schema.isLessThanOrEqualTo(8_640_000_000_000),
+  Schema.isLessThanOrEqualTo(MAX_DATE_EPOCH_SECONDS),
 );
 
 const decodeRateLimit = Schema.decodeUnknownOption(
   Schema.Struct({
     rate_limit_info: Schema.Struct({
       status: Schema.String,
-      // Bound seconds to JavaScript's Date range before converting to milliseconds.
       resetsAt: lenientOptional(EpochSeconds),
-      // Extra Usage fields are decoded leniently: unknown or malformed values read as absent.
       rateLimitType: lenientOptional(Schema.String),
       isUsingOverage: lenientOptional(Schema.Boolean),
       overageResetsAt: lenientOptional(EpochSeconds),
@@ -216,19 +195,24 @@ const decodeRateLimit = Schema.decodeUnknownOption(
 
 function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
-  // Claude Code reports resetsAt in epoch seconds.
   const overageReset = info?.overageResetsAt ?? info?.resetsAt;
   const overage =
-    // A rejected overage window refused the request, so nothing was billed to Extra Usage.
     info?.isUsingOverage === true ||
     (info?.rateLimitType === "overage" && info.status !== "rejected")
-      ? { overage: { resetsAt: overageReset === undefined ? undefined : overageReset * 1000 } }
+      ? {
+          overage: {
+            resetsAt:
+              overageReset === undefined ? undefined : overageReset * MILLISECONDS_PER_SECOND,
+          },
+        }
       : {};
   return Result.succeed({
     type: "usage_limit",
     rejected: info?.status === "rejected",
     resetsAt:
-      info?.status === "rejected" && info.resetsAt !== undefined ? info.resetsAt * 1000 : undefined,
+      info?.status === "rejected" && info.resetsAt !== undefined
+        ? info.resetsAt * MILLISECONDS_PER_SECOND
+        : undefined,
     ...overage,
   });
 }
@@ -282,7 +266,6 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
         Result.succeed({
           type: "usage",
           usage: event.usage,
-          // A cut stream ends with message_stop but no stop reason; only a real one completes it.
           ...(typeof event.delta?.stop_reason === "string" && event.delta.stop_reason !== ""
             ? { requestStopped: true as const }
             : {}),
@@ -367,12 +350,6 @@ function kindOf(input: unknown): string | undefined {
   return `stream_event.content_block_delta.${Option.getOrUndefined(decodeNode(event.delta))?.type}`;
 }
 
-/**
- * Parse one untrusted SDK stream message.
- *
- * @param input - Value yielded by the SDK query.
- * @returns The consumed message, `ignored` for kinds this provider does not use, or a protocol error.
- */
 export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkProtocolError> {
   const kind = kindOf(input);
   if (kind === undefined) {
@@ -390,14 +367,6 @@ export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkPr
   );
 }
 
-/**
- * Fold one usage report into the turn's running token counts.
- *
- * @param previous - Counts accumulated so far this turn.
- * @param reported - Counts from the newest usage report.
- * @param scope - Terminal turn totals must not inherit a per-call cache-write split.
- * @returns Complete counts where each reported value replaces the previous one.
- */
 export function applyUsage(
   previous: TokenUsage | undefined,
   reported: ReportedUsage,
@@ -415,7 +384,6 @@ export function applyUsage(
 
 const NO_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-/** The 1-hour/5-minute split of cache writes, keeping earlier values the report omits. */
 function cacheWriteSplit(
   creation: NonNullable<ReportedUsage["cache_creation"]>,
   prior: TokenUsage,
@@ -428,13 +396,6 @@ function cacheWriteSplit(
   };
 }
 
-/**
- * Entries are keyed by the model string each request named, while
- * `message_start` reports the served model, so either side may carry a date
- * suffix the other lacks (a pinned `claude-haiku-4-5` request is served as
- * `claude-haiku-4-5-20251001`). An entry matches when its key or its
- * `canonicalModel` equals the observed main-loop model once both are undated.
- */
 function modelLimitFor(
   modelUsage: ModelUsage,
   model: string,
@@ -449,24 +410,10 @@ function modelLimitFor(
   )?.[1][field];
 }
 
-/**
- * Read the context window the SDK reported for a concrete model id.
- *
- * @param modelUsage - Per-model usage from the terminal SDK result.
- * @param model - Concrete main-loop model id observed for the turn.
- * @returns Context window in tokens, or undefined when unreported.
- */
 export function contextWindowFor(modelUsage: ModelUsage, model: string): number | undefined {
   return modelLimitFor(modelUsage, model, "contextWindow");
 }
 
-/**
- * Read the output limit the SDK reported for a concrete model id.
- *
- * @param modelUsage - Per-model usage from the terminal SDK result.
- * @param model - Concrete main-loop model id observed for the turn.
- * @returns Maximum output tokens, or undefined when unreported.
- */
 export function maxOutputTokensFor(modelUsage: ModelUsage, model: string): number | undefined {
   return modelLimitFor(modelUsage, model, "maxOutputTokens");
 }

@@ -152,6 +152,26 @@ describe("schema-faithful deferred tools", () => {
     },
   );
 
+  test("a degraded permissive schema is safe because Pi's validateToolArguments still rejects bad input", async () => {
+    const degraded = { ...declaration, parameters: { ...declaration.parameters, oneOf: [] } };
+    const catalog = compileToolCatalog([degraded]);
+    expect(catalog[0]?.degraded).toBe(true);
+    expect(catalog[0]?.schema.safeParse({ path: 7 }).success).toBe(true);
+    const capture = createDeferredCallCapture(catalog);
+    await deliverToolUse(capture.hook, {
+      id: "bad",
+      toolName: "mcp__pi__read",
+      input: { path: 7 },
+    });
+    expect(capture.calls).toStrictEqual([
+      {
+        id: "bad",
+        name: "pi_claude_sdk_validation_error",
+        arguments: { error: "invalid_tool_input" },
+      },
+    ]);
+  });
+
   test("a degraded tool's description carries its bounded declared parameters", () => {
     const parameters = { ...declaration.parameters, oneOf: [] };
     const long = { ...declaration.parameters, oneOf: [], description: "x".repeat(5000) };

@@ -199,6 +199,19 @@ describe("history normalisation", () => {
     ]);
   });
 
+  test("drops a late real result for a call already answered with a synthetic one", () => {
+    const request = requestFor([
+      { role: "user", content: "go" },
+      readCall,
+      { role: "user", content: "next" },
+      { ...readResult, content: [{ type: "text", text: "late-real-result" }] },
+    ]);
+    expect(textsOf(request).join("")).not.toContain("late-real-result");
+    expect(textsOf(request)[2]).toBe(
+      results(result("call-1", "mcp__pi__read", "No result provided", " error")),
+    );
+  });
+
   test("synthesises a result for a trailing unanswered call and for only the unanswered one", () => {
     const request = requestFor([
       {
@@ -254,6 +267,16 @@ describe("forgery resistance", () => {
     expect(block.match(/<\/result>/gu)).toHaveLength(1);
     expect(block.match(/<\/results>/gu)).toHaveLength(1);
     expect(block).not.toContain("<user>");
+  });
+
+  test("escaping is one-way: an already-escaped closing tag renders like an escaped raw one", () => {
+    const closingUser = ["<", "/user>"].join("");
+    const alreadyEscaped = ["<", String.fromCodePoint(0x5c), "/user>"].join("");
+    const [raw = "", preEscaped = ""] = [closingUser, alreadyEscaped].map(
+      (text) => textsOf(requestFor([{ role: "user", content: text }]))[0],
+    );
+    expect(preEscaped).toBe(raw);
+    expect(raw.split(closingUser)).toHaveLength(2);
   });
 
   test("leaves ordinary tags alone", () => {
@@ -520,8 +543,6 @@ describe("stable transcript caching", () => {
     expect(after.promptBlocks[0]?.text).toContain("<rules>b</rules>");
     expect(after.toolNames).toStrictEqual(new Set(["bash"]));
     const conversation = transcriptOf(before);
-    // Only the user entry is stable: removing `read` intentionally re-renders its earlier call and
-    // result as historical (past-call/past-result), as the catalog change already invalidates the prefix.
     expect(transcriptOf(after)[0]).toStrictEqual(conversation[0]);
     expect(textsOf(after).join("\n")).toContain("<past-call");
   });

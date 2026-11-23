@@ -31,7 +31,6 @@ async function* failingRun(): AsyncGenerator<BridgeEvent> {
   throw new Error("adapter defect");
 }
 
-/** Make Pi's stream throw when the writer pushes one terminal event type. */
 function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "error") {
   const push = stream.push.bind(stream);
   return vi.spyOn(stream, "push").mockImplementation((event: AssistantMessageEvent) => {
@@ -42,7 +41,6 @@ function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "
   });
 }
 
-/** How many terminal events (`done` or `error`) the writer tried to push. */
 function terminalPushes(push: ReturnType<typeof breakTerminalPush>): number {
   return push.mock.calls.filter(([event]) => event.type === "done" || event.type === "error")
     .length;
@@ -291,8 +289,6 @@ describe("broken stderr", () => {
       const events = await drain(
         createAgentSdkStream({ model: sonnet, context, options: {}, run }),
       );
-      // Node reports unhandled rejections after microtasks drain; two macrotask turns
-      // deterministically cover that, without a wall-clock wait.
       for (let turn = 0; turn < 2; turn += 1) {
         await new Promise<void>((resolve) => {
           setImmediate(resolve);

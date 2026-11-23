@@ -146,14 +146,12 @@ const initMessage = Schema.Struct({
 const isInitMessage = Schema.is(initMessage);
 let observedClaudeCodeVersion: string | undefined;
 
-/** Remember the version the CLI that actually ran reports in its system/init message. */
 function recordClaudeCodeVersion(message: unknown): void {
   if (isInitMessage(message)) {
     observedClaudeCodeVersion = message.claude_code_version;
   }
 }
 
-/** The Claude Code version the live run executed, as reported by that CLI, not package metadata. */
 function usedClaudeCodeVersion(): string {
   if (observedClaudeCodeVersion === undefined) {
     throw new Error("No system/init message observed; cannot attest the Claude Code version");

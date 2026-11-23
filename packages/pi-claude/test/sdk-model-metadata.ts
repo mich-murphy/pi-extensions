@@ -3,7 +3,6 @@ import { assert, expect } from "vitest";
 import { models, undatedModelId } from "../models";
 import type { SdkModelConfig } from "../models";
 
-/** Assert every advertised selector's resolution and native thinking capabilities. */
 export function assertModelMetadata(
   supportedModels: readonly ModelInfo[],
   advertisedModels: readonly SdkModelConfig[] = models,
@@ -12,8 +11,6 @@ export function assertModelMetadata(
     const direct = supportedModels.find(
       (candidate) => undatedModelId(candidate.value) === entry.sdkModel,
     );
-    // ModelInfo.resolvedModel explicitly supports matching persisted concrete IDs to alias rows.
-    // Never use that fallback for moving selectors: it could hide a selector resolving elsewhere.
     const metadata =
       direct ??
       (undatedModelId(entry.sdkModel) === entry.canonicalModel
@@ -33,7 +30,6 @@ export function assertModelMetadata(
       supportsEffort = false,
       supportedEffortLevels = [],
     } = metadata;
-    // Haiku 4.5 uses manual thinking budgets, not adaptive thinking or native effort.
     const adaptive = entry.canonicalModel !== "claude-haiku-4-5";
     expect(
       { supportsAdaptiveThinking, supportsEffort, supportedEffortLevels },

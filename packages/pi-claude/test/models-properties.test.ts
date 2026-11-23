@@ -8,7 +8,6 @@ import { minimumCacheableTokensFor, undatedModelId } from "../models";
 
 const settings = propertySettings(200);
 
-// Independent oracle: documented minimums per known identifier (ids, aliases, canonical ids).
 const KNOWN: readonly (readonly [string, number])[] = [
   ["claude-5.5-sonnet", 512],
   ["claude-5.5-opus", 512],

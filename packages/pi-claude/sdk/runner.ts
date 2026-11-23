@@ -35,44 +35,27 @@ import { extraUsageAllowed, subscriptionEnvironment } from "./subscription-envir
 import { compileToolCatalog } from "./tool-catalog";
 import type { CatalogTool } from "./tool-catalog";
 
-/** Injectable Claude Agent SDK query function used by the runner and its tests. */
 export type RunSdkQuery = (params: Readonly<Parameters<typeof query>[0]>) => AsyncIterable<unknown>;
 
-/** A model resolution observed from a real turn. */
 export type ModelObservation = {
-  /** Claude Code model selector the request used. */
   readonly selector: string;
-  /** Concrete main-loop model id that served the turn, e.g. "claude-fable-5-1". */
   readonly canonicalModel: string;
-  /** Context window the request actually ran with, when reported. */
   readonly contextWindow: number | undefined;
-  /** Maximum output the SDK reports for this model, when available. */
   readonly maxOutputTokens: number | undefined;
 };
 
-/** Runner collaborators. Each falls back to production behaviour. */
 export type RunnerOptions = {
   readonly runSdkQuery?: RunSdkQuery;
-  /** Claude Code executable to run; defaults to resolving the user's installation. */
   readonly claudeExecutable?: string;
-  /** Opt in only with the reserved validation-error tool and fail-safe guard installed. */
   readonly validationRecovery?: "pi-tool-loop";
-  /** Injectable in-process MCP server factory; defaults to the installed SDK. */
   readonly createMcpServer?: typeof createSdkMcpServer;
   readonly sdkEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly cacheDiagnostics?: CacheDiagnosticTracker | undefined;
-  /** Receives the model usage observed on a terminal SDK result. */
   readonly modelObserver?: (observation: ModelObservation) => void;
-  /**
-   * Receives the reset time when a turn fails on a subscription usage limit that reported one.
-   * A throw or rejection is ignored: notifying listeners never changes the turn's outcome.
-   */
   readonly usageLimitObserver?: (limit: UsageLimitObservation) => void | Promise<void>;
 };
 
-/** A subscription usage limit that ended a turn. */
 export type UsageLimitObservation = {
-  /** When the rejected window reopens, in epoch milliseconds. */
   readonly resetsAt: number;
 };
 
@@ -103,7 +86,6 @@ type QueryWiring = {
   readonly catalog: readonly CatalogTool[];
 };
 
-/** Local contract failures outrank SDK cancellation caused by our own abort. */
 type QueryCapture = {
   readonly deferred: DeferredCallCapture;
   readonly fallbackCalls: number;
@@ -154,9 +136,11 @@ function createQueryCapture(
 const thinkingBudgets = { minimal: 1024, low: 2048, medium: 8192, high: 16_384 } as const;
 
 const SESSION_TITLE = "Pi Coding Agent turn";
-// Pi owns the outer loop, but SDK validation errors can retry before our hook runs.
-// One is unsafe for clean deferral; this is a last-resort bound, not a normal turn budget.
-const MAX_SDK_TURNS_PER_QUERY = 8;
+const LAST_RESORT_SDK_TURNS_AGAINST_VALIDATION_RETRIES = 8;
+
+function usesManualThinkingBudget(model: Model<Api>): boolean {
+  return undatedModelId(sdkModelSelectorFor(model.id)) === "claude-haiku-4-5";
+}
 
 function reasoningOptions({
   model,
@@ -166,9 +150,7 @@ function reasoningOptions({
     return {};
   }
   const reasoning = options?.reasoning;
-  // Haiku 4.5 supports manual thinking, not effort. Recognize custom models using
-  // its canonical/snapshot selector too, not only our Pi-facing versioned ID.
-  if (undatedModelId(sdkModelSelectorFor(model.id)) === "claude-haiku-4-5") {
+  if (usesManualThinkingBudget(model)) {
     if (!reasoning) {
       return { thinking: { type: "disabled" } };
     }
@@ -186,10 +168,6 @@ function reasoningOptions({
   return reasoning ? { effort: reasoning === "minimal" ? "low" : reasoning } : {};
 }
 
-/**
- * Claude Code retries before output starts are invisible to Pi, and a retry inside Pi's own
- * retry loop multiplies with it. Default to none; Pi's `retry.provider.maxRetries` opts in.
- */
 function claudeCodeRetries(requested: number | undefined): number {
   return requested !== undefined && Number.isFinite(requested) && requested >= 0
     ? Math.floor(requested)
@@ -235,40 +213,29 @@ function queryParameters(
     options: {
       abortController,
       cwd,
-      // Always the user's installed Claude Code, never the SDK's bundled binary.
       pathToClaudeCodeExecutable: executable,
-      // Pi owns every tool; anything outside mcp__pi__* is denied instead of prompting.
       permissionMode: "dontAsk",
       allowedTools: ["mcp__pi__*"],
-      // No slash-command/@file expansion or context injection into the replayed transcript.
       verbatimPrompts: true,
       model: sdkModelSelectorFor(model.id),
       ...reasoningOptions(turn),
       includePartialMessages: true,
       persistSession: false,
-      maxTurns: MAX_SDK_TURNS_PER_QUERY,
-      // A fixed title skips Claude Code's per-query session-titling request, which would
-      // otherwise resend the whole transcript uncached on every stateless Pi turn.
+      maxTurns: LAST_RESORT_SDK_TURNS_AGAINST_VALIDATION_RETRIES,
       title: SESSION_TITLE,
       systemPrompt: request.systemPrompt,
-      // Never load user/project settings, CLAUDE.md or hooks from disk.
       settingSources: [],
-      // Pi owns every tool; the SDK gets none of its built-ins.
       tools: [],
-      // Ignore .mcp.json, user settings, plugin and agent-frontmatter MCP servers.
       strictMcpConfig: true,
-      // Omitting skills is not "skills off"; an empty list disables them.
       skills: [],
       mcpServers: { pi: server },
       env: {
         ...env,
-        // Pi owns retries: Claude Code may retry only as often as Pi's provider retry setting.
         CLAUDE_CODE_MAX_RETRIES: String(claudeCodeRetries(streamOptions?.maxRetries)),
         ...(maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1
           ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxTokens)) }
           : {}),
       },
-      // Fail closed if a hook throws or returns invalid output.
       hooks: {
         PreToolUse: [{ hooks: [hook], onFailure: "block" }],
         PostToolBatch: [{ hooks: [batchHook], onFailure: "block" }],
@@ -277,7 +244,6 @@ function queryParameters(
   };
 }
 
-/** Attach the query's API error to a failed result, resolving rate_limit against the window. */
 function failedResultEvent(
   error: SdkResultError,
   apiError: string | undefined,
@@ -286,7 +252,6 @@ function failedResultEvent(
   if (apiError === undefined) {
     return failed(error);
   }
-  // A rate_limit API error is subscription exhaustion only when a rejected window was seen.
   const exhausted = rejectedWindow && apiError === "rate_limit" && error.category === "provider";
   const category = exhausted ? "usage-limit" : error.category;
   return failed(new SdkResultError({ terminalReason: error.terminalReason, category, apiError }));
@@ -340,13 +305,11 @@ type QueryProgress = {
   readonly modelRequestIds: ReadonlySet<string>;
   readonly errorToolResults: number;
   readonly maxAssistantToolUses: number;
-  /** A main-loop request has started and has not yet reported a stop reason. */
   readonly requestOpen: boolean;
 };
 
 type QueryOutcome = Result.Result<QueryProgress, SdkRunError>;
 
-/** Request ids stay query-local; raw numTurns can also count tool-result messages. */
 type RequestStart = Extract<SdkMessage, { type: "usage" }>["modelRequestStart"];
 
 function startsNewRequest(progress: QueryProgress, start: RequestStart): boolean {
@@ -374,7 +337,6 @@ function advanceUsage(
   message: Extract<SdkMessage, { type: "usage" }>,
 ): Advanced {
   const usage = applyUsage(progress.usage, message.usage);
-  // Authentication must not be hidden by an earlier transient rate-limit error.
   const apiError =
     effectiveResultCategory("provider", message.apiError) === "authentication"
       ? message.apiError
@@ -470,12 +432,6 @@ const initialProgress = (): QueryProgress => ({
   requestOpen: false,
 });
 
-/**
- * The commit point: once a request's output has reached Pi, Claude Code must not resend it.
- * A cut attempt ends without a stop reason, so a retry notice or a new request while one is
- * still open means the stream broke. Pi then discards the partial output and retries the turn.
- * A new request after a completed one (an output-limit resume) is not an interruption.
- */
 function interruption(
   progress: QueryProgress,
   message: SdkMessage,
@@ -509,16 +465,10 @@ function settle(
   return ended(Result.succeed(progress), progress);
 }
 
-/**
- * One item read from the SDK: a raw message, the failure that ended iteration, or the end of the
- * SDK's stream. The end is an explicit item rather than mapAccum's onHalt, because onHalt also
- * runs on defects and would report them as a missing result.
- */
 type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted" };
 
 const HALTED: QueryItem = { _tag: "Halted" };
 
-/** A message that must end the query before it is applied: unapproved overage or a resend. */
 function stopBeforeAdvance(
   progress: QueryProgress,
   message: SdkMessage,
@@ -560,24 +510,14 @@ function step(
     }
     const stopped = stopBeforeAdvance(progress, parsed.success, extraUsage);
     if (stopped !== undefined) {
-      // Ending the step closes the SDK stream, which aborts the query before another response.
       return [progress, [ended(Result.fail(stopped), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
     const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
-    // The prompt is a single message, so its result ends the turn. Stopping
-    // here keeps the turn from depending on the SDK closing its stream.
     return [next, next.result ? [...steps, settle(capture, next, callerSignal)] : steps];
   };
 }
 
-/**
- * Closing the stream calls the query's `return()`. Aborting first lets a pending `next()` settle
- * instead of queueing `return()` behind it. A rejection while closing is dropped: by then the
- * turn's outcome is decided or no longer read, and real iteration failures come from `next()`.
- * The SDK iterator is opened on the first `next()`, so a throwing iterator factory becomes an
- * iteration failure rather than a defect.
- */
 function abortOnClose(
   messages: AsyncIterable<unknown>,
   abortController: AbortController,
@@ -710,10 +650,6 @@ function conclude(
   return checkedTerminal;
 }
 
-/**
- * An untyped API error after the response started (a mid-stream error event or an idle stream)
- * is a broken stream. A failed result releases no tool calls, so Pi can retry the whole turn.
- */
 function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {
   return terminal.type === "failed" &&
     progress.modelRequests > 0 &&
@@ -735,17 +671,12 @@ function reportUsageLimit(
     terminal.error._tag === "SdkResultError" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
   ) {
-    // Recovery notifications are best effort: a subscriber must not replace the actual failure
-    // or prevent query cleanup. Observe async rejections too, without delaying the terminal event.
-    try {
+    Result.try(() => {
       void Promise.resolve(observer?.({ resetsAt })).catch(() => undefined);
-    } catch {
-      // Do not expose observer exceptions or payloads in provider diagnostics.
-    }
+    });
   }
 }
 
-/** A deleted worktree makes spawn reject with ENOENT even when Claude Code exists. */
 function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
   return Result.try({
     try: () => {
@@ -804,8 +735,6 @@ const runTurn = Effect.fnUntraced(function* (
   if (Result.isFailure(compiled)) {
     return Stream.succeed(failed(compiled.failure));
   }
-  // Resolve once and fail closed: choosing another checkout would change tool semantics.
-  // process.cwd() can throw, or return Node's cached path after that path was deleted.
   const directory = queryWorkingDirectory();
   if (Result.isFailure(directory)) {
     return Stream.succeed(failed(directory.failure));
@@ -881,7 +810,6 @@ const runTurn = Effect.fnUntraced(function* (
   );
 });
 
-/** Create a stateless Claude Agent SDK runner. */
 export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSdkRun {
   const collaborators: Collaborators = {
     runSdkQuery: query,
@@ -890,7 +818,6 @@ export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSd
     ...options,
   };
   return (request, model, streamOptions) =>
-    // Pi consumes a plain AsyncIterable; ending it early runs the stream's finalizers first.
     Stream.toAsyncIterable(
       Stream.unwrap(runTurn(collaborators, { request, model, options: streamOptions })),
     );

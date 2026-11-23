@@ -45,7 +45,6 @@ function inspect(expected: string, installed: string) {
   );
 }
 
-// Oracle: lexicographic tuple order, decided at the first differing component.
 function lexicographicallyGreater(left: Triple, right: Triple): boolean {
   for (const [index, part] of left.entries()) {
     const other = right[index] ?? 0;

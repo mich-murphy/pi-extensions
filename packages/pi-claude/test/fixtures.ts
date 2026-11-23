@@ -19,12 +19,6 @@ import { Type } from "typebox";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
 
-/**
- * Collect every value of an async iterable.
- *
- * @param iterable - Stream under test.
- * @returns All yielded values in order.
- */
 export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const items: T[] = [];
   for await (const item of iterable) {
@@ -33,15 +27,6 @@ export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   return items;
 }
 
-/**
- * Build the provider-facing context for a prompt, tools, and messages.
- *
- * Normalization is Pi's own, so the fixture folds the prompt and tools into a
- * leading system message exactly as a real turn does.
- *
- * @param input - Prompt and message fields varied by the test.
- * @returns The fixture as a normalized provider context.
- */
 export function contextFixture(input: {
   readonly systemPrompt?: string;
   readonly messages: readonly MessageFixture[];
@@ -50,7 +35,6 @@ export function contextFixture(input: {
   return normalizeContext({ ...input, messages: input.messages.map(messageFixture) });
 }
 
-/** Message fields varied by tests; constructors supply Pi's bookkeeping fields. */
 export type MessageFixture =
   | (Omit<UserMessage, "timestamp"> & { readonly timestamp?: number })
   | (Omit<SystemMessage, "timestamp"> & { readonly timestamp?: number })
@@ -80,36 +64,16 @@ function messageFixture(input: MessageFixture): Message {
   return { timestamp: 0, ...input };
 }
 
-/**
- * Build a provider-facing context from transcript messages verbatim.
- *
- * Use this for transcripts whose system messages are the subject of the test,
- * such as a mid-conversation prompt or tool change; {@link contextFixture}
- * covers the ordinary case.
- *
- * @param messages - Message fields, including system messages, to complete and normalize.
- * @returns The messages as a normalized provider context.
- */
 export function transcriptFixture(messages: readonly MessageFixture[]): TranscriptContext {
   return contextFixture({ messages });
 }
 
-/** Fields a test varies on an otherwise complete Claude SDK model. */
 export type ModelFixtureFields = {
-  /** Pi-facing model ID. */
   readonly id: string;
-  /** Whether the model accepts effort-based reasoning. */
   readonly reasoning?: boolean;
-  /** Pi thinking levels the model maps; omitted when it uses Pi's defaults. */
   readonly thinkingLevelMap?: Model<"claude">["thinkingLevelMap"] | undefined;
 };
 
-/**
- * Build a complete Claude SDK model with subscription pricing.
- *
- * @param fields - The model ID and, when it matters, its reasoning support and thinking levels.
- * @returns The Claude SDK model.
- */
 export function modelFixture({
   id,
   reasoning = false,
@@ -130,36 +94,16 @@ export function modelFixture({
   };
 }
 
-/** The registered Sonnet model with subscription pricing, as most tests need it. */
 export const sonnet = modelFixture({ id: "claude-5.5-sonnet" });
 
-/**
- * Build a promise that never settles, standing in for an SDK call that hangs.
- *
- * @template T - Value type the hanging call would have produced.
- * @returns A promise that neither resolves nor rejects.
- */
 export async function unsettled<T>(): Promise<T> {
   return Promise.withResolvers<T>().promise;
 }
 
-/**
- * Build a prompt block.
- *
- * @param text - Block text.
- * @param images - Images expanded after the text.
- * @returns The prompt block.
- */
 export function textBlock(text: string, images: readonly ImageAttachment[] = []): PromptBlock {
   return { text, images };
 }
 
-/**
- * Build a runner request, overriding only what a test cares about.
- *
- * @param overrides - Fields that differ from the single-block default request.
- * @returns A complete agent request.
- */
 export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequest {
   return {
     systemPrompt: "stable system prompt",
@@ -176,23 +120,12 @@ export function requestFixture(overrides: Partial<AgentRequest> = {}): AgentRequ
   };
 }
 
-/** One tool use the model requested, as the SDK reports it to a `PreToolUse` hook. */
 export type ToolUse = {
-  /** SDK tool-use identifier. */
   readonly id: string;
-  /** Selected-tool parameters, or a test target with name and arguments. */
   readonly input: unknown;
-  /** Explicit SDK tool name; otherwise derived from the test target. */
   readonly toolName?: string;
 };
 
-/**
- * Deliver one `PreToolUse` event to a hook the way the SDK does.
- *
- * @param hook - Hook under test.
- * @param toolUse - The tool use to report.
- * @returns The hook's permission output.
- */
 export async function deliverToolUse(
   hook: HookCallback,
   { id, input, toolName }: ToolUse,
@@ -217,12 +150,6 @@ export async function deliverToolUse(
   return hook(hookInput, id, { signal: new AbortController().signal });
 }
 
-/**
- * Deliver tool uses to a hook one at a time, in order.
- *
- * @param hook - Hook under test.
- * @param toolUses - Tool uses in arrival order.
- */
 export async function deliverToolUses(
   hook: HookCallback,
   toolUses: readonly ToolUse[],
@@ -232,12 +159,6 @@ export async function deliverToolUses(
   }
 }
 
-/**
- * Read the `PreToolUse` hook the runner installed on an SDK query.
- *
- * @param params - Parameters captured from the fake SDK query.
- * @returns The installed hook.
- */
 export function installedHook(params: Parameters<RunSdkQuery>[0]): HookCallback {
   const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
   if (!hook) {
@@ -246,44 +167,20 @@ export function installedHook(params: Parameters<RunSdkQuery>[0]): HookCallback 
   return hook;
 }
 
-/**
- * Build a terminal SDK result message.
- *
- * @param fields - Fields that differ from a clean `end_turn` result.
- * @returns The SDK result message.
- */
 export function resultMessage(
   fields: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return { type: "result", is_error: false, stop_reason: "end_turn", ...fields };
 }
 
-/**
- * Build an SDK partial-message stream event.
- *
- * @param event - Anthropic stream event payload.
- * @returns The SDK stream message.
- */
 export function streamEvent(event: Readonly<Record<string, unknown>>): Record<string, unknown> {
   return { type: "stream_event", event };
 }
 
-/**
- * Build the SDK stream message for one text delta.
- *
- * @param text - Delta text.
- * @returns The SDK stream message.
- */
 export function textDelta(text: string): Record<string, unknown> {
   return streamEvent({ type: "content_block_delta", delta: { type: "text_delta", text } });
 }
 
-/**
- * Narrow the SDK query prompt to the streaming-input mode configured by the runner.
- *
- * @param prompt - Prompt captured from SDK query parameters.
- * @returns The streaming SDK user-message input.
- */
 export function sdkPromptFixture(
   prompt: Parameters<RunSdkQuery>[0]["prompt"],
 ): AsyncIterable<SDKUserMessage> {
@@ -293,12 +190,6 @@ export function sdkPromptFixture(
   return prompt;
 }
 
-/**
- * Expose SDK content blocks as records for metadata-only assertions.
- *
- * @param message - SDK user message built by the prompt adapter.
- * @returns Content blocks as unknown-valued records.
- */
 export function sdkContentRecords(message: SDKUserMessage | undefined): Record<string, unknown>[] {
   const content = message?.message.content;
   if (!Array.isArray(content)) {

@@ -13,6 +13,8 @@ import type {
   ContextEventResult,
 } from "@earendil-works/pi-coding-agent";
 import { Effect, Layer } from "effect";
+import { USAGE_LIMIT_CHANNEL } from "../shared/usage-limit";
+import type { UsageLimitNotice } from "../shared/usage-limit";
 import { createAgentSdkStream } from "./bridge";
 import type { AgentSdkRun } from "./bridge";
 import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "./cache-diagnostics";
@@ -35,7 +37,6 @@ import {
   VALIDATION_ERROR_TOOL,
 } from "./validation-recovery";
 
-/** Event data consumed by the provider's safety hooks. */
 export type ClaudeEvents = {
   readonly before_agent_start: {
     readonly systemPromptOptions: { readonly sections: Record<string, string> };
@@ -47,7 +48,6 @@ export type ClaudeEvents = {
   readonly session_shutdown: unknown;
 };
 
-/** Hook callbacks registered by this provider. */
 export type ClaudeHandlers = {
   [K in keyof ClaudeEvents]: (
     event: ClaudeEvents[K],
@@ -65,26 +65,6 @@ export type ClaudeHandlers = {
   }[K];
 };
 
-/**
- * Event-bus channel announcing a usage limit with a known reset, for recovery extensions such as
- * pi-retry. The payload is {@link UsageLimitNotice}.
- */
-export const USAGE_LIMIT_CHANNEL = "usage-limit";
-
-/** Payload published on {@link USAGE_LIMIT_CHANNEL} before the failed turn ends. */
-type UsageLimitNotice = {
-  /** Pi provider whose request hit the limit. */
-  readonly provider: "claude";
-  /** When the limit resets, in epoch milliseconds. */
-  readonly resetsAt: number;
-};
-
-/**
- * Publish each observed usage limit on Pi's event bus.
- *
- * @param events - Pi's inter-extension event bus.
- * @returns A runner observer that emits a {@link UsageLimitNotice}.
- */
 export function usageLimitPublisher(
   events: Pick<ExtensionAPI["events"], "emit">,
 ): (limit: UsageLimitObservation) => void {
@@ -94,7 +74,6 @@ export function usageLimitPublisher(
   };
 }
 
-/** Pi registration capabilities consumed by the provider. */
 export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand" | "registerTool"> & {
   readonly events: Pick<ExtensionAPI["events"], "emit">;
   readonly registerProvider: (name: string, config: ProviderConfig) => void;
@@ -161,8 +140,6 @@ function registerClaudeCommand(
 }
 
 function registerSafetyHooks(pi: ClaudeRegistration): void {
-  // A section, not a returned systemPrompt: returning one replaces the whole prompt and drops
-  // the sections other extensions set in the same event.
   pi.on("before_agent_start", (event) => {
     event.systemPromptOptions.sections["bash-output-safety"] =
       "Bash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.";
@@ -228,7 +205,6 @@ function registerProvider(pi: ClaudeRegistration, runClaudeAgentSdk: AgentSdkRun
   });
 }
 
-/** Register the Claude Agent SDK provider and bash-output safety hooks. */
 export default function registerClaudeProvider(pi: ClaudeRegistration): void {
   pi.registerTool(validationRecoveryTool);
   const observedModels = new Map<string, string>();

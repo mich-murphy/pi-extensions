@@ -54,9 +54,10 @@ function rejectionToolName(path: string): string {
   return path === "unhooked-valid" ? "dangerous" : "read";
 }
 
-async function* rejectedTurn(params: Parameters<RunSdkQuery>[0], path: string): AsyncGenerator {
-  // Deterministic SDK boundary simulation, NOT evidence of the real CLI's
-  // malformed-JSON path. Public PostToolBatch supplies tool_input: unknown.
+async function* simulatedSdkRejectionNotRealCliPath(
+  params: Parameters<RunSdkQuery>[0],
+  path: string,
+): AsyncGenerator {
   let input: unknown = {};
   if (path === "pre-hook-validation") {
     input = "unparseable input";
@@ -109,7 +110,6 @@ async function* rejectedTurn(params: Parameters<RunSdkQuery>[0], path: string): 
   }
   const stopped = await postBatch(params, input, "bad", rejectionToolName(path));
   expect(stopped).toMatchObject({ continue: false });
-  // A cooperative SDK must stop here rather than perform another model round.
   yield resultMessage({
     terminal_reason: "hook_stopped",
     stop_reason: "tool_use",
@@ -120,7 +120,6 @@ async function* rejectedTurn(params: Parameters<RunSdkQuery>[0], path: string): 
 
 type BatchStopEnding = "failed-result" | "missing-result" | "rejection";
 
-/** How the SDK ends after the host stopped the batch: an error result, nothing, or a throw. */
 async function* afterBatchStop(
   ending: BatchStopEnding,
 ): AsyncGenerator<ReturnType<typeof resultMessage>> {
@@ -147,7 +146,6 @@ const REJECTION_KIND: Readonly<Record<RecoveryPath, string>> = {
   "unhooked-valid": "uncaptured_tool_batch",
 };
 
-/** Real `read` executions: the corrected call, plus the unhooked sibling on that path. */
 const READ_EXECUTIONS: Readonly<Record<RecoveryPath, number>> = {
   "missing-arguments": 1,
   "pre-hook-validation": 1,
@@ -185,7 +183,6 @@ function rejectionText(rejectionKind: string, inactive: boolean): string {
     : validationRecoveryReason({ error: rejectionKind });
 }
 
-/** Drive Pi's real outer loop and SessionManager through a rejected call and its correction. */
 async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
   const dir = await mkdtemp(join(tmpdir(), "pi-sdk-offline-recovery-"));
   try {
@@ -212,7 +209,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
           },
         });
         if (queries === 1) {
-          yield* rejectedTurn(params, path);
+          yield* simulatedSdkRejectionNotRealCliPath(params, path);
         } else if (queries === 2) {
           await deliverToolUse(installedHook(params), {
             id: "corrected",
@@ -249,7 +246,6 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
         },
       },
       {
-        // Even a late/colliding executable using the reserved name cannot run.
         name: VALIDATION_ERROR_TOOL,
         label: "Collision",
         description: "Must never execute",

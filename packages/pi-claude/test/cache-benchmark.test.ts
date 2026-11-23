@@ -11,7 +11,6 @@ import type { MessageFixture } from "./fixtures";
 const MINUTE_MS = 60_000;
 const TURN_GAP_MS = 30_000;
 
-/** About 6k tokens of deterministic Pi working instructions. */
 const SYSTEM_PROMPT = Array.from(
   { length: 240 },
   (_, index) =>
@@ -24,13 +23,10 @@ const readTool = {
   parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
 };
 
-/** One request: the messages appended before it is sent, and the assistant reply after it. */
 type Step = {
   readonly input: readonly MessageFixture[];
   readonly reply: MessageFixture;
-  /** Milliseconds since the previous request. */
   readonly gapMs?: number;
-  /** Start from an empty history (compaction, a new session) instead of appending. */
   readonly reset?: boolean;
 };
 
@@ -115,7 +111,6 @@ function requestsFor(steps: readonly Step[]) {
   });
 }
 
-/** Send every step's request through one shared cache, as one Pi process would. */
 async function simulate(steps: readonly Step[], retention?: CacheRetention): Promise<Run[]> {
   let now = 0;
   const simulator = createCacheSimulator(() => now);
@@ -151,14 +146,12 @@ function aggregateShare(runs: readonly Run[]): number {
   });
 }
 
-/** Tokens of the tools, system prompt and preamble block every session shares. */
 function preambleTokens({ request }: Run): number {
   return [request.toolDescription, request.systemPrompt, request.promptBlocks[0]?.text ?? ""]
     .map((text) => estimateTextTokens(text))
     .reduce((total, tokens) => total + tokens, 0);
 }
 
-/** Tokens of the transcript entries a request appended to the previous one. */
 function appendedTokens(previous: Run, current: Run): number {
   return current.request.promptBlocks
     .slice(previous.request.promptBlocks.length - 1, -1)
@@ -225,7 +218,6 @@ describe("synthetic prompt-cache benchmark", () => {
     "%s mid-session rewrites the prefix once, then every later turn reads at least 90%",
     async (_name, scenario) => {
       const runs = await scenario();
-      // The preamble and catalog reflect Pi's current state, so the change turn is a full write.
       expect(Math.min(...shares(runs).slice(1, 4))).toBeGreaterThanOrEqual(0.9);
       expect(usageAt(runs, 4).read).toBe(0);
       expect(usageAt(runs, 4).write).toBeGreaterThan(0);
@@ -299,7 +291,6 @@ function clockedSimulator() {
   return { clock, simulator: createCacheSimulator(() => clock.now) };
 }
 
-/** Send one request at each minute mark, returning the tokens each read. */
 async function readsAt(
   clock: { now: number },
   simulator: ReturnType<typeof createCacheSimulator>,

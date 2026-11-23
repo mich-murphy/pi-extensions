@@ -5,17 +5,8 @@ import type { CacheDiagnosticTracker } from "./cache-tracker";
 import { writeRedirectedDiagnostic } from "./diagnostic-output";
 import { claudeVariable } from "./environment-variables";
 
-/** Where opt-in cache diagnostics go: redirected stderr, an append-only JSONL file, or nowhere. */
 export type CacheDiagnosticsMode = "enabled" | "disabled" | { readonly file: string };
 
-/**
- * Parse the cache diagnostics switches from the startup environment.
- *
- * @param environment - Startup environment, read only at the composition root.
- * @returns A file destination when `PI_CLAUDE_CACHE_DIAGNOSTICS_FILE` is set, `enabled`
- *   when `PI_CLAUDE_CACHE_DIAGNOSTICS` is exactly `1`, otherwise `disabled`. Legacy
- *   `PI_CLAUDE_SDK_` names are read when the current ones are unset.
- */
 export function parseCacheDiagnosticsMode(
   environment: Readonly<Record<string, string | undefined>>,
 ): CacheDiagnosticsMode {
@@ -32,16 +23,10 @@ function appendDiagnostic(file: string, line: string): void {
   try {
     appendFileSync(file, line, { mode: 0o600 });
   } catch {
-    // Diagnostics are best effort: an unwritable file must never fail a turn.
+    return undefined;
   }
 }
 
-/**
- * Build the opt-in cache tracker, timed by the `Clock` in scope.
- *
- * @param mode - Parsed diagnostics destination.
- * @returns A tracker writing to its destination, or undefined when diagnostics are disabled.
- */
 export const cacheDiagnosticsTracker = Effect.fnUntraced(function* (
   mode: CacheDiagnosticsMode,
 ): Effect.fn.Return<CacheDiagnosticTracker | undefined> {

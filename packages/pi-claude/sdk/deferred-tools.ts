@@ -17,7 +17,6 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
 
 const MAX_PARAMETERS_CHARS = 4000;
 
-/** A degraded tool keeps a permissive schema, so the model still needs its declared parameters. */
 function parametersLine(parameters: unknown): string {
   const json = JSON.stringify(parameters) ?? "{}";
   const bounded =
@@ -43,10 +42,6 @@ export function createDeferredPiTools(catalog: readonly CatalogTool[], onFallbac
   }));
 }
 
-/** One turn's tool handoff. Rejections target the reserved Pi-owned error tool.
- * Its guard/throw path persists an isError result and continues Pi's outer loop.
- * No invalid input is ever replaced by executable arguments for a real tool.
- */
 export type DeferredCallCapture = {
   readonly hook: HookCallback;
   readonly batchHook: HookCallback;
@@ -59,12 +54,6 @@ export type DeferredCallCapture = {
   readonly sdkRejectedCalls: number;
 };
 
-/** Capture valid and invalid calls without asking the SDK model to recover.
- * PostToolBatch is the official boundary after *all* tools resolve and before
- * the next model request, including validation failures that skip PreToolUse.
- * Its continue:false output stops the SDK loop; only a clean terminal result
- * can authorize the handoff. Tool-result prose is never inspected.
- */
 export function createDeferredCallCapture(catalog: readonly CatalogTool[]): DeferredCallCapture {
   const calls = new Map<string, DeferredCall>();
   let invalidCalls = 0;
@@ -130,9 +119,6 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     if (input.hook_event_name !== "PostToolBatch") {
       return {};
     }
-    // Keep PreToolUse arrival order and append uncaptured entries in batch order.
-    // A batch entry is evidence of resolution, NEVER permission deferral: even
-    // structurally valid input must not become an executable real call here.
     for (const call of input.tool_calls) {
       capture(call.tool_use_id, call.tool_name, call.tool_input, false);
     }

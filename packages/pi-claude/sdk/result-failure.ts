@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 
-/** Bounded result categories; free-form SDK errors/result text is never retained. */
 export const ResultFailureCategory = Schema.Literals([
   "provider",
   "authentication",
@@ -82,19 +81,16 @@ const SUBTYPE_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type>
   ["error_max_structured_output_retries", "output-limit"],
 ]);
 
-/** Keep known vocabulary and mark unknown reasons without echoing their value. */
 export function safeTerminalReason(reason: string): string;
 export function safeTerminalReason(reason: string | undefined): string | undefined;
 export function safeTerminalReason(reason: string | undefined): string | undefined {
   return reason === undefined || TERMINAL_REASONS.has(reason) ? reason : "unrecognized";
 }
 
-/** Retain only typed API error vocabulary. */
 export function safeApiError(error: string | undefined): string | undefined {
   return error !== undefined && API_CATEGORIES.has(error) ? error : undefined;
 }
 
-/** Classify only structured terminal fields, never errors/result text. */
 export function resultFailureCategory(
   reason: string | undefined,
   subtype: string | undefined,
@@ -104,7 +100,6 @@ export function resultFailureCategory(
   );
 }
 
-/** Authentication wins; otherwise an explicit terminal category outranks earlier API errors. */
 export function effectiveResultCategory(
   category: typeof ResultFailureCategory.Type,
   apiError: string | undefined,
@@ -116,7 +111,6 @@ export function effectiveResultCategory(
   return category;
 }
 
-/** Synthetic actionable summary with no upstream free-form text. */
 export function resultFailureMessage(category: typeof ResultFailureCategory.Type): string {
   return MESSAGES[category];
 }

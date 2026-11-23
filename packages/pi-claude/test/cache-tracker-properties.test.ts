@@ -21,7 +21,6 @@ import type {
 
 const settings = propertySettings(200);
 const MODELS = ["claude/sonnet", "claude/claude-haiku-4-5", "other"] as const;
-/** Documented minimums per model, written out independently of `models.ts` lookups. */
 const MINIMUMS: Readonly<Record<string, number | undefined>> = {
   "claude/sonnet": 512,
   "claude/claude-haiku-4-5": 4096,
@@ -55,7 +54,6 @@ type Machine = {
   readonly pending: Pending[];
 };
 
-/** The tracker only reads the time, so a clock the machine moves by hand is enough and stays synchronous. */
 type ManualClock = { time: number };
 
 function manualClockService(state: ManualClock): Clock.Clock {
@@ -77,7 +75,6 @@ function createMachine(): Machine {
   const tracker = Effect.runSync(
     createCacheDiagnosticTracker((event) => {
       events.push(event);
-      // A failing destination must never propagate out of the tracker.
       throw new Error("sink failure");
     }).pipe(Effect.provideService(Clock.Clock, manualClockService(clock))),
   );
@@ -137,7 +134,6 @@ function sameBlock(left: PromptBlock | undefined, right: PromptBlock | undefined
   );
 }
 
-/** Independent common prefix: direct block comparison, bounded by both lengths. */
 function commonPrefix(previous: Req | undefined, blocks: readonly PromptBlock[]): number {
   let count = 0;
   while (count < blocks.length && sameBlock(blocks[count], previous?.blocks[count])) {
@@ -232,7 +228,6 @@ function submit(machine: Machine, req: Req): void {
 
 const recorders = new Map<number, ReturnType<CacheDiagnosticTracker>>();
 
-/** Table oracle for the likely cause; undefined means "appended, fresh, nothing to blame". */
 function expectedCauses(
   pending: Pending,
   usage: TokenUsage,
@@ -265,7 +260,6 @@ function checkUsage(usage: TokenUsage, pending: Pending, event: CacheUsageDiagno
   assert.equal(event.promptTokens, prompt);
   assert.ok(event.cacheReadPercent >= 0 && event.cacheReadPercent <= 100);
   assert.equal(event.minimumCacheableTokens, MINIMUMS[pending.model]);
-  // Zero prompt tokens means share 0, which counts as a low read.
   const low = prompt === 0 || usage.cacheRead * 2 < prompt;
   if (prompt === 0) {
     assert.equal(event.cacheReadPercent, 0);
@@ -293,7 +287,6 @@ function drawTokens(tc: TestCase, name: string): number {
   return tc.draw(
     gs.oneOf(
       gs.just(0),
-      // Boundary values around the possibleCollapse threshold of 20k prompt tokens.
       gs.sampledFrom([19_999, 20_000, 20_001, 10_000, 5000]),
       gs.integers({ minValue: 0, maxValue: 1000 }),
       gs.integers({ minValue: 0, maxValue: 2_000_000 }),
@@ -302,11 +295,6 @@ function drawTokens(tc: TestCase, name: string): number {
   );
 }
 
-/**
- * Rules never reject. Hegel enables a random subset of rules per case, and a rule gated by `assume`
- * on earlier state was rejected about 96% of the time, so most of the time went to rejected steps. A rule
- * that needs a request or a pending usage report makes one first, which keeps every state reachable.
- */
 function drawRequest(tc: TestCase): Req {
   return { ...drawSettings(tc), blocks: drawBlocks(tc) };
 }
@@ -357,9 +345,7 @@ const machineSpec: stateful.StateMachine<Machine> = {
       if (machine.pending.length === 0) {
         submit(machine, drawRequest(tc));
       }
-      // Any pending recorder, in any order: each keeps its own turn and model.
       const index = tc.draw(gs.integers({ minValue: 0, maxValue: machine.pending.length - 1 }));
-      // Half the reports sit exactly around the 20k collapse threshold (all tokens uncached).
       const boundary = tc.draw(gs.booleans(), "boundary");
       report(
         machine,
@@ -383,8 +369,6 @@ const machineSpec: stateful.StateMachine<Machine> = {
 };
 
 describe("cache tracker properties", () => {
-  // About 0.8s alone and up to 5.0s with the CPU saturated: the timeout is ten times the latter and
-  // grows with HEGEL_TEST_CASES.
   test(
     "request and usage diagnostics follow an independent model across any call sequence",
     () => {

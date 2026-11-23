@@ -18,19 +18,15 @@ import type { SdkRunError, SdkTurnFailure } from "./sdk/errors";
 import { formatSdkRunError, writeSdkFailureDiagnostic } from "./sdk/failure-diagnostics";
 import { VALIDATION_ERROR_TOOL } from "./validation-recovery";
 
-/** Complete token counts for the latest model call of a turn. */
 export type TokenUsage = {
   readonly input: number;
   readonly output: number;
   readonly cacheRead: number;
   readonly cacheWrite: number;
-  /** Subset of `cacheWrite` written with 1-hour retention, when the API reports the split. */
   readonly cacheWrite1h?: number;
-  /** Subset of `cacheWrite` written with 5-minute retention, when the API reports the split. */
   readonly cacheWrite5m?: number;
 };
 
-/** A JSON value its holder cannot mutate. */
 export type ReadonlyJsonValue =
   | null
   | boolean
@@ -39,24 +35,14 @@ export type ReadonlyJsonValue =
   | readonly ReadonlyJsonValue[]
   | ReadonlyJsonObject;
 
-/** A JSON object its holder cannot mutate. */
 export type ReadonlyJsonObject = { readonly [key: string]: ReadonlyJsonValue };
 
-/** A Pi tool request captured by the SDK hook and deferred to Pi for execution. */
 export type DeferredCall = {
-  /** SDK tool-use identifier. */
   readonly id: string;
-  /** Exact Pi tool name. */
   readonly name: string;
-  /** Parsed JSON arguments supplied for the Pi tool. */
   readonly arguments: ReadonlyJsonObject;
 };
 
-/**
- * Events exchanged between the SDK adapter and Pi stream adapter. A turn is any
- * number of deltas and usage updates followed by exactly one terminal event:
- * `done`, `tool_calls`, or `failed`.
- */
 export type BridgeEvent =
   | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
   | { readonly type: "usage"; readonly usage: TokenUsage }
@@ -64,7 +50,6 @@ export type BridgeEvent =
   | { readonly type: "tool_calls"; readonly calls: readonly DeferredCall[] }
   | { readonly type: "failed"; readonly error: SdkRunError };
 
-/** Stateless SDK operation used by the Pi stream adapter. */
 export type AgentSdkRun = (
   request: AgentRequest,
   model: Model<Api>,
@@ -95,10 +80,6 @@ class AssistantMessageWriter {
   readonly stream = createAssistantMessageEventStream();
   private readonly output: AssistantMessage;
   private open: TextContent | ThinkingContent | undefined;
-  /**
-   * Set once a terminal event was attempted. `pump` stops at the first terminal event, so only
-   * a terminal push that threw can reach `fail` again; this keeps that from ending twice.
-   */
   private ended = false;
 
   constructor(
@@ -120,8 +101,6 @@ class AssistantMessageWriter {
         return false;
       }
       case "usage": {
-        // Pi's `Usage` has `cacheWrite1h` (a subset of `cacheWrite`) but no 5m field, so the
-        // diagnostic `cacheWrite5m` is dropped here: it is derivable as cacheWrite - cacheWrite1h.
         const { input, output, cacheRead, cacheWrite, cacheWrite1h } = event.usage;
         const totalTokens = input + output + cacheRead + cacheWrite;
         Object.assign(
@@ -137,8 +116,6 @@ class AssistantMessageWriter {
       }
       case "done": {
         if (event.reason === "stop" && this.endsWithPrintedCall()) {
-          // Recoverable malformed turn: Pi runs the reserved tool, persists its error result
-          // and continues its outer loop, so the model is told to invoke the tool for real.
           this.appendToolCall({
             id: `printed-call-${randomUUID()}`,
             name: VALIDATION_ERROR_TOOL,
@@ -167,11 +144,6 @@ class AssistantMessageWriter {
     }
   }
 
-  /**
-   * Write every event of one run. The runner reports expected failures as `failed` events, so
-   * a rejection or a missing terminal event is a provider defect; Pi's stream must still end,
-   * so it is reported as a failed turn labelled as a bug rather than thrown.
-   */
   async pump(events: () => AsyncIterable<BridgeEvent>): Promise<void> {
     try {
       for await (const event of events()) {
@@ -185,7 +157,6 @@ class AssistantMessageWriter {
     }
   }
 
-  /** Last resort for a pump that rejected anyway: end the stream as a provider defect if still open. */
   abandon(cause: unknown): void {
     this.fail(new SdkProviderDefect({ reason: "run-rejected", cause }));
   }
@@ -201,16 +172,12 @@ class AssistantMessageWriter {
       this.output.errorMessage = formatSdkRunError(error);
       this.stream.push({ type: "error", reason: this.output.stopReason, error: this.output });
     } finally {
-      // `end` cannot throw and settles `result()` even if finalization above failed, so a
-      // terminal turn is never left open.
       this.stream.end(this.output);
     }
-    // Best effort and only after Pi's stream is finalized: a failing diagnostic must never
-    // leave the turn open.
     try {
       writeSdkFailureDiagnostic(error);
     } catch {
-      // Diagnostics are non-fatal.
+      return undefined;
     }
   }
 
@@ -282,19 +249,13 @@ class AssistantMessageWriter {
   }
 }
 
-/** One Pi provider turn and the SDK operation that serves it. */
 export type AgentSdkStreamInput = {
-  /** Model Pi selected for the turn. */
   readonly model: Model<Api>;
-  /** Normalized transcript for the turn. */
   readonly context: TranscriptContext;
-  /** Pi stream options, including the cancellation signal. */
   readonly options: SimpleStreamOptions | undefined;
-  /** SDK operation that produces the turn's bridge events. */
   readonly run: AgentSdkRun;
 };
 
-/** Adapt SDK bridge events to Pi's assistant-message event stream. */
 export function createAgentSdkStream({
   model,
   context,

@@ -11,58 +11,48 @@ const NON_SUBSCRIPTION_AUTH_VARIABLES: ReadonlySet<string> = new Set([
   "CLAUDE_CODE_USE_FOUNDRY",
 ]);
 
-/**
- * Variables removed from the inherited environment (modelled on OpenCode's ISOLATION_ENV).
- * Evidence: strings of Claude Code 2.1.316.
- */
-const STRIPPED_VARIABLES: ReadonlySet<string> = new Set([
-  // Simple mode reads only API keys ("OAuth and keychain are never read"), breaking subscription auth.
-  "CLAUDE_CODE_SIMPLE",
-  // Would override the per-turn reasoning effort Pi selects.
-  "CLAUDE_CODE_EFFORT_LEVEL",
-  // A user-wide MCP timeout would alter Pi's deferred-tool bridge behaviour.
-  "MCP_TOOL_TIMEOUT",
-  // Would send the subscription OAuth token to another host; routing is subscription-only.
-  "ANTHROPIC_BASE_URL",
-  // Pi owns retries. The runner sets CLAUDE_CODE_MAX_RETRIES from Pi's provider retry setting;
-  // these would otherwise add hidden retries or waits inside each of Pi's attempts
-  // (evidence: strings of Claude Code 2.1.325).
-  "CLAUDE_CODE_MAX_RETRIES",
-  "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES",
-  "CLAUDE_CODE_RETRY_WATCHDOG",
-  "CLAUDE_CODE_RETRY_WATCHDOG_SCOPE",
-  "CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS",
-  "CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS",
-  "CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS",
-  "CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS",
-  "CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS",
-  "CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS",
-]);
+const STRIPPED_VARIABLE_GROUPS = {
+  simpleModeNeverReadsSubscriptionOAuth: ["CLAUDE_CODE_SIMPLE"],
+  overridesPiSelectedReasoningEffort: ["CLAUDE_CODE_EFFORT_LEVEL"],
+  changesDeferredToolBridgeTimeout: ["MCP_TOOL_TIMEOUT"],
+  sendsSubscriptionTokenToAnotherHost: ["ANTHROPIC_BASE_URL"],
+  addsHiddenRetriesInsidePiAttempts: [
+    "CLAUDE_CODE_MAX_RETRIES",
+    "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES",
+    "CLAUDE_CODE_RETRY_WATCHDOG",
+    "CLAUDE_CODE_RETRY_WATCHDOG_SCOPE",
+    "CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS",
+    "CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS",
+    "CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS",
+    "CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS",
+  ],
+} as const satisfies Readonly<Record<string, readonly string[]>>;
 
-/**
- * Variables forced on every turn because Pi owns the feature; Claude Code's version would add
- * tokens or change behaviour. Pi owns memory and context, so changing behaviour is the point.
- */
-const FORCED_VARIABLES: Readonly<Record<string, string>> = {
-  // Pi supplies project instructions; do not load CLAUDE.md files a second time.
-  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
-  // Pi owns memory; Claude Code's auto-memory would inject and write its own.
-  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-  // Pi owns compaction; an SDK-side compaction would silently rewrite context.
-  DISABLE_AUTO_COMPACT: "1",
-  // The "while you were away" recap is an extra model request Pi never shows.
-  CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
-  // Pi advertises its own tool catalog; deferred tool search would hide tools (falsy value => standard).
-  ENABLE_TOOL_SEARCH: "false",
-  // The advisor tool adds a sub-model request outside Pi's control.
-  CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
-  // A non-streaming retry would re-issue a request Pi already saw fail.
-  CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
-  // A refusal fallback would silently switch model; Pi surfaces the refusal instead.
-  CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1",
-  // A refusal retry sends a hidden follow-up request after output already reached Pi.
-  CLAUDE_CODE_DISABLE_REFUSAL_RETRY: "1",
-};
+const STRIPPED_VARIABLES: ReadonlySet<string> = new Set(
+  Object.values(STRIPPED_VARIABLE_GROUPS).flat(),
+);
+
+const PI_OWNED_FEATURE_SWITCHES = {
+  piLoadsProjectInstructions: { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+  piOwnsMemory: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" },
+  piOwnsCompaction: { DISABLE_AUTO_COMPACT: "1" },
+  noModelRequestsPiNeverSees: {
+    CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
+    CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
+  },
+  piAdvertisesEveryToolUpFront: { ENABLE_TOOL_SEARCH: "false" },
+  noHiddenResendOrModelSwitchAfterOutput: {
+    CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
+    CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1",
+    CLAUDE_CODE_DISABLE_REFUSAL_RETRY: "1",
+  },
+} as const satisfies Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+const FORCED_VARIABLES: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.values(PI_OWNED_FEATURE_SWITCHES).flatMap((group) => Object.entries(group)),
+);
 
 const DEFAULT_ENTRYPOINT = "pi-claude";
 const ENTRYPOINT_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
@@ -78,7 +68,6 @@ const IMPERSONATED_ENTRYPOINTS: ReadonlySet<string> = new Set([
   "local-agent",
 ]);
 
-/** Honest client label: the override must be well formed and must not name an Anthropic client. */
 function entrypointLabel(override: string | undefined): string {
   if (
     override === undefined ||
@@ -92,26 +81,12 @@ function entrypointLabel(override: string | undefined): string {
   return override;
 }
 
-/**
- * Background-traffic switches verified in Claude Code 2.1.310 (strings of the bundled binary).
- * Each is pinned only when the user has not defined it, so explicit choices win.
- *
- * Deliberately NOT pinned: DISABLE_TELEMETRY and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC also turn off
- * feature-flag evaluation and other non-essential calls whose effect on usage, status and model
- * metadata cannot be established offline.
- */
 const BACKGROUND_TRAFFIC_PINS: Readonly<Record<string, string>> = {
   DISABLE_ERROR_REPORTING: "1",
   DISABLE_AUTOUPDATER: "1",
   CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
 };
 
-/**
- * Build the sanitized environment used by the subscription-authenticated SDK subprocess.
- *
- * @param source - Startup environment to copy and sanitize.
- * @returns A fresh environment with non-subscription credentials removed.
- */
 export function subscriptionEnvironment(
   source: Readonly<Record<string, string | undefined>> = process.env,
 ): Record<string, string | undefined> {
@@ -121,7 +96,6 @@ export function subscriptionEnvironment(
     ),
   );
   Object.assign(environment, FORCED_VARIABLES);
-  // Always replace an inherited label (Pi launched from Claude Code inherits "sdk-cli").
   environment.CLAUDE_CODE_ENTRYPOINT = entrypointLabel(
     claudeVariable(source, "PI_CLAUDE_ENTRYPOINT"),
   );
@@ -146,12 +120,6 @@ export function subscriptionEnvironment(
   return environment;
 }
 
-/**
- * Whether the user opted in to turns billed to Extra Usage (overage) instead of failing them.
- *
- * @param source - Environment to read.
- * @returns True only for PI_CLAUDE_ALLOW_EXTRA_USAGE=1 (or the legacy PI_CLAUDE_SDK_ name).
- */
 export function extraUsageAllowed(
   source: Readonly<Record<string, string | undefined>> = process.env,
 ): boolean {

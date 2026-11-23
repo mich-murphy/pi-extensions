@@ -207,7 +207,6 @@ describe("claude SDK failure diagnostics", () => {
   });
 });
 
-/** A failed Pi assistant message carrying the bridge's formatted text for one category. */
 function failedAssistant(
   category: ConstructorParameters<typeof SdkResultError>[0]["category"],
 ): AssistantMessage {
@@ -231,7 +230,6 @@ function failedAssistant(
   };
 }
 
-// Pi decides retry and overflow from the error text, so every reworded message must keep its class.
 const RETRYABLE_CATEGORIES: ReadonlySet<string> = new Set([
   "rate-limit",
   "overloaded",

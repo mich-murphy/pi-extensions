@@ -7,10 +7,8 @@ import type {
 import { Type } from "typebox";
 import { isClaudeProvider } from "./provider-id";
 
-/** Reserved bridge operation. Never delegates to or executes another tool. */
 export const VALIDATION_ERROR_TOOL = "pi_claude_sdk_validation_error";
 
-/** Every bounded rejection reason; the single source for the schema and replay notes. */
 export const VALIDATION_REASONS = [
   "invalid_tool_input",
   "unexpected_sdk_tool",
@@ -19,7 +17,6 @@ export const VALIDATION_REASONS = [
   "printed_tool_call",
 ] as const;
 
-/** Value-free, bounded correction text shared by the tool and its fail-safe guard. */
 export function validationRecoveryReason(input: unknown): string {
   if (
     typeof input === "object" &&
@@ -55,7 +52,6 @@ export function validationRecoveryReason(input: unknown): string {
     : `The tool did not run: its parameters do not match its schema. Call the declared mcp__pi__ tool again with valid parameters. Do not call ${VALIDATION_ERROR_TOOL}.`;
 }
 
-/** Blocks even a later replacement of the reserved tool before its executor runs. */
 export function blockValidationRecovery(
   toolName: string,
   input: unknown,
@@ -65,7 +61,6 @@ export function blockValidationRecovery(
     : undefined;
 }
 
-/** The native failed toolResult is persisted by Pi and drives its normal outer loop. */
 export const validationRecoveryTool: ToolDefinition = {
   name: VALIDATION_ERROR_TOOL,
   label: "Rejected SDK tool call",
@@ -87,9 +82,6 @@ export const validationRecoveryTool: ToolDefinition = {
   },
 };
 
-/** Normalize known Pi rejection results only when a provider-authored synthetic call correlates.
- * Unknown, cancelled, successful, nested and same-named user/tool results remain untouched.
- */
 export function normalizeValidationResult(
   message: MessageEndEvent["message"],
   history: readonly MessageEndEvent["message"][],

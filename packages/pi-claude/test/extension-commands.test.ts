@@ -81,7 +81,6 @@ describe("provider commands", () => {
       expect(padded?.text).toContain("Installed Claude Code: 2.1.317");
     });
 
-    // Runs a real stand-in `claude` executable: 0.46 s with 8 busy processes plus other suites running.
     test(
       "warns that an old Claude Code needs updating and lists the model mappings",
       { timeout: 30_000 },

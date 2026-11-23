@@ -31,6 +31,16 @@ describe("model table", () => {
   });
 });
 
+describe("Claude Code routing quirks", () => {
+  test("pins Fable 5.2 by full model ID because Claude Code 2.1.319 resolves `fable` to 5.1", () => {
+    expect(models.find(({ id }) => id === "claude-5.2-fable")?.sdkModel).toBe("claude-fable-5-2");
+  });
+
+  test("Haiku 4.5 advertises Claude Code's 32K output limit, not the Messages API's 64K", () => {
+    expect(models.find(({ id }) => id === "claude-4.5-haiku")?.maxTokens).toBe(32_000);
+  });
+});
+
 describe("cache minimum model metadata", () => {
   test.each(["custom", "claude-haiku-6", "claude-sonnet-5-5-custom", "anthropic/claude-haiku-4-5"])(
     "does not guess a minimum for %s",
