@@ -132,6 +132,11 @@ async function gateway(
       assert(socket);
       socket.write(encodeFrame(frame, "adapter-delivery"));
     },
+    drop: () => {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+    },
   };
 }
 function authored(id = "3".repeat(32)): Message {
@@ -1570,6 +1575,100 @@ describe("public adapter transport and notice accounting", () => {
     idle = true;
     session.pumpIdle();
     expect(notices).toHaveLength(0);
+  });
+  test("a wait returns on the first admission, allows one waiter, and ends on timeout or abort", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => false, ui: { setStatus: () => undefined } }),
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    await expect(session.waitForMessage(0.05)).resolves.toBe("timed_out");
+    const controller = new AbortController();
+    const aborted = session.waitForMessage(60, controller.signal);
+    await expect(session.waitForMessage(60)).resolves.toBe("busy");
+    controller.abort();
+    await expect(aborted).resolves.toBe("cancelled");
+    const waiting = session.waitForMessage(60);
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "4".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message: authored("a".repeat(32)),
+    });
+    await expect(waiting).resolves.toBe("message");
+    await expect(session.waitForMessage(60)).resolves.toBe("message");
+    const closing = new AdapterSession(
+      fixture.config,
+      { ...peer, runtimeNonce: "9".repeat(32) },
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+    );
+    await expect(closing.waitForMessage(60)).resolves.toBe("disconnected");
+    closing.close();
+    await expect(closing.waitForMessage(60)).resolves.toBe("closed");
+  });
+  test("the wake notice names the sender but never carries the message body", async () => {
+    const fixture = await gateway(() => undefined);
+    const notices: { content?: unknown }[] = [];
+    const session: AdapterSession = new AdapterSession(
+      fixture.config,
+      peer,
+      {
+        sendMessage: (message) => {
+          notices.push(message);
+        },
+      },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+      () => {
+        session.pumpIdle();
+      },
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "4".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message: authored("a".repeat(32)),
+    });
+    await expect.poll(() => notices.length).toBe(1);
+    const notice = String(notices[0]?.content);
+    expect(notice).toContain(sessionHandle(other.machineId, other.sessionId));
+    expect(notice).toContain("peers_take");
+    expect(notice).not.toContain(authored().content);
+  });
+  test("a wait ends as disconnected when the gateway connection drops", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => false, ui: { setStatus: () => undefined } }),
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    const waiting = session.waitForMessage(60);
+    fixture.drop();
+    await expect(waiting).resolves.toBe("disconnected");
   });
   test("watch events update only the live scoped snapshot and invalidation permits a fresh watch", async () => {
     const fixture = await gateway(discoveryReply);

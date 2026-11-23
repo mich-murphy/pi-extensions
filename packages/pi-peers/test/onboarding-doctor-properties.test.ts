@@ -39,6 +39,7 @@ const fields = {
     ],
   },
   shareBranch: { required: false, valid: [true, false], invalid: ["yes", 1] },
+  maxWaitSeconds: { required: false, valid: [1, 60, 300], invalid: [0, 301, 1.5, "60"] },
 } satisfies Record<keyof Configuration, Field>;
 
 function accepted(value: unknown): boolean {

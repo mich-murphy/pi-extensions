@@ -43,8 +43,9 @@ Labels are what each session says about itself. `self` is decided by comparing `
 Pi has no public way to know when a custom message it queued was actually consumed. Retiring it on `agent_settled` or `hasPendingMessages()` is unsafe: after Escape clears Pi's queue, a message that arrives during the abort stays queued even though both signals say idle. Releasing its charge would undercount. Keeping every unsure message charged would eventually fill the adapter. So message bodies never enter Pi's queue.
 
 - The adapter keeps authored messages in its own bounded inbox.
-- A new admission asks for a wake: one constant notice, never the message.
-- `peers_take` moves a batch of up to 8 messages into the conversation. It frees their inbox slots but keeps their receipts.
+- A new admission asks for a wake: one notice that counts the waiting messages and names their senders by handle, never the message itself. No notice is sent when the inbox is already empty.
+- `peers_take` moves a batch of up to 8 messages into the conversation. It frees their inbox slots but keeps their receipts. A take that empties the inbox clears any pending wake.
+- `peers_take` with `waitSeconds` waits for the first admission instead of polling. One waiter at a time; it ends on a message, its timeout, Escape, a disconnect or shutdown.
 
 Wake rules:
 

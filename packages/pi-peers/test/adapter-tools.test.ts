@@ -19,8 +19,10 @@ type Result = {
   isError?: boolean;
 };
 
-function fixture(initial: { peer: typeof beta; label: string }[]) {
+function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds?: number) {
   let roster = initial.map((entry) => ({ ...entry, scopeIds: ["team"] }));
+  const waits: number[] = [];
+  let waited = "timed_out";
   const sent: Sent[] = [];
   const inbox: Incoming[] = [];
   const taken = new TakenIndex();
@@ -30,6 +32,11 @@ function fixture(initial: { peer: typeof beta; label: string }[]) {
       machineId: "alpha",
       scopeIds: ["team"],
       policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
+      ...(maxWaitSeconds === undefined ? {} : { maxWaitSeconds }),
+    },
+    waitForMessage: async (seconds: number) => {
+      waits.push(seconds);
+      return waited;
     },
     handles: new Handles(),
     taken,
@@ -74,6 +81,10 @@ function fixture(initial: { peer: typeof beta; label: string }[]) {
     call,
     sent,
     inbox,
+    waits,
+    setWaited: (next: string) => {
+      waited = next;
+    },
     setRoster: (next: { peer: typeof beta; label: string }[]) => {
       roster = next.map((entry) => ({ ...entry, scopeIds: ["team"] }));
     },
@@ -239,5 +250,42 @@ describe("peers_take", () => {
     const sent = await fx.call("peers_send", { to: handle, kind: "update", content: "ok" });
     expect(sent.isError).toBeUndefined();
     expect(fx.sent[0]?.to).toStrictEqual(beta);
+  });
+});
+describe("peers_take waitSeconds", () => {
+  test("waits only when asked, capped by maxWaitSeconds, and says how long it waited", async () => {
+    const fx = fixture([], 60);
+    await expect(fx.call("peers_take")).resolves.toMatchObject({
+      content: [{ text: "No messages." }],
+    });
+    expect(fx.waits).toStrictEqual([]);
+    const result = await fx.call("peers_take", { waitSeconds: 300 });
+    expect(fx.waits).toStrictEqual([60]);
+    expect(textOf(result)).toBe("No messages arrived within 60 seconds.");
+    expect(result.isError).toBeUndefined();
+  });
+  test.each([
+    ["busy", "overloaded", /already waiting/u],
+    ["disconnected", "unavailable", /no message can arrive/u],
+    ["cancelled", "cancelled", /cancelled/u],
+  ])("a %s wait is an error with its own note", async (waited, code, note) => {
+    const fx = fixture([]);
+    fx.setWaited(waited);
+    const result = await fx.call("peers_take", { waitSeconds: 30 });
+    expect(result.isError).toBe(true);
+    expect(result.details.value).toMatchObject({ code });
+    expect(textOf(result)).toMatch(note);
+  });
+  test("a wait that ends with a message returns it", async () => {
+    const fx = fixture([]);
+    fx.setWaited("message");
+    fx.inbox.push({
+      from: beta,
+      to: self,
+      scopeId: "team",
+      message: { id: "1".repeat(32), kind: "update", content: "done", format: "text" },
+    });
+    const result = await fx.call("peers_take", { waitSeconds: 30 });
+    expect(textOf(result)).toBe(`from ${handle} · update · messageId ${"1".repeat(32)}\ndone`);
   });
 });

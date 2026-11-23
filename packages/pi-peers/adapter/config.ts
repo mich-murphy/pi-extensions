@@ -47,6 +47,11 @@ const configuration = Schema.Struct({
     }),
   ).check(Schema.makeFilter<readonly unknown[]>((items) => items.length <= 256)),
   shareBranch: Schema.optionalKey(Schema.Boolean),
+  maxWaitSeconds: Schema.optionalKey(
+    Schema.Number.check(
+      Schema.makeFilter<number>((value) => Number.isInteger(value) && value >= 1 && value <= 300),
+    ),
+  ),
 });
 export type Configuration = typeof configuration.Type;
 export const configurationKeys: readonly string[] = Object.keys(configuration.fields);
