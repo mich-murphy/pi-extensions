@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "devDependencies": {
-    "@hegeldev/hegel": "0.5.1"
+    "@hegeldev/hegel": "0.6.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
