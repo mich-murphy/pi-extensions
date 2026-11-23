@@ -22,7 +22,6 @@ export type AdapterHost = {
   ui: Pick<ExtensionContext["ui"], "setStatus">;
 };
 export const NOTICE_TYPE = "peers-wake";
-/** Wake notices written before the pi-peers rename are still recognised. */
 const LEGACY_NOTICE_TYPE = "session-communication-wake";
 export function isWakeNotice(customType: string | undefined): boolean {
   return customType === NOTICE_TYPE || customType === LEGACY_NOTICE_TYPE;
@@ -195,7 +194,6 @@ export class AdapterSession {
     }
     this.wakeNeeded = false;
     this.notice = { id: freshId(), at: performance.now() };
-    // Public void call is not a receipt. Reserve before dispatch; never replay this notice.
     this.pi.sendMessage(
       {
         customType: NOTICE_TYPE,

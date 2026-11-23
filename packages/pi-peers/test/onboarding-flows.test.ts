@@ -60,7 +60,6 @@ function form(state: SetupDraft, remoteBlocked?: string) {
 }
 const applyRow = (model: MenuModel): Row | undefined =>
   model.top.kind === "list" ? model.top.rows().find((row) => row.id === "apply") : undefined;
-/** Rows of the top list that open a nested screen. */
 const openers = (model: MenuModel): string[] =>
   model.top.kind === "list"
     ? model.top
@@ -111,10 +110,8 @@ describe("remote rows in the setup form", () => {
       expect(model.title()).toBe("Peers › Setup");
       model.activate("rootSha256");
       await model.submit("a".repeat(64));
-      // Fresh setup takes this machine's name from the offer, as the old dialogs did.
       expect(state.choices.machineId).toBe("elsewhere");
       expect(applyRow(model)?.value).toBe("Ready");
-      // An existing machine (upgrade, re-pair) keeps its name, so the offer must target it.
       expect(remoteGate(state.remote, "menu-host")).toStrictEqual({
         kind: "invalid",
         reason: "the offer is for elsewhere, not this computer",
@@ -126,6 +123,24 @@ describe("remote rows in the setup form", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+  test("re-pair must not reuse the old root", () => {
+    const oldRoot = "a".repeat(64);
+    const joined = {
+      ...remoteDraft(),
+      kind: "join" as const,
+      address: "127.0.0.1:1",
+      offerPath: "/offers/offer.json",
+      offer: { peerMachineId: "peer-a", localMachineId: "menu-host" },
+      rootSha256: oldRoot,
+    };
+    expect(remoteGate(joined, "menu-host", { oldRoot })).toStrictEqual({
+      kind: "invalid",
+      reason: "use the new root, not the old one",
+    });
+    expect(
+      remoteGate({ ...joined, rootSha256: "b".repeat(64) }, "menu-host", { oldRoot }).kind,
+    ).toBe("ready");
   });
   test("an unreadable offer stays in the editor with a plain error", async () => {
     const state = draft({ remote: { ...remoteDraft(), kind: "join" } });
@@ -210,6 +225,22 @@ describe("progress and stored outcomes", () => {
     );
     expect(finished.mock.calls[0]?.[0].headline).toBe("✗ Failed: unexpected error");
     expect(JSON.stringify(finished.mock.calls)).not.toContain("secret");
+  });
+  test("a report that fails after the UI is gone never becomes an unhandled rejection", async () => {
+    const model = screenModel({ kind: "report", title: "x", lines: () => [] });
+    const finished = vi.fn<(outcome: Outcome, hidden: boolean) => void>(() => {
+      throw new Error("UI gone at shutdown");
+    });
+    await expect(
+      runWithProgress(
+        model,
+        "Applying",
+        [],
+        async () => ({ ok: true, headline: "✓ Done", facts: [] }),
+        finished,
+      ),
+    ).resolves.toBeUndefined();
+    expect(finished).toHaveBeenCalledOnce();
   });
   test("safeReason keeps only our own plain refusals", () => {
     expect(safeReason(new Error("Saved settings changed; review again."))).toBe(
@@ -300,7 +331,6 @@ function root(busy: { value: boolean }) {
   return { model, events };
 }
 
-/** Waits for a progress screen's work. */
 async function settled(screen: Screen): Promise<void> {
   if (screen.kind === "progress") {
     await screen.done;
@@ -368,7 +398,6 @@ describe("unreadable setup files", () => {
   });
 });
 
-// Final-review fixes F3, F5, F6, F8, F9, F10 and F11.
 const fixDraft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
   mode: "local",
   choices: defaultChoices("Fix Host"),
@@ -379,7 +408,6 @@ const fixDraft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
   ...overrides,
 });
 
-/** The top list's row `id`; throws when there is none. */
 function rowOf(model: MenuModel, id: string): Row {
   const row =
     model.top.kind === "list" ? model.top.rows().find((item) => item.id === id) : undefined;

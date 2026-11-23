@@ -12,14 +12,6 @@ import type { GatewayCatalog } from "../onboarding/catalog.js";
 const run = promisify(execFile);
 const repository = path.resolve(import.meta.dirname, "../../..");
 const setupSource = path.resolve(import.meta.dirname, "../onboarding/setup.ts");
-/**
- * Owned child: fences fetch and process execution BEFORE importing the real setup.ts (acquire.ts
- * captures `globalThis.fetch` at module load), then drives one fresh local Apply through the real
- * `setupCommand` with an injected catalog. Only a read-only `nix --version` probe may execute;
- * every other exec/spawn is recorded and refused, so no Nix build, gateway start or network occurs.
- * A non-empty `archOverride` replaces `process.arch` in THIS child only, before import and setup,
- * to simulate unsupported host metadata; the Vitest process is never modified.
- */
 const childScript = `
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
@@ -93,7 +85,6 @@ type ChildRecord = {
   activated: number;
 };
 
-/** Runtime guard for parsed JSON: a non-null object whose fields are still individually validated. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -137,11 +128,6 @@ function childRecord(stdout: string): ChildRecord {
   throw new TypeError("Malformed child record");
 }
 
-/**
- * Host metadata seen by the child decides the expected outcome. Unsupported host: real discovery
- * blocks before acquisition, with no fetch or setup writes. Supported host: exactly the fenced
- * manifest fetch, then a failed Apply that installs nothing.
- */
 function hostExpectation(version: string, supported: boolean) {
   return {
     supported,
@@ -157,10 +143,6 @@ async function entriesIfPresent(directory: string): Promise<string[]> {
   return existsSync(directory) ? fs.readdir(directory) : [];
 }
 
-/**
- * Darwin x64 (Intel macOS) and Linux ia32 are both outside the reviewed target table. The
- * simulated case passes its arch to the child as `archOverride`; the real-host case passes "".
- */
 const unsupportedArch = process.platform === "darwin" ? "x64" : "ia32";
 const hostCases = [
   {
@@ -186,16 +168,6 @@ describe("setupCommand trusted catalog injection", () => {
     }
   });
 
-  // An empty catalog blocks before acquisition, so it cannot detect a dropped `{ catalog }` on the
-  // acquireGateway call. This non-empty native pin differs from the shipped native pin (whether
-  // that is null or a published pin): it only reaches the fenced manifest fetch if selection AND
-  // acquisition both use the injected catalog. Validating against the shipped catalog instead
-  // rejects before any fetch. Whether the shipped native pin is currently null is owned by
-  // onboarding-catalog.test.ts, not here.
-  //
-  // The second case keeps the real host platform but simulates unsupported host metadata by
-  // overriding `process.arch` inside the owned child only. It exercises the real gatewayTarget,
-  // discovery and setup Blocked path; it is simulated metadata, NOT proof on actual Intel macOS.
   test.each(hostCases)(
     "a supplied non-empty catalog is validated by real setup $name",
     { timeout: 90_000 },
@@ -212,7 +184,6 @@ describe("setupCommand trusted catalog injection", () => {
       const catalog: GatewayCatalog = { nix: null, native: pin };
       expect(gatewayCatalog.native?.sourceRevision).not.toBe(pin.sourceRevision);
       expect(gatewayCatalog.native?.manifestSha256).not.toBe(pin.manifestSha256);
-      // The real catalog target function agrees with the case's expected host support.
       expect(gatewayTarget(process.platform, arch) !== undefined).toBe(supported);
       const sentinel = `catalog-injection-fence-${randomBytes(12).toString("hex")}`;
       const { stdout } = await run(
@@ -245,8 +216,6 @@ describe("setupCommand trusted catalog injection", () => {
       const warnings = record.notices.filter((notice) => notice.level !== "info");
       expect(warnings).toHaveLength(1);
       expect(warnings[0]?.message).toContain(expected.warning);
-      // Failed or blocked acquisition installs nothing: no configuration, ledger or install
-      // descriptor, and every per-attempt install root is left empty.
       const comms = path.join(agent, "pi-peers");
       expect(existsSync(comms)).toBe(expected.supported);
       const entries = await entriesIfPresent(comms);

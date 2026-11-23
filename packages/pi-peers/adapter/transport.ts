@@ -30,7 +30,6 @@ export type Connection = {
   close: () => void;
   pendingCount: () => number;
 };
-/** One generation of one local Unix connection. No global parser, mailbox, or replay queue. */
 export async function connectTransport(
   options: {
     socketPath: string;
@@ -81,7 +80,6 @@ export async function connectTransport(
     if (oldest === undefined) {
       return;
     }
-    // Completion of another write must never extend this write's original deadline.
     const remaining = oldest.deadline - performance.now();
     if (remaining <= 0) {
       fail("unavailable");
@@ -112,8 +110,6 @@ export async function connectTransport(
     ) {
       throw new ConnectionFailure(closed ? "unavailable" : "overloaded", false);
     }
-    // Charge until the actual Writable completion callback, not write()'s boolean return,
-    // request retirement or a drain event. Bytes also bound the number of retained records.
     const record = { bytes: encoded.length, control, deadline: performance.now() + 5000 };
     writes.add(record);
     if (control) {

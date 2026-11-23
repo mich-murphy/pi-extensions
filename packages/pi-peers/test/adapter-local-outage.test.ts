@@ -1,6 +1,3 @@
-// LOW-1 regression: local-only tools must not depend on gateway recovery.
-// Test double: an owned fake Unix gateway in $TMPDIR (no native binary, provider, profile or PKI).
-// It is a protocol fake only; it does not prove native gateway or platform behaviour.
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import type { Socket } from "node:net";
@@ -25,7 +22,6 @@ const other = {
   sessionId: "sender",
   runtimeNonce: "2".repeat(32),
 };
-/** A peer with no configured policy for any scope. */
 const stranger = {
   machineId: "gamma",
   sessionId: "reader",
@@ -40,7 +36,6 @@ const record = {
 };
 const cleanups: (() => Promise<void>)[] = [];
 
-/** Fake gateway double: grants `grants` on register and records every other request. */
 function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
   const sockets = new Set<Socket>();
   const server = createServer((socket) => {
@@ -114,7 +109,6 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-/** Runtime guard for untyped seam replies: a non-null object that carries the required `key`. */
 function recordWith(value: unknown, key: string, label: string): Record<string, unknown> {
   if (!isRecord(value) || !(key in value)) {
     throw new TypeError(label);
@@ -136,7 +130,6 @@ async function tool(tools: readonly Tool[], name: string, args: unknown) {
   const details = recordWith(result.details, "value", "tool details");
   return { value: details.value, isError: result.isError === true };
 }
-/** Remote peer read through the real adapter inbound seam (what the gateway would forward). */
 function remoteRead(
   session: AdapterSession,
   scopeId: string,
@@ -165,7 +158,6 @@ function remoteRead(
   return reply.outcome;
 }
 
-/** `managed: false` builds a manually configured runtime: no ensureGateway hook at all. */
 async function setup(grants: readonly string[], managed = true) {
   const directory = await mkdtemp(join(tmpdir(), "pc-outage-"));
   const path = join(directory, "g.sock");
@@ -224,7 +216,6 @@ async function setup(grants: readonly string[], managed = true) {
       },
       { timeout: 5000 },
     );
-    // Let the single passive post-disconnect episode settle before measuring tool behaviour.
     await vi.waitFor(
       () => {
         expect(session.client.status().operations).toBe(0);
@@ -275,7 +266,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     await fx.outage();
     const ensureBefore = fx.ensure.mock.calls.length;
     const requestsBefore = fx.log.length;
-    // Causal proof: the take succeeds before any restoration, with no ensure or gateway request.
     const taken = await tool(fx.tools, "peers_take", {});
     expect(taken).toMatchObject({
       isError: false,
@@ -292,7 +282,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     const fx = await setup(["team"]);
     const put = async (scopeId: string, key: string) =>
       tool(fx.tools, "peers_state", { action: "put", scopeId, key, record });
-    // Connected: gateway did not grant "extra", so mutation there is refused (effective grants).
     await expect(put("extra", "k")).resolves.toMatchObject({
       isError: true,
       value: { code: "unavailable" },
@@ -308,7 +297,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       isError: false,
       value: { tag: "ok" },
     });
-    // Unconfigured scope stays denied offline.
     await expect(put("zzz", "k")).resolves.toMatchObject({
       value: { tag: "error", code: "forbidden" },
     });
@@ -321,7 +309,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     ).resolves.toMatchObject({ value: { tag: "error", code: "forbidden" } });
     expect(fx.ensure.mock.calls).toHaveLength(ensureBefore);
     expect(fx.log).toHaveLength(requestsBefore);
-    // Offline: nothing is remotely readable without current effective grants.
     expect(remoteRead(fx.session, "team", "t")).toMatchObject({
       tag: "error",
       code: "forbidden",
@@ -330,7 +317,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       tag: "error",
       code: "forbidden",
     });
-    // Remote read tool keeps its guarded recovery preflight and fails closed while down.
     await expect(
       tool(fx.tools, "peers_state", {
         action: "list",
@@ -339,7 +325,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       }),
     ).resolves.toMatchObject({ isError: true, value: { code: "unavailable" } });
     expect(fx.ensure.mock.calls.length).toBeGreaterThan(ensureBefore);
-    // Recovery grants only "team": the offline "extra" publication stays unreadable.
     await fx.restore(["team"]);
     await expect(fx.session.reconnect()).resolves.toBeUndefined();
     expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
@@ -358,7 +343,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       isError: false,
       value: { tag: "ok", value: { removed: true } },
     });
-    // No application or control frame was ever replayed: the gateway saw only registrations.
     expect(fx.log.every((request) => request.op === "register")).toBe(true);
   }, 30_000);
 
@@ -384,8 +368,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       tag: "error",
       code: "forbidden",
     });
-    // Approved trade-off: a later registration that grants "extra" exposes the offline write to
-    // readers the read policy allows, with no further action by the owner.
     await fx.restore(["team", "extra"]);
     await expect(fx.session.reconnect()).resolves.toBeUndefined();
     expect(fx.session.client.effectiveScopes().has("extra")).toBe(true);
@@ -393,7 +375,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       tag: "ok",
       value: { scopeId: "extra", publication: { key: "k" } },
     });
-    // The read policy still applies: a peer without a policy for "extra" stays denied.
     expect(remoteRead(fx.session, "extra", "k", stranger)).toMatchObject({
       tag: "error",
       code: "forbidden",
@@ -455,7 +436,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       value: { tag: "ok", value: { removed: true } },
     });
     expect(fx.session.state.stats().publications).toBe(1);
-    // No ensure hook was ever given or called, and the local tools sent nothing.
     expect(fx.ensure).not.toHaveBeenCalled();
     expect(fx.log).toHaveLength(requestsBefore);
     expect(fx.session.client.status().connected).toBe(false);

@@ -1,8 +1,5 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
-/** One offline trial (one scenario, one arm) in its own process. Prints one JSON metrics line.
- *  node --import jiti/register test/codemode/trial.ts <scenario> <direct|codemode>
- *  Simulated gateway + scripted recorder model; no provider, credential or network is used. */
 import {
   createAgentSession,
   createCodemodeExtension,
@@ -26,18 +23,13 @@ export type Metrics = {
   rounds: number;
   modelToolCalls: number;
   gatewayOps: number;
-  /** UTF-8 bytes of tool-result text blocks in the final transcript (what the model saw from tools). */
   toolResultBytes: number;
-  /** Cumulative UTF-8 bytes of JSON-serialized transcripts handed to the provider each round,
-   *  including system prompt and tool declarations. Not tokens. */
   cumulativeRequestBytes: number;
   firstRequestBytes: number;
   correct: boolean;
   finalAnswer: string;
-  /** Offline CPU/roundtrip wall time, not live latency. */
   elapsedMs: number;
   activeTools: string[];
-  /** Gateway receipts: exactly the expected state.get set (each once, exact revision, ok) and expected total ops. */
   traceOk: boolean;
 };
 
@@ -75,7 +67,6 @@ function assistantMessage(model: Model<Api>, step: Step, counters: Counters): As
     timestamp: Date.now(),
     content,
     stopReason: step.kind === "text" ? "stop" : "toolUse",
-    // Dummy counters: never evidence of tokens or cost.
     usage: {
       input: 0,
       output: 0,
@@ -155,13 +146,14 @@ async function createSession(fixture: Fixture, arm: Arm, recorder: (pi: Extensio
 }
 const STATUS_KEY = "peers";
 const READY_BUDGET_MS = 30_000;
-/** UI context whose only behaviour is reporting the adapter's own "connected" status event
- *  (the adapter sets `Peers: connected`, or clears its status, once the register reply was processed). */
 function isUiContext(value: Partial<ExtensionUIContext>): value is ExtensionUIContext {
   return typeof value.setStatus === "function" && typeof value.notify === "function";
 }
-function readinessUi(onConnected: () => void): ExtensionUIContext {
-  // Plain object: the extension runner spreads the context, so a Proxy would lose its members.
+async function shutdownExtensionsThenInvalidateContexts(session: AgentSession): Promise<void> {
+  await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+  session.dispose();
+}
+function spreadablePlainReadinessUi(onConnected: () => void): ExtensionUIContext {
   const ui: Partial<ExtensionUIContext> = {
     notify: () => undefined,
     setStatus: (key: string, text: string | undefined) => {
@@ -191,7 +183,7 @@ async function awaitConnected(connected: Promise<undefined>): Promise<void> {
 async function prepare(session: AgentSession, fixture: Fixture, arm: Arm): Promise<string[]> {
   const { promise: connected, resolve: onConnected } = Promise.withResolvers<undefined>();
   await session.bindExtensions({
-    uiContext: readinessUi(() => {
+    uiContext: spreadablePlainReadinessUi(() => {
       onConnected(undefined);
     }),
   });
@@ -297,9 +289,7 @@ async function runTrial(scenario: string, arm: Arm): Promise<Metrics> {
     const active = await prepare(session, fixture, arm);
     return await execute(session, fixture, scenario, arm, counters, active);
   } finally {
-    // Supported order: extension shutdown hooks (adapter closes its runtime) before invalidating contexts.
-    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
-    session.dispose();
+    await shutdownExtensionsThenInvalidateContexts(session);
     await fixture.stop();
   }
 }

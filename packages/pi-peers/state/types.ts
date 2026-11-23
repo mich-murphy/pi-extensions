@@ -96,9 +96,7 @@ export type Options = {
   scopeIds: readonly string[];
   clock: () => number;
   authorize: Policy;
-  /** Atomic nonthrowing offer: retain exactly once iff true; must not re-enter the state API. */
   offer: (delivery: Delivery) => boolean;
-  /** Last precommit callback. On true, adapter releases one slot per planned push on outcome/discard. */
   reservePushes?: (count: number) => boolean;
   newMessageId?: () => string;
   limits?: Partial<Limits>;

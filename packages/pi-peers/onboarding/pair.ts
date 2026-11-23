@@ -20,7 +20,6 @@ export type PairOperation =
   | "revoke"
   | "export"
   | "inspect";
-/** Agreed native contract: private bounded input file, public-only bounded JSON output. */
 export async function pairAction(
   executable: string,
   directory: string,

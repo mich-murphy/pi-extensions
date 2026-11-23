@@ -208,7 +208,6 @@ function resultSummary(name: string, raw: unknown, args: Fields): string[] {
   }
 }
 
-/** Plain Text deliberately avoids Markdown links, images, or authored ANSI interpretation. */
 function component(content: string, expanded: boolean, primary = ""): Text {
   const output = new Text(content, 0, 0);
   const render = output.render.bind(output);
@@ -216,12 +215,10 @@ function component(content: string, expanded: boolean, primary = ""): Text {
     if (width < 1) {
       return [];
     }
-    // Text can emit a double-width grapheme in a one-cell viewport; clamp with Pi's helper.
     const lines = render(width).map((line) => truncateToWidth(line, width, ""));
     if (expanded) {
       return lines;
     }
-    // Fixed-size primary outcomes may wrap at very narrow widths, but must never be clipped.
     const budget = Math.max(12, new Text(primary, 0, 0).render(width).length + 1);
     return lines.length <= budget
       ? lines
@@ -299,13 +296,11 @@ export function toolPresentation(name: string): ToolRenderers {
   };
 }
 
-/** Activation-pending technical lines, shared by diagnostics and the status summary. */
 const ACTIVATION_PENDING_DETAILS: readonly string[] = [
   "Saved but not active yet. Passive reconnect never restarts a gateway; nothing is resent.",
   "/peers setup, then Activate saved configuration, restarts it once.",
   "Existing sessions may still use old trust.",
 ];
-/** Explicit command only: exact identities, bounded accounting, no transcript or payload export. */
 export function diagnostics(value: unknown, diagnostic: string): string {
   if (value === undefined) {
     const reason =
@@ -333,7 +328,6 @@ export function diagnostics(value: unknown, diagnostic: string): string {
 }
 
 export type StatusState = "off" | "connected" | "pending" | "unavailable" | "failed";
-/** Plain-language status: primary text first, internal identifiers only in `technical`. */
 export type StatusSummary = {
   readonly state: StatusState;
   readonly headline: string;
@@ -342,7 +336,6 @@ export type StatusSummary = {
   readonly technical: string[];
 };
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-/** Control-free single line without terminal escapes; truncation never appends ANSI resets. */
 function plain(value: unknown, limit = 64): string {
   const flat = visibleText(text(value, "")).replaceAll(/\s+/gu, " ").trim();
   const characters = Array.from(graphemes.segment(flat), (part) => part.segment);
@@ -365,7 +358,6 @@ function runtimeTechnical(status: Fields): string[] {
     `Wake notice: ${plain(notice, 96)} · inbox admission does not imply reading or work completion.`,
   ];
 }
-/** `inMenu`: the reader is already inside the Peers menu, so point at its rows instead of slash commands. */
 export type PresentationOptions = { readonly inMenu?: boolean };
 function setupStep(options: PresentationOptions, purpose: string): string {
   return options.inMenu === true ? `Choose Setup ${purpose}.` : `Run /peers setup ${purpose}.`;
@@ -407,7 +399,6 @@ function offline(diagnostic: string, options: PresentationOptions): StatusSummar
     technical,
   };
 }
-/** `status` is the session's status object (or undefined); `diagnostic` is the command-level reason. */
 export function statusSummary(
   status: unknown,
   diagnostic: string,
@@ -447,14 +438,12 @@ export function statusSummary(
     options,
   );
 }
-/** What a status with peers enabled shows besides its code. */
 type LiveFacts = {
   readonly machine: string;
   readonly scopes: readonly string[];
   readonly rows: [string, string][];
   readonly technical: string[];
 };
-/** The summary for an enabled status, by its runtime code. */
 function liveSummary(code: string, facts: LiveFacts, options: PresentationOptions): StatusSummary {
   if (code === "connected") {
     return connectedSummary(facts);
@@ -483,7 +472,6 @@ function connectedSummary({ machine, scopes, rows, technical }: LiveFacts): Stat
     technical,
   };
 }
-/** `waiting`: activation_pending (the gateway must restart); otherwise activation_unconfirmed. */
 function pendingSummary(
   waiting: boolean,
   { rows, technical }: LiveFacts,
@@ -501,7 +489,6 @@ function pendingSummary(
     technical: [...technical, ...ACTIVATION_PENDING_DETAILS],
   };
 }
-/** Plain multi-line text for notify; technical lines go last, under their own heading. */
 export function statusText(summary: StatusSummary): string {
   return [
     summary.headline,
@@ -512,7 +499,6 @@ export function statusText(summary: StatusSummary): string {
       : ["Technical details:", ...summary.technical.map((line) => `  ${line}`)]),
   ].join("\n");
 }
-/** Footer status for key `peers`; absent when peers is not configured. Never includes authored text. */
 export function footerStatus(status: unknown, configured: boolean): string | undefined {
   if (!configured) {
     return undefined;

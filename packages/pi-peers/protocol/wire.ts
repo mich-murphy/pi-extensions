@@ -1,19 +1,20 @@
 import { Schema } from "effect";
-import { decodeJson, ProtocolError } from "./json.js";
+import { decodeJson, MAX_BODY_BYTES, ProtocolError } from "./json.js";
 import type { ObjectBytesVisitor } from "./json.js";
-import { Frame } from "./schema.js";
+import { Frame, MAX_AUTHORED_BYTES } from "./schema.js";
+
+export const MAX_DESCRIPTOR_BYTES = 512;
 
 export type BoundaryRole = "local-client" | "gateway-forward" | "adapter-delivery" | "remote-link";
 const routed = new Set(["send", "state.get", "state.list", "interest.add", "interest.remove"]);
 const decode = Schema.decodeUnknownSync(Frame, { onExcessProperty: "error" });
 
-/** Inspect this before allocating a declared body. */
 export function frameBodyLength(prefix: Uint8Array): number {
   if (prefix.length !== 4) {
     throw new ProtocolError();
   }
   const length = new DataView(prefix.buffer, prefix.byteOffset, 4).getUint32(0, false);
-  if (length < 1 || length > 32_764) {
+  if (length < 1 || length > MAX_BODY_BYTES) {
     throw new ProtocolError();
   }
   return length;
@@ -92,20 +93,18 @@ function checkDescriptorBounds(frame: Frame): void {
   }
 }
 function checkDescriptor(value: unknown): void {
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > 512) {
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_DESCRIPTOR_BYTES) {
     throw new ProtocolError();
   }
 }
 
-/** Structural validation only; authorization, live correlations and runtime fencing belong to callers. */
 export function validateFrame(value: unknown, role: BoundaryRole): Frame {
   try {
     const frame = decode(value);
-    // Direct callers receive the same byte/depth/Unicode bounds as raw-wire callers.
     decodeJson(Buffer.from(JSON.stringify(frame), "utf8"));
     checkRole(frame, role);
     checkDescriptorBounds(frame);
-    if (authoredBytes(frame) > 24_576) {
+    if (authoredBytes(frame) > MAX_AUTHORED_BYTES) {
       throw new ProtocolError();
     }
     return frame;
@@ -127,7 +126,7 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
       path[1] === "value" &&
       path[2] === "peers" &&
       typeof path[3] === "number" &&
-      byteLength > 512
+      byteLength > MAX_DESCRIPTOR_BYTES
     ) {
       snapshotOverflow = true;
     }
@@ -135,14 +134,15 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
   const frame = validateFrame(decodeJson(bytes, inspect), role);
   if (
     snapshotOverflow ||
-    (frame.op === "roster.event" && frame.event.tag === "upsert" && eventBytes > 512)
+    (frame.op === "roster.event" &&
+      frame.event.tag === "upsert" &&
+      eventBytes > MAX_DESCRIPTOR_BYTES)
   ) {
     throw new ProtocolError();
   }
   return frame;
 }
 
-/** Exactly one complete frame; stream assemblers retain partial bytes outside this pure helper. */
 export function decodeFrame(bytes: Uint8Array, role: BoundaryRole): Frame {
   const length = frameBodyLength(bytes.subarray(0, 4));
   if (bytes.length !== length + 4) {
@@ -154,7 +154,6 @@ export function decodeFrame(bytes: Uint8Array, role: BoundaryRole): Frame {
 export function encodeFrame(value: unknown, role: BoundaryRole): Uint8Array {
   const frame = validateFrame(value, role);
   const body = Buffer.from(JSON.stringify(frame), "utf8");
-  // Run the same bounded interpretation pass on local values, including surrogate validation.
   decodeJson(body);
   const bytes = new Uint8Array(body.length + 4);
   new DataView(bytes.buffer).setUint32(0, body.length, false);

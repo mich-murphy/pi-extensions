@@ -45,13 +45,11 @@ const STATE_VALUES: Record<StatusState, string> = {
   failed: "Setup failed",
 };
 const BUSY = "Peers is busy with another action. Try again when it finishes.";
-/** Why a runtime started for an ended session was dropped: the next step of the saved outcome. */
 const STALE = "This session ended. Start a new Pi session to use the saved settings.";
 const START_TECHNICAL = "This Pi could not start its connection.";
 const NOT_ACCEPTED = "The gateway did not accept this Pi. Nothing was sent twice.";
 const STALE_TECHNICAL = "The session ended during reconnect.";
 
-/** After a reconnect: what to do next. Not set up or turned off points at Setup, not Doctor. */
 function reconnectNext(connected: boolean, after: StatusSummary): string {
   if (connected) {
     return after.next ?? "Open another Pi session to collaborate.";
@@ -62,7 +60,6 @@ function reconnectNext(connected: boolean, after: StatusSummary): string {
 }
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
-/** A reconnect's result; `technical` holds the internal reason for a failure. */
 type Reconnected = { readonly connected: boolean; readonly technical: readonly string[] };
 
 function doctorLines(report: DoctorReport): string[] {
@@ -75,7 +72,6 @@ function doctorLines(report: DoctorReport): string[] {
   ];
 }
 
-/** Setup's row while the menu's first reads run. */
 const CHECKING: SetupRoute = {
   value: "Checking…",
   description: "Reading the saved setup.",
@@ -87,28 +83,22 @@ function attended(ctx: ExtensionContext): boolean {
   return ctx.hasUI && (ctx.mode === "tui" || ctx.mode === "rpc");
 }
 
-/** API-only loading is inert without configuration; the optional backend is an explicit test seam. */
 export default function registerCommunication(
   pi: ExtensionAPI,
   testBackend?: {
     backend: SetupBackend;
     description: string;
     restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
-    /** Called synchronously when a consent row is confirmed, before any effect. */
     observe?: { consented: (action: string) => void };
-    /** Starts an adapter runtime; tests wrap the real one to observe its lifetime. */
     runtime?: typeof createAdapterRuntime;
   },
 ): void {
   let current: ExtensionContext | undefined;
   let owned: Runtime | undefined;
   let diagnostic = "not enabled (no user-agent pi-peers.json)";
-  /** Bumped at session shutdown; work started in an older session leaves this one alone. */
   let generation = 0;
-  /** Running Apply, Reset or Reconnect actions, possibly with their progress views hidden. */
   let running = 0;
   const busy = (): boolean => running > 0;
-  /** Counts `work` as running until it settles; overlapping actions each count once. */
   const track = async <T>(work: Promise<T>): Promise<T> => {
     running += 1;
     try {
@@ -117,14 +107,12 @@ export default function registerCommunication(
       running -= 1;
     }
   };
-  /** Throws NotActive (disposing `fresh` first) when a session_shutdown landed during an await. */
   const ensureCurrent = async (started: number, fresh?: Runtime): Promise<void> => {
     if (generation !== started) {
       await fresh?.dispose();
       throw new NotActive(STALE);
     }
   };
-  /** Starts and owns a runtime for `config`, unless the session ended meanwhile. */
   const startRuntime = async (
     ctx: ExtensionContext,
     config: Configuration,
@@ -147,7 +135,6 @@ export default function registerCommunication(
     owned = runtime;
     return runtime;
   };
-  /** Starts the saved configuration's runtime, if there is one. */
   const restore = async (ctx: ExtensionContext, started: number): Promise<void> => {
     const config = await loadConfiguration(getAgentDir());
     await ensureCurrent(started);
@@ -160,25 +147,22 @@ export default function registerCommunication(
     diagnostic = "enabled";
   };
   registerTools(pi, () => owned?.session);
-  // Test hosts may omit the entry API; Pi always provides it.
-  if (typeof pi.registerEntryRenderer === "function") {
-    pi.registerEntryRenderer("peers-report", (entry, _options, theme) => {
-      const outcome = storedOutcome(entry.data);
-      return outcome === undefined
-        ? undefined
-        : new Text(
-            outcomeLines(outcome)
-              .map((line, index) =>
-                index === 0
-                  ? theme.fg(outcome.ok ? "accent" : "error", visibleText(line))
-                  : visibleText(line),
-              )
-              .join("\n"),
-            1,
-            0,
-          );
-    });
-  }
+  pi.registerEntryRenderer("peers-report", (entry, _options, theme) => {
+    const outcome = storedOutcome(entry.data);
+    return outcome === undefined
+      ? undefined
+      : new Text(
+          outcomeLines(outcome)
+            .map((line, index) =>
+              index === 0
+                ? theme.fg(outcome.ok ? "accent" : "error", visibleText(line))
+                : visibleText(line),
+            )
+            .join("\n"),
+          1,
+          0,
+        );
+  });
   pi.on("session_start", async (_event, ctx) => {
     current = ctx;
     const started = generation;
@@ -237,7 +221,6 @@ export default function registerCommunication(
       diagnostic = "enabled";
     };
   };
-  /** The guarded registration of a fresh runtime; a shutdown meanwhile already disposed it. */
   const registered = async (runtime: Runtime, started: number): Promise<void> => {
     try {
       await runtime.session.reconnect();
@@ -250,7 +233,6 @@ export default function registerCommunication(
       throw new Error(NOT_ACCEPTED);
     }
   };
-  /** Starts the saved runtime when none runs; the reason goes to technical detail on failure. */
   const ensureRuntime = async (
     ctx: ExtensionContext,
     started: number,
@@ -265,7 +247,6 @@ export default function registerCommunication(
       return generation === started ? START_TECHNICAL : STALE_TECHNICAL;
     }
   };
-  /** Retries this Pi's connection; never notifies, so each caller reports it once. */
   const reconnectCurrent = async (ctx: ExtensionContext, fresh = false): Promise<Reconnected> => {
     const started = generation;
     const failure = await ensureRuntime(ctx, started);
@@ -305,7 +286,6 @@ export default function registerCommunication(
   const footer = (ctx: ExtensionContext, outcome: Outcome, kind: ActionKind, saved: boolean) => {
     const live = footerStatus(owned?.session.status(), owned !== undefined);
     if (kind === "reconnect" && live === undefined) {
-      // A reconnect writes nothing; without a runtime the footer keeps what it said.
       return;
     }
     if (live !== undefined || outcome.ok || kind !== "setup" || !saved) {
@@ -338,7 +318,6 @@ export default function registerCommunication(
       throw new Error(NOT_ACCEPTED);
     }
   };
-  /** Everything the root shows, read fresh; a read that fails never closes the menu. */
   const load = async (ctx: ExtensionContext): Promise<RootState> => {
     const agentDir = getAgentDir();
     const [setup, checks, resettable] = await Promise.all([
@@ -346,7 +325,6 @@ export default function registerCommunication(
       doctorReport(agentDir, { inMenu: true }).then(doctorLines, () => [
         "✗ Doctor could not read the setup files.",
       ]),
-      // An unreadable directory still offers Reset, which then refuses safely.
       hasResetTarget(agentDir).catch(() => true),
     ]);
     const status = statusSummary(owned?.session.status(), diagnostic, { inMenu: true });
@@ -364,12 +342,10 @@ export default function registerCommunication(
       status: { value: "", lines: ["Checking…"] },
       doctor: ["Checking…"],
       setup: CHECKING,
-      // Reset offers nothing until the real state has loaded.
       resettable: undefined,
       busy: busy(),
     };
     const loading = load(ctx);
-    // TUI: show the menu at once with Setup `Checking…`; RPC answers need the real rows first.
     const tui = ctx.mode === "tui" && ctx.ui.custom !== undefined;
     if (!tui) {
       state = await loading;
@@ -398,7 +374,6 @@ export default function registerCommunication(
           if (ctx.mode !== "tui") {
             holder.model?.close();
           }
-          // The root re-reads state after any outcome, so Setup becomes Manage and so on.
           reload().catch(() => undefined);
         },
         guard: { canAct: () => !busy(), busy: BUSY },
@@ -447,7 +422,6 @@ export default function registerCommunication(
       }
       await openMenu(ctx, action === "setup" || action === "reset" ? action : undefined);
     } catch (error) {
-      // Never quote a parse or system error: it may contain file content or a path.
       ctx.ui.notify(
         refusalText(error, "The peers menu could not open. Run /peers doctor to check your files."),
         "error",

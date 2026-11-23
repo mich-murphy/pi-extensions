@@ -280,8 +280,6 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     ]);
     const pending = await gateway(joiner);
     expect(pending.remote).toBeUndefined();
-    // Status alone could describe the pre-control socket. Require a new native
-    // socket incarnation as well as the callback's fresh guarded registration.
     await nativeUntil(async () => socketChanged(setupPaths(joiner.agent).socket, oldSocket));
     await nativeUntil(async () => client(joiner).status().connected);
     expect(client(joiner).status().connected).toBe(true);

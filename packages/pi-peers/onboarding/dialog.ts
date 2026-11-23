@@ -14,7 +14,6 @@ export function requireAttendedUI(ctx: DialogContext): void {
   }
 }
 
-/** RPC responses are untrusted; a string outside the offered set is cancellation. */
 export async function selectChoice(
   ctx: DialogContext,
   title: string,

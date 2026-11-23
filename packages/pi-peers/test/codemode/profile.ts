@@ -1,4 +1,3 @@
-/** Isolated temp Pi profile for the production adapter. No inherited credentials or user config. */
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

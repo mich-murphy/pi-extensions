@@ -1,6 +1,3 @@
-/** CLI: start the SIMULATED gateway and print one JSON line. Runs until stdin closes.
- *  node --import jiti/register test/codemode/serve.ts --scenario aggregate [--codemode] [--receipts <file>]
- *  Receipts (observed ops + simulated outcomes) are written to <file> when stdin closes. */
 import { SCENARIOS, TASKS } from "./corpus.js";
 import { SimulatedGateway } from "./gateway.js";
 import { makeProfile } from "./profile.js";

@@ -49,7 +49,6 @@ function createStore(options: Options): Store {
   };
 }
 
-/** One adapter lifetime. Every operation is synchronous; public callbacks must not re-enter it. */
 export function createState(options: Options) {
   const store = createStore(options);
   let busy = false;

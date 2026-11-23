@@ -24,14 +24,11 @@ import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog
 import { foreignFolder, linkedFolder, openFolder, Refusal, sharedFolder } from "./refusal.js";
 
 export type AcquisitionPlanCommon = Readonly<{
-  /** Only a reviewed Apply may construct this value. Cancellation before Apply does not call acquisition. */
   approved: true;
   target: string;
   installRoot: string;
   deadlineMs: number;
-  /** Absolute technical-discovery result; never resolve a project executable from PATH. */
   nixExecutable?: string;
-  /** Additional capabilities required by the reviewed flow (for example pairing helpers). */
   requiredCapabilities?: readonly string[];
 }>;
 export type AcquisitionPlanNix = AcquisitionPlanCommon &
@@ -108,7 +105,6 @@ async function download(
   signal: AbortSignal,
   fetcher: typeof fetch,
 ): Promise<Buffer> {
-  // GitHub redirects release assets to its authenticated CDN. No arbitrary redirects.
   let current = url;
   for (let redirects = 0; redirects <= 3; redirects++) {
     validateDownloadOrigin(current);
@@ -128,7 +124,6 @@ async function download(
   }
   throw new Error("The gateway download redirected too many times");
 }
-/** One request; a network failure (not a cancellation) is the user's connection to fix. */
 async function fetchOnce(
   url: string,
   signal: AbortSignal,
@@ -200,7 +195,6 @@ async function privateRoot(root: string, io: AcquisitionSeams["fs"]): Promise<vo
   if (!path.isAbsolute(root) || path.normalize(root) !== root || root === path.parse(root).root) {
     throw new Error("The gateway install folder must be a private absolute path");
   }
-  // Do not follow user-controlled directory symlinks into unrelated state.
   let current = path.parse(root).root;
   for (const component of root.slice(current.length).split(path.sep)) {
     current = path.join(current, component);
@@ -270,7 +264,6 @@ export async function acquireGateway(
   const catalog = options.catalog ?? gatewayCatalog;
   validateAcquisitionPlan(plan, catalog);
   const signal = acquisitionSignal(plan, options.signal);
-  // All validation/cancellation above is side-effect free.
   options.onProgress?.("Preparing private gateway installation");
   await privateRoot(plan.installRoot, io.fs);
   if (plan.method === "native" && (await entryExists(nativeDestination(plan), io.fs))) {
@@ -288,8 +281,6 @@ export async function acquireGateway(
     await probeGateway(executable, plan, io, signal);
     return await publishInstallation(plan, installation, executable, io, signal);
   } catch (error) {
-    // Only this attempt's own unpublished directory is removed. Once publication may have
-    // happened, the payload is retained for verified reuse instead.
     if (!installation.retained) {
       await io.fs.rm(installation.installDirectory, { recursive: true, force: true });
     }
@@ -336,7 +327,6 @@ function acquisitionSignal(plan: AcquisitionPlan, externalSignal?: AbortSignal):
 
 type Installation = {
   installDirectory: string;
-  /** True once publication may have occurred; a retained attempt is never removed. */
   retained: boolean;
 };
 function nativeDestination(plan: AcquisitionPlanNative): string {
@@ -345,7 +335,6 @@ function nativeDestination(plan: AcquisitionPlanNative): string {
 function nativeAttemptPrefix(plan: AcquisitionPlanNative): string {
   return `.gateway-${plan.version}-${plan.sourceRevision}-native-`;
 }
-/** Exact private attempt basename: literal prefix plus mkdtemp's six-character suffix. */
 function isNativeAttemptName(plan: AcquisitionPlanNative, name: string): boolean {
   const prefix = nativeAttemptPrefix(plan);
   return name.startsWith(prefix) && /^[A-Za-z0-9]{6}$/u.test(name.slice(prefix.length));
@@ -382,10 +371,6 @@ function validatePrivateDirectory(stat: Stats): void {
     throw new Error("Unsafe existing installation");
   }
 }
-/**
- * Resolve the published payload: a legacy private directory at the versioned name, or an
- * exclusive symlink whose bare target is this pin's private attempt directory in the root.
- */
 async function installedPayload(
   plan: AcquisitionPlanNative,
   destination: string,
@@ -415,7 +400,6 @@ async function verifyCompletionMarker(
   executable: string,
   io: AcquisitionSeams["fs"],
 ): Promise<void> {
-  // A missing/invalid completion record means interrupted ownership. Never repair or remove implicitly.
   const markerBytes = await boundedOwnedFile(path.join(payload, "installed.json"), 16_384, io);
   const marker = jsonObject(JSON.parse(markerBytes.toString("utf8")));
   if (marker.sourceRevision !== plan.sourceRevision || marker.version !== plan.version) {
@@ -428,7 +412,6 @@ async function verifyCompletionMarker(
     throw new Error("The recorded gateway path does not match; it was not run");
   }
 }
-/** Bounded reauthentication of a published native install; never downloads or retries. */
 async function reuseNative(
   plan: AcquisitionPlanNative,
   io: AcquisitionSeams,
@@ -626,14 +609,11 @@ async function publishInstallation(
   signal.throwIfAborted();
   const destination = nativeDestination(plan);
   try {
-    // symlink(2) is the exclusive commit: it fails with EEXIST for any existing entry and never
-    // replaces or merges into it, unlike rename(2) over an empty directory.
     await io.fs.symlink(name, destination);
     installation.retained = true;
   } catch (error) {
     return publicationCollision(plan, installation, error, io, signal);
   }
-  // Committed: later failures or cancellation never remove the published payload or link.
   try {
     await syncPath(plan.installRoot, "directory", io.fs);
   } catch (error) {
@@ -644,10 +624,6 @@ async function publishInstallation(
   return completedAcquisition(plan, executable, [destination, installDirectory]);
 }
 
-/**
- * fsync an owned staged entry. O_NONBLOCK keeps a substituted FIFO from blocking the open, and
- * the descriptor's own type/owner/mode is checked before any sync.
- */
 async function syncPath(
   filename: string,
   kind: "file" | "directory",
@@ -704,7 +680,6 @@ async function publicationCollision(
     );
   }
   if (own) {
-    // The link may have been created despite the reported error; never delete its target.
     installation.retained = true;
     throw new Error("The gateway install could not be confirmed; it was kept for reuse", {
       cause: error,
@@ -713,8 +688,6 @@ async function publicationCollision(
   if (errorCode(error) !== "EEXIST") {
     throw error;
   }
-  // A concurrent or foreign entry is never replaced, merged or removed. Adopt it only after
-  // the same bounded reauthentication as ordinary reuse.
   let winner: AcquisitionResult;
   try {
     winner = await reuseNative(plan, io, signal);

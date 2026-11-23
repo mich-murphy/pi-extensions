@@ -1,6 +1,12 @@
 import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { decodeConfiguration, permits, visibleText, loadConfiguration } from "../adapter/config.js";
+import {
+  decodeConfiguration,
+  loadConfiguration,
+  permits,
+  SOCKET_PATH_MAX_BYTES,
+  visibleText,
+} from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
 import { stateLocations } from "../adapter/locations.js";
 import type { StateSet } from "../adapter/locations.js";
@@ -51,7 +57,6 @@ function invalidFields(value: unknown): string[] {
   return fields;
 }
 
-/** Bounded regular-file read, following valid Nix/home-manager config links read-only. */
 async function inspectConfiguration(agentDir: string): Promise<Inspection> {
   const path = stateLocations(agentDir).active.config;
   try {
@@ -91,7 +96,6 @@ export type DoctorRow = {
   readonly value: string;
   readonly level: DoctorLevel;
 };
-/** Plain rows first; exact paths, internal states and safety notes only in `technical`. */
 export type DoctorReport = {
   readonly ok: boolean;
   readonly rows: DoctorRow[];
@@ -102,18 +106,14 @@ type Check = { readonly row?: DoctorRow; readonly detail: string };
 function line(label: string, value: string, level: DoctorLevel = "ok"): DoctorRow {
   return { label, value, level };
 }
-/** `inMenu`: the reader is already inside the Peers menu, so point at its rows instead of slash commands. */
 export type DoctorOptions = { readonly inMenu?: boolean };
-/** Sentence-start form of the setup step: `Choose Setup` in the menu, `Run /peers setup` elsewhere. */
 function setupStep(options: DoctorOptions): string {
   return options.inMenu === true ? "Choose Setup" : "Run /peers setup";
 }
-/** Mid-sentence form of {@link setupStep}. */
 function setupClause(options: DoctorOptions): string {
   return options.inMenu === true ? "choose Setup" : "run /peers setup";
 }
 
-/** Read-only: no registration, daemon launch, trust reads, sends, or service-manager changes. */
 export async function doctorReport(
   agentDir: string,
   options: DoctorOptions = {},
@@ -181,7 +181,7 @@ export async function doctorReport(
       );
       technical.push(
         `Configuration: invalid fields: ${inspection.fields.join(", ")}.`,
-        "Required: machineId lowercase letter-led (max 32); socketPath absolute and <=100 UTF-8 bytes without controls; scopeIds 1–4 unique identifiers; label 1–128 UTF-8 bytes without controls; policies exact machine/scope/actions. Unknown keys are rejected.",
+        `Required: machineId lowercase letter-led (max 32); socketPath absolute and <=${SOCKET_PATH_MAX_BYTES} UTF-8 bytes without controls; scopeIds 1–4 unique identifiers; label 1–128 UTF-8 bytes without controls; policies exact machine/scope/actions. Unknown keys are rejected.`,
       );
       break;
     }
@@ -207,11 +207,9 @@ export async function doctorReport(
 }
 
 const MARK: Record<DoctorLevel, string> = { ok: "✓", warn: "!", error: "✗" };
-/** One doctor row as `<mark> <label>: <value>`, with ✓ ok, ! warn and ✗ error. */
 export function doctorRowText(row: DoctorRow): string {
   return `${MARK[row.level]} ${row.label}: ${row.value}`;
 }
-/** Plain multi-line doctor text for notify, rendered from {@link doctorReport}. */
 export async function doctor(agentDir: string): Promise<string> {
   const report = await doctorReport(agentDir);
   return [
@@ -241,7 +239,6 @@ function stateSetRow(active: StateSet, ignored: StateSet | undefined): DoctorRow
       );
 }
 
-/** Which saved-state set is in use; legacy state is never moved, rewritten or deleted. */
 function stateSetLines(active: StateSet, ignored: StateSet | undefined): string[] {
   if (active.kind === "legacy") {
     return [
@@ -339,7 +336,6 @@ async function describeValid(
   };
 }
 
-/** Native snapshot command never binds/connects or changes floor state. */
 async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promise<Check> {
   const SETUP = setupStep(options);
   try {

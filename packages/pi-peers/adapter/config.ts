@@ -10,13 +10,18 @@ function hasControls(value: string): boolean {
     return code <= 31 || (code >= 127 && code <= 159);
   });
 }
+export const SOCKET_PATH_MAX_BYTES = 100;
+
 const scope = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/u));
 const machine = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,31}$/u));
 const configuration = Schema.Struct({
   machineId: machine,
   socketPath: Schema.String.check(
     Schema.makeFilter<string>(
-      (value) => isAbsolute(value) && Buffer.byteLength(value) <= 100 && !hasControls(value),
+      (value) =>
+        isAbsolute(value) &&
+        Buffer.byteLength(value) <= SOCKET_PATH_MAX_BYTES &&
+        !hasControls(value),
     ),
   ),
   scopeIds: Schema.Array(scope).check(
@@ -46,7 +51,6 @@ export type Permission = Configuration["policies"][number]["permissions"][number
 export function decodeConfiguration(value: unknown): Configuration {
   return Schema.decodeUnknownSync(configuration, { onExcessProperty: "error" })(value);
 }
-/** Only the active user-agent file (pi-peers.json, or legacy session-communication.json) enables a runtime. Project files are never inspected. */
 export async function loadConfiguration(agentDir: string): Promise<Configuration | undefined> {
   let content: string;
   try {
@@ -83,9 +87,7 @@ export function permits(
     )
   );
 }
-/** Bidi embedding/override (U+202A-202E) and isolate (U+2066-2069) controls reorder displayed text. */
 const bidiControl = /[\u202a-\u202e\u2066-\u2069]/u;
-/** Terminal rendering is inert; JSON/control interpretation never executes authored text. */
 export function visibleText(value: string): string {
   return Array.from(value, (character) => {
     const code = character.codePointAt(0) ?? 0;

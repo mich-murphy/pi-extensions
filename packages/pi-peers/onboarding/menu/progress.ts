@@ -4,19 +4,16 @@ import type { MenuModel } from "./model.js";
 const MAX_FACTS = 12;
 const MAX_TEXT = 160;
 const MAX_TECHNICAL = 24;
-/** Visible, single-line text: controls escaped, whitespace runs squashed. */
 function clean(value: string, limit = 2000): string {
   const text = visibleText(value.replaceAll(/\s+/gu, " ").trim());
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
-/** What an action did: the first line, fact rows and the next step. Stored as `peers-report`. */
 export type Outcome = {
   readonly ok: boolean;
   readonly headline: string;
   readonly facts: readonly (readonly [string, string])[];
   readonly next?: string;
-  /** Internal detail, shown only under "Technical details". */
   readonly technical?: readonly string[];
 };
 export type Step = (message: string) => void;
@@ -32,13 +29,11 @@ export function outcomeLines(outcome: Outcome): string[] {
   ];
 }
 
-/** One notification: the headline and the next step. Pi adds its own `Error:` or `Warning:`. */
 export function outcomeText(outcome: Outcome): string {
   const headline = clean(outcome.headline).replace(/^[✗!] /u, "");
   return outcome.next === undefined ? headline : `${headline}. ${clean(outcome.next)}`;
 }
 
-/** Notification level: a failure is an error, saved-but-not-active a warning. */
 export function outcomeLevel(outcome: Outcome): "info" | "warning" | "error" {
   if (outcome.ok) {
     return "info";
@@ -57,7 +52,6 @@ function pair(value: unknown): readonly [string, string] | undefined {
     : undefined;
 }
 
-/** A stored report entry, or undefined when the session data has another shape. */
 export function storedOutcome(data: unknown): Outcome | undefined {
   if (typeof data !== "object" || data === null) {
     return undefined;
@@ -100,11 +94,10 @@ async function settle(work: (step: Step) => Promise<Outcome>, step: Step): Promi
   }
 }
 
-/**
- * Pushes a progress screen titled `title`, runs `work`, then replaces the screen with the outcome.
- * Step rows read `✓ ` done, `… ` running (with elapsed seconds) and `· ` planned. Esc hides the view
- * (the model closes) while the work continues; `finished` learns whether it was hidden.
- */
+function ignoreReportFailureAfterUiIsGone(): undefined {
+  return undefined;
+}
+
 export async function runWithProgress(
   model: MenuModel,
   title: string,
@@ -150,9 +143,7 @@ export async function runWithProgress(
     } finally {
       model.refresh();
     }
-  })().catch(() => {
-    // A failing report (for example a UI gone at shutdown) never becomes an unhandled rejection.
-  });
+  })().catch(ignoreReportFailureAfterUiIsGone);
   model.push({ kind: "progress", title, lines, done });
   return done;
 }

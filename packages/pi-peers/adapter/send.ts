@@ -43,7 +43,6 @@ function terminalFailure(
   }
   return failure(binding, possible, error.code);
 }
-/** Waits for `milliseconds`, rejecting when `signal` aborts. A seam so tests can run it on fake timers. */
 export type Delay = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 const realDelay: Delay = async (milliseconds, signal) => {
   await delay(milliseconds, undefined, signal === undefined ? {} : { signal });
@@ -65,7 +64,6 @@ async function backoff(
     return "cancelled";
   }
 }
-/** One invocation, fixed authored message, at most three attempts under one monotonic deadline. */
 export async function sendWithRetries(options: {
   sender: PeerRef;
   recipient: PeerRef;
@@ -73,7 +71,6 @@ export async function sendWithRetries(options: {
   message: Message;
   signal?: AbortSignal;
   request: (rid: string, deadline: number) => Promise<Reply>;
-  /** Retry backoff wait; defaults to real timers. */
   delay?: Delay;
 }): Promise<SendOutcome> {
   const binding = {

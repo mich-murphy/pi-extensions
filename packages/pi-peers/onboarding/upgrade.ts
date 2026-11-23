@@ -169,11 +169,9 @@ type Manage = {
   readonly reconnect: Reconnect | undefined;
   readonly restart: Restart;
   readonly pair: PairContext | undefined;
-  /** The reviewed read-only observation: is a shared gateway live? Apply refuses if it changed. */
   shared: boolean;
 };
 
-/** JSON with sorted object keys, so equal settings compare equal whatever their key order. */
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) =>
     typeof item === "object" && item !== null && !Array.isArray(item)
@@ -184,11 +182,6 @@ function canonical(value: unknown): string {
   );
 }
 
-/**
- * Rebuilds the full saved configuration from edited choices, keeping the socket and any pair's
- * remote connection. Undefined when the saved files can't be read or the saved settings hold more
- * than the form shows (a rebuild would silently drop it), so Apply is never offered then.
- */
 async function rebuilder(
   manage: Manage,
 ): Promise<((choices: LocalChoices) => LocalPlan) | undefined> {
@@ -227,7 +220,6 @@ function changed(plan: LocalPlan): [string, string][] {
 const EDIT_PENDING_NEXT =
   "Choose Setup › Activate saved configuration, or start a new Pi session to use the saved settings.";
 
-/** Saves edited settings (owned-file CAS), restarts a live shared gateway once, then replaces. */
 async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Outcome> {
   const { agentDir, setup, activate } = manage;
   step(EDIT_STEPS[0]);
@@ -329,11 +321,6 @@ function actionRows(manage: Manage, progress: Progress): Row[] {
   ];
 }
 
-/**
- * An owned installation's Manage form: its saved settings as editable rows with one Apply, then
- * keep, activate, and either add one remote peer or the pairing actions. Custom and external
- * configurations are never adopted. Undefined when this is not an owned installation.
- */
 export async function manageRoute(
   agentDir: string,
   activate: ActivatePlan,

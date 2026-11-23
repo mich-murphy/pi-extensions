@@ -1,4 +1,4 @@
-import { decodeConfiguration, visibleText } from "../adapter/config.js";
+import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
 
 export const permissions: readonly Permission[] = ["discover", "read", "push", "interest"];
@@ -42,7 +42,6 @@ export type LocalPlan = {
   };
 };
 
-/** Host facts are suggestions, never identities or proof of trust. No filesystem effects. */
 function suggestedMachineId(hostname: string): string {
   let value = hostname
     .toLowerCase()
@@ -56,7 +55,6 @@ function suggestedMachineId(hostname: string): string {
   }
   return value.slice(0, 32).replace(/-+$/u, "");
 }
-/** The label defaults to the machine name, so other sessions can tell computers apart. */
 export function defaultChoices(hostname: string): LocalChoices {
   const machineId = suggestedMachineId(hostname);
   return {
@@ -67,10 +65,9 @@ export function defaultChoices(hostname: string): LocalChoices {
   };
 }
 
-/** Validate the intersection of adapter and native gateway contracts, not just the adapter. */
 export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan {
-  if (Buffer.byteLength(socketPath) > 100) {
-    throw new Error("The socket path is longer than 100 bytes");
+  if (Buffer.byteLength(socketPath) > SOCKET_PATH_MAX_BYTES) {
+    throw new Error(`The socket path is longer than ${SOCKET_PATH_MAX_BYTES} bytes`);
   }
   if (new Set(choices.permissions).size !== choices.permissions.length) {
     throw new Error("A permission is listed twice");

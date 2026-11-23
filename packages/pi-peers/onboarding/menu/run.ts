@@ -8,10 +8,6 @@ export type MenuContext = DialogContext & {
   readonly ui: DialogContext["ui"] & Partial<Pick<ExtensionContext["ui"], "custom">>;
 };
 
-/**
- * Shows the menu (TUI host, else RPC dialogs). The abort signal closes it. `cancelled` reports an
- * RPC menu that closed without any action; in the TUI going back is feedback enough.
- */
 export async function runMenu(
   ctx: MenuContext,
   model: MenuModel,

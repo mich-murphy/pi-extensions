@@ -314,6 +314,16 @@ describe("approved gateway acquisition", () => {
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("origin");
     expect(s.exec).not.toHaveBeenCalled();
   });
+  test.each(["nix", "bin/nix", "/home/dev/bin/nix", "/nix/store/../usr/bin/nix"])(
+    "never resolves a Nix executable from PATH or an untrusted location (%s)",
+    async (nixExecutable) => {
+      const s = await setup();
+      const plan = { ...s.plan, method: "nix" as const, narHash, nixExecutable };
+      const options = { ...s.options, catalog: { nix: { ...s.f.pin, narHash }, native: null } };
+      await expect(acquireGateway(plan, options)).rejects.toThrow("No trusted Nix install");
+      expect(s.exec).not.toHaveBeenCalled();
+    },
+  );
   test("uses exact Nix source and dedicated out-link, not a default profile", async () => {
     const s = await setup();
     const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
@@ -355,7 +365,6 @@ function kindOf(stat: { isSymbolicLink: () => boolean; isDirectory: () => boolea
   }
   return stat.isDirectory() ? "dir" : "file";
 }
-/** Inode, mode, kind and content of an entry (one directory level deep), never following links. */
 async function snapshot(filename: string): Promise<Snapshot> {
   const stat = await fs.lstat(filename);
   let content: string;
@@ -389,7 +398,6 @@ function only<T>(items: T[]): T {
   }
   return item;
 }
-/** Fixture-owned FIFO through the trusted system mkfifo, bounded by a timeout. */
 async function mkfifo(filename: string): Promise<void> {
   await promisify(execFile)("/usr/bin/mkfifo", ["-m", "600", filename], { timeout: 5000 });
 }
@@ -397,7 +405,6 @@ const stagedReplacements: [string, (filename: string) => Promise<void>][] = [
   ["FIFO", mkfifo],
   ["directory", async (filename) => fs.mkdir(filename, { mode: 0o700 })],
 ];
-/** Real open seam that swaps the staged manifest for `replace` immediately before its sync open. */
 function replacingOpen(replace: (filename: string) => Promise<void>): typeof fs.open {
   let replaced = false;
   return async (filename, flags, mode) => {
@@ -412,7 +419,6 @@ function replacingOpen(replace: (filename: string) => Promise<void>): typeof fs.
 function ioError(code: string): Error {
   return Object.assign(new Error(`simulated ${code}`), { code });
 }
-/** Real filesystem seam whose symlink runs `before` immediately ahead of the real commit. */
 function commitSeam(before: (destination: string) => Promise<void>) {
   const rename = vi.fn<typeof fs.rename>(fs.rename);
   const symlink: typeof fs.symlink = async (target, destination, type) => {
@@ -421,7 +427,6 @@ function commitSeam(before: (destination: string) => Promise<void>) {
   };
   return { rename, fs: { ...fs, rename, symlink } };
 }
-/** Holds every writer at the commit boundary until `count` writers have arrived. */
 function barrier(count: number): () => Promise<void> {
   let arrived = 0;
   const reached = Promise.withResolvers<undefined>();
@@ -433,7 +438,6 @@ function barrier(count: number): () => Promise<void> {
     await reached.promise;
   };
 }
-/** Real symlink(2) that then reports an I/O error, leaving the outcome uncertain to the caller. */
 const symlinkThenFail: typeof fs.symlink = async (target, destination, type) => {
   await fs.symlink(target, destination, type);
   throw ioError("EIO");
@@ -480,7 +484,6 @@ const foreignEntries: [string, (destination: string) => Promise<void>][] = [
     },
   ],
 ];
-/** Moves a genuine payload to a fixed expected-pattern name so only the link text is tested. */
 async function movedPayload(s: Setup, payload: string): Promise<string> {
   const name = `${attemptPrefix(s)}abcdef`;
   await fs.rename(payload, path.join(s.plan.installRoot, name));
@@ -523,10 +526,8 @@ describe("exclusive native publication", () => {
         path.basename(destinationOf(s)),
       ]);
       expect(seam.rename).not.toHaveBeenCalled();
-      // Only this attempt's own staged binary was probed; foreign content never executes.
       expect(s.exec).toHaveBeenCalledTimes(1);
       expect(s.exec.mock.calls[0]?.[0]).toContain(`/${attemptPrefix(s)}`);
-      // A later acquisition still refuses to adopt, replace or merge into the foreign entry.
       await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(/.+/u);
       await expect(snapshot(destinationOf(s))).resolves.toStrictEqual(before);
       expect(s.exec).toHaveBeenCalledTimes(1);
@@ -551,7 +552,6 @@ describe("exclusive native publication", () => {
       destinationOf(s),
       path.join(s.plan.installRoot, target),
     ]);
-    // Two staged probes plus exactly one bounded reuse probe of the winner; no retry loop.
     expect(s.exec).toHaveBeenCalledTimes(3);
     expect(s.exec.mock.calls[2]?.[0]).toBe(first.executable);
     expect(s.fetcher).toHaveBeenCalledTimes(4);
@@ -574,7 +574,6 @@ describe("exclusive native publication", () => {
     const winner = only(winners);
     await expect(fs.readFile(winner.executable, "utf8")).resolves.toBe("tampered");
     await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(2);
-    // The tampered binary is never executed: only the two staged attempts were probed.
     expect(s.exec).toHaveBeenCalledTimes(2);
   });
 
@@ -631,9 +630,6 @@ describe("exclusive native publication", () => {
   test("retains its own attempt when link inspection fails after a symlink error", async () => {
     const s = await setup();
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
-    // At the commit, the owned root is moved to an owned sibling and an owned regular file takes
-    // its path before symlink reports EIO. The real lstat of the destination then fails with
-    // ENOTDIR for every uid, so the outcome of the commit cannot be inspected.
     const held = path.join(s.root, "held-install");
     const sentinel = "owned sentinel";
     const symlink: typeof fs.symlink = async () => {
@@ -648,7 +644,6 @@ describe("exclusive native publication", () => {
           seams: { ...s.options.seams, fs: { ...fs, symlink } },
         }),
       ).rejects.toThrow("could not be confirmed; it was kept");
-      // Nothing replaced or removed the sentinel or the held attempt while inspection was uncertain.
       await expect(fs.readFile(s.plan.installRoot, "utf8")).resolves.toBe(sentinel);
       const heldAttempt = only(await fs.readdir(held));
       await expect(fs.readFile(path.join(held, heldAttempt, "pi-gateway"))).resolves.toStrictEqual(
@@ -658,7 +653,6 @@ describe("exclusive native publication", () => {
       await fs.rm(s.plan.installRoot, { force: true });
       await fs.rename(held, s.plan.installRoot);
     }
-    // The outcome is unknown, so the complete owned payload is conservatively kept, never removed.
     const attempt = only(await fs.readdir(s.plan.installRoot));
     expect(attempt.startsWith(attemptPrefix(s))).toBe(true);
     await expect(
@@ -793,7 +787,6 @@ describe("exclusive native publication", () => {
     "refuses a %s symlink without fetch, exec or mutation",
     async (_kind, targetOf) => {
       const s = await setup();
-      // A genuine payload exists so only the link target decides rejection.
       const first = await acquireGateway(s.plan, s.options);
       await fs.unlink(destinationOf(s));
       const target = await targetOf(s, path.dirname(first.executable));

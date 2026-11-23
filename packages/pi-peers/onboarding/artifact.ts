@@ -8,10 +8,6 @@ export const MAX_BINARY = 128 * 1024 * 1024;
 export function sha256(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
-/**
- * Immutable semantic release tag; a published version is never overwritten. Rejects any version
- * outside the trusted pin shape itself, so no caller can build a tag or URL path from it.
- */
 export function gatewayReleaseTag(version: string): string {
   if (!isGatewayVersion(version)) {
     throw new Error("Invalid trusted gateway pin");

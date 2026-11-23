@@ -1,10 +1,3 @@
-// Test-only Pi extension for peers.bombadil.ts, loaded next to packages/pi-peers/index.ts. Not
-// shipped. It adds an offline scripted model: when a turn starts from anything but a tool result
-// it calls `peers_take`, otherwise it answers `taken`, so a peer's wake notice becomes a take.
-// It also turns what was taken into screen state, since Bombadil sees only the terminal: the
-// footer status `peers-probe taken=<n> dup=<token|none> final=<yes|no>` counts distinct peer
-// tokens taken over the whole run, names the first token taken twice, and notes the peer's last
-// message.
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -39,7 +32,6 @@ function field(value: unknown, key: string): unknown {
   return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 }
 
-/** The authored contents of a peers_take result's messages. */
 function takenContents(details: unknown): string[] {
   const messages = field(field(details, "value"), "messages");
   return Array.isArray(messages)

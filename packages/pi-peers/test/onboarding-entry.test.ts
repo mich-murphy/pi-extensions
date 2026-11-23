@@ -54,6 +54,7 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
   return {
     commands,
     notifications,
+    unusedAnswers: () => answers.length,
     entries,
     setIdle: (value: boolean) => {
       idle = value;
@@ -205,9 +206,9 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
   test("reset with nothing configured says so without asking for Apply or writing", async () => {
     const messages = await host.command("reset", ["APPLY"]);
     expect(messages.join("\n")).toContain("Nothing to reset");
+    expect(host.unusedAnswers()).toBe(1);
     expect(messages.join("\n")).not.toContain("Reset refused");
     expect(existsSync(setupPaths(agent).directory)).toBe(false);
-    // The unused APPLY answer proves no confirmation dialog was shown.
     const status = await host.command("status");
     expect(status.join("\n")).toContain("not enabled");
   });

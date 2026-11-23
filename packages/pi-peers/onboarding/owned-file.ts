@@ -10,7 +10,6 @@ import {
 } from "./files.js";
 import { SETTINGS_CHANGED } from "./refusal.js";
 
-/** Reviewed owned projection update. Preserve old snapshots and refuse symlinks/concurrent edits. */
 export async function replaceOwned(path: string, expected: string, content: string): Promise<void> {
   const bytes = await regularBytes(path);
   if (bytes === undefined || digest(bytes) !== expected) {
@@ -18,7 +17,6 @@ export async function replaceOwned(path: string, expected: string, content: stri
   }
   const temporary = `${path}.staged-${randomBytes(12).toString("hex")}`;
   await createPrivate(temporary, content);
-  // A create-only hardlink preserves the exact inode before replacement, not an external path's later bytes.
   const backup = `${path}.previous-${randomBytes(12).toString("hex")}`;
   await link(path, backup);
   await syncDirectory(join(path, ".."));

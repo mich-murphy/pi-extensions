@@ -1,4 +1,3 @@
-/** Trusted extension metadata, never populated from a downloaded checksum. */
 export type GatewayReleasePin = {
   sourceRevision: string;
   version: string;
@@ -6,7 +5,6 @@ export type GatewayReleasePin = {
 };
 
 export type GatewayNixPin = Pick<GatewayReleasePin, "sourceRevision" | "version"> & {
-  /** Canonical SHA-256 SRI of the reviewed source tree, not a downloaded checksum. */
   narHash: string;
 };
 
@@ -28,12 +26,6 @@ export const GATEWAY_REMOTE_SETUP_CAPABILITIES = [
   "pairing-v1",
 ] as const;
 
-// Nix: reviewed immutable producer commit; its NAR hash was derived independently from a
-// local `git archive` of that revision (never from a downloaded self-reported hash). This
-// catalog commit is necessarily a descendant of the pinned revision.
-// Native: the published `pi-gateway-v0.1.0` GitHub Release built from the same producer
-// revision. The manifest SHA-256 was reviewed against the published asset and an independent
-// authentication of the original CI-built archives, never taken from the adjacent checksum.
 export const gatewayCatalog: GatewayCatalog = {
   nix: {
     sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
@@ -60,7 +52,6 @@ export function gatewayTarget(
   )[`${platform}/${arch}`];
 }
 
-/** The one trusted gateway version shape, shared by pin validation and release-tag derivation. */
 export function isGatewayVersion(version: unknown): version is string {
   return typeof version === "string" && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u.test(version);
 }

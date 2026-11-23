@@ -21,7 +21,6 @@ const codePoint = gs.oneOf(
   gs.sampledFrom([0, 0x7f, 0xfe_ff, 0xff_ff, 0x1_00_00, 0x10_ff_ff]),
 );
 
-/** Maps the surrogate block D800..DFFF onto E000..E7FF so every value is a scalar. */
 function toScalar(value: number): number {
   return value >= 0xd8_00 && value <= 0xdf_ff ? value + 0x8_00 : value;
 }
@@ -31,7 +30,6 @@ const rid = "1".repeat(32);
 const peerOf = (machineId: string) => ({ machineId, sessionId: "s", runtimeNonce: nonce });
 type Case = { role: BoundaryRole; frame: Record<string, unknown> };
 
-/** One case per op in schema.ts `requests`/`results`/`event` that a role in wire.ts `roleOperations` admits. */
 function frameCases(content: string): Case[] {
   const message = { id: "2".repeat(32), kind: "request", format: "text", content };
   const head = { v: 1, rid };
@@ -96,7 +94,6 @@ const routedOps = new Set(["send", "state.get", "state.list", "interest.add", "i
 function assertRoundtrip({ role, frame }: Case): void {
   assert.deepStrictEqual(decodeFrame(encodeFrame(frame, role), role), frame);
   if (routedOps.has(String(frame.op))) {
-    // `from` presence rule: required for every role except local-client, forbidden for it.
     const { from, ...without } = frame;
     const flipped = role === "local-client" ? { ...frame, from: peerOf("alpha") } : without;
     assert.notEqual(from === undefined, role !== "local-client");
@@ -134,7 +131,6 @@ function deriveSecond(
   return first.map((value, index) => (plan.reuse[index] === true ? value : at(plan.fresh, index)));
 }
 
-/** Re-splits two adjacent fields at a comma so naive comma-joined encodings collide. */
 function shiftBoundary(values: readonly string[], field: number, cut: number): string[] {
   const joined = `${at(values, field)},${at(values, field + 1)}`;
   const commas = Array.from(joined, (character, index) => (character === "," ? index : -1)).filter(

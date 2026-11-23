@@ -1,4 +1,3 @@
-/** A refusal written for the user: a short reason for the headline and one fix for the next step. */
 export class Refusal extends Error {
   constructor(
     readonly reason: string,
@@ -8,7 +7,6 @@ export class Refusal extends Error {
   }
 }
 
-/** A folder setup will not write under. The reason names the folder. */
 export class UnsafeFolder extends Refusal {
   constructor(
     readonly folder: string,
@@ -19,7 +17,6 @@ export class UnsafeFolder extends Refusal {
   }
 }
 
-/** Another user or process could swap a folder's contents, so setup refuses it. */
 export function sharedFolder(folder: string): UnsafeFolder {
   return new UnsafeFolder(
     folder,

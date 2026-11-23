@@ -13,7 +13,6 @@ export type CredentialKey =
   | "crl"
   | "revocationState";
 
-/** Editable remote-peer details. Nothing here has effects; reading an offer is a read-only preview. */
 export type RemoteDraft = {
   kind: Kind;
   peer: string;
@@ -40,15 +39,10 @@ export function remoteDraft(): RemoteDraft {
   };
 }
 
-/** Route-specific limits on the remote rows. */
 export type RemoteOptions = {
-  /** Trust kinds offered; re-pair offers only a new pair. */
   readonly kinds?: readonly Kind[];
-  /** Re-pair keeps the same peer. */
   readonly peer?: string;
-  /** Re-pair must not reuse the old root. */
   readonly oldRoot?: string;
-  /** Fresh setup takes this machine's name from a read offer. */
   readonly adopt?: (machine: string) => void;
 };
 
@@ -163,7 +157,6 @@ function peerRow(draft: RemoteDraft, options: RemoteOptions): Row {
   });
 }
 
-/** The remote rows, in the order they are filled in. */
 export function remoteRows(draft: RemoteDraft, options: RemoteOptions = {}): Row[] {
   const kinds = KINDS.filter(([kind]) => options.kinds?.includes(kind) ?? true);
   return [
@@ -257,10 +250,6 @@ function intentOf(draft: RemoteDraft): RemoteIntent {
   };
 }
 
-/**
- * The remote part of the Apply row: Missing first, then cross-field checks (the peer is another
- * computer, the offer is for this one, re-pair keeps its peer and changes its root), else Ready.
- */
 export function remoteGate(
   draft: RemoteDraft,
   machine: string,

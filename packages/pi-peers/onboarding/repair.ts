@@ -38,7 +38,6 @@ const decodeRepair = Schema.decodeUnknownSync(
 type Ledger = ReturnType<typeof decodeRepair>;
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
-/** Read-only ownership/projection inspection: never execute an unavailable old file. */
 async function inspectOwned(agentDir: string) {
   const paths = setupPaths(agentDir);
   const metadata = await regularBytes(paths.metadata);
@@ -201,17 +200,11 @@ async function repairWork(
   };
 }
 
-/** A repair route: the screen, and whether its acquisition is blocked. */
 export type RepairRoute = {
   readonly blocked: boolean;
   readonly screen: (progress: Progress) => Screen;
 };
 
-/**
- * Missing, damaged or mandatory-capability-incompatible ownership needs explicit repair, not
- * version updates. Undefined when the installation is healthy. Inspection is read-only and throws
- * when owned files changed externally.
- */
 export async function repairRoute(
   agentDir: string,
   acquisition: (remote: boolean) => Promise<Acquisition>,

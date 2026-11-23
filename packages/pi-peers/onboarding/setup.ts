@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { loadConfiguration, visibleText } from "../adapter/config.js";
+import { loadConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { AcquisitionPlan } from "./acquire.js";
 import { acquireGateway, discoverNixExecutable } from "./acquire.js";
 import {
@@ -55,7 +55,6 @@ import type { Acquisition, ActivatePlan, Notice, Reconnect, Restart, SetupRoute 
 import { NO_CHANGES, SETUP_STEPS } from "./route.js";
 import { manageRoute } from "./upgrade.js";
 
-/** Trusted catalog selection; production always uses the shipped `gatewayCatalog`. */
 export type SetupOptions = { catalog?: GatewayCatalog };
 
 async function productionBackend(
@@ -78,7 +77,6 @@ async function productionBackend(
     };
   }
   const nixExecutable = await discoverNixExecutable();
-  // Discovery and every acquisition below use the SAME trusted catalog.
   const discovered = discoverGateway({ nixAvailable: nixExecutable !== undefined }, catalog);
   const pin = selectedSource(discovered);
   if (pin === undefined || discovered.target === undefined) {
@@ -132,10 +130,9 @@ async function productionBackend(
     },
   };
 }
-/** The pinned native fallback after a failed Nix acquisition, or the original error when none applies. */
 function nativeFallback<T>(error: unknown, fallback: T | null): T {
-  // The native fallback installs under the same folders, so it would be refused too.
-  if (fallback === null || error instanceof UnsafeFolder) {
+  const fallbackUsesTheSameRefusedFolders = error instanceof UnsafeFolder;
+  if (fallback === null || fallbackUsesTheSameRefusedFolders) {
     throw error;
   }
   return fallback;
@@ -192,7 +189,6 @@ function reportRoute(
   };
 }
 
-/** An unreadable or externally changed setup file: Status, Doctor and Reset still work. */
 function unreadableRoute(error: unknown): SetupRoute {
   const reason = safeReason(error);
   const what = reason === "" ? "saved files are unreadable" : "saved files were changed";
@@ -343,7 +339,7 @@ async function freshRoute(
           productionBackend(agentDir, true, false, catalog),
         ])
       : [supplied, supplied];
-  const required = Buffer.byteLength(state.paths.socket) > 100;
+  const required = Buffer.byteLength(state.paths.socket) > SOCKET_PATH_MAX_BYTES;
   const draft: SetupDraft = {
     mode: "local",
     choices: state.choices,
@@ -399,11 +395,6 @@ async function freshRoute(
   };
 }
 
-/**
- * Builds the Setup route without effects: the fresh form (local or one remote peer), or the
- * existing-state screen (repair, continue pairing, upgrade), or a plain report for interrupted,
- * external or unreadable state. Any error while reading becomes a blocked report, never a crash.
- */
 export async function prepareSetup(
   agentDir: string,
   activate: ActivatePlan,
@@ -426,7 +417,6 @@ async function unavailable(): Promise<Outcome> {
   return failed("Not available here", "open the full menu", "Run /peers.");
 }
 
-/** `/peers setup` without the rest of the root: the Setup screen pushed, driven to completion. */
 export async function setupCommand(
   agentDir: string,
   ctx: MenuContext,
@@ -528,7 +518,6 @@ async function success(
   };
 }
 
-/** Plain step labels for applyLocal's progress messages. */
 function stepLabel(message: string): string {
   if (message.startsWith("Nix acquisition unavailable")) {
     return "Using the verified download instead";
@@ -585,7 +574,6 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
   }
 }
 
-/** Disables owned participation; `dispose` closes this Pi's runtime once disabled. */
 export async function resetOutcome(
   agentDir: string,
   dispose: () => Promise<void>,
@@ -631,7 +619,6 @@ export async function resetOutcome(
   }
 }
 
-/** Review text for the selected route; only a Nix selection can authorize a native fallback. */
 export function acquisitionDescription(
   pin: ({ method: "nix" } & GatewayNixPin) | ({ method: "native" } & GatewayReleasePin),
   fallback: GatewayReleasePin | null,

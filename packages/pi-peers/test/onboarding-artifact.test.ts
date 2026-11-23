@@ -46,7 +46,6 @@ describe("bounded authenticated artifacts", () => {
     expect(() => verifyArtifact(f.archive, { ...f.record, sha256: "0".repeat(64) })).toThrow(
       "Archive integrity mismatch",
     );
-    // Its record matches size and digest, so only the size limit rejects it before decompression.
     const oversized = Buffer.alloc(MAX_ARCHIVE + 1);
     expect(() =>
       verifyArtifact(oversized, { ...f.record, size: oversized.length, sha256: sha256(oversized) }),
@@ -153,8 +152,6 @@ describe("bounded authenticated artifacts", () => {
       },
     ],
   ] as const)("rejects authenticated Linux binary with %s", (_label, transform) => {
-    // Re-pin all digests and embedded metadata: this must reach the ELF check,
-    // not fail earlier on an unrelated archive or metadata mismatch.
     const f = fixture("x86_64-unknown-linux-gnu", transform);
     const { record } = verifyManifest(f.manifest, f.pin, f.record.target);
     expect(() => verifyArtifact(f.archive, record)).toThrow("Wrong ELF target");

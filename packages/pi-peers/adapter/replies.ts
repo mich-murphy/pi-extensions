@@ -83,7 +83,6 @@ function interest(
   publisherBinding(request, reply.outcome.value);
   assert(isDeepStrictEqual(reply.outcome.value.work, request.work), "Work binding mismatch");
 }
-/** Structural validation has already run. Live replies must match their exact originating operation. */
 export function validateBoundReply(request: Request, reply: Reply, self: PeerRef): void {
   assert(request.op === reply.forOp, "Operation binding mismatch");
   switch (request.op) {

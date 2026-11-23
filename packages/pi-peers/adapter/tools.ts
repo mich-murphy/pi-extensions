@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
 import type { PublishInput } from "../state/types.js";
 import { permits, visibleText } from "./config.js";
@@ -70,7 +71,7 @@ const authored = {
 const message = Type.Object(
   {
     kind: Type.Union([Type.Literal("request"), Type.Literal("reply"), Type.Literal("update")]),
-    content: Type.String({ minLength: 1, maxLength: 24_576 }),
+    content: Type.String({ minLength: 1, maxLength: MAX_AUTHORED_BYTES }),
     format,
     ...authored,
     replyTo: Type.Optional(Type.Object({ sender: peer, messageId: id })),
@@ -89,7 +90,7 @@ const record = Type.Object(
     ]),
     title: Type.String({ minLength: 1, maxLength: 128 }),
     summary: Type.String({ minLength: 1, maxLength: 1024 }),
-    content: Type.Optional(Type.String({ minLength: 1, maxLength: 24_576 })),
+    content: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_AUTHORED_BYTES })),
     format,
     ...authored,
     preparation: Type.Union([
@@ -112,10 +113,6 @@ function output(value: unknown): ToolValue {
     details: { value },
   };
 }
-/**
- * Local tools touch only this runtime's private in-memory state and never wait on gateway recovery.
- * Remote, read and discovery tools keep the recovery preflight and effective-grant checks.
- */
 async function invoke(
   getSession: () => AdapterSession | undefined,
   run: (session: AdapterSession) => unknown,
@@ -149,7 +146,6 @@ async function invoke(
     };
   }
 }
-/** The human part of a failed tool note; branches only on the existing failure code. */
 function failureNote(error: unknown): string {
   if (!(error instanceof ConnectionFailure)) {
     return "This request was rejected. Check the tool arguments and configured scopes.";
@@ -167,11 +163,6 @@ function ownScope(session: AdapterSession, scopeId: string): void {
   }
 }
 const offline = (session: AdapterSession): boolean => !session.client.status().connected;
-/**
- * Own publication put/remove. While connected, the gateway's current grants bound mutation.
- * Offline, the state store still requires a configured scope; exposure remains guarded because
- * every remote read re-checks current effective scopes and the configured read policy.
- */
 function mutateOwn(
   session: AdapterSession,
   args: (PublishInput & { action: "put" }) | { action: "remove"; scopeId: string; key: string },

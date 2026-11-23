@@ -9,7 +9,6 @@ export function samePeer(left: PeerRef, right: PeerRef): boolean {
   );
 }
 
-/** Tuple encoding is local-only, collision-free, and never a pathname or wire field. */
 export function scopedMessageKey(
   sender: PeerRef,
   recipient: PeerRef,
@@ -42,12 +41,10 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
-/** Only validated messages; absence differs from an empty refs array, Unicode is not normalized. */
 export function sameMessage(left: Message, right: Message): boolean {
   return JSON.stringify(stableValue(left)) === JSON.stringify(stableValue(right));
 }
 
-/** Local bounded receipt comparison only; this digest is never a wire identity. */
 export function messageFingerprint(message: Message): string {
   return createHash("sha256")
     .update(JSON.stringify(stableValue(message)), "utf8")
