@@ -154,6 +154,8 @@ def main():
             for name in ['package.json', 'package-lock.json', 'vitest.live.config.ts', 'vitest.config.ts', 'tsconfig.json']:
                 shutil.copy2(ROOT / name, dest / name)
             shutil.copytree(ROOT / 'packages/pi-claude', dest / 'packages/pi-claude')
+            # vitest.config.ts loads test-support/isolate-git.ts as a setup file.
+            shutil.copytree(ROOT / 'test-support', dest / 'test-support')
             (dest / 'node_modules').symlink_to(ROOT / 'node_modules', target_is_directory=True)
         return dest
 
