@@ -76,7 +76,7 @@ class WebFetchTimedOut extends Schema.TaggedError<WebFetchTimedOut>()("WebFetchT
   timeoutSeconds: Schema.Number,
 }) {
   override get message(): string {
-    return `Web fetch timed out after ${this.timeoutSeconds}s`;
+    return `Web fetch timed out after ${this.timeoutSeconds}s; the site may be slow.`;
   }
 }
 
@@ -185,8 +185,8 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         // Validation runs before credentials: never echo caller-controlled hostnames here.
         throw new Error(
           policy.failure._tag === "DomainDenied"
-            ? "Fetching from this hostname is denied by the webfetch domain policy"
-            : "Fetching from this hostname is not in the webfetch allowed domains list",
+            ? "Fetching from this hostname is denied by the webfetch domain policy (`PI_WEB_FETCH_DENY_DOMAINS`)."
+            : "Fetching from this hostname is not in the webfetch allowed domains list (`PI_WEB_FETCH_ALLOW_DOMAINS`).",
         );
       }
 
@@ -213,7 +213,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       if (Result.isSuccess(failure)) {
         throw new Error(redactor.redactText(renderWebFetchFailure(failure.success)));
       }
-      throw new Error("Web fetch failed unexpectedly");
+      throw new Error("Web fetch failed unexpectedly (a pi-web bug). Ask the user to report it.");
     },
 
     renderCall(
@@ -371,17 +371,17 @@ function renderWebFetchFailure(error: WebFetchRunError): string {
 function renderUrlParseError(error: ParsePublicHttpUrlError): string {
   switch (error._tag) {
     case "EmptyUrl": {
-      return "URL cannot be empty";
+      return "URL cannot be empty. Pass a full http:// or https:// address.";
     }
     case "UnsupportedUrlProtocol": {
       // An arbitrary scheme can itself be a secret. Validation must not echo it.
       return "URL must start with http:// or https://";
     }
     case "InvalidUrl": {
-      return "Invalid URL";
+      return "Invalid URL. Check it for typos and pass a full http:// or https:// address.";
     }
     case "UrlCredentialsUnsupported": {
-      return "URL credentials are not supported";
+      return "URL credentials are not supported. Remove the user:password part from the URL.";
     }
     default: {
       return absurd(error);

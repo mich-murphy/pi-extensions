@@ -14,7 +14,7 @@ export class DomainDenied extends Schema.TaggedError<DomainDenied>()("DomainDeni
 }) {
   /** Safe user-facing description naming only the hostname. */
   override get message(): string {
-    return `Fetching from ${this.hostname} is denied by the webfetch domain policy`;
+    return `Fetching from ${this.hostname} is denied by the webfetch domain policy (\`PI_WEB_FETCH_DENY_DOMAINS\`).`;
   }
 }
 
@@ -25,7 +25,7 @@ export class DomainNotAllowed extends Schema.TaggedError<DomainNotAllowed>()("Do
 }) {
   /** Safe user-facing description naming only the hostname. */
   override get message(): string {
-    return `Fetching from ${this.hostname} is not in the webfetch allowed domains list`;
+    return `Fetching from ${this.hostname} is not in the webfetch allowed domains list (\`PI_WEB_FETCH_ALLOW_DOMAINS\`).`;
   }
 }
 

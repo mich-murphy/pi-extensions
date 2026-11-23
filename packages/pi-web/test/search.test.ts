@@ -202,7 +202,7 @@ describe("searchWithFallback", () => {
       );
       assert(Result.isFailure(unknown));
       expect(unknown.failure.message).toBe(
-        'Provider "brave" is not enabled. Available: exa, parallel',
+        'Provider "brave" is not enabled (`PI_WEB_PROVIDERS`). Available: exa, parallel.',
       );
     }),
   );
@@ -243,6 +243,182 @@ describe("buildSearchProviders", () => {
       ["parallel", "mcp"],
     ]);
   });
+
+  test.each([
+    [{}, [true, true]],
+    [{ EXA_API_KEY: "exa-key" }, [false, true]],
+    [{ PI_WEB_EXA_ENDPOINT: "https://search.internal.example/mcp" }, [false, true]],
+  ] as const)("only the default keyless endpoints are free tier: %j", (env, freeTier) => {
+    const providers = buildChains(env).search;
+    expect(providers.map((p) => p.freeTier === true)).toStrictEqual(freeTier);
+  });
+});
+
+function freeTierProvider(error: ProviderError, name: "exa" | "parallel"): SearchProvider {
+  return { ...failingProvider(error, name), transport: "mcp", freeTier: true };
+}
+
+const EXA_LIMIT = new ProviderToolError({
+  detail: "You've hit Exa's free MCP rate limit. Create a free Exa account to get your own...",
+});
+
+describe("free-tier rate limits", () => {
+  it.effect("says the free tier is rate limited and how to add a key", () =>
+    Effect.gen(function* () {
+      const providers = [
+        freeTierProvider(EXA_LIMIT, "exa"),
+        freeTierProvider(new ProviderStatusRejected({ status: 429 }), "parallel"),
+      ];
+      const result = yield* Effect.result(
+        searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
+      );
+
+      assert(Result.isFailure(result));
+      assert(result.failure._tag === "AllProvidersFailed");
+      expect(result.failure.message).toBe(
+        "Free-tier rate limit on exa, parallel. Ask the user to add a key with `/login pi-web-exa`.",
+      );
+      expect(result.failure.attempts).toStrictEqual([
+        "exa: free-tier rate limit; the user can add a key with `/login pi-web-exa`",
+        "parallel: free-tier rate limit; the user can add a key with `/login pi-web-parallel`",
+      ]);
+    }),
+  );
+
+  it.effect("lists each reason when only some providers hit the free-tier limit", () =>
+    Effect.gen(function* () {
+      const providers = [
+        freeTierProvider(EXA_LIMIT, "exa"),
+        failingProvider(new ProviderTimedOut({ timeoutSeconds: 25 }), "parallel"),
+      ];
+      const result = yield* Effect.result(
+        searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
+      );
+
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toBe(
+        "All search providers failed (exa: free-tier rate limit; the user can add a key with `/login pi-web-exa`; parallel: timed out after 25s)",
+      );
+    }),
+  );
+
+  it.effect("keeps the provider's own text when a keyed or overridden route is rate limited", () =>
+    Effect.gen(function* () {
+      const providers = [
+        failingProvider(new ProviderStatusRejected({ status: 429 }), "exa"),
+        { ...failingProvider(EXA_LIMIT, "parallel"), transport: "mcp" as const },
+      ];
+      const result = yield* Effect.result(
+        searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
+      );
+
+      assert(Result.isFailure(result));
+      assert(result.failure._tag === "AllProvidersFailed");
+      expect(result.failure.freeTierRateLimited).toBeUndefined();
+      expect(result.failure.attempts).toStrictEqual([
+        "exa: rejected (HTTP 429)",
+        // The provider's own text, cut at the last word boundary within 70 characters.
+        "parallel: reported an error: You've hit Exa's free MCP rate limit. Create a free Exa account to get…",
+      ]);
+    }),
+  );
+
+  it.effect("names the provider when a single-provider override hits the free-tier limit", () =>
+    Effect.gen(function* () {
+      const providers = [
+        freeTierProvider(EXA_LIMIT, "exa"),
+        freeTierProvider(new ProviderStatusRejected({ status: 429 }), "parallel"),
+      ];
+      const result = yield* Effect.result(
+        searchWithFallback(
+          providers,
+          { query: QUERY, maxResults: 8 },
+          { providerOverride: "parallel" },
+        ),
+      );
+
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toBe(
+        "Free-tier rate limit on parallel. Ask the user to add a key with `/login pi-web-parallel`.",
+      );
+    }),
+  );
+
+  it.effect("does not call other free-tier failures a rate limit", () =>
+    Effect.gen(function* () {
+      const providers = [freeTierProvider(new ProviderStatusRejected({ status: 503 }), "exa")];
+      const result = yield* Effect.result(
+        searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
+      );
+
+      assert(Result.isFailure(result));
+      expect(result.failure.message).toBe("All search providers failed (exa: rejected (HTTP 503))");
+    }),
+  );
+});
+
+/** The single attempt line for a provider whose tool reported `detail`. */
+function attemptFor(error: ProviderError): Effect.Effect<string> {
+  return Effect.gen(function* () {
+    const result = yield* Effect.result(
+      searchWithFallback([failingProvider(error)], { query: QUERY, maxResults: 8 }),
+    );
+    assert(Result.isFailure(result));
+    assert(result.failure._tag === "AllProvidersFailed");
+    const [attempt] = result.failure.attempts;
+    assert(attempt !== undefined);
+    return attempt;
+  });
+}
+
+const DETAIL_PREFIX = "exa: reported an error: ";
+
+describe("provider detail bounds", () => {
+  it.effect("cuts a long provider detail at a word boundary", () =>
+    Effect.gen(function* () {
+      const detail = "alpha beta gamma delta ".repeat(10).trim();
+      const attempt = yield* attemptFor(new ProviderToolError({ detail }));
+      assert(attempt.startsWith(DETAIL_PREFIX));
+      const shown = attempt.slice(DETAIL_PREFIX.length);
+      expect(shown.endsWith("…")).toBe(true);
+      const kept = shown.slice(0, -1);
+      expect(kept.length).toBeLessThanOrEqual(70); // ASCII detail: one code unit per grapheme
+      expect(detail.startsWith(kept)).toBe(true);
+      expect(detail.charAt(kept.length)).toBe(" ");
+    }),
+  );
+
+  it.effect("cuts whole code points when an emoji sits at the cut", () =>
+    Effect.gen(function* () {
+      // No spaces, so the cut falls inside the emoji run; each emoji is a surrogate pair.
+      const detail = `${"x".repeat(60)}${"😀".repeat(30)}`;
+      const attempt = yield* attemptFor(new ProviderToolError({ detail }));
+      const shown = attempt.slice(DETAIL_PREFIX.length, -1);
+      expect(shown).toBe(`${"x".repeat(60)}${"😀".repeat(9)}`);
+      expect(shown).not.toMatch(/\p{Surrogate}/u);
+      expect(shown.isWellFormed()).toBe(true);
+    }),
+  );
+
+  it.effect("never splits the [URL omitted] placeholder", () =>
+    Effect.gen(function* () {
+      // The last space within the cap is the one inside "[URL omitted]".
+      const detail = `${"word ".repeat(13)}[URL omitted] for details and more text after it`;
+      const attempt = yield* attemptFor(new ProviderToolError({ detail }));
+      const shown = attempt.slice(DETAIL_PREFIX.length);
+      expect(shown).not.toContain("[URL…");
+      expect(shown).toBe(`${"word ".repeat(12)}word…`);
+    }),
+  );
+
+  it.effect("does not cut pi-web's own messages", () =>
+    Effect.gen(function* () {
+      const error = new CredentialFailure({ provider: "exa", reason: "incompatible" });
+      const attempt = yield* attemptFor(error);
+      expect(attempt).toBe(`exa: ${error.message}`);
+      expect(attempt).toContain("`/reload`.");
+    }),
+  );
 });
 
 describe("provider route isolation", () => {

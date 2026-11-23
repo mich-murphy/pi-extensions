@@ -90,7 +90,7 @@ export class PrivateHostBlocked extends Schema.TaggedError<PrivateHostBlocked>()
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Blocked private or local host";
+    return "Blocked private or local host. webfetch only fetches public sites.";
   }
 }
 
@@ -101,7 +101,7 @@ export class PrivateIpBlocked extends Schema.TaggedError<PrivateIpBlocked>()(
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Blocked private or local IP address";
+    return "Blocked private or local IP address. webfetch only fetches public sites.";
   }
 }
 
@@ -112,7 +112,7 @@ export class UrlCredentialsUnsupported extends Schema.TaggedError<UrlCredentials
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "URL credentials are not supported";
+    return "URL credentials are not supported. Remove the user:password part from the URL.";
   }
 }
 
@@ -123,7 +123,7 @@ export class RedirectLocationMissing extends Schema.TaggedError<RedirectLocation
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Redirect response was missing a Location header";
+    return "Redirect response was missing a Location header; the site's redirect is broken.";
   }
 }
 
@@ -134,7 +134,7 @@ export class RedirectLocationInvalid extends Schema.TaggedError<RedirectLocation
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Redirect response had an invalid Location header";
+    return "Redirect response had an invalid Location header; the site's redirect is broken.";
   }
 }
 
@@ -148,7 +148,7 @@ export class RedirectLimitExceeded extends Schema.TaggedError<RedirectLimitExcee
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Too many redirects while fetching URL";
+    return `Too many redirects while fetching URL (limit ${this.maxRedirects}); the site may be redirecting in a loop.`;
   }
 }
 
@@ -162,7 +162,7 @@ export class RedirectProtocolUnsupported extends Schema.TaggedError<RedirectProt
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "Redirected to unsupported protocol";
+    return "Redirected to unsupported protocol; webfetch follows only http:// and https://.";
   }
 }
 
@@ -182,10 +182,10 @@ export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()
     const label = this.statusText ? STATUS_CODES[this.status] : undefined;
     const summary = `Request failed (${this.status}${label === undefined ? "" : ` ${label}`})`;
     if (this.status === 401) {
-      return `${summary}. The remote site requires authentication; webfetch does not use your browser login. Use a public page or an authorized site-specific tool; do not put credentials in the URL.`;
+      return `${summary}. The site requires authentication; webfetch does not use your browser login. Use a public page; never put credentials in the URL.`;
     }
     if (this.status === 404) {
-      return `${summary}. The remote site could not find this page. Check the URL or search for a current public source.`;
+      return `${summary}. The site could not find this page. Check the URL or search for a current source.`;
     }
     return summary;
   }
@@ -198,7 +198,7 @@ export class ResponseTooLarge extends Schema.TaggedError<ResponseTooLarge>()("Re
 }) {
   /** Safe user-facing description with the cap in MB. */
   override get message(): string {
-    return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit)`;
+    return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit). Try a smaller or more specific page.`;
   }
 }
 

@@ -205,6 +205,8 @@ export type SearchInput = { readonly query: SearchQuery; readonly maxResults: nu
 export type SearchProvider = {
   readonly name: SearchProviderName;
   readonly transport: "mcp" | "api";
+  /** The provider's shared free endpoint, used because no key is set. A key would lift its limits. */
+  readonly freeTier?: true;
   /** Search once; interrupting the effect aborts the request. */
   readonly search: (
     input: SearchInput,

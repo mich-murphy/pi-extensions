@@ -51,7 +51,7 @@ export class EmptySearchQueryInput extends Schema.TaggedError<EmptySearchQueryIn
 ) {
   /** Safe user-facing description. */
   override get message(): string {
-    return "query cannot be empty";
+    return "Search query cannot be empty.";
   }
 }
 
@@ -160,7 +160,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       if (Result.isSuccess(failure)) {
         throw new Error(redactor.redactText(renderWebSearchFailure(failure.success)));
       }
-      throw new Error("Web search failed unexpectedly");
+      throw new Error("Web search failed unexpectedly (a pi-web bug). Ask the user to report it.");
     },
 
     renderCall(

@@ -18,10 +18,11 @@ import {
   ParallelMcpFetchProvider,
   ParallelMcpSearchProvider,
 } from "./provider-parallel";
-import type { FetchProvider, SearchProvider } from "./provider-types";
+import type { FetchProvider, ProviderError, SearchProvider } from "./provider-types";
 import {
   EXA_MCP_DEFAULT_ENDPOINT,
   PARALLEL_MCP_DEFAULT_ENDPOINT,
+  SEARCH_PROVIDERS,
   WebToolsConfig,
 } from "./settings";
 import type { WebToolsSettings } from "./settings";
@@ -47,7 +48,7 @@ type ProviderPair = {
 
 type ProviderRoute =
   | { readonly _tag: "OfficialApi"; readonly apiKey: Redacted.Redacted }
-  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl }
+  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl; readonly freeTier: boolean }
   | { readonly _tag: "Failed"; readonly error: CredentialFailure };
 
 function selectProviderRoute(
@@ -56,14 +57,26 @@ function selectProviderRoute(
   defaultEndpoint: PublicHttpUrl,
 ): ProviderRoute {
   if (override !== undefined) {
-    return { _tag: "KeylessMcp", endpoint: override };
+    return { _tag: "KeylessMcp", endpoint: override, freeTier: false };
   }
   if (Result.isFailure(outcome)) {
     return { _tag: "Failed", error: outcome.failure };
   }
   return outcome.success === undefined
-    ? { _tag: "KeylessMcp", endpoint: defaultEndpoint }
+    ? { _tag: "KeylessMcp", endpoint: defaultEndpoint, freeTier: true }
     : { _tag: "OfficialApi", apiKey: outcome.success };
+}
+
+/** Mark a provider that runs on the shared free endpoint only because no key is set. */
+function onFreeTier(provider: SearchProvider, freeTier: boolean): SearchProvider {
+  return freeTier
+    ? {
+        name: provider.name,
+        transport: provider.transport,
+        freeTier: true,
+        search: (input) => provider.search(input),
+      }
+    : provider;
 }
 
 function failedPair(name: SearchProviderName, error: CredentialFailure): ProviderPair {
@@ -90,7 +103,10 @@ const PROVIDER_BUILDERS: Record<
       };
     }
     const mcp = mcpFor(route.endpoint);
-    return { search: new ExaMcpSearchProvider(mcp), fetch: new ExaMcpFetchProvider(mcp) };
+    return {
+      search: onFreeTier(new ExaMcpSearchProvider(mcp), route.freeTier),
+      fetch: new ExaMcpFetchProvider(mcp),
+    };
   },
   parallel: ({ settings, snapshot, http, sessionId, mcpFor }) => {
     const route = selectProviderRoute(
@@ -108,7 +124,7 @@ const PROVIDER_BUILDERS: Record<
       search:
         route._tag === "OfficialApi"
           ? new ParallelApiSearchProvider(route.apiKey, http)
-          : new ParallelMcpSearchProvider(mcp, sessionId),
+          : onFreeTier(new ParallelMcpSearchProvider(mcp, sessionId), route.freeTier),
       fetch: new ParallelMcpFetchProvider(mcp, sessionId),
     };
   },
@@ -227,7 +243,7 @@ export class UnknownProvider extends Schema.TaggedError<UnknownProvider>()("Unkn
 }) {
   /** Safe user-facing description listing the enabled providers. */
   override get message(): string {
-    return `Provider "${this.provider}" is not enabled. Available: ${this.available.join(", ")}`;
+    return `Provider "${this.provider}" is not enabled (\`PI_WEB_PROVIDERS\`). Available: ${this.available.join(", ")}.`;
   }
 }
 
@@ -237,12 +253,69 @@ export class AllProvidersFailed extends Schema.TaggedError<AllProvidersFailed>()
   {
     /** One safe "<provider>: <reason>" line per attempted provider. */
     attempts: Schema.Array(Schema.String),
+    /** Providers whose shared free endpoint was rate limited because no key is set. */
+    freeTierRateLimited: Schema.optional(Schema.Array(Schema.Literals(SEARCH_PROVIDERS))),
   },
 ) {
   /** Safe user-facing description joining each provider's reason. */
   override get message(): string {
+    const limited = this.freeTierRateLimited ?? [];
+    if (limited.length > 0 && limited.length === this.attempts.length) {
+      return `Free-tier rate limit on ${limited.join(", ")}. Ask the user to add a key with \`/login pi-web-${limited[0]}\`.`;
+    }
     return `All search providers failed (${this.attempts.join("; ")})`;
   }
+}
+
+const RATE_LIMIT_TEXT = /rate.?limit|too many requests/iu;
+
+/** A rate limit from a free endpoint: HTTP 429, or the provider's own rate-limit message. */
+function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): boolean {
+  if (provider.freeTier !== true) {
+    return false;
+  }
+  return (
+    (error._tag === "ProviderStatusRejected" && error.status === 429) ||
+    (error._tag === "ProviderToolError" && RATE_LIMIT_TEXT.test(error.detail))
+  );
+}
+
+/** Longest provider text quoted per provider, so the combined error stays short. */
+const MAX_PROVIDER_DETAIL = 70;
+const URL_PLACEHOLDER = "[URL omitted]";
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Cut a provider's own error text (up to 200 chars) at the last word boundary within the cap,
+ * ending with "…". Cuts whole graphemes and never splits the "[URL omitted]" placeholder.
+ */
+function boundedDetail(detail: string): string {
+  // Whole graphemes, so the cut never leaves a lone surrogate or splits an emoji sequence.
+  const points = [...GRAPHEMES.segment(detail)].map(({ segment }) => segment);
+  if (points.length <= MAX_PROVIDER_DETAIL) {
+    return detail;
+  }
+  // One extra grapheme, so a space right after the cap still counts as a word boundary.
+  const space = points
+    .slice(0, MAX_PROVIDER_DETAIL + 1)
+    .join("")
+    .lastIndexOf(" ");
+  let cut = space > 0 ? space : points.slice(0, MAX_PROVIDER_DETAIL - 1).join("").length;
+  const marker = detail.lastIndexOf(URL_PLACEHOLDER, cut - 1);
+  if (marker !== -1 && marker + URL_PLACEHOLDER.length > cut) {
+    cut = marker > 0 ? marker : URL_PLACEHOLDER.length;
+  }
+  return `${detail
+    .slice(0, cut)
+    .trimEnd()
+    .replace(/[,;:.]+$/u, "")}…`;
+}
+
+/** The provider's reason; only the provider's quoted text is shortened, never pi-web's own. */
+function attemptReason(error: ProviderError): string {
+  return error._tag === "ProviderToolError" && error.detail !== ""
+    ? `reported an error: ${boundedDetail(error.detail)}`
+    : error.message;
 }
 
 /** Expected failures of the search chain. */
@@ -278,6 +351,7 @@ const runChain = Effect.fnUntraced(function* (
   input: { readonly query: SearchQuery; readonly maxResults: number },
 ): Effect.fn.Return<SearchChainSuccess, AllProvidersFailed> {
   const failures: string[] = [];
+  const freeTierRateLimited: SearchProviderName[] = [];
   const attempted: SearchProviderName[] = [];
   for (const provider of providers) {
     attempted.push(provider.name);
@@ -285,7 +359,18 @@ const runChain = Effect.fnUntraced(function* (
     if (Result.isSuccess(result)) {
       return { provider: provider.name, attemptedProviders: attempted, results: result.success };
     }
-    failures.push(`${provider.name}: ${result.failure.message}`);
+    if (isFreeTierRateLimit(provider, result.failure)) {
+      freeTierRateLimited.push(provider.name);
+      failures.push(
+        `${provider.name}: free-tier rate limit; the user can add a key with \`/login pi-web-${provider.name}\``,
+      );
+    } else {
+      failures.push(`${provider.name}: ${attemptReason(result.failure)}`);
+    }
   }
-  return yield* new AllProvidersFailed({ attempts: failures });
+  return yield* new AllProvidersFailed(
+    freeTierRateLimited.length === 0
+      ? { attempts: failures }
+      : { attempts: failures, freeTierRateLimited },
+  );
 });

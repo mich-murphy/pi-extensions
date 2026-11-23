@@ -42,7 +42,7 @@ describe("credential boundary", () => {
       assert(Result.isFailure(result));
       expect(result.failure.reason).toBe("invalid");
       expect(result.failure.message).toBe(
-        "credential invalid: The key is empty or contains control characters. Check /login or the provider environment key.",
+        "credential invalid: The key is empty or has control characters. Ask the user to check it with `/login`.",
       );
       expect(Object.keys(result.failure)).not.toContain("cause");
     },

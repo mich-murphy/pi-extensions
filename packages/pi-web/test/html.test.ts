@@ -408,7 +408,9 @@ describe("conversion failures", () => {
       ]) {
         assert(Result.isFailure(converted));
         expect(converted.failure).toBeInstanceOf(EmptyHtmlDocument);
-        expect(converted.failure.message).toBe("The page has no HTML content");
+        expect(converted.failure.message).toBe(
+          "The page has no HTML content. It may need JavaScript to render; try another source.",
+        );
       }
     },
   );
