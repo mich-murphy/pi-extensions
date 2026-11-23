@@ -1704,6 +1704,51 @@ describe("public adapter transport and notice accounting", () => {
     expect(notices).toHaveLength(1);
     expect(session.status().notice).toBe("submitted_unobserved");
   });
+  test("a take that empties the inbox drops the pending wake, and a partial take keeps it", async () => {
+    const fixture = await gateway(() => undefined);
+    const notices: unknown[] = [];
+    let idle = false;
+    const session: AdapterSession = new AdapterSession(
+      fixture.config,
+      peer,
+      {
+        sendMessage: (message) => {
+          notices.push(message);
+        },
+      },
+      () => ({ isIdle: () => idle, ui: { setStatus: () => undefined } }),
+      () => {
+        session.pumpIdle();
+      },
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    const deliver = (rid: string, id: string) => {
+      fixture.sendFrame({
+        v: 1,
+        op: "deliver",
+        rid: rid.repeat(32),
+        from: other,
+        to: peer,
+        scopeId: "team",
+        message: authored(id.repeat(32)),
+      });
+    };
+    deliver("4", "a");
+    deliver("5", "b");
+    await expect.poll(() => session.state.stats().inboxMessages).toBe(2);
+    expect(session.take(1).messages).toHaveLength(1);
+    expect(session.beforeSettle({ entries: [] })?.continue).toBe(true);
+    deliver("6", "c");
+    await expect.poll(() => session.state.stats().inboxMessages).toBe(2);
+    expect(session.take(8).messages).toHaveLength(2);
+    expect(session.beforeSettle({ entries: [] })).toBeUndefined();
+    idle = true;
+    session.pumpIdle();
+    expect(notices).toHaveLength(0);
+  });
   test("watch events update only the live scoped snapshot and invalidation permits a fresh watch", async () => {
     const fixture = await gateway(discoveryReply);
     const client = makeClient(fixture.config);
