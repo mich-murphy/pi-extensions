@@ -1,6 +1,3 @@
-// Launch fixture for scroll.bombadil.ts: a replayed session with twelve turns (see
-// scroll-prompts.ts), fullscreen mode with a hidden scrollbar, and transcript scroll keys bound to
-// F6–F11. No model is configured, and the specification never submits.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BombadilFixture } from "../../../../test-support/bombadil.ts";

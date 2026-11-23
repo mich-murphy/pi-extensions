@@ -5,7 +5,6 @@ import { createHostAdapter } from "./host";
 
 const WIDGET = "scrollback";
 
-/** Minimal lifecycle and command surface, also usable by deterministic offline tests. */
 export type ScrollRegistration = {
   on: (
     event: "session_start" | "session_shutdown",
@@ -25,7 +24,6 @@ export type ScrollRegistration = {
 
 type ScrollContext = Parameters<Parameters<ScrollRegistration["on"]>[1]>[1];
 
-/** Context the `/scrollback` command reads from Pi. */
 export type ScrollCommandContext = {
   mode: string;
   ui: {

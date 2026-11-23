@@ -3,7 +3,6 @@ import type { CoffeeHandlers, CoffeeRegistration } from "../coffee-lifecycle";
 type Events = { [K in keyof CoffeeHandlers]: { readonly type: K } };
 type Command = Parameters<CoffeeRegistration["registerCommand"]>[1];
 
-/** Pi double that captures lifecycle handlers and commands, and replays them with a fake context. */
 export function fakePi(hasUI = true) {
   const handlers = new Map<string, (() => void | Promise<void>)[]>();
   const events: Events = {

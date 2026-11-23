@@ -169,7 +169,6 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
     expectLabel(editor, "NORMAL");
   });
 
-  // README: `diw` and `ciw` do nothing on whitespace (Vim would select the whitespace run).
   test.each(
     ["diw", "ciw"].flatMap((command) => [
       { command, text: "one  two", keys: "0lll", cursor: { line: 0, col: 3 } },
@@ -353,7 +352,6 @@ describe("vimEditor inside Pi", () => {
     await vi.waitFor(() => {
       expect(editor.isShowingAutocomplete()).toBe(true);
     });
-    // The list renders below the border, so the label stays off its last item.
     expect(editor.render(60).at(-1)?.endsWith(" INSERT ")).toBe(false);
 
     editor.handleInput("\u001B");

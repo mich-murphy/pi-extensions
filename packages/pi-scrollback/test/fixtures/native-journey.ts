@@ -1,7 +1,5 @@
-// Real native CLI + tmux acceptance journey. No terminal/layout mocks or model requests.
-// node packages/pi-scrollback/test/fixtures/native-journey.ts [absolute Pi package directory]
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
@@ -132,9 +130,6 @@ const baseCommand = [
   "fullscreen",
 ];
 const command = [...baseCommand, "--extension", join(repo, "packages/pi-scrollback/index.ts")];
-// Pi queries tmux for extended-keys after startup and adds a warning row only if it is off. That row
-// would arrive at a machine-dependent moment and change the transcript height, so the server is
-// configured the way Pi wants and the warning never exists.
 const tmuxConfig = join(root, "tmux.conf");
 writeFileSync(tmuxConfig, "set -g extended-keys on\nset -g extended-keys-format csi-u\n");
 const actions: string[][] = [];
@@ -148,9 +143,6 @@ function capture(name: string): string {
   writeFileSync(join(root, `${name}.ansi`), tmux("capture-pane", "-p", "-e", "-t", "journey:0.0"));
   return screen;
 }
-// A condition-based wait: the PTY is polled until the screen satisfies the step's own assertion,
-// so nothing here depends on how fast the CLI, tmux or the machine happens to be. The deadline only
-// bounds a hang, and the last assertion failure is what gets reported.
 const WAIT_DEADLINE_MS = 120_000;
 const POLL_MS = 50;
 async function eventually(name: string, check: (screen: string) => void): Promise<string> {
@@ -175,16 +167,13 @@ async function eventuallyMode(expected: string): Promise<void> {
     await delay(POLL_MS);
   }
 }
-// tmux queues input into the PTY in order, so keys need no pause between them; each step then waits
-// for the screen state it expects.
 function key(value: string, repeat = 1): void {
   tmux("send-keys", "-t", "journey:0.0", "-N", String(repeat), value);
 }
 function text(value: string): void {
   tmux("send-keys", "-t", "journey:0.0", "-l", value);
 }
-/** Pi's settings, or undefined while Pi is rewriting settings.json (the write is not atomic). */
-function readSettings(): unknown {
+function readSettingsOrUndefinedDuringNonAtomicRewrite(): unknown {
   try {
     return JSON.parse(readFileSync(join(root, "agent/settings.json"), "utf8"));
   } catch (error) {
@@ -194,9 +183,8 @@ function readSettings(): unknown {
     throw error;
   }
 }
-/** The recorded tuiMode, or undefined while settings.json is partly written. */
 function readMode(): unknown {
-  const value = readSettings();
+  const value = readSettingsOrUndefinedDuringNonAtomicRewrite();
   if (value === undefined) {
     return undefined;
   }
@@ -230,12 +218,9 @@ try {
       join(root, "cwd"),
       argv.map((value) => quote(value)).join(" "),
     );
-    // CLI startup is slower under load and coverage: wait for the fixture's last line to show, then
-    // for the screen to stop changing between two captures.
     let previous: string | undefined;
     return eventually(captureName, (screen) => {
       assert.match(screen, /TURN_2_LINE_085/u, "CLI fixture did not appear");
-      // Startup is complete once the synchronous no-provider warning row is on screen too.
       assert.match(screen, /No models available/u, "CLI startup rows did not appear");
       assert.doesNotMatch(screen, /extended-keys/u, "tmux warning appeared despite the config");
       const unchanged = screen === previous;
@@ -258,7 +243,6 @@ try {
   passed.push(
     "long transcript live bottom has no sticky row (positive offset inferred from 170 transcript lines)",
   );
-  // Send the terminal's SGR wheel-up report through the real PTY input path.
   text("\u001B[<64;10;5M");
   await eventually("wheel-up", (current) => {
     sticky(current, "LATEST_CONTEXT");
@@ -325,8 +309,6 @@ try {
     sticky(current, "LATEST_CONTEXT");
   });
   tmux("resize-window", "-t", "journey:0", "-x", "34", "-y", "22");
-  // Native Pi preserves numeric scrollTop during width reflow, not message identity.
-  // Reflow puts this historical offset in turn one; the header must follow that view.
   await eventually("narrow-reflow-context", (current) => {
     assert.match(current, /TURN_1_LINE_/u);
     sticky(current, "OLDER_CONTEXT");
@@ -353,7 +335,6 @@ try {
     sticky(current, "LATEST_CONTEXT");
   });
   passed.push("reload reattaches without duplicate context row");
-  // The settings selector is the native supported mode-switch surface.
   tmux("resize-window", "-t", "journey:0", "-x", "90", "-y", "28");
   async function toggleTuiMode(
     expected: string,
@@ -413,11 +394,8 @@ try {
       2,
     ),
   );
-  try {
-    tmux("kill-server");
-  } catch {
-    /* already exited */
-  }
+  actions.push(["kill-server"]);
+  spawnSync("tmux", ["-S", socket, "kill-server"], { env, timeout: 10_000 });
 }
 process.stdout.write(
   JSON.stringify(
@@ -431,10 +409,7 @@ process.stdout.write(
     2,
   ),
 );
-// Evidence is only worth keeping when the journey failed; the failure path above rethrows first.
 if (process.env.PI_SCROLL_CONTEXT_KEEP_EVIDENCE === undefined) {
-  // The CLI the killed tmux server hung up on may still be flushing a log into the directory, which
-  // makes removal fail with ENOTEMPTY until it has exited; wait for that state instead of a pause.
   const removalDeadline = Date.now() + WAIT_DEADLINE_MS;
   for (;;) {
     try {

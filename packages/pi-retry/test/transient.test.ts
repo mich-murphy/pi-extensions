@@ -1,12 +1,13 @@
+import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
+import { USAGE_LIMIT_CHANNEL } from "../../shared/usage-limit";
 import {
   RETRY_TYPE,
   CHECK_INTERVAL_MS,
   DEFAULT_TRANSIENT_SETTINGS,
   readTransientSettings,
   registerRetry,
-  USAGE_LIMIT_CHANNEL,
 } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
@@ -60,8 +61,6 @@ describe("classifying a failed reply", () => {
     "401 Unauthorized: invalid x-api-key",
     "400 invalid_request_error: messages: field required",
     "Something unexpected happened",
-    // Also match Pi's retryable pattern, but retrying an oversized prompt cannot succeed.
-    "413 Connection error.",
     "prompt is too long: servers are currently overloaded",
     "context_length_exceeded: terminated",
   ])("leaves %s to the user", (errorMessage) => {
@@ -70,6 +69,18 @@ describe("classifying a failed reply", () => {
     expect(fail(pi, errorMessage)).toBeUndefined();
     expect(pi.timerCount()).toBe(0);
     expect(pi.notifications).toStrictEqual([]);
+  });
+
+  test("leaves a 413 to the user although Pi's pattern calls it retryable: an oversized prompt never fits", () => {
+    const pi = harness();
+    const oversized = assistantEntry("a1", "error", "413 Connection error.");
+
+    const message = oversized.messages[0];
+    assert(message?.role === "assistant");
+    expect(isRetryableAssistantError(message)).toBe(true);
+    pi.startRun();
+    expect(pi.settle("error", [userEntry("u1"), oversized])).toBeUndefined();
+    expect(pi.timerCount()).toBe(0);
   });
 
   test("an aborted run does not resume", () => {

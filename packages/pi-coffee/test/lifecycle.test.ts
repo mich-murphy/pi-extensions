@@ -1,19 +1,22 @@
 import { describe, expect, test } from "vitest";
 import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
-import type { CaffeinateEnd } from "../coffee-lifecycle";
+import type { CaffeinateNotice } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 class FakeCaffeinate {
   stops = 0;
-  private listener: ((end: CaffeinateEnd) => void) | undefined;
+  constructor(private readonly exitsWhenStopped: boolean) {}
+  private listener: ((end: CaffeinateNotice) => void) | undefined;
 
-  onEnd(listener: (end: CaffeinateEnd) => void): void {
+  onNotice(listener: (end: CaffeinateNotice) => void): void {
     this.listener = listener;
   }
 
   stop(): void {
     this.stops += 1;
-    this.exit(null, "SIGTERM");
+    if (this.exitsWhenStopped) {
+      this.exit(null, "SIGTERM");
+    }
   }
 
   exit(code: number | null, signal: NodeJS.Signals | null): void {
@@ -29,14 +32,14 @@ class FakeCaffeinate {
   }
 }
 
-function harness(platform: NodeJS.Platform = "darwin", hasUI = true) {
+function harness(platform: NodeJS.Platform = "darwin", hasUI = true, exitsWhenStopped = true) {
   const pi = fakePi(hasUI);
   const spawned: { args: readonly string[]; child: FakeCaffeinate }[] = [];
   registerCoffee(pi.pi, {
     platform,
-    processId: 9876,
+    processIdCaffeinateExitsWith: 9876,
     spawnCaffeinate: (args) => {
-      const child = new FakeCaffeinate();
+      const child = new FakeCaffeinate(exitsWhenStopped);
       spawned.push({ args, child });
       return child;
     },
@@ -199,6 +202,20 @@ describe("coffee lifecycle", () => {
     expect(error.message).toContain("system error");
     expect(error.message).toContain("Sleep is allowed until the next agent run.");
     expect(error.message).not.toMatch(/secret|password|\p{Cc}/u);
+  });
+
+  test("forgets a released child at once: its successor may overlap it and its late exit is ignored", async () => {
+    const pi = harness("darwin", true, false);
+    await pi.emit("agent_start");
+    await pi.emit("agent_settled");
+
+    await pi.emit("agent_start");
+    expect(pi.spawned).toHaveLength(2);
+    pi.spawned[0]?.child.exit(null, "SIGTERM");
+
+    expect(pi.spawned).toHaveLength(2);
+    expect(pi.spawned[1]?.child.stops).toBe(0);
+    expect(pi.notifications).toStrictEqual([]);
   });
 
   test("stays silent without a UI", async () => {

@@ -61,6 +61,23 @@ describe("onOffCommand", () => {
     expect(notices).toStrictEqual([["Usage: /demo [on|off]", "warning"]]);
   });
 
+  test("applies the new state before showing its confirmation", async () => {
+    const order: string[] = [];
+    const command = onOffCommand({
+      name: "demo",
+      label: "Demo",
+      description: "Turn demo on or off",
+      enabled: () => true,
+      apply: () => order.push("apply"),
+      note: () => {
+        order.push("note");
+        return "";
+      },
+    });
+    await command.handler("off", { ui: { notify: () => order.push("notify") } });
+    expect(order).toStrictEqual(["apply", "note", "notify"]);
+  });
+
   test("appends the note to the confirmation", async () => {
     const { run, notices } = harness((enabled) => ` Requested: ${String(enabled)}.`);
     await run("off");

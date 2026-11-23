@@ -76,9 +76,6 @@ describe("real isolated Pi CLI", () => {
     }
   }, 35_000);
 
-  // The journey drives a real tmux PTY. tmux is an external binary, so its absence is an environment
-  // precondition, not a flake: locally the test is reported as skipped with the reason below, while
-  // on CI (CI=true, ubuntu-latest runners ship tmux) a missing tmux is not skipped and fails loudly.
   test("passes the native PTY history, resize, reload and mode journey", (context) => {
     context.skip(
       skipJourney,
@@ -87,8 +84,6 @@ describe("real isolated Pi CLI", () => {
     const result = spawnSync(
       process.execPath,
       [join(repo, "packages/pi-scrollback/test/fixtures/native-journey.ts"), host],
-      // About 10 s unloaded; the waits inside are condition-based with a 120 s hang guard each, and
-      // this outer bound sits above that guard rather than racing it.
       { cwd: repo, encoding: "utf8", timeout: 300_000 },
     );
     expect(result.error).toBeUndefined();

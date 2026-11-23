@@ -15,46 +15,32 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import { onOffCommand } from "../shared/on-off-command";
+import { USAGE_LIMIT_CHANNEL, readUsageLimitNotice } from "../shared/usage-limit";
+import type { UsageLimitNotice } from "../shared/usage-limit";
 
-/**
- * Event-bus channel on which providers publish a usage limit's reset time. Mirrors
- * `USAGE_LIMIT_CHANNEL` in pi-claude; packages never import each other.
- */
-export const USAGE_LIMIT_CHANNEL = "usage-limit";
-
-/** Custom type of the resume marker message and of the reset report in JSON mode. */
 export const RETRY_TYPE = "retry";
 
-/** Custom type that saved sessions from before the rename still contain. */
 export const LEGACY_RETRY_TYPE = "auto-resume";
 
-/** Marker types this extension renders and keeps out of model context. */
 const MARKER_TYPES: ReadonlySet<string> = new Set([RETRY_TYPE, LEGACY_RETRY_TYPE]);
 
-/** Provider ids that name the same Claude provider before and after its rename. */
 const CLAUDE_PROVIDER_IDS: ReadonlySet<string> = new Set(["claude", "claude-sdk"]);
 
-/** Longest wait the extension accepts; a later reset is left to the user. */
 export const MAX_WAIT_MS = 5 * 60 * 60 * 1000;
 
-/** How often the wall clock is compared with the reset time while waiting. */
 export const CHECK_INTERVAL_MS = 60 * 1000;
 
 const MINUTE_MS = 60 * 1000;
 
-/** Claude Agent SDK failures that {@link isRetryableAssistantError} does not recognise. */
 const TRANSIENT_ERROR_MESSAGES: ReadonlySet<string> = new Set([
   "Claude Code stopped with an error but did not say why.",
   "Claude Code failed to start with an unexpected error.",
 ]);
 
-/** `piRetry.transient` settings: backoff after transient provider or network failures. */
 export type TransientSettings = {
   readonly enabled: boolean;
-  /** Wait before each attempt; the last delay repeats. */
   readonly delaysMinutes: readonly number[];
   readonly maxAttempts: number;
-  /** No attempt is scheduled later than this long after the first failure. */
   readonly windowMinutes: number;
 };
 
@@ -65,20 +51,16 @@ export const DEFAULT_TRANSIENT_SETTINGS: TransientSettings = {
   windowMinutes: 120,
 };
 
-/** Theme colours the widget and marker use. */
 export type ThemeColors = Pick<Theme, "fg">;
 
-/** Renders the widget shown above the editor while a resume is scheduled. */
 export type WidgetFactory = (tui: unknown, theme: ThemeColors) => Component;
 
-/** Renders the marker message that records an automatic resume in the transcript. */
 export type MarkerRenderer = (
   message: { readonly content: unknown },
   options: unknown,
   theme: ThemeColors,
 ) => Component;
 
-/** Context fields the extension reads from Pi. */
 export type RetryContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
   readonly model?: { readonly contextWindow: number } | undefined;
   readonly ui: Pick<ExtensionContext["ui"], "notify"> & {
@@ -86,7 +68,6 @@ export type RetryContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
   };
 };
 
-/** Lifecycle callbacks consumed by the extension. */
 export type RetryHandlers = {
   agent_start: (event: { readonly type: "agent_start" }) => void;
   turn_start: (event: { readonly type: "turn_start" }) => void;
@@ -100,7 +81,6 @@ export type RetryHandlers = {
   session_shutdown: (event: { readonly type: "session_shutdown" }) => void;
 };
 
-/** Pi capabilities consumed by the extension. */
 export type RetryRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"> & {
   readonly getSettings: () => object;
   readonly registerMessageRenderer: (customType: string, renderer: MarkerRenderer) => void;
@@ -122,15 +102,10 @@ export type RetryRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"
   };
 };
 
-/** Clock, timer, and output operations owned by the extension runtime. */
 export type RetryDependencies = {
-  /** Current wall-clock time in epoch milliseconds. */
   readonly now: () => number;
-  /** Start a repeating timer and return the function that stops it. */
   readonly every: (intervalMs: number, tick: () => void) => () => void;
-  /** Format an epoch-millisecond time as a local clock time, such as `3:40 pm`. */
   readonly formatTime: (epochMs: number) => string;
-  /** Write one line of diagnostics to stderr. */
   readonly writeStderr: (line: string) => void;
 };
 
@@ -182,12 +157,6 @@ function pick<T>(
   return valid(value) ? value : INVALID;
 }
 
-/**
- * Read `piRetry.transient` from Pi's merged settings, or the older `autoResume.transient`
- * when `piRetry` is absent.
- *
- * @returns The settings over the defaults, or `undefined` when they are malformed.
- */
 export function readTransientSettings(settings: object): TransientSettings | undefined {
   const section = field(settings, "piRetry") ?? field(settings, "autoResume") ?? {};
   const transient = isRecord(section) ? (field(section, "transient") ?? {}) : null;
@@ -213,22 +182,10 @@ function isTransientFailure(message: AssistantMessage, contextWindow?: number): 
   );
 }
 
-/** Whether a usage-limit notice's provider is the failed message's provider. */
 function sameProvider(notice: string, failed: string): boolean {
   return notice === failed || (CLAUDE_PROVIDER_IDS.has(notice) && CLAUDE_PROVIDER_IDS.has(failed));
 }
 
-function readResetsAt(data: unknown): number | undefined {
-  if (typeof data !== "object" || data === null || !("resetsAt" in data)) {
-    return undefined;
-  }
-  const { resetsAt } = data;
-  return typeof resetsAt === "number" && Number.isFinite(new Date(resetsAt).getTime())
-    ? resetsAt
-    : undefined;
-}
-
-/** The run's failed assistant message and its session entry, when the run ended on one. */
 function failedAttempt(
   event: Pick<AgentBeforeSettleEvent, "context">,
 ): { readonly id: string; readonly message: AssistantMessage } | undefined {
@@ -253,24 +210,10 @@ const renderMarker: MarkerRenderer = (message, _options, theme) =>
     0,
   );
 
-/**
- * Resume a session automatically once a provider's usage limit resets.
- *
- * A provider publishes the reset time on {@link USAGE_LIMIT_CHANNEL} before its failed turn
- * ends. When the run settles on that failure and the reset is at most {@link MAX_WAIT_MS}
- * away, the failed attempt is omitted from model context, Pi settles as usual, and a
- * background timer starts the next turn once the wall clock passes the reset. Comparing the
- * wall clock, rather than sleeping for the whole wait, keeps the resume on time across
- * machine sleep. Print and JSON modes exit when Pi settles, so they only report the reset.
- *
- * @param pi - Pi extension API used to subscribe to events and start the resumed turn.
- * @param dependencies - Clock, timer, and output operations.
- */
 export function registerRetry(pi: RetryRegistration, dependencies: RetryDependencies): void {
   const { now, every, formatTime, writeStderr } = dependencies;
   let enabled = true;
-  // Notice published during the current model/tool turn, consumed at final settlement.
-  let published: { resetsAt: number; provider: string | undefined } | undefined;
+  let publishedThisTurn: UsageLimitNotice | undefined;
   let wait: Wait | undefined;
   let streak: Streak | undefined;
   let warnedAboutSettings = false;
@@ -395,46 +338,31 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   };
 
   pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
-    const resetsAt = readResetsAt(data);
-    const provider =
-      typeof data === "object" &&
-      data !== null &&
-      "provider" in data &&
-      typeof data.provider === "string"
-        ? data.provider
-        : undefined;
-    published = resetsAt === undefined ? undefined : { resetsAt, provider };
+    publishedThisTurn = readUsageLimitNotice(data);
   });
 
   for (const type of MARKER_TYPES) {
     pi.registerMessageRenderer(type, renderMarker);
   }
 
-  // agent_start deliberately keeps the streak: the extension's own sendMessage triggers it, and
-  // resetting there would erase the attempt count between every retry.
   pi.on("agent_start", () => {
     cancel();
-    // Normally redundant with turn_start, which follows immediately; kept so a run never
-    // inherits a notice published before it began.
-    published = undefined;
+    publishedThisTurn = undefined;
   });
 
-  // A low-level run can contain multiple model/tool turns. A nested provider call in
-  // tools must not donate its notice to the next main request's unrelated failure.
   pi.on("turn_start", () => {
-    published = undefined;
+    publishedThisTurn = undefined;
   });
 
   pi.on("session_tree", () => {
     cancel();
-    published = undefined;
-    // A branch is a different conversation: its failures must not inherit this streak.
+    publishedThisTurn = undefined;
     streak = undefined;
   });
 
   pi.on("agent_before_settle", (event, ctx) => {
-    const notice = published;
-    published = undefined;
+    const notice = publishedThisTurn;
+    publishedThisTurn = undefined;
     if (event.outcome === "completed") {
       streak = undefined;
       return undefined;
@@ -472,7 +400,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
 
   pi.on("session_shutdown", () => {
     cancel();
-    published = undefined;
+    publishedThisTurn = undefined;
     streak = undefined;
   });
 

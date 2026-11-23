@@ -21,11 +21,6 @@ type View = {
 };
 type Guard = (view: View) => boolean;
 
-/**
- * A base-editor action, named by the terminal input Pi's default keybindings map to it. Pi's
- * actions wrap and join across line boundaries where Vim's stay within the line, so each action
- * carries the guard that keeps it to the Vim behavior its name promises.
- */
 type Action = { readonly input: string; readonly when: Guard; readonly repeats: boolean };
 
 const always: Guard = () => true;
@@ -60,7 +55,6 @@ const ACTIONS = {
 } satisfies Record<string, Action>;
 type ActionName = keyof typeof ACTIONS;
 
-/** Actions run under these bindings, so a user's remapped keys cannot redirect them. */
 const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
 
 type Command = {
@@ -188,7 +182,6 @@ class VimEditor extends CustomEditor {
     const lines = super.render(width);
     const lastLine = lines.at(-1);
     const label = modeLabel(this.vimState);
-    // An open autocomplete list renders below the border, where a label would cover an item.
     if (lastLine === undefined || this.isShowingAutocomplete() || width < label.length) {
       return lines;
     }
@@ -205,7 +198,6 @@ class VimEditor extends CustomEditor {
     }
     if (this.vimState.mode === "insert") {
       if (this.isShowingAutocomplete()) {
-        // Normalize Kitty Ctrl+[ to Escape and bypass app/extension shortcuts while dismissing.
         this.performInput("\u001B");
       }
       this.perform("left");
@@ -234,7 +226,6 @@ class VimEditor extends CustomEditor {
   private passToPi(data: string): void {
     const hadText = this.getText().length > 0;
     super.handleInput(data);
-    // Pi empties the editor when it accepts a submission. The next prompt starts in Insert mode.
     if (hadText && this.getText().length === 0) {
       this.vimState = INSERT;
     } else {
@@ -254,10 +245,6 @@ class VimEditor extends CustomEditor {
     }
   }
 
-  /**
-   * Send input straight to the base editor under Pi's default keybindings. Going through
-   * `super` would let app shortcuts and extension shortcuts claim it first.
-   */
   private performInput(input: string): void {
     const configured = getKeybindings();
     setKeybindings(DEFAULT_KEYBINDINGS);
@@ -277,7 +264,6 @@ class VimEditor extends CustomEditor {
 
 type EditorFactory = NonNullable<Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]>;
 
-/** Registration capabilities consumed by the Vim editor and its `/vim` command. */
 export type VimRegistration = {
   readonly on: (
     name: "session_start",
@@ -291,7 +277,6 @@ export type VimRegistration = {
   readonly registerCommand: (name: "vim", options: OnOffCommand<VimCommandContext>) => void;
 };
 
-/** Context the `/vim` command reads from Pi. */
 export type VimCommandContext = Pick<ExtensionContext, "mode"> & {
   readonly ui: Pick<ExtensionContext["ui"], "notify" | "setEditorComponent">;
 };
@@ -299,7 +284,6 @@ export type VimCommandContext = Pick<ExtensionContext, "mode"> & {
 const vimEditor: EditorFactory = (tui, theme, keybindings) =>
   new VimEditor(tui, theme, keybindings);
 
-/** Register Vim-style modal editing for Pi's interactive prompt composer. */
 export default function vimMode(pi: VimRegistration): void {
   let enabled = true;
 

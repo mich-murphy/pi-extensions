@@ -11,7 +11,6 @@ type CommandContext = Parameters<Command["handler"]>[1];
 
 initTheme("dark");
 
-/** Each installed adapter gets its own TUI; its dispose is the only thing that requests a render. */
 type Installed = { renders: MockInstance<() => void> };
 
 function setup(mode = "tui") {

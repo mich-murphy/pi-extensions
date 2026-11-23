@@ -5,9 +5,6 @@ const ZONE_END = "\u001B]133;B\u0007";
 
 type PromptSpan = { start: number; lastText: number; text: string };
 
-/** Native UserMessageComponent boundaries identify turns, including identical prompts.
- * Positions are measured afresh: streaming, tool expansion and width changes move them.
- */
 function promptSpans(lines: readonly string[]): PromptSpan[] {
   const spans: PromptSpan[] = [];
   let start: number | undefined;
@@ -42,7 +39,6 @@ export function selectContext(
 ): string | undefined {
   const spans = promptSpans(lines);
   const prompt = spans.findLast((span) => span.start <= scrollTop);
-  // Padding is not original prompt text. Any visible text row suppresses the duplicate.
   if (prompt === undefined || prompt.lastText >= scrollTop) {
     return undefined;
   }

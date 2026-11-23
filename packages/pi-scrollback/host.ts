@@ -2,8 +2,6 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
 import { contextRow, selectContext } from "./context";
 
-// Private compatibility seam, verified against Pi 1.3.0, 1.4.0 and 1.6.0. Not a renderer patch:
-// InteractiveMode remounts this same root when replacing regular/fullscreen renderers.
 const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
 type StackNode = {
   type: "vstack";
@@ -48,7 +46,6 @@ function nativeStack(node: StackNode): boolean {
   return node.type === "vstack" && node.gap === 0 && node.align === "stretch";
 }
 
-/** Fail closed unless the native two-entry chat viewport still has its known geometry. */
 function nativeChat(node: StackNode): { scroll: ScrollView; dock: Component } | undefined {
   if (!hasNativeEntries(node)) {
     return undefined;
@@ -68,8 +65,6 @@ function nativeChat(node: StackNode): { scroll: ScrollView; dock: Component } | 
   return { scroll: transcript.component, dock: dock.component };
 }
 
-// The CLI bundle and extension imports need not share constructor identity.
-// Validate the native public scroll surface instead of instanceof.
 function isNativeScroll(component: Component): component is ScrollView {
   return (
     typeof component === "object" &&
@@ -99,8 +94,6 @@ function* userComponents(component: Component): Generator<Component> {
   }
 }
 
-// UserMessageComponent has no public text accessor. Keep this optional private read
-// beside the layout seam; OSC boundaries still own geometry and turn identity.
 function nativeTexts(
   document: Component,
   rendered: readonly string[],
@@ -130,20 +123,13 @@ function nativeTexts(
   return { lines, texts };
 }
 
-// A scroll-only frame reuses the previous frame's output per component identity (Pi 1.6), so
-// each header text gets its own component: a changed prompt can never paint a stale row.
 function headerFor(row: string | undefined, muted: (text: string) => string): Component {
   return {
     render: (width) => (row === undefined ? [] : [muted(contextRow(row, width))]),
-    invalidate: () => {
-      /* Render reads the current theme. */
-    },
+    invalidate: () => undefined,
   };
 }
 
-/** The invisible dock component discovers a root even if startup was in regular mode.
- * It neither owns input nor reserves a line. The live TUI reference follows mode switches.
- */
 export function createHostAdapter(
   tui: TUI,
   muted: (text: string) => string,
@@ -190,7 +176,6 @@ export function createHostAdapter(
             ...node,
             entries: [
               {
-                // Read after visible() has chosen this frame's text.
                 get component() {
                   return currentHeader();
                 },
@@ -211,14 +196,10 @@ export function createHostAdapter(
                     return false;
                   }
                   const lines = document.render(scroll.getContentWidth(viewport.width));
-                  // Exact native two-entry VStack allocation: the dock shrinks first to leave
-                  // transcript minSize=1. Probe only component render caches, never ScrollView state.
                   const height = Math.max(
                     1,
                     viewport.height - Math.max(1, dock.render(viewport.width).length),
                   );
-                  // Compare against the *current* viewport when a row is already present: the
-                  // last historical line is not the bottom until native scrolling reaches it.
                   const currentHeight = Math.max(1, height - (wasShown ? 1 : 0));
                   if (height < 2 || scroll.scrollTop >= Math.max(0, lines.length - currentHeight)) {
                     return false;
@@ -242,7 +223,6 @@ export function createHostAdapter(
       value: patched,
     });
     restorers.set(candidate, () => {
-      // Do not undo another extension's later replacement.
       if (candidate[LAYOUT_NODE] !== patched) {
         return;
       }
@@ -261,9 +241,7 @@ export function createHostAdapter(
       discover();
       return [];
     },
-    invalidate: () => {
-      /* Render reads current state and theme. */
-    },
+    invalidate: () => undefined,
     dispose: () => {
       disposed = true;
       for (const restore of restorers.values()) {

@@ -161,7 +161,6 @@ function checkOracles(token: string, before: Snapshot, after: Snapshot): void {
 
 const isBlankAt = (line: string, col: number): boolean => !/\S/u.test(line.slice(col, col + 1));
 
-/** The README promises `diw` and `ciw` do nothing on whitespace or an empty line. */
 function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot): void {
   if (!isBlankAt(before.lines[before.line] ?? "", before.col)) {
     return;
@@ -170,10 +169,8 @@ function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot)
   assert.deepEqual([after.line, after.col], [before.line, before.col], `${token} moved cursor`);
 }
 
-/** What the next `u` presses must restore after an edit, and how many it takes. */
 type PendingUndo = { readonly restored: string; readonly remaining: number };
 
-/** `dd` in multi-line text takes two `u` presses to restore (see the README); every other edit takes one. */
 function undosNeeded(token: string, before: Snapshot): number {
   return token === "dd" && before.lines.length > 1 ? 2 : 1;
 }
@@ -221,7 +218,6 @@ function runTrace(
 describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard) => {
   afterEach(resetKeyboard);
 
-  // 200 traces of up to 20 keys through the real editor: up to 0.95 s under 8 busy processes.
   test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
