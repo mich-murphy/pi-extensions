@@ -15,6 +15,8 @@ function sanitizeHtml(rawHtml: string, baseUrl: string): string {
   return Result.getOrThrow(Html.sanitizeHtml(rawHtml, baseUrl));
 }
 
+const DEEP_PARSE_IS_QUADRATIC_IN_DEPTH_TIMEOUT_MS = 60_000;
+
 describe("htmlToMarkdown", () => {
   test("converts headings, links, and lists", () => {
     const html = `<html><body><article>
@@ -250,7 +252,6 @@ describe("htmlToMarkdown tables", () => {
     expect(markdown).toBe("| Name | Count |\n| --- | --: |\n| apples | 3 |\n| pears | 5 |");
   });
 
-  // Reduced from generated documents on which turndown-plugin-gfm threw reading a missing first row.
   test.each([
     ["a caption and no rows", "<table><caption>Totals</caption></table>", "Totals"],
     ["an ARIA grid role and no rows", '<table role="grid">loose text</table>', "loose text"],
@@ -377,10 +378,6 @@ function longLink(href: string): string {
   return `<a href="${href}">${"words ".repeat(25)}</a>`;
 }
 
-// A block for the chunk-edge test and what a single pass converts it to. Every 500th block is a
-// bare pre, which keeps its leading tab unfenced; every 700th a misnested list, whose outer item
-// the HTML parser closes before the inner one; the rest are paragraphs whose trailing no-break
-// space survives.
 function edgeCaseBlock(
   text: string,
   index: number,
@@ -415,21 +412,21 @@ describe("conversion failures", () => {
     },
   );
 
-  // Whether the libraries overflow the stack at this depth depends on JIT state, so both outcomes are
-  // accepted; what the test pins is that deep nesting never throws. The failure mapping itself is
-  // pinned deterministically in html-conversion-failure.test.ts. The deep parse is inherently slow
-  // (quadratic in depth): about 1 s unloaded, so 60 s is far beyond 10x the loaded maximum.
-  test("deep nesting converts or is HtmlConversionFailed, never a thrown error", () => {
-    const deep = `${"<div>".repeat(3000)}x${"</div>".repeat(3000)}`;
-    for (const converted of [
-      Html.htmlToMarkdown(deep, "https://example.com"),
-      Html.htmlToText(deep, "https://example.com"),
-    ]) {
-      const outcome = Result.match(converted, {
-        onFailure: (failure) => failure._tag,
-        onSuccess: () => "Success",
-      });
-      expect(["Success", "HtmlConversionFailed"]).toContain(outcome);
-    }
-  }, 60_000);
+  test(
+    "deep nesting converts or is HtmlConversionFailed, never a thrown error",
+    () => {
+      const deep = `${"<div>".repeat(3000)}x${"</div>".repeat(3000)}`;
+      for (const converted of [
+        Html.htmlToMarkdown(deep, "https://example.com"),
+        Html.htmlToText(deep, "https://example.com"),
+      ]) {
+        const outcome = Result.match(converted, {
+          onFailure: (failure) => failure._tag,
+          onSuccess: () => "Success",
+        });
+        expect(["Success", "HtmlConversionFailed"]).toContain(outcome);
+      }
+    },
+    DEEP_PARSE_IS_QUADRATIC_IN_DEPTH_TIMEOUT_MS,
+  );
 });

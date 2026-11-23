@@ -387,7 +387,6 @@ describe("webfetch tool", () => {
   });
 
   test("redacts the request's resolved key from a failure message on its own", async () => {
-    // The identity redactText leaves only the per-request credential snapshot to scrub.
     const settings = settingsFrom();
     const tool = createWebFetchTool({
       settings,
@@ -461,6 +460,20 @@ describe("webfetch tool", () => {
     await expect(tool.execute("t1", { url: "https://sub.evil.example/page" })).rejects.toThrow(
       "denied",
     );
+  });
+
+  test("domain policy errors never echo the caller-controlled hostname", async () => {
+    const tool = makeTool(
+      { PI_WEB_FETCH_DENY_DOMAINS: "evil.example" },
+      Result.succeed(textWebResponse("x")),
+      [],
+    );
+    const failure = await tool
+      .execute("t1", { url: "https://secret-token.evil.example/page" })
+      .catch((error: unknown) => error);
+    assert(failure instanceof Error);
+    expect(failure.message).not.toContain("secret-token");
+    expect(failure.message).not.toContain("evil.example");
   });
 
   test("enforces the domain allow policy", async () => {

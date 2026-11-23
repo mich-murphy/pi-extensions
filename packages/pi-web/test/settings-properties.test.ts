@@ -22,7 +22,6 @@ const LABELS = ["a", "evil", "Com", "x-y", "1", "xn--p1ai", "Mixed-Case"];
 const entryLabels = gs.arrays(gs.sampledFrom(LABELS), { minSize: 1, maxSize: 4 });
 const entry = gs.tuples(entryLabels, gs.booleans(), gs.sampledFrom(["", " ", "\t "]));
 
-// Each defect turns a well-formed name into one the policy could never match as intended.
 const DEFECTS: readonly (readonly [string, (name: string) => string])[] = [
   ["wildcard", (name) => `*.${name}`],
   ["leading dot", (name) => `.${name}`],
@@ -70,11 +69,9 @@ function checkMalformed(labels: string[], defect: Defect, neighbour: string, env
   const bad = defect[1](labels.join("."));
   const message = failureMessage(envName, `${neighbour}, ${bad}`);
   assert.ok(message.includes(envName));
-  // The message is identical for any bad entry, so it cannot echo the value.
   assert.equal(message, failureMessage(envName, "*.reference-entry"));
 }
 
-// Independent oracle: out-of-range input pins to the bound, in-range input lands on a nearest integer.
 function checkNearest(value: number): void {
   const { min, max } = FETCH_TIMEOUT_SECONDS;
   const clamped = clampInteger(value, FETCH_TIMEOUT_SECONDS);
@@ -132,7 +129,6 @@ describe("clampInteger properties", () => {
   test("stays in bounds, is idempotent and monotonic", () => {
     assertHegel(settings, (tc) => {
       checkClamp(
-        // Biased around the 1..120 bounds, where rounding and pinning actually matter.
         tc.draw(gs.floats({ minValue: -5, maxValue: 130 }), "a"),
         tc.draw(gs.floats({ minValue: -1e6, maxValue: 1e6 }), "b"),
       );

@@ -10,49 +10,29 @@ import {
 import type { ProviderError } from "./provider-types";
 import { withSafeSpan } from "./telemetry";
 
-/** A bounded, successful (2xx) provider REST response. */
 export type ProviderHttpResponse = {
   readonly bodyText: string;
 };
 
-/** A JSON request against a provider REST endpoint. */
 export type ProviderHttpRequest = {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: unknown;
   readonly maxResponseBytes: number;
-  /** Deadline for the whole call; its whole-second ceiling names it in ProviderTimedOut. */
   readonly timeout: Duration.Duration;
 };
 
-/**
- * Run a provider REST call and parse its body as untrusted JSON.
- *
- * @param response - The provider call.
- * @returns The parsed body, or the call's or the parse's failure.
- */
 export function readProviderJson(
   response: Effect.Effect<ProviderHttpResponse, ProviderError>,
 ): Effect.Effect<unknown, ProviderError> {
   return Effect.flatMap(response, (settled) => Effect.fromResult(parseJsonBody(settled.bodyText)));
 }
 
-/** A provider response whose body was read in full, any status. */
 export type ProviderRawResponse = {
   readonly response: Response;
   readonly bodyText: string;
 };
 
-/**
- * Send one provider request and read its body under a byte cap. Network and stream failures are
- * classified by host; interrupting the effect aborts the request. Status is left to the caller.
- *
- * @param http - The fetch port.
- * @param url - The provider endpoint.
- * @param init - Request init without a signal; the effect supplies one.
- * @param maxResponseBytes - The body byte cap.
- * @returns The response and its UTF-8 body text.
- */
 export const sendProviderRequest = Effect.fnUntraced(function* (
   http: HttpFetch["Service"],
   url: string | URL,
@@ -61,8 +41,6 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
   const { hostname } = new URL(url);
   const response = yield* Effect.tryPromise({
-    // Provider credentials must never survive an origin change. Redirects are protocol failures
-    // handled through the existing non-2xx status path instead of being followed by fetch.
     try: async (signal) => http.fetch(url, { ...init, signal, redirect: "manual" }),
     catch: (cause) => new ProviderRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
   });
@@ -78,12 +56,6 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
   return { response, bodyText: body.toString("utf8") };
 });
 
-/**
- * Fail with ProviderTimedOut when an effect outlives its deadline; the effect is interrupted.
- *
- * @param timeout - The deadline; ProviderTimedOut names it in whole seconds, rounded up.
- * @returns A combinator applying the deadline.
- */
 export function withProviderDeadline(
   timeout: Duration.Duration,
 ): <A, E>(self: Effect.Effect<A, E>) => Effect.Effect<A, E | ProviderTimedOut> {
@@ -96,21 +68,17 @@ export function withProviderDeadline(
   });
 }
 
-/** Outbound port for provider REST calls, with hard timeouts and response byte caps. */
 export class ProviderHttpClient extends Context.Service<
   ProviderHttpClient,
   {
-    /** POST a JSON body and read a bounded 2xx response; interrupting the call aborts it. */
     readonly postJson: (
       request: ProviderHttpRequest,
     ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
-    /** GET and read a bounded 2xx response; interrupting the call aborts it. */
     readonly getJson: (
       request: ProviderHttpRequest,
     ) => Effect.Effect<ProviderHttpResponse, ProviderError>;
   }
 >()("pi-web/provider-http/ProviderHttpClient") {
-  /** The live client over HttpFetch. */
   static readonly layer = Layer.effect(
     ProviderHttpClient,
     Effect.gen(function* () {

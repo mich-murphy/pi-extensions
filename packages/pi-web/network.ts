@@ -30,7 +30,6 @@ const UTF8_LABEL = "utf-8";
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 const LEADING_DIGITS_RE = /^\d+/u;
 
-/** A parsed Content-Type header. */
 export type ParsedContentType = {
   readonly contentType: string;
   readonly mime: string;
@@ -38,7 +37,6 @@ export type ParsedContentType = {
   readonly kind: ContentKind;
 };
 
-/** A single outbound public web request. */
 export type PublicWebRequest = {
   readonly url: PublicHttpUrl;
   readonly accept: string;
@@ -46,139 +44,107 @@ export type PublicWebRequest = {
   readonly fallbackUserAgent: string;
   readonly maxRedirects: number;
   readonly maxResponseBytes: number;
-  /**
-   * Return the first `maxResponseBytes` of an oversized text-like body (flagged `responseTruncated`)
-   * instead of failing. Other content kinds keep failing over the cap.
-   */
   readonly allowPartialText?: boolean | undefined;
   readonly blockPrivateHosts: boolean;
-  /** Hostname policy enforced before DNS and transport work on every redirect hop. */
   readonly domainPolicy: DomainPolicy;
 };
 
-/** A bounded public web response. */
 export type PublicWebResponse = {
   readonly requestedUrl: PublicHttpUrl;
   readonly finalUrl: PublicHttpUrl;
   readonly status: number;
   readonly headers: Headers;
   readonly body: Readonly<Buffer>;
-  /** True when the body is only the first `maxResponseBytes` of a larger response. */
   readonly responseTruncated?: boolean | undefined;
 };
 
-/** A request could not be completed at the network level (DNS, connection, TLS, or body stream). */
 export class PublicWebRequestFailed extends Schema.TaggedError<PublicWebRequestFailed>()(
   "PublicWebRequestFailed",
   {
-    /** The host the failing request was sent to; messages name only this, never the URL. */
     hostname: Schema.String,
-    /** Production clients retain only an allowlisted network code, never raw fetch/stream data. */
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
-  /** Safe description of the network failure, for example "Could not resolve host example.com". */
   override get message(): string {
     return describeNetworkFailure(this.cause, this.hostname);
   }
 }
 
-/** The URL resolved to localhost or a *.localhost name. */
 export class PrivateHostBlocked extends Schema.TaggedError<PrivateHostBlocked>()(
   "PrivateHostBlocked",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Blocked private or local host. webfetch only fetches public sites.";
   }
 }
 
-/** The URL is, or resolves to, a non-public IP address. */
 export class PrivateIpBlocked extends Schema.TaggedError<PrivateIpBlocked>()(
   "PrivateIpBlocked",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Blocked private or local IP address. webfetch only fetches public sites.";
   }
 }
 
-/** The requested URL or a redirect target carries user:password credentials. */
 export class UrlCredentialsUnsupported extends Schema.TaggedError<UrlCredentialsUnsupported>()(
   "UrlCredentialsUnsupported",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "URL credentials are not supported. Remove the user:password part from the URL.";
   }
 }
 
-/** A redirect response had no Location header. */
 export class RedirectLocationMissing extends Schema.TaggedError<RedirectLocationMissing>()(
   "RedirectLocationMissing",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Redirect response was missing a Location header; the site's redirect is broken.";
   }
 }
 
-/** A redirect Location header did not parse as a public URL. */
 export class RedirectLocationInvalid extends Schema.TaggedError<RedirectLocationInvalid>()(
   "RedirectLocationInvalid",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Redirect response had an invalid Location header; the site's redirect is broken.";
   }
 }
 
-/** The redirect chain exceeded the configured hop limit. */
 export class RedirectLimitExceeded extends Schema.TaggedError<RedirectLimitExceeded>()(
   "RedirectLimitExceeded",
   {
-    /** The configured hop limit. */
     maxRedirects: Schema.Number,
   },
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return `Too many redirects while fetching URL (limit ${this.maxRedirects}); the site may be redirecting in a loop.`;
   }
 }
 
-/** A redirect pointed at a non-http(s) protocol. */
 export class RedirectProtocolUnsupported extends Schema.TaggedError<RedirectProtocolUnsupported>()(
   "RedirectProtocolUnsupported",
   {
-    /** The rejected protocol, for example "ftp:". */
     protocol: Schema.String,
   },
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Redirected to unsupported protocol; webfetch follows only http:// and https://.";
   }
 }
 
-/** The final response had a non-2xx status. */
 export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()(
   "HttpStatusRejected",
   {
-    /** The HTTP status code. */
     status: Schema.Number,
-    /** The HTTP status text, possibly empty. */
     statusText: Schema.String,
   },
 ) {
-  /** Safe user-facing description with the status. */
   override get message(): string {
-    // Status text is controlled by the remote server; never reflect it into the terminal.
     const label = this.statusText ? STATUS_CODES[this.status] : undefined;
     const summary = `Request failed (${this.status}${label === undefined ? "" : ` ${label}`})`;
     if (this.status === 401) {
@@ -191,18 +157,14 @@ export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()
   }
 }
 
-/** The response declared or streamed more bytes than the cap allows. */
 export class ResponseTooLarge extends Schema.TaggedError<ResponseTooLarge>()("ResponseTooLarge", {
-  /** The byte cap that was exceeded. */
   maxBytes: Schema.Number,
 }) {
-  /** Safe user-facing description with the cap in MB. */
   override get message(): string {
     return `Response too large (${Math.floor(this.maxBytes / (1024 * 1024))}MB limit). Try a smaller or more specific page.`;
   }
 }
 
-/** Expected failures of the public web client. Their messages never contain URLs or causes. */
 export type PublicWebError =
   | PublicWebRequestFailed
   | DomainPolicyError
@@ -236,20 +198,11 @@ const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "tim
   ]);
 const MAX_CAUSE_DEPTH = 8;
 
-/** Retain only an allowlisted diagnostic code, never reflected messages, stacks, or payloads. */
 export function sanitizeNetworkFailure(cause: unknown): { readonly code: string } | undefined {
   const code = findNetworkCode(cause);
   return code === undefined ? undefined : { code };
 }
 
-/**
- * Describe a failed network request from its error's `cause` chain, naming only the host.
- * fetch rejects with a generic TypeError whose `cause` (or a deeper one) carries the system code.
- *
- * @param cause - The fetch or stream rejection.
- * @param hostname - The host the request was sent to.
- * @returns A sentence such as "Could not resolve host example.com".
- */
 export function describeNetworkFailure(cause: unknown, hostname: string): string {
   const code = findNetworkCode(cause);
   const kind = code === undefined ? undefined : networkCodeKind(code);
@@ -302,7 +255,6 @@ function findNetworkCode(error: unknown): string | undefined {
   return undefined;
 }
 
-/** Parse a Content-Type header into mime, charset, and coarse body kind. */
 export function parseContentType(contentTypeHeader: string | null | undefined): ParsedContentType {
   const contentType = contentTypeHeader?.trim() ?? "";
   const [mimePart = ""] = contentType.split(";");
@@ -312,7 +264,6 @@ export function parseContentType(contentTypeHeader: string | null | undefined): 
   return { contentType, mime, charset, kind: classifyMimeType(mime) };
 }
 
-/** Classify a mime type into the coarse body kinds webfetch handles; unknown and empty types are binary. */
 export function classifyMimeType(mime: string): ContentKind {
   const normalized = mime.trim().toLowerCase();
   const exactKind = MIME_KINDS.get(normalized);
@@ -329,33 +280,31 @@ export function classifyMimeType(mime: string): ContentKind {
   return "binary";
 }
 
-/** Decode a body buffer using the declared charset, falling back to UTF-8. */
 export function decodeTextBuffer(
   buffer: Readonly<Buffer>,
   charset?: string,
   options: { readonly partial?: boolean } = {},
 ): { text: string; decoder: string } {
-  // A cut-off body can end inside a UTF-8 sequence; streaming mode drops that tail instead of
-  // turning it into a replacement character.
   const decode = (label: string) =>
     new TextDecoder(label).decode(buffer, {
       stream: options.partial === true && label === UTF8_LABEL,
     });
-  const normalizedCharset = normalizeCharset(charset);
-  if (normalizedCharset !== undefined) {
+  const decodeOrUndefinedForUnknownLabel = (label: string) => {
     try {
-      return {
-        text: decode(normalizedCharset),
-        decoder: normalizedCharset,
-      };
+      return { text: decode(label), decoder: label };
     } catch {
-      // Unknown charset label: fall back to UTF-8 below.
+      return undefined;
     }
-  }
-  return {
-    text: decode(UTF8_LABEL),
-    decoder: UTF8_LABEL,
   };
+  const normalizedCharset = normalizeCharset(charset);
+  return (
+    (normalizedCharset === undefined
+      ? undefined
+      : decodeOrUndefinedForUnknownLabel(normalizedCharset)) ?? {
+      text: decode(UTF8_LABEL),
+      decoder: UTF8_LABEL,
+    }
+  );
 }
 
 function normalizeCharset(charset: string | undefined): string | undefined {
@@ -372,25 +321,18 @@ function normalizeCharset(charset: string | undefined): string | undefined {
   return normalized;
 }
 
-/** A response body streamed past its byte cap. */
 export class ResponseBodyTooLarge extends Schema.TaggedError<ResponseBodyTooLarge>()(
   "ResponseBodyTooLarge",
   {},
 ) {}
 
-/** A response body stream failed mid-read. */
 export class ResponseBodyReadFailed extends Schema.TaggedError<ResponseBodyReadFailed>()(
   "ResponseBodyReadFailed",
   {
-    /** The stream error; classify it with describeNetworkFailure. */
     cause: Schema.Defect(),
   },
 ) {}
 
-/**
- * Read a response body with a hard byte cap. The reader is cancelled and released however the read
- * ends: success, cap exceeded, stream failure, or interruption.
- */
 export function readResponseBodyWithLimit(
   response: Response,
   maxBytes: number,
@@ -448,9 +390,6 @@ function readCapped(
   );
 }
 
-// Non-public ranges blocked for outbound fetches. IPv4-mapped IPv6 (::ffff:a.b.c.d) needs no row,
-// since BlockList checks mapped addresses against the IPv4 rows. The IPv4-compatible row is ::/96,
-// not ::/8: ::/8 contains ::ffff:0:0/96 and would block every mapped address, public ones too.
 const NON_PUBLIC_RANGES: readonly (readonly [
   network: string,
   prefixLength: number,
@@ -485,7 +424,6 @@ for (const [network, prefixLength, family] of NON_PUBLIC_RANGES) {
   NON_PUBLIC_ADDRESSES.addSubnet(network, prefixLength, family);
 }
 
-/** Returns true when an IP literal (v4 or v6, optionally bracketed) is in a non-public range. */
 export function isPrivateOrLocalIp(input: string): boolean {
   const ip = stripIpv6Brackets(input);
   const version = isIP(ip);
@@ -499,7 +437,6 @@ export function isPrivateOrLocalIp(input: string): boolean {
   return embedded !== undefined && NON_PUBLIC_ADDRESSES.check(embedded, "ipv4");
 }
 
-/** Expand a valid IPv6 literal to eight 16-bit groups. */
 function ipv6Groups(ip: string): number[] {
   let text = ip.split("%")[0] ?? ip;
   const tail = /(?<a>\d+)\.(?<b>\d+)\.(?<c>\d+)\.(?<d>\d+)$/u.exec(text)?.groups;
@@ -515,7 +452,6 @@ function ipv6Groups(ip: string): number[] {
   return [...front, ...fill, ...back].map((group) => Number.parseInt(group, 16));
 }
 
-/** The IPv4 address a SIIT (::ffff:0:a.b.c.d) or 6to4 (2002:a.b.c.d::/48) address embeds. */
 function embeddedIpv4(ip: string): string | undefined {
   const g = ipv6Groups(ip);
   const siit = g.slice(0, 4).every((group) => group === 0) && g[4] === 0xff_ff && g[5] === 0;
@@ -541,33 +477,24 @@ type FetchedResponse = {
   readonly finalUrl: PublicHttpUrl;
 };
 
-/** Outbound port wrapping the platform fetch, so tests can record and script requests. */
 export class HttpFetch extends Context.Service<
   HttpFetch,
   {
-    /**
-     * Send one HTTP request. Rejections are unclassified; every caller wraps the call and
-     * translates them into its own typed error.
-     */
     readonly fetch: (input: string | URL, init: RequestInit) => Promise<Response>;
   }
 >()("pi-web/network/HttpFetch") {
-  /** The live layer, delegating to globalThis.fetch at call time. */
   static readonly layer = Layer.succeed(
     HttpFetch,
     HttpFetch.of({ fetch: async (input, init) => globalThis.fetch(input, init) }),
   );
 }
 
-/** Outbound port resolving host names for public-address validation and bound connections. */
 export class DnsLookup extends Context.Service<
   DnsLookup,
   {
-    /** Resolve every address of a host in resolver order. */
     readonly lookup: (hostname: string) => Promise<readonly ApprovedAddress[]>;
   }
 >()("pi-web/network/DnsLookup") {
-  /** The live layer over the system resolver, in resolver order. */
   static readonly layer = Layer.succeed(
     DnsLookup,
     DnsLookup.of({
@@ -585,19 +512,12 @@ export class DnsLookup extends Context.Service<
   );
 }
 
-/**
- * Outbound port for fetching public web resources, with SSRF defenses, redirect re-validation, and
- * a challenge-aware user-agent retry. Interrupting a request aborts it; deadlines belong to the
- * caller.
- */
 export class PublicWebClient extends Context.Service<
   PublicWebClient,
   {
-    /** Fetch a bounded public web response, following safe redirects. */
     readonly get: (request: PublicWebRequest) => Effect.Effect<PublicWebResponse, PublicWebError>;
   }
 >()("pi-web/network/PublicWebClient") {
-  /** The live client over PublicWebTransport and DnsLookup. */
   static readonly layer = Layer.effect(
     PublicWebClient,
     Effect.gen(function* () {
@@ -728,7 +648,6 @@ export class PublicWebClient extends Context.Service<
       const get = Effect.fnUntraced(
         function* (request: PublicWebRequest): Effect.fn.Return<PublicWebResponse, PublicWebError> {
           const { response, finalUrl } = yield* fetchPastChallenge(request);
-          // Only text-like kinds can be usefully cut short; everything else keeps the hard cap.
           const partialAllowed =
             request.allowPartialText === true &&
             isPartialReadable(parseContentType(response.headers.get("content-type")).kind);

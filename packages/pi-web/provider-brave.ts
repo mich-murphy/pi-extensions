@@ -41,7 +41,6 @@ const decodeBraveSearchPayload = Schema.decodeUnknownResult(
   Schema.Struct({ web: Schema.Struct({ results: lenientArray(BraveResult) }) }),
 );
 
-/** Search Brave through its official REST API. Only available when BRAVE_API_KEY is configured. */
 export class BraveApiSearchProvider implements SearchProvider {
   readonly name = "brave" as const;
   readonly transport = "api" as const;
@@ -51,7 +50,6 @@ export class BraveApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  /** Run one Brave web search call and normalize its results. */
   search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     const url = new URL(BRAVE_API_SEARCH_URL);
     url.searchParams.set("q", input.query);

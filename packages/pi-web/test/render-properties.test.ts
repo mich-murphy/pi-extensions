@@ -10,7 +10,6 @@ import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
 import { redactorFor, renderText, settingsFrom, toolRuntimeWith } from "./fakes";
 
-// The collapsed result shows Pi's expand-key hint, which reads the active theme.
 initTheme("dark");
 const settings = propertySettings(200);
 const SETTINGS = settingsFrom();
@@ -26,7 +25,6 @@ const searchTool = createWebSearchTool({
   runtime: toolRuntimeWith({ settings: SETTINGS }),
 });
 
-// Terminal control a hostile page, search result or server header can carry.
 const FRAGMENTS = [
   "page text",
   "\u001B[2J",
@@ -44,7 +42,6 @@ const FRAGMENTS = [
   "漢字",
   "é",
 ];
-/** Text after the screen gets it: nothing but newlines may be a control or bidi character. */
 const UNSAFE = /(?!\n)[\p{Cc}\p{Bidi_Control}]/u;
 
 function hostile(tc: TestCase, label: string): string {
@@ -52,7 +49,6 @@ function hostile(tc: TestCase, label: string): string {
   return fragments.join("") + tc.draw(gs.text({ maxSize: 20 }), `${label}-text`);
 }
 
-/** Pi's own styled expand-key hint is trusted output; everything else came from untrusted input. */
 const EXPAND_HINT = keyHint("app.tools.expand", "for details");
 
 function assertSafe(rendered: string): void {

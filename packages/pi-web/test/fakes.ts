@@ -25,10 +25,8 @@ import type { ToolRuntime } from "../tool-runtime";
 import { parsePublicHttpUrl, parseSearchQuery } from "../types";
 import type { PublicHttpUrl, SearchQuery } from "../types";
 
-/** The WHATWG name of UTF-8, which parsed charsets and decoders report. */
 export const UTF8 = "utf-8";
 
-/** Parse a test URL through the real parser; an invalid one is a broken test. */
 export function publicUrl(input: string): PublicHttpUrl {
   const parsed = parsePublicHttpUrl(input);
   if (Result.isFailure(parsed)) {
@@ -37,7 +35,6 @@ export function publicUrl(input: string): PublicHttpUrl {
   return parsed.success;
 }
 
-/** Parse test settings from an environment through the real parser; invalid ones are a broken test. */
 export function settingsFrom(
   environment: Readonly<Record<string, string | undefined>> = {},
 ): WebToolsSettings {
@@ -57,7 +54,6 @@ function syntheticOutcome(key: string | undefined) {
   return Result.succeed(key === undefined ? undefined : Redacted.make(key));
 }
 
-/** Synthetic request-time credentials; never consults the developer's environment or auth store. */
 export function credentialSnapshotFrom(
   environment: Readonly<Record<string, string | undefined>> = {},
 ): CredentialSnapshot {
@@ -76,7 +72,6 @@ export function credentialSnapshotFrom(
   };
 }
 
-/** Parse a test query through the real parser; an invalid one is a broken test. */
 export function searchQuery(input: string): SearchQuery {
   const parsed = parseSearchQuery(input);
   if (Result.isFailure(parsed)) {
@@ -85,13 +80,11 @@ export function searchQuery(input: string): SearchQuery {
   return parsed.success;
 }
 
-/** Recorded MCP call for assertions. */
 type RecordedMcpCall = {
   readonly name: string;
   readonly args: Readonly<Record<string, unknown>>;
 };
 
-/** Fake MCP client returning programmed results in order. */
 export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult, ProviderError>[]) {
   const calls: RecordedMcpCall[] = [];
   let index = 0;
@@ -107,7 +100,6 @@ export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult,
   return { client, calls };
 }
 
-/** Fake provider HTTP client returning programmed results in order. */
 export function fakeProviderHttp(
   results: readonly Result.Result<ProviderHttpResponse, ProviderError>[],
 ) {
@@ -127,7 +119,6 @@ export function fakeProviderHttp(
   return { client, requests };
 }
 
-/** Fake public web client returning a programmed result. */
 export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWebError>) {
   const requests: PublicWebRequest[] = [];
   const client: PublicWebClient["Service"] = {
@@ -140,12 +131,10 @@ export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWeb
   return { client, requests };
 }
 
-/** Build the same configured-secret redaction closure the composition root gives each tool. */
 export function redactorFor(...secrets: readonly string[]): (input: string) => string {
   return (input) => redactSecrets(input, secrets);
 }
 
-/** Extract the joined text of a pi tool result for assertions. */
 export function textOf(result: {
   readonly content: readonly { readonly type: string; readonly text?: string }[];
 }): string {
@@ -158,7 +147,6 @@ export function textOf(result: {
     .join("\n");
 }
 
-/** Render a pi-tui Text component to its visible text, without the padding to full width. */
 export function renderText(component: {
   readonly render: (width: number) => readonly string[];
 }): string {
@@ -168,7 +156,6 @@ export function renderText(component: {
     .join("\n");
 }
 
-/** Build a text public-web response. */
 export function textWebResponse(
   text: string,
   contentType = "text/html; charset=utf-8",
@@ -216,10 +203,6 @@ function resolverFrom(lookup: TestLookup): Layer.Layer<DnsLookup> {
   );
 }
 
-/**
- * The live public web client over a test transport and resolver. The transport receives the
- * addresses the client approved, so a test can assert on what the real client validated and pinned.
- */
 export function publicWebClientOverTransport(dependencies: {
   readonly transport: PublicWebTransport["Service"];
   readonly lookup: TestLookup;
@@ -237,7 +220,6 @@ export function publicWebClientOverTransport(dependencies: {
   );
 }
 
-/** The live public web client over a test fetch (which ignores the approved addresses) and resolver. */
 export function publicWebClientWith(dependencies: {
   readonly fetchImpl: typeof fetch;
   readonly lookup: TestLookup;
@@ -256,7 +238,6 @@ export function publicWebClientWith(dependencies: {
   });
 }
 
-/** The live provider HTTP client over a test fetch. */
 export function providerHttpWith(fetchImpl: typeof fetch): ProviderHttpClient["Service"] {
   return serviceFrom(
     ProviderHttpClient,
@@ -264,7 +245,6 @@ export function providerHttpWith(fetchImpl: typeof fetch): ProviderHttpClient["S
   );
 }
 
-/** The live MCP client for one endpoint over a test fetch. */
 export function mcpClientWith(
   endpoint: PublicHttpUrl,
   options: {
@@ -280,10 +260,6 @@ export function mcpClientWith(
   return serviceFrom(McpClients, layer).forEndpoint(endpoint);
 }
 
-/**
- * Live MCP clients that record every endpoint requested; provider-construction tests never send a
- * request.
- */
 export function recordingMcpClients() {
   const endpoints: PublicHttpUrl[] = [];
   const live = serviceFrom(McpClients, McpClients.layer.pipe(Layer.provide(HttpFetch.layer)));
@@ -299,7 +275,6 @@ export function recordingMcpClients() {
   return { endpoints, layer };
 }
 
-/** The live fetch-page service over a (fake) public web client. */
 export function fetchPageWith(client: PublicWebClient["Service"]): FetchPage["Service"] {
   return serviceFrom(
     FetchPage,
@@ -307,8 +282,6 @@ export function fetchPageWith(client: PublicWebClient["Service"]): FetchPage["Se
   );
 }
 
-/** The live temp-file output store; each directory it creates is removed when the running test finishes. */
-// A `pi-webfetch-*` directory left in the shared tmpdir by every run is the leak this prevents.
 export const trackedToolOutputLayer: Layer.Layer<ToolOutputStore> = Layer.effect(
   ToolOutputStore,
   Effect.gen(function* () {
@@ -327,16 +300,10 @@ export const trackedToolOutputLayer: Layer.Layer<ToolOutputStore> = Layer.effect
   }),
 );
 
-/** The live temp-file tool output store. */
 export function liveToolOutputStore(): ToolOutputStore["Service"] {
   return serviceFrom(ToolOutputStore, trackedToolOutputLayer);
 }
 
-/**
- * A tool runtime over fake services and the live temp-file output store. `secret` is configured as
- * the Exa key, so tool output must scrub it; unset services never answer. With `testClock`, the
- * runtime's clock is a TestClock that only `settleOnTestClock` moves.
- */
 export function toolRuntimeWith(services: {
   readonly settings: WebToolsSettings;
   readonly secret?: string;
@@ -383,10 +350,6 @@ export function toolRuntimeWith(services: {
   );
 }
 
-/**
- * Settle a tool call running on a `toolRuntimeWith({ testClock: true })` runtime by advancing its
- * TestClock in `step`s, yielding to real time between steps so the program can reach its sleeps.
- */
 export async function settleOnTestClock(
   runtime: ToolRuntime<never>,
   step: Duration.Duration,

@@ -15,36 +15,22 @@ const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
   ENFILE: "too many open files",
 };
 
-/** A filesystem operation failed while saving full tool output to a private temp file. */
 export class OutputStoreError extends Schema.TaggedError<OutputStoreError>()("OutputStoreError", {
-  /** The step that failed. */
   operation: Schema.Literals(["mkdtemp", "chmod", "write"]),
-  /** The directory template or file path the step was working on. */
   path: Schema.String,
-  /** The Node system error code, for example ENOSPC. */
   code: Schema.String,
-  /** The original Node error, kept for local diagnosis only. */
   cause: Schema.optional(Schema.Defect()),
 }) {
-  /** Plain-English reason with the error code, for example "no space left on device (ENOSPC)". */
   get reason(): string {
     const description = FS_ERROR_DESCRIPTIONS[this.code];
     return description === undefined ? this.code : `${description} (${this.code})`;
   }
 
-  /** Safe description naming the path and the reason. */
   override get message(): string {
     return `Could not save full output to ${this.path}: ${this.reason}`;
   }
 }
 
-/**
- * Write tool output to a private temporary file.
- * The directory is created 0700 and the file 0600: fetched web content can
- * contain sensitive material and must not be world-readable in a shared tmpdir.
- * Node system errors (with `code` and `syscall`) become OutputStoreError; anything else is a
- * defect.
- */
 export const writeTempTextFile = Effect.fnUntraced(function* (
   prefix: string,
   fileName: string,

@@ -94,7 +94,6 @@ describe("safe telemetry", () => {
           .callTool("search", { query: secrets[0] }, secrets)
           .pipe(Effect.provideService(Tracer.Tracer, tracer)),
       );
-      // The span summary exports only the error type, so the scrub itself is observed on the failure.
       expectNoLeak(exit, ...secrets, "-suffix");
       const exported = exportedSpans(spans);
       expect(spans.map((span) => span.name)).toContain("McpClient.callTool");

@@ -94,9 +94,7 @@ describe("credential boundary", () => {
     let signal: AbortSignal | undefined;
     const layer = CredentialResolver.layerWith(async (_, supplied) => {
       signal = supplied;
-      return new Promise(() => {
-        /* deliberately pending until interrupted */
-      });
+      return Promise.withResolvers<never>().promise;
     }, "10 millis");
     const result = await Effect.runPromise(
       Effect.result(credentialEffect).pipe(Effect.provide(layer)),
@@ -112,9 +110,7 @@ describe("credential boundary", () => {
           CredentialResolver.layerWith(async (_, supplied) => {
             signal = supplied;
             resolverStarted.resolve(undefined);
-            return new Promise(() => {
-              /* deliberately pending until interrupted */
-            });
+            return Promise.withResolvers<never>().promise;
           }),
         ),
       ),

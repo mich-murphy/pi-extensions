@@ -17,7 +17,6 @@ type FetchPageInput = {
   readonly format: WebFetchFormat;
 };
 
-/** Metadata shared by text and image results: the requested format plus what the response declared. */
 export type FetchPageMeta = {
   readonly requestedUrl: PublicHttpUrl;
   readonly finalUrl: PublicHttpUrl;
@@ -27,17 +26,14 @@ export type FetchPageMeta = {
   readonly contentType: string;
   readonly charset?: string | undefined;
   readonly bytes: number;
-  /** Set when the page was larger than the download cap and only its first bytes were read. */
   readonly responseTruncated?: true;
 };
 
-/** A successfully fetched page: response metadata plus its converted text or raw raster image. */
 export type FetchPageResult = {
   readonly meta: FetchPageMeta;
   readonly body:
     | {
         readonly _tag: "Text";
-        /** The response's content kind; raster images are the Image body, binary is an error. */
         readonly kind: "html" | "text" | "svg";
         readonly text: string;
         readonly decoder: string;
@@ -45,20 +41,16 @@ export type FetchPageResult = {
     | { readonly _tag: "Image"; readonly data: Readonly<Buffer> };
 };
 
-/** The response is binary content webfetch cannot represent as text or an image. */
 export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBinaryContent>()(
   "UnsupportedBinaryContent",
   {
-    /** The declared mime type; empty when the response declared none. */
     mime: Schema.String,
   },
 ) {
-  /** Safe user-facing description with the mime type when known. */
   override get message(): string {
     if (this.mime === "application/pdf") {
       return "webfetch cannot extract PDF text. Use an HTML/text version or ask the user for the text; retrying the same PDF will not convert it.";
     }
-    // A Content-Type header is untrusted and can contain secrets or terminal controls.
     const label = ["application/zip", "application/octet-stream"].includes(this.mime)
       ? ` (${this.mime})`
       : "";
@@ -66,7 +58,6 @@ export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBina
   }
 }
 
-/** Expected failures of the fetch-page service; every member has a safe `message`. */
 export type FetchPageError = PublicWebError | UnsupportedBinaryContent | HtmlConversionError;
 
 type FetchPageOptions = {
@@ -76,11 +67,9 @@ type FetchPageOptions = {
   readonly domainPolicy: DomainPolicy;
 };
 
-/** Application service: fetch one public page and project it to the requested representation. */
 export class FetchPage extends Context.Service<
   FetchPage,
   {
-    /** Fetch a public web resource and convert it to the requested content representation. */
     readonly fetch: (
       input: { readonly url: PublicHttpUrl; readonly format: WebFetchFormat },
       options: {
@@ -92,7 +81,6 @@ export class FetchPage extends Context.Service<
     ) => Effect.Effect<FetchPageResult, FetchPageError>;
   }
 >()("pi-web/fetch-page/FetchPage") {
-  /** The live service over PublicWebClient. */
   static readonly layer = Layer.effect(
     FetchPage,
     Effect.gen(function* () {

@@ -19,14 +19,11 @@ import type {
   WebSearchDetails,
 } from "./types";
 
-/** Expected failures of the tool output store. */
 export type ToolOutputStoreError = OutputStoreError;
 
-/** Persistence port for oversized tool output. */
 export class ToolOutputStore extends Context.Service<
   ToolOutputStore,
   {
-    /** Write full tool output to a new private file and return its path. */
     readonly writeTextFile: (
       prefix: string,
       fileName: string,
@@ -34,7 +31,6 @@ export class ToolOutputStore extends Context.Service<
     ) => Effect.Effect<string, ToolOutputStoreError>;
   }
 >()("pi-web/tool-output/ToolOutputStore") {
-  /** The live store: private temporary text files. */
   static readonly layer = Layer.succeed(
     ToolOutputStore,
     ToolOutputStore.of({
@@ -46,12 +42,6 @@ export class ToolOutputStore extends Context.Service<
   );
 }
 
-/**
- * Replace every occurrence of each secret in text with a fixed placeholder.
- * Applied to all tool output and error messages as defense in depth: provider
- * responses should never contain API keys, but a compromised or buggy endpoint
- * must not be able to reflect credentials back into the session transcript.
- */
 export function redactSecrets(input: string, secrets: readonly (string | undefined)[]): string {
   const unique = [
     ...new Set(secrets.filter((secret): secret is string => secret !== undefined && secret !== "")),
@@ -59,7 +49,6 @@ export function redactSecrets(input: string, secrets: readonly (string | undefin
   if (unique.length === 0) {
     return input;
   }
-  // Match the original input once: longest alternatives win, and replacements are never rescanned.
   const pattern = unique
     .toSorted((a, b) => b.length - a.length)
     .map((secret) => secret.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
@@ -67,31 +56,21 @@ export function redactSecrets(input: string, secrets: readonly (string | undefin
   return input.replaceAll(new RegExp(pattern, "gu"), () => "[redacted]");
 }
 
-/** Pi text content item. */
 export type PiTextContent = { readonly type: "text"; readonly text: string };
-/** Pi image content item. */
 export type PiImageContent = {
   readonly type: "image";
   readonly data: string;
   readonly mimeType: string;
 };
 
-/** Minimal shape of a pi tool result. */
 export type PiToolResult<Details> = {
   readonly content: (PiTextContent | PiImageContent)[];
   readonly details: Details;
-  /** Machine-readable result matching the tool's output schema, redacted like the text. */
   readonly structuredContent: JsonValue;
 };
 
-/** Most bytes of page text carried in webfetch `structuredContent`, like Pi's bash tool. */
 export const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 
-/**
- * Output schema of webfetch. Text fields are snake_case like Pi's bash tool; the image variant
- * matches the `read` tool so codemode's `image()` accepts it. Descriptions are left out so the
- * type stays short in tool descriptions.
- */
 export const WEB_FETCH_OUTPUT_SCHEMA = Type.Union([
   Type.Object({
     url: Type.String(),
@@ -116,7 +95,6 @@ export const WEB_FETCH_OUTPUT_SCHEMA = Type.Union([
   }),
 ]);
 
-/** Output schema of websearch. */
 export const WEB_SEARCH_OUTPUT_SCHEMA = Type.Object({
   query: Type.String(),
   provider: Type.String(),
@@ -132,7 +110,6 @@ export const WEB_SEARCH_OUTPUT_SCHEMA = Type.Object({
   ),
 });
 
-/** Cut text to at most maxBytes of UTF-8 without splitting a character. */
 function limitUtf8Bytes(
   text: string,
   maxBytes: number,
@@ -148,7 +125,6 @@ function limitUtf8Bytes(
   return { content: bytes.subarray(0, end).toString("utf8"), truncated: true, bytes: end };
 }
 
-/** Smallest UTF-8 character boundary at or after offset (the end of the text at most). */
 function characterBoundaryAtOrAfter(bytes: Buffer, offset: number): number {
   let start = Math.min(offset, bytes.length);
   while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) {
@@ -157,7 +133,6 @@ function characterBoundaryAtOrAfter(bytes: Buffer, offset: number): number {
   return start;
 }
 
-/** Builds structured content once the spill path (if any) is known. */
 type StructureOutput = (fullOutputPath: string | undefined) => JsonValue;
 
 function fetchTextStructure(page: {
@@ -198,7 +173,6 @@ function fetchTextStructure(page: {
   };
 }
 
-/** Format normalized search results as URL-forward text for LLM consumption. */
 export function formatSearchResults(
   query: string,
   results: readonly NormalizedSearchResult[],
@@ -227,27 +201,22 @@ export function formatSearchResults(
   return lines.join("\n").trimEnd();
 }
 
-/** Truncation state recorded in the details of every text tool result. */
 type TruncationDetails = {
   readonly truncated: boolean;
   readonly fullOutputPath?: string | undefined;
 };
 
-/** Markdown a fetch provider retrieved after the direct fetch was blocked or unusable. */
 export type ProviderFetchedPage = {
-  /** The fetch provider that retrieved the page; the URL was shared with it. */
   readonly provider: string;
   readonly url: PublicHttpUrl;
   readonly markdown: string;
 };
 
-/** Project a directly fetched page into a pi tool result, truncating and spilling large output. */
 export function projectFetchResult(
   result: FetchPageResult,
   options: {
     readonly store: ToolOutputStore["Service"];
     readonly secrets: readonly (string | undefined)[];
-    /** Byte offset into the converted text where the window starts; ignored for images. */
     readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
@@ -281,9 +250,7 @@ export function projectFetchResult(
 
   const text = redactSecrets(body.text, options.secrets);
   const responseTruncated = meta.responseTruncated === true;
-  // The notice leads the output, so line and byte truncation of the page can never cut it off.
   const projected = projectTextOutput<WebFetchDetails>({
-    // Paging stays inside the partial body: its last window says the content stops at the cap.
     prefix: responseTruncated ? `${responseTruncatedNotice(meta.bytes)}\n\n` : "",
     ...(responseTruncated ? { endNote: responseTruncatedEnd(meta.bytes) } : {}),
     output: text,
@@ -328,16 +295,11 @@ function responseTruncatedNotice(capBytes: number): string {
   return `[webfetch truncated: reason=download_limit limit_bytes=${capBytes} bytes_read=${capBytes} complete=false]`;
 }
 
-/**
- * Project provider-fetched markdown into a pi tool result, prefixed with a note that says where it
- * came from. Details carry only what the rescue knows: no final URL, HTTP status, or content type.
- */
 export function projectProviderFetchedPage(
   page: ProviderFetchedPage,
   options: {
     readonly store: ToolOutputStore["Service"];
     readonly secrets: readonly (string | undefined)[];
-    /** Byte offset into the page markdown (not counting the note) where the window starts. */
     readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
@@ -364,7 +326,6 @@ export function projectProviderFetchedPage(
   });
 }
 
-/** Project search results into a pi tool result, truncating and spilling large output. */
 export function projectSearchResults(
   search: {
     readonly query: string;
@@ -411,12 +372,10 @@ function searchStructure(
   };
 }
 
-/** `\n<note>` on its own line after a closed bracket, or nothing when the output is not cut short. */
 function endLine(endNote: string | undefined): string {
   return endNote === undefined ? "" : `\n${endNote}`;
 }
 
-/** Footer of a window that fits the limits; empty for a whole page that is not cut short. */
 function untruncatedRange(start: number, total: number, endNote: string | undefined): string {
   const range = start === 0 ? "" : `Showing bytes ${start}–${total} of ${total}`;
   if (endNote === undefined) {
@@ -425,13 +384,11 @@ function untruncatedRange(start: number, total: number, endNote: string | undefi
   return range === "" ? `\n\n${endNote}` : `\n\n[${range}]\n${endNote}`;
 }
 
-/** The text shown for a window over the limits, how many bytes of it were consumed, and its summary. */
 function truncatedWindow(
   window: string,
   truncation: ReturnType<typeof truncateHead>,
 ): { readonly shownText: string; readonly shownBytes: number; readonly summary: string } {
   if (truncation.firstLineExceedsLimit) {
-    // truncateHead never returns part of a line; show the start of the over-long first line.
     const lineEnd = window.indexOf("\n");
     const lineSize = Buffer.byteLength(lineEnd === -1 ? window : window.slice(0, lineEnd), "utf8");
     const shown = limitUtf8Bytes(window, DEFAULT_MAX_BYTES);
@@ -447,7 +404,6 @@ function truncatedWindow(
   const omittedBytes = truncation.totalBytes - truncation.outputBytes;
   return {
     shownText: truncation.content,
-    // Whole lines are joined by one newline byte, which the next window skips.
     shownBytes: truncation.outputBytes + 1,
     summary:
       `[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines` +
@@ -466,18 +422,8 @@ function projectTextOutput<Details>({
   store,
   tempPrefix,
 }: {
-  /** The text to page through; offsets count its UTF-8 bytes. */
   readonly output: string;
-  /**
-   * Text shown before every window and saved with the full output, outside the offsets. One
-   * mechanism for every note: a rescue note or a response-truncated notice (they never combine
-   * today; if they did, the rescue note would come first, then the response-truncated notice).
-   */
   readonly prefix?: string;
-  /**
-   * Said in place of the plain end-of-content notice when the window reaches the end of `output`,
-   * for output that is itself cut short, so nothing implies the source ended there.
-   */
   readonly endNote?: string;
   readonly offset?: number;
   readonly details: Details;

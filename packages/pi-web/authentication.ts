@@ -22,17 +22,10 @@ export const WEB_AUTH_PROVIDERS = {
   },
 } as const;
 
-/** Only our native resolver can authoritatively distinguish absent from unsupported credentials. */
 const ABSENT_SOURCE = "pi-web:credential-absent";
 
-/** Reads a credential Pi stored under a provider id, without resolving it. */
 export type LegacyCredentialReader = (providerId: string) => Credential | undefined;
 
-/**
- * The key stored under the current id, else a literal API key stored under the pre-rename id.
- * Pi resolves `!command` and `$VAR` keys only for the id it reads, so a legacy key in either
- * form is ignored rather than executed or interpolated here.
- */
 export function effectiveCredential(
   credential: Extract<Credential, { type: "api_key" }> | undefined,
   legacyId: string,
@@ -60,7 +53,6 @@ function usable(value: string | undefined): value is string {
   );
 }
 
-/** Module instances share only globalThis; a subagent child loads its own instance. */
 const ORIGINS = Symbol.for("pi-web.native-auth-origins.v1");
 
 function origins(): WeakMap<Provider, ModelRegistry> | undefined {
@@ -95,7 +87,6 @@ function collides(
   return !owned.has(id) || registry.getRegisteredNativeProvider(id) !== owned.get(id);
 }
 
-/** Register from session_start only: the public registry must already be live. */
 export function createWebAuthentication(readLegacy: LegacyCredentialReader = () => undefined): {
   readonly register: (pi: Pick<ExtensionAPI, "registerProvider">, registry: ModelRegistry) => void;
   readonly unregister: (
@@ -108,7 +99,6 @@ export function createWebAuthentication(readLegacy: LegacyCredentialReader = () 
   return {
     register(pi, registry) {
       const owned = ownership.get(registry);
-      // Preflight every id before making any changes, including repeat registrations.
       for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
         if (collides(registry, owned, metadata.id)) {
           throw new Error("Web authentication provider collision");
@@ -135,10 +125,6 @@ export function createWebAuthentication(readLegacy: LegacyCredentialReader = () 
             apiKey: {
               ...generated.auth.apiKey,
               name: metadata.label,
-              // This check performs no credential resolution. Pi may already have
-              // executed stored !commands before calling it. AuthStorage owns
-              // command execution at read time (synchronous, ten-second timeout,
-              // cached output including failures); our AbortSignal cannot interrupt it.
               check: async ({ credential: current, ctx, signal }) => {
                 signal.throwIfAborted();
                 const credential = effectiveCredential(current, metadata.legacyId, readLegacy);
@@ -164,9 +150,6 @@ export function createWebAuthentication(readLegacy: LegacyCredentialReader = () 
                 const value = await ctx.env(metadata.env);
                 signal.throwIfAborted();
                 if (value === undefined || value.trim() === "") {
-                  // Empty ModelAuth is public and valid for an auth-only provider. A marker
-                  // avoids treating unsupported stored OAuth as absence when Pi's metadata
-                  // snapshot is stale. check() still reports this provider as unconfigured.
                   return { auth: {}, source: ABSENT_SOURCE };
                 }
                 if (!usable(value)) {
@@ -225,7 +208,6 @@ export function createWebAuthentication(readLegacy: LegacyCredentialReader = () 
               }
               return Redacted.make(key.trim());
             },
-            // Pi auth exceptions can contain a command and its output. Never retain them.
             catch: (error) =>
               error instanceof CredentialFailure
                 ? error

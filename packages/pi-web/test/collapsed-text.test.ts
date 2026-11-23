@@ -69,7 +69,6 @@ describe("collapsedTextLength", () => {
         combined.append(measure);
       }
       expect(combined.trimmedLength()).toBe(expectedLength(pieces.join("")));
-      // Appending text piecewise gives the same measure.
       const textual = new CollapsedTextLength();
       for (const piece of pieces) {
         textual.appendText(piece);

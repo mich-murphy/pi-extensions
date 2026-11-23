@@ -22,7 +22,6 @@ import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 const EXA_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 const EXA_FETCH_MAX_CHARACTERS = 60_000;
 
-/** Parse Exa MCP's untrusted text search-result format into normalized results. */
 export function parseExaSearchText(input: string): {
   readonly results: readonly NormalizedSearchResult[];
   readonly discardedSections: number;
@@ -237,14 +236,12 @@ function isExplicitNoResultsText(text: string): boolean {
   return normalized.startsWith("no results found") || normalized.includes("no relevant results");
 }
 
-/** Search Exa through its official hosted MCP endpoint (keyless or proxied). */
 export class ExaMcpSearchProvider implements SearchProvider {
   readonly name = "exa" as const;
   readonly transport = "mcp" as const;
 
   constructor(private readonly mcp: McpClient) {}
 
-  /** Run one Exa MCP web_search_exa call and parse its text results. */
   search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     return this.mcp
       .callTool("web_search_exa", {
@@ -298,7 +295,6 @@ const decodeExaApiContentsPayload = Schema.decodeUnknownOption(
   }),
 );
 
-/** Search Exa through its official REST API when an API key is configured. */
 export class ExaApiSearchProvider implements SearchProvider {
   readonly name = "exa" as const;
   readonly transport = "api" as const;
@@ -308,7 +304,6 @@ export class ExaApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  /** Run one Exa REST /search call and normalize its structured results. */
   search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     return readProviderJson(
       this.http.postJson({
@@ -339,13 +334,11 @@ export class ExaApiSearchProvider implements SearchProvider {
   }
 }
 
-/** Fetch a page through Exa's hosted MCP web_fetch_exa tool (the fetch rescue path). */
 export class ExaMcpFetchProvider implements FetchProvider {
   readonly name = "exa" as const;
 
   constructor(private readonly mcp: McpClient) {}
 
-  /** Read one URL as markdown through Exa's crawl infrastructure; undefined on any failure. */
   fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
     return this.mcp
       .callTool("web_fetch_exa", { urls: [url], maxCharacters: EXA_FETCH_MAX_CHARACTERS })
@@ -356,7 +349,6 @@ export class ExaMcpFetchProvider implements FetchProvider {
   }
 }
 
-/** Fetch a page through Exa's REST /contents endpoint when an API key is configured. */
 export class ExaApiFetchProvider implements FetchProvider {
   readonly name = "exa" as const;
 
@@ -365,7 +357,6 @@ export class ExaApiFetchProvider implements FetchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  /** Read one URL as text through Exa's REST contents API; undefined on any failure. */
   fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
     return readProviderJson(
       this.http.postJson({

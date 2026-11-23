@@ -17,7 +17,6 @@ import { WEB_EXTENSION_NAME } from "./types";
 import { createWebFetchTool } from "./webfetch";
 import { createWebSearchTool } from "./websearch";
 
-/** Pi registration capabilities consumed by web tools. */
 export type WebToolsRegistration = Pick<
   ExtensionAPI,
   "registerTool" | "registerProvider" | "unregisterProvider"
@@ -36,7 +35,6 @@ export type WebToolsRegistration = Pick<
   };
 };
 
-/** Register the webfetch and websearch tools. */
 export default function webExtension(pi: WebToolsRegistration): void {
   const authentication = createWebAuthentication(readStoredCredential);
   let currentRegistry: ExtensionContext["modelRegistry"] | undefined;
@@ -96,7 +94,6 @@ function appLayer(settings: WebToolsSettings) {
   const outbound = Layer.mergeAll(HttpFetch.layer, PublicWebTransport.layer, DnsLookup.layer);
   const config = WebToolsConfig.layer(settings);
   const providerDeps = Layer.mergeAll(ProviderHttpClient.layer, McpClients.layer, config);
-  // One build of both chains shares their internal provider pairs (Parallel session id, MCP clients).
   const providers = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
     Layer.provide(providerDeps),
   );

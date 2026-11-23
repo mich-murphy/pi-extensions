@@ -28,7 +28,6 @@ const searchPayload = (text: string) => ({
   web: { results: [{ title: text, url: pageUrl, description: text }] },
 });
 
-/** Only production I/O ports are replaced; routing, auth, projection and runtime are live. */
 async function tools(
   options: {
     initial?: AuthStorageData;
@@ -128,9 +127,7 @@ async function tools(
   const login = async (provider: keyof typeof WEB_AUTH_PROVIDERS, key: string) =>
     native.runtime.login(WEB_AUTH_PROVIDERS[provider].id, "api_key", {
       prompt: async () => key,
-      notify: () => {
-        /* isolated synthetic login */
-      },
+      notify: () => undefined,
     });
   const logout = async (provider: keyof typeof WEB_AUTH_PROVIDERS) =>
     native.runtime.logout(WEB_AUTH_PROVIDERS[provider].id);
@@ -329,9 +326,7 @@ describe("native-auth integration", () => {
     test.each([
       {
         name: "both siblings finish",
-        cancel: (_controller: AbortController) => {
-          /* finish both siblings */
-        },
+        cancel: (_controller: AbortController) => undefined,
         expected: "[redacted]",
       },
       {

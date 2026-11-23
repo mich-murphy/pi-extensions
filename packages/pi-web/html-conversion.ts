@@ -1,50 +1,27 @@
 import { Result, Schema } from "effect";
 
-/**
- * The document has no elements to convert: the body was empty, whitespace, comments, or bare text,
- * so the parser produced no document element.
- */
 export class EmptyHtmlDocument extends Schema.TaggedError<EmptyHtmlDocument>()(
   "EmptyHtmlDocument",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "The page has no HTML content. It may need JavaScript to render; try another source.";
   }
 }
 
-/**
- * A conversion library (turndown or html-to-text) threw a RangeError, in practice a stack overflow
- * on very deeply nested markup. Other exceptions are defects and propagate.
- */
 export class HtmlConversionFailed extends Schema.TaggedError<HtmlConversionFailed>()(
   "HtmlConversionFailed",
   {
-    /**
-     * The RangeError, kept for local diagnosis only. Typed by instanceOf, not Defect: the cause is
-     * already classified (only RangeError reaches here), so the field keeps that precision.
-     */
     cause: Schema.instanceOf(RangeError),
   },
 ) {
-  /** Safe user-facing description; never includes the cause. */
   override get message(): string {
     return "The page's HTML is too deeply nested to convert. Try format `html` for the raw source.";
   }
 }
 
-/** Expected failures converting fetched HTML. */
 export type HtmlConversionError = EmptyHtmlDocument | HtmlConversionFailed;
 
-/**
- * Run a turndown or html-to-text conversion, classifying only RangeError (stack overflow on deeply
- * nested markup inside the libraries) as HtmlConversionFailed.
- *
- * @param convert - The library conversion to run.
- * @returns The converted text, or HtmlConversionFailed for a RangeError.
- * @throws Any other exception unchanged: it is a defect, not a conversion failure.
- */
 export function convertGuarded(convert: () => string): Result.Result<string, HtmlConversionFailed> {
   try {
     return Result.succeed(convert());

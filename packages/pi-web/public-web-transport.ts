@@ -9,11 +9,8 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { Context, Layer } from "effect";
 
-/** One address approved for a public-web connection. */
 export type ApprovedAddress = {
-  /** Numeric IPv4 or IPv6 address. */
   readonly address: string;
-  /** Address family of {@link address}. */
   readonly family: 4 | 6;
 };
 
@@ -22,31 +19,19 @@ type AddressBoundRequest = {
   readonly signal: AbortSignal;
 };
 
-/**
- * HTTP transport for public-web requests. Unlike the platform Fetch API, this port accepts the
- * exact addresses already approved by the caller and cannot perform an independent DNS lookup.
- */
 export class PublicWebTransport extends Context.Service<
   PublicWebTransport,
   {
-    /** Send one GET while connecting only to an approved address. */
     readonly get: (
       url: URL,
       addresses: readonly ApprovedAddress[],
       request: {
-        /** Request headers. Host is deliberately left to Node so it comes from the original URL. */
         readonly headers: Readonly<Record<string, string>>;
-        /** Cancellation signal owned by the calling effect. */
         readonly signal: AbortSignal;
       },
     ) => Promise<Response>;
   }
 >()("pi-web/public-web-transport/PublicWebTransport") {
-  /**
-   * Live Node HTTP(S) transport. The request URL retains the original hostname, so Node emits the
-   * original Host header and uses that hostname for TLS SNI and certificate verification; only
-   * socket address selection is replaced by the approved-address lookup.
-   */
   static readonly layer = Layer.succeed(
     PublicWebTransport,
     PublicWebTransport.of({
@@ -70,8 +55,6 @@ async function sendAddressBoundRequest(
         headers: request.headers,
         signal: request.signal,
         lookup: approvedAddressLookup(addresses),
-        // A request owns its socket. Cancelling or consuming its Response therefore releases every
-        // resource without retaining an address-bound socket in a process-wide pool.
         agent: false,
       },
       (incoming) => {
@@ -145,15 +128,12 @@ function toFetchResponse(incoming: IncomingMessage): Response {
   const status = incoming.statusCode ?? 500;
   const bodyForbidden = status === 204 || status === 205 || status === 304;
   if (bodyForbidden) {
-    // There is no Response body for the caller to cancel. Destroy the owned stream/socket rather
-    // than draining a malformed chunked 204/205/304 response forever in the background.
     incoming.destroy();
     return new Response(null, { status, statusText: incoming.statusMessage ?? "", headers });
   }
 
   const decoded = decodedResponseBody(incoming, headers.get("content-encoding"));
   if (decoded) {
-    // Content-Length describes compressed bytes, not the bytes checked by PublicWebClient.
     headers.delete("content-encoding");
     headers.delete("content-length");
   }
@@ -241,8 +221,6 @@ function decodedResponseBody(
     ...laterAppliedCodings.toReversed().map((coding) => decoderFor(coding)),
     output,
   ];
-  // Content codings are applied in header order and decoded in reverse. A single pipeline carries
-  // cancellation and decode failures through every transform and back to the owned socket.
   pipeline([incoming, ...decoders], () => undefined);
   return output;
 }
@@ -260,8 +238,6 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
   const converted: NodeReadableStream<unknown> = Readable.toWeb(stream, {
     strategy: {
       highWaterMark: WEB_STREAM_HIGH_WATER_MARK_BYTES,
-      // IncomingMessage and every zlib decoder used here are binary, non-object-mode streams, so Node's
-      // toWeb adapter always supplies Uint8Array chunks to this strategy callback.
       size: (chunk: Uint8Array) => chunk.byteLength,
     },
   });
@@ -279,9 +255,7 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
           }
         } catch (cause) {
           try {
-            await reader.cancel(cause);
-          } catch {
-            // A failed Node stream may already have rejected cancellation with the same error.
+            await reader.cancel(cause).catch(ignoreAlreadyRejectedCancellation);
           } finally {
             reader.releaseLock();
           }
@@ -298,4 +272,8 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
     },
     { highWaterMark: 0 },
   );
+}
+
+function ignoreAlreadyRejectedCancellation(): undefined {
+  return undefined;
 }

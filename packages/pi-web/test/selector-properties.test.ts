@@ -12,7 +12,6 @@ const { document } = parseHTML("<html><body></body></html>");
 const TAGS = ["div", "p", "a", "span", "article", "main"];
 const IDS = ["a", "b", "Main"];
 const TOKENS = ["a", "b", "A", "x-y"];
-// Names include ones css-select compares case-insensitively (role is not, lang, type, dir are).
 const ATTRIBUTES = ["role", "type", "lang", "data-x", "dir", "hidden", "title"];
 const VALUES = ["main", "MAIN", "a", "A", "x-y", "true", "TRUE", ""];
 const BARE_VALUES = VALUES.filter((value) => value !== "");
@@ -94,8 +93,6 @@ function recase(value: string, flags: readonly boolean[]): string {
   ).join("");
 }
 
-// Same attribute on both sides with independently re-cased values, so the case-insensitive
-// attribute list (type, lang, dir, ...) is exercised on every draw.
 function assertAttributeCase(name: string, elementValue: string, selectorValue: string): void {
   const element = document.createElement("div");
   element.setAttribute(name, elementValue);

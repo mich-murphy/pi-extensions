@@ -56,7 +56,6 @@ const decodeParallelFetchPayload = Schema.decodeUnknownOption(
   }),
 );
 
-/** Parse Parallel's structured results payload (MCP structuredContent, JSON text, or REST body). */
 export function parseParallelResults(
   payload: unknown,
 ): Result.Result<readonly NormalizedSearchResult[], string> {
@@ -66,7 +65,6 @@ export function parseParallelResults(
     : Result.fail("Missing results array");
 }
 
-/** Extract Parallel's results payload from an MCP tool result (structuredContent or JSON text). */
 export function parseParallelMcpPayload(
   toolResult: McpToolCallResult,
 ): Result.Result<readonly NormalizedSearchResult[], string> {
@@ -84,7 +82,6 @@ export function parseParallelMcpPayload(
     : Result.fail("Invalid structured search results");
 }
 
-/** Search Parallel through its official hosted MCP endpoint (keyless or proxied). */
 export class ParallelMcpSearchProvider implements SearchProvider {
   readonly name = "parallel" as const;
   readonly transport = "mcp" as const;
@@ -94,7 +91,6 @@ export class ParallelMcpSearchProvider implements SearchProvider {
     private readonly sessionId: string,
   ) {}
 
-  /** Run one Parallel MCP web_search call and normalize its structured results. */
   search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     return this.mcp
       .callTool("web_search", {
@@ -108,7 +104,6 @@ export class ParallelMcpSearchProvider implements SearchProvider {
   }
 }
 
-/** Search Parallel through its official REST API (GA /v1/search) when an API key is configured. */
 export class ParallelApiSearchProvider implements SearchProvider {
   readonly name = "parallel" as const;
   readonly transport = "api" as const;
@@ -118,7 +113,6 @@ export class ParallelApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  /** Run one Parallel REST search call and normalize its structured results. */
   search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
     return readProviderJson(
       this.http.postJson({
@@ -148,7 +142,6 @@ function limitedResults(
     : Effect.fail(new ProviderProtocolInvalid({ reason: parsed.failure }));
 }
 
-/** Fetch a page through Parallel's hosted MCP web_fetch tool (the fetch rescue path). */
 export class ParallelMcpFetchProvider implements FetchProvider {
   readonly name = "parallel" as const;
 
@@ -157,7 +150,6 @@ export class ParallelMcpFetchProvider implements FetchProvider {
     private readonly sessionId: string,
   ) {}
 
-  /** Read one URL as full markdown through Parallel's fetch infrastructure; undefined on any failure. */
   fetchMarkdown(url: PublicHttpUrl): Effect.Effect<string | undefined> {
     return this.mcp
       .callTool("web_fetch", { urls: [url], full_content: true, session_id: this.sessionId })

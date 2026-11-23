@@ -4,8 +4,6 @@ import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import * as Html from "../html";
 import { convertGuarded, HtmlConversionFailed } from "../html-conversion";
 
-// A real stack overflow inside a library depends on frame sizes and JIT state, so the failure is
-// injected at the library boundary here; html.test.ts keeps one real deep-nesting test.
 const OVERFLOW = new RangeError("Maximum call stack size exceeded");
 
 describe("a library stack overflow", () => {

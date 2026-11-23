@@ -317,7 +317,6 @@ describe("free-tier rate limits", () => {
       expect(result.failure.freeTierRateLimited).toBeUndefined();
       expect(result.failure.attempts).toStrictEqual([
         "exa: rejected (HTTP 429)",
-        // The provider's own text, cut at the last word boundary within 70 characters.
         "parallel: reported an error: You've hit Exa's free MCP rate limit. Create a free Exa account to get…",
       ]);
     }),
@@ -357,7 +356,6 @@ describe("free-tier rate limits", () => {
   );
 });
 
-/** The single attempt line for a provider whose tool reported `detail`. */
 function attemptFor(error: ProviderError): Effect.Effect<string> {
   return Effect.gen(function* () {
     const result = yield* Effect.result(
@@ -382,7 +380,7 @@ describe("provider detail bounds", () => {
       const shown = attempt.slice(DETAIL_PREFIX.length);
       expect(shown.endsWith("…")).toBe(true);
       const kept = shown.slice(0, -1);
-      expect(kept.length).toBeLessThanOrEqual(70); // ASCII detail: one code unit per grapheme
+      expect(kept.length).toBeLessThanOrEqual(70);
       expect(detail.startsWith(kept)).toBe(true);
       expect(detail.charAt(kept.length)).toBe(" ");
     }),
@@ -390,7 +388,6 @@ describe("provider detail bounds", () => {
 
   it.effect("cuts whole code points when an emoji sits at the cut", () =>
     Effect.gen(function* () {
-      // No spaces, so the cut falls inside the emoji run; each emoji is a surrogate pair.
       const detail = `${"x".repeat(60)}${"😀".repeat(30)}`;
       const attempt = yield* attemptFor(new ProviderToolError({ detail }));
       const shown = attempt.slice(DETAIL_PREFIX.length, -1);
@@ -402,7 +399,6 @@ describe("provider detail bounds", () => {
 
   it.effect("never splits the [URL omitted] placeholder", () =>
     Effect.gen(function* () {
-      // The last space within the cap is the one inside "[URL omitted]".
       const detail = `${"word ".repeat(13)}[URL omitted] for details and more text after it`;
       const attempt = yield* attemptFor(new ProviderToolError({ detail }));
       const shown = attempt.slice(DETAIL_PREFIX.length);

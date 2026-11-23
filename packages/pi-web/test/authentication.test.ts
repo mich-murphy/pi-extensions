@@ -43,9 +43,7 @@ describe("public native web authentication", () => {
     expect(Redacted.value(first.success)).toBe("stored-synthetic");
     await runtime.login("pi-web-exa", "api_key", {
       prompt: async () => "rotated-synthetic",
-      notify: () => {
-        /* no UI in isolated runtime */
-      },
+      notify: () => undefined,
     });
     const rotated = await resolve();
     assert(Result.isSuccess(rotated));
@@ -316,6 +314,17 @@ describe("public native web authentication", () => {
     expect(Redacted.value(afterChild.success)).toBe("stored-synthetic");
   });
 
+  test("a separately loaded module instance accepts providers its parent instance registered", async () => {
+    const parent = await nativeAuthFixture();
+    const child = await inheritingChild(parent);
+    vi.resetModules();
+    const separatelyLoaded = await import("../authentication");
+    expect(separatelyLoaded.createWebAuthentication).not.toBe(createWebAuthentication);
+    expect(() => {
+      separatelyLoaded.createWebAuthentication().register(child.pi, child.registry);
+    }).not.toThrow();
+  });
+
   test("subagent child still rejects a foreign provider with a web tools ID", async () => {
     const parent = await nativeAuthFixture();
     const native = parent.registry.getRegisteredNativeProvider("pi-web-parallel");
@@ -334,10 +343,7 @@ describe("public native web authentication", () => {
     expect(outcome.failure.reason).toBe("incompatible");
   });
 
-  // Pi runs a stored `!command` with a hard-coded ten-second synchronous timeout inside AuthStorage;
-  // that wait cannot be injected. A timeout surfaces exactly like a command killed by a signal:
-  // execSync throws and Pi stores no value. Killing the command here reaches that path at once.
-  test("a command killed by a signal fails safely without leaking its output", async () => {
+  test("a command killed by a signal, as Pi's uninjectable ten-second command timeout does, fails safely without leaking its output", async () => {
     const { resolve } = await fixture("!printf killed-secret; kill -KILL $$");
     const result = await resolve();
     assert(Result.isFailure(result));

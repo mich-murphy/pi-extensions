@@ -25,43 +25,31 @@ import type { ToolRuntime } from "./tool-runtime";
 import { parseSearchQuery } from "./types";
 import type { SearchProviderName, SearchQuery, WebSearchDetails } from "./types";
 
-/** Composition injected into the websearch tool. */
 export type WebSearchToolComposition = ToolCredentialComposition & {
-  /** Non-secret settings, for input defaults and the progress message. */
   readonly settings: Pick<WebToolsSettings, "search">;
-  /** Redact configured secrets before text or metadata reaches Pi. */
   readonly redactText: (input: string) => string;
-  /** The runtime every search runs on. */
   readonly runtime: ToolRuntime<
     SearchProviders | ToolOutputStore | WebToolsConfig | CredentialResolver
   >;
 };
 
-/** Parsed websearch tool parameters. */
 export type WebSearchParams = {
   readonly query: SearchQuery;
   readonly maxResults: number;
   readonly provider?: SearchProviderName;
 };
 
-/** The websearch query was empty after trimming. */
 export class EmptySearchQueryInput extends Schema.TaggedError<EmptySearchQueryInput>()(
   "EmptySearchQueryInput",
   {},
 ) {
-  /** Safe user-facing description. */
   override get message(): string {
     return "Search query cannot be empty.";
   }
 }
 
-/** Expected failures parsing websearch tool input. */
 export type WebSearchInputError = EmptySearchQueryInput;
 
-/**
- * Tool parameters. Pi validates and converts arguments against this schema before `execute` runs,
- * so it owns field types, the provider enum, and unknown-field rejection.
- */
 const WEB_SEARCH_PARAMETERS = Type.Object(
   {
     query: Type.String({ description: "The search query." }),
@@ -79,10 +67,6 @@ const WEB_SEARCH_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/**
- * Parse schema-validated parameters into websearch input. Only semantic work is left here: query
- * trimming, settings defaults, and maxResults clamping.
- */
 export function parseWebSearchParams(
   params: Static<typeof WEB_SEARCH_PARAMETERS>,
   settings: Pick<WebToolsSettings, "search">,
@@ -103,7 +87,6 @@ export function parseWebSearchParams(
   );
 }
 
-/** Create the websearch pi tool. */
 export function createWebSearchTool(composition: WebSearchToolComposition) {
   return {
     name: "websearch",

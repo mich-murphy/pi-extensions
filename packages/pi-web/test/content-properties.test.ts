@@ -15,9 +15,6 @@ import { publicUrl, publicWebClientWith } from "./fakes";
 
 const settings = propertySettings(200);
 
-// ---- M3: mime classification and charset decoding ----
-
-// Independent table of mime types with a fixed kind, whatever the casing or surrounding space.
 const KNOWN_KINDS: readonly (readonly [string, string])[] = [
   ["text/html", "html"],
   ["application/xhtml+xml", "html"],
@@ -76,7 +73,6 @@ function assertSuffixIsText(
   pad: readonly [string, string],
 ): void {
   const mime = `${family[0]}${token}${family[1]}`;
-  // The exact-table rows text/html and application/xhtml+xml win over the suffix rules.
   if (mime === "text/html" || mime === "application/xhtml+xml") {
     assertKind(mime, "html", flags, pad);
     return;
@@ -110,7 +106,6 @@ function assertDecodeTotal(bytes: Uint8Array, charset: string | null, partial: b
   assert.doesNotThrow(() => new TextDecoder(decoded.decoder));
 }
 
-// The longest prefix of whole characters whose UTF-8 encoding fits in `cutBytes`.
 function wholeCharPrefix(text: string, cutBytes: number): string {
   let used = 0;
   let prefix = "";
@@ -197,13 +192,10 @@ describe("content type properties", () => {
   });
 });
 
-// ---- M4: capped body reads under random chunking ----
-
 const bodyBytes = gs.binary({ maxSize: 80 });
 const chunkSizes = gs.arrays(gs.integers({ minValue: 0, maxValue: 30 }), { maxSize: 12 });
 const cap = gs.integers({ minValue: 0, maxValue: 40 });
 
-// Chunks are views into larger buffers, so a wrong byteOffset or byteLength would read neighbours.
 function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
   const views: Uint8Array[] = [];
   let position = 0;
