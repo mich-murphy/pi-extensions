@@ -15,10 +15,10 @@ const STATE_VERSION = 7;
 const RESET_ADVICE = "Fix the file, or remove it to reset all toggles.";
 
 const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
-  EACCES: "permission was denied. Check the permissions of the file and its folder.",
-  EPERM: "the operation is not permitted. Check the permissions of the file and its folder.",
+  EACCES: "permission denied. Check the file and folder permissions.",
+  EPERM: "operation not permitted. Check the file and folder permissions.",
   ENOSPC: "the disk is full. Free some space and try again.",
-  EDQUOT: "the disk quota is exhausted. Free some space and try again.",
+  EDQUOT: "the disk quota is used up. Free some space and try again.",
   EROFS: "the file system is read-only. Use a writable agent directory.",
   EISDIR: "the path is a folder, not a file. Move the folder away.",
   ENOTDIR: "part of the path is a file, not a folder. Check the agent directory path.",
@@ -45,7 +45,7 @@ export class ToggleStateUnavailable extends Error {
   ) {
     const reason =
       SYSTEM_ERROR_REASONS[code] ??
-      `the file system reported ${diagnosticText(code)}. Check the file and folder permissions, available space and file system status.`;
+      `the file system reported ${diagnosticText(code)}. Check the file, its folder permissions and free disk space.`;
     super(`Could not ${operation} pi-skills state at ${diagnosticText(path)}: ${reason}`, {
       cause,
     });
@@ -91,7 +91,7 @@ export class ToggleStateTooNew extends Error {
     readonly version: number,
   ) {
     super(
-      `pi-skills state at ${diagnosticText(path)} was written by a newer pi-skills (state version ${version}; this version reads up to ${STATE_VERSION}). Update pi-skills, or remove the file to reset all toggles.`,
+      `pi-skills state at ${diagnosticText(path)} is from a newer pi-skills (version ${version}; this reads up to ${STATE_VERSION}). Update pi-skills, or remove the file to reset toggles.`,
     );
     this.name = "ToggleStateTooNew";
   }

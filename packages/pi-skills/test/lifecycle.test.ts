@@ -276,7 +276,7 @@ describe("extension lifecycle", () => {
 
     expect(testHarness.notifications).toStrictEqual([
       "Usage: /skills",
-      "/skills requires TUI mode",
+      "`/skills` works only in the interactive TUI.",
     ]);
   });
 
@@ -286,7 +286,7 @@ describe("extension lifecycle", () => {
     await testHarness.runCommand("", { promptOptions: { cwd, skills: [] } });
 
     expect(testHarness.notifications).toStrictEqual([
-      "No user-managed instructions or skills are loaded",
+      "No instructions or skills that can be toggled are loaded.",
     ]);
   });
 
@@ -302,7 +302,7 @@ describe("extension lifecycle", () => {
 
     expect(opened).toBe(false);
     expect(testHarness.notifications).toStrictEqual([
-      "Could not load pi-skills state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe prompt was left unchanged. Recognized reads of loaded instructions and skills are blocked until it is fixed.",
+      "Could not load pi-skills state at /state.json: permission denied. Check the file and folder permissions.\nUntil the file is fixed, the prompt is unchanged and all skill and instruction reads are blocked.",
     ]);
   });
 
@@ -344,7 +344,7 @@ describe("extension lifecycle", () => {
     expect(plain(rendered).join("\n")).toMatch(/research\s+Off/u);
     expect(plain(rendered).join("\n")).not.toMatch(/research\s+On/u);
     expect(testHarness.notifications).toStrictEqual([
-      "Could not update pi-skills state at /state.json: permission was denied. Check the permissions of the file and its folder.\nThe toggle was not saved.",
+      "Could not update pi-skills state at /state.json: permission denied. Check the file and folder permissions.\nThe toggle was not saved.",
     ]);
   });
 
@@ -466,7 +466,7 @@ describe("extension lifecycle", () => {
     await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
     await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
     expect(testHarness.notifications).toStrictEqual([
-      "pi-skills could not update the skills prompt section. Another extension may have rewritten it.",
+      "pi-skills could not hide disabled skills: another extension may have changed the prompt.",
     ]);
   });
 
@@ -503,7 +503,9 @@ describe("extension lifecycle", () => {
     result = failure("load");
     await testHarness.emit("before_agent_start", event);
     expect(testHarness.notifications).toHaveLength(2);
-    expect(testHarness.notifications[1]).toContain("prompt was left unchanged");
+    expect(testHarness.notifications[1]).toContain(
+      "Until the file is fixed, the prompt is unchanged and all skill and instruction reads are blocked.",
+    );
   });
 
   test("Esc with search text clears the search and keeps the menu open", async () => {

@@ -32,4 +32,4 @@ The display still sleeps on its normal schedule. An agent needs the Mac awake, n
 
 ## Troubleshooting
 
-While Pi works, `pmset -g assertions` lists a `caffeinate` entry. If caffeinate fails to start or exits unexpectedly, Pi shows a `Coffee` message with the failed operation and a next step. Pi can continue working, but sleep prevention may be unavailable. Check `/usr/bin/caffeinate` and macOS process permissions/resources. After an unexpected exit, the message says whether the extension is restarting once or has exhausted that run's restart allowance.
+While Pi works, `pmset -g assertions` lists a `caffeinate` entry. If caffeinate fails to start or exits unexpectedly, Pi shows a `Coffee` message with the failed operation. Pi keeps working; the Mac may sleep until the next agent run. After an unexpected exit, the message says whether the extension is restarting it once or has used up that run's restart. If caffeinate cannot be stopped, it still exits when Pi does.

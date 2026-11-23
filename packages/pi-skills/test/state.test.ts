@@ -292,7 +292,7 @@ describe("toggleStateFile", () => {
       `pi-skills state at ${context.statePath} is not valid JSON. Fix the file, or remove it to reset all toggles.`,
     );
     expect(messageFor({ version: 9, overrides: {} })).toBe(
-      `pi-skills state at ${context.statePath} was written by a newer pi-skills (state version 9; this version reads up to 7). Update pi-skills, or remove the file to reset all toggles.`,
+      `pi-skills state at ${context.statePath} is from a newer pi-skills (version 9; this reads up to 7). Update pi-skills, or remove the file to reset toggles.`,
     );
     expect(messageFor({ version: 7, repositories: {}, files: { "/skill": "sometimes" } })).toBe(
       `pi-skills state at ${context.statePath} has an invalid entry for /skill. Fix or remove that entry, or remove the file to reset all toggles.`,
