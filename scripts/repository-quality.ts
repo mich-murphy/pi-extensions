@@ -78,8 +78,6 @@ function checkedStat(root: string, path: string, component: string, stats: PathS
 function existingFile(root: string, path: string, stats: PathStats): boolean {
   const components: string[] = [];
   let stat: ReturnType<typeof indexedStat>;
-  // Start below Git's canonical root: a checkout reached through a root alias is legitimate.
-  // Cache shared ancestors within selection, not across runs. This is not a TOCTOU sandbox.
   for (const part of path.split("/")) {
     components.push(part);
     stat = checkedStat(root, path, components.join("/"), stats);
@@ -91,7 +89,6 @@ function existingFile(root: string, path: string, stats: PathStats): boolean {
 }
 
 function indexedEntry(entry: string): { path: string; symlink: boolean } {
-  // Only the first tab separates metadata; the remaining path may contain literal tabs.
   return { path: entry.slice(entry.indexOf("\t") + 1), symlink: entry.startsWith("120000 ") };
 }
 
@@ -137,8 +134,6 @@ function toolExecutable(root: string, tool: Tool): string {
     return resolve(root, "node_modules", ".bin", tool.name);
   }
   try {
-    // Resolve the pinned runner dependency without importing/executing its library.
-    // The package exports its library entry; its bin lives beside that entry.
     const entry = fileURLToPath(import.meta.resolve("markdownlint-cli2"));
     return resolve(dirname(entry), "markdownlint-cli2-bin.mjs");
   } catch (error) {
@@ -158,11 +153,11 @@ function runBatch(root: string, tool: Tool, files: string[]): number {
   return toolStatus(result, tool);
 }
 
+const MAX_PATHS_PER_TOOL_RUN = 64;
+
 function runBatches(root: string, tool: Tool, files: string[]): number {
-  // Bounded argv avoids ARG_MAX on large repositories. Never invoke a tool with an empty list:
-  // both formatter and Markdown CLI otherwise fall back to whole-directory discovery.
-  for (let start = 0; start < files.length; start += 64) {
-    const status = runBatch(root, tool, files.slice(start, start + 64));
+  for (let start = 0; start < files.length; start += MAX_PATHS_PER_TOOL_RUN) {
+    const status = runBatch(root, tool, files.slice(start, start + MAX_PATHS_PER_TOOL_RUN));
     if (status !== 0) {
       return status;
     }
@@ -176,7 +171,6 @@ function run(mode: string): number {
   if (extension === undefined || tool === undefined) {
     throw new Error("Choose format, format-check, lint or markdownlint.");
   }
-  // --show-toplevel ends in exactly one LF; trim() would corrupt legal directory names.
   const root = git(["rev-parse", "--show-toplevel"], process.cwd()).replace(/\n$/u, "");
   const files = indexedFiles(root, extension);
   if (files.length === 0) {

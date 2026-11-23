@@ -1,11 +1,3 @@
-// Starts the pinned Pi CLI in a throwaway home with only the given extensions, for Bombadil's
-// terminal driver. Offline, no tools, no user files: only what the extensions draw.
-//
-//   node --experimental-strip-types scripts/bombadil-pi.ts [--fixture <file.ts>] <extension.ts>...
-//
-// A fixture module's default export (see test-support/bombadil.ts) receives the throwaway
-// directories before Pi starts. It can write files there and return extra Pi arguments,
-// environment, settings, a session file to open, and a dispose hook.
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -37,9 +29,8 @@ if (extensions.length === 0 || (argv.includes("--fixture") && fixturePath === un
   throw new Error("Usage: bombadil-pi.ts [--fixture <file.ts>] <extension.ts>...");
 }
 
-// /tmp rather than os.tmpdir(): on macOS that is a long /var/folders path, which would push the
-// gateway's default socket under the throwaway home past the 100-byte Unix socket limit.
-const base = mkdtempSync("/tmp/pi-bombadil-");
+const SHORT_TMP_PREFIX_KEEPING_SOCKETS_UNDER_UNIX_PATH_LIMIT = "/tmp/pi-bombadil-";
+const base = mkdtempSync(SHORT_TMP_PREFIX_KEEPING_SOCKETS_UNDER_UNIX_PATH_LIMIT);
 const root: BombadilRoot = {
   root: base,
   home: join(base, "home"),
@@ -52,7 +43,6 @@ for (const path of [root.home, root.agent, root.sessions, root.cwd, root.tmp]) {
   mkdirSync(path);
 }
 
-/** The fixture contract is the BombadilFixture type; a fixture module is trusted test code. */
 function isFixture(value: unknown): value is BombadilFixture {
   return typeof value === "function";
 }
@@ -80,6 +70,10 @@ try {
   throw error;
 }
 
+const DOUBLE_ESCAPE_WOULD_OPEN_SESSION_TREE_AND_STEAL_EDITOR_FOCUS = {
+  doubleEscapeAction: "none",
+} as const;
+
 writeFileSync(
   join(root.agent, "settings.json"),
   JSON.stringify({
@@ -88,8 +82,7 @@ writeFileSync(
     defaultProjectTrust: "never",
     enableInstallTelemetry: false,
     cacheWarming: "off",
-    // Two Escapes within 500 ms would open the session tree and take focus from the editor.
-    doubleEscapeAction: "none",
+    ...DOUBLE_ESCAPE_WOULD_OPEN_SESSION_TREE_AND_STEAL_EDITOR_FOCUS,
     ...launch.settings,
   }),
 );
@@ -130,14 +123,13 @@ const child = spawn(
       PI_OFFLINE: "1",
       PI_SKIP_VERSION_CHECK: "1",
       PI_TELEMETRY: "0",
-      // Opt-in log of every byte Pi writes to the terminal, for diagnosing a violation.
       ...(writeLog === undefined || writeLog === "" ? {} : { PI_TUI_WRITE_LOG: writeLog }),
       ...launch.env,
     },
   },
 );
-// The child shares this terminal, so it gets SIGINT/SIGWINCH directly; forward only termination.
-for (const signal of ["SIGTERM", "SIGHUP"] as const) {
+const TERMINATION_SIGNALS_A_SHARED_TERMINAL_DOES_NOT_DELIVER = ["SIGTERM", "SIGHUP"] as const;
+for (const signal of TERMINATION_SIGNALS_A_SHARED_TERMINAL_DOES_NOT_DELIVER) {
   process.on(signal, () => child.kill(signal));
 }
 child.on("exit", (code, signal) => {
@@ -151,7 +143,6 @@ child.on("exit", (code, signal) => {
       process.kill(process.pid, signal);
       return;
     }
-    // Nothing else holds the event loop once the child has gone, so Node exits with this code.
     process.exitCode = code ?? 1;
   })();
 });

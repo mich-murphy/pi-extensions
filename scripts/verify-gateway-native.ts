@@ -1,24 +1,3 @@
-/**
- * CI consumer proof of PUBLIC native acquisition on a native runner.
- *
- *   node --import jiti/register scripts/verify-gateway-native.ts --target T --runner-temp DIR --out RECORD
- *
- * Runs production `acquireGateway` (method native, default `gatewayCatalog.native`, no seams, no
- * catalog override, production 120 s deadline) against the published GitHub release. It fails,
- * creating nothing, while the default catalog has no native pin; it never skips.
- *
- * Before any product call, a fresh private root is created under canonical RUNNER_TEMP with its
- * own 0700 HOME, TMPDIR and install directory, and the record is created exclusively. After
- * acquisition this script checks independently that the recorded executable is canonical and
- * inside this root's install directory, digests the bytes it actually reads (bounded, owned
- * policy), checks the installed manifest against the pin, and runs a bounded `--version --json`
- * probe that settles only once the child has closed. No daemon or PKI is ever started.
- *
- * The root is removed only after every check passed and its device, inode, owner and mode are
- * confirmed again. On any failure, including a child whose shutdown is uncertain, the root is
- * retained for runner teardown. Once known, the root is named in the record and the thrown error
- * with its state (retained, cleanup unconfirmed or removed). No other path is ever removed.
- */
 import { spawn } from "node:child_process";
 import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -45,12 +24,9 @@ import type { RecordWriter } from "./verify-gateway-nix-io.js";
 
 const ROOT_PREFIX = "gateway-public-native-";
 const ROOT_NAME = /^gateway-public-native-[A-Za-z0-9]{6}$/u;
-/** Same deadline production setup gives the native fallback. */
 const ACQUISITION_MS = 120_000;
 const PROBE_MS = 10_000;
-/** After SIGKILL to our own child, how long to wait for it to close before declaring uncertainty. */
 const CLOSE_GRACE_MS = 5000;
-/** Version output and the installed manifest are small JSON documents (manifest bound as in production). */
 const MAX_JSON = 65_536;
 const REQUIRED_CAPABILITIES = [GATEWAY_MANAGED_CAPABILITY, ...GATEWAY_REMOTE_SETUP_CAPABILITIES];
 
@@ -60,7 +36,6 @@ function isPrivateDirectory(stat: BigIntStats, uid: number): boolean {
   return stat.isDirectory() && stat.uid === BigInt(uid) && (stat.mode & 0o077n) === 0n;
 }
 
-/** At most 8 links of the cause chain; a non-Error ends it. */
 function causeChain(error: unknown): unknown[] {
   const chain: unknown[] = [];
   let item: unknown = error;
@@ -75,7 +50,6 @@ function messageOf(item: unknown): string {
   return item instanceof Error ? item.message : (JSON.stringify(item) ?? typeof item);
 }
 
-/** Bounded cause chain; token-shaped strings are redacted. */
 function describe(error: unknown): string {
   return causeChain(error)
     .map((item) => messageOf(item))
@@ -84,7 +58,6 @@ function describe(error: unknown): string {
     .slice(0, 8000);
 }
 
-/** Target and default native pin first: an unpublished pin fails before anything is created. */
 function requirePin(target: string): GatewayReleasePin {
   if (gatewayTarget() !== target) {
     throw new Error(`Host target ${gatewayTarget()} does not match matrix target ${target}`);
@@ -113,7 +86,6 @@ async function createRoot(runnerTemp: string): Promise<Root> {
   }
 }
 
-/** Private HOME/TMPDIR/install inside the root, set before any product call or child process. */
 async function privateProfile(root: string) {
   const dirs = {
     home: path.join(root, "home"),
@@ -126,7 +98,6 @@ async function privateProfile(root: string) {
   return dirs;
 }
 
-/** Recorded executable is canonical, named pi-gateway, in a direct child of this install root. */
 async function requireOwnedExecutable(
   executable: string,
   installRoot: string,
@@ -140,7 +111,6 @@ async function requireOwnedExecutable(
   }
 }
 
-/** `<installRoot>/<version dir>/pi-gateway`, and every owned path is such a version directory. */
 function inInstallLayout(executable: string, installRoot: string, ownedPaths: string[]): boolean {
   const inside = (file: string) => path.dirname(file) === installRoot;
   return (
@@ -151,7 +121,6 @@ function inInstallLayout(executable: string, installRoot: string, ownedPaths: st
   );
 }
 
-/** Installed manifest still matches the pin, and its target record matches the bytes read. */
 async function verifyInstalled(executable: string, pin: GatewayReleasePin, target: string) {
   const binary = await readRegular(executable, MAX_BINARY, "owned");
   const manifest = await readRegular(
@@ -171,11 +140,6 @@ async function verifyInstalled(executable: string, pin: GatewayReleasePin, targe
   };
 }
 
-/**
- * `--version --json` of our own child. Settles only on its `close`; on timeout or oversized
- * output that child (and only it) is killed. If it still does not close, the result is an
- * uncertain-shutdown error and the caller retains the root.
- */
 async function probeVersion(executable: string, home: string, tmp: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, ["--version", "--json"], {
@@ -226,12 +190,10 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
   });
 }
 
-/** The probed gateway is pi-gateway at exactly the pinned version. */
 function isPinnedGateway(version: Record<string, unknown>, expected: string): boolean {
   return version.name === "pi-gateway" && version.version === expected;
 }
 
-/** It speaks our wire version and advertises every capability remote setup requires. */
 function isAbiCompatible({ wireVersions, capabilities }: Record<string, unknown>): boolean {
   const speaksWire = Array.isArray(wireVersions) && wireVersions.includes(GATEWAY_WIRE_VERSION);
   return (
@@ -249,7 +211,6 @@ function verifyVersion(version: Record<string, unknown>, expected: string) {
   return { name, version: version.version, wireVersions, capabilities };
 }
 
-/** Version probing must not have written to the private profile. */
 async function requireEmpty(...dirs: string[]): Promise<void> {
   const entries = await Promise.all(dirs.map(async (dir) => fs.readdir(dir)));
   if (entries.some((list) => list.length > 0)) {
@@ -257,17 +218,14 @@ async function requireEmpty(...dirs: string[]): Promise<void> {
   }
 }
 
-/** A direct child of canonical RUNNER_TEMP with our mkdtemp name shape. */
 function isRootPathIn(root: string, parent: string): boolean {
   return path.dirname(root) === parent && ROOT_NAME.test(path.basename(root));
 }
 
-/** Same device and inode as created, and still a private directory of the same owner. */
 function isSameRootDirectory(stat: BigIntStats, owned: Root): boolean {
   return stat.dev === owned.dev && stat.ino === owned.ino && isPrivateDirectory(stat, owned.uid);
 }
 
-/** Remove exactly this root, only if it is still the same private directory we created. */
 async function removeRoot(owned: Root, runnerTemp: string): Promise<{ removed: string }> {
   const stat = await fs.lstat(owned.root, { bigint: true });
   const parent = await fs.realpath(runnerTemp);
@@ -323,7 +281,7 @@ async function verifyInRoot(
       gatewayVersion: version,
     };
     await writer.write(verified);
-    cleanup = "cleanup unconfirmed"; // a partial rm may fail; only removeRoot returning confirms
+    cleanup = "cleanup unconfirmed";
     const removed = await removeRoot(owned, runnerTemp);
     cleanup = "removed";
     const done = { ...verified, status: "cleaned", cleanup: removed };
@@ -337,12 +295,10 @@ async function verifyInRoot(
   }
 }
 
-/** Failure evidence names any retained root; a failed record write never hides the cause. */
 async function recordFailure(writer: RecordWriter, base: object, error: unknown): Promise<void> {
   try {
     await writer.write({ ...base, status: "failed", error: describe(error) });
   } catch (recordError) {
-    // The original failure (which names the root) leads the message; the record error is the cause.
     const message = `${describe(error)}\n  failure record not written`;
     throw new AggregateError([error, recordError], message, { cause: recordError });
   }
@@ -350,7 +306,6 @@ async function recordFailure(writer: RecordWriter, base: object, error: unknown)
 
 async function main(target: string, runnerTemp: string, out: string) {
   const pin = requirePin(target);
-  // Whatever already exists at `out` is someone else's: never touched.
   const writer = await createRecord(out);
   try {
     let owned: Root;
