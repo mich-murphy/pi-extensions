@@ -9,7 +9,6 @@ type Sent = { readonly message: unknown; readonly options: unknown };
 
 const plainTheme = { fg: (_color: string, text: string) => text };
 
-/** Render a component as plain text at a comfortable width. */
 function renderText(component: Component): string {
   return component
     .render(120)
@@ -18,7 +17,6 @@ function renderText(component: Component): string {
     .trim();
 }
 
-/** A projected assistant message entry with the given stop reason. */
 export function assistantEntry(
   id: string,
   stopReason: AssistantMessage["stopReason"],
@@ -49,7 +47,6 @@ export function assistantEntry(
   };
 }
 
-/** A projected user message entry. */
 export function userEntry(id: string): ProjectedSessionEntry {
   const message: AgentMessage = { role: "user", content: "go", timestamp: 0 };
   return {
@@ -58,7 +55,6 @@ export function userEntry(id: string): ProjectedSessionEntry {
   };
 }
 
-/** Pi double that captures registrations and replays events with a fake context and clock. */
 export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
   const handlers: Partial<RetryHandlers> = {};
   const channels = new Map<string, (data: unknown) => void>();

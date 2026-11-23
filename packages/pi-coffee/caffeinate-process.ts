@@ -1,13 +1,12 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { CaffeinateProcessError } from "./coffee-lifecycle";
-import type { CaffeinateEnd, CaffeinateProcess } from "./coffee-lifecycle";
+import type { CaffeinateNotice, CaffeinateProcess } from "./coffee-lifecycle";
 
-/**
- * Classify a Node system error (one with `syscall` and `code`) as a caffeinate failure.
- * Anything else, such as an argument `TypeError`, is a defect and is rethrown.
- */
-function failed(operation: CaffeinateProcessError["operation"], cause: unknown): CaffeinateEnd {
+function nodeSystemErrorAsFailureOrRethrow(
+  operation: CaffeinateProcessError["operation"],
+  cause: unknown,
+): CaffeinateNotice {
   if (cause instanceof Error && "syscall" in cause && "code" in cause) {
     const error = new CaffeinateProcessError(operation, String(cause.code), cause);
     return { _tag: "failed", error };
@@ -15,13 +14,6 @@ function failed(operation: CaffeinateProcessError["operation"], cause: unknown):
   throw cause;
 }
 
-/**
- * Create the Node child-process adapter that runs caffeinate.
- *
- * @param command - Executable to spawn.
- * @param killGraceMs - Time a stopped child gets to honour SIGTERM before SIGKILL.
- * @returns Spawn function for the coffee lifecycle.
- */
 export function caffeinateSpawner(
   command: string,
   killGraceMs: number,
@@ -31,10 +23,9 @@ export function caffeinateSpawner(
     try {
       child = spawn(command, [...args], { stdio: "ignore" });
     } catch (error) {
-      // Node throws some spawn failures and emits others; callers see one asynchronous channel.
-      const end = failed("start", error);
+      const end = nodeSystemErrorAsFailureOrRethrow("start", error);
       return {
-        onEnd: (listener) => {
+        onNotice: (listener) => {
           queueMicrotask(() => {
             listener(end);
           });
@@ -45,17 +36,17 @@ export function caffeinateSpawner(
     child.unref();
 
     return {
-      onEnd: (listener) => {
-        // Permanent, not once(): an "error" event without a listener would crash Pi.
+      onNotice: (listener) => {
         child.on("error", (cause) => {
-          listener(failed(child.pid === undefined ? "start" : "stop", cause));
+          listener(
+            nodeSystemErrorAsFailureOrRethrow(child.pid === undefined ? "start" : "stop", cause),
+          );
         });
         child.once("exit", (code, signal) => {
           listener({ _tag: "exited", code, signal });
         });
       },
       stop: () => {
-        // kill() is a no-op once the child has exited, so neither signal can hit a reused PID.
         child.kill("SIGTERM");
         setTimeout(() => {
           child.kill("SIGKILL");

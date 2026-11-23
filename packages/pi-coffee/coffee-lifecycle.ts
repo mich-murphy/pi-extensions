@@ -2,18 +2,9 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onOffCommand } from "../shared/on-off-command";
 import type { OnOffCommand } from "../shared/on-off-command";
 
-/** Node could not start (spawn) or stop (signal) a caffeinate child. */
 export class CaffeinateProcessError extends Error {
-  /** Stable error discriminator. */
   readonly _tag = "CaffeinateProcessError" as const;
 
-  /**
-   * Create a classified caffeinate process failure.
-   *
-   * @param operation - Whether starting or stopping the child failed.
-   * @param code - Node system error code, such as `ENOENT`.
-   * @param cause - Original Node error, kept for local diagnosis only.
-   */
   constructor(
     readonly operation: "start" | "stop",
     readonly code: string,
@@ -29,47 +20,29 @@ export class CaffeinateProcessError extends Error {
   }
 }
 
-/** Why a caffeinate child stopped holding its sleep assertion. */
-export type CaffeinateEnd =
+export type CaffeinateNotice =
   | {
       readonly _tag: "exited";
-      /** Exit code, or null when the child was signalled. */
       readonly code: number | null;
-      /** Terminating signal, or null when the child exited by itself. */
       readonly signal: NodeJS.Signals | null;
     }
   | { readonly _tag: "failed"; readonly error: Readonly<CaffeinateProcessError> };
 
-/** A spawned caffeinate child as the lifecycle sees it. */
 export type CaffeinateProcess = {
-  /**
-   * Subscribe to process notifications. Spawn failures arrive here asynchronously. A `failed`
-   * stop notification does not prove terminal exit, so the child may later report `exited`.
-   */
-  readonly onEnd: (listener: (end: CaffeinateEnd) => void) => void;
-  /**
-   * Request termination without waiting for it. A signalling failure may be reported through
-   * `onEnd`; the process can continue and later emit its actual exit.
-   */
+  readonly onNotice: (listener: (notice: CaffeinateNotice) => void) => void;
   readonly stop: () => void;
 };
 
-/** Runtime and process dependencies used by the coffee lifecycle. */
 export type CoffeeDependencies = {
-  /** Current operating-system platform. */
   readonly platform: NodeJS.Platform;
-  /** PID that caffeinate watches, so a crashed Pi never leaves the Mac awake. */
-  readonly processId: number;
-  /** Start caffeinate with the supplied command arguments. */
+  readonly processIdCaffeinateExitsWith: number;
   readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
 };
 
-/** Context capabilities consumed by sleep prevention and the `/coffee` command. */
 export type CoffeeContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {
   readonly ui: Pick<ExtensionContext["ui"], "notify">;
 };
 
-/** Lifecycle callbacks consumed by sleep prevention. */
 export type CoffeeHandlers = {
   [K in "agent_start" | "agent_settled" | "session_shutdown"]: (
     event: { readonly type: K },
@@ -77,7 +50,6 @@ export type CoffeeHandlers = {
   ) => void | Promise<void>;
 };
 
-/** Pi capabilities consumed by sleep prevention. */
 export type CoffeeRegistration = {
   readonly registerCommand: (name: string, options: OnOffCommand<CoffeeContext>) => void;
   readonly on: {
@@ -95,14 +67,6 @@ function notify(ctx: CoffeeContext, message: string, level: "warning" | "error")
   }
 }
 
-/**
- * Register `/coffee [on|off]`, which turns sleep prevention on or off for the session.
- *
- * @param pi - Pi extension API used to register the command.
- * @param platform - Current operating-system platform, named in the confirmation off macOS.
- * @param setEnabled - Apply the new session state; called before the confirmation is shown.
- * @returns A reader for the current session state.
- */
 function registerCoffeeCommand(
   pi: CoffeeRegistration,
   platform: NodeJS.Platform,
@@ -128,35 +92,34 @@ function registerCoffeeCommand(
   return () => enabled;
 }
 
-/**
- * Hold a macOS sleep assertion while Pi is doing agent work, unless `/coffee off` turned it off.
- *
- * @param pi - Pi extension API used to subscribe to lifecycle events and register `/coffee`.
- * @param dependencies - Platform and process operations owned by this extension runtime.
- */
 export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDependencies): void {
   if (dependencies.platform !== "darwin") {
     registerCoffeeCommand(pi, dependencies.platform, () => undefined);
     return;
   }
 
-  // A released child is forgotten at once: macOS counts sleep assertions per process, so it may
-  // overlap its successor, and `-w` bounds its lifetime whatever happens.
   let held: CaffeinateProcess | undefined;
 
   const hold = (ctx: CoffeeContext, restartsLeft: number): void => {
-    const child = dependencies.spawnCaffeinate(["-i", "-s", "-w", String(dependencies.processId)]);
+    const child = dependencies.spawnCaffeinate([
+      "-i",
+      "-s",
+      "-w",
+      String(dependencies.processIdCaffeinateExitsWith),
+    ]);
     held = child;
-    child.onEnd((end) => {
+    child.onNotice((notice) => {
       if (held !== child) {
         return;
       }
       held = undefined;
-      if (end._tag === "failed") {
-        notify(ctx, `Coffee: ${end.error.message}`, "error");
+      if (notice._tag === "failed") {
+        notify(ctx, `Coffee: ${notice.error.message}`, "error");
         return;
       }
-      const outcome = end.signal ? `signal ${end.signal}` : `exit code ${end.code ?? "unknown"}`;
+      const outcome = notice.signal
+        ? `signal ${notice.signal}`
+        : `exit code ${notice.code ?? "unknown"}`;
       notify(
         ctx,
         restartsLeft > 0

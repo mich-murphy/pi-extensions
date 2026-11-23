@@ -5,22 +5,19 @@ import { join } from "node:path";
 import process from "node:process";
 import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
-import type { CaffeinateEnd, CaffeinateProcess } from "../coffee-lifecycle";
+import type { CaffeinateNotice, CaffeinateProcess } from "../coffee-lifecycle";
 import coffee from "../index";
 import { fakePi } from "./fake-pi";
 
 const KILL_GRACE_MS = 50;
 const spawnNode = caffeinateSpawner(process.execPath, KILL_GRACE_MS);
 const IDLE_FOREVER = "setInterval(() => {}, 1000)";
-// Waits poll observable state (a file, a process listing) and return as soon as it holds. Vitest's
-// default 1 s poll budget is too tight for spawning `pgrep` on a loaded machine, so the budget is a
-// generous hang guard; each test's own timeout sits above it.
-const OBSERVE = { timeout: 20_000 };
+const POLL_UNTIL_TRUE_WITH_LOADED_MACHINE_HANG_GUARD = { timeout: 20_000 };
 const OBSERVE_TEST_TIMEOUT_MS = 30_000;
 
-async function ended(child: CaffeinateProcess): Promise<CaffeinateEnd> {
+async function ended(child: CaffeinateProcess): Promise<CaffeinateNotice> {
   return new Promise((resolve) => {
-    child.onEnd(resolve);
+    child.onNotice(resolve);
   });
 }
 
@@ -59,7 +56,7 @@ describe("caffeinate process adapter", () => {
         const end = ended(child);
         await vi.waitFor(() => {
           expect(existsSync(ready)).toBe(true);
-        }, OBSERVE);
+        }, POLL_UNTIL_TRUE_WITH_LOADED_MACHINE_HANG_GUARD);
 
         child.stop();
 
@@ -116,12 +113,12 @@ describe("coffee entry point", () => {
       await pi.emit("agent_start");
       await vi.waitFor(() => {
         expect(caffeinateIsRunning()).toBe(true);
-      }, OBSERVE);
+      }, POLL_UNTIL_TRUE_WITH_LOADED_MACHINE_HANG_GUARD);
 
       await pi.emit("agent_settled");
       await vi.waitFor(() => {
         expect(caffeinateIsRunning()).toBe(false);
-      }, OBSERVE);
+      }, POLL_UNTIL_TRUE_WITH_LOADED_MACHINE_HANG_GUARD);
       expect(pi.notifications).toStrictEqual([]);
     },
     OBSERVE_TEST_TIMEOUT_MS,

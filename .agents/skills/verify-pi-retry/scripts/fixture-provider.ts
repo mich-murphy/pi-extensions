@@ -1,11 +1,8 @@
-/** Synthetic usage-limit producer; no transport, tools, credentials, or timer patches. */
 import { appendFileSync } from "node:fs";
 import { env } from "node:process";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-// Resolve the checkout-pinned physical entry: Pi aliases the bare pi-ai import
-// to compat, which does not expose the stream constructor at runtime.
-import { createAssistantMessageEventStream } from "../../../../node_modules/@earendil-works/pi-ai/dist/index.js";
-import type { AssistantMessage } from "../../../../node_modules/@earendil-works/pi-ai/dist/index.js";
 
 const FAILURES: Partial<Record<string, string>> = {
   transient: "Connection error.",

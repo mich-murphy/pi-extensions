@@ -4,7 +4,7 @@ import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
-import type { CaffeinateEnd } from "../coffee-lifecycle";
+import type { CaffeinateNotice } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 const ACTIONS = [
@@ -22,8 +22,8 @@ type Action = (typeof ACTIONS)[number];
 class Child {
   stopped = false;
   ended = false;
-  private listener: ((end: CaffeinateEnd) => void) | undefined;
-  onEnd(listener: (end: CaffeinateEnd) => void): void {
+  private listener: ((end: CaffeinateNotice) => void) | undefined;
+  onNotice(listener: (end: CaffeinateNotice) => void): void {
     this.listener = listener;
   }
   stop(): void {
@@ -43,15 +43,14 @@ class Child {
   }
 }
 
-/** Independent model: which child index is held, and the restart budget of the current start. */
-type Model = { held: number | undefined; budget: number; spawns: number; notes: number };
+type Model = { heldChildIndex: number | undefined; budget: number; spawns: number; notes: number };
 
 function setup() {
   const pi = fakePi();
   const children: Child[] = [];
   registerCoffee(pi.pi, {
     platform: "darwin",
-    processId: 1,
+    processIdCaffeinateExitsWith: 1,
     spawnCaffeinate: () => {
       const child = new Child();
       children.push(child);
@@ -62,7 +61,7 @@ function setup() {
 }
 
 function spawn(model: Model, budget: number): void {
-  model.held = model.spawns;
+  model.heldChildIndex = model.spawns;
   model.spawns += 1;
   model.budget = budget;
 }
@@ -71,23 +70,23 @@ function stepModel(model: Model, action: Action): void {
   if (action === "start") {
     startModel(model);
   } else if (action === "settleIdle" || action === "shutdown") {
-    model.held = undefined;
+    model.heldChildIndex = undefined;
   } else if (action === "exitCurrent" || action === "failCurrent") {
     exitModel(model, action);
   }
 }
 
 function startModel(model: Model): void {
-  if (model.held === undefined) {
+  if (model.heldChildIndex === undefined) {
     spawn(model, 1);
   }
 }
 
 function exitModel(model: Model, action: "exitCurrent" | "failCurrent"): void {
-  if (model.held === undefined) {
+  if (model.heldChildIndex === undefined) {
     return;
   }
-  model.held = undefined;
+  model.heldChildIndex = undefined;
   model.notes += 1;
   if (action === "exitCurrent" && model.budget > 0) {
     spawn(model, model.budget - 1);
@@ -95,7 +94,8 @@ function exitModel(model: Model, action: "exitCurrent" | "failCurrent"): void {
 }
 
 function targets(env: ReturnType<typeof setup>, model: Model, pick: number) {
-  const current = model.held === undefined ? undefined : env.children[model.held];
+  const current =
+    model.heldChildIndex === undefined ? undefined : env.children[model.heldChildIndex];
   const released = env.children.filter((child) => child !== current);
   return { current, late: released[pick % Math.max(released.length, 1)] };
 }
@@ -126,7 +126,7 @@ function apply(
 
 function assertLifecycle(actions: readonly { action: Action; pick: number }[]): void {
   const env = setup();
-  const model: Model = { held: undefined, budget: 0, spawns: 0, notes: 0 };
+  const model: Model = { heldChildIndex: undefined, budget: 0, spawns: 0, notes: 0 };
   for (const { action, pick } of actions) {
     const before = model.notes;
     const target = targets(env, model, pick);
@@ -137,7 +137,8 @@ function assertLifecycle(actions: readonly { action: Action; pick: number }[]): 
     assert.ok(model.notes >= before);
     const live = env.children.filter((child) => child.live);
     assert.ok(live.length <= 1, "at most one live child");
-    const heldChild = model.held === undefined ? undefined : env.children[model.held];
+    const heldChild =
+      model.heldChildIndex === undefined ? undefined : env.children[model.heldChildIndex];
     assert.deepEqual(
       live,
       heldChild?.live === true ? [heldChild] : [],

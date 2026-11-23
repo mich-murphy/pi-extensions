@@ -74,7 +74,6 @@ function callMethod(method: unknown, receiver: unknown): unknown {
   return typeof method === "function" ? Reflect.apply(method, receiver, []) : undefined;
 }
 
-/** A root whose native two-entry layout has one allocation field of one entry changed. */
 function driftedRoot(native: Component, which: "transcript" | "dock", change: object) {
   const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
   const node = getLayoutNode(native);
@@ -191,7 +190,6 @@ describe("native chat viewport", () => {
     const f = fixture();
     f.render();
     f.transcript.scrollTo(8);
-    // Invoke visibility without asking native layout to render an intentionally invalid child.
     const children = f.transcript.children;
     Reflect.set(children, "0", document);
     expect(visible(f.root)).toBe(false);
@@ -295,7 +293,6 @@ describe("native prompt boundaries and row", () => {
     expect(selectContext(lines, empty.length, ["next"])).toBeUndefined();
     expect(selectContext(lines, lines.length - 1, ["next"])).toBe("next");
   });
-  // Widths from 3 up are covered by the contextRow property, which draws widths 3 to 40.
   test.each([1, 2])("fits Unicode and strips ANSI at width %s", (width) => {
     const row = contextRow(
       "\u001b[31m界 é 👩‍💻\u001b[0m\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",

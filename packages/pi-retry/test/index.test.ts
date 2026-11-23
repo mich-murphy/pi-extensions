@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { USAGE_LIMIT_CHANNEL } from "../../shared/usage-limit";
 import piRetry from "../index";
-import { CHECK_INTERVAL_MS, USAGE_LIMIT_CHANNEL } from "../retry";
+import { CHECK_INTERVAL_MS } from "../retry";
 import { assistantEntry, fakePi } from "./fake-pi";
 
 describe("extension factory", () => {

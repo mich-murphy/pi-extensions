@@ -29,9 +29,7 @@ export type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditor
 
 export type Notice = { readonly message: string; readonly type: string | undefined };
 
-/** A loaded Vim extension with its registered hooks and a record of what it did to Pi's UI. */
 export type VimSession = {
-  /** Every factory passed to `setEditorComponent`, in order; `undefined` restores Pi's editor. */
   readonly editors: (EditorFactory | undefined)[];
   readonly notices: Notice[];
   readonly command: VimCommand;
@@ -118,7 +116,6 @@ export type Keyboard = {
 
 const SHIFTED_SYMBOL_BASE_KEYS: ReadonlyMap<string, string> = new Map([["$", "4"]]);
 
-/** Kitty reports every key as CSI-u, with the shifted character as an alternate key. */
 export function kittyPress(key: string): string {
   const base = SHIFTED_SYMBOL_BASE_KEYS.get(key) ?? key.toLowerCase();
   const code = key.codePointAt(0);

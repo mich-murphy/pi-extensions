@@ -13,19 +13,11 @@ const settings = propertySettings(200);
 type Step = { jump: number; event: "none" | "tree" | "shutdown" };
 type Plan = { delaysMinutes: number[]; maxAttempts: number; windowMinutes: number };
 
-/**
- * Independent model of the backoff rules in retry.ts:
- * - attempt = previous attempts + 1 (line 363); the streak starts at the first failure's time (364)
- * - delay d_k = delays[min(k, len) - 1] (366)
- * - resume time = now + d_k minutes (367)
- * - give up when attempt > maxAttempts or resume > first + window (368); give-up clears the streak (369)
- */
 function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly boolean[]) {
   const out: { gaveUp: boolean; attempt: number; resetsAt: number }[] = [];
   let attempts = 0;
   let first = 0;
   for (const [index, now] of times.entries()) {
-    // session_tree and session_shutdown clear the streak (retry.ts session_tree / session_shutdown handlers)
     attempts = resets[index] === true ? 0 : attempts;
     const attempt = attempts + 1;
     first = attempts === 0 ? now : first;

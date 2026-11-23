@@ -13,7 +13,6 @@ const settings = propertySettings(200);
 type Block = { kind: "filler" | "prompt"; first: string; body: string[]; pad: number };
 type Placed = { start: number; lastText: number; text: string };
 
-/** Lay blocks out line by line, recording where each prompt really starts (independent of the code). */
 function layout(blocks: readonly Block[]): { lines: string[]; placed: Placed[] } {
   const lines: string[] = [];
   const placed: Placed[] = [];

@@ -1,13 +1,13 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
+import { USAGE_LIMIT_CHANNEL } from "../../shared/usage-limit";
 import {
   RETRY_TYPE,
   CHECK_INTERVAL_MS,
   LEGACY_RETRY_TYPE,
   MAX_WAIT_MS,
   registerRetry,
-  USAGE_LIMIT_CHANNEL,
 } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
@@ -21,7 +21,6 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   return pi;
 }
 
-/** Run one turn that fails on a usage limit after the provider published `resetsAt`. */
 function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: unknown = NOTICE) {
   pi.startRun();
   pi.publish(USAGE_LIMIT_CHANNEL, notice);
@@ -128,9 +127,7 @@ describe("leaving the failure to the user", () => {
   test("a nested tool-call limit does not contaminate the next main reply", () => {
     const pi = harness();
     pi.startRun();
-    // The first main response called a tool, which made a nested SDK request.
     pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
-    // Pi starts the next main model/tool turn without another agent_start.
     pi.startTurn();
     expect(
       pi.settle("error", [
@@ -168,7 +165,6 @@ describe("leaving the failure to the user", () => {
     const pi = harness();
     pi.startRun();
     pi.publish(USAGE_LIMIT_CHANNEL, NOTICE);
-    // Pi retries before agent_before_settle; each retry emits agent_start.
     pi.startRun();
     expect(pi.settle("error", [assistantEntry("retry-error", "error")])).toBeUndefined();
     expect(pi.timerCount()).toBe(0);
@@ -243,7 +239,6 @@ describe("cancelling a scheduled resume", () => {
     expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
-    // A new usage failure gets precisely one fresh timer, not an orphan interval.
     failOnUsageLimit(pi, { resetsAt: RESETS_AT + MINUTE });
     expect(pi.timerCount()).toBe(1);
     pi.advanceTo(RESETS_AT + MINUTE);

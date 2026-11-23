@@ -4,7 +4,6 @@ import { registerRetry } from "./retry";
 
 const clockTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
-/** Register automatic retry after provider usage limits reset or transient failures. */
 export default function retry(pi: RetryRegistration): void {
   registerRetry(pi, {
     now: Date.now,
