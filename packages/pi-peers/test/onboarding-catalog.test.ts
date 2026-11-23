@@ -17,14 +17,14 @@ describe("gateway trusted catalog", () => {
   test("ships the genuine immutable Nix pin and the published native manifest pin", () => {
     const { nix, native } = gatewayCatalog;
     const reviewed = {
-      sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
-      version: "0.1.0",
-      narHash: "sha256-p6+aFd9IqmfpiyF7xzklDCwtyu2rpYKEnj0MEUMQQYs=",
+      sourceRevision: "e7eafc877ff1e19934f01f69f8edd3680c826598",
+      version: "0.1.1",
+      narHash: "sha256-jUHlKJSGGIrRs5dhwdqM68s6zW2IZlqBwAIW5YCL8C4=",
     };
     const published = {
-      sourceRevision: "8b894b5367657abc9dddf5d35c7bb0df62472d09",
-      version: "0.1.0",
-      manifestSha256: "04620bae0f5fc038f4e9c2d6ee93c2e13d071109adc1536a901b3110b81965db",
+      sourceRevision: "e7eafc877ff1e19934f01f69f8edd3680c826598",
+      version: "0.1.1",
+      manifestSha256: "4484725f4240c70f5c27f5b8179a877685fadb216f06deada9dc45d7e4147f51",
     };
     expect(nix).toStrictEqual(reviewed);
     expect(native).toStrictEqual(published);
