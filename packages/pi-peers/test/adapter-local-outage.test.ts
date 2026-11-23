@@ -230,7 +230,7 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     const taken = await tool(fx.tools, "peers_take", {});
     expect(taken).toMatchObject({
       isError: false,
-      value: { messages: [{ message: { id: "3".repeat(32) } }] },
+      value: { messages: [{ messageId: "3".repeat(32), kind: "update", content: "c" }] },
     });
     await expect(tool(fx.tools, "peers_take", {})).resolves.toMatchObject({
       value: { messages: [] },
@@ -262,7 +262,7 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     const requestsBefore = fx.log.length;
     await expect(tool(fx.tools, "peers_take", {})).resolves.toMatchObject({
       isError: false,
-      value: { messages: [{ message: { id: "7".repeat(32) } }] },
+      value: { messages: [{ messageId: "7".repeat(32) }] },
     });
     await expect(tool(fx.tools, "peers_take", {})).resolves.toMatchObject({
       value: { messages: [] },

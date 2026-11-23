@@ -1,6 +1,7 @@
 import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  configurationKeys,
   decodeConfiguration,
   loadConfiguration,
   permits,
@@ -38,6 +39,7 @@ const baseline = {
   policies: [],
 };
 const keys = Object.keys(baseline);
+const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
 const REMOVED_PERMISSIONS =
   "policies (the read and interest permissions were removed; drop them via /peers setup)";
 function removedPermission(value: object): boolean {
@@ -51,7 +53,7 @@ function removedPermission(value: object): boolean {
     })
   );
 }
-function invalidFields(value: unknown): string[] {
+export function invalidFields(value: unknown): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return ["root (expected an object)"];
   }
@@ -64,7 +66,15 @@ function invalidFields(value: unknown): string[] {
       fields.push(key === "policies" && removedPermission(value) ? REMOVED_PERMISSIONS : key);
     }
   }
-  if (Object.keys(value).some((key) => !keys.includes(key))) {
+  for (const key of optionalKeys.filter((name) => Object.hasOwn(value, name))) {
+    const field: unknown = Reflect.get(value, key);
+    try {
+      decodeConfiguration({ ...baseline, [key]: field });
+    } catch {
+      fields.push(key);
+    }
+  }
+  if (Object.keys(value).some((key) => !keys.includes(key) && !optionalKeys.includes(key))) {
     fields.push("unknown keys (remove unsupported fields)");
   }
   return fields;
@@ -194,7 +204,7 @@ export async function doctorReport(
       );
       technical.push(
         `Configuration: invalid fields: ${inspection.fields.join(", ")}.`,
-        `Required: machineId lowercase letter-led (max 32); socketPath absolute and <=${SOCKET_PATH_MAX_BYTES} UTF-8 bytes without controls; scopeIds 1–4 unique identifiers; label 1–128 UTF-8 bytes without controls; policies exact machine/scope/actions. Unknown keys are rejected.`,
+        `Required: machineId lowercase letter-led (max 32); socketPath absolute and <=${SOCKET_PATH_MAX_BYTES} UTF-8 bytes without controls; scopeIds 1–4 unique identifiers; label 1–128 UTF-8 bytes without control or bidi characters and with visible text; policies exact machine/scope/actions. Unknown keys are rejected.`,
       );
       break;
     }

@@ -147,7 +147,8 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 | `machineId` | yes | `^[a-z][a-z0-9-]{0,31}$` | Name of this machine. |
 | `socketPath` | yes | Absolute, 100 bytes or fewer (the gateway's limit), no control characters | The gateway's Unix socket. |
 | `scopeIds` | yes | 1–4 unique values matching `^[A-Za-z0-9_-]{1,64}$` | Groups this session joins. |
-| `label` | yes | 1–128 bytes, no control characters | Display name for peers. Keep paths and transcript text out. |
+| `label` | yes | 1–128 bytes, no control or bidirectional characters, some visible text | Display name for peers. Keep paths and transcript text out. |
+| `shareBranch` | no | `true` or `false` (default) | Adds the git branch checked out at connect to the label peers see. |
 | `policies` | yes | 256 or fewer entries | Which machines may do what in which scope. |
 | `policies[].machineId` | yes | Same pattern as `machineId` | Machine the grant applies to. |
 | `policies[].scopeId` | yes | Scope pattern | Scope the grant applies to. |
@@ -155,17 +156,31 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 
 ## First call
 
-Start two Pi sessions on the same machine. Both use the same config and gateway. In one, ask the model: "Call `peers_list` for scope `team`." The other session appears in the result with its `PeerRef`: the `machineId`, `sessionId` and `runtimeNonce` that address that exact session. Then ask the model to send it a message with `peers_send`. The receiving session is woken and reads it with `peers_take`.
+Start two Pi sessions on the same machine. Both use the same config and gateway. In one, ask the model: "Call `peers_list`." The other session appears with a handle such as `s-4f2a` and its label. Then ask the model to send it a message with `peers_send`. The receiving session is woken and reads it with `peers_take`.
 
 ## Tools
 
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
-| `peers_list` | `scopeIds?` (1–4), `watch?` | List live sessions you may discover. |
-| `peers_send` | `to` (PeerRef), `scopeId`, `message` (`kind`, `content`, `format`, `work?`, `status?`, `refs?`, `replyTo?`) | Send a request, reply or update to one session. |
+| `peers_list` | `scope?` | List sessions you can message, each with a handle and its label. |
+| `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (messageId), `status?`, `scope?` | Send a request, reply or update to one session. |
 | `peers_take` | `limit?` (1–8, default 4) | Move messages from your inbox into the conversation. |
 
+`peers_send` and `peers_take` are declared to the model only (`model-only`). `peers_list` also returns `structuredContent` for scripts.
+
 `format` is `text`, `markdown`, `git-diff` or `git-format-patch`. All formats are descriptive; nothing is applied or fetched.
+
+### Handles
+
+A handle names one Pi session (machine and session), not one runtime. It is `s-` and the first four hex digits of the SHA-256 of `machineId`, a newline and `sessionId`; if that prefix is already taken by another session in this runtime, it grows to 6, 8 or more digits. A handle is never reused for another session, and handles are local to this session: a handle quoted by a peer means nothing here. A second live runtime of the same session is listed as `s-4f2a/2`.
+
+A send goes to the exact runtime last listed for the handle; it is never redirected to another runtime. A runtime that is still listed keeps its handle. A new runtime of a session takes the handle of a runtime that is no longer listed, marked `restarted` because that runtime's unread inbox and receipts are gone; otherwise it gets the next free `/n`. Being listed does not mean a session is active.
+
+`replyTo` takes the messageId of a message you took with `peers_take`; the adapter remembers the sender and scope of the last 256 taken messages. A reply never goes to a newer runtime of the sender.
+
+### Labels
+
+Labels are claims made by the other session and are not verified. Your own session is marked by comparing runtime identities, never label text. Each session registers a label made of, in order: the configured `label`, the session name, the repository folder name, `derived from s-xxxx` for a forked session, and `branch X at connect` when `shareBranch` is true. Control and bidirectional characters are removed. Parts are dropped from the end to fit 128 bytes; the configured label is cut only as a last resort. The session name and branch are as they were at connect and can go stale.
 
 ## Commands
 

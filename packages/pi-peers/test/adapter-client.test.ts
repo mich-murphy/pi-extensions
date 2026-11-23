@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
 import type { EnsureGateway } from "../adapter/client.js";
 import type { Configuration } from "../adapter/config.js";
+import { sessionHandle } from "../adapter/handles.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
@@ -386,7 +387,12 @@ function extensionHost(select: () => Promise<unknown> = async () => undefined) {
   const context = {
     mode: "rpc",
     hasUI: true,
-    sessionManager: { getSessionId: () => peer.sessionId },
+    sessionManager: {
+      getSessionId: () => peer.sessionId,
+      getCwd: () => "/work/repo",
+      getSessionName: () => undefined,
+      getHeader: () => null,
+    },
     isIdle: () => true,
     ui: {
       select,
@@ -1165,36 +1171,27 @@ describe("public adapter transport and notice accounting", () => {
     });
     current.session = owned.session;
     await expect.poll(() => owned.session.client.status().connected).toBe(true);
-    await expect(executeTool(tools, "peers_list", {})).resolves.toMatchObject({
-      peers: [{ peer: other }],
-    });
+    const listed = await executeTool(tools, "peers_list", {});
+    expect(listed).toMatchObject({ peers: [{ peer: other, self: false, restarted: false }] });
+    const handle = sessionHandle(other.machineId, other.sessionId);
+    expect(listed).toMatchObject({ peers: [{ handle }] });
     await expect(
-      executeTool(tools, "peers_send", {
-        to: other,
-        scopeId: "team",
-        message: { kind: "request", content: "request", format: "text" },
-      }),
-    ).resolves.toMatchObject({ outcome: { tag: "admitted" } });
+      executeTool(tools, "peers_send", { to: handle, kind: "request", content: "request" }),
+    ).resolves.toMatchObject({ to: handle, outcome: { tag: "admitted" } });
     await expect(
-      executeTool(tools, "peers_send", {
-        to: peer,
-        scopeId: "team",
-        message: { kind: "update", content: "denied", format: "text" },
-      }),
+      executeTool(tools, "peers_send", { to: "s-0000", kind: "update", content: "lost" }),
     ).resolves.toMatchObject({
-      outcome: { tag: "not_admitted", code: "forbidden" },
+      tag: "error",
+      code: "invalid_input",
+      note: "Unknown handle; call peers_list.",
     });
     await expect(executeTool(tools, "peers_take", {})).resolves.toMatchObject({ messages: [] });
     await expect(
       executeTool(tools, "peers_send", {
-        to: other,
-        scopeId: "team",
-        message: {
-          kind: "request",
-          content: "invalid",
-          format: "text",
-          unexpected: true,
-        },
+        to: handle,
+        kind: "request",
+        content: "x",
+        unexpected: 1,
       }),
     ).resolves.toMatchObject({
       tag: "error",
@@ -1250,10 +1247,11 @@ describe("public adapter transport and notice accounting", () => {
       () => owned.session,
     );
     await expect.poll(() => owned.session.client.status().connected).toBe(true);
+    await executeTool(tools, "peers_list", {});
     const result = await flaggedResult(tools, "peers_send", {
-      to: other,
-      scopeId: "team",
-      message: { kind: "request", content: "hi", format: "text" },
+      to: sessionHandle(other.machineId, other.sessionId),
+      kind: "request",
+      content: "hi",
     });
     expect(result).toMatchObject({
       isError: true,
