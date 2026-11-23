@@ -183,7 +183,7 @@ describe("RPC back on non-list screens (Esc, timeout or abort)", () => {
     {
       kind: "toggle",
       title: "Permissions",
-      items: () => [{ id: "read", label: "read", on: true }],
+      items: () => [{ id: "push", label: "push", on: true }],
       toggle: () => undefined,
     },
     { kind: "report", title: "Status", lines: () => ["Connected"] },

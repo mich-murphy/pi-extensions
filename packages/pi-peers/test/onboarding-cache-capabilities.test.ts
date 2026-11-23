@@ -353,23 +353,9 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     );
     try {
       await session.reconnect();
-      const publication = session.state.publish({
-        scopeId: "local",
-        key: "retained",
-        record: {
-          category: "context",
-          title: "Keep repair state",
-          summary: "same runtime",
-          content: "same publication",
-          format: "text",
-          preparation: "authored",
-        },
-      });
-      expect(publication.tag).toBe("ok");
       const state = session.state;
       const identity = session.peer;
       const beforeStatus = session.status();
-      const beforeRead = state.read({ caller: identity, scopeId: "local", key: "retained" });
       const inode = await stat(setup.socketPath);
       const { paths, marker, lockLog, record } = await maskCommitted(
         without("config-generation-v1"),
@@ -396,12 +382,9 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       expect(session.status()).toMatchObject({
         connected: true,
         scopes: beforeStatus.scopes,
-        publications: beforeStatus.publications,
-        revision: beforeStatus.revision,
+        receipts: beforeStatus.receipts,
+        relations: beforeStatus.relations,
       });
-      expect(state.read({ caller: identity, scopeId: "local", key: "retained" })).toStrictEqual(
-        beforeRead,
-      );
       const afterInode = await stat(setup.socketPath);
       expect(afterInode.ino).toBe(inode.ino);
       const after = decodeManaged(parseJson(await readFile(paths.metadata)));

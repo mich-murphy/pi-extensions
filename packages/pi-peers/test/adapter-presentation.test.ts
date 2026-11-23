@@ -9,7 +9,6 @@ import {
 } from "../../../test-support/hegel-settings";
 import { diagnostics, footerStatus, toolPresentation } from "../adapter/presentation.js";
 import { registerTools } from "../adapter/tools.js";
-import { createState } from "../state/core.js";
 
 const peer = {
   machineId: "alpha",
@@ -31,25 +30,6 @@ const binding = { messageId: message.id, sender: peer, recipient: other, scopeId
 const admitted = { tag: "admitted", binding, correlation: "none" };
 const denied = { tag: "not_admitted", binding, code: "forbidden" };
 const unknown = { tag: "unknown", binding, code: "unavailable" };
-const record = {
-  category: "work" as const,
-  title: "Review",
-  summary: "Review is in progress",
-  format: "text" as const,
-  preparation: "authored" as const,
-  status: "in_progress" as const,
-  work: { kind: "request" as const, origin: peer, requestId: message.id },
-};
-const state = createState({
-  peer,
-  scopeIds: ["team"],
-  clock: () => 0,
-  authorize: () => true,
-  offer: () => true,
-});
-const published = state.publish({ scopeId: "team", key: "review", record });
-assert.equal(published.tag, "ok");
-const publication = published.tag === "ok" ? published.value : undefined;
 const theme = { fg: (_token: string, value: string) => value };
 function result(value: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(value) }], details: { value } };
@@ -127,55 +107,6 @@ const cases = [
     call: "← inbox",
     summary: "← alpha/…456789ab@aaaaaa · request · Please review",
   },
-  {
-    name: "peers_state",
-    args: { action: "put", scopeId: "team", key: "review", record },
-    value: published,
-    call: "Publish",
-    summary: "Published · review r1 · in_progress · Review",
-  },
-  {
-    name: "peers_state",
-    args: { action: "get", publisher: peer, scopeId: "team", key: "review" },
-    value: state.read({ caller: other, scopeId: "team", key: "review" }),
-    call: "get",
-    summary: "Review is in progress",
-  },
-  {
-    name: "peers_state",
-    args: { action: "list", publisher: peer, scopeId: "team" },
-    value: state.list({ caller: other, scopeId: "team" }),
-    call: "list",
-    summary: "1 publication",
-  },
-  {
-    name: "peers_state",
-    args: { action: "remove", scopeId: "team", key: "absent" },
-    value: state.remove({ scopeId: "team", key: "absent" }),
-    call: "remove",
-    summary: "No publication removed",
-  },
-  {
-    name: "peers_interest",
-    args: { action: "add", publisher: peer, scopeId: "team", work: record.work },
-    value: state.interest.add({ subscriber: other, scopeId: "team", work: record.work }),
-    call: "add interest",
-    summary: "Interest active",
-  },
-  {
-    name: "peers_interest",
-    args: { action: "remove", publisher: peer, scopeId: "team", work: record.work },
-    value: state.interest.remove({ subscriber: other, scopeId: "team", work: record.work }),
-    call: "remove interest",
-    summary: "Interest inactive",
-  },
-  {
-    name: "peers_report",
-    args: { scopeId: "team", key: "review", record, notify: "selected", recipients: [other] },
-    value: { tag: "ok", value: { publication, pushes: [{ recipient: other, outcome: admitted }] } },
-    call: "Publish report",
-    summary: "1 push: 1 added to peer inbox",
-  },
 ];
 
 const takeCall = (args: unknown) => render("peers_take", "call", args, undefined);
@@ -201,7 +132,7 @@ describe("presentation-only session tool rendering", () => {
       expect(JSON.stringify({ args: entry.args, payload })).toBe(before);
     },
   );
-  test("all six public registrations hook up both renderers without changing unavailable model output", async () => {
+  test("all three public registrations hook up both renderers without changing unavailable model output", async () => {
     const tools: {
       name: string;
       renderCall?: unknown;
@@ -212,7 +143,7 @@ describe("presentation-only session tool rendering", () => {
       { registerTool: (tool: (typeof tools)[number]) => tools.push(tool) },
       () => undefined,
     ]);
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(3);
     for (const tool of tools) {
       expect(typeof tool.renderCall).toBe("function");
       expect(typeof tool.renderResult).toBe("function");
@@ -227,51 +158,23 @@ describe("presentation-only session tool rendering", () => {
       });
     }
   });
-  test.each([1, 4, 12, 30, 80])(
-    "primary uncertainty and mixed-report warnings survive width %i",
-    (width) => {
-      const send = render(
-        "peers_send",
-        "result",
-        cases[1]?.args,
-        result({ outcome: unknown }),
-        false,
-        width,
-      );
-      const normalized = compact(send);
-      expect(normalized).toContain("UNKNOWN");
-      expect(normalized).toContain("Donotresendasnew.");
-      expect(normalized).not.toContain("Added to peer inbox");
-      const report = render(
-        "peers_report",
-        "result",
-        cases.at(-1)?.args,
-        result({
-          tag: "ok",
-          value: {
-            publication,
-            pushes: [
-              { recipient: other, outcome: admitted },
-              { recipient: other, outcome: denied },
-              { recipient: other, outcome: unknown },
-              { recipient: other, outcome: { tag: "error", code: "overloaded" } },
-            ],
-          },
-        }),
-        false,
-        width,
-      );
-      const reportText = compact(report);
-      expect(reportText).toContain("Donotresendasnew.");
-      expect(reportText).toContain("publicationisnotrolledback.");
-      expect(reportText).toContain(
-        "4pushes:1addedtopeerinbox;1notadmitted;1UNKNOWN;1otherfailures",
-      );
-      for (const line of [...send, ...report]) {
-        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-      }
-    },
-  );
+  test.each([1, 4, 12, 30, 80])("primary uncertainty warnings survive width %i", (width) => {
+    const send = render(
+      "peers_send",
+      "result",
+      cases[1]?.args,
+      result({ outcome: unknown }),
+      false,
+      width,
+    );
+    const normalized = compact(send);
+    expect(normalized).toContain("UNKNOWN");
+    expect(normalized).toContain("Donotresendasnew.");
+    expect(normalized).not.toContain("Added to peer inbox");
+    for (const line of send) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+    }
+  });
   test.each(cases)(
     "$name $call: incomplete arguments, partial, absent and error results are defensive",
     (entry) => {
@@ -309,50 +212,16 @@ describe("presentation-only session tool rendering", () => {
       ).toContain("Connection failed");
     },
   );
-  test("denials, removed publications, terminal interests, empty lists and nonstandard results never claim delivery", () => {
+  test("denials, empty lists and nonstandard results never claim delivery", () => {
     expect(render("peers_send", "result", {}, result({ outcome: denied })).join("\n")).toContain(
       "Not added to peer inbox · forbidden",
     );
     expect(render("peers_send", "result", {}, result({})).join("\n")).toContain(
       "Outcome unavailable",
     );
-    expect(
-      render(
-        "peers_state",
-        "result",
-        { action: "remove" },
-        result({ tag: "ok", value: { removed: true } }),
-      ).join("\n"),
-    ).toContain("Publication removed");
-    expect(
-      render(
-        "peers_interest",
-        "result",
-        {},
-        result({
-          tag: "ok",
-          value: { publisher: peer, active: false, current: { status: "completed" } },
-        }),
-      ).join("\n"),
-    ).toContain("completed");
-    for (const name of [
-      "peers_state",
-      "peers_interest",
-      "peers_list",
-      "peers_take",
-      "peers_report",
-      "unknown",
-    ]) {
+    for (const name of ["peers_list", "peers_take", "unknown"]) {
       expect(render(name, "result", {}, result({})).join("\n")).toContain("unavailable");
     }
-    expect(
-      render(
-        "peers_report",
-        "result",
-        {},
-        result({ tag: "ok", value: { publication, pushes: [] } }),
-      ).join("\n"),
-    ).toContain("Published; no peer notifications");
   });
   test("peers_take call summary is inert for any limit value", () => {
     expect(takeCall({}).join("\n")).toContain("up to 4 messages");
@@ -413,37 +282,6 @@ describe("presentation-only session tool rendering", () => {
         .trim(),
     ).toBe("Added to peer inbox");
   });
-  test.each([
-    { action: "list", publisher: other },
-    { action: "get", publisher: other, key: "review" },
-    { action: "remove", key: "review" },
-  ])("state $action calls omit irrelevant placeholders", (args) => {
-    const output = render("peers_state", "call", args, undefined).join("\n");
-    expect(output).not.toContain(" · …");
-    expect(output).not.toContain(" · undefined");
-  });
-  test("interest calls name publication or short request work", () => {
-    expect(
-      render(
-        "peers_interest",
-        "call",
-        {
-          action: "add",
-          publisher: other,
-          work: { kind: "publication", key: "review", publisher: other },
-        },
-        undefined,
-      ).join("\n"),
-    ).toContain("publication review");
-    expect(
-      render(
-        "peers_interest",
-        "call",
-        { action: "remove", publisher: other, work: record.work },
-        undefined,
-      ).join("\n"),
-    ).toContain("request …cccccccc");
-  });
   test("expanded payloads have one structured body copy; fallback errors still expose content", () => {
     const payload = result(cases[2]?.value);
     const before = JSON.stringify(payload);
@@ -465,40 +303,7 @@ describe("presentation-only session tool rendering", () => {
       ).join("\n"),
     ).toContain('"content"');
   });
-  test("reports omit zero counts, repeat uncertainty only once, and keep optional expansion hints", () => {
-    const successful = render(
-      "peers_report",
-      "result",
-      {},
-      result({
-        tag: "ok",
-        value: { publication, pushes: [{ recipient: other, outcome: admitted }] },
-      }),
-    ).join("\n");
-    expect(successful).not.toContain("0 not admitted");
-    expect(successful).not.toContain("0 UNKNOWN");
-    expect(successful).not.toContain("other failures");
-    expect(successful).not.toContain("ctrl+o");
-    const uncertain = render(
-      "peers_report",
-      "result",
-      {},
-      result({
-        tag: "ok",
-        value: {
-          publication,
-          pushes: [
-            { recipient: other, outcome: unknown },
-            { recipient: peer, outcome: unknown },
-          ],
-        },
-      }),
-      false,
-      1000,
-    ).join("\n");
-    expect(uncertain.split("Delivery uncertain;")).toHaveLength(2);
-    expect(uncertain.split(" · uncertain")).toHaveLength(3);
-    expect(uncertain).toContain("2 UNKNOWN");
+  test("long lists and long previews keep the expansion hint", () => {
     const peers = Array.from({ length: 4 }, () => ({ peer: other }));
     expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(
       "ctrl+o for details",
@@ -547,44 +352,21 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test.each([
-    { count: 0, peerLabel: "peers", messageLabel: "messages", publicationLabel: "publications" },
-    { count: 1, peerLabel: "peer", messageLabel: "message", publicationLabel: "publication" },
-    { count: 2, peerLabel: "peers", messageLabel: "messages", publicationLabel: "publications" },
-  ])(
-    "count $count uses English singular/plural labels",
-    ({ count, peerLabel, messageLabel, publicationLabel }) => {
-      const peers = Array.from({ length: count }, () => ({ peer: other }));
-      expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(
-        `${count} ${peerLabel} ·`,
-      );
-      const messages = Array.from({ length: count }, () => ({
-        provenance: { sender: peer },
-        message,
-      }));
-      expect(render("peers_take", "result", {}, result({ messages })).join("\n")).toContain(
-        `${count} ${messageLabel} taken`,
-      );
-      const publications = Array.from({ length: count }, () => publication);
-      expect(
-        render(
-          "peers_state",
-          "result",
-          { action: "list" },
-          result({ tag: "ok", value: { items: publications } }),
-        ).join("\n"),
-      ).toContain(`${count} ${publicationLabel}`);
-    },
-  );
-  test("report count 2 uses pushes", () => {
-    const pushes = Array.from({ length: 2 }, () => ({ recipient: other, outcome: admitted }));
-    expect(
-      render(
-        "peers_report",
-        "result",
-        {},
-        result({ tag: "ok", value: { publication, pushes } }),
-      ).join("\n"),
-    ).toContain("2 pushes:");
+    { count: 0, peerLabel: "peers", messageLabel: "messages" },
+    { count: 1, peerLabel: "peer", messageLabel: "message" },
+    { count: 2, peerLabel: "peers", messageLabel: "messages" },
+  ])("count $count uses English singular/plural labels", ({ count, peerLabel, messageLabel }) => {
+    const peers = Array.from({ length: count }, () => ({ peer: other }));
+    expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(
+      `${count} ${peerLabel} ·`,
+    );
+    const messages = Array.from({ length: count }, () => ({
+      provenance: { sender: peer },
+      message,
+    }));
+    expect(render("peers_take", "result", {}, result({ messages })).join("\n")).toContain(
+      `${count} ${messageLabel} taken`,
+    );
   });
   test.each([
     ["activation_pending", "Peers: activation pending"],
@@ -625,18 +407,16 @@ describe("presentation-only session tool rendering", () => {
         inboxBytes: 128,
         receipts: 3,
         operations: 1,
-        publications: 4,
-        publicationBytes: 32,
-        revision: 8,
-        interests: 2,
         relations: 1,
         notice: "degraded_unobserved",
       },
       "unused",
     );
     expect(status).toContain(`session=${peer.sessionId} nonce=${peer.runtimeNonce}`);
-    expect(status).toContain("Inbox: 2 messages / 128 bytes · receipts=3 · operations=1");
-    expect(status).toContain("Publications: 4 / 32 bytes · revision=8 · interests=2 · relations=1");
+    expect(status).toContain(
+      "Inbox: 2 messages / 128 bytes · receipts=3 · operations=1 · relations=1",
+    );
+    expect(status).not.toContain("Publications");
     expect(status).toContain("watch=active");
     expect(status).toContain("degraded_unobserved");
     expect(status).not.toContain('{"');

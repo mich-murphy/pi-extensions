@@ -5,7 +5,7 @@ import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
-import type { Delivery, PublicationRecord } from "../state/types.js";
+import type { Delivery } from "../state/types.js";
 
 const receiver = { machineId: "beta", sessionId: "receiver", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: "a".repeat(32) };
@@ -185,112 +185,6 @@ function assertAdmissionTrace(steps: readonly Step[]): void {
   }
 }
 
-type InterestModel = {
-  now: number;
-  active: boolean;
-  expiresAt: number;
-  terminal: boolean;
-  revision: number;
-  slots: boolean;
-};
-const publishedWork = { kind: "publication", publisher: receiver, key: "root" } as const;
-const workRecord: PublicationRecord = {
-  category: "work",
-  work: publishedWork,
-  title: "Work",
-  summary: "Report",
-  format: "text",
-  preparation: "authored",
-  status: "in_progress",
-};
-function assertReportTransition(state: SessionState, model: InterestModel, action: number): void {
-  const isTerminal = action === 2;
-  const before = model.active;
-  const result = state.prepareReport({
-    scopeId: "team",
-    key: "report",
-    record: { ...workRecord, status: isTerminal ? "completed" : "in_progress" },
-    notify: "interested",
-  });
-  if (before && !model.slots) {
-    assert.deepStrictEqual(result, { tag: "error", code: "overloaded", resource: "operations" });
-    return;
-  }
-  assert.ok(result.tag === "ok");
-  model.terminal = isTerminal;
-  assert.equal(result.value.pushes.length, Number(before));
-  assert.equal(result.value.consumedInterests.length, Number(before && isTerminal));
-  model.active = before && !isTerminal;
-  model.revision++;
-}
-function applyInterestAction(state: SessionState, model: InterestModel, action: number): void {
-  const input = { subscriber: sender, scopeId: "team", work: publishedWork };
-  switch (action) {
-    case 0: {
-      const result = state.interest.add(input);
-      assert.ok(result.tag === "ok");
-      assert.equal(result.value.active, !model.terminal);
-      model.active = !model.terminal;
-      model.expiresAt = model.now + 86_400_000;
-      break;
-    }
-    case 1: {
-      state.interest.remove(input);
-      model.active = false;
-      break;
-    }
-    case 4: {
-      model.now += 86_400_000;
-      model.active = false;
-      break;
-    }
-    case 5:
-    case 6: {
-      model.slots = action === 6;
-      break;
-    }
-    default: {
-      assertReportTransition(state, model, action);
-    }
-  }
-}
-function assertInterestSnapshot(state: SessionState, model: InterestModel): void {
-  assert.equal(state.stats().interests, Number(model.active));
-  assert.equal(state.stats().revision, model.revision);
-  const snapshot = state.read({ caller: sender, scopeId: "team", key: "report" });
-  assert.ok(snapshot.tag === "ok");
-  assert.equal(snapshot.value.publication.status, model.terminal ? "completed" : "in_progress");
-  assert.equal(snapshot.value.publication.revision, model.revision);
-}
-function assertInterestTrace(actions: readonly number[]): void {
-  const model: InterestModel = {
-    now: 0,
-    active: false,
-    expiresAt: 0,
-    terminal: false,
-    revision: 1,
-    slots: true,
-  };
-  let ids = 0;
-  const state = createState({
-    peer: receiver,
-    scopeIds: ["team"],
-    clock: () => model.now,
-    authorize: () => true,
-    offer: () => true,
-    newMessageId: () => (++ids).toString(16).padStart(32, "0"),
-    reservePushes: () => model.slots,
-  });
-  state.publish({ scopeId: "team", key: "report", record: workRecord });
-  for (const action of actions) {
-    if (model.now >= model.expiresAt) {
-      model.active = false;
-    }
-    applyInterestAction(state, model, action);
-    assertInterestSnapshot(state, model);
-  }
-}
-
 const sizeGenerator = gs.oneOf(
   gs.integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
   gs.sampledFrom(
@@ -366,18 +260,6 @@ describe("Hegel bounded state/fault traces against independent models", () => {
         "size",
       );
       assertSingleDelivery(size, unit);
-    })
-      .settings(settings)
-      .runSync();
-  });
-
-  test("interest/report linearization and lease expiry model", () => {
-    new Hegel((tc) => {
-      const actions = tc.draw(
-        gs.arrays(gs.integers({ minValue: 0, maxValue: 6 }), { maxSize: 32 }),
-        "actions",
-      );
-      assertInterestTrace(actions);
     })
       .settings(settings)
       .runSync();

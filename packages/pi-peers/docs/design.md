@@ -1,6 +1,6 @@
 # Design
 
-pi-peers keeps message delivery small and explicit. A gateway only routes. Each Pi session's adapter owns the inbox, receipts and publications, all in memory.
+pi-peers keeps message delivery small and explicit. A gateway only routes. Each Pi session's adapter owns the inbox and receipts, all in memory.
 
 ## Receipts and idempotency
 
@@ -45,11 +45,11 @@ Wake rules:
 - **Settled:** pending wake intent is cleared.
 - **Compaction:** after a manual compaction succeeds or fails, one deferred check wakes the model if Pi is idle and a wake is pending. There is no polling.
 
-Escape is Pi's own cancel. An aborted run skips `agent_before_settle`, so old messages are not announced again. Abort does not replay anything, restore text, mute peers or cancel remote work. Messages stay in the inbox until a take. Only a new authorized push can wake a later turn. Publication reads, discovery, control traffic and duplicates never wake anyone.
+Escape is Pi's own cancel. An aborted run skips `agent_before_settle`, so old messages are not announced again. Abort does not replay anything, restore text, mute peers or cancel remote work. Messages stay in the inbox until a take. Only a new authorized push can wake a later turn. Discovery, control traffic and duplicates never wake anyone.
 
-Admission is not consumption. Replacing the runtime discards the inbox, publications and interests, and there is no offline mailbox.
+Admission is not consumption. Replacing the runtime discards the inbox and receipts, and there is no offline mailbox.
 
-Local tools do not wait on gateway recovery. While the gateway is unreachable, `peers_take` still returns already-admitted messages, and `peers_state` `put`/`remove` still change this runtime's own private publications in configured scopes. While connected, those writes are limited to the scopes the gateway granted. Offline, the limit is the configured scopes, so a write can land in a configured scope that the last registration did not grant. Writes made while offline are not exposed until a later registration grants that scope and the read policy allows the reader. When both hold, peers can read them with no further action. Local tools never start recovery. After the bounded automatic reconnect episode gives up, the runtime stays disconnected until a remote tool runs its recovery preflight or `/peers reconnect` succeeds, and until then its publications stay unreadable and it receives no new deliveries. Remote reads, discovery, sends, interests and reports keep the guarded recovery preflight and fail closed.
+Local tools do not wait on gateway recovery. While the gateway is unreachable, `peers_take` still returns already-admitted messages. Local tools never start recovery. After the bounded automatic reconnect episode gives up, the runtime stays disconnected until a remote tool runs its recovery preflight or `/peers reconnect` succeeds, and until then it receives no new deliveries. Discovery and sends keep the guarded recovery preflight and fail closed.
 
 ## Trust model
 

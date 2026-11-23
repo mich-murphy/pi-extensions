@@ -62,7 +62,7 @@ export function activationScreen(
     details: () =>
       withTechnical(
         [
-          "This Pi keeps its identity, inbox and publications.",
+          "This Pi keeps its identity and inbox.",
           "Nothing is written, and keys and settings are not changed.",
         ],
         [

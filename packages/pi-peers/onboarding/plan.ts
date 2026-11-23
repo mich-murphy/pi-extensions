@@ -1,11 +1,11 @@
 import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
 
-export const permissions: readonly Permission[] = ["discover", "read", "push", "interest"];
+export const permissions: readonly Permission[] = ["discover", "push"];
 const consent =
-  "Other participating Pi sessions on this OS account, including other projects, can discover this session, read explicitly published records, send messages, and subscribe to published work updates within the reviewed grants. Authorized new messages can wake the model and incur provider usage. Peer content is untrusted. This does not automatically share files or the whole transcript, execute patches, or grant filesystem access.";
+  "Other participating Pi sessions on this OS account, including other projects, can discover this session and send it messages within the reviewed grants. Authorized new messages can wake the model and incur provider usage. Peer content is untrusted. This does not automatically share files or the whole transcript, execute patches, or grant filesystem access.";
 const lifetime =
-  "The first participating Pi session starts the shared gateway; it exits after the last participant closes. No login/boot auto-start or idle keepalive. Session inboxes and publications are volatile.";
+  "The first participating Pi session starts the shared gateway; it exits after the last participant closes. No login/boot auto-start or idle keepalive. Session inboxes are volatile.";
 
 export type LocalChoices = {
   readonly machineId: string;

@@ -33,7 +33,7 @@ function press(model: MenuModel, tc: TestCase): void {
   } else if (key === 2) {
     model.submit(tc.draw(gs.sampledFrom(texts))).catch(() => undefined);
   } else {
-    model.toggle(tc.draw(gs.sampledFrom(["discover", "read", "push", "interest"])));
+    model.toggle(tc.draw(gs.sampledFrom(["discover", "push"])));
   }
 }
 

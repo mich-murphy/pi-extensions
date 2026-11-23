@@ -79,9 +79,7 @@ const descriptions: Record<Field, string> = {
 };
 const PERMISSION_TEXT: Record<(typeof permissions)[number], string> = {
   discover: "See that this session exists",
-  read: "Read records this session publishes",
   push: "Send messages to this session (can wake the model at provider cost)",
-  interest: "Follow updates to this session's published work",
 };
 
 function invalidField(choices: LocalChoices): Field | undefined {

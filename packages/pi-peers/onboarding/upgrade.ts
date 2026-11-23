@@ -130,7 +130,7 @@ function addForm(upgrade: Upgrade, machine: string, progress: Progress): Screen 
       return withTechnical(
         [
           "Applies to every project on this account. Peer messages may wake the model, which costs provider usage.",
-          "This Pi reconnects with a fresh identity, so its inbox and publications are lost. Other open sessions keep their old grants until they restart.",
+          "This Pi reconnects with a fresh identity, so its inbox is lost. Other open sessions keep their old grants until they restart.",
           "The shared gateway restarts once; nothing is resent.",
         ],
         [
@@ -269,7 +269,7 @@ function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
       manage.shared
         ? "Apply saves the changes, restarts the shared gateway once and reconnects this Pi. Other sessions briefly disconnect and keep the old settings until they restart."
         : "Apply saves the changes and connects this Pi with them. Other sessions keep the old settings until they restart.",
-      "This Pi reconnects with a fresh identity, so its inbox and publications are lost. Keys, pair files and the gateway install are kept.",
+      "This Pi reconnects with a fresh identity, so its inbox is lost. Keys, pair files and the gateway install are kept.",
       ...(manage.pair === undefined
         ? []
         : [

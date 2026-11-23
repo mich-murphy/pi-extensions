@@ -8,14 +8,7 @@ import { decodeConfiguration, permits, visibleText } from "../adapter/config.js"
 import { toolPresentation } from "../adapter/presentation.js";
 
 const settings = propertySettings(200);
-const toolNames = [
-  "peers_list",
-  "peers_send",
-  "peers_take",
-  "peers_state",
-  "peers_interest",
-  "peers_report",
-] as const;
+const toolNames = ["peers_list", "peers_send", "peers_take"] as const;
 const fieldNames = [
   "message",
   "to",
@@ -148,7 +141,7 @@ function assertPermissionDecision(allowed: boolean, code: number, kind: number):
   const injected = controlSequence(code, kind);
   const config = decodeConfiguration(baseConfiguration(allowed));
   assert.equal(permits(config, "beta", "team", "push"), allowed);
-  assert.equal(permits(config, "beta", "team", "read"), false);
+  assert.equal(permits(config, "beta", "team", "discover"), false);
   assert.equal(permits(config, "beta", "other", "push"), false);
   assert.equal(permits(config, "gamma", "team", "push"), false);
   assert.equal(permits(config, `beta${injected}`, "team", "push"), false);

@@ -81,7 +81,7 @@ export async function readOffer(path: string): Promise<OfferPreview | string> {
 export function remoteReview(intent: RemoteIntent, directory: string): string {
   return [
     `Remote: ${intent.kind}; one exact peer ${intent.peerMachineId}; ${intent.endpoint.mode} ${intent.endpoint.address}.`,
-    "Remote discover/read/push/interest grants apply in both directions for the reviewed scope; authorized remote pushes can wake models and incur provider usage. Only published records are readable.",
+    "Remote discover/push grants apply in both directions for the reviewed scope; authorized remote pushes can wake models and incur provider usage.",
     intent.kind === "create"
       ? `Pair-specific initiator CA custody: ${join(directory, "issuer")}; runtime credentials: ${join(directory, "pair")}. The gateway never loads the issuer key. Same-account directories are NOT privilege isolation: account/root compromise requires both machines to re-pair with a new root. Optional offline offload is manual.`
       : "Private leaf keys stay on this machine; exchange public offer/CSR/bundle files only, with independent full SHA256 confirmation. Missing revocation records are never recreated.",
