@@ -9,7 +9,6 @@ import { parsePublicHttpUrl } from "../types";
 
 const settings = propertySettings(200);
 
-// A tiny label pool makes suffix collisions, near misses ("notevil") and case variants common.
 const LABELS = ["evil", "notevil", "com", "org", "a", "b", "EVIL", "Com"];
 const labelsGenerator = (minSize: number, maxSize: number) =>
   gs.arrays(gs.sampledFrom(LABELS), { minSize, maxSize });
@@ -22,7 +21,6 @@ function toUrl(labels: readonly string[], trailingDot: boolean) {
   return parsed.success;
 }
 
-// Label-based oracle: an entry matches when its labels are a suffix of the host's labels.
 const lower = (labels: readonly string[]) => labels.map((label) => label.toLowerCase());
 function matches(host: readonly string[], entry: readonly string[]): boolean {
   const h = lower(host);

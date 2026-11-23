@@ -19,7 +19,6 @@ function collectPrimitive(value: unknown, out: string[]): boolean {
 
 function collectError(value: object, out: string[]): void {
   if (value instanceof Error) {
-    // `message` may be a prototype getter, and JSON.stringify drops it with the stack.
     out.push(value.name, value.message, value.stack ?? "");
   }
 }
@@ -59,11 +58,6 @@ function collect(value: unknown, walk: Walk, depth: number): void {
   collectOwnProperties(value, walk, depth);
 }
 
-/**
- * Everything an observer of a value can read: message, stack, every own property (enumerable or
- * not), the whole cause chain and nested objects. Unlike `JSON.stringify`, which renders an Error
- * as `{}` and skips non-enumerable properties, a retained raw cause shows up here.
- */
 export function observableText(value: unknown): string {
   const out: string[] = [];
   collect(value, { seen: new Set(), out }, 0);
@@ -71,7 +65,6 @@ export function observableText(value: unknown): string {
   return out.join("\n");
 }
 
-/** Fail when any fragment appears anywhere an observer could read it from the value. */
 export function expectNoLeak(value: unknown, ...fragments: readonly string[]): void {
   const text = observableText(value);
   for (const fragment of fragments) {

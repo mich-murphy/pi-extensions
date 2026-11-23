@@ -116,7 +116,6 @@ describe("projectFetchResult", () => {
   });
 
   test("shows the start of a first line longer than the byte limit", async () => {
-    // 3-byte characters put the 50 KB cut mid-character.
     const line = "€".repeat(30_000);
     const projected = await Effect.runPromise(
       Effect.result(

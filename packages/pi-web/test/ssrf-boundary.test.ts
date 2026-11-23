@@ -9,11 +9,6 @@ import {
   toolRuntimeWith,
 } from "./fakes";
 
-/**
- * The real webfetch tool over the real FetchPage and PublicWebClient. Only the two network edges
- * are faked: the resolver and the address-bound transport, which record what the client did.
- */
-
 const PUBLIC_V4: ApprovedAddress = { address: "93.184.216.34", family: 4 };
 const PAGE = `<html><body><article><p>${"Public page text. ".repeat(20)}</p></article></body></html>`;
 
@@ -23,17 +18,14 @@ const toDispose: { dispose: () => Promise<void> }[] = [];
 
 const LOOPBACK: readonly ApprovedAddress[] = [{ address: "127.0.0.1", family: 4 }];
 
-/** Answer by host name; any host not listed resolves to a public address. */
 function answerBy(table: Readonly<Record<string, readonly ApprovedAddress[]>>): Dns {
   return (hostname) => table[hostname] ?? [PUBLIC_V4];
 }
 
-/** A resolver that answers public on its first lookup and loopback on every later one. */
 const rebinding: Dns = (_hostname, call) => (call === 1 ? [PUBLIC_V4] : LOOPBACK);
 
 const html = () => new Response(PAGE, { headers: { "content-type": "text/html" } });
 
-/** Redirect requests for one host to `location`; every other host serves the page. */
 function redirectFrom(host: string, status: number, location: string) {
   return (url: URL) =>
     url.hostname === host ? new Response(null, { status, headers: { location } }) : html();
@@ -110,7 +102,6 @@ describe("webfetch SSRF boundary", () => {
     test.each(["http://localhost./", "http://api.localhost./"])(
       "trailing-dot localhost name %s never reaches the transport",
       async (url) => {
-        // A system resolver answers these with loopback; the address check must still refuse them.
         const { tool, connections } = harness({ dns: () => LOOPBACK });
         await expect(tool.execute("t1", { url })).rejects.toThrow(/^Blocked private or local/u);
         expect(connections).toStrictEqual([]);

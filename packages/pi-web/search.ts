@@ -67,7 +67,6 @@ function selectProviderRoute(
     : { _tag: "OfficialApi", apiKey: outcome.success };
 }
 
-/** Mark a provider that runs on the shared free endpoint only because no key is set. */
 function onFreeTier(provider: SearchProvider, freeTier: boolean): SearchProvider {
   return freeTier
     ? {
@@ -149,7 +148,6 @@ function buildProviderPairs(composition: ProviderComposition): readonly Provider
   return providers.map((name) => PROVIDER_BUILDERS[name](composition));
 }
 
-/** Shared runtime composition; request adapters retain its clients and Parallel session identity. */
 class ProviderPairs extends Context.Service<
   ProviderPairs,
   {
@@ -183,14 +181,12 @@ class ProviderPairs extends Context.Service<
   );
 }
 
-/** The ordered search provider chain from settings (see PROVIDER_BUILDERS for selection). */
 export class SearchProviders extends Context.Service<
   SearchProviders,
   {
     readonly forRequest: (snapshot: CredentialSnapshot) => readonly SearchProvider[];
   }
 >()("pi-web/search/SearchProviders") {
-  /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with FetchRescueProviders. */
   static readonly layer: Layer.Layer<
     SearchProviders,
     never,
@@ -206,12 +202,10 @@ export class SearchProviders extends Context.Service<
   ).pipe(Layer.provide(ProviderPairs.layer));
 }
 
-/** The ordered fetch-rescue provider chain (search priority order, fetch-capable providers only). */
 export class FetchRescueProviders extends Context.Service<
   FetchRescueProviders,
   { readonly forRequest: (snapshot: CredentialSnapshot) => readonly FetchProvider[] }
 >()("pi-web/search/FetchRescueProviders") {
-  /** Built from WebToolsConfig, ProviderHttpClient and McpClients; shares state with SearchProviders. */
   static readonly layer: Layer.Layer<
     FetchRescueProviders,
     never,
@@ -227,37 +221,28 @@ export class FetchRescueProviders extends Context.Service<
   ).pipe(Layer.provide(ProviderPairs.layer));
 }
 
-/** A successful search: the provider that answered plus its results. */
 export type SearchChainSuccess = {
   readonly provider: SearchProviderName;
   readonly attemptedProviders: readonly SearchProviderName[];
   readonly results: readonly NormalizedSearchResult[];
 };
 
-/** The provider override names a provider that is not enabled. */
 export class UnknownProvider extends Schema.TaggedError<UnknownProvider>()("UnknownProvider", {
-  /** The requested provider name. */
   provider: Schema.String,
-  /** The enabled provider names. */
   available: Schema.Array(Schema.String),
 }) {
-  /** Safe user-facing description listing the enabled providers. */
   override get message(): string {
     return `Provider "${this.provider}" is not enabled (\`PI_WEB_PROVIDERS\`). Available: ${this.available.join(", ")}.`;
   }
 }
 
-/** Every provider in the chain failed. */
 export class AllProvidersFailed extends Schema.TaggedError<AllProvidersFailed>()(
   "AllProvidersFailed",
   {
-    /** One safe "<provider>: <reason>" line per attempted provider. */
     attempts: Schema.Array(Schema.String),
-    /** Providers whose shared free endpoint was rate limited because no key is set. */
     freeTierRateLimited: Schema.optional(Schema.Array(Schema.Literals(SEARCH_PROVIDERS))),
   },
 ) {
-  /** Safe user-facing description joining each provider's reason. */
   override get message(): string {
     const limited = this.freeTierRateLimited ?? [];
     if (limited.length > 0 && limited.length === this.attempts.length) {
@@ -269,7 +254,6 @@ export class AllProvidersFailed extends Schema.TaggedError<AllProvidersFailed>()
 
 const RATE_LIMIT_TEXT = /rate.?limit|too many requests/iu;
 
-/** A rate limit from a free endpoint: HTTP 429, or the provider's own rate-limit message. */
 function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): boolean {
   if (provider.freeTier !== true) {
     return false;
@@ -280,22 +264,15 @@ function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): bo
   );
 }
 
-/** Longest provider text quoted per provider, so the combined error stays short. */
 const MAX_PROVIDER_DETAIL = 70;
 const URL_PLACEHOLDER = "[URL omitted]";
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/**
- * Cut a provider's own error text (up to 200 chars) at the last word boundary within the cap,
- * ending with "…". Cuts whole graphemes and never splits the "[URL omitted]" placeholder.
- */
 function boundedDetail(detail: string): string {
-  // Whole graphemes, so the cut never leaves a lone surrogate or splits an emoji sequence.
   const points = [...GRAPHEMES.segment(detail)].map(({ segment }) => segment);
   if (points.length <= MAX_PROVIDER_DETAIL) {
     return detail;
   }
-  // One extra grapheme, so a space right after the cap still counts as a word boundary.
   const space = points
     .slice(0, MAX_PROVIDER_DETAIL + 1)
     .join("")
@@ -311,20 +288,14 @@ function boundedDetail(detail: string): string {
     .replace(/[,;:.]+$/u, "")}…`;
 }
 
-/** The provider's reason; only the provider's quoted text is shortened, never pi-web's own. */
 function attemptReason(error: ProviderError): string {
   return error._tag === "ProviderToolError" && error.detail !== ""
     ? `reported an error: ${boundedDetail(error.detail)}`
     : error.message;
 }
 
-/** Expected failures of the search chain. */
 export type SearchChainError = UnknownProvider | AllProvidersFailed;
 
-/**
- * Run the provider chain in priority order, falling through on provider failures. A provider
- * failure becomes one "<provider>: <reason>" line; interruption stops the chain at once.
- */
 export function searchWithFallback(
   providers: readonly SearchProvider[],
   input: { readonly query: SearchQuery; readonly maxResults: number },

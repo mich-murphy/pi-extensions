@@ -6,13 +6,6 @@ import { fakePi } from "./fake-pi";
 import type { RegisteredTool } from "./fake-pi";
 import { textOf } from "./fakes";
 
-/**
- * The extension exactly as index.ts composes it: real settings, authentication, runtime, app
- * layer, public web client and transport. Only the outermost I/O is faked: the global fetch that
- * provider REST and MCP calls go through. Fetching a public page would need a socket, so webfetch
- * is exercised with targets the real client refuses before any connection.
- */
-
 const KEY = "stored-exa-composition-key";
 
 type ProviderCall = { readonly url: string; readonly apiKey: string | null };
@@ -39,9 +32,7 @@ async function composedExtension() {
   const login = async (key: string) =>
     fixture.runtime.login(WEB_AUTH_PROVIDERS.exa.id, "api_key", {
       prompt: async () => key,
-      notify: () => {
-        /* isolated synthetic login */
-      },
+      notify: () => undefined,
     });
   return {
     webfetch: named("webfetch"),
@@ -88,7 +79,6 @@ describe("the composed extension", () => {
   ])(
     "webfetch refuses %s through the real client and transport layers",
     async (_name, url, message) => {
-      // A missing transport layer would instead fail with "Web fetch failed unexpectedly".
       const { webfetch, emit, context } = await composedExtension();
       await expect(runTool(webfetch, { url }, context)).rejects.toThrow(message);
       expect(providerCalls).toStrictEqual([]);

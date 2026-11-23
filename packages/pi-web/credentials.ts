@@ -1,7 +1,6 @@
 import { Context, Duration, Effect, Layer, Redacted, Result, Schema } from "effect";
 import type { SearchProviderName } from "./types";
 
-/** Safe categories only: never retain the rejected value, exception, or command. */
 export class CredentialFailure extends Schema.TaggedError<CredentialFailure>()(
   "CredentialFailure",
   {
@@ -30,7 +29,6 @@ export type CredentialSnapshot = {
   readonly secrets: readonly string[];
 };
 
-/** Validate at ingress, before any request or telemetry can see the value. */
 function validateCredential(provider: SearchProviderName, value: string | undefined) {
   if (value === undefined) {
     return Effect.succeed(undefined);
@@ -80,7 +78,6 @@ export class CredentialResolver extends Context.Service<
   });
 }
 
-/** Resolve once per requested provider; missing providers are deliberately unrequested, not failures. */
 export function resolveCredentialSnapshot(
   names: readonly SearchProviderName[],
 ): Effect.Effect<CredentialSnapshot, never, CredentialResolver> {

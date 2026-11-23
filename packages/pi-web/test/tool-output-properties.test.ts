@@ -10,7 +10,6 @@ import { parsePublicHttpUrl } from "../types";
 import { UTF8, publicUrl } from "./fakes";
 import { observableText } from "./leaks";
 
-// Paging uses only 50 cases: each case walks every window of up to ~240 KB of text.
 const settings = propertySettings(50);
 const fastSettings = propertySettings();
 
@@ -38,7 +37,6 @@ const PIECES = ["abc", "é", "😀", "日本語", "\r\n", "", "line with spaces"
 const baseText = gs
   .arrays(gs.sampledFrom(PIECES), { minSize: 1, maxSize: 6 })
   .map((parts) => parts.join(""));
-// Total size stays under ~180 KB (about 4 windows) plus at most one 60 KB over-long line.
 const LONG_LINE = "é".repeat(30_000);
 const pagedText = gs.composite((tc) => {
   const lines = tc.draw(gs.arrays(baseText, { minSize: 1, maxSize: 20 }), "lines");
@@ -46,7 +44,6 @@ const pagedText = gs.composite((tc) => {
   const longLine = tc.draw(gs.booleans(), "longLine");
   const body = Array.from({ length: repeat }, () => lines.join("\n")).join("\n");
   const manyLines = tc.draw(gs.weightedBooleans(0.8), "manyLines");
-  // 2100 short lines exceed the 2000-line window, so the line-cut path is exercised.
   const filler = manyLines ? "ab\n".repeat(2100) : "";
   return `${filler}${longLine ? `${LONG_LINE}\n${body}` : body}`;
 });
@@ -106,7 +103,6 @@ function checkPaging(text: string, startAt: number): void {
   assert.ok(Buffer.concat(collected).equals(all.subarray(first)), "no gap and no overlap");
 }
 
-/** Check one truncated page against the bytes it must cover; returns its `next_offset`. */
 function checkWindow(shown: string, all: Buffer, expectedStart: number, collected: Buffer[]) {
   const match = NOTICE.exec(shown)?.groups;
   assert.ok(match);
@@ -119,7 +115,6 @@ function checkWindow(shown: string, all: Buffer, expectedStart: number, collecte
   const body = shown.slice(0, shown.lastIndexOf("\n\n["));
   const bodyBytes = Buffer.from(body, "utf8");
   const skipped = to - from - bodyBytes.length;
-  // Only the line break after a window of whole lines may sit between the window and the offset.
   assert.ok(skipped === 0 || (skipped === 1 && all[from + bodyBytes.length] === 0x0a));
   collected.push(bodyBytes, all.subarray(from + bodyBytes.length, to));
   return to;
@@ -154,7 +149,6 @@ describe("webfetch paging properties", () => {
   });
 });
 
-// ---- M2: redactSecrets ----
 const SECRETS = ["a.b", "a*b", "(x)", "[y]", "$&", "\\", " ", "p|q", "^s$", "k+", "k+k+", "a.bb"];
 const SAFE = ["ab", "axb", "aab", "zz", "hello", "é😀"];
 
@@ -166,7 +160,6 @@ function checkRedaction(parts: string[], secrets: string[]): void {
   }
   assert.equal(redactSecrets(input, []), input);
   assert.equal(redactSecrets(input, [undefined, ""]), input);
-  // A secret that contains another (k+ in k+k+) must still be replaced whole, never left partly.
   for (const secret of secrets) {
     assert.equal(redactSecrets(secret, secrets), "[redacted]");
   }
@@ -177,7 +170,6 @@ function checkLiteral(parts: string[], secrets: string[]): void {
   assert.equal(redactSecrets(input, secrets), input);
 }
 
-// Overlapping secrets in either order: the longest must win, so no fragment of a secret remains.
 function checkOverlap(reverse: boolean, parts: string[]): void {
   const base = ["k+", "k+k+", "a.b", "a.bb"];
   const secrets = reverse ? base.toReversed() : base;
@@ -218,7 +210,6 @@ describe("redactSecrets properties", () => {
   });
 });
 
-// ---- M1: parsePublicHttpUrl ----
 const PASSWORD = "s3cretpw";
 const urlParts = gs.tuples(
   gs.sampledFrom(["http", "https", "HTTPS", "ftp", "file"]),

@@ -29,17 +29,11 @@ function builtInEndpoint(url: string): PublicHttpUrl {
   return url;
 }
 
-/** Official Exa MCP endpoint, usable without an API key. */
 export const EXA_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://mcp.exa.ai/mcp");
-/** Official Exa REST search endpoint, used when an Exa credential resolves. */
 export const EXA_API_SEARCH_URL = "https://api.exa.ai/search";
-/** Official Exa REST contents endpoint, used for keyed fetch rescue. */
 export const EXA_API_CONTENTS_URL = "https://api.exa.ai/contents";
-/** Official Parallel MCP endpoint, usable without an API key. */
 export const PARALLEL_MCP_DEFAULT_ENDPOINT = builtInEndpoint("https://search.parallel.ai/mcp");
-/** Official Parallel REST search endpoint (GA v1), used when a Parallel credential resolves. */
 export const PARALLEL_API_SEARCH_URL = "https://api.parallel.ai/v1/search";
-/** Official Brave REST web search endpoint, used when a Brave credential resolves. */
 export const BRAVE_API_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
 export const EXA_API_KEY_ENV = "EXA_API_KEY";
@@ -52,7 +46,6 @@ export const FETCH_RESCUE_ENV = "PI_WEB_FETCH_RESCUE";
 const FETCH_ALLOW_DOMAINS_ENV = "PI_WEB_FETCH_ALLOW_DOMAINS";
 const FETCH_DENY_DOMAINS_ENV = "PI_WEB_FETCH_DENY_DOMAINS";
 
-/** Settings renamed from `PI_WEB_TOOLS_*`. The new name wins; the old name is read only when the new one is unset. */
 const RENAMED_SETTINGS = [
   PROVIDERS_ENV,
   EXA_ENDPOINT_ENV,
@@ -72,17 +65,14 @@ function withLegacySettings(
   return resolved;
 }
 
-/** MCP endpoint overrides for self-hosted or proxied providers. Keys are never sent to overridden endpoints. */
 export type WebToolsEndpoints = {
   readonly exa?: PublicHttpUrl | undefined;
   readonly parallel?: PublicHttpUrl | undefined;
 };
 
-/** Fully parsed pi-web configuration. */
 export type WebToolsSettings = {
   readonly fetch: {
     readonly defaultFormat: WebFetchFormat;
-    /** The default deadline for one whole webfetch run. */
     readonly timeout: Duration.Duration;
     readonly maxResponseBytes: number;
     readonly maxRedirects: number;
@@ -92,29 +82,23 @@ export type WebToolsSettings = {
   };
   readonly search: {
     readonly providers: readonly SearchProviderName[];
-    /** Whether request-time Brave availability extends the default chain. */
     readonly defaultProviders: boolean;
-    /** The deadline for one provider search call. */
     readonly timeout: Duration.Duration;
     readonly defaultMaxResults: number;
   };
   readonly endpoints: WebToolsEndpoints;
 };
 
-/** A settings parse failure. The message is safe to show the user: it never contains env values. */
 export class InvalidSetting extends Schema.TaggedError<InvalidSetting>()("InvalidSetting", {
-  /** Safe description naming the environment variable, never its value. */
   message: Schema.String,
 }) {}
 
-/** Expected failures parsing pi-web settings. */
 export type SettingsError = InvalidSetting;
 
 function invalid(message: string): Result.Result<never, SettingsError> {
   return Result.fail(new InvalidSetting({ message }));
 }
 
-/** Round into inclusive bounds such as FETCH_TIMEOUT_SECONDS; non-finite input gets the default. */
 export function clampInteger(
   value: number,
   bounds: { readonly default: number; readonly min: number; readonly max: number },
@@ -184,8 +168,6 @@ function parseEndpointOverride(
   return Result.succeed(parsed.success);
 }
 
-// Entries must be bare hostnames: URL, wildcard, port, path or userinfo forms would never match a
-// hostname as the operator intended, so a deny-list typo would fail open.
 const FORBIDDEN_DOMAIN_CHARACTERS = /[\s/\\:@*?#]/u;
 
 function isBareHostname(name: string): boolean {
@@ -220,7 +202,6 @@ function parseDomainList(
   return Result.succeed([...domains]);
 }
 
-/** Parse all pi-web settings from the process environment. */
 export function parseSettings(
   rawEnvironment: Readonly<Record<string, string | undefined>> = process.env,
 ): Result.Result<WebToolsSettings, SettingsError> {
@@ -274,16 +255,9 @@ export function parseSettings(
   });
 }
 
-/** The parsed pi-web configuration, provided at the composition root. */
 export class WebToolsConfig extends Context.Service<WebToolsConfig, WebToolsSettings>()(
   "pi-web/settings/WebToolsConfig",
 ) {
-  /**
-   * Provide parsed settings as the WebToolsConfig service.
-   *
-   * @param settings - Settings from parseSettings.
-   * @returns A layer providing the configuration.
-   */
   static layer(settings: WebToolsSettings): Layer.Layer<WebToolsConfig> {
     return Layer.succeed(WebToolsConfig, WebToolsConfig.of(settings));
   }

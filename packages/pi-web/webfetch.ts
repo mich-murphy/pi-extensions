@@ -34,42 +34,32 @@ import {
 } from "./types";
 import type { PublicHttpUrl, WebFetchDetails, WebFetchFormat } from "./types";
 
-/** Composition injected into the webfetch tool. */
 export type WebFetchToolComposition = ToolCredentialComposition & {
-  /** Non-secret settings, for input defaults and domain policy. */
   readonly settings: Pick<WebToolsSettings, "fetch">;
-  /** Redact configured secrets before text or metadata reaches Pi. */
   readonly redactText: (input: string) => string;
-  /** The runtime every fetch runs on. */
   readonly runtime: ToolRuntime<
     FetchPage | FetchRescueProviders | ToolOutputStore | WebToolsConfig | CredentialResolver
   >;
 };
 
-/** Parsed webfetch tool parameters. */
 export type WebFetchParams = {
   readonly url: PublicHttpUrl;
   readonly format: WebFetchFormat;
   readonly timeoutSeconds: number;
-  /** Byte offset into the converted text where the returned window starts. */
   readonly offset: number;
 };
 
-/** The webfetch url parameter is not a usable public http(s) URL. */
 export class InvalidFetchUrlInput extends Schema.TaggedError<InvalidFetchUrlInput>()(
   "InvalidFetchUrlInput",
   {
-    /** Why the URL was rejected. */
     reason: ParsePublicHttpUrlError,
   },
 ) {
-  /** Safe user-facing description; never echoes the URL itself. */
   override get message(): string {
     return renderUrlParseError(this.reason);
   }
 }
 
-/** Expected failures parsing webfetch tool input. */
 export type WebFetchInputError = InvalidFetchUrlInput;
 
 class WebFetchTimedOut extends Schema.TaggedError<WebFetchTimedOut>()("WebFetchTimedOut", {
@@ -85,10 +75,6 @@ type WebFetchRunError = FetchPageError | ToolOutputStoreError | WebFetchTimedOut
 const RESCUE_STATUSES = new Set([401, 403, 429]);
 const MIN_USABLE_TEXT_LENGTH = 160;
 
-/**
- * Tool parameters. Pi validates and converts arguments against this schema before `execute` runs,
- * so it owns field types, the format enum, and unknown-field rejection.
- */
 const WEB_FETCH_PARAMETERS = Type.Object(
   {
     url: Type.String({ description: "The http:// or https:// URL to fetch." }),
@@ -113,10 +99,6 @@ const WEB_FETCH_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/**
- * Parse schema-validated parameters into webfetch input. Only semantic work is left here: URL
- * parsing, settings defaults, and timeout clamping.
- */
 export function parseWebFetchParams(
   params: Static<typeof WEB_FETCH_PARAMETERS>,
   settings: Pick<WebToolsSettings, "fetch">,
@@ -137,7 +119,6 @@ export function parseWebFetchParams(
   });
 }
 
-/** Returns true when a fetch outcome justifies the provider-side rescue path. */
 export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPageError>): boolean {
   if (Result.isFailure(result)) {
     return (
@@ -150,7 +131,6 @@ export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPag
   );
 }
 
-/** Create the webfetch pi tool. */
 export function createWebFetchTool(composition: WebFetchToolComposition) {
   return {
     name: "webfetch",
@@ -182,7 +162,6 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         deny: composition.settings.fetch.denyDomains,
       });
       if (Result.isFailure(policy)) {
-        // Validation runs before credentials: never echo caller-controlled hostnames here.
         throw new Error(
           policy.failure._tag === "DomainDenied"
             ? "Fetching from this hostname is denied by the webfetch domain policy (`PI_WEB_FETCH_DENY_DOMAINS`)."
@@ -331,7 +310,6 @@ const runWebFetch = Effect.fnUntraced(
         },
       ),
     );
-    // A remote provider controls its own redirect chain, so it cannot enforce this local policy.
     const hasDomainRestrictions = limits.allowDomains.length > 0 || limits.denyDomains.length > 0;
     const rescued =
       limits.rescue && !hasDomainRestrictions && format === "markdown" && isRescueEligible(result)
@@ -374,7 +352,6 @@ function renderUrlParseError(error: ParsePublicHttpUrlError): string {
       return "URL cannot be empty. Pass a full http:// or https:// address.";
     }
     case "UnsupportedUrlProtocol": {
-      // An arbitrary scheme can itself be a secret. Validation must not echo it.
       return "URL must start with http:// or https://";
     }
     case "InvalidUrl": {

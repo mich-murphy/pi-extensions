@@ -11,7 +11,6 @@ function rejectionMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected failure";
 }
 
-/** Exercise the injectable credential boundary while the real tool/runtime own cancellation. */
 describe("credential wait lifecycle", () => {
   test.each([
     {
@@ -79,11 +78,9 @@ describe("credential wait lifecycle", () => {
       redactText: (input) => input,
     });
     await fetchTool.execute("fetch", { url: "https://example.com/" }).catch(rejectionMessage);
-    // A stored Brave `!command` key would run on every fetch if it were resolved here.
     expect(resolved).toStrictEqual(["exa", "parallel"]);
     resolved.length = 0;
     await searchTool.execute("search", { query: "query" }).catch(rejectionMessage);
-    // The same settings do resolve Brave for search, so the fetch result above is not vacuous.
     expect(resolved).toStrictEqual(["exa", "parallel", "brave"]);
     await Promise.all([fetchRuntime.dispose(), searchRuntime.dispose()]);
   });

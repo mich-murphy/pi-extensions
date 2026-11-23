@@ -18,13 +18,11 @@ import { WEB_VERSION } from "./types";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 
-/** Extracted payload of a successful MCP tools/call. */
 export type McpToolCallResult = {
   readonly text: readonly string[];
   readonly structuredContent?: unknown;
 };
 
-/** Outbound port for MCP tool calls. Interrupting a call aborts it; the session is still closed. */
 export type McpClient = {
   readonly callTool: (
     name: string,
@@ -46,24 +44,12 @@ type McpClientOptions = {
   readonly timeout: Duration.Duration;
 };
 
-/**
- * MCP clients keyed by endpoint. Endpoints come from settings at runtime, so clients are built on
- * demand and cached: every caller asking for one endpoint shares one client, which is safe because
- * each tool call opens a fresh session. Clients are keyless; keys never reach MCP endpoints.
- */
 export class McpClients extends Context.Service<
   McpClients,
   {
-    /** The shared client for an MCP Streamable HTTP endpoint. */
     readonly forEndpoint: (endpoint: PublicHttpUrl) => McpClient;
   }
 >()("pi-web/mcp/McpClients") {
-  /**
-   * A live layer over HttpFetch with the given bounds.
-   *
-   * @param options - The response byte cap and session deadline for every client.
-   * @returns The McpClients layer.
-   */
   static layerWith(options: {
     readonly maxResponseBytes: number;
     readonly timeout: Duration.Duration;
@@ -87,7 +73,6 @@ export class McpClients extends Context.Service<
     );
   }
 
-  /** The live layer with the search response cap and the default search deadline. */
   static readonly layer = McpClients.layerWith({
     maxResponseBytes: SEARCH_MAX_RESPONSE_BYTES,
     timeout: Duration.seconds(SEARCH_TIMEOUT_SECONDS.default),
@@ -189,7 +174,6 @@ function makeSessionPerToolCallMcpHttpClient(
   return { callTool };
 }
 
-// A JSON-RPC response carries result or error; requests and notifications carry neither.
 const isJsonRpcResponse = Schema.is(
   Schema.Union([
     Schema.Struct({ result: Schema.Unknown }),
@@ -197,7 +181,6 @@ const isJsonRpcResponse = Schema.is(
   ]),
 );
 
-/** Parse an MCP HTTP response body (JSON or SSE framing) into a single JSON-RPC message. */
 export function parseMcpMessage(
   body: string,
   contentType: string,
@@ -251,13 +234,6 @@ const decodeToolCallResponse = Schema.decodeUnknownResult(
 
 const MAX_TOOL_ERROR_DETAIL = 200;
 
-/**
- * Extract text content and structured content from a JSON-RPC tools/call response.
- *
- * @param payload - The parsed JSON-RPC message.
- * @param secrets - Secrets scrubbed from any provider error text.
- * @returns The tool result, or a ProviderToolError carrying a safe excerpt of the provider's text.
- */
 export function parseMcpToolResult(
   payload: unknown,
   secrets: readonly (string | undefined)[] = [],
@@ -291,7 +267,6 @@ function toolErrorDetail(text: string, secrets: readonly (string | undefined)[])
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;
 }
 
-// Data payloads of an SSE event stream; multi-line data joins with newlines.
 function parseSseDataLines(input: string): string[] {
   const lines = input.replaceAll("\r\n", "\n").split("\n");
   const chunks: string[] = [];

@@ -1,8 +1,3 @@
-/**
- * Length of text as `text.replace(/\s+/g, " ").trim()` would produce it, measured without building
- * the collapsed string, and composable across adjacent pieces of text.
- */
-
 function isWhitespaceCodeUnit(codeUnit: number): boolean {
   if (codeUnit <= 32) {
     return codeUnit === 32 || (codeUnit >= 9 && codeUnit <= 13);
@@ -23,21 +18,11 @@ function isWhitespaceCodeUnit(codeUnit: number): boolean {
   );
 }
 
-/**
- * A running measure of text whose whitespace runs collapse to single spaces. Appending text or
- * another measure gives the measure of the concatenated text: a trailing collapsed space and a
- * leading one merge, as the two whitespace runs would.
- */
 export class CollapsedTextLength {
   #length = 0;
   #leadingSpace = false;
   #trailingSpace = false;
 
-  /**
-   * Append raw text, counting its UTF-16 code units.
-   *
-   * @param text - Text to append.
-   */
   appendText(text: string): void {
     for (let codeUnitIndex = 0; codeUnitIndex < text.length; codeUnitIndex += 1) {
       if (!isWhitespaceCodeUnit(text.charCodeAt(codeUnitIndex))) {
@@ -54,11 +39,6 @@ export class CollapsedTextLength {
     }
   }
 
-  /**
-   * Append the measure of the text that follows this one.
-   *
-   * @param next - Measure of the following text.
-   */
   append(next: CollapsedTextLength): void {
     if (next.#length === 0) {
       return;
@@ -70,11 +50,6 @@ export class CollapsedTextLength {
     this.#trailingSpace = next.#trailingSpace;
   }
 
-  /**
-   * Length of the collapsed text once trimmed.
-   *
-   * @returns The normalized length.
-   */
   trimmedLength(): number {
     if (this.#length === 1 && this.#leadingSpace) {
       return 0;
@@ -83,12 +58,6 @@ export class CollapsedTextLength {
   }
 }
 
-/**
- * Length of `text.replace(/\s+/g, " ").trim()`.
- *
- * @param text - Raw text.
- * @returns The normalized length.
- */
 export function normalizedTextLength(text: string): number {
   const measure = new CollapsedTextLength();
   measure.appendText(text);

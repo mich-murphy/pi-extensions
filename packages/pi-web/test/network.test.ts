@@ -22,9 +22,6 @@ import {
 import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
-  // network-properties.test.ts covers the range tables generatively. These rows stay as the explicit
-  // list of addresses the SSRF guard must classify, including febf::1 and fec0::1, which straddle the
-  // fe80::/10 boundary and which the property's generator does not reach.
   const blocked = [
     "10.0.0.1",
     "127.0.0.1",
@@ -114,9 +111,6 @@ describe("isPrivateOrLocalIp", () => {
   });
 });
 
-// An independent statement of the non-public ranges, written from the registries rather than read
-// from network.ts. Each row yields both edges (first and last address inside, blocked) and both
-// neighbours (allowed unless another row covers them).
 const RANGES: readonly (readonly [cidr: string, purpose: string])[] = [
   ["0.0.0.0/8", "RFC 791 this network"],
   ["10.0.0.0/8", "RFC 1918 private use"],
@@ -178,7 +172,6 @@ const PARSED_RANGES = RANGES.map(([cidr]) => parseCidr(cidr));
 const covered = (v6: boolean, value: bigint): boolean =>
   PARSED_RANGES.some((range) => range.v6 === v6 && value >= range.first && value <= range.last);
 
-/** [label, address, blocked] for the edges and neighbours of one range. */
 function edgeCases(cidr: string): readonly (readonly [string, string, boolean])[] {
   const range = parseCidr(cidr);
   const format = range.v6 ? formatV6 : formatV4;
@@ -205,8 +198,6 @@ describe("isPrivateOrLocalIp range edges", () => {
 });
 
 describe("classifyMimeType", () => {
-  // The MIME table, the text/ and +xml/+json suffix rules and the binary default are covered by
-  // content-properties.test.ts. image/avif is the one decision the property does not generate.
   const cases = [["image/avif", "binary"]] as const;
 
   test.each(cases)("classifies %j as %s", (mime, kind) => {
@@ -485,7 +476,6 @@ describe("fetchPublicWebClient fetch failures", () => {
       const fiber = yield* Effect.forkChild(
         Effect.result(client.get(makeRequest()).pipe(Effect.timeout("20 millis"))),
       );
-      // The deadline is the test clock's, and only moves once the fetch is hanging.
       yield* Effect.promise(async () => fetchStarted.promise);
       yield* TestClock.adjust("20 millis");
       const result = yield* Fiber.join(fiber);
@@ -879,7 +869,6 @@ describe("fetchPublicWebClient response body", () => {
       const fiber = yield* Effect.forkChild(
         Effect.result(client.get(makeRequest()).pipe(Effect.timeout("20 millis"))),
       );
-      // The deadline is the test clock's, and only moves once the body read is pending.
       yield* Effect.promise(async () => bodyRead.promise);
       yield* TestClock.adjust("20 millis");
       const result = yield* Fiber.join(fiber);

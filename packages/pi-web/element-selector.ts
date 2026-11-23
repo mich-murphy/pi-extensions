@@ -1,20 +1,5 @@
-/**
- * Selector matching for a small CSS subset, compiled once into plain predicates.
- *
- * linkedom compiles a selector with css-select on every querySelectorAll, matches, and closest
- * call. The sanitizer's selectors are constants, so compiling them once and testing elements with
- * direct attribute reads avoids that cost. Predicates follow css-select's semantics for elements of
- * linkedom HTML documents: tag names compare against the (lowercase) local name, ids and class
- * tokens compare case-sensitively (css-select's no-quirks default), attribute names match exactly,
- * and attribute values compare case-insensitively only for the attributes css-select treats as
- * case-insensitive in HTML.
- */
-
-/** A compiled selector: returns true when the element matches. */
 export type ElementPredicate = (element: Element) => boolean;
 
-// css-select's caseInsensitiveAttributes (css-select/dist/attributes.js): in HTML, [name='value']
-// compares these attributes' values case-insensitively.
 const CASE_INSENSITIVE_ATTRIBUTES: ReadonlySet<string> = new Set([
   "accept",
   "accept-charset",
@@ -64,7 +49,6 @@ const CASE_INSENSITIVE_ATTRIBUTES: ReadonlySet<string> = new Set([
   "vlink",
 ]);
 
-// Lowercase tag and attribute names only, which sidesteps css-what's name case folding.
 const COMPOUND_RE =
   /^(?<tag>[a-z][a-z0-9-]*)?(?<parts>(?:#[\w-]+|\.[\w-]+|\[[a-z][a-z0-9-]*(?:=(?:'[^']*'|"[^"]*"|[\w-]+))?\])*)$/u;
 const PART_RE =
@@ -77,24 +61,10 @@ type Compound = {
   readonly conditions: readonly ElementPredicate[];
 };
 
-/**
- * A compiled set of selector lists, tested together: calls `onMatch` once with the index of every
- * list the element matches.
- */
 export type SelectorSetMatcher = (element: Element, onMatch: (index: number) => void) => void;
 
 const CLASS_TOKEN_SEPARATOR_RE = /\s+/u;
 
-/**
- * Compile selector lists (see compileSelector) into one matcher. Each compound is indexed under the
- * id, class token, or tag it requires, so an element is tested only against compounds its own id,
- * class tokens, and tag could satisfy, plus the compounds that require none of them. The element's
- * id and class are read once per test instead of once per compound.
- *
- * @param selectorLists - Selector lists; a match reports the list's index.
- * @returns A matcher reporting each matching list's index once.
- * @throws Error for unsupported syntax. Selectors are module constants, so this is a defect.
- */
 export function compileSelectorSet(selectorLists: readonly string[]): SelectorSetMatcher {
   type Entry = { readonly index: number; readonly matches: ElementPredicate };
   const byId = new Map<string, Entry[]>();
@@ -160,15 +130,6 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
   };
 }
 
-/**
- * Compile a comma-separated list of compound selectors. A compound is an optional tag name followed
- * by any number of `#id`, `.class`, `[attribute]`, and `[attribute='value']` parts. Combinators,
- * pseudo-classes, `*`, flags, other attribute operators, and `[class='value']` are not supported.
- *
- * @param selectorList - Comma-separated compound selectors.
- * @returns A predicate matching elements that match any compound in the list.
- * @throws Error for unsupported syntax. Selectors are module constants, so this is a defect.
- */
 export function compileSelector(selectorList: string): ElementPredicate {
   const tags = new Set<string>();
   const compounds: ElementPredicate[] = [];
@@ -243,9 +204,6 @@ function compoundPredicate({ tag, conditions }: Compound): ElementPredicate {
   };
 }
 
-// css-select tests the classList value (the attribute's tokens joined by single spaces) with this
-// regex. Testing the raw attribute value is equivalent: its tokens are separated by whitespace
-// runs, and duplicate or surrounding whitespace changes no token boundary.
 function classTokenPredicate(token: string): ElementPredicate {
   const tokenRe = new RegExp(`(?:^|\\s)${escapeRegExp(token)}(?:$|\\s)`, "u");
   return (element) => {
@@ -260,7 +218,6 @@ function attributeEqualsPredicate(
   selectorList: string,
 ): ElementPredicate {
   if (attribute === "class") {
-    // css-select compares the normalized classList value here, not the attribute.
     throw new Error(`Unsupported selector: ${JSON.stringify(selectorList)}`);
   }
   if (!CASE_INSENSITIVE_ATTRIBUTES.has(attribute)) {
@@ -275,8 +232,6 @@ function attributeEqualsPredicate(
   };
 }
 
-// Escapes the characters that are special outside a character class. A unicode-mode pattern
-// rejects escapes of any other character, such as the hyphen.
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }

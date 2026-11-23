@@ -1,42 +1,28 @@
 import { Redacted, Result, Schema } from "effect";
 
-/** Extension name used for temp files and status surfaces. */
 export const WEB_EXTENSION_NAME = "pi-web";
-/** Version reported to provider endpoints (for example MCP clientInfo). */
 export const WEB_VERSION = "0.1.0";
 
 const NormalizedPublicHttpUrl = Schema.String.pipe(Schema.brand("PublicHttpUrl"));
 
-/** A public HTTP(S) URL accepted by pi-web. */
 export type PublicHttpUrl = typeof NormalizedPublicHttpUrl.Type;
 
-/** A non-empty, trimmed search query. */
 export type SearchQuery = string & { readonly __brand: "SearchQuery" };
 
-/** Output formats supported by the webfetch tool. */
 export type WebFetchFormat = "markdown" | "text" | "html";
-/** Search providers supported by the websearch tool. */
 export type SearchProviderName = "exa" | "parallel" | "brave";
-/** Coarse classification of a fetched response body. */
 export type ContentKind = "html" | "text" | "raster-image" | "svg" | "binary";
 
-/**
- * Failures parsing boundary input into a public HTTP(S) URL. The raw input stays wrapped in
- * Redacted, so it never reaches messages, logs, or JSON.
- */
 export const ParsePublicHttpUrlError = Schema.Union([
   Schema.TaggedStruct("EmptyUrl", {}),
   Schema.TaggedStruct("UnsupportedUrlProtocol", { protocol: Schema.optionalKey(Schema.String) }),
   Schema.TaggedStruct("InvalidUrl", { input: Schema.Redacted(Schema.String) }),
   Schema.TaggedStruct("UrlCredentialsUnsupported", { url: Schema.Redacted(Schema.String) }),
 ]);
-/** The decoded type of {@link ParsePublicHttpUrlError}. */
 export type ParsePublicHttpUrlError = typeof ParsePublicHttpUrlError.Type;
 
-/** Failures parsing boundary input into a search query. */
 export type ParseSearchQueryError = { readonly _tag: "EmptySearchQuery" };
 
-/** A provider-agnostic search result. */
 export type NormalizedSearchResult = {
   readonly title: string;
   readonly url: PublicHttpUrl;
@@ -46,11 +32,6 @@ export type NormalizedSearchResult = {
   readonly score?: number | undefined;
 };
 
-/**
- * Structured details attached to a webfetch tool result. Response fields a provider-side rescue
- * cannot observe (final URL, status, mime, content type, charset, decoder) are absent when `via`
- * is set.
- */
 export type WebFetchDetails = {
   readonly requestedUrl: string;
   readonly finalUrl?: string | undefined;
@@ -63,16 +44,12 @@ export type WebFetchDetails = {
   readonly bytes: number;
   readonly image?: boolean | undefined;
   readonly truncated?: boolean | undefined;
-  /** The page exceeded the download cap; only its first bytes were read. */
   readonly responseTruncated?: boolean | undefined;
-  /** The download cap in bytes; set only when the page exceeded it. */
   readonly downloadLimitBytes?: number | undefined;
   readonly fullOutputPath?: string | undefined;
-  /** Set when content came from a provider-side fetch instead of a direct request. */
   readonly via?: string | undefined;
 };
 
-/** Structured details attached to a websearch tool result. */
 export type WebSearchDetails = {
   readonly query: string;
   readonly maxResults: number;
@@ -83,7 +60,6 @@ export type WebSearchDetails = {
   readonly fullOutputPath?: string | undefined;
 };
 
-/** Parse and normalize a public HTTP(S) URL from boundary input. */
 export function parsePublicHttpUrl(
   input: string,
 ): Result.Result<PublicHttpUrl, ParsePublicHttpUrlError> {
@@ -116,10 +92,6 @@ export function parsePublicHttpUrl(
   return Result.succeed(NormalizedPublicHttpUrl.make(url.toString()));
 }
 
-/**
- * Returns true when a string is a URL in the form parsePublicHttpUrl produces: it parses, uses
- * http or https, carries no credentials, and is already serialized.
- */
 export const isPublicHttpUrl = Schema.is(
   NormalizedPublicHttpUrl.check(
     Schema.makeFilter((value) => {
@@ -129,7 +101,6 @@ export const isPublicHttpUrl = Schema.is(
   ),
 );
 
-/** Parse and trim a non-empty search query from boundary input. */
 export function parseSearchQuery(input: string): Result.Result<SearchQuery, ParseSearchQueryError> {
   const query = input.trim();
   return isSearchQuery(query) ? Result.succeed(query) : Result.fail({ _tag: "EmptySearchQuery" });
@@ -141,7 +112,6 @@ function isSearchQuery(value: string): value is SearchQuery {
 
 const REDACTED_DISPLAY = "<redacted>";
 
-/** Format URL-like UI text without exposing URL userinfo credentials. */
 export function redactUrlCredentialsForDisplay(input: unknown): string {
   const raw = String(input);
   const trimmed = raw.trim();

@@ -6,17 +6,14 @@ import type { WebToolsSettings } from "./settings";
 import { redactSecrets } from "./tool-output";
 import type { SearchProviderName } from "./types";
 
-/** Only the current execution's registry is retained while resolving credentials. */
 export type ToolCredentialContext = Pick<ExtensionContext, "modelRegistry">;
 
-/** Production binds Pi's resolver at execution time; test runtimes inject the same service. */
 export type ToolCredentialComposition = {
   readonly credentialsForContext?: (
     context: ToolCredentialContext,
   ) => CredentialResolver["Service"];
 };
 
-/** Override the resolver for this program without changing the shared runtime or sibling calls. */
 export function withToolCredentials<A, E, R>(
   program: Effect.Effect<A, E, R | CredentialResolver>,
   composition: ToolCredentialComposition,
@@ -27,7 +24,6 @@ export function withToolCredentials<A, E, R>(
     : program;
 }
 
-/** Select relevant credentials without executing unused endpoint-override or disabled providers. */
 export function credentialNames(
   settings: WebToolsSettings,
   options: {
@@ -49,7 +45,6 @@ export function credentialNames(
   });
 }
 
-/** An explicit Brave chain is invalid without a usable key, even if an earlier provider works. */
 export function validateExplicitBrave(
   settings: WebToolsSettings,
   snapshot: CredentialSnapshot,
@@ -71,7 +66,6 @@ export function validateExplicitBrave(
     : Effect.void;
 }
 
-/** The snapshot survives projection and outer error conversion, never shared between requests. */
 export function createRequestRedactor(redactText: (input: string) => string) {
   let secrets: readonly string[] = [];
   return {

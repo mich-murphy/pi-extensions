@@ -1,22 +1,8 @@
-/**
- * HTML sanitization and conversion to markdown or plain text.
- *
- * Adapted from dmmulroy/pi-web-tools (MIT): readable-root extraction, boilerplate
- * stripping, layout-table flattening, and URL attribute resolution that removes
- * javascript:/data: URLs before conversion.
- *
- * linkedom compiles a css-select matcher and walks the whole subtree on every querySelectorAll,
- * matches, and closest call. The passes here walk the tree directly instead, with selectors compiled
- * once (element-selector.ts), and measure every readable-root candidate in one bottom-up walk. Each
- * pass reproduces the semantics of the selector queries it replaces, so the output is unchanged.
- */
-// turndown's own HTML parser in Node; chunked conversion parses with it (see convertToMarkdown).
 import { createDocument } from "@mixmark-io/domino";
 import { Result } from "effect";
 import { compile as compileHtmlToText } from "html-to-text";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
-// turndown-plugin-gfm does not ship ESM-friendly typings (see vendor.d.ts).
 import { gfm } from "turndown-plugin-gfm";
 import { CollapsedTextLength, normalizedTextLength } from "./collapsed-text";
 import { compileSelector, compileSelectorSet } from "./element-selector";
@@ -71,8 +57,6 @@ const LANDMARK_REMOVAL_SELECTOR = [
 
 const isRemovedElement = compileSelector(`${REMOVAL_SELECTOR}, ${LANDMARK_REMOVAL_SELECTOR}`);
 
-// linkedom keeps these elements' markup as text and serializes it unescaped, so as the root their
-// text would come back from sanitizeHtml as markup that was never sanitized.
 const RAW_TEXT_TAGS: ReadonlySet<string> = new Set(["script", "style", "textarea", "title"]);
 const HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 const FALLBACK_CONTENT_TAGS: ReadonlySet<string> = new Set(["article", "main", "section", "div"]);
@@ -142,17 +126,10 @@ const BOILERPLATE_TOKEN_RE =
 const RAW_HTML_BLOCK_TAG_RE =
   /<(?:table|tbody|thead|tfoot|tr|td|th|div|section|article|main|header|footer|nav|aside)\b/giu;
 
-// turndown joins each node's replacement onto the accumulated output, flattening it every time, so
-// converting a large flat document is quadratic in its size. Past this input size the sanitized
-// root is converted in chunks of about the target text size (see convertToMarkdown).
 const TURNDOWN_CHUNK_MIN_INPUT_BYTES = 128 * 1024;
 const TURNDOWN_CHUNK_TARGET_CHARS = 16 * 1024;
 const TURNDOWN_CHUNK_MIN_CHILDREN = 400;
 
-// Children a chunk may start with: blocks whose every replacement (rule, blank, or keep) starts
-// with "\n\n", so the join before them does not depend on what precedes them. Left out: li, tr, td,
-// th, table sections, dd, and dt, whose replacements do not start with "\n\n" or depend on their
-// siblings; html, body, frameset, and form.
 const CHUNK_BOUNDARY_TAGS: ReadonlySet<string> = new Set([
   "address",
   "article",
@@ -207,7 +184,6 @@ const compiledHtmlToText = compileHtmlToText({
   ],
 });
 
-/** Strip boilerplate and unsafe URL attributes, returning sanitized HTML rooted at the readable content. */
 export function sanitizeHtml(
   rawHtml: string,
   baseUrl: string,
@@ -218,7 +194,6 @@ export function sanitizeHtml(
     : Result.succeed(`<div>${root.innerHTML}</div>`);
 }
 
-/** Convert raw HTML to markdown, sanitized and with URLs resolved against baseUrl. */
 export function htmlToMarkdown(
   rawHtml: string,
   baseUrl: string,
@@ -233,7 +208,6 @@ export function htmlToMarkdown(
   );
 }
 
-/** Convert raw HTML to plain text, sanitized and with URLs resolved against baseUrl. */
 export function htmlToText(
   rawHtml: string,
   baseUrl: string,
@@ -248,10 +222,6 @@ export function htmlToText(
   );
 }
 
-/**
- * Convert raw HTML to markdown, falling back to plain text when the markdown is dominated by raw
- * HTML blocks (JS-heavy pages). Sanitizes once and reuses the result for the fallback.
- */
 export function htmlToMarkdownWithTextFallback(
   rawHtml: string,
   baseUrl: string,
@@ -295,12 +265,6 @@ function createTurndownService(): TurndownService {
     emDelimiter: "*",
   });
   service.use(gfm);
-  // turndown-plugin-gfm reads every table's first row without checking that one exists, and turndown
-  // never treats a table as blank, so a table without rows throws. Such tables reach turndown because
-  // role and heading markup exempt a rowless table from flattening, and because turndown re-parses
-  // the sanitized HTML with an HTML5 parser that moves misnested content out of tables. A rule added
-  // later is tried first, so this one takes those tables before the plugin's rules and keeps their
-  // content as plain blocks. Tables with rows never match it and convert as before.
   service.addRule("tableWithoutRows", {
     filter: (node) => isTableElement(node) && node.rows.length === 0,
     replacement: (content) => `\n\n${content}\n\n`,
@@ -308,8 +272,6 @@ function createTurndownService(): TurndownService {
   return service;
 }
 
-// linkedom makes the first element the document element when the input has no html element, which
-// cuts off later siblings and text, so such input is parsed again inside a full document shell.
 function parseWithHtmlRoot(rawHtml: string): Document {
   const { document } = parseHTML(rawHtml);
   const rootName = document.documentElement?.localName;
@@ -331,9 +293,6 @@ function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | und
   return root;
 }
 
-// Candidates come from querySelectorAll, which skips template contents, and are tried selector by
-// selector; the first selector with a scoring candidate decides. Without one, body (or the document
-// element) and its article, main, section, and div descendants compete.
 function extractReadableRoot(document: Document): Element | undefined {
   const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
@@ -444,11 +403,6 @@ function scoreContentCandidate(element: Element, stats: Readonly<ContentStats>):
   return score;
 }
 
-/**
- * What scoring needs to know about an element's subtree. Text is the element's textContent, which
- * includes template contents. The link text and counts are over the descendants querySelectorAll
- * would return from the element, which skips the contents of descendant templates.
- */
 class ContentStats {
   readonly text = new CollapsedTextLength();
   linkTextLength = 0;
@@ -457,12 +411,6 @@ class ContentStats {
   headings = 0;
   tables = 0;
 
-  /**
-   * @param element - The measured element.
-   * @param hidesContent - The element is a template below the measured root, so its contents stay
-   *   out of its ancestors' counts.
-   * @param inTemplateContent - The element is inside a descendant template's contents.
-   */
   constructor(
     readonly element: Element,
     readonly hidesContent: boolean,
@@ -530,7 +478,6 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
       (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) &&
       !RAW_TEXT_TAGS.has(current.stats.element.localName)
     ) {
-      // Raw text (script, style, ...) is never visible, so it must not score a candidate.
       current.stats.text.appendText(node.nodeValue ?? "");
     }
   }
@@ -592,8 +539,6 @@ function flattenLayoutTables(tables: readonly Element[], root: Element): void {
     if (!isLikelyLayoutTable(shape)) {
       continue;
     }
-    // Only this table's own parts: flattening a nested data table's rows would leave it an empty
-    // table shell once turndown's parser moves the resulting divs out of it.
     for (let partIndex = shape.ownParts.length - 1; partIndex >= 0; partIndex -= 1) {
       const part = shape.ownParts[partIndex];
       if (part !== undefined) {
@@ -847,40 +792,18 @@ function isElementNode(node: Node): node is Element {
   return node.nodeType === ELEMENT_NODE;
 }
 
-// Per the DOM, every element in the HTML namespace implements HTMLElement.
 function isHtmlElement(element: Element): element is HTMLElement {
   return element.namespaceURI === HTML_NAMESPACE;
 }
 
-// turndown's parser gives HTML TABLE elements the HTMLTableElement interface; the gfm plugin reads
-// the same rows property.
 function isTableElement(node: Element): node is HTMLTableElement {
   return node.nodeName === "TABLE";
 }
 
-// domino elements, which turndown's parse produces, implement appendChild but not append.
 function appendDominoChild(parent: Element, child: Node): void {
   parent.appendChild(child);
 }
 
-/**
- * Convert the sanitized root's innerHTML to markdown.
- *
- * turndown parses its input with domino and joins each node's replacement onto the accumulated
- * output, flattening the string every time, so large flat documents convert in quadratic time.
- * Large inputs are therefore parsed here, exactly as turndown parses a string, and the parsed tree
- * is converted in chunks: runs of the children of the innermost lone wrapper (see
- * loneWrapperChild), each run after the first starting at a block child (CHUNK_BOUNDARY_TAGS).
- * Chunking the parsed tree rather than the markup matters: the HTML parser can close misnested
- * markup differently in a fragment than in the whole document.
- *
- * Each chunk is moved into shallow clones of its ancestors, bracketed by sentinel paragraphs, and
- * converted as a node. A sentinel block next to a chunk edge takes part in turndown's whitespace
- * collapsing, sibling checks, and block join exactly as the neighbouring real block would, and stops
- * turndown's final trim from eating whitespace at the edge. Removing the sentinels, trimming the
- * newlines before each trailing one, and trimming the whole as turndown does reproduces the
- * single-pass output.
- */
 function convertToMarkdown(html: string, sanitizedRoot: Element): string {
   const input = `<div>${html}</div>`;
   const chunked = shouldTryChunking(html, sanitizedRoot) ? convertInChunks(input) : undefined;
@@ -896,7 +819,6 @@ function shouldTryChunking(html: string, sanitizedRoot: Element): boolean {
 }
 
 function convertInChunks(input: string): string | undefined {
-  // turndown's own string parsing (turndown.cjs.js RootNode) when no DOMParser is global.
   const root = createDocument(`<x-turndown id="turndown-root">${input}</x-turndown>`).querySelector(
     "#turndown-root",
   );
@@ -904,8 +826,6 @@ function convertInChunks(input: string): string | undefined {
     return undefined;
   }
   const { levels, container } = wrapperChain(root);
-  // turndown converts an element whose text is all whitespace as blank, dropping its content, but a
-  // chunk shell holds a sentinel and is never blank. Such documents convert in one pass.
   if (!/\S/u.test(container.textContent ?? "")) {
     return undefined;
   }
@@ -914,7 +834,7 @@ function convertInChunks(input: string): string | undefined {
   if (chunks.length < 2) {
     return undefined;
   }
-  detachChildren(container);
+  detachChildrenLastFirstToAvoidDominoReindexing(container);
 
   let markdown = "";
   for (const [index, chunk] of chunks.entries()) {
@@ -929,7 +849,6 @@ function convertInChunks(input: string): string | undefined {
     }
     markdown += piece;
   }
-  // turndown's own postProcess trim, applied to the joined output.
   return markdown.replace(/^[\t\r\n]+/u, "").replace(/[\t\r\n\s]+$/u, "");
 }
 
@@ -938,10 +857,6 @@ type ChunkEdges = {
   readonly sentinelAfter: boolean;
 };
 
-/**
- * Remove a converted chunk's sentinels, and the newlines before a trailing one. Defensive: the
- * sentinels always survive conversion, but a missing one returns undefined rather than misjoin.
- */
 function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefined {
   let text = piece;
   if (edges.sentinelBefore) {
@@ -973,11 +888,6 @@ function wrapperChain(root: Element): {
   return { levels, container };
 }
 
-/**
- * Whether the innermost lone wrapper of the sanitized (linkedom) root has enough children for
- * chunking to pay off. This only decides whether to try chunking: the chunks themselves come from
- * turndown's parse, which may nest misnested markup differently.
- */
 function hasManyChunkableChildren(root: Element): boolean {
   const { container } = wrapperChain(root);
   let count = 0;
@@ -990,18 +900,10 @@ function hasManyChunkableChildren(root: Element): boolean {
   return false;
 }
 
-// turndown converts these with its default block rule, "\n\n" + content + "\n\n", whatever their
-// parent. gfm's highlighted-code rule takes some divs, so divs with its class are not wrappers.
 const WRAPPER_TAGS: ReadonlySet<string> = new Set(["div", "section", "article", "main"]);
 const GFM_HIGHLIGHT_CLASS_RE = /highlight-(?:text|source)-/u;
 const COLLAPSIBLE_WHITESPACE_RE = /^[ \t\r\n]*$/u;
 
-/**
- * The container's only element child when it is a wrapper whose siblings turndown drops: comments,
- * and text of only the whitespace it collapses next to a block. Converting such a wrapper gives its
- * content's conversion wrapped in block newlines, so chunks of its content, each in a clone of the
- * wrapper, convert as the content would inside the whole wrapper.
- */
 function loneWrapperChild(container: Element): Element | undefined {
   const wrapper = soleElementChild(container);
   if (wrapper === undefined || !WRAPPER_TAGS.has(wrapper.localName)) {
@@ -1026,7 +928,6 @@ function soleElementChild(container: Element): Element | undefined {
   return sole;
 }
 
-// Comments, and text of only the whitespace turndown collapses away next to a block.
 function isDroppedByTurndown(node: ChildNode): boolean {
   if (node.nodeType === COMMENT_NODE) {
     return true;
@@ -1056,23 +957,12 @@ function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] 
   return chunks;
 }
 
-/**
- * Detach every child of the container, last first. domino keeps a parent's children in an array and
- * splices a removed child out of it, re-indexing the later siblings, so removing from the front is
- * linear per child. Removing the last child each time costs constant time after one indexing pass,
- * which keeps moving the children into the chunk shells linear overall.
- */
-function detachChildren(container: Element): void {
+function detachChildrenLastFirstToAvoidDominoReindexing(container: Element): void {
   for (let child = container.lastChild; child !== null; child = container.lastChild) {
     child.remove();
   }
 }
 
-/**
- * Move a chunk into shallow clones of the levels, outermost first, returning the outermost clone.
- * Defensive: the outermost level is the x-turndown root, an HTML element, but a clone that is not
- * an HTML element returns undefined rather than convert.
- */
 function buildChunkShell(
   levels: readonly Element[],
   chunk: readonly ChildNode[],

@@ -126,6 +126,28 @@ describe("PublicWebTransport", () => {
     );
   });
 
+  test("each request owns its socket instead of sharing a keep-alive pool", async () => {
+    const sockets = new Set<unknown>();
+    await withLocalServer(
+      (request, response) => {
+        sockets.add(request.socket);
+        response.writeHead(200, { "content-type": "text/plain" });
+        response.end("owned");
+      },
+      async (port) => {
+        for (const path of ["/first", "/second"]) {
+          const response = await transportService().get(
+            new URL(`http://owned-socket.invalid:${port}${path}`),
+            [{ address: "127.0.0.1", family: 4 }],
+            { headers: {}, signal: new AbortController().signal },
+          );
+          await expect(response.text()).resolves.toBe("owned");
+        }
+        expect(sockets.size).toBe(2);
+      },
+    );
+  });
+
   test("terminates a body-forbidden response instead of draining it in the background", async () => {
     const connectionClosed = undefinedDeferred();
     await withLocalServer(
@@ -229,8 +251,6 @@ describe("PublicWebTransport", () => {
           expect(result.success.body.toString("utf8", 0, 16)).toBe("0123456789abcdef");
           expect(result.success.responseTruncated).toBe(true);
           await expect(connectionClosed.promise).resolves.toBeUndefined();
-          // The socket is closed, so the pipeline has destroyed every decoder; Node reports a rejection
-          // or uncaught exception raised by then on the next event-loop turns, which this drains.
           await eventLoopTurns(2);
         },
       );
@@ -241,12 +261,16 @@ describe("PublicWebTransport", () => {
     expect(unhandled).toStrictEqual([]);
   });
 
-  test("decodes stacked content encodings in reverse order", async () => {
+  test("decodes stacked content encodings in reverse order and drops the compressed Content-Length", async () => {
     const text = "stacked compression".repeat(100);
     await withLocalServer(
       (_request, response) => {
-        response.writeHead(200, { "content-encoding": "gzip, br" });
-        response.end(brotliCompressSync(gzipSync(text)));
+        const compressed = brotliCompressSync(gzipSync(text));
+        response.writeHead(200, {
+          "content-encoding": "gzip, br",
+          "content-length": String(compressed.byteLength),
+        });
+        response.end(compressed);
       },
       async (port) => {
         const response = await transportService().get(
@@ -259,6 +283,7 @@ describe("PublicWebTransport", () => {
         );
 
         expect(response.headers.get("content-encoding")).toBeNull();
+        expect(response.headers.get("content-length")).toBeNull();
         await expect(response.text()).resolves.toBe(text);
       },
     );

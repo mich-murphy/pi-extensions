@@ -1,8 +1,5 @@
 import { Cause, Effect, Exit, Option } from "effect";
 
-/** Trace duration and safe failure summaries, never raw success values or defects.
- * The original exit is restored only after the span has ended. The operation remains interruptible.
- */
 export function withSafeSpan<A, E, R>(
   name: string,
   operation: Effect.Effect<A, E, R>,
@@ -33,7 +30,6 @@ export function withSafeSpan<A, E, R>(
           return undefined;
         }).pipe(Effect.withSpan(name)),
       );
-      // The span is closed before the real result (including interruption) leaves this boundary.
       if (original === undefined) {
         return yield* Effect.die(new Error("Traced operation did not produce an exit"));
       }

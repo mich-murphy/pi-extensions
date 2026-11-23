@@ -5,7 +5,6 @@ declare module "html-to-text" {
   export function compile(options: unknown): (html: string) => string;
 }
 
-// @mixmark-io/domino ships typings for the module name "domino" only.
 declare module "@mixmark-io/domino" {
   export function createDocument(html?: string, force?: boolean): Document;
 }

@@ -1,13 +1,11 @@
 import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
-// Test-only: Pi does not export its in-memory CredentialStore from the package root.
 import { AuthStorage } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 import { createWebAuthentication } from "../authentication";
 
 export type AuthStorageData = NonNullable<Parameters<typeof AuthStorage.inMemory>[0]>;
 
-/** Real native auth, isolated from user settings, catalogs and credential files. */
 export async function nativeAuthFixture(
   options: {
     readonly initial?: AuthStorageData;
@@ -27,19 +25,16 @@ export async function nativeAuthFixture(
     registerProvider: registry.registerProvider.bind(registry),
   };
   if (options.register !== false) {
-    // Registration starts fire-and-forget refreshes. Settle every real refresh
-    // before callers can rewrite models.json; otherwise an older load can replace
-    // the caller's explicitly refreshed config (or read a truncated file).
     const refresh = runtime.refresh.bind(runtime);
-    const pending: ReturnType<typeof refresh>[] = [];
+    const refreshesToSettleBeforeCallersRewriteModelsJson: ReturnType<typeof refresh>[] = [];
     const spy = vi.spyOn(runtime, "refresh").mockImplementation(async (refreshOptions) => {
       const result = refresh(refreshOptions);
-      pending.push(result);
+      refreshesToSettleBeforeCallersRewriteModelsJson.push(result);
       return result;
     });
     try {
       authentication.register(pi, registry);
-      await Promise.all(pending);
+      await Promise.all(refreshesToSettleBeforeCallersRewriteModelsJson);
     } finally {
       spy.mockRestore();
     }

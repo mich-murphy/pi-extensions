@@ -8,32 +8,31 @@ import { parsePublicHttpUrl } from "../types";
 
 const settings = propertySettings(200);
 
-// ---- Independent numeric oracle: IANA non-global IPv4 ranges as [base, prefixLength]. ----
-const v4 = (a: number, b: number, c: number, d: number) => ((a * 256 + b) * 256 + c) * 256 + d;
-const V4_NON_GLOBAL: readonly (readonly [number, number])[] = [
-  [v4(0, 0, 0, 0), 8],
-  [v4(10, 0, 0, 0), 8],
-  [v4(100, 64, 0, 0), 10],
-  [v4(127, 0, 0, 0), 8],
-  [v4(169, 254, 0, 0), 16],
-  [v4(172, 16, 0, 0), 12],
-  [v4(192, 0, 0, 0), 24],
-  [v4(192, 0, 2, 0), 24],
-  [v4(192, 168, 0, 0), 16],
-  [v4(198, 18, 0, 0), 15],
-  [v4(198, 51, 100, 0), 24],
-  [v4(203, 0, 113, 0), 24],
-  [v4(224, 0, 0, 0), 4],
-  [v4(240, 0, 0, 0), 4],
+const ipv4Value = (a: number, b: number, c: number, d: number) =>
+  ((a * 256 + b) * 256 + c) * 256 + d;
+const IANA_NON_GLOBAL_V4: readonly (readonly [number, number])[] = [
+  [ipv4Value(0, 0, 0, 0), 8],
+  [ipv4Value(10, 0, 0, 0), 8],
+  [ipv4Value(100, 64, 0, 0), 10],
+  [ipv4Value(127, 0, 0, 0), 8],
+  [ipv4Value(169, 254, 0, 0), 16],
+  [ipv4Value(172, 16, 0, 0), 12],
+  [ipv4Value(192, 0, 0, 0), 24],
+  [ipv4Value(192, 0, 2, 0), 24],
+  [ipv4Value(192, 168, 0, 0), 16],
+  [ipv4Value(198, 18, 0, 0), 15],
+  [ipv4Value(198, 51, 100, 0), 24],
+  [ipv4Value(203, 0, 113, 0), 24],
+  [ipv4Value(224, 0, 0, 0), 4],
+  [ipv4Value(240, 0, 0, 0), 4],
 ];
 function v4NonGlobal(value: number): boolean {
-  return V4_NON_GLOBAL.some(([base, length]) => {
+  return IANA_NON_GLOBAL_V4.some(([base, length]) => {
     const size = 2 ** (32 - length);
     return value >= base && value < base + size;
   });
 }
 
-// IPv6 as eight 16-bit groups; prefix tests compare the leading bits as a bigint.
 const toBig = (groups: readonly number[]) =>
   groups.reduce((acc, group) => (acc << 16n) | BigInt(group), 0n);
 function inV6(groups: readonly number[], base: readonly number[], length: number): boolean {
@@ -43,11 +42,14 @@ function inV6(groups: readonly number[], base: readonly number[], length: number
 const embedded = (high: number, low: number) => high * 65_536 + low;
 
 function v6NonGlobal(g: readonly number[]): boolean {
-  if (inV6(g, [0, 0, 0, 0, 0, 0xff_ff, 0, 0], 96) || inV6(g, [0, 0, 0, 0, 0xff_ff, 0, 0, 0], 96)) {
-    return v4NonGlobal(embedded(g[6] ?? 0, g[7] ?? 0)); // mapped and SIIT
+  const mappedOrSiit =
+    inV6(g, [0, 0, 0, 0, 0, 0xff_ff, 0, 0], 96) || inV6(g, [0, 0, 0, 0, 0xff_ff, 0, 0, 0], 96);
+  if (mappedOrSiit) {
+    return v4NonGlobal(embedded(g[6] ?? 0, g[7] ?? 0));
   }
-  if (inV6(g, [0x20_02, 0, 0, 0, 0, 0, 0, 0], 16)) {
-    return v4NonGlobal(embedded(g[1] ?? 0, g[2] ?? 0)); // 6to4
+  const sixToFour = inV6(g, [0x20_02, 0, 0, 0, 0, 0, 0, 0], 16);
+  if (sixToFour) {
+    return v4NonGlobal(embedded(g[1] ?? 0, g[2] ?? 0));
   }
   const ranges: readonly (readonly [number[], number])[] = [
     [[0, 0, 0, 0, 0, 0, 0, 0], 96],
@@ -62,7 +64,6 @@ function v6NonGlobal(g: readonly number[]): boolean {
   return ranges.some(([base, length]) => inV6(g, base, length));
 }
 
-// ---- Generators biased to range boundaries. ----
 const BOUNDARY_OCTETS = [
   0, 1, 2, 3, 9, 10, 11, 15, 16, 17, 31, 32, 63, 64, 65, 100, 113, 126, 127, 128, 168, 169, 171,
   172, 173, 191, 192, 193, 197, 198, 199, 200, 203, 204, 223, 224, 239, 240, 254, 255,
@@ -78,9 +79,8 @@ const group = gs.oneOf(
   gs.integers({ minValue: 0, maxValue: 0xff_ff }),
 );
 const randomOctets = gs.arrays(octet, { minSize: 4, maxSize: 4 });
-// Addresses at the first/last/just-outside edge of each oracle range, so small ranges are hit.
 const edgeOctets = gs.composite((tc) => {
-  const [base, length] = tc.draw(gs.sampledFrom(V4_NON_GLOBAL), "range");
+  const [base, length] = tc.draw(gs.sampledFrom(IANA_NON_GLOBAL_V4), "range");
   const size = 2 ** (32 - length);
   const offset = tc.draw(gs.sampledFrom([-1, 0, 1, size - 1, size, size + 1]), "offset");
   const value = Math.min(Math.max(base + offset, 0), 2 ** 32 - 1);
@@ -92,21 +92,21 @@ const toGroups = (o: readonly number[]) => [
   (o[2] ?? 0) * 256 + (o[3] ?? 0),
 ];
 
-// Prefix templates; undefined slots are free groups.
-const V6_PREFIXES: readonly (readonly (number | undefined)[])[] = [
-  [0, 0, 0, 0, 0, 0xff_ff], // mapped
-  [0, 0, 0, 0, 0xff_ff, 0], // SIIT
-  [0, 0, 0, 0, 0xff_ff], // SIIT look-alike: group 5 free, so ::ffff:<nonzero>:a:b is drawn too
-  [0, 0, 0, 0, 0, 0], // compatible
-  [0x64, 0xff_9b, 0, 0, 0, 0], // NAT64
-  [0x64, 0xff_9b, 1], // local-use NAT64
-  [0x20_02], // 6to4
-  [0x20_01, 0xd_b8],
-  [0x1_00, 0, 0, 0],
-  [0xfe_80],
-  [0xfc_00],
-  [],
-];
+const V6_PREFIX_TEMPLATES: Record<string, readonly (number | undefined)[]> = {
+  mapped: [0, 0, 0, 0, 0, 0xff_ff],
+  siit: [0, 0, 0, 0, 0xff_ff, 0],
+  siitLookAlikeWithFreeGroupFive: [0, 0, 0, 0, 0xff_ff],
+  compatible: [0, 0, 0, 0, 0, 0],
+  nat64: [0x64, 0xff_9b, 0, 0, 0, 0],
+  localUseNat64: [0x64, 0xff_9b, 1],
+  sixToFour: [0x20_02],
+  documentation: [0x20_01, 0xd_b8],
+  discardOnly: [0x1_00, 0, 0, 0],
+  linkLocal: [0xfe_80],
+  uniqueLocal: [0xfc_00],
+  unconstrained: [],
+};
+const V6_PREFIXES = Object.values(V6_PREFIX_TEMPLATES);
 const v6Groups = gs.composite((tc) => {
   const prefix = tc.draw(gs.sampledFrom(V6_PREFIXES), "prefix");
   const free = tc.draw(gs.arrays(group, { minSize: 8, maxSize: 8 }), "free");
@@ -134,12 +134,11 @@ const dottedTail = (groups: readonly number[]) => {
 
 function checkV4(o: number[]): void {
   const [a = 0, b = 0, c = 0, d = 0] = o;
-  assert.equal(isPrivateOrLocalIp(o.join(".")), v4NonGlobal(v4(a, b, c, d)));
+  assert.equal(isPrivateOrLocalIp(o.join(".")), v4NonGlobal(ipv4Value(a, b, c, d)));
 }
 
-// Range edges: first/last address of each table range and their neighbours, where an off-by-one or a dropped range shows.
 function checkEdge(index: number, atEnd: boolean, delta: number): void {
-  const [base = 0, length = 0] = V4_NON_GLOBAL[index] ?? [];
+  const [base = 0, length = 0] = IANA_NON_GLOBAL_V4[index] ?? [];
   const value = base + (atEnd ? 2 ** (32 - length) - 1 : 0) + delta;
   if (value < 0 || value > 2 ** 32 - 1) {
     return;
@@ -148,8 +147,6 @@ function checkEdge(index: number, atEnd: boolean, delta: number): void {
   assert.equal(isPrivateOrLocalIp(octets.join(".")), v4NonGlobal(value), octets.join("."));
 }
 
-// WHATWG URL accepts these legacy spellings of an IPv4 host: a whole 32-bit integer in any radix,
-// dotted parts in hex or octal, and short forms whose last part fills the remaining bytes.
 type Spelling = (octets: readonly number[]) => string;
 const whole = (octets: readonly number[]) => octets.reduce((acc, part) => acc * 256 + part, 0);
 const tail = (octets: readonly number[], keep: number) =>
@@ -170,7 +167,7 @@ describe("isPrivateOrLocalIp properties", () => {
   test("IPv4 verdict is right at every range edge", () => {
     assertHegel(settings, (tc) => {
       checkEdge(
-        tc.draw(gs.integers({ minValue: 0, maxValue: V4_NON_GLOBAL.length - 1 }), "range"),
+        tc.draw(gs.integers({ minValue: 0, maxValue: IANA_NON_GLOBAL_V4.length - 1 }), "range"),
         tc.draw(gs.booleans(), "atEnd"),
         tc.draw(gs.sampledFrom([-1, 0, 1]), "delta"),
       );
@@ -203,7 +200,7 @@ describe("isPrivateOrLocalIp properties", () => {
       assert.ok(Result.isSuccess(parsed), `${spelling(octets)} did not parse`);
       const { hostname } = new URL(parsed.success);
       assert.equal(hostname, octets.join("."), "the URL parser canonicalises the host");
-      assert.equal(isPrivateOrLocalIp(hostname), v4NonGlobal(v4(a, b, c, d)), hostname);
+      assert.equal(isPrivateOrLocalIp(hostname), v4NonGlobal(ipv4Value(a, b, c, d)), hostname);
     });
   });
 
@@ -211,7 +208,6 @@ describe("isPrivateOrLocalIp properties", () => {
     assertHegel(settings, (tc) => {
       const text = tc.draw(gs.text({ maxSize: 40 }), "text");
       expect(typeof isPrivateOrLocalIp(text)).toBe("boolean");
-      // A leading letter outside hex digits can never be an IP literal.
       expect(isPrivateOrLocalIp(`x${text}`)).toBe(false);
     });
   });
