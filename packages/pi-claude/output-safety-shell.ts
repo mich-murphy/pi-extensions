@@ -1,4 +1,3 @@
-/** Lexical facts needed by the executable-output guard, not a general shell AST. */
 type Word = { text: string; discovered: boolean; quoted: boolean };
 type Heredoc = { delimiter: string; quoted: boolean; tabs: boolean };
 type Scope = { discovered: boolean; blocked: boolean };
@@ -17,8 +16,6 @@ const WRAPPERS: Readonly<Record<string, WrapperOptions>> = {
 };
 
 function wrapperName(text: string): string {
-  // Only known external utilities at conventional absolute locations, not arbitrary basenames
-  // or imaginary external versions of shell builtins (command/exec).
   return text.replace(/^\/(?:usr\/)?bin\/(?<wrapper>env|sudo|nohup)$/u, "$<wrapper>");
 }
 
@@ -42,7 +39,6 @@ function wrapperEnd(words: readonly Word[], start: number, name: string): number
     }
     const width = optionWidth(words, offset, name, options);
     if (width === 0) {
-      // Lookup modes and unknown/semantic options are not transparent wrappers.
       return start;
     }
     offset += width;
@@ -73,8 +69,6 @@ function commandWords(words: readonly Word[]): readonly Word[] {
       offset += 1;
       continue;
     }
-    // Only the unquoted reserved word at shell position times a shell pipeline. An
-    // executable named time (quoted, escaped or after a wrapper) cannot restore that context.
     shellPrefixes &&= text === "time" && word?.quoted === false;
     const name = wrapperName(text);
     const end = wrapperEnd(words, offset, name);
@@ -106,17 +100,11 @@ function isDiscovery(words: readonly Word[]): boolean {
   return words[offset]?.text === "-v";
 }
 
-/**
- * Recognize cat/discovery relationships without interpreting literal shell data as commands.
- * No shell is run. Aliases, eval, variable values and arbitrary interpreter scripts are not
- * resolved; output quarantine remains the backstop for unrecognized binary output.
- *
- * @param source - Source passed to the bash tool.
- * @returns Whether a recognized executable-dump command occurs in executable shell text.
- */
 export function hasExecutableCat(source: string): boolean {
   return new ShellScan(source).scan().blocked;
 }
+
+const MAX_SHELL_NESTING_DEPTH_BEFORE_REFUSING = 100;
 
 class ShellScan {
   private position = 0;
@@ -125,8 +113,7 @@ class ShellScan {
   constructor(private readonly source: string) {}
 
   scan(stop = "", depth = 0): Scope {
-    // Avoid recursive stack exhaustion. Do not silently exempt deeply nested shell source.
-    if (depth > 100) {
+    if (depth > MAX_SHELL_NESTING_DEPTH_BEFORE_REFUSING) {
       this.blocked = true;
       this.position = this.source.length;
       return { discovered: false, blocked: true };
@@ -258,8 +245,6 @@ class ShellScan {
       return "";
     }
     if (delimiter && !quote && this.isExpansion(character)) {
-      // Delimiter words aren't expanded. Refuse unsupported substitution-shaped spelling
-      // instead of guessing a terminator and silently exempting executable trailing source.
       this.blocked = true;
     }
     if (character === quote) {
@@ -285,7 +270,6 @@ class ShellScan {
   private dollarDelimiter(): string {
     const quote = this.source[this.position] ?? "";
     this.position += 1;
-    // Locale-quoted delimiters may be translated by Bash; no locale catalog is read here.
     this.blocked ||= quote === '"';
     let text = "";
     while (this.position < this.source.length) {
@@ -295,8 +279,6 @@ class ShellScan {
         return text;
       }
       if (character === "\\") {
-        // ANSI-C escapes and locale-dependent translation are not evaluated. Refuse
-        // escaped spellings rather than risk assigning the wrong heredoc terminator.
         this.blocked = true;
       }
       text += character;
@@ -327,7 +309,6 @@ class ShellScan {
 
   private redirect(depth: number): Word {
     this.position += 1;
-    // Targets aren't command words, but their expansions still execute.
     while ("<>&|".includes(this.source[this.position] ?? "\0")) {
       this.position += 1;
     }
@@ -351,7 +332,7 @@ class ShellScan {
   }
 
   private arithmetic(depth: number): Scope {
-    if (depth > 100) {
+    if (depth > MAX_SHELL_NESTING_DEPTH_BEFORE_REFUSING) {
       this.blocked = true;
       this.position = this.source.length;
       return { discovered: false, blocked: true };
@@ -418,7 +399,6 @@ class ShellScan {
 
   private heredocExpansions(body: string, depth: number): void {
     const scanner = new ShellScan(body);
-    // Here-doc quotes are data, but backslash can suppress $, backtick and backslash.
     while (scanner.position < body.length) {
       const character = body[scanner.position] ?? "";
       scanner.position += 1;

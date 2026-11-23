@@ -416,7 +416,6 @@ describe("turn streaming", () => {
             },
           },
         }),
-        // The first request completed, so the second is an internal continuation.
         streamEvent({ type: "message_delta", delta: { stop_reason: "max_tokens" }, usage: {} }),
         streamEvent({
           type: "message_start",

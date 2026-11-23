@@ -41,25 +41,16 @@ const decodeUsageResponse = Schema.decodeUnknownResult(
   }),
 );
 
-/** One Claude subscription rate-limit window. */
 export type ClaudeUsageWindow = {
-  /** Human-readable window name supplied by this adapter or by Claude. */
   readonly name: string;
-  /** Percentage of the allowance consumed, when Claude reports it. */
   readonly usedPercent: number | null;
-  /** ISO timestamp at which the allowance resets, when Claude reports it. */
   readonly resetsAt: string | null;
 };
 
-/** Parsed Claude subscription usage suitable for display. */
 export type ClaudeUsageStatus = {
-  /** Claude subscription type, or null outside subscription authentication. */
   readonly subscriptionType: string | null;
-  /** Whether Claude returned plan rate limits for this account. */
   readonly rateLimitsAvailable: boolean;
-  /** General and model-specific plan windows. */
   readonly windows: readonly ClaudeUsageWindow[];
-  /** Whether paid extra usage is enabled. */
   readonly extraUsageEnabled: boolean | null;
 };
 
@@ -72,45 +63,34 @@ const USAGE_FAILURE_MESSAGES: Readonly<Record<typeof UsageInspectionOperation.Ty
   close: "Could not close the Claude usage session. Restart Pi if `claude` keeps running.",
 };
 
-/** Expected failure while starting, reading, parsing, or closing a Claude usage session. */
 class ClaudeUsageInspectionError extends Schema.TaggedError<ClaudeUsageInspectionError>()(
   "ClaudeUsageInspectionError",
   {
-    /** Inspection step that failed. */
     operation: UsageInspectionOperation,
-    /** Unclassified local cause. Callers must not render it. */
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
-  /** Plain-English summary of the failed step. */
   override get message(): string {
     return USAGE_FAILURE_MESSAGES[this.operation];
   }
 }
 
-/** Expected failure when Claude does not answer the usage request in time. */
 class ClaudeUsageTimeoutError extends Schema.TaggedError<ClaudeUsageTimeoutError>()(
   "ClaudeUsageTimeoutError",
   {
-    /** How long the inspection waited. */
     timeout: Schema.Duration,
   },
 ) {
-  /** Plain-English summary naming the wait. */
   override get message(): string {
     return `Timed out after ${Duration.format(this.timeout)} waiting for Claude usage.`;
   }
 }
 
-/** Minimal live SDK query used by usage inspection. */
 export type ClaudeUsageQuery = {
-  /** Request the SDK's experimental structured `/usage` response. */
   readonly readUsage: () => Promise<unknown>;
-  /** Close the idle SDK session and its subprocess. */
   readonly close: () => Promise<void>;
 };
 
-/** Starts an idle, subscription-authenticated SDK query that ends when the controller aborts. */
 export type StartClaudeUsageQuery = (abortController: AbortController) => ClaudeUsageQuery;
 
 // oxlint-disable-next-line eslint/require-yield -- The idle prompt sends no message; it only holds SDK input open until abort.
@@ -152,22 +132,14 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
   };
 }
 
-/** Starts idle, subscription-authenticated SDK sessions used to read Claude usage. */
 export class ClaudeUsageQueries extends Context.Service<
   ClaudeUsageQueries,
   {
-    /** Start an idle SDK session that ends when the controller aborts. */
     readonly start: (
       abortController: AbortController,
     ) => Effect.Effect<ClaudeUsageQuery, ClaudeUsageInspectionError>;
   }
 >()("pi-claude/sdk-usage/ClaudeUsageQueries") {
-  /**
-   * Build the service from a raw starter, translating a thrown startup failure into a typed error.
-   *
-   * @param startQuery - Raw SDK subprocess starter.
-   * @returns A layer providing the service.
-   */
   static fromStart(startQuery: StartClaudeUsageQuery): Layer.Layer<ClaudeUsageQueries> {
     return Layer.succeed(
       ClaudeUsageQueries,
@@ -182,7 +154,6 @@ export class ClaudeUsageQueries extends Context.Service<
     );
   }
 
-  /** Live service: an Agent SDK query in the current working directory. */
   static readonly layer: Layer.Layer<ClaudeUsageQueries> = ClaudeUsageQueries.fromStart(
     defaultStartClaudeUsageQuery,
   );
@@ -229,15 +200,6 @@ function parseUsageResponse(
   });
 }
 
-/**
- * Read current Claude subscription usage without sending a model prompt.
- *
- * The idle session is always aborted and closed, including after a failed read or an
- * interruption. A read, parse, or timeout failure wins over a cleanup failure.
- *
- * @param timeout - Maximum wait for the SDK response, and again for cleanup.
- * @returns Parsed usage, failing with a typed startup, read, parse, timeout, or cleanup error.
- */
 export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
   timeout: Duration.Input = "10 seconds",
 ) {
@@ -270,16 +232,11 @@ export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
         Effect.andThen(Effect.tryPromise(async () => usageQuery.close())),
         Effect.timeout(timeout),
         Effect.mapError((cause) => new ClaudeUsageInspectionError({ operation: "close", cause })),
-        // Release runs uninterruptibly; the cleanup timeout must still be able to stop it.
         Effect.interruptible,
       ),
   );
 });
 
-/**
- * Remaining percentage rounded to two decimals, the precision Claude reports utilisation at.
- * `100 - 64.1` is `35.900000000000006` in binary floating point, which must not reach the user.
- */
 function remainingPercent(usedPercent: number): number {
   return Math.round((100 - usedPercent) * 100) / 100;
 }
@@ -295,12 +252,6 @@ function formatResetTime(resetsAt: string | null): string {
   return `resets ${formatter.format(new Date(resetsAt))}`;
 }
 
-/**
- * Format remaining Claude plan allowances for Pi's notification UI.
- *
- * @param status - Parsed Claude usage status.
- * @returns A concise multi-line usage report.
- */
 export function formatClaudeUsageStatus(status: ClaudeUsageStatus): string {
   if (!status.rateLimitsAvailable) {
     return "Claude plan usage is unavailable for the current authentication method.";

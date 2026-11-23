@@ -6,11 +6,8 @@ import { describe, expect, test } from "vitest";
 import { resolveClaudeExecutable } from "../sdk/claude-executable";
 import { offlineContractPath } from "./offline-sdk-contract";
 
-// The contract child runs the installed Claude Code and gets only PATH, so look where it will look.
-// Without one the contract cannot run, which is a host without Claude Code, not a failure.
 const claudeCodeInstalled = resolveClaudeExecutable({ PATH: process.env.PATH }) !== undefined;
 
-/** Why the contract cannot run on this host, reported with the skip; undefined when it can. */
 function skipReason(): string | undefined {
   if (process.platform !== "darwin") {
     return "the offline SDK contract uses sandbox-exec, which exists only on macOS";
@@ -23,8 +20,6 @@ function skipReason(): string | undefined {
 describe("production Pi loop through actual offline SDK", () => {
   test.for(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"])(
     "%s preserves execution ownership, durable recovery and one terminal per turn",
-    // A real sandboxed Pi process: up to 4.2 s under 8 busy processes. The contract child aborts itself at
-    // 30 s, the spawn is killed at 100 s and the test fails at 120 s, in that order.
     { timeout: 120_000 },
     async (scenario, context) => {
       const reason = skipReason();

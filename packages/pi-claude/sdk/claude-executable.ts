@@ -3,11 +3,6 @@ import { delimiter, join } from "node:path";
 import process from "node:process";
 import { claudeVariable } from "../environment-variables";
 
-/**
- * Oldest Claude Code this provider supports. 2.1.317 is the first release that answers the
- * initialize request with `hook_on_failure_supported` (absent in 2.1.316), which the Agent SDK
- * 0.3.317 requires for `onFailure: "block"` hooks; `verbatimPrompts` needs only 2.1.248.
- */
 export const MIN_CLAUDE_CODE_VERSION = "2.1.317";
 
 type Version = readonly [number, number, number];
@@ -22,12 +17,6 @@ function parseVersion(input: string): Version | undefined {
   return version.every((part) => Number.isSafeInteger(part)) ? version : undefined;
 }
 
-/**
- * Whether a Claude Code version is older than the supported minimum.
- *
- * @param version - Version text such as `2.1.316 (Claude Code)`.
- * @returns True only for a parseable version below the minimum.
- */
 export function isBelowMinimumClaudeCode(version: string): boolean {
   const actual = parseVersion(version);
   const minimum = parseVersion(MIN_CLAUDE_CODE_VERSION);
@@ -38,12 +27,6 @@ export function isBelowMinimumClaudeCode(version: string): boolean {
   return (difference.find((part) => part !== 0) ?? 0) < 0;
 }
 
-/**
- * Read the CLI version from a raw SDK system/init message and report it when too old.
- *
- * @param message - Raw SDK message.
- * @returns The reported version when it is below the minimum, otherwise undefined.
- */
 export function tooOldClaudeCode(message: unknown): string | undefined {
   if (
     typeof message !== "object" ||
@@ -71,15 +54,6 @@ function isExecutableFile(path: string, platform: NodeJS.Platform): boolean {
   }
 }
 
-/**
- * Find the user's installed Claude Code. Never falls back to the SDK's bundled binary.
- * Supported on darwin and linux; Windows is best effort (PATHEXT names only, no .cmd shims).
- *
- * @param env - Environment holding `PI_CLAUDE_PATH` (or `PI_CLAUDE_SDK_CLAUDE_PATH`) and `PATH`.
- * @param platform - Platform whose path rules apply.
- * @returns The executable path, or undefined when none is found. An override that is not an
- * executable file yields undefined rather than a PATH search.
- */
 export function resolveClaudeExecutable(
   env: Readonly<Record<string, string | undefined>> = process.env,
   platform: NodeJS.Platform = process.platform,

@@ -6,7 +6,6 @@ import { describe, expect, test } from "vitest";
 const helper = resolve(".agents/skills/verify-pi-claude/scripts/verify.py");
 
 describe("verification model-prompt approval gate (offline)", () => {
-  // Three real python3 processes per case, up to 0.5 s with 8 busy processes plus other suites running.
   test.each(["all", "live", "recovery"])(
     "%s without approval exits before any provider process",
     { timeout: 30_000 },
@@ -20,7 +19,6 @@ describe("verification model-prompt approval gate (offline)", () => {
         expect(result.status).toBe(2);
         expect(result.stdout).toContain("BLOCKED recovery-approval");
         const files = await readdir(evidence);
-        // run()/RPC must not have started anything, even the later all/cache branch.
         expect(files.filter((file) => /\.(?:command\.json|pid)$/u.test(file))).toStrictEqual([]);
         expect(files).toContain(`${action}-results.json`);
       } finally {

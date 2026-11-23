@@ -20,7 +20,6 @@ const readTool = {
   parameters: Type.Object({ path: Type.String() }),
 };
 
-/** Run one turn through the public stream and return the message Pi shows the user. */
 async function shownToUser(query: RunSdkQuery, collaborators: RunnerOptions, tools = [readTool]) {
   const run = createClaudeAgentSdkRunner({ ...collaborators, runSdkQuery: query });
   const context = contextFixture({ messages: [{ role: "user", content: "hi" }], tools });

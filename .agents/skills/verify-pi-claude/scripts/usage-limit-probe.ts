@@ -1,5 +1,3 @@
-// OFFLINE fixture SDK messages -> unchanged production index/parser/runner/bridge
-// -> pinned Pi session + real inter-extension event bus. Not live SDK/CLI parsing.
 /* oxlint-disable no-await-in-loop -- sequential session turns */
 /* oxlint-disable typescript/no-misused-promises -- deliberately rejecting listener verifies real Pi event-bus isolation */
 import assert from "node:assert/strict";
@@ -16,6 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createJiti } from "jiti";
 import type * as Production from "../../../../packages/pi-claude/index";
+import { USAGE_LIMIT_CHANNEL } from "../../../../packages/shared/usage-limit";
 
 const { values } = parseArgs({
   options: { package: { type: "string" }, work: { type: "string" } },
@@ -130,23 +129,21 @@ const loader = new DefaultResourceLoader({
   noThemes: true,
   noContextFiles: true,
   extensionFactories: [
-    // The actual provider factory, not a reimplemented registration or publisher.
     production.default,
     (pi) => {
-      // Register bad observers before the receiving extension to prove bus isolation.
-      pi.events.on("usage-limit", () => {
+      pi.events.on(USAGE_LIMIT_CHANNEL, () => {
         if (current?.name === "throwing-listener") {
           throw new Error("offline-observer-sentinel");
         }
       });
-      pi.events.on("usage-limit", async () => {
+      pi.events.on(USAGE_LIMIT_CHANNEL, async () => {
         if (current?.name === "rejecting-listener") {
           throw new Error("offline-observer-sentinel");
         }
       });
     },
     (pi) => {
-      pi.events.on("usage-limit", (data) => {
+      pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
         notices.push(data);
         order.push("notice");
       });
@@ -177,10 +174,11 @@ try {
     sessionManager: SessionManager.inMemory(work),
     thinkingLevel: "off",
   }));
-  // Pi 1.6 reports a throwing pi.events handler as an extension error, not with console.error.
-  // Count only the controlled sentinel and fail on any other extension error.
   session.extensionRunner.onError((error) => {
-    if (error.event === "events:usage-limit" && error.error === "offline-observer-sentinel") {
+    if (
+      error.event === `events:${USAGE_LIMIT_CHANNEL}` &&
+      error.error === "offline-observer-sentinel"
+    ) {
       isolatedErrors++;
     } else {
       unexpectedErrors.push(error);

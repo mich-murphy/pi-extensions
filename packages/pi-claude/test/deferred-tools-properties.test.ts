@@ -111,7 +111,6 @@ function assertRoundTrip(names: readonly string[]): void {
   const catalog = compile(names);
   const capture = createDeferredCallCapture(catalog);
   for (const entry of catalog) {
-    // The hook captures synchronously before its first await.
     void deliverToolUse(capture.hook, {
       id: entry.sdkName,
       toolName: entry.sdkName,
@@ -129,8 +128,6 @@ function assertRoundTrip(names: readonly string[]): void {
   );
 }
 
-// Each case compiles up to a dozen tool schemas through zod, about 70 us apiece and not avoidable: the
-// catalog compiles a schema for every tool. The slowest property took 1.4 s under 8 busy processes.
 const PROPERTY_TIMEOUT = propertyTimeout(60_000);
 
 describe("SDK tool-name mapping properties", () => {

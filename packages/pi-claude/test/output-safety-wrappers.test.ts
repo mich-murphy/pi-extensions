@@ -4,7 +4,6 @@ import { describe, expect, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { inspectBashCommand } from "../output-safety";
 
-// These are source strings only. Never submit a test case to a shell.
 const WRAPPERS = [
   "command --",
   "command -p --",

@@ -8,7 +8,6 @@ import type {
 } from "./errors";
 import { effectiveResultCategory, safeTerminalReason } from "./result-failure";
 
-/** Stable operational categories for Claude Agent SDK failures. */
 export type SdkFailureKind =
   | "authentication"
   | "cancelled"
@@ -25,20 +24,13 @@ export type SdkFailureKind =
   | "tool-contract"
   | "usage-limit";
 
-/** Safe structured diagnostic emitted for a failed provider turn. */
 export type SdkFailureDiagnostic = {
-  /** Stable event schema version. */
   readonly schemaVersion: 1;
-  /** Failure category used for routing and support. */
   readonly kind: SdkFailureKind;
-  /** Tagged extension error type. */
   readonly errorTag: SdkTurnFailure["_tag"];
-  /** Query operation when the SDK transport failed. */
   readonly operation?: SdkQueryError["operation"];
-  /** SDK terminal reason when a result supplied one. */
   readonly terminalReason?: string;
   readonly toolContract?: "naming" | "schema";
-  /** What showed that a started response stream broke. */
   readonly streamInterruption?: SdkStreamInterruptedError["evidence"];
 };
 
@@ -134,7 +126,6 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
   }
 }
 
-/** Classify a typed SDK failure without exposing its message or cause. */
 export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic {
   return {
     schemaVersion: 1,
@@ -149,12 +140,10 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
   };
 }
 
-/** Format a failed turn's safe summary for Pi's error message. */
 export function formatSdkRunError(error: SdkTurnFailure): string {
   return error.message;
 }
 
-/** Emit one message-free JSON diagnostic; the default sink skips terminal stderr. */
 export function writeSdkFailureDiagnostic(
   error: SdkTurnFailure,
   write: (line: string) => void = writeRedirectedDiagnostic,

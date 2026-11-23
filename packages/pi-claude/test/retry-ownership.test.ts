@@ -28,7 +28,6 @@ import { drain, requestFixture, resultMessage, sonnet, streamEvent, textDelta } 
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 
-// Message sequences below are what Claude Code 2.1.325 emitted against a fault-injecting API.
 const start = (id: string) =>
   streamEvent({ type: "message_start", message: { id, usage: { input_tokens: 100 } } });
 const stopped = (reason: string) =>
@@ -78,7 +77,6 @@ async function runMessages(
       let retried = false;
       for (const message of messages) {
         yield message;
-        // Anything read after an interrupted attempt's resend is output Pi must never see.
         observed.consumedAfterRetry ||= retried;
         retried ||= message === apiRetry;
       }
@@ -231,12 +229,10 @@ describe("Pi owns retries", () => {
     [{ maxRetries: Number.NaN }, "0"],
     [{ maxRetries: Number.POSITIVE_INFINITY }, "0"],
   ])("Pi options %o give Claude Code %s retries", async (options, expected) => {
-    const { observed } = await runMessages(
-      [start("a"), ...completed],
-      options,
-      // An inherited value must never win over Pi's setting.
-      { PATH: "/bin", CLAUDE_CODE_MAX_RETRIES: "10" },
-    );
+    const { observed } = await runMessages([start("a"), ...completed], options, {
+      PATH: "/bin",
+      CLAUDE_CODE_MAX_RETRIES: "10",
+    });
     expect(observed.params?.options?.env?.CLAUDE_CODE_MAX_RETRIES).toBe(expected);
   });
 
@@ -287,8 +283,6 @@ describe("stream lifecycle parsing", () => {
   });
 });
 
-// Pi decides whether to retry by matching error text. Every message the provider can produce is
-// checked against Pi's installed classifier, so wording or a Pi upgrade cannot silently change it.
 const queryReasons = [
   { _tag: "Cancelled" },
   { _tag: "ExecutableNotFound" },
@@ -339,7 +333,6 @@ const failuresByTag = {
   ],
 } satisfies Readonly<Record<SdkTurnFailure["_tag"], readonly SdkTurnFailure[]>>;
 
-/** Only broken streams and transient API result categories should be retried by Pi. */
 function intendedRetry(error: SdkTurnFailure): boolean {
   return (
     error._tag === "SdkStreamInterruptedError" ||
@@ -348,7 +341,6 @@ function intendedRetry(error: SdkTurnFailure): boolean {
 }
 
 describe("Pi retry contract", () => {
-  // Several failures share a message, so the case number keeps each test id unique.
   test.each(
     Object.values(failuresByTag)
       .flat()

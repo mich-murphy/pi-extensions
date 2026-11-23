@@ -82,4 +82,13 @@ describe("shell execution versus data", () => {
   ])("blocks executable substitutions: %s", (command) => {
     expect(inspectBashCommand(command)).toContain('file "$(which COMMAND)"');
   });
+
+  test.each([
+    ["command substitutions", "$(", ")"],
+    ["subshells", "(", ")"],
+  ])("refuses %s nested past the depth limit instead of exempting them", (_kind, open, close) => {
+    const nested = (depth: number) => `echo ${open.repeat(depth)}x${close.repeat(depth)}`;
+    expect(inspectBashCommand(nested(100))).toBeUndefined();
+    expect(inspectBashCommand(nested(101))).toContain('file "$(which COMMAND)"');
+  });
 });

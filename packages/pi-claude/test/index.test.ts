@@ -4,8 +4,9 @@ import type {
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, test } from "vitest";
+import { USAGE_LIMIT_CHANNEL } from "../../shared/usage-limit";
 import type { ClaudeHandlers, ClaudeEvents } from "../index";
-import registerClaudeProvider, { USAGE_LIMIT_CHANNEL, usageLimitPublisher } from "../index";
+import registerClaudeProvider, { usageLimitPublisher } from "../index";
 
 function loadExtension() {
   const handlers: Partial<ClaudeHandlers> = {};

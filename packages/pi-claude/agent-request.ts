@@ -10,41 +10,27 @@ import type {
 import { sdkToolName } from "./sdk/tool-catalog";
 import { VALIDATION_ERROR_TOOL, VALIDATION_REASONS } from "./validation-recovery";
 
-/** Image bytes extracted from a stable transcript entry. */
 export type ImageAttachment = {
-  /** Base64-encoded image bytes. */
   readonly data: string;
-  /** Image media type supplied by Pi. */
   readonly mediaType: string;
 };
 
-/** One stable prompt block sent through the SDK streaming-input API. */
 export type PromptBlock = {
-  /** Text sent in this SDK content block. */
   readonly text: string;
-  /** Image blocks expanded immediately after the text block. */
   readonly images: readonly ImageAttachment[];
 };
 
-/** Parsed request passed from the Pi adapter to the SDK runner. */
 export type AgentRequest = {
-  /** Complete system prompt for the turn. */
   readonly systemPrompt: string;
-  /** Stable prompt blocks in wire order. */
   readonly promptBlocks: readonly PromptBlock[];
-  /** Ascending, unique indexes of the prompt blocks that end a cacheable prefix. */
   readonly cacheBreakpoints: readonly number[];
-  /** Per-turn deferred Pi tool catalog. */
   readonly toolDescription: string;
-  /** Pi tool names allowed during this turn. */
   readonly toolNames: ReadonlySet<string>;
   readonly tools: readonly Tool[];
 };
 
-/** Most `cache_control` blocks Anthropic accepts in one request. */
 export const MAX_CACHE_BREAKPOINTS = 4;
 
-/** Wire content blocks Anthropic searches backwards from a breakpoint for an earlier cache entry. */
 export const CACHE_LOOKBACK_BLOCKS = 20;
 
 const BRIDGE_INSTRUCTIONS = [
@@ -66,7 +52,6 @@ const TRANSCRIPT_HEADER = [
 type MessageContent = string | readonly (TextContent | ImageContent)[];
 type AssistantContent = AssistantMessage["content"];
 
-/** A message after Pi's replay rules: errored turns removed, every call answered. */
 type HistoryItem =
   | { readonly kind: "user"; readonly content: MessageContent }
   | { readonly kind: "assistant"; readonly content: AssistantContent }
@@ -78,13 +63,6 @@ type HistoryItem =
       readonly content: MessageContent;
     };
 
-/**
- * Apply Pi's replay rules locally (pi-ai's `transformMessages` is not resolvable from an installed
- * package): skip errored and aborted assistant messages together with the results that answer
- * their calls, and answer every remaining call that has no result before the next assistant or
- * user message with an error result. System messages are prompt state, never entries, so they
- * need no holding.
- */
 function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
   const items: HistoryItem[] = [];
   const skippedCalls = new Set<string>();
@@ -123,7 +101,6 @@ function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
         break;
       }
       case "toolResult": {
-        // A late real result for a call already answered with a synthetic one is dropped.
         if (skippedCalls.has(message.toolCallId) || synthesised.has(message.toolCallId)) {
           break;
         }
@@ -154,24 +131,13 @@ function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
   return items;
 }
 
-/**
- * Structural tag names. Matching is case-insensitive, allows whitespace after `<` or `</`, and
- * needs a boundary after the name (whitespace, `>`, `/` or end), so `<userId>` and
- * `<results-table>` are left alone.
- */
 const STRUCTURAL_TAG =
   /<(?<gap>\s*\/?\s*)(?<name>user|assistant|call|results|result|past-call|past-result)(?=[\s>/]|$)/giu;
 
-/**
- * Prose content: `<tag` becomes `<\tag`. Deterministic (no nonce), so earlier entries never change.
- * The transform is one-way: content that already contains `<\/result>` renders the same as
- * escaped `</result>`. That ambiguity is accepted; neither form can create structure.
- */
 function escapeText(text: string): string {
   return text.replaceAll(STRUCTURAL_TAG, String.raw`<\$<gap>$<name>`);
 }
 
-/** Compact JSON arguments: `<` becomes the JSON escape `\u003c`, which parses to the same value. */
 function escapeJson(json: string): string {
   return json.replaceAll(
     STRUCTURAL_TAG,
@@ -179,7 +145,6 @@ function escapeJson(json: string): string {
   );
 }
 
-/** Attribute values (foreign ids, tool names, media types) are untrusted: `& " < >` are escaped. */
 function attribute(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -203,10 +168,6 @@ function bodyOf(content: MessageContent, images: ImageAttachment[]): string {
 
 const REJECTION_REASONS: ReadonlySet<string> = new Set(VALIDATION_REASONS);
 
-/**
- * Neutral stand-in for a rejected tool request. Replaying the reserved call as a call
- * would teach the model to imitate it, so only a known literal reason is ever echoed.
- */
 function rejectionNote(args: unknown): string {
   const value =
     typeof args === "object" && args !== null && "error" in args ? args.error : undefined;
@@ -311,17 +272,6 @@ function isPrintedJsonCall(value: unknown): boolean {
   );
 }
 
-/**
- * Whether a finished reply ends with a tool call printed as text instead of invoked.
- *
- * Deliberately narrow, so prose and code samples are not flagged: the final block must be a
- * standalone `<call … tool="mcp__pi__…">…</call>` (this transcript's call tag) or a standalone
- * JSON object that parses as the legacy `{"type":"toolCall",…}` call (or an entry holding one),
- * it must run to the end of the text, and it must not sit inside an open code fence.
- *
- * @param text - The reply's final text block.
- * @returns True when the reply ends with a printed tool call.
- */
 export function endsWithPrintedToolCall(text: string): boolean {
   const tail = text.trimEnd();
   const opener = [...tail.matchAll(CALL_OPENER)].at(-1);
@@ -349,10 +299,6 @@ function wireBlocks(block: PromptBlock): number {
   return 1 + block.images.length;
 }
 
-/**
- * The earliest block strictly between two breakpoints that the upper one can still reach
- * within the lookback window, searching the newest gap wider than the window first.
- */
 function lookbackBreakpoint(
   wire: readonly number[],
   breakpoints: readonly number[],
@@ -377,14 +323,12 @@ function lookbackBreakpoint(
   return undefined;
 }
 
-/**
- * Place cache breakpoints over the preamble and transcript entries (never the closing block).
- *
- * The preamble lets a new session reuse the tools, system prompt and Pi instructions; the
- * previous request's tail (the entry before the newest assistant entry) is exactly where the
- * last turn wrote, so it is read back even when many entries were appended since; the newest
- * entry is written for the next turn. Remaining slots split gaps wider than the lookback window.
- */
+const PREAMBLE_BLOCK = 0;
+
+function blockOfEntry(entry: number): number {
+  return entry + 1;
+}
+
 function placeCacheBreakpoints(
   transcript: readonly PromptBlock[],
   roles: readonly Message["role"][],
@@ -392,9 +336,12 @@ function placeCacheBreakpoints(
   if (roles.length === 0) {
     return [0];
   }
-  // Entry i is block i + 1, so the entry before the newest assistant entry is block i.
-  const previousTail = roles.lastIndexOf("assistant");
-  const breakpoints = [0, ...(previousTail > 0 ? [previousTail] : []), roles.length];
+  const newestAssistant = roles.lastIndexOf("assistant");
+  const breakpoints = [
+    PREAMBLE_BLOCK,
+    ...(newestAssistant > 0 ? [blockOfEntry(newestAssistant - 1)] : []),
+    blockOfEntry(roles.length - 1),
+  ];
   const wire = transcript.map((block) => wireBlocks(block));
   while (breakpoints.length < MAX_CACHE_BREAKPOINTS) {
     const extra = lookbackBreakpoint(wire, breakpoints);
@@ -407,18 +354,6 @@ function placeCacheBreakpoints(
   return breakpoints;
 }
 
-/**
- * Build the stateless SDK request from Pi's normalized transcript.
- *
- * Pi carries the system prompt and the tool declarations inside the transcript's
- * system messages rather than on the context, and a later system message can
- * amend either. Both are replayed to their current state here, because the Agent
- * SDK takes one prompt and one tool catalog for the whole turn. A change therefore
- * invalidates the cached prefix once; it is never encoded as a transcript entry.
- *
- * @param context - Normalized provider context for this turn.
- * @returns The request the SDK runner sends.
- */
 export function buildAgentRequest(context: TranscriptContext): AgentRequest {
   const tools = getCurrentTools(context.messages).filter(
     (tool) => tool.name !== VALIDATION_ERROR_TOOL,

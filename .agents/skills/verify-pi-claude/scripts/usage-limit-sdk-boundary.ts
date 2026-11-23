@@ -1,5 +1,3 @@
-// Offline-only jiti alias. Everything except query delegates to the installed SDK.
-// No SDK query/Claude subprocess, credentials, or provider network are used.
 import type * as SDK from "@anthropic-ai/claude-agent-sdk";
 
 declare global {

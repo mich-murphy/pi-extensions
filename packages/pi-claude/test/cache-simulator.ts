@@ -5,32 +5,23 @@ import { buildPromptStream } from "../sdk/prompt-stream";
 import type { CacheTtl } from "../sdk/prompt-stream";
 import { drain, sdkContentRecords } from "./fixtures";
 
-/** Tokens one image costs, approximated as a constant. */
 const IMAGE_TOKENS = 1500;
 
-/** Shortest prefix Anthropic stores; a shorter breakpoint writes nothing. */
 const MINIMUM_CACHEABLE_TOKENS = 1024;
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const ONE_HOUR_MS = 60 * 60_000;
 
-/** Prompt tokens of one simulated request, split the way Anthropic bills them. */
 export type CacheUsage = {
-  /** Tokens read from an earlier cache entry. */
   readonly read: number;
-  /** Tokens written to new cache entries. */
   readonly write: number;
-  /** Tokens after the furthest breakpoint, or in a prefix too short to cache. */
   readonly uncached: number;
 };
 
-/** One wire content block, keyed by a hash of the whole prefix that ends with it. */
 type WireBlock = {
   readonly index: number;
   readonly key: string;
-  /** Prefix tokens up to and including this block. */
   readonly end: number;
-  /** Cache lifetime when the block carries `cache_control`. */
   readonly ttlMs: number | undefined;
 };
 
@@ -40,12 +31,6 @@ type CacheEntry = { readonly expiresAt: number; readonly ttlMs: number };
 
 type CacheStore = Map<string, CacheEntry>;
 
-/**
- * Approximate the tokens of a text block.
- *
- * @param text - Block text.
- * @returns Roughly one token per four characters.
- */
 export function estimateTextTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -64,7 +49,6 @@ function breakpointTtlMs(cacheControl: unknown): number | undefined {
   return "ttl" in cacheControl && cacheControl.ttl === "1h" ? ONE_HOUR_MS : FIVE_MINUTES_MS;
 }
 
-/** Tools, then system, then the SDK user message content exactly as the prompt stream sends it. */
 async function wireBlocks(request: AgentRequest, ttl: CacheTtl): Promise<WireBlock[]> {
   const [message] = await drain(
     buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
@@ -90,7 +74,6 @@ function liveEntry(store: CacheStore, key: string, now: number): CacheEntry | un
   return entry !== undefined && entry.expiresAt > now ? entry : undefined;
 }
 
-/** The longest live prefix within the lookback window ending at a breakpoint, itself included. */
 function longestHit(
   store: CacheStore,
   blocks: readonly WireBlock[],
@@ -107,7 +90,6 @@ function longestHit(
   return undefined;
 }
 
-/** Read the longest hit over every breakpoint, refreshing the lifetime of each entry hit. */
 function readCached(
   store: CacheStore,
   blocks: readonly WireBlock[],
@@ -125,7 +107,6 @@ function readCached(
   return read;
 }
 
-/** Store every uncached breakpoint long enough to cache; returns the furthest prefix stored. */
 function writeUncached(store: CacheStore, breakpoints: readonly Breakpoint[], now: number): number {
   let furthest = 0;
   for (const { key, end, ttlMs } of breakpoints) {
@@ -137,16 +118,6 @@ function writeUncached(store: CacheStore, breakpoints: readonly Breakpoint[], no
   return furthest;
 }
 
-/**
- * Build a deterministic model of Anthropic prompt caching shared by every request sent to it.
- *
- * Each breakpoint looks back over itself and the preceding blocks, up to the lookback window,
- * for the longest unexpired cached prefix; the request reads the best hit over all breakpoints
- * and writes everything from there to the furthest newly stored breakpoint.
- *
- * @param clock - Current time in milliseconds, read once per request.
- * @returns The simulator.
- */
 export function createCacheSimulator(clock: () => number): {
   readonly send: (request: AgentRequest, ttl: CacheTtl) => Promise<CacheUsage>;
 } {
@@ -167,12 +138,6 @@ export function createCacheSimulator(clock: () => number): {
   };
 }
 
-/**
- * Share of a request's prompt tokens read from cache.
- *
- * @param usage - Simulated usage of one or more requests.
- * @returns read / (read + write + uncached), or 0 for an empty prompt.
- */
 export function readShare({ read, write, uncached }: CacheUsage): number {
   const total = read + write + uncached;
   return total === 0 ? 0 : read / total;

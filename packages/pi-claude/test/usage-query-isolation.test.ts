@@ -15,8 +15,6 @@ describe("usage query isolation", () => {
     }
   });
 
-  // docs/architecture.md, "Isolation from host config": "Each query sets `settingSources: []`,
-  // `tools: []`, `strictMcpConfig: true` and `skills: []`."
   test("starts Claude Code with the same host-config isolation as every provider query", async () => {
     claude = installFakeClaude({
       version: "2.1.317",

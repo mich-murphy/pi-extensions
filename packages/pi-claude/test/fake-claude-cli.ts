@@ -2,24 +2,16 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** What the fake Claude Code answers with. */
 export type FakeClaudeBehaviour = {
-  /** Output of `claude --version`. */
   readonly version: string;
-  /** Payload for the SDK's usage control request, or undefined to fail it. */
   readonly usage?: unknown;
-  /** SDK messages written to stdout, in order, when the prompt arrives (one turn). */
   readonly turn?: readonly unknown[];
 };
 
 export type FakeClaude = {
-  /** Path to the executable, for `PI_CLAUDE_PATH`. */
   readonly path: string;
-  /** Directory holding the executable; remove it when the test ends. */
   readonly directory: string;
-  /** Command-line arguments of every non-version invocation, as the SDK spawned it. */
   readonly spawnedWith: () => readonly (readonly string[])[];
-  /** The `request` body of every control request the SDK wrote to stdin. */
   readonly controlRequests: () => readonly unknown[];
 };
 
@@ -69,13 +61,6 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => process.exit(0));
 `;
 
-/**
- * Install a stand-in Claude Code executable. It answers `--version` and the SDK's control
- * requests, and records how the SDK spawned it. This is the process boundary: the real SDK runs.
- *
- * @param behaviour - What the fake reports.
- * @returns The installed executable.
- */
 export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
   const directory = mkdtempSync(join(tmpdir(), "claude-fake-cli-"));
   const path = join(directory, "claude");

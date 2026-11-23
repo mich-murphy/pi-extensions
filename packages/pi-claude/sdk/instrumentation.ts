@@ -5,7 +5,6 @@ import { MAX_CACHE_BREAKPOINTS } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
 import { SdkInstrumentationError, SdkQueryError } from "./errors";
 
-// This is an SDK-adapted data payload, not query() options. Control-plane wiring is never exposed.
 const payloadSchema = z
   .strictObject({
     promptBlocks: z
@@ -44,7 +43,6 @@ async function waitForCallback<A>(work: () => Promise<A>, signal: AbortSignal): 
     if (signal.aborted) {
       abort();
     } else {
-      // Both resolutions are observed even after cancellation; late callback rejection cannot escape.
       void Promise.resolve()
         .then(async () => {
           signal.throwIfAborted();
@@ -59,7 +57,6 @@ async function waitForCallback<A>(work: () => Promise<A>, signal: AbortSignal): 
   });
 }
 
-/** Await trusted callbacks without retaining their exceptions or blocking turn cancellation. */
 function callback<A>(operation: "payload" | "event", signal: AbortSignal, work: () => Promise<A>) {
   return Effect.tryPromise({
     try: async (interruptSignal) => {
@@ -73,7 +70,6 @@ function callback<A>(operation: "payload" | "event", signal: AbortSignal, work: 
   });
 }
 
-/** Apply only prompt data; SDK tools, environment, permissions, routing and cancellation stay owned. */
 export function instrumentRequest(
   request: AgentRequest,
   model: Model<Api>,
@@ -104,7 +100,6 @@ export function instrumentRequest(
   );
 }
 
-/** Observe every SDK-yielded parsed value before provider-specific validation/normalization. */
 export function instrumentEvent(
   event: unknown,
   model: Model<Api>,

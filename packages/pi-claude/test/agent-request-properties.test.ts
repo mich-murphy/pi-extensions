@@ -16,8 +16,6 @@ import type { MessageFixture } from "./fixtures";
 
 const settings = propertySettings(200);
 const CONTINUE = "Continue from the final conversation entry above.";
-// Every tag name the replay format uses; each is offered raw, opening and closing, in odd casing
-// and spacing, so text can try to forge or close any structural element.
 const TAG_NAMES = ["user", "assistant", "call", "results", "result", "past-call", "past-result"];
 const STRUCTURAL_TEXT = TAG_NAMES.flatMap((name) => [
   `<${name}`,
@@ -68,10 +66,6 @@ type Generated = {
   users: number;
 };
 
-/**
- * Draw a transcript. `unique` ids give an exact per-call oracle (results only follow their call,
- * possibly late); the pool mode reuses three ids so duplicates, orphans and early results occur.
- */
 function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generated {
   const out: Generated = { messages: [], calls: [], orphans: [], users: 0 };
   const draw: DrawState = { tc, out, unanswered: [], names: new Map(), unique, serial: 0 };
@@ -144,11 +138,6 @@ function drawAssistant(draw: DrawState): void {
   out.messages.push({ role: "assistant", content, stopReason });
 }
 
-/**
- * One id names one tool for the whole transcript: Pi builds a call and its result from the same tool
- * call, and providers never reuse an id for another call. The first use binds the name. A result with
- * no call yet takes an ordinary one, so only a real call can introduce the validation tool.
- */
 function nameFor(draw: DrawState, id: string, candidates: readonly string[]): string {
   const name = draw.names.get(id) ?? draw.tc.draw(gs.sampledFrom(candidates));
   draw.names.set(id, name);
@@ -213,7 +202,6 @@ function nestingAllowed(parent: string | undefined, name: string): boolean {
     : (CHILDREN[parent]?.includes(name) ?? false);
 }
 
-/** Every structural-looking token in an entry block is canonical, balanced and correctly nested. */
 function assertWellFormed(block: string): string[] {
   const stack: string[] = [];
   const opened: string[] = [];
@@ -238,7 +226,6 @@ function assertWellFormed(block: string): string[] {
 
 const entryBlocks = (blocks: readonly { text: string }[]) =>
   blocks.slice(1, -1).map((block) => block.text);
-/** Entry blocks with their images, so byte-identity covers what is sent beside the text. */
 const entryBlocksWithImages = <B>(blocks: readonly B[]) => blocks.slice(1, -1);
 const countMatches = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
 
@@ -319,7 +306,6 @@ function assertPrefixStable(tc: TestCase): void {
     const request = build(messages.slice(0, length));
     const current = entryBlocksWithImages(request.promptBlocks);
     assert.deepEqual(request.promptBlocks[0], preamble);
-    // A toolResult may extend or complete the trailing results block; nothing else may move.
     const mutable = messages[length - 1]?.role === "toolResult" ? 1 : 0;
     assert.ok(current.length >= previous.length);
     assert.deepEqual(
@@ -410,7 +396,6 @@ function assertFenceRule(tc: TestCase): void {
 }
 
 describe("buildAgentRequest properties", () => {
-  // About 0.3s alone and 0.75s with the CPU saturated: the timeout is over ten times the latter.
   test.each([true, false])(
     "request structure invariants (unique ids: %s)",
     { timeout: propertyTimeout(10_000) },

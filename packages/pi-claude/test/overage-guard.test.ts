@@ -21,7 +21,6 @@ async function run(messages: readonly unknown[], allow: boolean) {
   const events = await drain(
     createClaudeAgentSdkRunner({
       runSdkQuery: query,
-      // The injected environment has no PATH; name the executable so the resolver is not consulted.
       claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: allow ? { PI_CLAUDE_ALLOW_EXTRA_USAGE: "1" } : {},
     })(requestFixture(), sonnet, {}),

@@ -31,7 +31,6 @@ function drawNear(tc: TestCase, near: number, low: number, high: number): number
   );
 }
 
-// Spec: >= 4096 chars, >= 8 control chars and a control ratio of at least 0.002.
 function drawBinaryCase(tc: TestCase): Case {
   const length = drawNear(tc, 4096, 3900, 10_000);
   const controls = tc.draw(gs.integers({ minValue: 0, maxValue: 24 }));
@@ -40,7 +39,6 @@ function drawBinaryCase(tc: TestCase): Case {
   return { text, expected: flagged ? "binary" : undefined };
 }
 
-// Spec: >= 8192 base64-alphabet chars, whitespace below 5% of the text, nothing else.
 function drawBase64Case(tc: TestCase): Case {
   const run = drawNear(tc, 8192, 1000, 12_000);
   const pad = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
@@ -192,7 +190,6 @@ function assertShellData(tc: TestCase): void {
   const data = `${padding} cat ${sub}`;
   const quoted = `'${data.replaceAll("'", `'"'"'`)}'`;
   assert.equal(inspectBashCommand(`printf '%s' ${quoted}`), undefined);
-  // Prefix every generated line so none can accidentally terminate the quoted heredoc.
   const body = data
     .split("\n")
     .map((line) => `prose ${line}`)

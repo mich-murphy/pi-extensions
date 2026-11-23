@@ -1,8 +1,4 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- trusted same-checkout snapshot modules and role-checked persisted messages */
-// LIVE, allowance-gated by verify.py. No raw SDK events, prompts, IDs or error prose logged.
-// Uses real Pi runAgentLoop + disk SessionManager and production snapshot runner/bridge.
-// Live missing-arguments changes public PreToolUse input once. Offline-parser uses
-// synthetic SSE but the ACTUAL SDK/CLI parser, under empty HOME and dummy auth.
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -151,7 +147,6 @@ async function journey() {
         ...params,
         options: {
           ...params.options,
-          // Normal bounded ceiling for tiny requests, NOT forced truncation/fault injection.
           thinking: { type: "disabled" },
           env: {
             ...params.options?.env,
@@ -207,8 +202,6 @@ async function journey() {
             numTurns: message.num_turns,
           };
         }
-        // Observe before yielding: the runner settles on result and starts bounded SDK
-        // cleanup without waiting for this generator's finalizer to finish.
         Object.assign(summary, {
           batches,
           unhooked,
@@ -217,7 +210,7 @@ async function journey() {
           preHooks: seen.size,
           terminal,
         });
-        yield message; // Real SDK stream is NEVER mutated.
+        yield message;
       }
     } finally {
       Object.assign(summary, {
@@ -303,7 +296,6 @@ async function journey() {
     const diagnostics = records.flatMap((r) =>
       r.type === "usage" || r.type === "query" ? [r.query] : [],
     );
-    // query summaries are production allowlisted diagnostics, not raw SDK/model names.
     report.diagnostics = diagnostics;
     report.executions = executions;
     report.durableBeforeCorrection = durableBeforeCorrection;
@@ -378,7 +370,6 @@ try {
   await journey();
 } catch {
   exit = 1;
-  // Never echo even assertion messages/SDK exceptions: fixed vocabulary only.
   reports.push({ status: "failed", reason: "recovery-check-failed" });
 } finally {
   if (transport !== undefined) {

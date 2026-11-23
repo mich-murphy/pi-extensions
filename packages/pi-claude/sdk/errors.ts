@@ -9,36 +9,27 @@ import {
   resultFailureMessage,
 } from "./result-failure";
 
-/** Error produced when a deferred Pi tool request is malformed or names an unavailable tool. */
 export class InvalidDeferredCallError extends Schema.TaggedError<InvalidDeferredCallError>()(
   "InvalidDeferredCallError",
   {
-    /** The requested inner Pi tool name, or an empty string when absent. */
     requestedName: Schema.String,
-    /** A safe explanation suitable for the SDK permission response. */
     reason: Schema.String,
   },
 ) {
-  /** The safe explanation returned to the model. */
   override get message(): string {
     return this.reason;
   }
 }
 
-/** Error produced when an SDK message does not match the protocol shape used by this provider. */
 export class SdkProtocolError extends Schema.TaggedError<SdkProtocolError>()("SdkProtocolError", {
-  /** The safe SDK message or event type being parsed. */
   messageType: Schema.String,
-  /** A description that does not include prompt or credential data. */
   detail: Schema.String,
 }) {
-  /** Safe summary of the malformed message. */
   override get message(): string {
     return `Claude Code sent a reply Pi could not read (${this.messageType}: ${this.detail}). Run \`/claude status\` to check versions.`;
   }
 }
 
-/** Contract rejection, not malformed data: an extra SDK request cannot be replayed safely. */
 export class SdkInternalContinuationError extends Schema.TaggedError<SdkInternalContinuationError>()(
   "SdkInternalContinuationError",
   {},
@@ -48,20 +39,8 @@ export class SdkInternalContinuationError extends Schema.TaggedError<SdkInternal
   }
 }
 
-/** What showed that an attempt's response stream broke after it had started reaching Pi. */
-const StreamInterruptionEvidence = Schema.Literals([
-  /** Claude Code announced a retry while the attempt had no stop reason. */
-  "api-retry",
-  /** A new main-loop request started while the previous one had no stop reason. */
-  "new-attempt",
-  /** The query failed with an untyped API error after its response started. */
-  "api-error",
-]);
+const StreamInterruptionEvidence = Schema.Literals(["api-retry", "new-attempt", "api-error"]);
 
-/**
- * The response stream broke after it started. Nothing was handed to Pi, so Pi can discard the
- * partial output and retry the whole turn. The message is worded to match Pi's retry rules.
- */
 export class SdkStreamInterruptedError extends Schema.TaggedError<SdkStreamInterruptedError>()(
   "SdkStreamInterruptedError",
   { evidence: StreamInterruptionEvidence },
@@ -71,38 +50,28 @@ export class SdkStreamInterruptedError extends Schema.TaggedError<SdkStreamInter
   }
 }
 
-/** Error returned by a terminal SDK result. */
 export class SdkResultError extends Schema.TaggedError<SdkResultError>()("SdkResultError", {
-  /** The SDK terminal reason when one was supplied. */
   terminalReason: Schema.UndefinedOr(Schema.String),
-  /** Safe category derived only from structured SDK fields. */
   category: ResultFailureCategory,
-  /** The typed API error an assistant message reported during the turn, if any. */
   apiError: Schema.optional(Schema.String),
 }) {
-  /** Synthetic bounded summary; no raw SDK text is retained. */
   override get message(): string {
     return resultFailureMessage(effectiveResultCategory(this.category, this.apiError));
   }
 }
 
-/** Error produced when the model exceeds the invalid deferred-call retry limit. */
 export class InvalidDeferredCallLimitError extends Schema.TaggedError<InvalidDeferredCallLimitError>()(
   "InvalidDeferredCallLimitError",
   {
-    /** Number of invalid calls observed during the turn. */
     attempts: Schema.Number,
-    /** The final invalid call. */
     lastError: InvalidDeferredCallError,
   },
 ) {
-  /** Safe summary naming the final invalid call. */
   override get message(): string {
     return `Claude made ${this.attempts} invalid tool calls, so the turn stopped.`;
   }
 }
 
-/** Schema for the safe classification of an SDK query rejection. */
 const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
@@ -114,12 +83,8 @@ const SdkQueryFailureReason = Schema.TaggedUnion({
   Unclassified: {},
 });
 
-/** Safe classification of why an SDK query rejected; the raw cause is never rendered. */
 type SdkQueryFailureReason = typeof SdkQueryFailureReason.Type;
 
-// The SDK tags its own rejections with an errorClass, plus the exit code or signal of a dead
-// subprocess. Reading these fields keeps classification off the free-form (and secret-bearing)
-// message text.
 const decodeSdkRejection = Schema.decodeUnknownOption(
   Schema.Struct({
     errorClass: Schema.String,
@@ -132,7 +97,6 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
   if (cause instanceof AbortError || (cause instanceof Error && cause.name === "AbortError")) {
     return { _tag: "Cancelled" };
   }
-  // A spawn of a missing binary rejects with Node's ENOENT before the SDK can tag it.
   if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
     return { _tag: "ExecutableNotFound" };
   }
@@ -206,60 +170,37 @@ function describeQueryFailure(
   }
 }
 
-/** Error produced when the SDK query cannot start or rejects while streaming. */
 export class SdkQueryError extends Schema.TaggedError<SdkQueryError>()("SdkQueryError", {
-  /** Query phase that failed. */
   operation: Schema.Literals(["start", "iterate"]),
-  /** Safe classification of the cause. */
   reason: SdkQueryFailureReason,
-  /** Original SDK rejection, retained for local diagnosis only. */
   cause: Schema.Defect(),
 }) {
-  /**
-   * Classify an SDK rejection.
-   *
-   * @param operation - Query phase that failed.
-   * @param cause - Original SDK rejection.
-   * @returns A query error whose message names only the classified reason.
-   */
   static fromCause(operation: "start" | "iterate", cause: unknown): SdkQueryError {
     return new SdkQueryError({ operation, reason: classifyQueryCause(cause), cause });
   }
 
-  /**
-   * Record a query that Pi or the runner cancelled, whatever the SDK rejected with.
-   *
-   * @param operation - Query phase that was cancelled.
-   * @param cause - Abort reason or SDK rejection.
-   * @returns A query error classified as cancelled.
-   */
   static cancelled(operation: "start" | "iterate", cause: unknown): SdkQueryError {
     return new SdkQueryError({ operation, reason: { _tag: "Cancelled" }, cause });
   }
 
-  /** Safe summary naming the phase and classified reason. */
   override get message(): string {
     return describeQueryFailure(this.reason, this.operation);
   }
 }
 
-/** Error produced when the SDK query ends without a terminal result message. */
 export class SdkMissingResultError extends Schema.TaggedError<SdkMissingResultError>()(
   "SdkMissingResultError",
   {},
 ) {
-  /** Safe summary of the missing result. */
   override get message(): string {
     return "Claude Code stopped without a final result. Review completed work, then send `continue`.";
   }
 }
 
-/** Safe callback/setup failure. Callback exceptions and invalid payload values are discarded. */
 export class SdkInstrumentationError extends Schema.TaggedError<SdkInstrumentationError>()(
   "SdkInstrumentationError",
   { operation: Schema.Literals(["payload", "replacement", "event", "cancelled"]) },
 ) {
-  /** Static summary that never contains callback or payload data. */
   override get message(): string {
     return this.operation === "replacement"
       ? "An extension returned an invalid request for Claude, so nothing was sent."
@@ -278,12 +219,9 @@ export class SdkToolContractError extends Schema.TaggedError<SdkToolContractErro
   }
 }
 
-/** Error produced when a turn would be billed to Extra Usage and the user has not opted in. */
 export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkOverageError", {
-  /** When the plan limits reopen, in epoch milliseconds, when Claude Code reported it. */
   resetsAt: Schema.UndefinedOr(Schema.Number),
 }) {
-  /** Actionable summary; contains only a reset time. */
   override get message(): string {
     const until =
       this.resetsAt === undefined
@@ -293,7 +231,6 @@ export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkO
   }
 }
 
-/** Expected failures that can terminate one provider turn. */
 export type SdkRunError =
   | SdkInternalContinuationError
   | SdkStreamInterruptedError
@@ -306,20 +243,13 @@ export type SdkRunError =
   | SdkQueryError
   | SdkResultError;
 
-/**
- * A broken provider invariant caught at the Pi stream boundary. Pi's stream must still end,
- * so the defect is reported as a failed turn rather than thrown.
- */
 export class SdkProviderDefect extends Schema.TaggedError<SdkProviderDefect>()(
   "SdkProviderDefect",
   {
-    /** Which runner contract the bridge observed being broken. */
     reason: Schema.Literals(["no-terminal-event", "run-rejected"]),
-    /** The unexpected rejection, retained for local diagnosis only. */
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
-  /** Safe summary of the broken invariant. */
   override get message(): string {
     return this.reason === "no-terminal-event"
       ? "pi-claude bug: the turn finished without a final result. Report it with `/claude status` output."
@@ -327,5 +257,4 @@ export class SdkProviderDefect extends Schema.TaggedError<SdkProviderDefect>()(
   }
 }
 
-/** Every failure that can end a Pi turn: expected SDK failures and provider defects. */
 export type SdkTurnFailure = SdkRunError | SdkProviderDefect;

@@ -1,5 +1,3 @@
-// OFFLINE synthetic Anthropic Messages transport. Real installed SDK/CLI parses
-// these SSE frames. Never used by production or with subscription credentials.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
@@ -12,7 +10,6 @@ export async function startParserTransport() {
   let invalidJsonResponses = 0;
   const sockets = new Set<Socket>();
   const server = createServer((request, response) => {
-    // Body is deliberately discarded, never decoded, retained or logged.
     let bytes = 0;
     request.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
@@ -67,8 +64,6 @@ export async function startParserTransport() {
             input: {},
           },
         });
-        // A complete tool-use response with invalid JSON, NOT max_tokens or stream truncation.
-        // The installed Claude Code, not this fixture/harness, must generate its parse error and marker.
         const partial =
           requests === 1 ? '{"value":INVALID_JSON}' : JSON.stringify({ value: "corrected" });
         if (requests === 1) {

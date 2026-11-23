@@ -2,7 +2,6 @@ import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 import { hasExecutableCat } from "./output-safety-shell";
 
-/** Suspicious shell-output category recognized by the quarantine guard. */
 export type SuspiciousOutputKind = "binary" | "base64";
 
 const MIN_SUSPICIOUS_CHARACTERS = 4096;
@@ -52,20 +51,11 @@ function quarantineNotice(kind: SuspiciousOutputKind, characters: number): strin
   return `[${label} bash output quarantined and kept out of context (${characters.toLocaleString("en-US")} characters). ${advice}]`;
 }
 
-/** Result of inspecting shell tool content. */
 export type SanitizedBashContent = {
-  /** Original content or a short quarantine notice. */
   readonly content: (TextContent | ImageContent)[];
-  /** Detected category, or `undefined` when the content is safe. */
   readonly detected: SuspiciousOutputKind | undefined;
 };
 
-/**
- * Replace suspicious shell output with a bounded quarantine notice.
- *
- * @param content - Parsed Pi text and image content blocks.
- * @returns The original readonly content or replacement notice.
- */
 export function sanitizeBashContent(
   content: readonly (TextContent | ImageContent)[],
 ): SanitizedBashContent {
@@ -83,12 +73,6 @@ export function sanitizeBashContent(
   return { content: [...content], detected: undefined };
 }
 
-/**
- * Detect a command that prints a discovered executable through `cat`.
- *
- * @param command - Shell command submitted to Pi's bash tool.
- * @returns A blocking explanation when the unsafe pattern is present.
- */
 export function inspectBashCommand(command: string): string | undefined {
   if (!hasExecutableCat(command)) {
     return undefined;
@@ -96,12 +80,6 @@ export function inspectBashCommand(command: string): string | undefined {
   return 'Blocked, so the command did not run: it may print an executable, or its shell syntax cannot be checked. Use file "$(which COMMAND)", otool or strings; use the write tool for literal content.';
 }
 
-/**
- * Quarantine suspicious bash results already stored in a Pi context.
- *
- * @param messages - Pi context messages, possibly recorded before this guard loaded.
- * @returns A new message array with only suspicious bash results replaced.
- */
 export function sanitizeContextMessages(
   messages: Readonly<ContextEvent["messages"]>,
 ): ContextEvent["messages"] {

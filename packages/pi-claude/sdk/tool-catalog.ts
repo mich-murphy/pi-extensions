@@ -130,7 +130,6 @@ export type CatalogTool = {
   readonly mcpName: string;
   readonly sdkName: string;
   readonly schema: z.ZodType;
-  /** True when the declared schema is unsupported and a permissive one stands in; Pi still validates. */
   readonly degraded?: boolean;
 };
 
@@ -140,7 +139,6 @@ function mcpToolName(name: string): string {
     : `pi_${createHash("sha256").update(name).digest("hex").slice(0, 48)}`;
 }
 
-/** SDK-declared tool name, derived from the Pi name alone (independent of the current catalog). */
 export function sdkToolName(piName: string): string {
   return `mcp__pi__${mcpToolName(piName)}`;
 }
@@ -168,8 +166,6 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
       }
       return { declaration, mcpName, sdkName: sdkToolName(name), schema };
     } catch {
-      // One unsupported schema must not fail every turn. Pi validates arguments itself
-      // (validateToolArguments in the deferred capture), so a permissive object schema is safe.
       if (!reportedDegraded.has(name)) {
         reportedDegraded.add(name);
         writeRedirectedDiagnostic(

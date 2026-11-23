@@ -7,12 +7,10 @@ import { minimumCacheableTokensFor } from "./models";
 import type { CacheTtl } from "./sdk/prompt-stream";
 import type { QueryDiagnostics } from "./sdk/query-diagnostics";
 
-/** Safe request metadata emitted by cache diagnostics. */
 export type CacheRequestDiagnostic = {
   readonly type: "request";
   readonly turn: number;
   readonly model: string;
-  /** Documented minimum for the requested model; omitted for unknown/custom routing. */
   readonly minimumCacheableTokens?: number;
   readonly reasoning?: string;
   readonly ttl: CacheTtl;
@@ -23,12 +21,9 @@ export type CacheRequestDiagnostic = {
   readonly commonPrefixBlocks: number;
   readonly commonPrefixCharacters: number;
   readonly contentFingerprint: string;
-  /** Fingerprint of the preamble block carrying the Pi working instructions. */
   readonly systemFingerprint: string;
-  /** Fingerprint of the gateway tool catalog, when the request carries one. */
   readonly toolsFingerprint?: string;
   readonly reusablePrefixFingerprint?: string;
-  /** How this prompt differs from the previous request's. */
   readonly prefixChange:
     | "first"
     | "appended"
@@ -40,24 +35,15 @@ export type CacheRequestDiagnostic = {
   readonly msSincePreviousRequest?: number;
 };
 
-/**
- * Safe usage metadata emitted by cache diagnostics. Counts retain authoritative cumulative
- * main-loop result.usage (all model round-trips in this SDK turn), or the last streamed
- * report if no result usage was available. They are never divided by numTurns. Side-model
- * query-pipeline totals are reported separately in query.models, not added to these counts.
- */
 export type CacheUsageDiagnostic = {
   readonly type: "usage";
   readonly turn: number;
   readonly promptTokens: number;
   readonly query?: QueryDiagnostics;
-  /** Minimum for the observed model when available, otherwise the requested model. */
   readonly minimumCacheableTokens?: number;
   readonly cacheReadPercent: number;
   readonly possibleCollapse: boolean;
-  /** Characters shared with the previous request's prompt, which cache could have served. */
   readonly expectedReusableCharacters: number;
-  /** Most probable reason for a cache read share below 50%. */
   readonly likelyMissCause?:
     | "caching-disabled"
     | "below-minimum"
@@ -67,24 +53,19 @@ export type CacheUsageDiagnostic = {
     | "lookback";
 } & TokenUsage;
 
-/** Query outcome without any SDK usage report; no zero usage is invented. */
 export type CacheQueryDiagnostic = {
   readonly type: "query";
   readonly turn: number;
   readonly query: QueryDiagnostics;
 };
 
-/** Safe cache diagnostic record. */
 export type CacheDiagnostic = CacheRequestDiagnostic | CacheUsageDiagnostic | CacheQueryDiagnostic;
 
-/** Safe query metadata used to interpret the final usage, never raw SDK payloads. */
 export type CacheUsageMetadata = {
-  /** Concrete main-conversation model observed by the SDK, preferred over moving aliases. */
   readonly observedModel?: string;
   readonly query?: QueryDiagnostics;
 };
 
-/** Records one outgoing prompt and returns its usage/outcome recorder, including failed turns. */
 export type CacheDiagnosticTracker = (
   model: string,
   request: Pick<AgentRequest, "promptBlocks" | "cacheBreakpoints"> & {
@@ -164,13 +145,10 @@ function classify(
   if (divergence === 0) {
     return "system-changed";
   }
-  // The previous closing block is not history, so diverging there only appends entries.
-  return divergence === -1 || divergence >= previous.blocks.length - 1
-    ? "appended"
-    : "history-rewritten";
+  const previousClosingBlock = previous.blocks.length - 1;
+  return divergence === -1 || divergence >= previousClosingBlock ? "appended" : "history-rewritten";
 }
 
-/** Whether some current breakpoint finds an entry the previous request wrote within the lookback. */
 function reachesPreviousWrite(previous: RequestState, current: RequestState, common: number) {
   return previous.breakpoints
     .filter((written) => written < common)
@@ -193,9 +171,6 @@ function likelyMissCause(
   if (context.ttl === "none") {
     return "caching-disabled";
   }
-  // Total reported prompt tokens are an upper bound on any cacheable prefix, not a
-  // token estimate for a breakpoint. Zero usage is not evidence of a short prompt;
-  // actual cache activity also wins over a possibly stale model table.
   if (
     minimumCacheableTokens !== undefined &&
     promptTokens > 0 &&
@@ -244,15 +219,6 @@ function usageDiagnostic(
   };
 }
 
-/**
- * Create a tracker that compares consecutive prompt prefixes without logging content.
- *
- * The tracker stays a synchronous closure because the runner calling it is not yet an Effect;
- * it reads time from the `Clock` in scope when it is created, so a test clock controls it.
- *
- * @param sink - Destination for safe cache diagnostic records.
- * @returns The stateful tracker.
- */
 export const createCacheDiagnosticTracker = Effect.fnUntraced(function* (
   sink: (diagnostic: CacheDiagnostic) => void,
 ): Effect.fn.Return<CacheDiagnosticTracker> {
@@ -270,7 +236,7 @@ function trackWith(
     try {
       sink(diagnostic);
     } catch {
-      // Opt-in diagnostics must never fail a production turn, even if its destination fails.
+      return undefined;
     }
   };
 

@@ -1,10 +1,3 @@
-// Live prompt-cache probe for verify-pi-claude. From the repository root:
-//   node_modules/.bin/jiti .agents/skills/verify-pi-claude/scripts/cache-probe.ts \
-//     --package <dir containing agent-request.ts> [--model claude-5.5-sonnet]
-// Drives the production path (Pi normalizeContext -> buildAgentRequest -> runner with the
-// default subscription environment and the real SDK query). The query wrapper only observes
-// terminal `result` messages; every SDK message passes through unchanged. Prints one JSON
-// object. Exit 0 = all checks passed, 1 = a check or turn failed, 2 = blocked (auth/limit).
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
@@ -21,8 +14,6 @@ import type {
   TranscriptContext,
 } from "@earendil-works/pi-ai";
 
-// Local structural types: only the stable signatures are relied on, so the probe survives
-// internal request/runner changes (e.g. cache breakpoint fields).
 type TokenUsage = {
   readonly input: number;
   readonly output: number;
@@ -126,8 +117,6 @@ const model = {
   baseUrl: "agent-sdk://local-claude-code",
 } as unknown as Model<Api>;
 
-// A fresh nonce at the very start keeps this run from reading a previous verification's
-// cache; sessions within the run share it so cross-session reuse is observable.
 const nonce = randomUUID();
 const guidelines = Array.from(
   { length: 260 },
@@ -153,8 +142,7 @@ const tools = [
 ] as unknown as NonNullable<Context["tools"]>;
 
 let lastResult: RawResult | undefined;
-// A getter defeats control-flow narrowing: the query wrapper assigns lastResult asynchronously.
-const observedResult = (): RawResult | undefined => lastResult;
+const readLastResultAssignedByQueryObserver = (): RawResult | undefined => lastResult;
 function isResult(message: unknown): message is {
   type: "result";
   is_error?: boolean;
@@ -230,7 +218,7 @@ async function runTurn(
     }
   }
   const promptTokens = usage === undefined ? 0 : usage.input + usage.cacheRead + usage.cacheWrite;
-  const observed = observedResult();
+  const observed = readLastResultAssignedByQueryObserver();
   const raw = observed?.usage;
   const modelUsage = observed?.modelUsage ?? {};
   const record: TurnRecord = {
@@ -281,8 +269,7 @@ async function runSession(session: string, count: number, fanout: number): Promi
       content: `[session ${session}] Turn ${turn}: reply with exactly ACK${turn} and nothing else.`,
       timestamp: 0,
     });
-    // Turns are sequential by construction: each depends on the previous transcript.
-    // oxlint-disable-next-line eslint/no-await-in-loop
+    // oxlint-disable-next-line eslint/no-await-in-loop -- each turn replays the previous turn transcript
     const record = await runTurn(session, turn, messages);
     records.push(record);
     const calls = Array.from({ length: fanout }, () => {

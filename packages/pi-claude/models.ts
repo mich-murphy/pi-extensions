@@ -2,11 +2,6 @@ import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const subscriptionCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-/**
- * Effort levels exposed by Claude Code for the current adaptive models. Its model metadata
- * reports thinking-off as unsupported, even where the direct Messages API supports it.
- * `xhigh` and `max` must be mapped explicitly or Pi hides them.
- */
 const adaptiveEffortLevels = {
   off: null,
   minimal: null,
@@ -17,36 +12,17 @@ const adaptiveEffortLevels = {
   max: "max",
 } as const;
 
-/** Fable keeps Pi's `minimal` level, which the runner sends as `low` effort. */
 const fableEffortLevels = { off: null, xhigh: "xhigh", max: "max" } as const;
 const DATE_SUFFIX = /-\d{8}$/u;
 
-/**
- * The chat-model variant of Pi's provider model union. Pi does not export it by name, and this
- * provider registers only chat models.
- */
 export type ChatModelConfig = Extract<ProviderModelConfig, { readonly type?: "chat" }>;
 
-/** Provider model registration plus the Claude Code routing it advertises. */
 export type SdkModelConfig = {
-  /**
-   * Claude Code model selector sent to the Agent SDK. Current models use the
-   * documented moving aliases so the underlying model tracks the bundled
-   * Claude Code; superseded models use their full model ID. Fable 5.2 also uses
-   * its full ID because Claude Code 2.1.319 still resolves the `fable` alias to 5.1.
-   */
   readonly sdkModel: string;
-  /**
-   * Expected default model resolution, as the SDK names it in `message_start`.
-   * Aliases can move independently of the pin or be overridden by Claude Code
-   * environment/policy. The live upgrade gate asserts the actual resolution.
-   */
   readonly canonicalModel: string;
-  /** Minimum cacheable prefix for this model on Anthropic's first-party API. */
   readonly minimumCacheableTokens: number;
 } & ChatModelConfig;
 
-/** Models exposed by the official Claude Agent SDK provider. */
 export const models: readonly SdkModelConfig[] = [
   {
     id: "claude-5.5-sonnet",
@@ -110,17 +86,10 @@ export const models: readonly SdkModelConfig[] = [
     input: ["text", "image"],
     cost: subscriptionCost,
     contextWindow: 200_000,
-    // Claude Code 2.1.303 reports 32K, below the direct Messages API's 64K.
     maxTokens: 32_000,
   },
 ];
 
-/**
- * Strip the routing fields Pi does not know about before registration.
- *
- * @param model - Advertised model with its Claude Code routing.
- * @returns The plain provider model configuration.
- */
 export function providerModel({
   sdkModel: _sdkModel,
   canonicalModel: _canonicalModel,
@@ -130,37 +99,15 @@ export function providerModel({
   return model;
 }
 
-/**
- * Resolve the Claude Code model selector for a Pi model ID.
- *
- * Registered versioned IDs map to their moving alias. Any other ID passes
- * through unchanged so custom models configured as a Claude Code alias or full
- * model name keep working.
- *
- * @param piModelId - Pi-facing model ID.
- * @returns The model selector to send to the Agent SDK.
- */
 export function sdkModelSelectorFor(piModelId: string): string {
   return models.find((model) => model.id === piModelId)?.sdkModel ?? piModelId;
 }
 
-/**
- * Drop a trailing `-yyyymmdd` snapshot suffix from a concrete model id.
- *
- * @param modelId - Model id as reported by the SDK.
- * @returns The undated id, e.g. "claude-haiku-4-5".
- */
 export function undatedModelId(modelId: string): string {
   return modelId.replace(DATE_SUFFIX, "");
 }
 
-/**
- * First-party minima for other concrete models accepted by custom SDK model routing.
- * Registered models keep theirs next to their limits above. Do not infer a minimum from
- * a family or version range: even adjacent Opus releases have different thresholds.
- * Source: https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations
- * (checked 2026-11-10); the SDK's installed model catalog does not expose cache minima.
- */
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations
 const otherCacheMinimums: Readonly<Record<string, number>> = {
   "claude-fable-5": 512,
   "claude-fable-5-1": 512,
@@ -182,16 +129,6 @@ const otherCacheMinimums: Readonly<Record<string, number>> = {
   "claude-3-5-haiku": 2048,
 };
 
-/**
- * Resolve a documented minimum without guessing for unknown/custom models.
- *
- * Accepts this provider's advertised IDs, SDK aliases, and concrete IDs (including dated
- * snapshots). Moving aliases use the installed table's expected resolution; a caller with
- * an observed concrete model should prefer that ID, even when it is unknown to the table.
- *
- * @param modelId - Requested or observed model, optionally qualified with `claude/` (or the legacy `claude-sdk/`).
- * @returns Minimum prefix tokens, or undefined when the model is not documented here.
- */
 export function minimumCacheableTokensFor(modelId: string): number | undefined {
   const id = undatedModelId(modelId.replace(/^claude(?:-sdk)?\//u, ""));
   const registered = models.find(
@@ -203,13 +140,6 @@ export function minimumCacheableTokensFor(modelId: string): number | undefined {
   );
 }
 
-/**
- * Format the advertised routing next to what real turns observed for
- * `/claude status`.
- *
- * @param observed - Concrete model observed per selector during this process.
- * @returns Human-readable multi-line mapping list.
- */
 export function formatModelStatus(observed: ReadonlyMap<string, string>): string {
   const lines = models.map((model) => {
     const seen = observed.get(model.sdkModel);

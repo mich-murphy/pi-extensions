@@ -58,7 +58,6 @@ describe("extension wiring", () => {
     vi.stubEnv("PI_CLAUDE_PATH", claude.path);
   }
 
-  // Each test runs the real SDK against a stand-in `claude` process, so allow for a loaded host.
   test(
     "a model the provider's turn observed appears in the status command's model list",
     { timeout: 30_000 },
