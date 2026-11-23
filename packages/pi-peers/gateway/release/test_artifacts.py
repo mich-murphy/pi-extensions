@@ -81,8 +81,9 @@ class ArtifactTests(CatalogFixture, unittest.TestCase):
                 artifacts.release_tag(value)
 
     def test_manifest_rejects_tag_not_bound_to_version(self):
+        other_version = f"pi-gateway-v{self.manifest['version']}-other"
         for tag in (f"gateway-{REVISION}", "v0.1.0", f"pi-gateway-v{REVISION}",
-                    "pi-gateway-v0.1.1", "pi-gateway-0.1.0"):
+                    other_version, "pi-gateway-0.1.0"):
             with self.subTest(tag=tag):
                 manifest = {**self.manifest, "releaseTag": tag}
                 self.path.write_bytes(artifacts.canonical(manifest))
