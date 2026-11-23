@@ -1,7 +1,6 @@
 // OFFLINE fixture SDK messages -> unchanged production index/parser/runner/bridge
 // -> pinned Pi session + real inter-extension event bus. Not live SDK/CLI parsing.
 /* oxlint-disable no-await-in-loop, no-console -- sequential session turns and controlled event-bus error capture */
-/* oxlint-disable typescript/no-unsafe-type-assertion -- trusted same-checkout production module loaded by isolated jiti */
 /* oxlint-disable typescript/no-misused-promises -- deliberately rejecting listener verifies real Pi event-bus isolation */
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -111,7 +110,7 @@ const jiti = createJiti(import.meta.url, {
   },
   moduleCache: false,
 });
-const production = (await jiti.import(path.join(values.package, "index.ts"))) as typeof Production;
+const production = await jiti.import<typeof Production>(path.join(values.package, "index.ts"));
 const settings = SettingsManager.inMemory({
   retry: { enabled: false },
   compaction: { enabled: false },
