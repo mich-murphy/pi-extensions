@@ -10,32 +10,21 @@ import type { PromptResource } from "./prompt-view";
 import type { ResourcePath } from "./resource-path";
 import { compareText } from "./toggle-note";
 
-/** Environment variable that turns cache diagnostics on. */
 const CACHE_DEBUG_ENV = "PI_SKILLS_CACHE_DEBUG";
-/** Former name of the variable, read when the current one is unset. */
 const LEGACY_CACHE_DEBUG_ENV = "PI_SKILL_TOGGLE_CACHE_DEBUG";
 
-/** One JSONL diagnostics record. Paths are allowed; file contents never are. */
 export type DebugRecord = Readonly<Record<string, unknown>> & {
   readonly type: "run" | "usage" | "discover";
 };
 
-/** Writes one diagnostics record and never throws. */
 export type DebugSink = (record: DebugRecord) => void;
 
-/** The diagnostics setting: `PI_SKILLS_CACHE_DEBUG`, or `PI_SKILL_TOGGLE_CACHE_DEBUG` when unset. */
 export function cacheDebugValue(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): string | undefined {
   return env[CACHE_DEBUG_ENV] ?? env[LEGACY_CACHE_DEBUG_ENV];
 }
 
-/**
- * Resolve where diagnostics go.
- *
- * @param value - The environment value. Unset, empty, and `0` turn diagnostics off; `1` selects
- *   the agent directory's log; anything else is a file path.
- */
 export function debugPath(
   value: string | undefined,
   agentDir: () => string = getAgentDir,
@@ -46,11 +35,6 @@ export function debugPath(
   return value === "1" ? join(agentDir(), "pi-skills-cache-debug.jsonl") : value;
 }
 
-/**
- * Create the diagnostics sink, or nothing when diagnostics are off.
- *
- * Records are appended to a file, never printed, because stdout and stderr belong to Pi's TUI.
- */
 export function cacheDebugSink(
   value: string | undefined = cacheDebugValue(),
   append: (path: string, data: string) => void = appendFileSync,
@@ -62,18 +46,17 @@ export function cacheDebugSink(
   return (record) => {
     try {
       append(path, `${JSON.stringify({ ts: new Date().toISOString(), ...record })}\n`);
+      return true;
     } catch {
-      // Diagnostics must never break the extension.
+      return false;
     }
   };
 }
 
-/** Short sha256 of lines, so identical prompt inputs have identical fingerprints. */
 export function fingerprint(lines: readonly string[]): string {
   return createHash("sha256").update(lines.join("\0")).digest("hex").slice(0, 16);
 }
 
-/** What a run decided, for the `run` record. */
 export type RunDiagnostics = {
   readonly sessionId: string;
   readonly model: ModelRef | undefined;
@@ -81,12 +64,10 @@ export type RunDiagnostics = {
   readonly plan: PromptPlan;
   readonly resources: readonly PromptResource[];
   readonly desiredHidden: ReadonlySet<ResourcePath> | undefined;
-  /** Prompt options after filtering, as handed to Pi. */
   readonly options: BuildSystemPromptOptions;
   readonly durationMs: number;
 };
 
-/** Build the `run` record. */
 export function runRecord(run: RunDiagnostics): DebugRecord {
   const { snapshot, plan } = run;
   return {
@@ -133,7 +114,6 @@ function isUsageMessage(message: TranscriptMessage): message is UsageMessage {
   );
 }
 
-/** Build the `usage` record for a finished assistant message, if it is one. */
 export function usageRecord(
   message: TranscriptMessage,
   sessionId: string,

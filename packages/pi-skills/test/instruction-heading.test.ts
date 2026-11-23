@@ -33,7 +33,6 @@ describe("instruction headings", () => {
     expect(instructionHeading(content, "/repo/AGENTS.md")).toBe(expected);
   });
 
-  // A heading is never blank and never holds a control character; a blank one is no heading.
   test.each([
     ["# \t", ""],
     ["#   \n", ""],

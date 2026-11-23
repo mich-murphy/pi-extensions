@@ -2,11 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  createAgentSession,
   DefaultResourceLoader,
   loadSkills,
+  SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerPiSkills } from "../index";
 import type { ToggleHandlers } from "../index";
@@ -57,6 +59,36 @@ describe("discoverProjectSkillPaths", () => {
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  test("Pi lists every loaded skill in getCommands even when enableSkillCommands is off", async () => {
+    const { root, cwd, agentDir } = project();
+    writeSkill(join(cwd, ".pi", "skills"), "native", "native-skill");
+    const settingsManager = SettingsManager.inMemory(
+      { enableSkillCommands: false },
+      { projectTrusted: true },
+    );
+    let api: ExtensionAPI | undefined;
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      extensionFactories: [
+        (pi) => {
+          api = pi;
+        },
+      ],
+    });
+    await resourceLoader.reload();
+    await createAgentSession({
+      cwd,
+      agentDir,
+      resourceLoader,
+      sessionManager: SessionManager.inMemory(root),
+      settingsManager,
+    });
+
+    expect(api?.getCommands().map(({ name }) => name)).toContain("skill:native-skill");
   });
 
   test("supplements native discovery from cwd through the Git root", async () => {

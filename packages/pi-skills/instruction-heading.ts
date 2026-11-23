@@ -1,11 +1,6 @@
 import { open } from "node:fs/promises";
 import { basename } from "node:path";
 
-/**
- * The first heading of an instruction file, or "" when it has none or only repeats the file name.
- * A heading is never blank and never holds a control character: control characters become spaces,
- * and an empty heading such as `#` followed by spaces is no heading, so the search goes on.
- */
 export function instructionHeading(content: string, path: string): string {
   let previous = "";
   for (const line of proseLines(content)) {
@@ -24,7 +19,6 @@ export function instructionHeading(content: string, path: string): string {
   return "";
 }
 
-/** Replace control characters with spaces, then trim. */
 function printable(text: string): string {
   return text.replaceAll(/\p{Cc}/gu, " ").trim();
 }

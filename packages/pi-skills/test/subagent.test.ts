@@ -34,7 +34,6 @@ const parentDeploy = skill("/work/parent/.agents/skills/deploy/SKILL.md", "deplo
 const childDeploy = skill("/work/child/.agents/skills/deploy/SKILL.md", "deploy", "project");
 const childOnly = skill("/work/child/.agents/skills/lint/SKILL.md", "lint", "project");
 
-/** A mutable state file shared or not between sessions. */
 function mutableStore(entries: Readonly<Record<string, ToggleValue>> = {}) {
   let current = new Map(
     Object.entries(entries).map(([path, value]) => [resourcePathId(path, "/"), value]),
@@ -96,7 +95,6 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
       id = next;
       handlers.session_start?.({ type: "session_start" }, ctx);
     },
-    /** Freeze the prompt as the model has it: these skills in the head, one answer since. */
     freeze(skills: readonly Skill[]) {
       const head: TranscriptMessage = {
         role: "system",
@@ -160,13 +158,14 @@ describe("session registry", () => {
     expect(sessionPolicy(PARENT)).toBeUndefined();
   });
 
-  test("ignores a registry another value occupies", () => {
+  test("leaves a malformed registry owned by another module untouched", () => {
     Reflect.set(globalThis, REGISTRY, "not a map");
     expect(() => {
       registerSession(PARENT, policy);
       unregisterSession(PARENT, policy);
     }).not.toThrow();
     expect(sessionPolicy(PARENT)).toBeUndefined();
+    expect(Reflect.get(globalThis, REGISTRY)).toBe("not a map");
   });
 
   test("never throws when the registry map itself throws", () => {

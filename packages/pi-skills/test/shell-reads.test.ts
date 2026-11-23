@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { pathsReadByCommand } from "../shell-reads";
+import { timeoutOverTenfold } from "./test-timeouts";
 
 const cwd = "/repo";
 
@@ -151,10 +152,6 @@ describe("pathsReadByCommand ignores commands that print no file content", () =>
     expect(reads(command)).toStrictEqual([]);
   });
 
-  // Documented limitation (README "Limitations" points here for the exact list): the shell check is fail-open here. Inline
-  // interpreter code is not inspected, a loop value copied into another variable is not
-  // tracked, and a temporary `name=value cmd` assignment makes that loop binding unknown for
-  // the rest of the body. These pins catch accidental changes in either direction.
   test.each([
     "python3 -c \"print(open('AGENTS.md').read())\"",
     "node -e \"console.log(require('fs').readFileSync('AGENTS.md','utf8'))\"",
@@ -214,16 +211,11 @@ describe("pathsReadByCommand follows bash scoping and expansion", () => {
     ["cd web\ncat AGENTS.md", ["/repo/web/AGENTS.md"]],
     ["cd web || cat AGENTS.md", ["/repo/web/AGENTS.md"]],
     ["cd web && cat a | cat b", ["/repo/web/a", "/repo/web/b"]],
-    // A newline ends a list, so a `cd` before it scopes later lines, but a pipeline element
-    // runs in a subshell and its `cd` never leaks past the newline.
     ["true | cd web\ncat a", ["/repo/a"]],
-    // The newline ends the list, so `cd web` applies to both background jobs on the next line.
     ["cd web\ncat a & cat b", ["/repo/web/a", "/repo/web/b"]],
-    // A newline after `|` continues the pipeline: `cd web` is still a subshell element.
     ["cat a |\ncd web; cat b", ["/repo/a", "/repo/b"]],
     ["cd web |\ncat a", ["/repo/a"]],
     ["cd web |&\ncat a", ["/repo/a"]],
-    // A newline after `&&` continues the and-list, which `&` then backgrounds as a whole.
     ["cd web &&\ntrue & cat b", ["/repo/b"]],
     ["cd web &&\ncat a", ["/repo/web/a"]],
     ["cd web ||\ncat a", ["/repo/web/a"]],
@@ -237,8 +229,6 @@ describe("pathsReadByCommand follows bash scoping and expansion", () => {
     ["ksh -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
     ["mksh -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
     ["ash -c 'cat AGENTS.md'", ["/repo/AGENTS.md"]],
-    // Brace choice: bash expands only a comma list or a `x..y` sequence, so `{}`, `{a}`, `{..}`
-    // and quoted braces stay literal and are still reported.
     ["cat {}", ["/repo/{}"]],
     ["cat {a}", ["/repo/{a}"]],
     ["cat {..}", ["/repo/{..}"]],
@@ -253,8 +243,6 @@ describe("pathsReadByCommand follows bash scoping and expansion", () => {
   });
 });
 
-// Known limits: each form reads AGENTS.md in bash, but the guard does not see it. Pinned so any
-// change is deliberate; see README "Limitations".
 describe("pathsReadByCommand known limits (fail-open)", () => {
   test.each([
     'echo "$(<AGENTS.md)"',
@@ -277,9 +265,6 @@ describe("pathsReadByCommand known limits (fail-open)", () => {
     expect(reads(command)).toStrictEqual([]);
   });
 
-  // The read is of a directory or of a copy the analyser cannot connect to the protected file.
-  // The guard still compares the reported path's file identity, but only for links that already
-  // exist when the command starts.
   test.each([
     ["grep -r pattern .", ["/repo"]],
     ["rg pattern .", ["/repo"]],
@@ -335,12 +320,17 @@ describe("pathsReadByCommand reads plain file readers", () => {
 
 describe("pathsReadByCommand bounds pathological input", () => {
   test("a very long chain of cd stops resolving relative paths instead of growing quadratically", () => {
-    // The tracked directory would exceed any file system's path limit long before this chain ends.
     expect(reads(`${"cd a;".repeat(5000)} cat AGENTS.md`)).toStrictEqual([]);
-    // Short chains are exact.
     expect(reads(`${"cd a;".repeat(20)} cat AGENTS.md`)).toStrictEqual([
       `/repo/${"a/".repeat(20)}AGENTS.md`,
     ]);
+  });
+
+  test("a command of exactly the README's documented 100,000 characters is analysed; one more fails open", () => {
+    const read = "cat AGENTS.md;";
+    const atLimit = `${read}${" ".repeat(100_000 - read.length)}`;
+    expect(reads(atLimit)).toStrictEqual(["/repo/AGENTS.md"]);
+    expect(reads(`${atLimit} `)).toStrictEqual([]);
   });
 
   test("a command over the size cap is not analysed, so the guard fails open", () => {
@@ -350,23 +340,15 @@ describe("pathsReadByCommand bounds pathological input", () => {
     expect(reads("cat AGENTS.md; echo x;")).toStrictEqual(["/repo/AGENTS.md"]);
   });
 
-  // Analyses a command of about 100,000 characters, which is the point of the test: 0.3 s quiet and
-  // 0.55 s under 8 busy processes.
   test(
     "a worst-case cd chain is bounded by the path cap, not by elapsed time",
-    { timeout: 15_000 },
+    { timeout: timeoutOverTenfold(15_000, 550) },
     () => {
-      // Every tracked directory is capped at 4096 characters, so each of the chain's steps copies a
-      // bounded string and the whole chain does linear work. Pinning the exact cap is the
-      // load-independent form of "returns promptly": unfixed, paths grew without bound.
       const chain = "cd a;".repeat(2039);
-      // "/repo/ab/" + "a/" * 2039 + "AGENTS.md" is exactly 4096 characters: allowed.
       expect(reads(`cd ab; ${chain} cat AGENTS.md`)).toStrictEqual([
         `/repo/ab/${"a/".repeat(2039)}AGENTS.md`,
       ]);
-      // One character more is over the cap: nothing resolves.
       expect(reads(`cd abc; ${chain} cat AGENTS.md`)).toStrictEqual([]);
-      // Near the command-size cap the chain still resolves nothing and reads nothing.
       expect(reads(`${"cd a;".repeat(19_990)} cat AGENTS.md`)).toStrictEqual([]);
     },
   );

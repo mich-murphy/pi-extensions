@@ -1,20 +1,15 @@
 import { homedir } from "node:os";
 import { basename, isAbsolute, resolve } from "node:path";
 
-/** A shell word, and whether its text is known without running the shell. */
 type Word = {
   readonly text: string;
   readonly literal: boolean;
-  /** Set when every character was written as itself, so `\{` and `'{'` are not a bare `{`. */
   readonly bare?: boolean | undefined;
-  /** Set only for an exact `$name`, `${name}`, or double-quoted equivalent. */
   readonly variable?: string | undefined;
 };
 
-/** One lexed part of a word. Only an unquoted, unescaped character that is itself is `plain`. */
 type Piece = Word & { readonly plain: boolean };
 
-/** One simple command. Its heredoc body is filled in once the lexer reaches the next line. */
 type Command = {
   readonly words: readonly Word[];
   readonly inputs: readonly Word[];
@@ -28,19 +23,15 @@ type Item =
   | { readonly kind: "close" }
   | { readonly kind: "boundary"; readonly boundary: Boundary };
 
-/** How a list operator separates commands: `&&`/`||`, `;`/newline, `|`/`|&`, or `&`. */
 type Boundary = "and" | "semi" | "pipe" | "background";
 
-/** Where the current list and pipeline started, for undoing a `cd` that ran in a subshell. */
 type Frame = {
   list: string | undefined;
   pipe: string | undefined;
   piped: boolean;
-  /** A `coproc` group, whose closing brace also ends the subshell's own directory. */
   subshell?: true;
 };
 
-/** Option letters and long options that take a separate value. */
 type Options = { readonly short: string; readonly long: readonly string[] };
 
 type Arguments = {
@@ -50,12 +41,7 @@ type Arguments = {
 };
 
 const MAX_DEPTH = 3;
-/**
- * Backstop for input the analyser cannot resolve in reasonable time. A longer command is not
- * analysed at all, like any other input it cannot resolve: the best-effort check fails open.
- */
-const MAX_COMMAND_LENGTH = 100_000;
-/** Longest directory or file path tracked; a `cd` chain beyond it is treated as unresolvable. */
+const FAIL_OPEN_ABOVE_COMMAND_LENGTH = 100_000;
 const MAX_PATH_LENGTH = 4096;
 const WORD_END = new Set([" ", "\t", "\r", "\n", "|", "&", ";", "(", ")", "<", ">"]);
 const OPERATORS = [
@@ -95,20 +81,13 @@ const KEYWORDS = new Set([
   "}",
   "time",
 ]);
-/** What may follow `coproc NAME`: a compound command. */
 const COMPOUND_START = new Set(["{", "while", "until", "if", "for", "case", "select"]);
 const CONDITION_LOOPS = new Set(["while", "until"]);
-/**
- * Brace expansion stops here, and the word is left unresolved like any other dynamic one. The
- * limits keep one word's expansion, a whole command's, and the nesting it is scanned at bounded.
- */
 const MAX_BRACE_WORDS = 256;
 const MAX_BRACE_WORDS_PER_COMMAND = 4096;
 const MAX_BRACE_NESTING = 8;
 const MAX_BRACE_PIECES = 1024;
-/** Deepest `${name:-default}` nested in another's default that is still read as a path. */
 const MAX_DEFAULT_NESTING = 8;
-/** `${name:-word}`, `${name-word}`, `${name:=word}`, `${name=word}`, `${name:+word}`, `${name+word}`. */
 const PARAMETER_DEFAULT =
   /^(?<name>[A-Za-z_]\w*(?:\[[^\]]*\])?|\d+|[@*?$!#-])(?<operator>:?[-=+])(?<word>.*)$/su;
 const EXACT_VARIABLE = /^\$(?:(?<bare>[A-Za-z_]\w*)|\{(?<braced>[A-Za-z_]\w*)\})$/u;
@@ -121,7 +100,6 @@ const NAME = /[A-Za-z_]\w*/uy;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
 const NO_OPTIONS: Options = { short: "", long: [] };
 
-/** Commands that print the content of every file they are given. */
 const PRINTERS: ReadonlyMap<string, Options> = new Map(
   Object.entries({
     cat: NO_OPTIONS,
@@ -162,7 +140,6 @@ const SEARCH_OPTIONS: ReadonlyMap<string, Options> = new Map(
     },
   }),
 );
-/** Search flags that print only names, counts, or nothing. */
 const SILENT_SEARCH = new Set([
   "-l",
   "-L",
@@ -179,7 +156,6 @@ const SILENT_SEARCH = new Set([
 const SED_OPTIONS: Options = { short: "efl", long: ["--expression", "--file"] };
 const AWK_OPTIONS: Options = { short: "Fvf", long: [] };
 
-/** Commands that run the command after them, with options and the positionals they consume. */
 const WRAPPERS: ReadonlyMap<string, { readonly options: Options; readonly skip: number }> = new Map(
   Object.entries({
     env: { options: { short: "uCS", long: [] }, skip: 0 },
@@ -194,21 +170,9 @@ const WRAPPERS: ReadonlyMap<string, { readonly options: Options; readonly skip: 
   }),
 );
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "mksh", "ash"]);
-/**
- * List the files a shell command prints the contents of, as far as its literal text shows.
- *
- * Best-effort detection of literal reader arguments, input redirects, shell scripts, and simple
- * `for` loops whose readers take an exact loop-variable argument. Substitutions are analyzed in
- * their command's directory. Dynamic paths, general shell control flow, and non-shell interpreter
- * scripts are unsupported; unresolvable reads are skipped rather than guessed.
- *
- * @param command - Shell command text, as the bash tool receives it.
- * @param cwd - Directory relative paths start from.
- * @returns Absolute paths whose content the command reads.
- */
 export function pathsReadByCommand(command: string, cwd: string): readonly string[] {
   const reads = new Set<string>();
-  if (command.length > MAX_COMMAND_LENGTH) {
+  if (command.length > FAIL_OPEN_ABOVE_COMMAND_LENGTH) {
     return [];
   }
   analyze(command, cwd, 0, reads);
@@ -227,14 +191,11 @@ function analyze(source: string, cwd: string | undefined, depth: number, reads: 
 const BACKTICK_ESCAPE = /\\(?<char>[`$\\])/gu;
 const QUOTED_BACKTICK_ESCAPE = /\\(?<char>[`$"\\])/gu;
 
-/** An open construct while scanning a substitution: a `(` or `${` group or a double-quoted string. */
 type Open = "(" | "{" | '"';
 
 type Scan = {
   readonly open: Open[];
-  /** How many `(` groups are open. */
   parens: number;
-  /** Where the outermost open `$( )` began, or -1. */
   span: number;
 };
 
@@ -248,17 +209,14 @@ class Lexer {
   private readonly pending: {
     readonly heredoc: { body: string | undefined };
     readonly delimiter: string;
-    /** A quoted delimiter makes the body literal; otherwise its substitutions run. */
     readonly quoted: boolean;
     readonly substitutions: string[];
   }[] = [];
 
-  /** How many more words brace expansion may produce in this source. */
   private braceBudget = MAX_BRACE_WORDS_PER_COMMAND;
 
   constructor(
     private readonly source: string,
-    /** How many `${name:-default}` defaults enclose this source. */
     private readonly nesting = 0,
   ) {}
 
@@ -289,7 +247,6 @@ class Lexer {
     this.index += 1;
     this.flush();
     const last = this.items.at(-1);
-    // A newline after `|`, `|&`, `&&` or `||` continues the command.
     const continues =
       last?.kind === "boundary" && (last.boundary === "pipe" || last.boundary === "and");
     if (!continues) {
@@ -377,13 +334,11 @@ class Lexer {
     }
   }
 
-  /** One word where the shell makes one; a brace expansion that makes several is unresolved. */
   private word(): Word {
     const [first, second] = this.wordList();
     return second === undefined && first !== undefined ? first : { text: "", literal: false };
   }
 
-  /** The words one source word becomes: several for a brace expansion, one otherwise. */
   private wordList(): readonly Word[] {
     const start = this.index;
     const pieces: Piece[] = [];
@@ -409,10 +364,6 @@ class Lexer {
     return { ...word, variable: this.variableOf(this.source.slice(start, this.index), word) };
   }
 
-  /**
-   * The variable a word is exactly: `$name` or `${name}` when unknown, and `${name:-word}`,
-   * `${name-word}`, `${name:=word}` or `${name=word}` whose word is only a fallback.
-   */
   private variableOf(raw: string, word: Word): string | undefined {
     const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
     const exact = EXACT_VARIABLE.exec(unquoted)?.groups;
@@ -428,7 +379,6 @@ class Lexer {
     return probe.index === unquoted.length - 2 ? name : undefined;
   }
 
-  /** Consume one piece of a word: an escape, a quoted run, an expansion, or one character. */
   private wordPart(start: number): Word {
     const char = this.source.charAt(this.index);
     switch (char) {
@@ -456,7 +406,6 @@ class Lexer {
     }
     this.index += 1;
     if (char === "~" && this.index - 1 === start) {
-      // `~user`, `~+` and `~-` name directories only the shell knows.
       return this.tildeEndsAt(this.index)
         ? { text: homedir(), literal: true }
         : { text: char, literal: false };
@@ -471,7 +420,6 @@ class Lexer {
     return { text, literal: end !== -1 };
   }
 
-  /** Whether a `~` ends at this index, so it names the home directory. */
   private tildeEndsAt(index: number): boolean {
     const next = this.source.charAt(index);
     return next === "/" || next === "" || WORD_END.has(next);
@@ -507,10 +455,6 @@ class Lexer {
     return { text, literal: false };
   }
 
-  /**
-   * `$( … )` runs `inner`; `$(( … ))` is arithmetic, whose own substitutions run. When the
-   * leading `(` does not close at the very end (`$((cat a) )`) the whole is a subshell.
-   */
   private substitution(inner: string): void {
     if (!inner.startsWith("(")) {
       this.substitutions.push(inner);
@@ -525,10 +469,6 @@ class Lexer {
     }
   }
 
-  /**
-   * The command substitutions that run in text where quotes are literal and only backslash,
-   * `$(`, `${` and backticks matter: an arithmetic expansion or an unquoted heredoc body.
-   */
   static expansionsIn(text: string): readonly string[] {
     const lexer = new Lexer(text);
     while (lexer.index < text.length) {
@@ -556,10 +496,6 @@ class Lexer {
     }
   }
 
-  /**
-   * Only `$HOME` has a value known without running the shell. A literal default or alternative
-   * word of any other `${name:-word}` is a possible path, since `name` may well be unset.
-   */
   private dollar(quoted = false): Word {
     const next = this.source.charAt(this.index + 1);
     if (next === "(") {
@@ -585,24 +521,17 @@ class Lexer {
     return { text: "", literal: false };
   }
 
-  /** The inside of a `${ }`: a default or alternative word, or a plain name. */
   private parameter(inner: string, quoted: boolean): Word {
     const groups = PARAMETER_DEFAULT.exec(inner)?.groups;
     if (groups?.word === undefined) {
       return home(inner);
     }
-    // `$HOME` is set, so `${HOME:-word}` is its value; `${HOME:+word}` is the word.
     if (groups.name === "HOME" && groups.operator?.endsWith("+") !== true) {
       return home("HOME");
     }
     return this.defaultWord(groups.word, quoted);
   }
 
-  /**
-   * Read the word of a `${name:-word}` as shell text. Its substitutions already ran when the
-   * enclosing `${ }` was scanned. Unquoted, an unquoted space would split it into several words,
-   * which one word cannot stand for.
-   */
   private defaultWord(text: string, quoted: boolean): Word {
     if (this.nesting >= MAX_DEFAULT_NESTING) {
       return { text: "", literal: false };
@@ -620,10 +549,6 @@ class Lexer {
     return splits ? { text: word.text, literal: false } : word;
   }
 
-  /**
-   * One piece of a default word inside double quotes: a single quote is an ordinary character
-   * there, and a backslash escapes only `$`, `` ` ``, `"`, `\` and a newline.
-   */
   private quotedPart(): Word {
     const char = this.source.charAt(this.index);
     const next = this.source.charAt(this.index + 1);
@@ -634,7 +559,6 @@ class Lexer {
     return this.wordPart(0);
   }
 
-  /** Backslash removes itself before `` ` ``, `$` and `\`, and before `"` when the backticks sit in double quotes. */
   private backtick(inDoubleQuotes: boolean): void {
     const end = this.backtickEnd(this.index);
     const inner = this.source.slice(this.index + 1, end === -1 ? undefined : end);
@@ -644,7 +568,6 @@ class Lexer {
     this.index = end === -1 ? this.source.length : end + 1;
   }
 
-  /** The index of the backtick closing the one at `open`; `\`` does not close it. Or -1. */
   private backtickEnd(open: number): number {
     for (let index = open + 1; index < this.source.length; index += 1) {
       const char = this.source.charAt(index);
@@ -657,12 +580,6 @@ class Lexer {
     return -1;
   }
 
-  /**
-   * Read up to the `)` (or `}`) that closes an already consumed `$(` (or `${`), skipping quoted
-   * text. A stack of open constructs keeps this one linear pass: inside double quotes `\"` does not
-   * close the string, and `$(` and `${` open nested constructs whose own quotes are independent.
-   * Inside `${ }` the outermost `$( )` and backtick substitutions are collected for analysis.
-   */
   private scan(base: "(" | "{"): string {
     const start = this.index;
     const scan: Scan = { open: [base], parens: base === "(" ? 1 : 0, span: -1 };
@@ -684,7 +601,6 @@ class Lexer {
     return this.source.slice(start);
   }
 
-  /** Step over one character; true once the construct that `scan` started with is closed. */
   private scanStep(scan: Scan, char: string, top: Open | undefined): boolean {
     const next = this.source.charAt(this.index + 1);
     if (char === "$" && (next === "(" || next === "{")) {
@@ -726,7 +642,6 @@ class Lexer {
     }
   }
 
-  /** Record the outermost `$( )` inside a `${ }` once it closes (or the input ends). */
   private collect(scan: Scan, end: number): void {
     if (scan.span !== -1 && (scan.parens === 0 || end === this.source.length)) {
       this.substitution(this.source.slice(scan.span, end));
@@ -734,7 +649,6 @@ class Lexer {
     }
   }
 
-  /** Backticks nested in a `$( )` are analysed with it; any other is a substitution of its own. */
   private scanBacktick(scan: Scan, inDoubleQuotes: boolean): void {
     if (scan.parens > 0) {
       const end = this.backtickEnd(this.index);
@@ -769,13 +683,6 @@ function joinPieces(pieces: readonly Piece[]): Word {
 
 type Expansion = readonly (readonly Piece[])[];
 
-/**
- * The words bash's brace expansion makes of a word, or undefined when there would be too many.
- * Only plain `{`, `,`, `}` and sequence characters count, so quoted, escaped and `${ }` braces
- * stay inert. A `{` that does not start an expansion stays literal, as in `{a}` or `{a{b,c}}`.
- *
- * @param depth - How many braces enclose these pieces.
- */
 function expandBraces(pieces: readonly Piece[], depth: number): Expansion | undefined {
   if (pieces.length > MAX_BRACE_PIECES || depth > MAX_BRACE_NESTING) {
     return undefined;
@@ -798,7 +705,6 @@ function expandBraces(pieces: readonly Piece[], depth: number): Expansion | unde
   return [pieces];
 }
 
-/** For each plain `{`, the index of its plain `}`, or -1. */
 function matchingBraces(pieces: readonly Piece[]): readonly number[] {
   const closes = pieces.map(() => -1);
   const opens: number[] = [];
@@ -812,7 +718,6 @@ function matchingBraces(pieces: readonly Piece[]): readonly number[] {
   return closes;
 }
 
-/** The comma-separated alternatives of a brace body, or undefined when it has no top-level comma. */
 function braceAlternatives(inner: readonly Piece[]): readonly (readonly Piece[])[] | undefined {
   const options: Piece[][] = [[]];
   let depth = 0;
@@ -830,10 +735,6 @@ function braceAlternatives(inner: readonly Piece[]): readonly (readonly Piece[])
   return commas === 0 ? undefined : options;
 }
 
-/**
- * The words of `{1..3}`, `{3..1..2}`, `{01..10}` or `{a..e}`. Undefined when the body is not a
- * sequence, null when it has more words than the cap allows.
- */
 function braceSequence(inner: readonly Piece[]): Expansion | null | undefined {
   if (!inner.every((piece) => piece.plain && piece.text.length === 1)) {
     return undefined;
@@ -855,7 +756,6 @@ function braceSequence(inner: readonly Piece[]): Expansion | null | undefined {
   return values?.map((value) => [sequencePiece(String.fromCodePoint(value))]) ?? null;
 }
 
-/** `{from..to..step}` of integers; bash pads to the longest end when either has a leading zero. */
 function numberSequence(from: string, to: string, step: string): Expansion | null {
   if (![from, to, step].every((part) => SIGNED_NUMBER.test(part))) {
     return null;
@@ -874,7 +774,6 @@ function sequencePiece(text: string): Piece {
   return { text, literal: true, plain: false };
 }
 
-/** The values from `from` to `to` in steps of `|step|` (1 for 0), or undefined past the cap. */
 function sequenceValues(from: number, to: number, step: string): readonly number[] | undefined {
   const size = Math.abs(Number(step)) || 1;
   const count = Math.floor(Math.abs(to - from) / size) + 1;
@@ -885,7 +784,6 @@ function sequenceValues(from: number, to: number, step: string): readonly number
   return Array.from({ length: count }, (_, index) => from + index * direction);
 }
 
-/** Every alternative of the first brace, in front of every expansion of what follows it. */
 function combineBraces(
   before: readonly Piece[],
   options: Expansion,
@@ -910,7 +808,6 @@ function combineBraces(
 class Evaluator {
   private readonly directories: (string | undefined)[];
   private readonly frames: Frame[];
-  /** Nested loop bindings; other loop forms have no resolvable binding. */
   private readonly loops: { readonly variable?: string | undefined; list: readonly Word[] }[] = [];
 
   constructor(
@@ -954,10 +851,6 @@ class Evaluator {
     }
   }
 
-  /**
-   * Every pipeline element, and a list followed by `&`, runs in a subshell, so a `cd` in it does
-   * not reach the next command. `cd x && cat f` and `cd x; cat f` stay in one shell.
-   */
   private boundary(boundary: Boundary): void {
     const frame = this.frames.at(-1);
     if (frame === undefined) {
@@ -996,11 +889,6 @@ class Evaluator {
     }
   }
 
-  /**
-   * `coproc [NAME] command` runs the command in a subshell, so a `cd` in it does not reach the
-   * next command. `NAME` is only a name before a compound command: `coproc NAME cat x` runs a
-   * command called `NAME`.
-   */
   private coproc(words: readonly Word[], command: Command): void {
     const [, name, third] = words;
     const named =
@@ -1011,7 +899,6 @@ class Evaluator {
     const rest = words.slice(named ? 2 : 1);
     this.directories.push(this.cwd);
     if (rest[0]?.bare === true && rest[0].text === "{") {
-      // The group's own `}` ends the subshell.
       this.frames.push({ ...this.frame(), subshell: true });
       this.evaluateWords(this.withoutKeywords(rest.slice(1)), command);
       return;
@@ -1025,8 +912,6 @@ class Evaluator {
       return;
     }
     const assignments = leadingAssignments(words);
-    // Reassignment makes a binding unknown. Also skip temporary inline assignments rather than
-    // model when their values take effect or persist (argument expansion may precede assignment).
     for (const assignment of words.slice(0, assignments)) {
       const name = assignment.text.slice(0, assignment.text.indexOf("="));
       for (const loop of this.loops) {
@@ -1050,7 +935,6 @@ class Evaluator {
     }
   }
 
-  /** Drop leading keywords such as `if` and `do`, opening a loop for `while` and `until`. */
   private withoutKeywords(words: readonly Word[]): readonly Word[] {
     const start = words.findIndex((word) => !(word.literal && KEYWORDS.has(word.text)));
     const keywords = start === -1 ? words : words.slice(0, start);
@@ -1066,7 +950,6 @@ class Evaluator {
     return start === -1 ? [] : words.slice(start);
   }
 
-  /** Open a loop at `for` and close one at `done`; returns whether the command was either. */
   private loopBoundary(words: readonly Word[]): boolean {
     const [first, binding, third] = words;
     if (first?.literal !== true) {
@@ -1088,7 +971,6 @@ class Evaluator {
     return true;
   }
 
-  /** Handle a command that runs or reads rather than prints; true when `name` is one. */
   private builtin(name: string, args: readonly Word[], command: Command): boolean {
     if (name === "cd" || name === "pushd") {
       this.changeDirectory(args);
@@ -1107,10 +989,6 @@ class Evaluator {
     return true;
   }
 
-  /**
-   * `trap ACTION SIGNAL…` runs ACTION as a command later. A lone operand is a signal, `-` resets
-   * and an empty ACTION ignores, and `-p` or `-l` only list.
-   */
   private trapAction(args: readonly Word[]): void {
     const { flags, positionals } = parseArguments(args, NO_OPTIONS);
     const [action, signal] = positionals;
@@ -1151,11 +1029,9 @@ class Evaluator {
       target.text !== "-" &&
       ((index > 0 && args[index - 1]?.text === "--") || !target.text.startsWith("-"))
     ) {
-      // A relative cd in a loop can start from a different directory on each iteration.
       next =
         this.loops.length === 0 || isAbsolute(target.text) ? this.resolve(target.text) : undefined;
     }
-    // Unknown options, dynamic targets, and extra operands invalidate relative resolution.
     this.directories[this.directories.length - 1] = next;
   }
 
@@ -1181,7 +1057,6 @@ class Evaluator {
       return undefined;
     }
     const resolved = isAbsolute(path) ? resolve(path) : resolve(this.cwd ?? "", path);
-    // Each step of a long `cd` chain copies the whole path, so cap its growth.
     return resolved.length > MAX_PATH_LENGTH ? undefined : resolved;
   }
 }
@@ -1191,7 +1066,6 @@ function leadingAssignments(words: readonly Word[]): number {
   return index === -1 ? words.length : index;
 }
 
-/** Strip commands such as `env`, `sudo`, `xargs`, and `timeout 5` that run the command after them. */
 function unwrap(words: readonly Word[]): readonly Word[] {
   let remaining = words;
   for (;;) {
@@ -1206,7 +1080,7 @@ function unwrap(words: readonly Word[]): readonly Word[] {
       basename(first?.text ?? "") === "command" &&
       (parsed.flags.has("-v") || parsed.flags.has("-V"))
     ) {
-      return []; // `command -v` and `-V` only describe the command.
+      return [];
     }
     const positional = parsed.positionals;
     const after = positional.slice(wrapper.skip);
@@ -1214,12 +1088,6 @@ function unwrap(words: readonly Word[]): readonly Word[] {
   }
 }
 
-/**
- * Split arguments into flags, option values, and positionals.
- *
- * @param stopAtPositional - Treat everything from the first positional on as positionals, as a
- *   wrapper does with the command it runs.
- */
 function parseArguments(
   args: readonly Word[],
   options: Options,
@@ -1252,7 +1120,6 @@ function isPositional(word: Word): boolean {
   return !word.literal || !word.text.startsWith("-") || word.text === "-";
 }
 
-/** Record an option such as `--file=x` or `--file x`; returns 1 when it consumed the next argument. */
 function longOption(
   option: string,
   next: Word | undefined,
@@ -1274,7 +1141,6 @@ function longOption(
   return 1;
 }
 
-/** Record a cluster such as `-rn` or `-A3`; returns 1 when it consumed the next argument. */
 function shortCluster(
   cluster: string,
   next: Word | undefined,
@@ -1294,7 +1160,6 @@ function shortCluster(
   return 0;
 }
 
-/** File arguments of a content reader, or undefined when the command prints no file content. */
 function fileArguments(name: string, args: readonly Word[]): readonly Word[] | undefined {
   const printer = PRINTERS.get(name);
   if (printer !== undefined) {
@@ -1326,14 +1191,12 @@ function fileArguments(name: string, args: readonly Word[]): readonly Word[] | u
   return undefined;
 }
 
-/** `dd if=FILE` names its input file; every other `dd` operand is an option. */
 function ddInputs(args: readonly Word[]): readonly Word[] {
   return args
     .filter((word) => word.literal && word.text.startsWith("if="))
     .map((word) => ({ text: word.text.slice(3), literal: true }));
 }
 
-/** Drop the script or pattern positional unless an option supplied it. */
 function withoutProgram(parsed: Arguments, programOptions: readonly string[]): readonly Word[] {
   return programOptions.some((option) => parsed.values.has(option))
     ? parsed.positionals

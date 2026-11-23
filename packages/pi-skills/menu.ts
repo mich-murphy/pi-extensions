@@ -32,6 +32,13 @@ export type MenuOptions = {
 
 type Group = Pick<ToggleResource, "origin" | "kind"> & { readonly title: string };
 
+const MENU_CHROME_ROWS = 9;
+const PI_FOOTER_ROWS = 2;
+const CHAT_ROWS_ABOVE_MENU = 1;
+const ROWS_BESIDE_LIST = MENU_CHROME_ROWS + PI_FOOTER_ROWS + CHAT_ROWS_ABOVE_MENU;
+const MIN_LIST_ROWS = 3;
+const MAX_LIST_ROWS = 16;
+
 const GROUPS: readonly Group[] = [
   { title: "Global instructions", origin: "global", kind: "instruction" },
   { title: "Global skills", origin: "global", kind: "skill" },
@@ -244,12 +251,11 @@ class ResourceList implements Component, Focusable {
     return fuzzyFilter([...this.resources], this.search.getValue(), (r) => r.label);
   }
 
-  /**
-   * List rows that fit the terminal. Besides the list, the screen holds nine menu rows (borders,
-   * title, search, spacers, scroll indicator, hint), Pi's two footer rows and one chat row.
-   */
   private maxRows(): number {
-    return Math.max(3, Math.min(16, this.options.tui.terminal.rows - 12));
+    return Math.max(
+      MIN_LIST_ROWS,
+      Math.min(MAX_LIST_ROWS, this.options.tui.terminal.rows - ROWS_BESIDE_LIST),
+    );
   }
 
   private createList(): SelectList {

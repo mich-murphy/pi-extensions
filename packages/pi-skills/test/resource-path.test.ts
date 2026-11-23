@@ -21,7 +21,6 @@ describe("resource paths", () => {
     expect(resourcePathId(path, "elsewhere")).toBe(resolve(path));
   });
 
-  // The label keeps each test id stable: the temporary directory differs between processes.
   test.each([
     ["an empty path", ""],
     ["a relative path", "relative/SKILL.md"],

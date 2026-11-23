@@ -86,12 +86,10 @@ const ESCAPE = "\u001b";
 const DOWN = "\u001b[B";
 const SGR = new RegExp(String.raw`${ESCAPE}\[[0-9;]*m`, "gu");
 
-/** Rendered lines without color codes, as the user reads them. */
 function plain(lines: readonly string[]): string[] {
   return lines.map((line) => line.replaceAll(SGR, ""));
 }
 
-/** Lines describing menu keys: every key hint mentions Esc. */
 function hintLines(lines: readonly string[]): string[] {
   return plain(lines).filter((line) => /\bEsc\b/u.test(line));
 }

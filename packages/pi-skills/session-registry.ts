@@ -1,28 +1,16 @@
-/**
- * Process-wide registry of pi-skills sessions, so subagents can follow their parent.
- *
- * Subagent extensions load every extension again for a child session, as a separate module
- * instance in the same process. `globalThis` is the only thing the instances share, so entries
- * are plain versioned objects of functions: no class identity, and every read is validated.
- */
 import type { ToggleResource } from "./resources";
 
 const REGISTRY = Symbol.for("pi-skills.sessions");
 
-/** A resource a child session asks its parent about. */
 export type SessionResource = {
   readonly id: string;
   readonly kind: ToggleResource["kind"];
-  /** Skill name, or the instruction's path. */
   readonly name: string;
 };
 
-/** What a registered session decides for its children, evaluated live at every call. */
 export type SessionPolicy = {
   readonly version: 1;
-  /** Name the disabled resource an absolute path belongs to, or return undefined. */
   readonly match: (path: string) => string | undefined;
-  /** Whether the session wants a resource visible, or undefined when it does not know it. */
   readonly desiredVisible: (resource: SessionResource) => boolean | undefined;
 };
 
@@ -44,32 +32,23 @@ function sessions(create: boolean): Map<unknown, unknown> | undefined {
   return Reflect.set(globalThis, REGISTRY, map) ? map : undefined;
 }
 
-/** Register or refresh a session's policy. A malformed registry is left alone. */
-export function registerSession(id: string, policy: SessionPolicy): void {
+export function registerSession(id: string, policy: SessionPolicy): boolean {
   try {
-    sessions(true)?.set(id, policy);
+    return sessions(true)?.set(id, policy) !== undefined;
   } catch {
-    // Another module owns a broken registry; children fall back to their own state.
+    return false;
   }
 }
 
-/** Remove a session's policy, unless another instance has replaced it since. */
-export function unregisterSession(id: string, policy: SessionPolicy): void {
+export function unregisterSession(id: string, policy: SessionPolicy): boolean {
   try {
     const map = sessions(false);
-    if (map?.get(id) === policy) {
-      map.delete(id);
-    }
+    return map?.get(id) === policy && map.delete(id);
   } catch {
-    // Nothing to remove from a broken registry.
+    return false;
   }
 }
 
-/**
- * Look up a registered session's policy.
- *
- * @returns A wrapper that never throws, or undefined when no valid version 1 entry exists.
- */
 export function sessionPolicy(id: string): SessionPolicy | undefined {
   try {
     const entry: unknown = sessions(false)?.get(id);
@@ -95,7 +74,6 @@ function safePolicy(match: Callable, desiredVisible: Callable): SessionPolicy {
         const result = match(path);
         return typeof result === "string" ? result : undefined;
       } catch {
-        // A parent that cannot decide blocks the path, like a state failure does.
         return path;
       }
     },

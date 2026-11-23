@@ -1,6 +1,3 @@
-// Launch fixture for menu.bombadil.ts: a trusted Git project with global and project skills,
-// instruction files at every level the menu lists, wide-character names, long descriptions and
-// enough global skills to scroll the list at every terminal height.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -10,7 +7,6 @@ const LONG =
   "Use this when a task needs careful, step-by-step research across several primary sources, " +
   "with citations, cross-checks and a short summary of what remains uncertain at the end.";
 
-/** Global skills: enough to scroll even in a 50-row terminal (the list shows at most 16). */
 const GLOBAL_SKILLS: readonly (readonly [string, string])[] = [
   ["alpha-review", "Review a change for correctness."],
   ["bravo-deploy", "Deploy the service to staging."],
@@ -34,7 +30,6 @@ const GLOBAL_SKILLS: readonly (readonly [string, string])[] = [
   ["a-very-long-skill-name-that-goes-on-and-on-past-sixty-columns", LONG],
 ];
 
-/** Project skills, spread over the roots Pi and the extension discover. */
 const PROJECT_SKILLS: readonly (readonly [string, string, string])[] = [
   [".pi/skills", "proj-build", "Build the project with its own scripts."],
   [".pi/skills", "proj-migrate", LONG],
@@ -78,7 +73,6 @@ const fixture: BombadilFixture = (root) => {
   for (const [directory, name, description] of PROJECT_SKILLS) {
     skill(join(root.cwd, directory), name, description);
   }
-  // A Git repository makes project choices repository-wide and lists tracked nested files.
   const git = (...args: string[]): void => {
     execFileSync("git", ["-C", root.cwd, ...args], {
       stdio: "ignore",

@@ -1,7 +1,3 @@
-// Bombadil terminal specification for the /skills menu, run against the real Pi CLI with
-// menu.fixture.ts. Run with `npm run test:bombadil:skills`. menu.test.ts drives the component
-// in-process at fixed widths; this drives Pi's real input parser, layout, resize path and the state
-// file on disk. Every property reads only the screen.
 import { always, eventually, next } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
@@ -27,7 +23,6 @@ type Menu = {
   level: "root" | "list" | null;
   titleShown: boolean;
   hintShown: boolean;
-  /** The menu's bottom border, directly below the hint row. */
   bottomShown: boolean;
   clearing: boolean;
   height: number;
@@ -63,12 +58,10 @@ function items(body: readonly string[]): Item[] {
   });
 }
 
-/** Whether the row below the hint row is the menu's bottom border. */
 function bottomBorderBelow(rows: readonly string[], hint: number): boolean {
   return hint >= 0 && /^─+$/u.test(rows[hint + 1] ?? "");
 }
 
-/** What the menu shows, from trimmed screen rows. Rows outside the menu are ignored. */
 function readMenu(rows: readonly string[], height: number): Menu {
   const top = rows.findIndex((row) => row === ROOT_TITLE || LIST_TITLE.test(row));
   const hint = rows.findIndex((row) => ROOT_HINT.test(row) || LIST_HINT.test(row));
@@ -99,14 +92,11 @@ const menuNow = (state: State): Menu =>
     state.grid.size.rows,
   );
 
-// The group counts last seen on the main screen, and when the menu closed. Updates are idempotent,
-// so evaluating one state twice changes nothing.
 let wasOpen = false;
 let fresh = false;
 let lastRoot: string | null = null;
 let closedWith: string | null = null;
 
-/** The main screen's counts, flagged `fresh` until a list is opened after a reopen. */
 function remember(menu: Menu): { fresh: boolean; counts: string; closedWith: string | null } {
   if (menu.level === null) {
     if (wasOpen) {
@@ -142,7 +132,6 @@ function subsequence(query: string, text: string): boolean {
   return true;
 }
 
-/** pi-tui's fuzzyMatch: in-order characters, or letters and digits swapped. */
 function tokenMatches(token: string, name: string): boolean {
   const query = token.toLowerCase();
   const text = name.toLowerCase();
@@ -152,7 +141,6 @@ function tokenMatches(token: string, name: string): boolean {
   return subsequence(query, text) || (swapped !== query && subsequence(swapped, text));
 }
 
-/** Whether pi-tui's fuzzyFilter keeps `name` for `search`. */
 function searchKeeps(search: string, name: string): boolean {
   return search
     .split(/[\s/]+/u)
@@ -165,7 +153,6 @@ const selected = (menu: Menu | null | undefined): Item | null =>
   menu?.items.find((item) => item.selected) ?? null;
 const FLIP: Readonly<Record<string, string>> = { On: "Off", Off: "On" };
 
-// Closed: clear the editor and run the command. The first Enter may only accept autocomplete.
 const open = actions(() =>
   menuOpen()
     ? []
@@ -194,22 +181,13 @@ export const skillsKeys = weighted([
   [1, resize],
 ]);
 
-/**
- * The fuzzer opens the menu and a list. Both are recognised by their title and hint text, so if that
- * text changes the menu properties would pass without checking anything; this fails instead.
- */
 export const listReached: Formula = eventually(() => ui.current?.level === "list").within(
   30,
   "seconds",
 );
 
-/** Pi never exits: no key in the generator asks it to. */
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
 
-/**
- * From 15 rows up, an open menu shows its title, its key hint and its bottom border: nothing is
- * cut off by Pi's fullscreen layout.
- */
 export const menuFits: Formula = always(() => {
   const menu = ui.current;
   return (
@@ -220,13 +198,11 @@ export const menuFits: Formula = always(() => {
   );
 });
 
-/** An open menu highlights exactly one row, unless a search matches nothing. */
 export const oneHighlight: Formula = always(() => {
   const menu = ui.current;
   return !(menu?.hintShown ?? false) || menu.noMatches || menu.cursors === 1;
 });
 
-/** Space or Enter with an empty search flips the selected On/Off row and keeps it selected. */
 export const toggleFlips: Formula = always(() => {
   const before = ui.current;
   const row = selected(before);
@@ -242,7 +218,6 @@ export const toggleFlips: Formula = always(() => {
   });
 });
 
-/** While searching, every fully shown row matches the search. */
 export const searchFilters: Formula = always(() => {
   const menu = ui.current;
   const search = menu?.search ?? "";
@@ -251,7 +226,6 @@ export const searchFilters: Formula = always(() => {
   );
 });
 
-/** Escape with a search clears it, stays in the list and shows at least as many rows. */
 export const escapeClearsSearch: Formula = always(() => {
   const before = ui.current;
   if (before?.level !== "list" || !before.clearing) {
@@ -266,7 +240,6 @@ export const escapeClearsSearch: Formula = always(() => {
   );
 });
 
-/** Escape without a search goes back a level: from a list to the main screen, then closed. */
 export const escapeGoesBack: Formula = always(() => {
   const before = ui.current;
   if (before === null || before.level === null || before.clearing) {
@@ -276,7 +249,6 @@ export const escapeGoesBack: Formula = always(() => {
   return next(() => lastKey.current !== ESCAPE || (ui.current?.level ?? null) === expected);
 });
 
-/** A reopened menu shows the group counts it showed when it closed: every toggle was saved. */
 export const choicesPersist: Formula = always(() => {
   const seen = memory.current;
   return (

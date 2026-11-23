@@ -5,7 +5,6 @@ import { describe, test } from "vitest";
 import { parseResourcePath, pathIsInsideOrEqual, resourcePathId } from "../resource-path";
 import { assertProperty } from "./hegel-property";
 
-/** A path segment that is never `.` or `..`; `..foo` is a legal name, not a parent reference. */
 const segment = gs.oneOf(
   gs.text({ alphabet: "abc.", minSize: 1, maxSize: 3 }).map((text) => `s${text}`),
   gs.just("..foo"),

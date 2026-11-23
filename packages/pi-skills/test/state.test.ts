@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -22,6 +23,7 @@ import {
 } from "../state";
 import type { ToggleStateError, ToggleStateResult } from "../state";
 
+const FILE_NAME_MAX_BYTES = 255;
 const temporaryDirectories: string[] = [];
 
 function testContext() {
@@ -374,22 +376,20 @@ describe("toggleStateFile", () => {
   });
 
   test("propagates a bug instead of reporting it as a state failure", () => {
-    // SAFETY: Deliberately invalid input; a NUL byte makes Node throw a TypeError (a defect).
     const store = new ToggleStateFile(`${tmpdir()}/bad\0path.json`);
 
     expect(() => store.load()).toThrow(TypeError);
     expect(() => store.set(resourcePathId("/skill", "/"), "disabled")).toThrow(TypeError);
   });
 
-  // A read-only directory (chmod 0o500) is not enforced for uid 0, so a permission failure makes the
-  // test depend on who runs it. A temporary name over the 255-byte file name limit is refused by
-  // every file system for every user, on the same write path; the EACCES wording is pinned in
-  // lifecycle.test.ts.
-  test("reports write failures and leaves no temporary files", () => {
+  test("reports write failures for every user, root included, via a temporary file name over the 255-byte limit, and leaves no temporary files", () => {
     const context = testContext();
     const stateDirectory = join(context.directory, "state");
-    // The state file itself fits, but its `.<uuid>.tmp` sibling (41 bytes longer) does not.
-    const statePath = join(stateDirectory, `${"s".repeat(230)}.json`);
+    const stateName = `${"s".repeat(230)}.json`;
+    const temporarySuffix = `.${randomUUID()}.tmp`;
+    expect(Buffer.byteLength(stateName)).toBeLessThanOrEqual(FILE_NAME_MAX_BYTES);
+    expect(Buffer.byteLength(stateName + temporarySuffix)).toBeGreaterThan(FILE_NAME_MAX_BYTES);
+    const statePath = join(stateDirectory, stateName);
     const store = new ToggleStateFile(statePath);
 
     const failure = failureOf(store.set(context.resourceFile("skill"), "disabled"));

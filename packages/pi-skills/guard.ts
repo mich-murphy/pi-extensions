@@ -8,7 +8,6 @@ import type { ResourcePath } from "./resource-path";
 import { emptyOverrides, ResourcePolicy } from "./resources";
 import type { ToggleOverrides, ToggleResource } from "./resources";
 
-/** File names Pi loads as instructions. */
 export const INSTRUCTION_FILE_NAMES: ReadonlySet<string> = new Set([
   "AGENTS.md",
   "AGENTS.MD",
@@ -17,23 +16,12 @@ export const INSTRUCTION_FILE_NAMES: ReadonlySet<string> = new Set([
   "CLAUDE.MD",
 ]);
 
-/** Decides whether a file belongs to a disabled instruction or skill. */
 export type ResourceMatcher = {
-  /** Name the disabled resource an absolute path belongs to, or return undefined. */
   readonly match: (path: string) => string | undefined;
 };
 
-/** The nearest skill directory or exact standalone skill owns a read. */
 type SkillOwner = { readonly resource: ToggleResource } | { readonly disabledSkill: string };
 
-/**
- * Match actual skill directories, not folder names under guessed skill roots. Walking parents
- * also finds persisted disabled SKILL.md paths when that skill is not currently loaded.
- * Repository equivalence and explicit choices always go through the same policy as the UI.
- *
- * @param decide - Optional decision for a loaded resource, such as a subagent's parent session's;
- *   undefined falls back to the session's own state.
- */
 export function disabledResourceMatcher(
   resources: readonly ToggleResource[],
   overrides: ToggleOverrides | undefined,
@@ -46,7 +34,6 @@ export function disabledResourceMatcher(
   const canonical = canonicalizer();
   const loadedOnDisk = lazy(
     () =>
-      // Reversed so the first loaded resource wins, matching `find` below.
       new Map(
         resources
           .toReversed()
@@ -59,8 +46,6 @@ export function disabledResourceMatcher(
         resource.kind === kind && policy.sameResource(path, resource.id, resource.origin),
     ) ?? loadedOnDisk().get(onDiskKey(kind, canonical(path)));
   const skillOwner = (id: string): SkillOwner | undefined => {
-    // Most-specific ownership keeps explicitly configured nested skills and standalone
-    // helpers independent of an outer skill's toggle, just like their menu/prompt rows.
     const exact = loadedAt(id, "skill");
     if (exact !== undefined && basename(exact.id) !== "SKILL.md") {
       return { resource: exact };
@@ -80,8 +65,6 @@ export function disabledResourceMatcher(
     }
   };
   const matchId = (id: ResourcePath): string | undefined => {
-    // Pi can load uppercase and explicitly supplied context files too. Loaded identity,
-    // rather than a filename allowlist, determines whether those reads are protected.
     const instruction = loadedAt(id, "instruction");
     if (
       instruction
@@ -96,18 +79,15 @@ export function disabledResourceMatcher(
     }
     if ("resource" in owner) {
       const skill = owner.resource;
-      // Explicit invocation is local to this session and this actual loaded skill.
       return !manualSkills.has(skill.label) && disabled(skill)
         ? `skill "${skill.label}"`
         : undefined;
     }
     return `skill "${owner.disabledSkill}"`;
   };
-  // Candidates for hard-link matching: every named resource file, loaded or only persisted.
   const linkedCandidates = lazy(() =>
     hardLinkIndex([...resources.map((resource) => resource.id), ...persistedPaths(overrides)]),
   );
-  /** A second name for a protected file: same device and inode as a disabled resource file. */
   const hardLinkMatch = (path: string): string | undefined => {
     const identity = fileIdentity(path);
     for (const candidate of identity === undefined
@@ -123,16 +103,12 @@ export function disabledResourceMatcher(
   return {
     match: (path) => {
       const id = resourcePathId(path, "/");
-      // The on-disk form catches case variants on case-insensitive file systems and symlinks to
-      // protected files. It only differs from the lexical path when both name the same file, so
-      // case-sensitive file systems keep distinct `agents.md` and `AGENTS.md` files separate.
       const onDisk = resourcePathId(canonical(id), "/");
       return matchId(id) ?? (onDisk === id ? undefined : matchId(onDisk)) ?? hardLinkMatch(onDisk);
     },
   };
 }
 
-/** Absolute paths of every explicit choice; repository choices resolve in the main checkout. */
 function persistedPaths(overrides: ToggleOverrides | undefined): readonly string[] {
   return [
     ...(overrides?.files.keys() ?? []),
@@ -142,10 +118,6 @@ function persistedPaths(overrides: ToggleOverrides | undefined): readonly string
   ];
 }
 
-/**
- * `device:inode` of a file that has other names, else undefined. Ordinary single-link files
- * cost one `stat` and never reach the (lazily built) index of protected files' identities.
- */
 function fileIdentity(path: string): string | undefined {
   try {
     const stats = statSync(path, { bigint: true });
@@ -155,7 +127,6 @@ function fileIdentity(path: string): string | undefined {
   }
 }
 
-/** Resource files that have more than one name, grouped by identity. */
 function hardLinkIndex(paths: Iterable<string>): ReadonlyMap<string, readonly ResourcePath[]> {
   const index = new Map<string, ResourcePath[]>();
   for (const path of new Set(paths)) {
@@ -177,11 +148,6 @@ function lazy<T>(make: () => T): () => T {
   };
 }
 
-/**
- * Memoised on-disk identity: the real path, or the real path of the nearest existing ancestor
- * plus the missing suffix. `realpathSync.native` reports stored casing on case-insensitive file
- * systems, unlike the JavaScript `realpathSync`, which echoes the caller's casing.
- */
 function canonicalizer(): (path: string) => string {
   const cache = new Map<string, string>();
   const canonical = (path: string): string => {
@@ -208,11 +174,6 @@ function realPath(path: string): string | undefined {
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/gu;
 
-/**
- * Resolve a path argument the way Pi's file tools do (`resolvePath` in Pi's `utils/paths`):
- * Unicode spaces, `@` prefix, `~` or `~/`, `file://` URL, then the cwd. An unparseable URL is
- * unreadable for Pi, so it is left as an ordinary relative path.
- */
 export function toolPath(path: string, cwd: string): string {
   const spaced = path.replaceAll(UNICODE_SPACES, " ");
   const withoutAt = spaced.startsWith("@") ? spaced.slice(1) : spaced;

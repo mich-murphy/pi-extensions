@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { cacheDebugSink, debugPath, fingerprint, runRecord, usageRecord } from "../cache-debug";
 import { modelView, planPrompt, promptSnapshot } from "../prompt-epoch";
 import { escapeXml, isInPrompt, promptResources, skillReader } from "../prompt-view";
@@ -80,7 +80,6 @@ function usageOf(input: number, cacheRead: number): { readonly role: string } {
   return message;
 }
 type Item = { readonly role: string };
-/** A `model_change` entry, written as an item so tests can place it among messages. */
 const switchTo = (provider: string, modelId: string) => ({
   role: "model_change",
   provider,
@@ -116,7 +115,6 @@ const note = (visible: readonly string[]) => ({
   customType: TOGGLE_NOTE_TYPE,
   details: { version: 1, visible },
 });
-/** A note written before the rename, which saved sessions still contain. */
 const legacyNote = (visible: readonly string[]) => ({
   ...note(visible),
   customType: "pi-skill-toggle",
@@ -155,7 +153,6 @@ describe("epoch and model view", () => {
     expect(snap([head([skillA]), assistant]).epoch).toBe("frozen");
     expect(snap([head([skillA])]).epoch).toBe("frozen");
     expect(snap([head([skillA]), assistant, switchTo("p", "other")]).epoch).toBe("model-change");
-    // Switching away and back keeps the cache of the model that answered.
     expect(
       snap([head([skillA]), assistant, switchTo("p", "other"), switchTo("p", "m")]).epoch,
     ).toBe("frozen");
@@ -165,7 +162,6 @@ describe("epoch and model view", () => {
     const routed = { role: "assistant", provider: "openai", model: "gpt-x" };
     const virtual = switchTo("router", "auto");
     expect(snap([virtual, head([skillA]), routed]).epoch).toBe("frozen");
-    // Re-selecting, or `_recordSelection` after tree navigation, records the same selection.
     expect(snap([virtual, head([skillA]), routed, virtual]).epoch).toBe("frozen");
     expect(snap([virtual, head([skillA]), routed, switchTo("p", "m")]).epoch).toBe("model-change");
   });
@@ -268,7 +264,6 @@ describe("planPrompt", () => {
     });
     expect([...plan.hidden]).toStrictEqual([skillA.id]);
     expect(plan.note?.details.visible).toStrictEqual([skillB.id, rules.id].toSorted());
-    // The patch lists the user's choice, so the note only revokes the earlier note.
     expect(plan.note?.content).toBe(REVERT_NOTE);
   });
 
@@ -315,12 +310,10 @@ describe("standalone toggle notes", () => {
   });
 
   test("enabled skills use Pi's guidance for the run's reader", () => {
-    // Pi owns the guidance wording; assert delegation to it, not a copy of its text.
     const readers = ["read", "bash", "indirect"] as const;
     for (const reader of readers) {
       expect(enabled(reader)).toContain(formatSkillsForPrompt([skill(skillB)], reader).trim());
     }
-    // The reader is passed through: each one yields Pi's distinct guidance.
     expect(new Set(readers.map((reader) => enabled(reader))).size).toBe(readers.length);
   });
 
@@ -354,8 +347,10 @@ describe("cache debug", () => {
     expect(cacheDebugSink("0")).toBeUndefined();
   });
 
-  test("appends JSONL and swallows write failures", () => {
+  test("appends JSONL, never prints to Pi's TUI on stdout or stderr, and never throws on write failure", () => {
     const directory = mkdtempSync(join(tmpdir(), "pi-skills-debug-"));
+    const stdout = vi.spyOn(process.stdout, "write");
+    const stderr = vi.spyOn(process.stderr, "write");
     try {
       const path = join(directory, "log.jsonl");
       cacheDebugSink(path)?.({ type: "discover", contributed: 1 });
@@ -367,9 +362,38 @@ describe("cache debug", () => {
         throw new Error("disk full");
       });
       expect(() => failing?.({ type: "discover" })).not.toThrow();
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr).not.toHaveBeenCalled();
     } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  test("a run record names file paths but never includes file contents", () => {
+    const messages = [head([skillA]), assistant];
+    const snapshot = snap(messages);
+    const plan = planPrompt({ ...snapshot, resources, desiredHidden: undefined, reader: "read" });
+    const secret = "secret instruction body";
+    const record = JSON.stringify(
+      runRecord({
+        sessionId: "s",
+        model,
+        snapshot,
+        plan,
+        resources,
+        desiredHidden: new Set([rules.id]),
+        options: {
+          cwd,
+          skills: [skill(skillA)],
+          contextFiles: [{ path: rules.path, content: secret }],
+        },
+        durationMs: 1,
+      }),
+    );
+    expect(record).toContain(rules.id);
+    expect(record).not.toContain(secret);
   });
 
   test("builds run and usage records", () => {

@@ -122,7 +122,6 @@ describe("context menu", () => {
     const dialog = menu([globalSkill, projectInstruction]);
     expect(dialog.text()).toMatch(/Global instructions\s+Not loaded/u);
     expect(dialog.text()).not.toMatch(/Global instructions\s+(?:Always on|\d+ off)/u);
-    // With nothing to open, Enter on the category does not enter a submenu.
     dialog.press(ENTER);
     expect(dialog.text()).toContain("Auto-save");
   });
@@ -192,7 +191,6 @@ describe("context menu", () => {
     for (const rows of [15, 20, 24, 27, 40]) {
       const dialog = menu(resources, [], testKeybindings(), rows);
       dialog.open(1);
-      // Pi draws two footer rows and keeps one chat row above the menu.
       expect(dialog.component.render(100).length + 3).toBeLessThanOrEqual(rows);
     }
   });

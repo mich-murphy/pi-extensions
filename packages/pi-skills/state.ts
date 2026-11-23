@@ -24,19 +24,9 @@ const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
   ENOTDIR: "part of the path is a file, not a folder. Check the agent directory path.",
 };
 
-/** The state file could not be read or replaced because the file system refused. */
 export class ToggleStateUnavailable extends Error {
-  /** Stable error discriminator. */
   readonly _tag = "ToggleStateUnavailable" as const;
 
-  /**
-   * Create a file-system failure.
-   *
-   * @param operation - State operation that failed.
-   * @param path - State file the operation targeted.
-   * @param code - Node system error code, such as `EACCES`.
-   * @param cause - Original Node error, kept for local diagnosis only.
-   */
   constructor(
     readonly operation: "load" | "update",
     readonly path: string,
@@ -53,17 +43,9 @@ export class ToggleStateUnavailable extends Error {
   }
 }
 
-/** The state file is not valid JSON. */
 export class ToggleStateInvalidJson extends Error {
-  /** Stable error discriminator. */
   readonly _tag = "ToggleStateInvalidJson" as const;
 
-  /**
-   * Create an invalid-JSON failure.
-   *
-   * @param path - State file that failed to parse.
-   * @param cause - Parser error, kept for local diagnosis only.
-   */
   constructor(
     readonly path: string,
     override readonly cause: unknown,
@@ -75,17 +57,9 @@ export class ToggleStateInvalidJson extends Error {
   }
 }
 
-/** The state file was written by a newer release with a state version this one cannot read. */
 export class ToggleStateTooNew extends Error {
-  /** Stable error discriminator. */
   readonly _tag = "ToggleStateTooNew" as const;
 
-  /**
-   * Create a too-new failure.
-   *
-   * @param path - State file that holds the newer state.
-   * @param version - Version recorded in the file.
-   */
   constructor(
     readonly path: string,
     readonly version: number,
@@ -97,17 +71,9 @@ export class ToggleStateTooNew extends Error {
   }
 }
 
-/** The state file is JSON but does not have the expected structure. */
 export class ToggleStateMalformed extends Error {
-  /** Stable error discriminator. */
   readonly _tag = "ToggleStateMalformed" as const;
 
-  /**
-   * Create a malformed-state failure.
-   *
-   * @param path - State file with the bad content.
-   * @param entry - Key of the offending entry, or undefined when the overall structure is wrong.
-   */
   constructor(
     readonly path: string,
     readonly entry: string | undefined,
@@ -121,22 +87,17 @@ export class ToggleStateMalformed extends Error {
   }
 }
 
-/** Every expected failure of a state operation. */
 export type ToggleStateError =
   | ToggleStateUnavailable
   | ToggleStateInvalidJson
   | ToggleStateTooNew
   | ToggleStateMalformed;
 
-/** Overrides after a state operation, or the reason it failed. */
 export type ToggleStateResult = Result<ToggleOverrides, ToggleStateError>;
 
-/** State operations required by the extension command and prompt handler. */
 export type ToggleStateStore = {
-  /** Read every persisted override without modifying the store. */
   readonly load: () => ToggleStateResult;
 
-  /** Persist one resource's override, or clear it with `"default"`. */
   readonly set: (
     id: ResourcePath,
     value: ToggleValue | "default",
@@ -144,30 +105,16 @@ export type ToggleStateStore = {
   ) => ToggleStateResult;
 };
 
-/**
- * Overrides persisted as one JSON file shared by every Pi session.
- *
- * Writes replace the file atomically, so loads never need a lock. Updates re-read the file
- * immediately before replacing it; the last of two simultaneous toggles wins.
- */
 export class ToggleStateFile implements ToggleStateStore {
-  /**
-   * Create a store at the supplied path, or in Pi's agent directory.
-   *
-   * @param legacyPath - Read only when `path` does not exist, and never written. Defaults to the
-   *   former `pi-skill-toggle.json` beside `path`.
-   */
   constructor(
     private readonly path = join(getAgentDir(), "pi-skills.json"),
     private readonly legacyPath: string | undefined = join(dirname(path), "pi-skill-toggle.json"),
   ) {}
 
-  /** Read every persisted override. A missing file is an empty state. */
   load(): ToggleStateResult {
     return this.read("load");
   }
 
-  /** Change one override, keep the others, and drop entries whose file is definitely missing. */
   set(
     id: ResourcePath,
     value: ToggleValue | "default",
@@ -181,7 +128,6 @@ export class ToggleStateFile implements ToggleStateStore {
       const files = new Map(
         [...stored.value.files].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
       );
-      // Never prune repository policy based on one checkout's files or continued existence.
       const repositories = new Map(stored.value.repositories);
       const location =
         origin === "global" || isGlobalResourcePath(id)
@@ -212,7 +158,6 @@ export class ToggleStateFile implements ToggleStateStore {
     });
   }
 
-  /** Read the state file, or the legacy file when it does not exist. Writes target only `path`. */
   private read(operation: ToggleStateUnavailable["operation"]): ToggleStateResult {
     const current = readStateFile(operation, this.path);
     if (current !== undefined) {
@@ -244,7 +189,6 @@ export class ToggleStateFile implements ToggleStateStore {
   }
 }
 
-/** Load one state file, or nothing when it does not exist. */
 function readStateFile(
   operation: ToggleStateUnavailable["operation"],
   path: string,
@@ -256,12 +200,6 @@ function readStateFile(
   return content.error.code === "ENOENT" ? undefined : content;
 }
 
-/**
- * Run synchronous file-system work, classifying only Node system errors.
- *
- * Node also gives argument errors (a `TypeError` with code `ERR_INVALID_ARG_VALUE`) a `code`;
- * only system errors carry `syscall`, so anything else is a defect and propagates.
- */
 function fileSystem<A>(
   operation: ToggleStateUnavailable["operation"],
   path: string,
@@ -320,7 +258,6 @@ function parseState(path: string, content: string): ToggleStateResult {
   );
 }
 
-/** Convert old absolute choices into the shared policy without writing the state file. */
 function migrateLegacyState(path: string, version: number, entries: unknown): ToggleStateResult {
   if (!isRecord(entries)) {
     return err(new ToggleStateMalformed(path, undefined));
@@ -328,7 +265,6 @@ function migrateLegacyState(path: string, version: number, entries: unknown): To
   const files = new Map<ResourcePath, ToggleValue>();
   const repositories = new Map<string, Map<string, ToggleValue>>();
   const locator = new RepositoryLocator();
-  // Stable lexical order breaks child/child conflicts; a main checkout always wins.
   for (const [key, entry] of Object.entries(entries).toSorted(([a], [b]) => a.localeCompare(b))) {
     const id = parseResourcePath(key);
     const value = version === 6 ? entry : migrateEnabledResource(entry);
@@ -378,7 +314,6 @@ function parseFileOverrides(
   const files = new Map<ResourcePath, ToggleValue>();
   for (const [key, value] of Object.entries(entries)) {
     const id = parseResourcePath(key);
-    // Two spellings of one path (such as a trailing slash) would otherwise silently drop one.
     if (!(id && isToggleValue(value)) || files.has(id)) {
       return err(new ToggleStateMalformed(path, key));
     }
@@ -397,7 +332,6 @@ function parseRepositoryOverrides(
   const repositories = new Map<string, Map<string, ToggleValue>>();
   for (const [repository, resources] of Object.entries(entries)) {
     const id = parseResourcePath(repository);
-    // Two spellings of one repository would otherwise silently drop one policy.
     if (!id || !isRecord(resources) || repositories.has(id)) {
       return err(new ToggleStateMalformed(path, repository));
     }
@@ -416,7 +350,6 @@ function parseRelativeOverrides(
 ): Result<Map<string, ToggleValue>, ToggleStateMalformed> {
   const resources = new Map<string, ToggleValue>();
   for (const [key, value] of Object.entries(entries)) {
-    // A trailing slash names the same repository path as its bare spelling.
     const relativePath = key.replace(/\/+$/u, "");
     if (!validRelativePath(relativePath) || !isToggleValue(value) || resources.has(relativePath)) {
       return err(new ToggleStateMalformed(path, key));

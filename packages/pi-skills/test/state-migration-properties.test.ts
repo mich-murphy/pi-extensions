@@ -10,6 +10,7 @@ import type { ToggleValue } from "../resources";
 import { ToggleStateFile, ToggleStateMalformed, ToggleStateTooNew } from "../state";
 import type { ToggleStateResult } from "../state";
 import { assertProperty } from "./hegel-property";
+import { timeoutOverTenfold } from "./test-timeouts";
 
 const NAMES = ["a", "b", "c", "d", "e"];
 const SPARE = "spare";
@@ -79,7 +80,6 @@ function load(fixture: Fixture, document: unknown): ToggleStateResult {
   return new ToggleStateFile(fixture.statePath).load();
 }
 
-/** Legacy meaning: v4/v5 stored `{enabled: boolean}` under `resources`, v6 stored toggles under `overrides`. */
 function legacyDocument(version: Version, entries: Record<string, unknown>): unknown {
   return version === 6
     ? { version, overrides: entries, resources: DECOY }
@@ -135,7 +135,6 @@ function assertMalformed(
   assert.equal(result.error.entry, entry);
 }
 
-/** Loading a legacy document gives the toggles the legacy meaning prescribes, and saving keeps them. */
 function assertMigrates(
   fixture: Fixture,
   version: Version,
@@ -154,7 +153,6 @@ function assertMigrates(
   assertToggles(new ToggleStateFile(fixture.statePath).load(), expected);
 }
 
-/** One bad entry among valid ones is an error naming exactly that entry. */
 function assertBadEntry(
   fixture: Fixture,
   version: Version,
@@ -186,79 +184,80 @@ function assertTooNew(fixture: Fixture, whole: number, fractional: boolean): voi
   assert.equal(result.error.path, fixture.statePath);
 }
 
-// Every case writes the state file and loads, and for the first property saves, it again: file system
-// work that is the point of these properties. The slowest took 1.4 s with 8 busy processes plus other
-// test suites running, so each keeps a timeout well over 10x that.
-describe("legacy state migration properties", { timeout: propertyTimeout(90_000) }, () => {
-  test("v4, v5 and v6 documents load as the toggles their legacy meaning prescribes and stay stable when saved", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "legacy-meaning", (tc) => {
-        const version = tc.draw(versions);
-        const picks = tc.draw(choices);
-        const extra = tc.draw(gs.sampledFrom(EXTRAS));
-        assertMigrates(fixture, version, picks, extra);
+describe(
+  "legacy state migration properties",
+  { timeout: propertyTimeout(timeoutOverTenfold(90_000, 1400)) },
+  () => {
+    test("v4, v5 and v6 documents load as the toggles their legacy meaning prescribes and stay stable when saved", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "legacy-meaning", (tc) => {
+          const version = tc.draw(versions);
+          const picks = tc.draw(choices);
+          const extra = tc.draw(gs.sampledFrom(EXTRAS));
+          assertMigrates(fixture, version, picks, extra);
+        });
       });
     });
-  });
 
-  test("one malformed legacy entry is reported by key and never skipped", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "malformed-entry", (tc) => {
-        const version = tc.draw(versions);
-        const picks = tc.draw(choices);
-        const keyIsBad = tc.draw(gs.booleans());
-        const key = tc.draw(gs.sampledFrom(BAD_KEYS));
-        const value = tc.draw(badValues(version));
-        const slot = tc.draw(gs.integers({ minValue: 0, maxValue: NAMES.length - 1 }));
-        assertBadEntry(fixture, version, picks, { keyIsBad, key, value }, slot);
+    test("one malformed legacy entry is reported by key and never skipped", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "malformed-entry", (tc) => {
+          const version = tc.draw(versions);
+          const picks = tc.draw(choices);
+          const keyIsBad = tc.draw(gs.booleans());
+          const key = tc.draw(gs.sampledFrom(BAD_KEYS));
+          const value = tc.draw(badValues(version));
+          const slot = tc.draw(gs.integers({ minValue: 0, maxValue: NAMES.length - 1 }));
+          assertBadEntry(fixture, version, picks, { keyIsBad, key, value }, slot);
+        });
       });
     });
-  });
 
-  test("a legacy entries container that is not an object is malformed without an entry", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "malformed-container", (tc) => {
-        assertBadContainer(
-          fixture,
-          tc.draw(versions),
-          tc.draw(gs.sampledFrom<unknown>(BAD_CONTAINERS)),
-        );
+    test("a legacy entries container that is not an object is malformed without an entry", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "malformed-container", (tc) => {
+          assertBadContainer(
+            fixture,
+            tc.draw(versions),
+            tc.draw(gs.sampledFrom<unknown>(BAD_CONTAINERS)),
+          );
+        });
       });
     });
-  });
 
-  test("integer versions below 4 load as empty toggles whatever the body", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "ancient-version", (tc) => {
-        const version = tc.draw(gs.integers({ minValue: -100_000, maxValue: 3 }));
-        const body = tc.draw(gs.sampledFrom(BODIES));
-        assertEmpty(load(fixture, { ...body, version }));
+    test("integer versions below 4 load as empty toggles whatever the body", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "ancient-version", (tc) => {
+          const version = tc.draw(gs.integers({ minValue: -100_000, maxValue: 3 }));
+          const body = tc.draw(gs.sampledFrom(BODIES));
+          assertEmpty(load(fixture, { ...body, version }));
+        });
       });
     });
-  });
 
-  test("versions above 7 are too new and carry the version and path", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "too-new", (tc) => {
-        const whole = tc.draw(gs.integers({ minValue: 8, maxValue: 100_000 }));
-        assertTooNew(fixture, whole, tc.draw(gs.booleans()));
+    test("versions above 7 are too new and carry the version and path", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "too-new", (tc) => {
+          const whole = tc.draw(gs.integers({ minValue: 8, maxValue: 100_000 }));
+          assertTooNew(fixture, whole, tc.draw(gs.booleans()));
+        });
       });
     });
-  });
 
-  test("fractional versions up to 7, non-number versions and non-object documents are malformed", () => {
-    withFixture((fixture) => {
-      assertProperty("migration", "bad-version", (tc) => {
-        const half = tc.draw(gs.integers({ minValue: -100_000, maxValue: 6 })) + 0.5;
-        assertMalformed(load(fixture, { version: half, resources: {} }), fixture, undefined);
-        const odd = tc.draw(gs.sampledFrom<unknown>(BAD_VERSIONS));
-        assertMalformed(load(fixture, { version: odd, resources: {} }), fixture, undefined);
-        assertMalformed(
-          load(fixture, tc.draw(gs.sampledFrom<unknown>(BAD_DOCUMENTS))),
-          fixture,
-          undefined,
-        );
+    test("fractional versions up to 7, non-number versions and non-object documents are malformed", () => {
+      withFixture((fixture) => {
+        assertProperty("migration", "bad-version", (tc) => {
+          const half = tc.draw(gs.integers({ minValue: -100_000, maxValue: 6 })) + 0.5;
+          assertMalformed(load(fixture, { version: half, resources: {} }), fixture, undefined);
+          const odd = tc.draw(gs.sampledFrom<unknown>(BAD_VERSIONS));
+          assertMalformed(load(fixture, { version: odd, resources: {} }), fixture, undefined);
+          assertMalformed(
+            load(fixture, tc.draw(gs.sampledFrom<unknown>(BAD_DOCUMENTS))),
+            fixture,
+            undefined,
+          );
+        });
       });
     });
-  });
-});
+  },
+);

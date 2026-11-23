@@ -14,6 +14,7 @@ import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
 import { noteView } from "../toggle-note";
 import { assertProperty } from "./hegel-property";
+import { timeoutOverTenfold } from "./test-timeouts";
 
 const cwd = "/work";
 const MODELS = [
@@ -24,7 +25,6 @@ const MODELS = [
 
 type Item = { readonly role: string };
 
-/** Mutable session the rules drive: a transcript, the loaded resources, and the user's choice. */
 type World = {
   readonly resources: readonly PromptResource[];
   readonly hidden: Set<ResourcePath>;
@@ -33,7 +33,6 @@ type World = {
 };
 
 function resourceAt(index: number, isSkill: boolean): PromptResource {
-  // Markup characters in paths exercise the escaping the prompt view must match.
   const path = isSkill ? `/s/${index} & <b>/SKILL.md` : `/work/${index}/AGENTS.md`;
   return {
     id: resourcePathId(path, cwd),
@@ -68,7 +67,6 @@ function renderSection(
         .join("\n");
 }
 
-/** A system message writing the given kinds' sections to show exactly `visible`. */
 function systemMessage(
   resources: readonly PromptResource[],
   visible: ReadonlySet<string>,
@@ -115,7 +113,6 @@ function ids(resources: readonly { readonly id: string }[]): string[] {
   return resources.map(({ id }) => id).toSorted();
 }
 
-/** Invariants of one plan, judged against the user's choice and the transcript's prompt. */
 function assertPlan(world: World, snapshot: PromptSnapshot, plan: PromptPlan): void {
   const desired = desiredVisible(world);
   const { enabled, disabled } = plan.changes;
@@ -136,7 +133,6 @@ function assertPlan(world: World, snapshot: PromptSnapshot, plan: PromptPlan): v
     assertFrozen(world, snapshot, plan, desired);
   }
   if (snapshot.epoch === "model-change") {
-    // Pi patches kinds whose lists differ from the choice; only the other kinds keep their view.
     const patched = patchedKinds(world, snapshot);
     const converged = world.resources.every(
       (resource) =>
@@ -171,7 +167,6 @@ function assertFrozen(
   assert.equal(plan.note === undefined, converged, "a note exists iff the view differs");
 }
 
-/** Kinds where the prompt's lists differ from the user's choice, which Pi patches. */
 function patchedKinds(world: World, snapshot: PromptSnapshot): Set<string> {
   const desired = desiredVisible(world);
   return new Set(
@@ -228,7 +223,6 @@ const machine: stateful.StateMachine<World> = {
       } as Item);
       world.selected = index;
     },
-    // Compaction drops responses and model switches but keeps system messages and notes.
     compact: (_tc, world) => {
       const kept = world.items.filter(({ role }) => role === "system" || role === "custom");
       world.items.splice(0, world.items.length, ...kept);
@@ -248,11 +242,9 @@ function newWorld(tc: TestCase): World {
 }
 
 describe("prompt-epoch properties", () => {
-  // A stateful machine that renders whole prompts each step: 0.25 s quiet and 0.52 s under 8 busy
-  // processes.
   test(
     "prompt plans converge under toggles, responses, model switches, and compaction",
-    { timeout: propertyTimeout(30_000) },
+    { timeout: propertyTimeout(timeoutOverTenfold(30_000, 520)) },
     () => {
       assertProperty(
         "prompt-epoch",

@@ -14,8 +14,6 @@ function paths(...names: string[]): readonly string[] {
   return names.map((name) => resolve(cwd, name)).toSorted();
 }
 
-// Each expectation below was taken from real `bash -c` with `cat` replaced by a function that
-// prints its arguments, so the paths are what bash actually hands to cat.
 describe("escapes inside command substitutions", () => {
   test("an escaped quote does not close a double-quoted string inside $( )", () => {
     assert.deepEqual(reads(String.raw`echo $(cat "\")")`), paths('")'));
@@ -58,8 +56,6 @@ describe("escapes inside backticks", () => {
   });
 });
 
-// `x` is unset and `cat` prints its arguments in the bash oracle. `${x:+…}` is not run by bash with
-// `x` unset, but the guard cannot know that, so it reports the read.
 describe("parameter expansions", () => {
   const hidden: readonly string[] = [
     'echo ${x:-"}"} ; cat secret',
@@ -105,8 +101,6 @@ describe("parameter expansions", () => {
   });
 });
 
-// Substitutions run inside arithmetic and inside the body of a heredoc whose delimiter is unquoted;
-// in such a body quotes are literal and only `\\`, `$(`, `${` and backticks matter.
 describe("arithmetic expansions and heredoc bodies", () => {
   const hidden: readonly string[] = [
     "echo $(( $(cat secret) + 1 ))",
@@ -187,7 +181,6 @@ describe("ordinary commands keep their results", () => {
 describe("pathological input", () => {
   test("many escaped quote pairs are scanned in one pass and the read is still found", () => {
     const body = String.raw`\")`.repeat(50_000 / 3);
-    // The quoted word is longer than any path the guard resolves, so only `y` is reported.
     assert.deepEqual(reads(`echo $(cat "${body}" y)`), paths("y"));
   });
 

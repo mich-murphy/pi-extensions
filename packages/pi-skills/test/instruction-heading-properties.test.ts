@@ -12,7 +12,6 @@ const words = gs
   .map((text) => text.trim())
   .filter((text) => text !== "" && text.toLowerCase() !== basename(path).toLowerCase());
 
-/** Blocks that hold `#` lines but must not be read as the heading. */
 const PREFIXES: readonly string[] = [
   "```\n# Fenced\n```\n",
   "~~~~\n# Tilde\n~~~~\n",
@@ -22,7 +21,7 @@ const PREFIXES: readonly string[] = [
 ];
 
 function assertWellFormed(heading: string): void {
-  assert.ok(!/[\r\n]/u.test(heading), JSON.stringify(heading));
+  assert.ok(!/\p{Cc}/u.test(heading), JSON.stringify(heading));
   assert.equal(heading, heading.trim());
   assert.notEqual(heading.toLowerCase(), basename(path).toLowerCase());
 }
