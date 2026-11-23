@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise"],
+  "jsPlugins": ["./config/oxlint/no-comments.ts"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -191,6 +192,7 @@
     "unicorn/prefer-node-protocol": "error",
     "unicorn/prefer-module": "error",
     "unicorn/no-abusive-eslint-disable": "error",
+    "pi-extensions/no-comments": "error",
 
     // Pi extensions share the TUI process: console output corrupts the screen, and exiting kills Pi
     "eslint/no-console": "error",
@@ -224,6 +226,7 @@
       // Pi loads each extension's default export; Vitest loads its config's
       "files": [
         "packages/*/index.ts",
+        "config/oxlint/*.ts",
         ".agents/skills/*/scripts/*-provider.ts",
         "packages/*/test/bombadil/*.ts",
         "vitest*.config.ts"
