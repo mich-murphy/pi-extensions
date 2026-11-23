@@ -91,7 +91,6 @@ function rejection(input: AdmitInput, failure: Failure): AdmissionOutcome {
   if (failure.code === "overloaded") {
     return { tag: "not_admitted", binding, code: "overloaded", resource: failure.resource };
   }
-  // Only admission failures can reach this conversion.
   if (
     failure.code === "forbidden" ||
     failure.code === "no_route" ||
@@ -173,7 +172,6 @@ export function admit(store: Store, authored: AdmitInput, now: number): Admissio
     },
     correlation: classification,
   } as const;
-  // The injected seam is atomic/nonthrowing; the enclosing operation fences re-entry.
   if (!store.offer(delivery)) {
     return rejection(input, overload("inbox"));
   }
@@ -234,7 +232,6 @@ export function take(store: Store, key?: string): Delivery | undefined {
   entry.submitted = true;
   return structuredClone(entry.delivery);
 }
-/** Releases payload capacity only; never claims model consumption or removes an admitted receipt. */
 export function retire(store: Store, key: string): boolean {
   const entry = store.outstanding.get(key);
   if (entry === undefined) {

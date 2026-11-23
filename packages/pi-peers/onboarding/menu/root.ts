@@ -6,14 +6,11 @@ import type { ActGuard, Consent, Row, Screen } from "./model.js";
 import { runWithProgress } from "./progress.js";
 import type { Outcome, Step } from "./progress.js";
 
-/** A fresh read of everything the root shows; the root re-reads it on every render. */
 export type RootState = {
   readonly status: { readonly value: string; readonly lines: readonly string[] };
   readonly doctor: readonly string[];
   readonly setup: SetupRoute;
-  /** False when there is nothing to reset; undefined while that is still being checked. */
   readonly resettable: boolean | undefined;
-  /** An action is still running (perhaps with its progress view hidden). */
   readonly busy: boolean;
 };
 export type ActionKind = "setup" | "reset" | "reconnect";
@@ -21,10 +18,8 @@ export type RootOptions = {
   readonly state: () => RootState;
   readonly reset: (step: Step) => Promise<Outcome>;
   readonly reconnect: (step: Step) => Promise<Outcome>;
-  /** An action started; `done` settles after `finished`. */
   readonly started: (kind: ActionKind, done: Promise<void>) => void;
   readonly finished: (outcome: Outcome, hidden: boolean, kind: ActionKind) => void;
-  /** Checked at consent time, so a row shown before another action started runs nothing. */
   readonly guard?: ActGuard;
 };
 
@@ -69,11 +64,6 @@ function resetScreen(state: RootState, progress: Progress, reset: RootOptions["r
   };
 }
 
-/**
- * The Peers root menu. Its rows re-read `state()` on every render, so an outcome is reflected as
- * soon as the caller refreshes it. `start` pushes Setup or Reset on top of the root, as
- * `/peers setup` and `/peers reset` do.
- */
 export function peersMenu(
   options: RootOptions,
   observe?: Consent,
@@ -137,7 +127,6 @@ export function peersMenu(
             kind: "consent",
             action: "Reconnect",
             run: () => {
-              // The Reconnect row has no screen of its own, so its breadcrumbs name it.
               progress("reconnect")(
                 "Reconnect › Reconnecting",
                 ["Reconnecting"],

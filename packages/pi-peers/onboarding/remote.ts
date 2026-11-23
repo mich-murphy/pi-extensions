@@ -27,7 +27,6 @@ export type RemoteIntent = {
 const MACHINE = /^[a-z][a-z0-9-]{0,31}$/u;
 const ADDRESS = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u;
 
-/** Inline validators: each returns a plain error, or undefined when the value is usable. */
 export function machineError(value: string): string | undefined {
   return MACHINE.test(value)
     ? undefined
@@ -53,11 +52,6 @@ export function pathError(value: string): string | undefined {
 }
 
 export type OfferPreview = { readonly peerMachineId: string; readonly localMachineId: string };
-/**
- * Read-only preview of a public offer: who made it and which machine it is for. These names are
- * untrusted suggestions; native signed validation after Apply is authoritative. Never quotes the
- * file's content in an error.
- */
 export async function readOffer(path: string): Promise<OfferPreview | string> {
   const invalid = pathError(path);
   if (invalid !== undefined) {
@@ -130,10 +124,6 @@ function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
     },
   };
 }
-/**
- * An edited local plan that keeps an existing pair: the peer's grants follow the edited scope and
- * permissions, and the saved remote connection (credentials and address) is kept unchanged.
- */
 export function keptPair(
   plan: LocalPlan,
   intent: RemoteIntent,

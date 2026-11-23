@@ -1,10 +1,3 @@
-// Scripted second participant for peers.bombadil.ts: a real pi-peers adapter runtime in its own
-// process, on the same gateway as the driven Pi. Every few seconds it discovers the other sessions
-// in scope `team` and sends each one an `update` whose content carries a unique token
-// (`peer-msg-<n>`) followed by an escape sequence and a bidi override, so the spec can check
-// delivery and sanitization. The last message also says `final`; then the peer disconnects and
-// exits, so the spec can check that the driven Pi survives a peer leaving.
-//   node --import jiti/register peers-peer.ts <pi-peers.json>
 import { readFileSync } from "node:fs";
 import { decodeConfiguration } from "../../adapter/config.js";
 import { createAdapterRuntime } from "../../adapter/runtime.js";
@@ -22,7 +15,6 @@ let sent = 0;
 
 function leave(): void {
   clearInterval(timer);
-  // Nothing else holds the event loop once the runtime is disposed, so the process then ends.
   void runtime.dispose();
 }
 

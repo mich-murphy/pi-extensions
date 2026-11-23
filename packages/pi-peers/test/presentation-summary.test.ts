@@ -12,7 +12,6 @@ import { footerStatus, statusSummary, statusText } from "../adapter/presentation
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
 const internal =
   /nonce|generation|receipt|operation|relation|guarded|registration|\bCAS\b|ledger|floor|projection/iu;
-// Built from code points so the source holds no control-character regex literal.
 const controlCodes = new Set([
   ...Array.from({ length: 9 }, (_, code) => code),
   ...Array.from({ length: 21 }, (_, index) => index + 11),
@@ -53,7 +52,6 @@ function drawStatus(tc: TestCase): { value: unknown; authored: string[] } {
     : undefined;
   return { value, authored: [scope, machine] };
 }
-/** Authored text is shown escaped; only our own copy must avoid jargon. */
 function assertPlain(text: string, authored: string[]): void {
   assert.equal(hasControl(text), false, `control character in ${JSON.stringify(text)}`);
   let own = text;

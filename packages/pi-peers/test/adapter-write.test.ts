@@ -8,14 +8,11 @@ import type { Frame } from "../protocol/schema.js";
 import { encodeFrame } from "../protocol/wire.js";
 import { fakeDelay } from "./fake-delay.js";
 
-/** A real Node Writable with a deliberately blocked transport completion callback. */
 class BlockedSocket extends Socket {
   readonly chunks: Buffer[] = [];
   private complete: ((error?: Error | null) => void) | undefined;
   constructor() {
     super();
-    // Writable batches queued chunks through _writev, which a real Socket forwards to its handle.
-    // Hiding it makes every queued chunk wait for its own completion, one at a time.
     Reflect.set(this, "_writev", undefined);
   }
   override _write(
@@ -176,7 +173,6 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("completing the oldest write re-arms the timer for the next-oldest write's original deadline, not the newest's", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { socket, connection, disconnected } = await fixture();
-    // Far-off request deadlines keep each request's own timer out of the way of the write timer.
     const queue = async (index: number) =>
       connection
         .request(sending(index.toString(16).padStart(32, "0")), performance.now() + 15_000)
@@ -187,7 +183,6 @@ describe("bounded transport write completion and absolute progress deadlines", (
     await vi.advanceTimersByTimeAsync(1000);
     queued.push(queue(3));
     await vi.advanceTimersByTimeAsync(1000);
-    // Writes 2 and 3 stay queued, with deadlines 6000 and 7000 ms after the first write.
     socket.release();
     await vi.advanceTimersByTimeAsync(2999);
     expect(disconnected).toStrictEqual([]);

@@ -24,7 +24,6 @@ export type ClientOptions = {
   statusChanged: () => void;
   ensureGateway?: EnsureGateway;
 };
-/** One surviving adapter lifetime; reconnect replaces only connection-generation state. */
 export class GatewayClient {
   private connection: Connection | undefined;
   private connecting: Promise<Connection> | undefined;
@@ -40,7 +39,6 @@ export class GatewayClient {
   private diagnostic = "disconnected";
   private generationPending = false;
   constructor(private readonly options: ClientOptions) {}
-  /** Tool preflight reconnects before scope guards; only setup-managed runtimes auto-start. */
   async recoverForTool(): Promise<void> {
     if (this.options.ensureGateway !== undefined && this.connection === undefined) {
       await this.reconnect(this.lifetime.signal);
@@ -49,7 +47,6 @@ export class GatewayClient {
   effectiveScopes(): ReadonlySet<string> {
     return this.scopes;
   }
-  /** Local-only tools skip recovery; they must still fail closed after shutdown. */
   isClosed(): boolean {
     return this.closed;
   }
@@ -165,7 +162,6 @@ export class GatewayClient {
     }
   }
   private async initialize(): Promise<Connection> {
-    // Session-owned absolute setup budget, independent of the first tool's budget.
     const deadline = performance.now() + 5000;
     const controller = new AbortController();
     this.initialization = controller;
@@ -174,7 +170,6 @@ export class GatewayClient {
     const current = () => !this.closed && generation === this.generation && !signal.aborted;
     const pending = (async () => {
       const expected = await this.expectedConfiguration(deadline, signal, current);
-      // An ensure callback may ignore cancellation. Never let its late result open a socket.
       if (!current()) {
         throw new ConnectionFailure("cancelled", false);
       }
@@ -204,7 +199,6 @@ export class GatewayClient {
           this.peers.clear();
           this.diagnostic = this.generationPending ? "activation_pending" : code;
           this.options.statusChanged();
-          // One bounded episode per lost established generation; never replay requests.
           if (established && this.options.ensureGateway !== undefined && !this.closed) {
             queueMicrotask(() => {
               void this.reconnect(this.lifetime.signal).catch(() => undefined);
@@ -291,7 +285,6 @@ export class GatewayClient {
     const connection = await this.connect(deadline, signal);
     return connection.request(request, deadline, signal);
   }
-  /** Fresh is reserved for a separately reviewed control attempt, never passive recovery. */
   async reconnect(signal?: AbortSignal, fresh = false): Promise<void> {
     if (this.closed || signal?.aborted === true) {
       throw new ConnectionFailure("cancelled", false);
@@ -349,7 +342,6 @@ export class GatewayClient {
     }
   }
   private fenceTransport(): void {
-    // Fence before close: the old transport's synchronous disconnect callback is stale too.
     this.generation += 1;
     this.initialization?.abort();
     this.initialization = undefined;
@@ -445,7 +437,6 @@ export class GatewayClient {
         };
       }
       const rid = freshId();
-      // Install before request completion: live events can follow the snapshot in the same chunk.
       if (watch) {
         this.watch = { rid, scopes: new Set(scopeIds), ready: false };
       }

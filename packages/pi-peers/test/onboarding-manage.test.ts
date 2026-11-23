@@ -1,5 +1,3 @@
-// Drives fresh Setup's Review details and the Manage form's edit Apply through the RPC driver with
-// the actual native gateway fixture, so the reviewed effect text and the edit effect really run.
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -72,7 +70,6 @@ describe("fresh Review details and the Manage form's edit Apply", () => {
   });
 });
 
-// A Manage edit on a PAIRED setup: the peer's grants change exactly as the form disclosed.
 const PEER = "join-peer";
 const DISCLOSED = `Also changes what ${PEER} may do with this Pi.`;
 
@@ -152,12 +149,10 @@ describe("Manage on a paired setup", () => {
     };
     await setupCommand(agent, ctx, activate, supplied());
     expect(picks).toStrictEqual([]);
-    // Choosing the locked Scope row opens nothing and says why.
     expect(shown[1]?.title).toContain(
       "Can't change here: the paired computer uses this scope. Re-pair to change it.",
     );
     expect(shown[1]?.title).toContain("Peers › Setup");
-    // Review details names the peer in plain words; no dangling "reviewed below".
     const details = String(shown[2]?.title);
     expect(details).toContain("Peers › Setup › Details");
     expect(details).toContain(DISCLOSED);

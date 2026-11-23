@@ -6,7 +6,6 @@ import { encodeFrame } from "../protocol/wire.js";
 
 const INBOUND_BUFFER_LIMIT = 262_144;
 
-/** One small fixed-shape inbound frame; `sessionIdLength` (1-256) sets its encoded size. */
 function rosterRemoval(sessionIdLength: number): Uint8Array {
   const frame: Frame = {
     v: 1,
@@ -23,7 +22,6 @@ function rosterRemoval(sessionIdLength: number): Uint8Array {
   };
   return encodeFrame(frame, "adapter-delivery");
 }
-/** Valid frames whose encoded sizes add up to exactly `total` bytes. */
 function framesTotalling(total: number): Uint8Array[] {
   const smallest = rosterRemoval(1).length;
   const largest = rosterRemoval(256).length;
@@ -98,7 +96,6 @@ describe("inbound frame assembly and buffer bounds", () => {
     await vi.advanceTimersByTimeAsync(3000);
     receive(Buffer.concat([first.subarray(10), second.subarray(0, 6)]));
     expect(events).toHaveLength(1);
-    // The first frame's window (ending at 5 s) no longer applies; the leftover has its own.
     await vi.advanceTimersByTimeAsync(4999);
     expect(disconnected).toStrictEqual([]);
     await vi.advanceTimersByTimeAsync(1);

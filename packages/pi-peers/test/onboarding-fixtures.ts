@@ -21,14 +21,9 @@ export async function nativeFixture() {
   return { root, executable };
 }
 const LOCAL = "Local only — no remote connections (recommended)";
-/** APPLY picks the one offered consent row: a Ready gate, Turn off peers, or Keep and reconnect. */
 const CONSENT = /(?:: Ready$|^Turn off peers$|^Keep and reconnect$)/u;
 const TOGGLES = ["discover", "read", "push", "interest"];
 const GRANT = /^(?:Allow|Deny)$/u;
-/**
- * The old per-permission Allow/Deny prompts become the toggle screen: answers are consumed in
- * permission order and only a needed change is returned as a toggle; when none remain, Back.
- */
 function toggled(
   answers: (string | undefined)[],
   options: readonly string[],
@@ -47,15 +42,10 @@ function toggled(
   answers.unshift("Back");
   return 0;
 }
-/** `Row=Value`: a form row to set. Paths and hashes never contain `=`. */
 function field(answer: string | undefined): readonly [string, string] | undefined {
   const at = answer?.indexOf("=") ?? -1;
   return answer === undefined || at <= 0 ? undefined : [answer.slice(0, at), answer.slice(at + 1)];
 }
-/**
- * Picks the option for the head `Row=Value` answer. A row already showing the value consumes the
- * answer; otherwise the row is chosen (a cycle advances; a text row's editor then reads the value).
- */
 function setField(
   answers: (string | undefined)[],
   options: readonly string[],
@@ -79,17 +69,14 @@ function setField(
     return options.find((option) => option.startsWith(`${row}: `));
   }
 }
-/** The permissions toggle screen. */
 function togglesShown(options: readonly string[]): boolean {
   return options.includes("discover: On") || options.includes("discover: Off");
 }
-/** The old Local-only and Edit choices answers have no form equivalent; drop them. */
 function skipFormless(answers: (string | undefined)[]): void {
   while (answers[0] === LOCAL || answers[0] === "Edit choices") {
     answers.shift();
   }
 }
-/** The option for a plain answer: the Permissions row on a form, the consent row for `APPLY`. */
 function plainOption(
   value: string | undefined,
   form: boolean,
@@ -115,11 +102,6 @@ function scripted(
   }
   return setField(answers, options, state) ?? plainOption(answers.shift(), form, options);
 }
-/**
- * A scripted RPC context. Select answers are option texts, `APPLY` (the offered consent row) or
- * `Row=Value` (set a form row in place); an input reads the head `Row=Value` value or the head
- * answer. Anything not offered is rejected by selectChoice, which means back.
- */
 export function dialog(
   answers: (string | undefined)[],
   mode: DialogContext["mode"] = "rpc",
@@ -167,7 +149,6 @@ export async function nativeAddress(): Promise<string> {
   return `127.0.0.1:${address.port}`;
 }
 
-/** A pathname/inode alone is not an incarnation: Linux can immediately reuse an inode. */
 export async function nativeIncarnation(path: string): Promise<string | undefined> {
   try {
     const value = await lstat(path, { bigint: true });
@@ -183,7 +164,6 @@ export async function nativeIncarnation(path: string): Promise<string | undefine
   }
 }
 
-/** Fence late participants, then drain the body before deleting any owned fixture files. */
 export function nativeParticipants() {
   const clients = new Set<{ close: () => void }>();
   let stopping = false;
@@ -210,20 +190,13 @@ export function nativeParticipants() {
       for (const client of clients) {
         client.close();
       }
-      // Closing cancels reconnect episodes, but awaited setup/control work can still finish.
-      // A timed-out body must settle before HOME is restored or secrets are removed.
       await nativeUntil(async () => settled, 65_000);
     },
   };
 }
 
-/** Explicit no-pin catalog for blocked production-path tests, never the shipped pins. */
 export const noPins: { catalog: GatewayCatalog } = { catalog: { nix: null, native: null } };
 
-/**
- * Opens a route screen, activates the row `id` (its consent row by default) and returns the
- * outcome of the effect it started, or undefined when the row started nothing.
- */
 export async function consentOutcome(
   open: (progress: Progress) => Screen,
   id = "apply",

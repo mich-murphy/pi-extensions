@@ -32,11 +32,8 @@ type Entry = {
 };
 type TextScreen = Extract<Screen, { kind: "text" }>;
 
-/**
- * TUI driver for the menu model, modelled on pi-skills/menu.ts. No idle timeout; Esc is
- * `model.back()`. Layout: border, title, optional note, blank, body, blank, hint, border, so the
- * hint row is always directly above the bottom border.
- */
+const SETTINGS_LIST_OWN_HINT_ROWS = 2;
+
 export class PeersMenu implements Component, Focusable {
   private hasFocus = false;
   private editor: { readonly screen: Screen; readonly input: Input } | undefined;
@@ -129,10 +126,6 @@ export class PeersMenu implements Component, Focusable {
     return binding === "escape" ? "Esc" : (binding ?? "Unbound");
   }
 
-  /**
-   * List rows that fit the terminal. Besides the list the menu uses about ten rows (borders, title,
-   * note, spacers, scroll indicator, description, hint); Pi's footer and status use three more.
-   */
   private maxRows(): number {
     return Math.max(3, Math.min(12, this.host.tui.terminal.rows - 15));
   }
@@ -149,12 +142,10 @@ export class PeersMenu implements Component, Focusable {
     return [];
   }
 
-  /** Report and outcome lines that fit: the terminal less the chrome, Pi's footer and status. */
   private reportRows(): number {
     return Math.max(3, this.host.tui.terminal.rows - 12);
   }
 
-  /** PgUp/PgDn: one page in a report, or one list page, clamped (no wrap). */
   private page(screen: Screen, direction: -1 | 1): void {
     const count = this.entries(screen).length;
     if (count > 0) {
@@ -207,7 +198,6 @@ export class PeersMenu implements Component, Focusable {
       return this.editor.input;
     }
     const input = new Input();
-    // A bracketed paste into an empty input leaves the cursor at the end of the prefilled value.
     input.handleInput(`\u001b[200~${screen.value()}\u001b[201~`);
     input.focused = this.hasFocus;
     this.editor = { screen, input };
@@ -252,8 +242,7 @@ export class PeersMenu implements Component, Focusable {
     if (selected !== undefined) {
       list.selectItem(selected.id);
     }
-    // SettingsList ends with a blank row and its own hint; the menu draws the contract hint.
-    return list.render(width).slice(0, -2);
+    return list.render(width).slice(0, -SETTINGS_LIST_OWN_HINT_ROWS);
   }
 
   private wrap(lines: readonly string[], width: number): string[] {
@@ -263,7 +252,6 @@ export class PeersMenu implements Component, Focusable {
   }
 
   private scroll(screen: Screen, lines: readonly string[], width: number): string[] {
-    // Report lines may carry values read from files; control characters are shown, never sent.
     const rows = this.wrap(
       lines.map((line) => visibleText(line)),
       width,

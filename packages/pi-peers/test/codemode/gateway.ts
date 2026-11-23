@@ -1,4 +1,3 @@
-/** SIMULATED gateway: a synthetic transport fixture speaking the real framing. Not the native gateway. */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import type { Server, Socket } from "node:net";
@@ -6,7 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Frame, PeerRef } from "../../protocol/schema.js";
 import { decodeFrame, encodeFrame, frameBodyLength } from "../../protocol/wire.js";
-import { LOCAL_MACHINE, MACHINES, NOISE_MACHINE, PUBLICATIONS, SCOPE, peerRef } from "./corpus.js";
+import {
+  LOCAL_MACHINE,
+  MACHINES,
+  ROSTER_ONLY_MACHINE_WITHOUT_POLICY,
+  PUBLICATIONS,
+  SCOPE,
+  peerRef,
+} from "./corpus.js";
 import type { Scenario } from "./corpus.js";
 
 type Op<K extends Frame["op"]> = Extract<Frame, { op: K }>;
@@ -17,7 +23,6 @@ type Reply = {
   forOp: string;
   outcome: Record<string, unknown>;
 };
-/** One observed operation and the simulated outcome, for verifying forbidden reads and unknown-send IDs. */
 export type Receipt = {
   op: string;
   sessionId?: string;
@@ -127,7 +132,6 @@ export class SimulatedGateway {
   private write(socket: Socket, request: Frame, reply: Reply): void {
     const bytes = encodeFrame(reply, "adapter-delivery");
     if (request.op === "register" && this.registerReplyDelayMs > 0) {
-      // Models a loaded machine: the gateway has SEEN register, the adapter has not yet processed the reply.
       setTimeout(() => {
         if (!socket.destroyed) {
           socket.write(bytes);
@@ -163,7 +167,7 @@ export class SimulatedGateway {
       return this.result(request, { tag: "ok", value: { peer: this.local, scopeIds: [SCOPE] } });
     }
     if (request.op === "discover") {
-      const peers = [...MACHINES, NOISE_MACHINE].map((machine) => ({
+      const peers = [...MACHINES, ROSTER_ONLY_MACHINE_WITHOUT_POLICY].map((machine) => ({
         peer: peerRef(machine),
         label: `simulated ${machine}`,
         scopeIds: [SCOPE],

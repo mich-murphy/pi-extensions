@@ -4,15 +4,11 @@ import { describe, expect, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import { validatePin } from "../onboarding/catalog.js";
 
-// The oracle is built by construction, not by copying the validator's patterns: a pin drawn from
-// lowercase hex digits and canonical base64 is valid, and any one edit below makes it invalid.
-
 type Pin = { sourceRevision: string; version: string; manifestSha256?: string; narHash?: string };
 type Field = "sourceRevision" | "manifestSha256" | "narHash";
 
 const HEX = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-// Characters outside each field's alphabet, so a replacement always breaks the field.
 const FOREIGN: Record<Field, readonly string[]> = {
   sourceRevision: ["A", "F", "g", " ", "-", "_", "\n", "é"],
   manifestSha256: ["A", "F", "g", " ", "-", "_", "\n", "é"],
@@ -42,11 +38,6 @@ function validPin(tc: TestCase): Pin {
   return pin;
 }
 
-/**
- * One edit that makes the field invalid: a foreign character, a missing one, an extra one, or (for
- * the NAR hash) a last digest character whose unused padding bits are set, which no 32-byte value
- * encodes to.
- */
 function corrupt(tc: TestCase, value: string, field: Field): string {
   const kinds =
     field === "narHash"
@@ -54,8 +45,6 @@ function corrupt(tc: TestCase, value: string, field: Field): string {
       : (["replace", "drop", "insert"] as const);
   const kind = tc.draw(gs.sampledFrom(kinds), "edit");
   if (kind === "noncanonical") {
-    // "sha256-" + 43 characters + "=": the 43rd carries 4 data bits and 2 zero bits, so a canonical
-    // one has an alphabet index divisible by 4. The next 1–3 indices set those zero bits.
     const at = value.length - 2;
     const index = BASE64.indexOf(value.charAt(at));
     const step = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }), "padding bits");
@@ -70,14 +59,12 @@ function corrupt(tc: TestCase, value: string, field: Field): string {
     const at = tc.draw(gs.integers({ minValue: 0, maxValue: value.length - 1 }), "at");
     return value.slice(0, at) + value.slice(at + 1);
   }
-  // The narHash prefix "sha256-" ends in a foreign character, so replace only after it.
   const first = field === "narHash" ? "sha256-".length : 0;
   const at = tc.draw(gs.integers({ minValue: first, maxValue: value.length - 1 }), "at");
   const replacement = tc.draw(gs.sampledFrom(FOREIGN[field]), "replacement");
   return value.slice(0, at) + replacement + value.slice(at + 1);
 }
 
-/** The pin with one of its present digests corrupted. */
 function corruptOneDigest(tc: TestCase, pin: Pin): Pin {
   const fields = (["sourceRevision", "manifestSha256", "narHash"] as const).filter(
     (field) => pin[field] !== undefined,

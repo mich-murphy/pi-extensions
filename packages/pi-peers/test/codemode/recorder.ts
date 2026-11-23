@@ -1,7 +1,3 @@
-/** Deterministic scripted "model" policy. Same task, same final answer for both arms.
- *  Direct arm batches every independent call of a round into ONE assistant response (parallel tool calls).
- *  Codemode arm issues one script. No provider is involved; this is scheduling, not model quality.
- *  The final answers are derived from the tool results actually received, never from the expected JSON. */
 import type { ToolCall } from "@earendil-works/pi-ai";
 import { SCOPE } from "./corpus.js";
 
@@ -51,7 +47,6 @@ function texts(message: Message): string {
     .map((block) => str(field(block, "text")))
     .join("\n");
 }
-/** Tool results produced after the most recent assistant message. */
 function latestResults(messages: Message[]): string[] {
   const lastAssistant = messages.map((m) => m.role).lastIndexOf("assistant");
   return messages

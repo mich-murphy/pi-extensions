@@ -18,7 +18,6 @@ const texts = ["", "ok-host", "BAD VALUE", "team", "x".repeat(200)];
 
 type Run = { blocked: boolean; events: string[]; depths: number[] };
 
-/** Effects not immediately preceded by the Apply consent. */
 function unconsented(events: readonly string[]): number[] {
   return events.flatMap((event, index) =>
     event === "effect" && events[index - 1] !== "consent:Apply" ? [index] : [],
@@ -32,14 +31,12 @@ function press(model: MenuModel, tc: TestCase): void {
   } else if (key === 1) {
     model.activate(tc.draw(gs.sampledFrom(ids)));
   } else if (key === 2) {
-    // Every save in this form is synchronous, so the submit has settled when it returns.
     model.submit(tc.draw(gs.sampledFrom(texts))).catch(() => undefined);
   } else {
     model.toggle(tc.draw(gs.sampledFrom(["discover", "read", "push", "interest"])));
   }
 }
 
-/** Drives a random key sequence through the setup form and records consents and effects. */
 function run(tc: TestCase): Run {
   const blocked = tc.draw(gs.booleans());
   const events: string[] = [];
@@ -90,11 +87,6 @@ const routeIds = [
   "review",
 ];
 
-/**
- * An existing-state Setup screen shaped like the real routes: a direct consent row (Keep and
- * reconnect), an action form whose consent may be blocked (Repair), and a nested submenu with its
- * own action form (Issuer › Export).
- */
 function existingScreen(blockedRepair: boolean, events: string[]) {
   return (progress: Progress) => {
     const effect = (name: string) => () => {
@@ -174,7 +166,6 @@ function existingScreen(blockedRepair: boolean, events: string[]) {
   };
 }
 
-/** Random keys through the real root with an existing-state Setup route. */
 function runExisting(tc: TestCase) {
   const blockedRepair = tc.draw(gs.booleans());
   const events: string[] = [];
@@ -212,7 +203,6 @@ function runExisting(tc: TestCase) {
     const back = tc.draw(gs.booleans());
     if (back) {
       model.back();
-      // Back pops exactly one level, except the outcome (to the root) and progress/root (close).
       depths.push(model.closed || model.depth === 0 ? 0 : before - model.depth - 1);
     } else {
       model.activate(tc.draw(gs.sampledFrom(routeIds)));
@@ -221,7 +211,6 @@ function runExisting(tc: TestCase) {
   return { blockedRepair, events, depths };
 }
 
-/** Effects not immediately preceded by a consent. */
 function unconsentedAny(events: readonly string[]): number[] {
   return events.flatMap((event, index) =>
     event.startsWith("effect:") && !(events[index - 1] ?? "").startsWith("consent:") ? [index] : [],

@@ -1,5 +1,5 @@
 import { isAbsolute, normalize } from "node:path";
-import { visibleText } from "../../adapter/config.js";
+import { SOCKET_PATH_MAX_BYTES, visibleText } from "../../adapter/config.js";
 import { localPlan, permissions } from "../plan.js";
 import type { LocalChoices, LocalPlan } from "../plan.js";
 import type { RemoteIntent } from "../remote.js";
@@ -17,35 +17,27 @@ import type { Row, Screen } from "./model.js";
 import { remoteGate, remoteRows } from "./remote-form.js";
 import type { RemoteDraft } from "./remote-form.js";
 
-/** Editable fresh-setup state. Nothing here has effects; Apply receives a rebuilt, validated plan. */
 export type SetupDraft = {
   mode: "local" | "remote";
   choices: LocalChoices;
   socket: string;
-  /** True when the default socket exceeds 100 bytes, so the user must choose one. */
   socketRequired: boolean;
-  /** Whether a shared gateway was seen live on the reviewed socket (read-only observation). */
   shared: boolean;
   remote: RemoteDraft;
 };
 
-/** What Apply receives: the rebuilt local plan and, in remote mode, the checked remote intent. */
 export type SetupChoice = {
   readonly plan: LocalPlan;
   readonly remote?: RemoteIntent;
-  /** The shared-gateway observation the review disclosed; Apply refuses if it changed. */
   readonly shared: boolean;
 };
 
 export type SetupFormOptions = {
   readonly draft: SetupDraft;
-  /** Short acquisition-blocked reason for local mode; when set, Apply is never offered as consent. */
   readonly blocked?: string;
-  /** The same for remote mode, which needs pairing capabilities. */
   readonly remoteBlocked?: string;
   readonly details: (choice: SetupChoice) => string;
   readonly apply: (choice: SetupChoice) => void;
-  /** Read-only: is a shared gateway live on this socket? */
   readonly probe?: (socket: string) => Promise<boolean>;
 };
 
@@ -73,10 +65,10 @@ function validateField(field: Field, value: string): string | undefined {
 function validateSocket(value: string): string | undefined {
   return isAbsolute(value) &&
     normalize(value) === value &&
-    Buffer.byteLength(value) <= 100 &&
+    Buffer.byteLength(value) <= SOCKET_PATH_MAX_BYTES &&
     !/^\/(?:private\/)?(?:tmp|var\/folders)(?:\/|$)/u.test(value)
     ? undefined
-    : "Use a normalized absolute path of at most 100 bytes, outside OS temporary storage.";
+    : `Use a normalized absolute path of at most ${SOCKET_PATH_MAX_BYTES} bytes, outside OS temporary storage.`;
 }
 
 const labels: Record<Field, string> = { machineId: "Machine", scopeId: "Scope", label: "Label" };
@@ -92,14 +84,12 @@ const PERMISSION_TEXT: Record<(typeof permissions)[number], string> = {
   interest: "Follow updates to this session's published work",
 };
 
-/** The first text field whose value is invalid. */
 function invalidField(choices: LocalChoices): Field | undefined {
   return (["machineId", "scopeId", "label"] as const).find(
     (field) => validateField(field, choices[field]) !== undefined,
   );
 }
 
-/** The local part of a gate: Missing socket, then invalid fields, else the rebuilt plan. */
 function localGate(
   choices: LocalChoices,
   socket: string,
@@ -122,10 +112,6 @@ function localGate(
   }
 }
 
-/**
- * Apply row state: a blocked route first (nothing the user fills in can unblock it), then Missing
- * (local, then remote), then invalid fields and remote cross-field checks, else Ready.
- */
 export function applyState(
   draft: SetupDraft,
   blocked?: string,
@@ -160,7 +146,6 @@ export function applyState(
   };
 }
 
-/** Machine, Scope and Label rows; `set` saves a validated value. */
 function localRows(
   choices: () => LocalChoices,
   set: (next: LocalChoices) => void,
@@ -185,7 +170,6 @@ function localRows(
 
 const PERMISSIONS_HELP = "What other sessions on this account may do with this one.";
 
-/** The plain disclosure that a paired setup's permissions are also the peer's grants. */
 export function peerGrantText(peer: string): string {
   return `Also changes what ${visibleText(peer)} may do with this Pi.`;
 }
@@ -286,7 +270,6 @@ function applyRows(options: SetupFormOptions): Row[] {
   ];
 }
 
-/** The fresh setup form, titled `Setup`, pushed on top of the Peers root. */
 export function setupForm(options: SetupFormOptions): Screen {
   const { draft } = options;
   const choices = (): LocalChoices => draft.choices;
@@ -336,10 +319,6 @@ function sameChoices(left: LocalChoices, right: LocalChoices): boolean {
   );
 }
 
-/**
- * Apply state of the Manage form: `No changes` until a row differs from the saved settings, then
- * an invalid field, then a blocked rebuild (saved files unreadable), else the rebuilt plan.
- */
 export function editState(
   saved: LocalChoices,
   edited: LocalChoices,
@@ -368,32 +347,17 @@ export function editState(
 const FIXED_SCOPE = "Can't change here: the paired computer uses this scope. Re-pair to change it.";
 
 export type ManageFormOptions = {
-  /** The saved settings; the form starts from a copy of them. */
   readonly saved: LocalChoices;
-  /** A note naming this computer (and its peer, when paired). */
   readonly note: string;
-  /** Why Machine can't change here (for example a pair's certificates name it); else editable. */
   readonly fixedMachine?: string;
-  /**
-   * The paired peer, if any. Its grants follow this Pi's permissions, so the Permissions and Apply
-   * descriptions say so, and Scope is read-only (the peer uses the same scope).
-   */
   readonly peer?: string;
-  /**
-   * Rebuilds the full plan from edited choices; undefined when the saved files can't be read or
-   * hold more than this form shows, so an edit is Blocked rather than silently dropping settings.
-   */
   readonly rebuild?: (choices: LocalChoices) => LocalPlan;
-  /** Whether a shared gateway was seen live (read-only); Apply then restarts it once. */
   readonly shared: () => boolean;
-  /** Review details for an edited plan, or for the saved settings when nothing is ready. */
   readonly details: (plan: LocalPlan | undefined) => readonly string[];
   readonly apply: (plan: LocalPlan) => void;
-  /** The other existing-setup actions, listed below Apply. */
   readonly actions: () => readonly Row[];
 };
 
-/** The Manage form, titled `Setup`: the saved settings as editable rows, Apply, then the actions. */
 export function manageForm(options: ManageFormOptions): Screen {
   const draft = { choices: options.saved };
   const choices = (): LocalChoices => draft.choices;

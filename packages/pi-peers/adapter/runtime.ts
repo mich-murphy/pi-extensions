@@ -9,7 +9,6 @@ import type { AdapterHost } from "./session.js";
 class AdapterService extends Context.Service<AdapterService, AdapterSession>()(
   "pi-peers/Adapter",
 ) {}
-/** Exactly one scoped service, wake Queue and pump fiber per enabled session lifetime. */
 export async function createAdapterRuntime(
   config: Configuration,
   peer: PeerRef,

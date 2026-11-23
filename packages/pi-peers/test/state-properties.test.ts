@@ -45,9 +45,6 @@ function activeBytes(model: Model): number {
     .reduce((sum, receipt) => sum + receipt.bytes, 0);
 }
 const INBOX_BYTES = 1300;
-// One send in three repeats the exact content already held for that id, so lost-ACK retries
-// (duplicate admits that must return the stored receipt without extending its retention) are
-// common. Fully random content would almost never repeat.
 function contentFor(model: Model, step: Step): string {
   const prior = model.entries.get(step.id);
   return prior !== undefined && step.resend === 0
@@ -294,7 +291,6 @@ function assertInterestTrace(actions: readonly number[]): void {
   }
 }
 
-// Sizes straddle the single-message limit and its multiples so the byte branch is reached.
 const sizeGenerator = gs.oneOf(
   gs.integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
   gs.sampledFrom(
@@ -328,15 +324,11 @@ function assertSingleDelivery(size: number, unit: string): void {
     assert.equal(state.stats().inboxBytes, 0);
   }
 }
-// Half-TTL steps make "admit, retry, retire, wait" land on either side of the 10-minute expiry
-// measured from the first admission rather than from the latest retry.
 const advanceGenerator = gs.oneOf(
   gs.integers({ minValue: 0, maxValue: 700_000 }),
   gs.sampledFrom([1, 299_999, 300_000, 300_001, 599_999, 600_000]),
 );
 describe("Hegel bounded state/fault traces against independent models", () => {
-  // Up to 40 admission steps per case against the full state model: 0.2 s quiet and 0.6 s under 8 busy
-  // processes.
   test(
     "admission, lost ACK retries, queue failure, retirement and expiry model",
     { timeout: propertyTimeout(30_000) },

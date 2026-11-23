@@ -1,31 +1,3 @@
-// Shared by the test-only extensions setup-extension.ts (refusing backend) and
-// setup-success-extension.ts (copied debug gateway). Not shipped.
-//
-// Bombadil sees only the terminal, so this turns disk state into screen state. While a /peers
-// command runs it polls the agent and home directories and, unless the user consented in the menu,
-// sets the footer status to `probe:UNREVIEWED-WRITE <path>` for a new path or
-// `probe:UNREVIEWED-CHANGE <path>` for a changed or deleted one. Directories are compared by
-// presence, small files by mode and SHA256, larger ones by mode, size and mtime. Sockets are
-// runtime state and are not compared; the gateway's startup-*.log files are compared by presence.
-//
-// Consent comes from the `testBackend.observe.consented(action)` seam, which the menu calls
-// synchronously when a consent row is confirmed, before any effect. The probe has no seam for the
-// end of an action, so it watches the action's outcome instead: every consented action ends in a
-// `peers-report` transcript entry (`pi.appendEntry`), which this wrapper counts. From a consent
-// until every consented action has reported and the tree has then been quiet for QUIET_MS (or
-// SETTLE_MS has passed, for an action that never reports), the probe is settling:
-//   - only the paths an action may legitimately touch are accepted (SCOPE: the pi-peers config
-//     `pi-peers.json*`, the pi-peers directory, `~/.pi` and its pi-peers socket root, startup logs);
-//   - every other path is still compared against the baseline, with or without a command running;
-//   - when settling ends, the tree becomes the new baseline.
-// Every command takes a fresh baseline when it starts, settling or not, after a final check of the
-// old one, so nothing a command writes is absorbed unchecked. The footer then reads
-// `probe:ok consent:<action>#<n> reports:<m>`: the last consent, numbered from 1, and the number of
-// `peers-report` entries. The specifications use both to tie properties to an action's outcome.
-//
-// Known gaps: a second, unconsented command writing inside SCOPE while an action settles is not
-// flagged (the menu refuses a second action while one runs); production acquisition is replaced by
-// the test backends and so is never probed.
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -41,22 +13,24 @@ const SETTLE_MS = 120_000;
 const SMALL = 65_536;
 const LOG = /(?:^|\/)startup-[0-9a-f]+\.log$/u;
 
-/** Every path under `roots`, absolute. */
+function entriesOrNoneWhenAbsent(root: string): string[] {
+  try {
+    return readdirSync(root, { recursive: true }).map(String);
+  } catch {
+    return [];
+  }
+}
+
 function paths(roots: readonly string[]): Set<string> {
   const found = new Set<string>();
   for (const root of roots) {
-    try {
-      for (const entry of readdirSync(root, { recursive: true })) {
-        found.add(join(root, String(entry)));
-      }
-    } catch {
-      // An absent root has no paths.
+    for (const entry of entriesOrNoneWhenAbsent(root)) {
+      found.add(join(root, entry));
     }
   }
   return found;
 }
 
-/** How `path` compares across snapshots, or undefined for runtime state and vanished paths. */
 function fingerprint(path: string): string | undefined {
   try {
     const stat = lstatSync(path);
@@ -76,7 +50,6 @@ function fingerprint(path: string): string | undefined {
   }
 }
 
-/** Every compared path under `roots` with its fingerprint. */
 function snapshot(roots: readonly string[]): Map<string, string> {
   const found = new Map<string, string>();
   for (const path of paths(roots)) {
@@ -88,7 +61,6 @@ function snapshot(roots: readonly string[]): Map<string, string> {
   return found;
 }
 
-/** The first `checked` path added (`WRITE`), or changed or deleted (`CHANGE`), since `before`. */
 function unreviewed(
   before: ReadonlyMap<string, string>,
   after: ReadonlyMap<string, string>,
@@ -104,12 +76,10 @@ function unreviewed(
   return changed === undefined ? undefined : { kind: "CHANGE", path: changed };
 }
 
-/** Whether `path` is `root` or lies under it. */
 function within(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
 }
 
-/** The paths a consented action may touch while it settles (see the header). */
 function settlingScope(agentDir: string, home: string): (path: string) => boolean {
   const config = join(agentDir, "pi-peers.json");
   const directory = join(agentDir, "pi-peers");
@@ -123,7 +93,6 @@ function settlingScope(agentDir: string, home: string): (path: string) => boolea
     LOG.test(path);
 }
 
-/** A property of `target`, with methods bound to it so they keep their receiver behind a proxy. */
 function forwarded(target: object, property: string | symbol): unknown {
   const value: unknown = Reflect.get(target, property, target);
   if (typeof value !== "function") {
@@ -133,7 +102,6 @@ function forwarded(target: object, property: string | symbol): unknown {
   return bound;
 }
 
-/** `target` with the members in `own` replacing its own. */
 function overriding<T extends object>(target: T, own: Record<PropertyKey, unknown>): T {
   return new Proxy(target, {
     get: (object, property) =>
@@ -143,7 +111,6 @@ function overriding<T extends object>(target: T, own: Record<PropertyKey, unknow
 
 type Settling = { print: string; quietSince: number; since: number };
 
-/** The unreviewed-change probe; `show` receives the footer text whenever it changes. */
 function createProbe(
   roots: readonly string[],
   scope: (path: string) => boolean,
@@ -154,7 +121,6 @@ function createProbe(
   let consent: string | undefined;
   let consents = 0;
   let reports = 0;
-  /** Consented actions that have not reported an outcome yet. */
   let pending = 0;
   let baseline = new Map<string, string>();
   let commands = 0;
@@ -167,7 +133,6 @@ function createProbe(
     return `probe:ok${last} reports:${reports}`;
   };
   const outside = (path: string): boolean => !scope(path);
-  /** Ends settling once every action reported and the tree was quiet, or at the cap. */
   const settle = (now: Map<string, string>, active: Settling): void => {
     const print = JSON.stringify([...now]);
     const time = Date.now();
@@ -237,7 +202,6 @@ function createProbe(
   };
 }
 
-/** Loads pi-peers with `backend`, flagging unreviewed writes and changes in the footer. */
 export function probedPeers(pi: ExtensionAPI, backend: SetupBackend, description: string): void {
   let status: ((text: string) => void) | undefined;
   const home = process.env.HOME ?? "";

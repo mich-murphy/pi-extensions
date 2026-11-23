@@ -105,7 +105,6 @@ function client(
 }
 describe("actual setup plan/apply lifecycle", () => {
   beforeEach(async () => {
-    // Keep the old paths and stopping owner if a body outlives its cleanup drain.
     if (cleanupFailure !== undefined) {
       throw new Error("Prior native cleanup failed; refusing a new fixture", cleanupFailure);
     }
@@ -118,7 +117,6 @@ describe("actual setup plan/apply lifecycle", () => {
     vi.stubEnv("HOME", root);
   });
   afterEach(async () => {
-    // Vitest still runs afterEach when the fail-stop beforeEach above throws.
     if (cleanupFailure !== undefined) {
       return;
     }
@@ -245,7 +243,6 @@ describe("actual setup plan/apply lifecycle", () => {
       await until(async () => !existsSync(setup.socketPath), 12_000);
     }
   });
-  // Keep the existing 10s recovery and 12s shutdown bounds inside the runner budget.
   test(
     "native gateway crash recovers with surviving clients and unchanged peer identities",
     async ({ annotate }) =>

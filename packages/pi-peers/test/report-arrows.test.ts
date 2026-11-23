@@ -1,6 +1,3 @@
-// Report, status, doctor and outcome text must not use `→` as a path separator: Pi wraps long
-// lines, and a wrapped row that starts with `→ ` reads as SettingsList's cursor on a report screen
-// (Bombadil's noCursorInViews). The menu breadcrumb separator is `›`.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +9,6 @@ import { afterSave, failed, NotActive, pendingOutcome, SAVED_NEXT } from "../onb
 
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
 
-/** Every line of `text` that contains an arrow. */
 function arrows(text: string): string[] {
   return text.split("\n").filter((line) => line.includes("→"));
 }

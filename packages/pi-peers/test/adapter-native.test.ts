@@ -108,14 +108,11 @@ async function receiptLossProxy(config: Configuration, onLoss: () => void) {
     },
   };
 }
-// The built gateway. `npm run check` and CI build it first; a bare `npx vitest run` in a fresh clone does not.
 const gatewayBinary =
   process.env.PI_SESSION_GATEWAY_BINARY ??
   fileURLToPath(new URL("../gateway/target/debug/pi-gateway", import.meta.url));
 
 function requireGatewayBinary(): void {
-  // A failure, never a skip: this test is the only one that runs the native gateway, so a dropped build
-  // step must turn CI red rather than pass without exercising it.
   if (!existsSync(gatewayBinary)) {
     throw new Error(
       `The native gateway binary is not built: ${gatewayBinary} does not exist. ` +
@@ -127,7 +124,6 @@ function requireGatewayBinary(): void {
 
 async function nativeGateway() {
   requireGatewayBinary();
-  // Canonical private directory is required by the native gateway, including on macOS /var.
   const directory = await realpath(await mkdtemp(join(tmpdir(), "psc-native-")));
   await chmod(directory, 0o700);
   const socketPath = join(directory, "gateway.sock");
@@ -153,7 +149,6 @@ async function nativeGateway() {
     diagnostic = (diagnostic + bytes.toString("utf8")).slice(-4096);
   });
   const abort = new AbortController();
-  // A hang guard, not a budget: readiness takes tens of milliseconds, and the event is awaited.
   const timer = setTimeout(() => {
     abort.abort();
   }, 30_000);
@@ -343,11 +338,10 @@ describe("production adapter / native local gateway vertical slice", () => {
       await expect(
         left.session.send(receiver, "team", { ...message, id: freshId() }),
       ).resolves.toMatchObject({ tag: "not_admitted", code: "no_route" });
-      // The dropped receipt still followed a genuinely admitted fresh push and one fresh wake.
       expect(notices).toHaveLength(2);
     } finally {
       await Promise.all([left.dispose(), right.dispose()]);
       await gateway.close();
     }
-  }, 60_000); // runs in about 0.3 s; the guard above is 30 s, so this stays above it.
+  }, 60_000);
 });

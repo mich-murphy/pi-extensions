@@ -5,11 +5,6 @@ import type { MenuModel, Row, Screen } from "./model.js";
 
 const BACK = "Back";
 
-/**
- * Drives the menu model through RPC dialogs. A non-root screen gets a `Back` option; undefined
- * (Esc, timeout, abort or a forged answer rejected by selectChoice) means back, and at the root it
- * closes. selectChoice keeps the 120 s timeout and the offered-set validation.
- */
 export async function driveRpc(model: MenuModel, ctx: DialogContext): Promise<void> {
   while (!model.closed) {
     // eslint-disable-next-line eslint/no-await-in-loop -- RPC dialogs are sequential; each answer decides the next screen.
@@ -17,7 +12,6 @@ export async function driveRpc(model: MenuModel, ctx: DialogContext): Promise<vo
   }
 }
 
-/** The breadcrumbs, then the extra lines, each made visible (no control characters). */
 function heading(model: MenuModel, ...extra: (string | undefined)[]): string {
   return [
     model.title(),
@@ -40,7 +34,6 @@ async function list(
     ...options,
     ...(model.depth === 0 ? [] : [BACK]),
   ]);
-  // The row that was shown and chosen; the rows are not re-read after the answer.
   const row = rows[options.indexOf(answer ?? BACK)];
   if (row === undefined) {
     model.back();

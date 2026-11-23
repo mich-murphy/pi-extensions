@@ -9,7 +9,18 @@ import type { Reconnect } from "./route.js";
 
 const STEPS = ["Restarting the gateway once", "Reconnecting this Pi"] as const;
 
-/** Explicit reviewed control only. Passive ensure/reconnect never calls this action. */
+async function reconnectedOnceWithoutReplay(reconnect: Reconnect | undefined): Promise<boolean> {
+  if (reconnect === undefined) {
+    return false;
+  }
+  try {
+    await reconnect(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function activateSaved(
   setup: ManagedSetup,
   step: Step,
@@ -18,15 +29,7 @@ async function activateSaved(
   step(STEPS[0]);
   const restart = await requestManagedRestart(setup);
   step(STEPS[1]);
-  let connected = false;
-  try {
-    if (reconnect !== undefined) {
-      await reconnect(true);
-      connected = true;
-    }
-  } catch {
-    // Guarded reconnect is bounded; an uncertain control outcome is never replayed.
-  }
+  const connected = await reconnectedOnceWithoutReplay(reconnect);
   if (restart === "acknowledged" && connected) {
     return {
       ok: true,
@@ -48,7 +51,6 @@ async function activateSaved(
   );
 }
 
-/** `Activate saved configuration`: one restart of the shared gateway, then this Pi reconnects. */
 export function activationScreen(
   setup: ManagedSetup,
   progress: Progress,

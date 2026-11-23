@@ -49,7 +49,6 @@ const remote = [
 const without = (capability: string) =>
   GATEWAY_LOCAL_SETUP_CAPABILITIES.filter((value) => value !== capability);
 
-/** The repair screen, which must exist for a damaged installation. */
 async function requiredRepair(
   agent: string,
   acquisition: Parameters<typeof repairRoute>[1],
@@ -105,9 +104,6 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       wireVersions: [1],
       capabilities: ["managed-on-demand-v1", ...capabilities],
     });
-    // No genuine old-native binary is available. This trusted historic-helper seam
-    // supports read-only version inspection; reset-only tests may explicitly delegate
-    // setup-lock to the real new native binary. Every other operation marks failure.
     await rm(executable, { force: true });
     await writeFile(
       executable,
@@ -495,7 +491,6 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       description: "TEST pending pairing repair",
     }));
     const route = async () => requiredRepair(agent, acquisition);
-    // Opening the screen and its details, without consent, starts nothing.
     await expect(consentOutcome(await route(), "review")).resolves.toBeUndefined();
     expect(acquisition).toHaveBeenCalledWith(true);
     expect(acquire).not.toHaveBeenCalled();

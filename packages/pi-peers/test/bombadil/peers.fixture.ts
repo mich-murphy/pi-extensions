@@ -1,5 +1,3 @@
-// Launch fixture for peers.bombadil.ts. Starts a real local pi-gateway (a private copy of the debug
-// build) and the scripted peer, and points the driven Pi at the same socket. dispose stops both.
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
@@ -11,6 +9,7 @@ import { gatewayBinary } from "./gateway-binary.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = fileURLToPath(new URL("../../../../", import.meta.url));
+const GATEWAY_SOCKET_PATH_MAX_BYTES = 100;
 const POLICIES = [
   { machineId: "alpha", scopeId: "team", permissions: ["discover", "read", "push", "interest"] },
 ];
@@ -20,7 +19,6 @@ async function ready(child: ChildProcess): Promise<void> {
   if (stdout === null) {
     throw new Error("Gateway has no stdout");
   }
-  // Split on \n only; the first line is the gateway's ready event.
   const line = new Promise<void>((resolve, reject) => {
     let text = "";
     const onData = (bytes: Buffer): void => {
@@ -53,10 +51,13 @@ async function stop(child: ChildProcess): Promise<void> {
 
 export default async function peersFixture(root: BombadilRoot): Promise<BombadilLaunch> {
   const source = gatewayBinary();
-  // The gateway rejects symlinked ancestors, and /tmp is a symlink on macOS.
-  const directory = join(realpathSync(root.root), "gw");
+  const withoutSymlinkedAncestors = realpathSync(root.root);
+  const directory = join(withoutSymlinkedAncestors, "gw");
   mkdirSync(directory, { mode: 0o700 });
   const socketPath = join(directory, "g.sock");
+  if (Buffer.byteLength(socketPath) > GATEWAY_SOCKET_PATH_MAX_BYTES) {
+    throw new Error(`Socket path exceeds ${GATEWAY_SOCKET_PATH_MAX_BYTES} bytes: ${socketPath}`);
+  }
   const gatewayConfig = join(directory, "gateway.json");
   writeFileSync(
     gatewayConfig,
@@ -84,7 +85,6 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
       { cwd: repo, stdio: "ignore" },
     );
   } catch (error) {
-    // The launcher runs no dispose when the fixture throws, so stop what already started.
     await stop(gateway);
     throw error;
   }

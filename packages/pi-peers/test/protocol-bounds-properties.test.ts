@@ -3,23 +3,27 @@ import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { decodeJson, ProtocolError } from "../protocol/json.js";
+import {
+  decodeJson,
+  MAX_ARRAY_ITEMS,
+  MAX_BODY_BYTES,
+  MAX_NESTING_DEPTH,
+  ProtocolError,
+} from "../protocol/json.js";
+import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import type { BoundaryRole } from "../protocol/wire.js";
-import { decodeFrame, encodeFrame, frameBodyLength, validateFrame } from "../protocol/wire.js";
+import {
+  decodeFrame,
+  encodeFrame,
+  frameBodyLength,
+  MAX_DESCRIPTOR_BYTES,
+  validateFrame,
+} from "../protocol/wire.js";
 
 const settings = propertySettings(200);
 const rid = "1".repeat(32);
 const nonce = "a".repeat(32);
 
-// Limits, cited from source: json.ts:1 MAX_BODY_BYTES 32_764 (also wire.ts:16),
-// json.ts:83 array 64, json.ts:108 depth 16, wire.ts:89 authored 24_576, wire.ts:76 descriptor 512.
-const BODY_MAX = 32_764;
-const AUTHORED_MAX = 24_576;
-const DESCRIPTOR_MAX = 512;
-const ARRAY_MAX = 64;
-const DEPTH_MAX = 16;
-
-/** Edge offsets around a limit: accept iff offset <= 0. */
 const edge = gs.integers({ minValue: -3, maxValue: 3 });
 
 function accepts(run: () => unknown): boolean {
@@ -39,7 +43,6 @@ function withPrefix(body: Uint8Array): Uint8Array {
   return bytes;
 }
 
-/** Every frame entry point must agree with the closed-form oracle. */
 function assertFrameEdge(value: unknown, role: BoundaryRole, expected: boolean): void {
   const raw = Buffer.from(JSON.stringify(value), "utf8");
   assert.equal(
@@ -75,12 +78,10 @@ function sendFrame(contentBytes: number): unknown {
   };
 }
 
-/** A string of exactly `bytes` UTF-8 bytes, of three-byte `€` characters when `wide`. */
 function filled(bytes: number, wide: boolean): string {
   return wide ? `${"€".repeat(Math.floor(bytes / 3))}${"x".repeat(bytes % 3)}` : "x".repeat(bytes);
 }
 
-/** A publication whose authored fields (title, summary, content, label, locator) have these sizes. */
 function publicationFrame(sizes: {
   title: number;
   summary: number;
@@ -157,11 +158,6 @@ function prefixOf(length: number): Uint8Array {
   return prefix;
 }
 
-/**
- * A property case is a pure function of its draws, so checking one twice proves nothing. The edge
- * generators draw only seven offsets, but 200 cases build and parse tens of kilobytes each time (a
- * 30x slowdown under a loaded coverage run). The returned function runs a check once per distinct key.
- */
 function oncePerKey(): (key: string, check: () => void) => void {
   const seen = new Set<string>();
   return (key, check) => {
@@ -180,19 +176,17 @@ function property(
 }
 
 describe("Hegel size-bound edges", () => {
-  test("authored content accepted iff <= 24576 bytes", () => {
+  test("authored content accepted iff <= MAX_AUTHORED_BYTES", () => {
     const once = oncePerKey();
     property("authored", (tc) => {
       const offset = tc.draw(edge, "offset");
       once(`${offset}`, () => {
-        assertFrameEdge(sendFrame(AUTHORED_MAX + offset), "local-client", offset <= 0);
+        assertFrameEdge(sendFrame(MAX_AUTHORED_BYTES + offset), "local-client", offset <= 0);
       });
     });
   });
 
-  // Every authored field has at least 4 bytes and the total lies within 3 bytes of the cap, so
-  // leaving any one field out of the sum flips some case from rejected to accepted.
-  test("the sum of title, summary, content, label and locator bytes is accepted iff <= 24576", () => {
+  test("the sum of title, summary, content, label and locator bytes is accepted iff <= MAX_AUTHORED_BYTES", () => {
     property("aggregate", (tc) => {
       const offset = tc.draw(edge, "offset");
       const title = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "title bytes");
@@ -200,7 +194,7 @@ describe("Hegel size-bound edges", () => {
       const label = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "label bytes");
       const locator = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "locator bytes");
       const wide = tc.draw(gs.booleans(), "multi-byte text");
-      const content = AUTHORED_MAX + offset - title - summary - label - locator;
+      const content = MAX_AUTHORED_BYTES + offset - title - summary - label - locator;
       assertFrameEdge(
         publicationFrame({ title, summary, content, label, locator, wide }),
         "local-client",
@@ -209,13 +203,13 @@ describe("Hegel size-bound edges", () => {
     });
   });
 
-  test("descriptor accepted iff <= 512 JSON bytes", () => {
+  test("descriptor accepted iff <= MAX_DESCRIPTOR_BYTES JSON bytes", () => {
     const once = oncePerKey();
     property("descriptor", (tc) => {
       const offset = tc.draw(edge, "offset");
       once(`${offset}`, () => {
         assertFrameEdge(
-          upsertWithDescriptorBytes(DESCRIPTOR_MAX + offset),
+          upsertWithDescriptorBytes(MAX_DESCRIPTOR_BYTES + offset),
           "gateway-forward",
           offset <= 0,
         );
@@ -227,7 +221,7 @@ describe("Hegel size-bound edges", () => {
     property("array", (tc) => {
       const offset = tc.draw(edge, "offset");
       assert.equal(
-        accepts(() => decodeJson(arrayObject(ARRAY_MAX + offset))),
+        accepts(() => decodeJson(arrayObject(MAX_ARRAY_ITEMS + offset))),
         offset <= 0,
       );
     });
@@ -237,7 +231,7 @@ describe("Hegel size-bound edges", () => {
     property("depth", (tc) => {
       const offset = tc.draw(edge, "offset");
       assert.equal(
-        accepts(() => decodeJson(nestedObject(DEPTH_MAX + offset))),
+        accepts(() => decodeJson(nestedObject(MAX_NESTING_DEPTH + offset))),
         offset <= 0,
       );
     });
@@ -250,11 +244,11 @@ describe("Hegel size-bound edges", () => {
       const low = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "low");
       once(`${offset}/${low}`, () => {
         assert.equal(
-          accepts(() => decodeJson(paddedBody(BODY_MAX + offset))),
+          accepts(() => decodeJson(paddedBody(MAX_BODY_BYTES + offset))),
           offset <= 0,
         );
         assert.equal(
-          accepts(() => frameBodyLength(prefixOf(BODY_MAX + offset))),
+          accepts(() => frameBodyLength(prefixOf(MAX_BODY_BYTES + offset))),
           offset <= 0,
         );
         assert.equal(

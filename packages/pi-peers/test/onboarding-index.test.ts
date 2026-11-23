@@ -10,12 +10,10 @@ import { setupPaths } from "../onboarding/backend.js";
 import { nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
-/** Test hooks around the real createAdapterRuntime: `during` runs before it returns. */
 const runtimes: { during: (() => Promise<void>) | undefined; disposed: boolean[] } = {
   during: undefined,
   disposed: [],
 };
-/** The real runtime, recording disposal and running `runtimes.during` before it is returned. */
 async function observedRuntime(...args: Parameters<typeof createAdapterRuntime>): Promise<Runtime> {
   const runtime = await createAdapterRuntime(...args);
   const index = runtimes.disposed.push(false) - 1;
@@ -44,7 +42,6 @@ async function invoke(handler: unknown, args: unknown[]): Promise<void> {
   await Reflect.apply(handler, undefined, args);
 }
 
-/** An RPC host around the default factory; each command gets its own scripted select. */
 function rpcHost(acquire: () => Promise<string>, consented: string[]) {
   const handlers = new Map<string, unknown>();
   const commands = new Map<string, unknown>();
@@ -105,10 +102,6 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
   };
 }
 
-/**
- * Records every title; at the first `Apply: Ready`, starts another Apply (`start`) and only then
- * answers with the now stale Apply row. Every later prompt is Esc.
- */
 function staleApply(titles: string[], start: () => Promise<string[]>, ready: Promise<unknown>) {
   let other: Promise<string[]> | undefined;
   const answer: Answer = async (title, options) => {
@@ -123,7 +116,6 @@ function staleApply(titles: string[], start: () => Promise<string[]>, ready: Pro
   return { answer, other: async () => other };
 }
 
-/** Opens Setup from `/peers setup`, chooses the Ready Apply row, then closes the outcome. */
 const applyOnce: Answer = (_title, options) => {
   if (options.includes("Apply: Ready")) {
     return "Apply: Ready";
@@ -193,7 +185,6 @@ describe("registerCommunication: actions while an Apply runs", () => {
     const race = staleApply(titles, async () => host.command("setup", applyOnce), acquiring);
     await host.command("setup", race.answer);
     expect(consented).toStrictEqual(["Apply"]);
-    // The list after the stale answer says why nothing ran; Esc then goes back and closes.
     const after = titles.slice(titles.findIndex((title) => title.includes("Apply")) + 1);
     expect(after[0]).toContain("Peers › Setup");
     expect(after[0]).toContain("Peers is busy with another action");
@@ -215,7 +206,6 @@ describe("registerCommunication: actions while an Apply runs", () => {
     expect(outcome?.title).toContain("! Settings saved but not active yet");
     expect(outcome?.title).toContain("This session ended");
     expect(existsSync(setupPaths(agent).adapter)).toBe(true);
-    // No runtime was created, so nothing starts the gateway or is left undisposed.
     await delay(300);
     expect(existsSync(setupPaths(agent).socket)).toBe(false);
     const status = await host.command("status");

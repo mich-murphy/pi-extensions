@@ -9,15 +9,9 @@ import { afterAll, afterEach, describe, expect, test } from "vitest";
 import { jsonObject, sha256 } from "../onboarding/artifact.js";
 import { gatewayTarget } from "../onboarding/catalog.js";
 
-/**
- * The real `scripts/verify-gateway-nix.ts` CLI, each run in its own Node child with a hard
- * deadline outside the Vitest worker. No Nix, network or provider is reached: every case is
- * refused, or (cleanup) succeeds, before any Nix child process could start.
- */
 const repository = path.resolve(import.meta.dirname, "../../..");
 const script = path.join(repository, "scripts/verify-gateway-nix.ts");
 const ioHelper = path.join(repository, "scripts/verify-gateway-nix-io.ts");
-/** A blocking FIFO open would hang until this deadline; a correct refusal takes well under it. */
 const CHILD_DEADLINE_MS = 30_000;
 const FAKE_STORE = `/nix/store/${"a".repeat(32)}-pi-gateway-0.1.0/bin/pi-gateway`;
 
@@ -54,18 +48,15 @@ async function mkfifo(filename: string): Promise<void> {
 }
 
 function refused(outcome: Outcome, pattern: RegExp): void {
-  // Not killed at the deadline: a prompt, explained refusal.
   expect(outcome.signal).toBeNull();
   expect(outcome.code).toBe(1);
   expect(outcome.stdout).toBe("");
   expect(outcome.stderr).toMatch(pattern);
 }
 
-/** Temps still to drain after the current case, and every exact temp this run made. */
 const temps: string[] = [];
 const created: string[] = [];
 
-/** A fresh, canonical temp directory owned by this run and drained after each case. */
 async function ownedTemp(prefix: string): Promise<string> {
   const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)));
   temps.push(dir);
@@ -73,7 +64,6 @@ async function ownedTemp(prefix: string): Promise<string> {
   return dir;
 }
 
-/** A canonical RUNNER_TEMP holding one owned root, marker and acquired record, as `prepare` writes. */
 async function ownedRun() {
   const runnerTemp = await ownedTemp("nix-cli-test-");
   const root = await fs.mkdtemp(path.join(runnerTemp, "gateway-nix-"));
@@ -101,7 +91,6 @@ async function ownedRun() {
   return { runnerTemp, root, marker, record, fixture, extracted, work, native, common };
 }
 
-/** Plants a foreign `--out`, runs `prepare`, and proves the refusal touched nothing but its own root. */
 async function prepareRefusesExisting(plant: (out: string) => Promise<unknown>): Promise<string> {
   const target = gatewayTarget();
   expect(target).toBeDefined();
@@ -130,7 +119,6 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<unknown>):
     before.mtimeNs,
     before.size,
   ]);
-  // The owned root and marker exist; no private HOME/TMPDIR was ever made, so no child ran.
   const names = await fs.readdir(runnerTemp);
   const roots = names.filter((name) => name.startsWith("gateway-nix-"));
   expect(roots).toHaveLength(1);
@@ -141,10 +129,6 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<unknown>):
   return out;
 }
 
-/**
- * Owned Node child (hard deadline, outside the Vitest worker) for the record writer the CLI uses: create, write preparing records of varying
- * length, then rename the created file aside and plant a foreign entry at the visible path.
- */
 const WRITER_CHILD = `
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
@@ -184,16 +168,13 @@ function serialized(record: object): string {
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
-// One top-level describe, so every case in this module drains its temps after it runs.
 describe("verify-gateway-nix consumer CLI", () => {
-  // Only the exact paths this run recorded are removed; nothing is matched by prefix.
   afterEach(async () => {
     await Promise.all(
       temps.splice(0).map(async (dir) => fs.rm(dir, { recursive: true, force: true })),
     );
   });
 
-  // Proof by exact name, not by prefix: no directory this run created is left behind.
   afterAll(() => {
     const leaked = created.filter((dir) => existsSync(dir));
     if (leaked.length > 0) {
@@ -242,7 +223,6 @@ describe("verify-gateway-nix consumer CLI", () => {
       await fs.rm(run.marker, { force: true });
       await mkfifo(run.marker);
       refused(await cli(["cleanup", ...run.common]), /Refusing owned read/u);
-      // Refused, so the owned root is retained.
       const root = await fs.lstat(run.root);
       expect(root.isDirectory()).toBe(true);
     });
@@ -276,7 +256,6 @@ describe("verify-gateway-nix consumer CLI", () => {
       expect(outcome).toMatchObject({ code: 0, signal: null });
       expect(JSON.parse(outcome.stdout)).toStrictEqual({ removed: run.root });
       expect(existsSync(run.root)).toBe(false);
-      // Only the root went: the record and fixture beside it are untouched.
       await expect(fs.readFile(run.fixture)).resolves.toStrictEqual(run.native);
       expect(existsSync(run.record)).toBe(true);
     });
@@ -353,10 +332,8 @@ describe("verify-gateway-nix consumer CLI", () => {
         );
         const report = jsonObject(JSON.parse(stdout));
 
-        // Longer, shorter, longer: every visible file is exactly the last record, no suffix or holes.
         expect(report.contents).toStrictEqual(PREPARING.map((record) => serialized(record)));
         expect(report.replaced).toMatch(/Record path .*record\.json was replaced/u);
-        // Only the retained descriptor's own file received the update; it was closed in `finally`.
         await expect(fs.readFile(path.join(dir, "own.json"), "utf8")).resolves.toBe(
           serialized({ status: "acquired" }),
         );

@@ -27,7 +27,6 @@ export type ManagedSnapshot = {
   readonly reason?: string;
   readonly text: string;
 };
-/** Native disk-credential diagnosis of the managed gateway configuration (not link readiness). */
 export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnapshot> {
   const { stdout } = await execute(setup.executable, ["--diagnose", setup.gatewayPath], {
     timeout: 5000,
@@ -119,7 +118,6 @@ async function reachable(path: string, signal: AbortSignal): Promise<boolean> {
     }
   });
 }
-/** Detached singleton contender. No retained PID, exit hook, signal forwarding or child kill. */
 export function managedLauncher(
   setup: ManagedSetup,
   reload?: () => Promise<ManagedSetup>,
@@ -176,7 +174,6 @@ function startupDemand(deadline: number, signal: AbortSignal): void {
   }
 }
 
-/** Exactly one control request; errors may follow an accepted restart and are never blindly retried. */
 export async function requestManagedRestart(
   setup: ManagedSetup,
 ): Promise<"acknowledged" | "uncertain"> {

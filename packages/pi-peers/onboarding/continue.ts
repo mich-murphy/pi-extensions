@@ -50,19 +50,16 @@ function publicFacts(available: Record<string, unknown>): [string, string][] {
   });
 }
 
-/** The public files and fingerprints to exchange, as outcome facts. */
 export function exchangeFacts(pairing: Pairing): [string, string][] {
   return publicFacts({ ...pairing.output, ...pairing.inspection });
 }
 
-/** The next exchange step for this side of the pair. */
 export function exchangeNext(pairing: Pairing): string {
   return pairing.intent.kind === "create"
     ? "Send the offer file and its root SHA256 to the other computer and confirm the SHA256 with them separately. When their request arrives, choose Setup › Issuer actions › Issue peer CSR."
     : "Send the request file and its SHA256 to the computer that made the pair. When its bundle arrives, choose Setup › Import public bundle.";
 }
 
-/** Plain public exchange instructions; internals under Technical details. */
 function exchangeLines(pairing: Pairing): string[] {
   return withTechnical(
     [
@@ -84,7 +81,6 @@ function exchangeLines(pairing: Pairing): string[] {
   );
 }
 
-/** The saved setup-managed pairing, if any (read-only). */
 export async function readPairing(agentDir: string): Promise<Pairing | undefined> {
   const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
   return bytes === undefined ? undefined : decodePairing(parseJson(bytes));
@@ -99,7 +95,6 @@ export type PairContext = {
   readonly pairing: Pairing;
 };
 
-/** The saved setup-owned pairing and its owned files, or undefined when there is none (read-only). */
 export async function loadedPair(
   agentDir: string,
   reconnect: Reconnect | undefined,
@@ -562,10 +557,6 @@ function renewalLines(pairing: Pairing): string[] {
   );
 }
 
-/**
- * The rows for a verified setup-owned pairing: exchange instructions, import, issuer or renewal
- * help, and re-pair. Each action is its own screen with one consent row.
- */
 export function pairRows(context: PairContext, progress: Progress): Row[] {
   const { pairing } = context;
   return [
@@ -594,7 +585,6 @@ export function pairRows(context: PairContext, progress: Progress): Row[] {
   ];
 }
 
-/** The saved Machine, Scope, Label and Permissions of a configuration. */
 export function savedChoices(config: Configuration): LocalChoices {
   const scopeId = config.scopeIds[0];
   if (scopeId === undefined) {
@@ -607,7 +597,6 @@ export function savedChoices(config: Configuration): LocalChoices {
   return { machineId: config.machineId, scopeId, label: config.label, permissions };
 }
 
-/** The saved plan, rebuilt from the saved configuration and gateway projection. */
 export function currentPlan(config: Configuration, gatewayBytes: Buffer): LocalPlan {
   return {
     choices: savedChoices(config),
@@ -616,7 +605,6 @@ export function currentPlan(config: Configuration, gatewayBytes: Buffer): LocalP
   };
 }
 
-/** Floor mode for an import: an installed runtime keeps its existing floor. */
 async function importFloor(runtimeDir: string): Promise<"existing" | "new"> {
   const runtimeBytes = await regularBytes(join(runtimeDir, "runtime.json"));
   if (runtimeBytes === undefined) {

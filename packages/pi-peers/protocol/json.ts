@@ -1,6 +1,7 @@
-const MAX_BODY_BYTES = 32_764;
+export const MAX_BODY_BYTES = 32_764;
+export const MAX_ARRAY_ITEMS = 64;
+export const MAX_NESTING_DEPTH = 16;
 
-/** Structural failures must close the affected connection; never expose hostile input. */
 export class ProtocolError extends Error {
   constructor() {
     super("Invalid session communication frame");
@@ -16,7 +17,6 @@ function requireValid(condition: boolean): void {
 
 export type ObjectBytesVisitor = (path: readonly (string | number)[], byteLength: number) => void;
 
-/** Bounded evidence pass BEFORE JSON.parse: keys, numeric lexemes and container limits. */
 class JsonEvidence {
   private position = 0;
   constructor(
@@ -80,7 +80,7 @@ class JsonEvidence {
     this.whitespace();
     if (this.text[this.position] !== "]") {
       do {
-        requireValid(++count <= 64);
+        requireValid(++count <= MAX_ARRAY_ITEMS);
         this.value(depth, [...path, count - 1]);
         this.whitespace();
       } while (this.text[this.position] === "," && ++this.position > 0);
@@ -105,7 +105,7 @@ class JsonEvidence {
     this.whitespace();
     const next = this.text[this.position];
     if (next === "{" || next === "[") {
-      requireValid(parentDepth < 16);
+      requireValid(parentDepth < MAX_NESTING_DEPTH);
       if (next === "{") {
         this.object(parentDepth + 1, path);
       } else {
@@ -127,11 +127,9 @@ class JsonEvidence {
   }
 }
 
-/** Strict UTF8, one object, no null, max depth16/array64 and lexical safe naturals. */
 export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): unknown {
   try {
     requireValid(bytes.length > 0 && bytes.length <= MAX_BODY_BYTES);
-    // ignoreBOM preserves U+FEFF so the JSON evidence pass rejects it.
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     new JsonEvidence(text, onObject).check();
     const value: unknown = JSON.parse(text);

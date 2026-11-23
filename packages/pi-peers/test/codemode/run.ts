@@ -1,6 +1,3 @@
-/** Explicit evaluation runner (never run by the test gate). Writes a JSON artifact only to the given path.
- *  node --import jiti/register test/codemode/run.ts <out.json> [trials=3]
- *  Offline: SIMULATED gateway + scripted recorder; elapsedMs is CPU/roundtrip, not live latency. */
 import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

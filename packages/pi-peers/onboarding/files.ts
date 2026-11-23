@@ -9,7 +9,6 @@ import { decodeRecord, parseJson } from "./schema.js";
 export function digest(bytes: string | Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
-/** Bounded read follows config symlinks only when explicitly requested; never opens devices blocking. */
 export async function regularBytes(path: string, follow = false): Promise<Buffer | undefined> {
   try {
     const target = follow ? await realpath(path) : path;
@@ -116,7 +115,6 @@ export async function durableUnlink(path: string): Promise<void> {
   await unlink(path);
   await syncDirectory(dirname(path));
 }
-/** Permanent native flock. Holder crash/EOF releases ownership; the lock inode is never unlinked. */
 export async function withSetupLock<A>(
   path: string,
   executable: string,

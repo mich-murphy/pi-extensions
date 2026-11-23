@@ -1,9 +1,3 @@
-// Bombadil terminal specification for a /peers setup that succeeds (success suite), run against the
-// real Pi CLI. Run with `npm run test:bombadil:peers:success`. setup-success.fixture.ts gives Pi
-// canonical paths and the debug gateway; setup-success-extension.ts copies it in on Apply, so setup
-// really starts a gateway and connects. A guided generator steers to Apply, then to `/peers status`
-// and `/peers reset`; the rest is the same fuzzing and properties as the safety suite. The
-// time-bounded guards sit inside the default 4m limit (see the end-of-run gap in setup-keys.ts).
 import { always, eventually } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
@@ -46,7 +40,6 @@ export {
   rootReached,
 } from "./setup-keys.ts";
 
-// Reset's consent row and the action the seam reports for it.
 const RESET_ROW = "Turn off peers";
 const RESET_ACTION = "Disable";
 const TURNED_OFF = "✓ Peers turned off";
@@ -54,29 +47,20 @@ const TURNED_OFF = "✓ Peers turned off";
 type Facts = {
   succeeded: boolean;
   statusSeen: boolean;
-  /** The probe's number for the last Disable consent, or 0 before any. */
   resetConsent: number;
-  /** The last Disable consent after which a real reset effect was seen, or 0. */
   turnedOff: number;
 };
 
-// Sticky facts across the run. Updates only ever raise them, so evaluating a state twice is
-// harmless.
 const sticky: Facts = {
   succeeded: false,
   statusSeen: false,
   resetConsent: 0,
   turnedOff: 0,
 };
-/** Whether the screen shows setup's own success outcome. */
 function setupSucceeded(screen: Screen): boolean {
   return screen.outcome === "ok" && (screen.headline ?? "").startsWith("✓ Peers set up");
 }
 
-/**
- * Whether peers is shown off after a reset: the reset's own outcome, or `/peers status` (or the
- * root's Status row) saying peers is off, with the footer no longer claiming a connection.
- */
 function turnedOffShown(screen: Screen): boolean {
   return (
     (screen.headline ?? "").startsWith(TURNED_OFF) ||
@@ -84,7 +68,6 @@ function turnedOffShown(screen: Screen): boolean {
   );
 }
 
-/** Raises the reset facts for a Disable consent on screen. */
 function noteReset(screen: Screen): void {
   const consent = screen.consent;
   if (consent?.action !== RESET_ACTION) {
@@ -103,15 +86,12 @@ const memory = extract((state: State): Facts => {
   noteReset(screen);
   return { ...sticky };
 });
-/** The sticky facts, or undefined before Bombadil extracts the first state. */
 const facts = (): Facts | undefined => memory.current;
 
-/** The key that moves the cursor to `row` (Up wraps) or, once it is selected, chooses it. */
 function choose(selected: string | null, row: string): ActionTemplate {
   return key(selected === row ? ENTER : UP);
 }
 
-/** The next key on an open menu after success: close the outcome, then reach and confirm Reset. */
 function successMenuKey(view: Screen | undefined): ActionTemplate {
   if (view?.kind === "outcome") {
     return key(ENTER);
@@ -124,10 +104,6 @@ function successMenuKey(view: Screen | undefined): ActionTemplate {
     : key(ESCAPE);
 }
 
-/**
- * After success: close the outcome, run `/peers status`, then open bare `/peers` and reach Reset
- * from the root, so the root menu (rootReached) is always on this suite's path, and confirm it.
- */
 const afterSuccess = actions((): ActionTemplate[] => {
   const seen = facts();
   if (seen?.succeeded !== true) {
@@ -147,33 +123,24 @@ export const successKeys = weighted([
   [1, resize],
 ]);
 
-/** Setup succeeds: the outcome row reads `✓ Peers set up — connected as …`. */
 export const setupSucceeds: Formula = eventually(() => facts()?.succeeded === true).within(
   150,
   "seconds",
 );
 
-/** After success the footer shows `Peers: connected`. */
 export const footerConnected: Formula = eventually(
   () => facts()?.succeeded === true && ui.current?.footer === "Peers: connected",
 ).within(160, "seconds");
 
-/** After success, `/peers status` reports `Connected as …`. */
 export const statusConnected: Formula = eventually(() => facts()?.statusSeen === true).within(
   200,
   "seconds",
 );
 
-/** After success, `/peers reset` reaches its confirm screen. */
 export const resetReached: Formula = eventually(
   () => facts()?.succeeded === true && ui.current?.path?.[1] === "Reset",
 ).within(220, "seconds");
 
-/**
- * Each `Turn off peers` consent really turns peers off: within 30 s the `✓ Peers turned off`
- * outcome appears, or status says `Peers is turned off` / `Not set up` with the footer no longer
- * `Peers: connected`.
- */
 export const resetDisconnects: Formula = always(() => {
   const consent = facts()?.resetConsent ?? 0;
   return (
@@ -181,7 +148,6 @@ export const resetDisconnects: Formula = always(() => {
   );
 });
 
-/** Guard: the run consents to `Turn off peers` at least once, so resetDisconnects is not vacuous. */
 export const resetConsented: Formula = eventually(() => (facts()?.resetConsent ?? 0) > 0).within(
   225,
   "seconds",

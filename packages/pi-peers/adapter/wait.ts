@@ -1,6 +1,5 @@
 import { ConnectionFailure } from "./transport.js";
 
-/** A caller's waiting budget never owns or cancels a shared session resource. */
 export async function waitFor<A>(
   shared: Promise<A>,
   deadline: number,

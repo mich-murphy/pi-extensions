@@ -64,7 +64,6 @@ const hostile = [
   "long ".repeat(60),
 ];
 
-// Independent oracle: U+202A-202E and U+2066-2069 as an explicit decimal list, not a range.
 const bidiCodes = [8234, 8235, 8236, 8237, 8238, 8294, 8295, 8296, 8297];
 const bidiControl = new RegExp(
   `[${bidiCodes.map((code) => `\\u${code.toString(16)}`).join("")}]`,
@@ -90,8 +89,10 @@ function controlSequence(code: number, kind: number): string {
   return sequences[kind] ?? character;
 }
 const escapeOrC1 = new RegExp(`[${String.fromCodePoint(27)}\\u0080-\\u009f]`, "u");
-// pi-tui truncation appends SGR resets; only non-SGR escapes count as leaks in rendered lines.
-const sgr = new RegExp(`${String.fromCodePoint(27)}\\[[0-9;]*m`, "gu");
+const sgrResetAppendedByPiTuiTruncation = new RegExp(
+  `${String.fromCodePoint(27)}\\[[0-9;]*m`,
+  "gu",
+);
 function hasEscapeOrC1(value: string): boolean {
   return escapeOrC1.test(value);
 }
@@ -113,7 +114,6 @@ function assertVisibleTextSequence(code: number, kind: number, prefix: string): 
   assert.equal(output, Array.from(sequence, (part) => visibleText(part)).join(""));
   assert.equal(visibleText(prefix + sequence), visibleText(prefix) + output);
 }
-// Every third drawn code is replaced by a bidi control so they are drawn often.
 function pickCode(drawn: number, bidi: number): number {
   return drawn % 3 === 0 ? bidi : drawn;
 }
@@ -179,7 +179,6 @@ const jsonValue = gs.recursive<Json>(
     ),
   { maxDepth: 5, maxLeaves: 40 },
 );
-// Hostile text placed in the exact fields the renderers preview, so sanitizing is exercised.
 const hostileShape = gs.sampledFrom(hostile).map((text): Json => ({
   to: { machineId: text, sessionId: text, runtimeNonce: text },
   publisher: { machineId: text, sessionId: text, runtimeNonce: text },
@@ -237,7 +236,7 @@ function assertRenderedBounds(
       for (const line of lines) {
         assert(visibleWidth(line) <= width, `${name}/${slot} exceeds ${width}: ${line}`);
         assert(
-          !hasEscapeOrC1(line.replaceAll(sgr, "")),
+          !hasEscapeOrC1(line.replaceAll(sgrResetAppendedByPiTuiTruncation, "")),
           `${name}/${slot} leaked ESC/C1: ${JSON.stringify(line)}`,
         );
         assert(!bidiControl.test(line), `${name}/${slot} leaked bidi: ${JSON.stringify(line)}`);
@@ -273,8 +272,6 @@ describe("Hegel adapter policy and rendering properties", () => {
       .settings(settings)
       .runSync();
   });
-  // Each case lays out four renderings of arbitrary JSON through Pi's text layout: 0.4 s quiet and 0.8 s
-  // under 8 busy processes.
   test(
     "every tool renderer stays within width and free of ESC/C1 for arbitrary JSON",
     { timeout: propertyTimeout(30_000) },
@@ -293,8 +290,6 @@ describe("Hegel adapter policy and rendering properties", () => {
   );
 });
 
-// Embedding, override and isolate controls reorder text in bidi-aware terminals. LRM/RLM/ALM are
-// deliberately left alone: they are zero-width marks that cannot reorder across a run on their own.
 describe("visibleText bidi controls", () => {
   test.each(bidiCodes)("escapes code point %i and keeps surrounding text", (code) => {
     const escaped = `\\u${code.toString(16)}`;

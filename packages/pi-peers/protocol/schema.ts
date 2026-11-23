@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+export const MAX_AUTHORED_BYTES = 24_576;
+
 function noControls(value: string): boolean {
   for (const character of value) {
     const code = character.codePointAt(0) ?? 0;
@@ -85,11 +87,10 @@ const reportFields = {
   status: Schema.optionalKey(status),
   refs: Schema.optionalKey(refs),
 };
-// Per-field cap; validateFrame's wire.ts aggregate (all authored fields <= 24,576 bytes) also shadows it for frames.
 export const Message = Schema.Struct({
   id: randomId,
   kind: Schema.Literals(["request", "reply", "update"]),
-  content: text(24_576),
+  content: text(MAX_AUTHORED_BYTES),
   format,
   ...reportFields,
   replyTo: Schema.optionalKey(Schema.Struct({ sender: Peer, messageId: randomId })),
@@ -108,7 +109,7 @@ const publication = Schema.Struct({
   category,
   title: text(128),
   summary: text(1024),
-  content: Schema.optionalKey(text(24_576)),
+  content: Schema.optionalKey(text(MAX_AUTHORED_BYTES)),
   format,
   ...reportFields,
   preparation: Schema.Literals(["authored", "summarized", "curated"]),

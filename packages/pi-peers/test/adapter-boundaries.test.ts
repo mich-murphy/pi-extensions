@@ -181,9 +181,7 @@ describe("adapter configuration and retry boundaries", () => {
     ).rejects.toThrow("opaque");
     const abort = new AbortController();
     const waiting = waitFor(
-      new Promise(() => {
-        /* Deliberately unresolved shared initialization. */
-      }),
+      Promise.withResolvers<never>().promise,
       performance.now() + 1000,
       abort.signal,
     );

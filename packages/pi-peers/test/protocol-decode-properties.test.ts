@@ -59,7 +59,6 @@ function withPrefix(body: Uint8Array): Uint8Array {
   return bytes;
 }
 
-/** Totality oracle: decode returns a frame or throws ProtocolError; a frame must survive re-encode. */
 function assertTotal(bytes: Uint8Array, role: BoundaryRole): void {
   let frame: unknown;
   try {
@@ -126,7 +125,6 @@ const utf8Pieces: readonly Uint8Array[] = [
   [0x7a, 0x20],
 ].map((piece) => Uint8Array.from(piece));
 
-/** Oracle: a JSON string body decodes iff the WHATWG fatal UTF-8 decoder accepts the bytes. */
 function assertUtf8Agreement(pieces: readonly Uint8Array[]): void {
   const body = Buffer.concat([Buffer.from('{"a":"'), ...pieces, Buffer.from('"}')]);
   let valid = true;

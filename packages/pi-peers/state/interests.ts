@@ -130,7 +130,6 @@ function pushPlan(store: Store, publication: Publication, scopeId: string, to: P
       },
     ],
   } as const;
-  // Expanded envelope preflight includes both exact authenticated identities.
   encodeFrame(
     { v: 1, op: "deliver", rid: "0".repeat(32), from: store.peer, to, scopeId, message },
     "adapter-delivery",
@@ -187,7 +186,6 @@ export function prepareReport(store: Store, input: ReportInput, now: number): Re
     return { tag: "error", code: "overloaded", resource: "operations" };
   }
   const isTerminal = input.record.status !== undefined && terminal.has(input.record.status);
-  // No await/callback after this point: publish, snapshot and one-shot consumption commit together.
   const publication = commitPublication(store, prepared.value);
   const consumedInterests = isTerminal
     ? consumeSelected(store, input.scopeId, input.record.work, selected.value)

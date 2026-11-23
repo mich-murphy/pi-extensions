@@ -1,5 +1,4 @@
-// Checks the Bombadil /peers screen readers against synthetic 80x20 screens built from the screen
-// contract, so a reader bug shows up here rather than as a vacuous or false Bombadil property.
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { bottomBorderBelow, readMenu } from "../../../test-support/bombadil-menu.ts";
 import { outcomeOf, readPeers } from "./bombadil/peers-screen.ts";
@@ -7,7 +6,6 @@ import { outcomeOf, readPeers } from "./bombadil/peers-screen.ts";
 const RULE = "─".repeat(80);
 const CHROME = [RULE, ">", RULE, "~/cwd", "0.0%/200k (auto)", "probe:ok Peers: setting up…"];
 
-/** A 20-row screen: one chat row, the menu between borders, then Pi's editor and footer. */
 function screen(menu: readonly string[]): string[] {
   const rows = ["Welcome", RULE, ...menu, RULE, ...CHROME];
   return [...rows, ...Array.from({ length: Math.max(0, 20 - rows.length) }, () => "")];
@@ -242,4 +240,54 @@ describe("readMenu", () => {
       bottomShown: true,
     });
   });
+});
+
+const SUITES = {
+  "test:bombadil:peers:setup": ["setup.bombadil.ts", "setup-keys.ts"],
+  "test:bombadil:peers:success": ["setup-success.bombadil.ts", "setup-keys.ts"],
+  "test:bombadil:peers:messages": ["peers.bombadil.ts"],
+} as const;
+
+function npmScript(name: string): string {
+  const manifest: unknown = JSON.parse(
+    readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+  );
+  const scripts: unknown =
+    typeof manifest === "object" && manifest !== null && "scripts" in manifest
+      ? manifest.scripts
+      : undefined;
+  const script: unknown =
+    typeof scripts === "object" && scripts !== null && name in scripts
+      ? Reflect.get(scripts, name)
+      : undefined;
+  if (typeof script !== "string") {
+    throw new TypeError(`No npm script ${name}`);
+  }
+  return script;
+}
+
+function defaultLimitSeconds(name: string): number {
+  const match = /BOMBADIL_TIME_LIMIT:-(?<amount>\d+)(?<unit>m|s)\}/u.exec(npmScript(name));
+  if (match?.groups === undefined) {
+    throw new Error(`No default time limit for ${name}`);
+  }
+  return Number(match.groups.amount) * (match.groups.unit === "m" ? 60 : 1);
+}
+
+function guardSeconds(file: string): number[] {
+  const source = readFileSync(new URL(`bombadil/${file}`, import.meta.url), "utf8");
+  return [...source.matchAll(/\.within\(\s*(?<seconds>\d+),\s*"seconds"/gu)].map((match) =>
+    Number(match.groups?.seconds),
+  );
+}
+
+describe("Bombadil suite time limits", () => {
+  test.each(Object.entries(SUITES))(
+    "%s: Bombadil passes obligations still open at its time limit, so every guard sits inside it",
+    (name, files) => {
+      const guards = files.flatMap((file) => guardSeconds(file));
+      expect(guards.length).toBeGreaterThan(0);
+      expect(Math.max(...guards)).toBeLessThan(defaultLimitSeconds(name));
+    },
+  );
 });

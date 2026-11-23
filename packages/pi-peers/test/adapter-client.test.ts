@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createConnection, createServer } from "node:net";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -326,7 +326,6 @@ async function executeTool(
 ): Promise<unknown> {
   const definition = tools.find((tool) => tool.name === name);
   assert(definition);
-  // Public registration seam; these handlers do not read the optional host execution context.
   const action = definition.execute;
   assert(typeof action === "function");
   const result: unknown = await Reflect.apply(action, undefined, [
@@ -340,6 +339,14 @@ async function executeTool(
   return details.value;
 }
 
+async function acceptedProbe(fixture: Awaited<ReturnType<typeof gateway>>): Promise<void> {
+  const before = fixture.connections();
+  const probe = createConnection(fixture.config.socketPath);
+  cleanups.push(async () => {
+    probe.destroy();
+  });
+  await expect.poll(() => fixture.connections()).toBeGreaterThan(before);
+}
 function restoreAgentDir(previous: string | undefined): void {
   if (previous === undefined) {
     delete process.env.PI_CODING_AGENT_DIR;
@@ -377,7 +384,7 @@ function replyToReport(
     outcome,
   });
 }
-function extensionHost() {
+function extensionHost(select: () => Promise<unknown> = async () => undefined) {
   const handlers = new Map<string, unknown>();
   const commands = new Map<
     string,
@@ -391,7 +398,7 @@ function extensionHost() {
     sessionManager: { getSessionId: () => peer.sessionId },
     isIdle: () => true,
     ui: {
-      select: async () => undefined,
+      select,
       notify: (text: string) => {
         notifications.push(text);
       },
@@ -406,6 +413,7 @@ function extensionHost() {
         handlers.set(name, handler);
       },
       registerTool: () => undefined,
+      registerEntryRenderer: () => undefined,
       registerCommand: (
         name: string,
         definition: {
@@ -438,7 +446,6 @@ function extensionHost() {
 }
 
 function malformedEnsure(value: unknown): EnsureGateway {
-  // Explicit JS/old-plugin seam: TS typing must not turn malformed results into legacy admission.
   const ensure = vi.fn<EnsureGateway>();
   const resolve: unknown = Reflect.get(ensure, "mockResolvedValue");
   assert(typeof resolve === "function");
@@ -522,7 +529,6 @@ describe("public adapter transport and notice accounting", () => {
       await close();
     }
   });
-  // %j renders undefined, {} and an undefined field alike, so a label keeps each test id unique.
   test.each([
     ["undefined", undefined],
     ["null", null],
@@ -581,7 +587,6 @@ describe("public adapter transport and notice accounting", () => {
       await session.reconnect();
       const state = session.state;
       expect(session.status().connected).toBe(true);
-      // Models ACK before the old server delivers any disconnect. It never closes it itself.
       let completed = false;
       const fresh = session.reconnect(true).then(() => {
         completed = true;
@@ -602,7 +607,6 @@ describe("public adapter transport and notice accounting", () => {
         expect.objectContaining({ runtimeNonce: peer.runtimeNonce, sessionId: peer.sessionId }),
       ]);
       expect(session.state).toBe(state);
-      // Passive/control-free repair retains the healthy registration.
       await session.reconnect();
       expect(ensureGateway).toHaveBeenCalledTimes(2);
     } finally {
@@ -634,7 +638,6 @@ describe("public adapter transport and notice accounting", () => {
     try {
       await client.reconnect();
       const superseded = expectFailure(client.reconnect(undefined, true), "cancelled");
-      // A second separately reviewed control changes saved metadata again.
       let completed = false;
       const latest = client.reconnect(undefined, true).then(() => {
         completed = true;
@@ -722,12 +725,11 @@ describe("public adapter transport and notice accounting", () => {
       const fresh = client.reconnect(undefined, true);
       await entered.promise;
       await prior;
-      // This ensure deliberately ignores its aborted signal and fails late.
       old.reject(new Error("stale metadata failure"));
       await new Promise<void>((resolve) => {
         setImmediate(resolve);
       });
-      expect(statusChanged).toHaveBeenCalledTimes(1); // only the explicit fence
+      expect(statusChanged).toHaveBeenCalledTimes(1);
       const tool = client.request({
         v: 1,
         op: "discover",
@@ -735,7 +737,6 @@ describe("public adapter transport and notice accounting", () => {
         scopeIds: ["team"],
         watch: false,
       });
-      // The fake server leaves discover pending; only its connection preflight is relevant.
       const toolResult = expectFailure(tool, "cancelled");
       next.resolve({ gatewaySha256: "b".repeat(64) });
       await fresh;
@@ -820,7 +821,6 @@ describe("public adapter transport and notice accounting", () => {
         const old = expectFailure(client.discover(["team"], watch), "cancelled");
         await entered.promise;
         const fresh = client.reconnect(undefined, true);
-        // Install synchronously before the old request's rejection continuation runs.
         const latest = client.discover(["team"], true);
         await old;
         await fresh;
@@ -832,13 +832,59 @@ describe("public adapter transport and notice accounting", () => {
         await expect(client.discover(["team"], true)).resolves.toMatchObject({
           outcome: { tag: "ok", value: { peers: [{ peer: other }], watching: true } },
         });
-        expect(fixture.requests).toHaveLength(requests); // new watch/cache survived, no extra discovery
+        expect(fixture.requests).toHaveLength(requests);
         expect(ensureGateway).toHaveBeenCalledTimes(2);
       } finally {
         client.close();
       }
     },
   );
+  test("a fresh fence publishes only disconnected: the old transport's synchronous disconnect callback is already stale", async () => {
+    const fixture = await gateway(() => undefined);
+    const held = Promise.withResolvers<{ gatewaySha256: string }>();
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
+      .mockImplementation(async () => held.promise);
+    const published: string[] = [];
+    const client: GatewayClient = new GatewayClient({
+      config: fixture.config,
+      peer,
+      ensureGateway,
+      incoming: () => {
+        throw new Error("Unexpected request");
+      },
+      statusChanged: () => {
+        published.push(client.status().status);
+      },
+    });
+    try {
+      await client.reconnect();
+      published.length = 0;
+      const fresh = expectFailure(client.reconnect(undefined, true), "cancelled");
+      expect(published).toStrictEqual(["disconnected"]);
+      client.close();
+      await fresh;
+    } finally {
+      client.close();
+    }
+  });
+  test("menu failures never quote a system error, which may hold a path or file content", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "psc-quote-"));
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = directory;
+    const host = extensionHost(async () => {
+      throw new Error("EACCES: permission denied, open '/private/secret/pi-peers.json'");
+    });
+    cleanups.push(async () => {
+      restoreAgentDir(previous);
+      await rm(directory, { recursive: true, force: true });
+    });
+    await host.command("setup");
+    expect(host.notifications).toStrictEqual([
+      "The peers menu could not open. Run /peers doctor to check your files.",
+    ]);
+  });
   test("lifetime close fences a late successful ensure before any socket or status publication", async () => {
     const fixture = await gateway(() => undefined);
     const pending = Promise.withResolvers<{ gatewaySha256: string }>();
@@ -858,10 +904,8 @@ describe("public adapter transport and notice accounting", () => {
     const notifications = statusChanged.mock.calls.length;
     pending.resolve({ gatewaySha256: "a".repeat(64) });
     await result;
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-    expect(fixture.connections()).toBe(0);
+    await acceptedProbe(fixture);
+    expect(fixture.connections()).toBe(1);
     expect(fixture.requests).toHaveLength(0);
     expect(statusChanged).toHaveBeenCalledTimes(notifications);
     expect(client.status()).toMatchObject({ connected: false, scopes: [] });
@@ -1097,7 +1141,6 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_shutdown");
     await host.command("status");
     expect(host.notifications.at(-1)).toContain("Peers is unavailable in this session");
-    // /peers status is the plain status text only; the remote snapshot lives in /peers doctor.
     expect(host.notifications.at(-1)).not.toContain("Remote config snapshot");
     expect(host.notifications.at(-1)).not.toContain("Connected as");
   });
@@ -1460,8 +1503,6 @@ describe("public adapter transport and notice accounting", () => {
         performance.now() + 20,
       ),
     );
-    // The registration is still held, so only the waiter's own deadline can settle `short`: if it
-    // ignored the deadline this await would hang and the test would fail on its timeout.
     const shortOutcome = await short;
     releaseRegistration(fixture);
     await first;
@@ -1589,7 +1630,6 @@ describe("public adapter transport and notice accounting", () => {
       message: authored("6".repeat(32)),
     });
     await expect.poll(() => notices.length).toBe(1);
-    // The notice is what wakes an idle Pi: it must start a turn, steered into the session.
     expect(wakes).toStrictEqual([{ triggerTurn: true, deliverAs: "steer" }]);
     session.observed({
       role: "custom",
@@ -1625,6 +1665,44 @@ describe("public adapter transport and notice accounting", () => {
     });
     expect(session.state.stats().inboxMessages).toBe(0);
     expect(notices).toHaveLength(1);
+  });
+  test("an unobserved wake notice is never replayed when more messages arrive", async () => {
+    const fixture = await gateway(() => undefined);
+    const notices: unknown[] = [];
+    const session: AdapterSession = new AdapterSession(
+      fixture.config,
+      peer,
+      {
+        sendMessage: (message) => {
+          notices.push(message);
+        },
+      },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+      () => {
+        session.pumpIdle();
+      },
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    for (const [rid, id] of [
+      ["4", "6"],
+      ["5", "7"],
+    ] as const) {
+      fixture.sendFrame({
+        v: 1,
+        op: "deliver",
+        rid: rid.repeat(32),
+        from: other,
+        to: peer,
+        scopeId: "team",
+        message: authored(id.repeat(32)),
+      });
+    }
+    await expect.poll(() => session.state.stats().inboxMessages).toBe(2);
+    expect(notices).toHaveLength(1);
+    expect(session.status().notice).toBe("submitted_unobserved");
   });
   test("watch events update only the live scoped snapshot and invalidation permits a fresh watch", async () => {
     const fixture = await gateway(discoveryReply);
@@ -1788,8 +1866,6 @@ describe("public adapter transport and notice accounting", () => {
     await expect(
       connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
     ).rejects.toMatchObject({ code: "unavailable" });
-    // The deadline runs on a fake clock that moves only once the gateway holds the request, so the
-    // write has completed and the failure must say the request may have been delivered.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     try {
       const unanswered = connection

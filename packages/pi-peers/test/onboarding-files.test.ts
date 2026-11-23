@@ -9,7 +9,6 @@ import { syncDirectory } from "../onboarding/files.js";
 const run = promisify(execFile);
 const repository = path.resolve(import.meta.dirname, "../../..");
 const filesSource = path.resolve(import.meta.dirname, "../onboarding/files.ts");
-/** Owned child: imports the real files.ts through jiti and reports one syncDirectory outcome. */
 const childScript = `
 import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url);
@@ -50,8 +49,6 @@ describe("syncDirectory", () => {
     await expect(syncDirectory(link)).rejects.toMatchObject({ code: "ELOOP" });
   });
 
-  // A blocking open of a FIFO never returns, so the real call runs in an owned, time-bounded Node
-  // child rather than this worker. Without O_NONBLOCK the child is killed and the test fails.
   test("rejects a named FIFO without blocking", { timeout: 30_000 }, async () => {
     const root = await fixtureRoot();
     const fifo = path.join(root, "fifo");

@@ -23,7 +23,6 @@ function incoming(index: number, kind: "update" | "request", deliveryBytes?: num
     ...(deliveryBytes === undefined ? {} : { deliveryBytes }),
   };
 }
-/** The state as the adapter builds it: no limits override. */
 function stock() {
   let now = 0;
   const state = createState({
@@ -73,7 +72,6 @@ describe("README default limits, without overriding any", () => {
   });
   test("the inbox holds 1 MiB of frames and refuses the next, though far fewer than 64 messages are held", () => {
     const { state } = stock();
-    // Thirty-two maximum-size deliveries are exactly 1 MiB.
     for (let index = 1; index <= 32; index += 1) {
       expect(state.admit(incoming(index, "update", 32_768)).tag).toBe("admitted");
     }

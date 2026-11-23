@@ -51,7 +51,6 @@ describe("managed generation admission with actual native helper", () => {
   let participants: ReturnType<typeof nativeParticipants>;
   let cleanupFailure: { cause: unknown } | undefined;
   beforeEach(async () => {
-    // Keep the old paths and stopping owner if a body outlives its cleanup drain.
     if (cleanupFailure !== undefined) {
       throw new Error("Prior native cleanup failed; refusing a new fixture", cleanupFailure);
     }
@@ -61,7 +60,6 @@ describe("managed generation admission with actual native helper", () => {
     participants = nativeParticipants();
   });
   afterEach(async () => {
-    // Vitest still runs afterEach when the fail-stop beforeEach above throws.
     if (cleanupFailure !== undefined) {
       return;
     }
@@ -76,9 +74,8 @@ describe("managed generation admission with actual native helper", () => {
     }
   }, 80_000);
   async function owned(body: () => Promise<void>) {
-    // Capture this lifetime, not the next test's mutable fixture.
-    const owner = participants;
-    return owner.run(body);
+    const thisTestsParticipants = participants;
+    return thisTestsParticipants.run(body);
   }
   function client(plan: LocalPlan, setup: ManagedSetup, ensure?: EnsureGateway) {
     const instance = new GatewayClient({
@@ -120,7 +117,6 @@ describe("managed generation admission with actual native helper", () => {
       await owner.close();
       drained = true;
     })();
-    // Let an incorrectly eager cleanup finish its microtasks before checking the gate.
     await immediate();
     expect(drained).toBe(false);
     expect(close).not.toHaveBeenCalled();
@@ -133,7 +129,6 @@ describe("managed generation admission with actual native helper", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(drained).toBe(true);
   });
-  // One production rejection episode is bounded at six attempts/60s, not Vitest's 5s.
   test(
     "survivor reset then fresh narrower Apply never admits new Pi to old daemon; exactly one restart",
     async ({ annotate }) =>
@@ -277,7 +272,6 @@ describe("managed generation admission with actual native helper", () => {
         description: "TEST immutable helper",
         restart,
       });
-      // This old runtime is genuinely still connected until the explicit control action.
       expect(session.status().connected).toBe(true);
       const reconnect = vi.fn<(fresh?: boolean) => Promise<void>>(async (fresh) =>
         session.reconnect(fresh),
@@ -301,7 +295,6 @@ describe("managed generation admission with actual native helper", () => {
       });
       expect(session.peer).toBe(peer);
       expect(session.state).toBe(state);
-      // Volatile publication remains, but disconnected scopes correctly deny access.
       expect(state.read({ caller: peer, scopeId: "local", key: "retained" }).tag).toBe("error");
       expect(restart).toHaveBeenCalledOnce();
       expect(activate).not.toHaveBeenCalled();

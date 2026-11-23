@@ -32,7 +32,6 @@ import { decodeManaged, decodeCached, decodeOwnership, decodeReset, parseJson } 
 export type SetupBackend = {
   acquire: (directory: string, progress: (message: string) => void) => Promise<string>;
 };
-/** Paths of the active saved-state set; stateLocations decides current or legacy, never a mix. */
 export function setupPaths(agentDir: string) {
   const { active } = stateLocations(agentDir);
   const directory = active.directory;
@@ -48,6 +47,14 @@ export function setupPaths(agentDir: string) {
     socket: join(realpathSync(homedir()), ".pi", active.socketRoot, active.id, "s"),
   };
 }
+async function digestUnlessUnsafeToOpen(path: string): Promise<string | undefined> {
+  try {
+    return await executableDigest(path);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function executableDigest(path: string): Promise<string> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
@@ -101,7 +108,6 @@ export async function readManaged(
 }
 export async function inspectSetup(agentDir: string, socketPath?: string) {
   const paths = setupPaths(agentDir);
-  // lstat distinguishes dangling links from absent files. Never adopt external configuration.
   let existing = false;
   try {
     await lstat(paths.adapter);
@@ -134,7 +140,6 @@ export async function inspectSetup(agentDir: string, socketPath?: string) {
     platform: `${process.platform}/${process.arch}`,
   };
 }
-/** Create-only journal precedes effects. Interrupted artifacts are preserved for explicit reset. */
 export async function applyLocal(
   agentDir: string,
   plan: LocalPlan,
@@ -143,7 +148,6 @@ export async function applyLocal(
   prepare?: (executable: string, plan: LocalPlan) => Promise<LocalPlan>,
 ): Promise<ManagedSetup> {
   const paths = setupPaths(agentDir);
-  // Bootstrap acquisition is per-attempt and precedes the shared mutation journal.
   await privateDirectory(paths.directory);
   const requiredCapabilities =
     prepare !== undefined || plan.gateway.remote !== undefined
@@ -228,7 +232,6 @@ export async function applyLocal(
       socketPath: plan.adapter.socketPath,
     };
     await createPrivate(paths.metadata, `${JSON.stringify(metadata, null, 2)}\n`);
-    // Commit enablement last. O_EXCL is the compare-and-swap against absent configuration.
     await createPrivate(paths.adapter, adapter);
     await unlink(paths.journal);
     await unlink(paths.prepared);
@@ -241,7 +244,6 @@ export class ResetFailure extends Error {
   }
 }
 type ResetEntry = { path: string; backup: string; sha256: string };
-/** Missing, or a path through a regular file: either way nothing is there to reset. */
 function isAbsent(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -250,13 +252,11 @@ function isAbsent(error: unknown): boolean {
     (error.code === "ENOENT" || error.code === "ENOTDIR")
   );
 }
-/** Whether reset has anything to disable or resume: configuration, an owned file or a ledger. */
 export async function hasResetTarget(agentDir: string): Promise<boolean> {
   const paths = setupPaths(agentDir);
   const found = await Promise.all(
     [...resetPaths(paths), join(paths.directory, "reset.json")].map(async (path) => {
       try {
-        // lstat: an external symlinked configuration still counts, so reset reports why it refuses.
         await lstat(path);
         return true;
       } catch (error) {
@@ -269,7 +269,6 @@ export async function hasResetTarget(agentDir: string): Promise<boolean> {
   );
   return found.includes(true);
 }
-/** Preflight every invariant before the first rename; durable ledger resumes partial archives. */
 export async function resetLocal(agentDir: string): Promise<string> {
   const paths = setupPaths(agentDir);
   const executable = await cachedExecutable(paths);
@@ -424,9 +423,6 @@ export async function reusableExecutable(
     }
     await validateExecutable(installed.executable, requiredCapabilities);
   } catch (error) {
-    // A strictly decoded orphan descriptor is not committed installation ownership.
-    // Hash-invalid targets are never executed; only byte-verified prior helpers receive
-    // the bounded version probe. Unsupported or unavailable orphans can review fresh acquisition.
     if ((await regularBytes(setupPaths(agentDir).metadata)) !== undefined) {
       throw error;
     }
@@ -434,7 +430,6 @@ export async function reusableExecutable(
   }
   return installed.executable;
 }
-/** Exact descriptor and projection snapshot, plus old target identity/bytes when safely readable. */
 async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readonly string[]) {
   const projections = await Promise.all(
     [
@@ -465,12 +460,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
   let target;
   try {
     const stat = await lstat(record.executable, { bigint: true });
-    let sha256;
-    try {
-      sha256 = await executableDigest(record.executable);
-    } catch {
-      // Unsafe types/oversized targets are never opened for execution or adopted.
-    }
+    const sha256 = await digestUnlessUnsafeToOpen(record.executable);
     target = {
       dev: String(stat.dev),
       ino: String(stat.ino),
@@ -497,7 +487,6 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
     target,
   };
 }
-/** Called only after matching the recorded byte digest; never probe a damaged cached target. */
 async function supportsCapabilities(
   executable: string,
   requiredCapabilities: readonly string[],

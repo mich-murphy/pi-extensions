@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { ProtocolError } from "../protocol/json.js";
-import { Frame, Message } from "../protocol/schema.js";
+import { Frame, MAX_AUTHORED_BYTES, Message } from "../protocol/schema.js";
 import type { Publication, WorkRef } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
 
@@ -33,10 +33,8 @@ function publicationResult(record: unknown): unknown {
 
 const decodeMessage = Schema.decodeUnknownSync(Message, { onExcessProperty: "error" });
 const decodeFrame = Schema.decodeUnknownSync(Frame, { onExcessProperty: "error" });
-const CAP = 24_576;
 const frame = (content: string) => publicationResult({ ...publication, content });
-// Title "Report" and summary "Summary" are authored too, so this content fills the aggregate cap exactly.
-const publicationContentAtCap = CAP - "ReportSummary".length;
+const publicationContentAtCap = MAX_AUTHORED_BYTES - "ReportSummary".length;
 const message = { id: "3".repeat(32), kind: "request", format: "text", content: "hello" };
 
 describe("protocol domain schema API", () => {
@@ -71,7 +69,6 @@ describe("protocol domain schema API", () => {
   });
 
   test("authored aggregate includes resource labels and locators", () => {
-    // Label "Label" and locator "long-resource-locator" add 26 bytes; each alone decides the edge.
     const resource = {
       kind: "resource",
       machineId: "alpha",
@@ -83,7 +80,8 @@ describe("protocol domain schema API", () => {
       content: "x".repeat(content),
       refs: [resource],
     });
-    const atCap = CAP - "ReportSummary".length - "Label".length - "long-resource-locator".length;
+    const atCap =
+      MAX_AUTHORED_BYTES - "ReportSummary".length - "Label".length - "long-resource-locator".length;
     expect(() => validateFrame(publicationResult(record(atCap)), "local-client")).not.toThrow();
     expect(() => validateFrame(publicationResult(record(atCap + 1)), "local-client")).toThrow(
       ProtocolError,
@@ -92,14 +90,15 @@ describe("protocol domain schema API", () => {
 
   describe("authored content cap of 24,576 UTF-8 bytes", () => {
     test("a Message decoded on its own accepts content exactly at the cap and rejects one byte more", () => {
-      expect(decodeMessage({ ...message, content: "x".repeat(CAP) }).content).toHaveLength(CAP);
-      expect(() => decodeMessage({ ...message, content: "x".repeat(CAP + 1) })).toThrow(
-        Schema.SchemaError,
-      );
+      expect(
+        decodeMessage({ ...message, content: "x".repeat(MAX_AUTHORED_BYTES) }).content,
+      ).toHaveLength(MAX_AUTHORED_BYTES);
+      expect(() =>
+        decodeMessage({ ...message, content: "x".repeat(MAX_AUTHORED_BYTES + 1) }),
+      ).toThrow(Schema.SchemaError);
     });
 
     test("the per-field cap counts bytes, not characters", () => {
-      // 8192 three-byte characters are 24,576 bytes but only 8,192 characters.
       expect(decodeMessage({ ...message, content: "€".repeat(8192) }).content).toHaveLength(8192);
       expect(() => decodeMessage({ ...message, content: `${"€".repeat(8192)}x` })).toThrow(
         Schema.SchemaError,
@@ -107,8 +106,10 @@ describe("protocol domain schema API", () => {
     });
 
     test("the frame schema's publication content cap is exact", () => {
-      expect(() => decodeFrame(frame("x".repeat(CAP)))).not.toThrow();
-      expect(() => decodeFrame(frame("x".repeat(CAP + 1)))).toThrow(Schema.SchemaError);
+      expect(() => decodeFrame(frame("x".repeat(MAX_AUTHORED_BYTES)))).not.toThrow();
+      expect(() => decodeFrame(frame("x".repeat(MAX_AUTHORED_BYTES + 1)))).toThrow(
+        Schema.SchemaError,
+      );
     });
 
     test("validateFrame bounds the sum of every authored field, exactly at the cap", () => {

@@ -81,7 +81,6 @@ function menu(rows: number, start?: "setup" | "reset") {
   return { model, component, press, closed: () => closed };
 }
 
-/** Waits for a progress screen's work. */
 async function settled(screen: Screen): Promise<void> {
   if (screen.kind === "progress") {
     await screen.done;
@@ -103,7 +102,6 @@ describe.each([
   [80, 20],
   [140, 50],
 ])("peers menu screen contract at %ix%i", (width, rows) => {
-  // Pi's footer, the probe status row and one chat row stay visible.
   const budget = rows - 5;
   test("root, setup form, editor, permissions, details and back navigation", () => {
     const view = menu(rows);
@@ -122,7 +120,6 @@ describe.each([
       "Enter save · Esc back",
     ]);
     view.press("!");
-    // The cursor starts at the end of the prefilled value, so typing appends.
     expect(contract(view.component.render(width), width, 0).join("\n")).toContain("render-host!");
     view.press(ENTER);
     expect(contract(view.component.render(width), width, 0).join("\n")).toContain("lowercase");

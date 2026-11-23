@@ -509,8 +509,6 @@ describe("presentation-only session tool rendering", () => {
       ).join("\n"),
     ).toContain("ctrl+o for details");
   });
-  // Each case renders four large multiline strings through Pi's text layout, about 1 ms apiece. The
-  // test measured 1.8 s under 8 busy processes, so it keeps a 60 s timeout.
   test(
     "Hegel: generated controls, Unicode and multiline bodies are inert, cell-bounded and nonmutating",
     { timeout: propertyTimeout(60_000) },
@@ -526,7 +524,6 @@ describe("presentation-only session tool rendering", () => {
         const args = { to: other, message: { ...message, content: body } };
         const payload = result({ outcome: admitted, note: body });
         const before = JSON.stringify({ args, payload });
-        // In render order: collapsed call, collapsed result, expanded call, expanded result.
         const rendered: (readonly string[])[] = [];
         for (const expanded of [false, true]) {
           for (const slot of ["call", "result"] as const) {
@@ -575,7 +572,6 @@ describe("presentation-only session tool rendering", () => {
       ).toContain(`${count} ${publicationLabel}`);
     },
   );
-  // The peers_report case covers the singular "1 push".
   test("report count 2 uses pushes", () => {
     const pushes = Array.from({ length: 2 }, () => ({ recipient: other, outcome: admitted }));
     expect(

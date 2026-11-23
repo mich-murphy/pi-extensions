@@ -10,6 +10,8 @@ use serde_json::{Map, Value};
 /// Largest permitted JSON body, excluding the four-byte prefix.
 pub const MAX_BODY: usize = 32_764;
 
+const MAX_AUTHORED: usize = 24_576;
+
 /// Trust boundary at which an operation is interpreted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -275,7 +277,7 @@ fn message(value: &Value) -> Result<(), DecodeError> {
     )?;
     identifier(&value["id"])?;
     enum_value(&value["kind"], &["request", "reply", "update"])?;
-    text(&value["content"], 24576)?;
+    text(&value["content"], MAX_AUTHORED)?;
     enum_value(
         &value["format"],
         &["text", "markdown", "git-diff", "git-format-patch"],
@@ -433,7 +435,7 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
         event(&value["event"])?;
     }
     authored_bytes(value)
-        .filter(|bytes| *bytes <= 24576)
+        .filter(|bytes| *bytes <= MAX_AUTHORED)
         .ok_or(DecodeError)?;
     Ok(())
 }
@@ -752,7 +754,7 @@ fn publication(value: &Value, kind: PublicationKind) -> Result<(), DecodeError> 
     if matches!(kind, PublicationKind::Full) {
         text(&value["summary"], 1024)?;
         if let Some(content) = value.get("content") {
-            text(content, 24576)?;
+            text(content, MAX_AUTHORED)?;
         }
         enum_value(
             &value["format"],

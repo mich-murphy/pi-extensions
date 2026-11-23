@@ -2,7 +2,9 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { decodeConfiguration, SOCKET_PATH_MAX_BYTES } from "../adapter/config.js";
 import { doctor, doctorReport, doctorRowText } from "../onboarding/doctor.js";
+import { defaultChoices, localPlan } from "../onboarding/plan.js";
 
 const directories: string[] = [];
 async function fixture(content?: string) {
@@ -79,6 +81,17 @@ describe("read-only doctor", () => {
     await expect(doctor(directory)).resolves.toContain("Configuration: valid");
     await writeFile(path, JSON.stringify({ ...config, socketPath: `/${"é".repeat(50)}` }));
     await expect(doctor(directory)).resolves.toContain("invalid fields: socketPath");
+  });
+  test("setup's socket limit is the adapter configuration's socket limit", () => {
+    const longest = `/${"a".repeat(SOCKET_PATH_MAX_BYTES - 1)}`;
+    const tooLong = `${longest}a`;
+    const config = { machineId: "host", scopeIds: ["local"], label: "Pi", policies: [] };
+    expect(() => decodeConfiguration({ ...config, socketPath: longest })).not.toThrow();
+    expect(() => decodeConfiguration({ ...config, socketPath: tooLong })).toThrow(/socketPath/u);
+    expect(() => localPlan(defaultChoices("Host"), longest)).not.toThrow();
+    expect(() => localPlan(defaultChoices("Host"), tooLong)).toThrow(
+      `longer than ${SOCKET_PATH_MAX_BYTES} bytes`,
+    );
   });
   test("oversized configurations fail closed and valid symlinks are inspected read-only", async () => {
     const { directory, path } = await fixture("x".repeat(32_769));
