@@ -1,6 +1,6 @@
 // OFFLINE fixture SDK messages -> unchanged production index/parser/runner/bridge
 // -> pinned Pi session + real inter-extension event bus. Not live SDK/CLI parsing.
-/* oxlint-disable no-await-in-loop, no-console -- sequential session turns and controlled event-bus error capture */
+/* oxlint-disable no-await-in-loop -- sequential session turns */
 /* oxlint-disable typescript/no-misused-promises -- deliberately rejecting listener verifies real Pi event-bus isolation */
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -119,19 +119,7 @@ const settings = SettingsManager.inMemory({
 let notices: unknown[] = [];
 let order: string[] = [];
 let isolatedErrors = 0;
-const originalError = console.error;
-// Pi's real bus logs observer errors. Only count the controlled sentinel, never hide other errors.
-console.error = (...args: unknown[]) => {
-  if (
-    args[0] === "Event handler error (usage-limit):" &&
-    args[1] instanceof Error &&
-    args[1].message === "offline-observer-sentinel"
-  ) {
-    isolatedErrors++;
-  } else {
-    originalError(...args);
-  }
-};
+const unexpectedErrors: unknown[] = [];
 const loader = new DefaultResourceLoader({
   cwd: work,
   agentDir,
@@ -189,6 +177,15 @@ try {
     sessionManager: SessionManager.inMemory(work),
     thinkingLevel: "off",
   }));
+  // Pi 1.6 reports a throwing pi.events handler as an extension error, not with console.error.
+  // Count only the controlled sentinel and fail on any other extension error.
+  session.extensionRunner.onError((error) => {
+    if (error.event === "events:usage-limit" && error.error === "offline-observer-sentinel") {
+      isolatedErrors++;
+    } else {
+      unexpectedErrors.push(error);
+    }
+  });
   const available = await modelRuntime.getAvailable();
   const model = available.find((m) => m.provider === "claude");
   assert(model, "production extension provider not available");
@@ -216,12 +213,12 @@ try {
     );
     reports.push({ case: entry.name, status: "passed", notices, order, queries: queries - before });
   }
+  assert.deepEqual(unexpectedErrors, []);
   assert.equal(isolatedErrors, 2);
   process.stdout.write(
     `${JSON.stringify({ status: "passed", proof: "OFFLINE synthetic SDK messages; real production registration/parser/runner/bridge and pinned Pi session/event bus", queries, isolatedErrors, reports }, null, 2)}\n`,
   );
 } finally {
   session?.dispose();
-  console.error = originalError;
   globalThis.piUsageLimitBoundary = undefined;
 }

@@ -49,7 +49,7 @@ async function selectFirstDialogItem(
   factory: DialogFactory,
   width = 120,
   group = 1,
-): Promise<string[]> {
+): Promise<readonly string[]> {
   initTheme();
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
   for (let index = 0; index < group; index += 1) {
@@ -66,7 +66,7 @@ async function driveDialog(
   keys: readonly string[],
   width = 120,
   group = 1,
-): Promise<{ readonly closed: boolean; readonly rendered: string[] }> {
+): Promise<{ readonly closed: boolean; readonly rendered: readonly string[] }> {
   initTheme();
   let closed = false;
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
@@ -329,7 +329,7 @@ describe("extension lifecycle", () => {
   });
 
   test("restores the row and reports once when persistence fails", async () => {
-    let rendered: string[] = [];
+    let rendered: readonly string[] = [];
     const testHarness = harness({
       load: () => ok(overrides({ [skillPath]: "disabled" })),
       set: () => failure("update"),
@@ -350,7 +350,7 @@ describe("extension lifecycle", () => {
 
   test("shows manual-only skills as read-only rows even with a stale enabled override", async () => {
     const store = storeWith({ [skillPath]: "enabled" });
-    let rendered: string[] = [];
+    let rendered: readonly string[] = [];
 
     await harness(store).runCommand("", {
       promptOptions: { cwd, skills: [{ ...research, disableModelInvocation: true }] },
@@ -510,7 +510,7 @@ describe("extension lifecycle", () => {
 
   test("Esc with search text clears the search and keeps the menu open", async () => {
     const store = storeWith();
-    let result = { closed: true, rendered: [] as string[] };
+    let result = { closed: true, rendered: [] as readonly string[] };
 
     await harness(store).runCommand("", {
       custom: async (factory) => {
@@ -536,7 +536,7 @@ describe("extension lifecycle", () => {
         sourceInfo: { ...research.sourceInfo, path },
       };
     });
-    const screens: (readonly [string, string[], string])[] = [];
+    const screens: (readonly [string, readonly string[], string])[] = [];
 
     for (const [name, keys, hint] of [
       ["open", [], "  Type to search · Enter toggle · Esc back"],
@@ -606,7 +606,7 @@ describe("extension lifecycle", () => {
   });
 
   test("a failed save restores every row to the persisted policy", async () => {
-    let rendered: string[] = [];
+    let rendered: readonly string[] = [];
     const testHarness = harness({
       load: () => ok(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
       set: () => failure("update"),

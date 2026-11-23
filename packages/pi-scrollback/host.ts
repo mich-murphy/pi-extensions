@@ -2,7 +2,7 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
 import { contextRow, selectContext } from "./context";
 
-// Private compatibility seam, verified against Pi 1.3.0 and 1.4.0. Not a renderer patch:
+// Private compatibility seam, verified against Pi 1.3.0, 1.4.0 and 1.6.0. Not a renderer patch:
 // InteractiveMode remounts this same root when replacing regular/fullscreen renderers.
 const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
 type StackNode = {
@@ -130,6 +130,17 @@ function nativeTexts(
   return { lines, texts };
 }
 
+// A scroll-only frame reuses the previous frame's output per component identity (Pi 1.6), so
+// each header text gets its own component: a changed prompt can never paint a stale row.
+function headerFor(row: string | undefined, muted: (text: string) => string): Component {
+  return {
+    render: (width) => (row === undefined ? [] : [muted(contextRow(row, width))]),
+    invalidate: () => {
+      /* Render reads the current theme. */
+    },
+  };
+}
+
 /** The invisible dock component discovers a root even if startup was in regular mode.
  * It neither owns input nor reserves a line. The live TUI reference follows mode switches.
  */
@@ -165,11 +176,12 @@ export function createHostAdapter(
     }
     let text: string | undefined;
     let shown = false;
-    const header: Component = {
-      render: (width) => (text === undefined ? [] : [muted(contextRow(text, width))]),
-      invalidate: () => {
-        /* Render reads current state and theme. */
-      },
+    let header = { text, component: headerFor(text, muted) };
+    const currentHeader = (): Component => {
+      if (header.text !== text) {
+        header = { text, component: headerFor(text, muted) };
+      }
+      return header.component;
     };
     const patched = (): StackNode =>
       disposed
@@ -178,7 +190,10 @@ export function createHostAdapter(
             ...node,
             entries: [
               {
-                component: header,
+                // Read after visible() has chosen this frame's text.
+                get component() {
+                  return currentHeader();
+                },
                 basis: 1,
                 grow: 0,
                 shrink: 0,
