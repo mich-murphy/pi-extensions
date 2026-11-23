@@ -126,7 +126,7 @@ async function invoke(
     return output({
       tag: "error",
       code: "unavailable",
-      note: "Session communication is not enabled or configured. Use /peers status.",
+      note: "Peers is not set up or not running in this session. Ask the user to run `/peers status`.",
     });
   }
   try {
@@ -143,11 +143,23 @@ async function invoke(
       ...output({
         tag: "error",
         code: error instanceof ConnectionFailure ? error.code : "invalid_input",
-        note: `${error instanceof ConnectionFailure ? "Session gateway request failed. Check /peers status and the gateway connection." : "The session request is invalid. Check the tool arguments and configured scopes."} No delivery or work-completion claim. Unknown sends must not be retried as a new message ID.`,
+        note: `${failureNote(error)} If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.`,
       }),
       isError: true,
     };
   }
+}
+/** The human part of a failed tool note; branches only on the existing failure code. */
+function failureNote(error: unknown): string {
+  if (!(error instanceof ConnectionFailure)) {
+    return "This request was rejected. Check the tool arguments and configured scopes.";
+  }
+  if (error.code === "cancelled") {
+    return "The request was cancelled.";
+  }
+  return error.code === "overloaded"
+    ? "The peers gateway is busy; try again shortly."
+    : "The peers gateway did not complete this request. Ask the user to run `/peers status`.";
 }
 function ownScope(session: AdapterSession, scopeId: string): void {
   if (!session.client.effectiveScopes().has(scopeId)) {
@@ -232,7 +244,7 @@ export function registerTools(
           outcome,
           note:
             outcome.tag === "unknown"
-              ? "Admission may already have happened. Do not resend as a new message ID; no automatic replay is scheduled."
+              ? "The message may already have arrived. Do not call peers_send again for it; nothing is resent automatically."
               : "Admission is not model reading, persistence, acceptance of work, or completion.",
         };
       }),

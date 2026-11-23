@@ -64,7 +64,7 @@ describe("read-only doctor", () => {
     expect(result).toContain("absent or inaccessible");
     expect(result).toContain("/peers reconnect");
     expect(result).toContain("may be intentional");
-    expect(result).toContain("loses inbox/publications/interests/receipts");
+    expect(result).toContain("inbox, publications, interests and receipts");
   });
   test("the shared adapter/doctor socket limit is 100 UTF-8 bytes", async () => {
     const { directory, path } = await fixture();

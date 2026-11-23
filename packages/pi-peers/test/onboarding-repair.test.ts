@@ -114,7 +114,7 @@ describe("explicit owned installation repair with actual native helper", () => {
         await damage(fixture.executable, kind, marker);
         const start = performance.now();
         await expect(readManaged(agent, selected.adapter)).rejects.toThrow(
-          /ENOENT|ELOOP|Expected bounded|Setup executable changed/u,
+          /ENOENT|ELOOP|not a normal program file|gateway program no longer matches the setup record/u,
         );
         expect(performance.now() - start).toBeLessThan(1000);
         const before = await Promise.all(owned.map(async (path) => readFile(path)));

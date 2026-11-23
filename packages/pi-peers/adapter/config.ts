@@ -64,7 +64,7 @@ export async function loadConfiguration(agentDir: string): Promise<Configuration
   try {
     return decodeConfiguration(JSON.parse(content));
   } catch {
-    throw new Error("Invalid peers configuration");
+    throw new Error("pi-peers.json is not valid");
   }
 }
 export function permits(

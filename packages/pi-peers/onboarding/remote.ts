@@ -90,8 +90,8 @@ export function remoteReview(intent: RemoteIntent, directory: string): string {
     "Remote discover/read/push/interest grants apply in both directions for the reviewed scope; authorized remote pushes can wake models and incur provider usage. Only published records are readable.",
     intent.kind === "create"
       ? `Pair-specific initiator CA custody: ${join(directory, "issuer")}; runtime credentials: ${join(directory, "pair")}. The gateway never loads the issuer key. Same-account directories are NOT privilege isolation: account/root compromise requires both machines to re-pair with a new root. Optional offline offload is manual.`
-      : "Private leaf keys stay on this machine; exchange public offer/CSR/bundle files only, with independent full SHA256 confirmation. Existing missing revocation floors are never initialized.",
-    "Pair roots last 365 days; leaves 90 days; CRLs 30 days. Explicit renewal/CRL export and import before expiry is required. Root compromise/loss requires re-pair; reset retains all keys and floors.",
+      : "Private leaf keys stay on this machine; exchange public offer/CSR/bundle files only, with independent full SHA256 confirmation. Missing revocation records are never recreated.",
+    "Pair roots last 365 days; leaves 90 days; CRLs 30 days. Explicit renewal/CRL export and import before expiry is required. Root compromise/loss requires re-pair; reset keeps all keys and revocation records.",
     "Local connected does not mean remote linked. New pairs may remain pending public exchange; no handshake/readiness claim is made from config alone.",
   ].join("\n");
 }

@@ -53,7 +53,7 @@ export async function executableDigest(path: string): Promise<string> {
   try {
     const stat = await file.stat();
     if (!stat.isFile() || stat.size > MAX_BINARY || (stat.mode & 0o111) === 0) {
-      throw new Error("Expected bounded regular executable; explicit installation repair required");
+      throw new Error("The gateway program is not a normal program file; repair the installation");
     }
     const hash = createHash("sha256");
     let size = 0;
@@ -63,7 +63,7 @@ export async function executableDigest(path: string): Promise<string> {
       }
       size += chunk.length;
       if (size > MAX_BINARY) {
-        throw new Error("Executable grew beyond size bound");
+        throw new Error("The gateway program grew while it was checked");
       }
       hash.update(chunk);
     }
@@ -88,14 +88,14 @@ export async function readManaged(
     value.socketPath !== config.socketPath ||
     !isAbsolute(value.executable)
   ) {
-    throw new Error("Invalid setup ownership metadata");
+    throw new Error("The saved setup record is invalid");
   }
   const adapter = await regularBytes(paths.adapter);
   if (adapter === undefined || digest(adapter) !== value.adapterSha256) {
-    throw new Error("Setup config was changed externally; automatic startup refused");
+    throw new Error("pi-peers.json no longer matches the setup record");
   }
   if ((await executableDigest(value.executable)) !== value.executableSha256) {
-    throw new Error("Setup executable changed; automatic startup refused");
+    throw new Error("The gateway program no longer matches the setup record");
   }
   return value;
 }
@@ -290,7 +290,7 @@ export async function resetLocal(agentDir: string): Promise<string> {
     }
     return (
       entries.find((entry) => entry.path === paths.adapter)?.backup ??
-      "Participation already disabled; owned partial artifacts archived. Credentials/floors retained."
+      "Peers was already off; leftover setup files were archived."
     );
   });
 }
@@ -416,11 +416,11 @@ export async function reusableExecutable(
   }
   const installed = decodeCached(parseJson(cached));
   if (!isAbsolute(installed.executable)) {
-    throw new Error("Invalid cached executable path; preserved");
+    throw new Error("The saved gateway path is not absolute; it was kept");
   }
   try {
     if ((await executableDigest(installed.executable)) !== installed.sha256) {
-      throw new Error("Cached setup executable changed");
+      throw new Error("The saved gateway program changed since it was installed");
     }
     await validateExecutable(installed.executable, requiredCapabilities);
   } catch (error) {
@@ -460,7 +460,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
   }
   const record = decodeCached(parseJson(installed));
   if (!isAbsolute(record.executable)) {
-    throw new Error("Invalid cached executable path; preserved");
+    throw new Error("The saved gateway path is not absolute; it was kept");
   }
   let target;
   try {
@@ -560,7 +560,7 @@ export function reloadManagedLauncher(
       current.socketPath !== setup.socketPath
     ) {
       throw new Error(
-        "Managed adapter identity/config changed; explicit runtime replacement required",
+        "Peers settings changed after this Pi connected. Start a new Pi session to use the saved settings.",
       );
     }
     return current;

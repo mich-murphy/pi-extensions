@@ -38,9 +38,7 @@ describe("bounded authenticated artifacts", () => {
       JSON.stringify({ ...jsonObject(JSON.parse(f.manifest.toString("utf8"))), ...manifestChange }),
     );
     const pin = { ...f.pin, ...pinChange, manifestSha256: sha256(manifest) };
-    expect(() => verifyManifest(manifest, pin, f.record.target)).toThrow(
-      "Invalid release identity/schema",
-    );
+    expect(() => verifyManifest(manifest, pin, f.record.target)).toThrow("wrong name or version");
   });
   test("rejects an archive of the wrong size, the wrong digest, or over the size limit", () => {
     const f = fixture();

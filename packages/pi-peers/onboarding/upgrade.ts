@@ -87,7 +87,7 @@ async function addWork(
   const next = await prepareRemote(setup.executable, directory, currentPlan(config, bytes), intent);
   const pairing = await regularBytes(join(directory, "pairing.json"));
   if (pairing === undefined) {
-    throw new Error("Pairing manifest missing");
+    throw new Error("The pairing step did not write pairing.json");
   }
   step(ADD_STEPS[1]);
   await saveOwnedPlan(agentDir, setup, next, pairing.toString("utf8"), true);
@@ -99,7 +99,7 @@ async function addWork(
   try {
     const updated = await readManaged(agentDir, next.adapter);
     if (updated === undefined) {
-      throw new Error("Updated setup ownership missing");
+      throw new Error("The updated setup record is missing");
     }
     await activate(next, updated, true);
   } catch (error) {
@@ -135,7 +135,7 @@ function addForm(upgrade: Upgrade, machine: string, progress: Progress): Screen 
         ],
         [
           ...(gate.kind === "ready" ? [remoteReview(gate.value, directory)] : []),
-          `Preserve machine identity/scopes/local grants. Reuse hash-verified setup executable. Write fresh pair generation; CAS only unchanged owned config/metadata. Explicitly replace this Pi runtime only while idle, with new nonce. No blanket /reload, process/PID killing, credential/floor deletion or uncertain-send replay.`,
+          `Preserve machine identity/scopes/local grants. Reuse hash-verified setup executable. Write fresh pair generation; CAS only unchanged owned config/metadata. Explicitly replace this Pi runtime only while idle, with new nonce. No blanket /reload, process/PID killing, credential/revocation record deletion or uncertain-send replay.`,
         ],
       );
     },
@@ -225,7 +225,7 @@ function changed(plan: LocalPlan): [string, string][] {
 }
 
 const EDIT_PENDING_NEXT =
-  "Choose Setup › Activate saved configuration, or start a new Pi session to use them.";
+  "Choose Setup › Activate saved configuration, or start a new Pi session to use the saved settings.";
 
 /** Saves edited settings (owned-file CAS), restarts a live shared gateway once, then replaces. */
 async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Outcome> {
@@ -255,7 +255,7 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
     step(EDIT_STEPS[2]);
     const updated = await readManaged(agentDir, plan.adapter);
     if (updated === undefined) {
-      throw new Error("Updated setup ownership missing");
+      throw new Error("The updated setup record is missing");
     }
     await activate(plan, updated, true);
   } catch (error) {
@@ -286,7 +286,7 @@ function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
     ],
     [
       ...(plan === undefined ? [] : [localReview(plan, manage.pair !== undefined)]),
-      `Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. Socket ${visibleText(manage.config.socketPath)} unchanged. ${manage.shared ? "Exactly ONE machine-bound shared restart request; an uncertain outcome is never replayed." : "No live shared socket observed; no restart request."} This Pi runtime is replaced only while idle, with a new nonce. No credential/floor deletion or send replay.`,
+      `Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. Socket ${visibleText(manage.config.socketPath)} unchanged. ${manage.shared ? "Exactly ONE machine-bound shared restart request; an uncertain outcome is never replayed." : "No live shared socket observed; no restart request."} This Pi runtime is replaced only while idle, with a new nonce. No credential/revocation record deletion or send replay.`,
     ],
   );
 }

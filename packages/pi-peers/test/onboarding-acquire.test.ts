@@ -169,7 +169,7 @@ describe("approved gateway acquisition", () => {
     ).rejects.toThrow("deadline");
     await expect(fs.stat(s.plan.installRoot)).rejects.toThrow(/ENOENT/u);
     s.fetcher.mockResolvedValue(new Response(new Uint8Array(Buffer.alloc(65_537))));
-    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("download exceeds bound");
+    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("larger than expected");
     expect(s.exec).not.toHaveBeenCalled();
   });
   test("permits retry beside an interrupted private native attempt without sweeping unknown files", async () => {
@@ -517,7 +517,7 @@ describe("exclusive native publication", () => {
       const seam = commitSeam(create);
       await expect(
         acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: seam.fs } }),
-      ).rejects.toThrow("collision; existing state preserved");
+      ).rejects.toThrow("same name; nothing was replaced");
       const before = await snapshot(destinationOf(s));
       await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([
         path.basename(destinationOf(s)),
@@ -570,7 +570,7 @@ describe("exclusive native publication", () => {
     });
     await expect(
       acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: seam.fs } }),
-    ).rejects.toThrow("collision; existing state preserved");
+    ).rejects.toThrow("same name; nothing was replaced");
     const winner = only(winners);
     await expect(fs.readFile(winner.executable, "utf8")).resolves.toBe("tampered");
     await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(2);
@@ -603,7 +603,7 @@ describe("exclusive native publication", () => {
     const open = failingOpen(s.plan.installRoot);
     await expect(
       acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: { ...fs, open } } }),
-    ).rejects.toThrow("published but not yet durable");
+    ).rejects.toThrow("not confirmed on disk");
     const target = await fs.readlink(destinationOf(s));
     s.fetcher.mockClear();
     const reused = await acquireGateway(s.plan, s.options);
@@ -619,7 +619,7 @@ describe("exclusive native publication", () => {
         ...s.options,
         seams: { ...s.options.seams, fs: { ...fs, symlink: symlinkThenFail } },
       }),
-    ).rejects.toThrow("Uncertain gateway publication");
+    ).rejects.toThrow("could not be confirmed");
     const target = await fs.readlink(destinationOf(s));
     await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(2);
     s.fetcher.mockClear();
@@ -647,7 +647,7 @@ describe("exclusive native publication", () => {
           ...s.options,
           seams: { ...s.options.seams, fs: { ...fs, symlink } },
         }),
-      ).rejects.toThrow("Uncertain gateway publication; attempt retained");
+      ).rejects.toThrow("could not be confirmed; it was kept");
       // Nothing replaced or removed the sentinel or the held attempt while inspection was uncertain.
       await expect(fs.readFile(s.plan.installRoot, "utf8")).resolves.toBe(sentinel);
       const heldAttempt = only(await fs.readdir(held));
@@ -688,7 +688,7 @@ describe("exclusive native publication", () => {
     s.fetcher.mockClear();
     s.exec.mockClear();
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(
-      "Existing executable identity changed",
+      "The recorded gateway path does not match; it was not run",
     );
     expect(s.exec).not.toHaveBeenCalled();
     expect(s.fetcher).not.toHaveBeenCalled();

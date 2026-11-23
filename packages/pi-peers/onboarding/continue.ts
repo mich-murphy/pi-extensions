@@ -130,7 +130,7 @@ const STEPS = [
 async function gatewayPlan(context: PairContext): Promise<LocalPlan> {
   const gatewayBytes = await regularBytes(context.paths.gateway);
   if (gatewayBytes === undefined) {
-    throw new Error("Gateway projection missing");
+    throw new Error("gateway.json is missing from the setup folder");
   }
   return currentPlan(context.config, gatewayBytes);
 }
@@ -243,7 +243,7 @@ function maintenanceDetails(context: PairContext, operation: PairOperation): str
       `Peer: ${visibleText(context.pairing.intent.peerMachineId)}. Private keys never enter this menu.`,
     ],
     [
-      `Pair ${operation}: private bounded CLI input file; issuer key only used by explicit issue/renew/revoke, never gateway runtime. Root 365 days, leaves 90 days, complete CRL 30 days. ${activates ? "This Apply includes native stage/import of OWN refreshed public bundle, owned config/metadata CAS, and exactly one managed restart request. Existing floors are checked without rollback, then durably applied at remote activation. Unknown restart ACK is checked by reconnect, not replayed." : "Export only returns current public bundle without changing validity, credentials, floors or gateway."} Root/account compromise requires re-pair BOTH machines. No process/PID killing, private key/floor deletion, hot reload, or automatic send replay.`,
+      `Pair ${operation}: private bounded CLI input file; issuer key only used by explicit issue/renew/revoke, never gateway runtime. Root 365 days, leaves 90 days, complete CRL 30 days. ${activates ? "This Apply includes native stage/import of OWN refreshed public bundle, owned config/metadata CAS, and exactly one managed restart request. Existing revocation records are checked without rollback, then durably applied at remote activation. Unknown restart ACK is checked by reconnect, not replayed." : "Export only returns current public bundle without changing validity, credentials, revocation records or gateway."} Root/account compromise requires re-pair BOTH machines. No process/PID killing, private key/revocation record deletion, hot reload, or automatic send replay.`,
       ...(operation === "revoke"
         ? ["Revokes ALL issued peer serials in the activated local CRL."]
         : []),
@@ -476,7 +476,7 @@ async function rePairWork(
   const next = await prepareRemote(setup.executable, directory, old, intent);
   const manifest = await regularBytes(join(directory, "pairing.json"));
   if (manifest === undefined) {
-    throw new Error("New pairing manifest missing");
+    throw new Error("The pairing step did not write pairing.json");
   }
   step(REPAIR_STEPS[1]);
   await saveOwnedPlan(agentDir, setup, next, manifest.toString("utf8"));
@@ -488,7 +488,7 @@ async function rePairWork(
     facts: exchangeFacts(pairing),
     next: exchangeNext(pairing),
     technical: [
-      `New trust staged; restart ${restart}. Old issuer/keys/floors remain untouched. Remote link readiness remains unverified.`,
+      `New trust staged; restart ${restart}. Old issuer, keys and revocation records are untouched. Remote link readiness remains unverified.`,
     ],
   };
 }
@@ -507,14 +507,14 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
   const directory = join(paths.directory, `re-pair-${randomBytes(12).toString("hex")}`);
   return actionForm({
     title: "Re-pair",
-    note: "Replace this pair's trust with a new root. Both computers re-pair; old keys and floors are kept.",
+    note: "Replace this pair's trust with a new root. Both computers re-pair; old keys and revocation records are kept.",
     rows: () => remoteRows(draft, options),
     details: () => {
       const gate = remoteGate(draft, config.machineId, options);
       return withTechnical(
         [
           "Creates or joins a new pair for the same two computers, saves it, restarts the shared gateway once and reconnects this Pi.",
-          "Current remote trust is replaced only by this Apply. Old keys and floors stay on disk.",
+          "Current remote trust is replaced only by this Apply. Old keys and revocation records stay on disk.",
         ],
         [
           `Custody: ${directory}. Same-account compromise is not isolated by directories.`,
@@ -557,7 +557,7 @@ function renewalLines(pairing: Pairing): string[] {
             "Existing-material CA/issuer custody is NOT adopted. Its signer must accept this runtime's exact pair/offer binding; arbitrary external CA renewal is not automated or proven by this setup.",
           ]
         : []),
-      "Do not send leaf/issuer private keys. Missing existing floors are never recreated.",
+      "Do not send leaf/issuer private keys. Missing revocation records are never recreated.",
     ],
   );
 }
@@ -598,7 +598,7 @@ export function pairRows(context: PairContext, progress: Progress): Row[] {
 export function savedChoices(config: Configuration): LocalChoices {
   const scopeId = config.scopeIds[0];
   if (scopeId === undefined) {
-    throw new Error("No configured scope");
+    throw new Error("pi-peers.json lists no scope");
   }
   const permissions =
     config.policies.find(
@@ -620,7 +620,7 @@ export function currentPlan(config: Configuration, gatewayBytes: Buffer): LocalP
 async function importFloor(runtimeDir: string): Promise<"existing" | "new"> {
   const runtimeBytes = await regularBytes(join(runtimeDir, "runtime.json"));
   if (runtimeBytes === undefined) {
-    throw new Error("Existing pairing state missing; floors are never silently recreated");
+    throw new Error("The saved pairing files are missing; nothing was recreated");
   }
   return decodeRecord(parseJson(runtimeBytes)).installed === true ? "existing" : "new";
 }

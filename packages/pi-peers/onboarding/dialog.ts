@@ -10,9 +10,7 @@ function aborted(ctx: DialogContext): boolean {
 
 export function requireAttendedUI(ctx: DialogContext): void {
   if (!ctx.hasUI || (ctx.mode !== "tui" && ctx.mode !== "rpc")) {
-    throw new Error(
-      "/peers setup and reset require TUI or attended RPC; print/JSON mutation is unsupported. No changes made.",
-    );
+    throw new Error("Setup and reset need the TUI or attended RPC. Nothing was changed.");
   }
 }
 

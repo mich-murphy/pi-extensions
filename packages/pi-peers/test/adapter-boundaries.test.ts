@@ -36,7 +36,7 @@ describe("adapter configuration and retry boundaries", () => {
     await writeFile(path, " ".repeat(32_769));
     await expect(loadConfiguration(directory)).rejects.toThrow("could not be loaded");
     await writeFile(path, "{broken");
-    await expect(loadConfiguration(directory)).rejects.toThrow("Invalid peers");
+    await expect(loadConfiguration(directory)).rejects.toThrow("pi-peers.json is not valid");
     await rm(path);
     await mkdir(path);
     await expect(loadConfiguration(directory)).rejects.toThrow("could not be loaded");

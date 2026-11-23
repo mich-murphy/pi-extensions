@@ -77,7 +77,7 @@ async function inspectOwned(agentDir: string) {
   const ledger = repair === undefined ? undefined : decodeRepair(parseJson(repair));
   if (ledger === undefined) {
     if (cache.executable !== record.executable || cache.sha256 !== record.executableSha256) {
-      throw new Error("Installed/executable metadata disagree without a repair ledger; preserved");
+      throw new Error("The setup records disagree about the gateway program; files were kept");
     }
   } else {
     validateLedger(ledger, record, metadata, installed);
@@ -99,7 +99,7 @@ async function ownedDirectory(path: string): Promise<void> {
     (directory.mode & 0o077) !== 0 ||
     (await realpath(path)) !== path
   ) {
-    throw new Error("Repair refuses unsafe ownership directory");
+    throw new Error("The pi-peers folder is not private to you, so repair stopped");
   }
 }
 function verifyProjections(
@@ -115,7 +115,7 @@ function verifyProjections(
     digest(gateway) !== record.gatewaySha256 ||
     (pairing === undefined ? undefined : digest(pairing)) !== record.pairingSha256
   ) {
-    throw new Error("Owned configuration changed; installation repair refused");
+    throw new Error("The setup files were edited by hand, so repair stopped");
   }
 }
 type Owned = NonNullable<Awaited<ReturnType<typeof inspectOwned>>>;
@@ -140,7 +140,7 @@ function validateLedger(
     ![ledger.beforeMetadataSha256, digest(json(ledger.nextManaged))].includes(digest(metadata)) ||
     ![ledger.beforeInstalledSha256, digest(json(ledger.nextInstalled))].includes(digest(installed))
   ) {
-    throw new Error("Invalid repair recovery ledger; files preserved");
+    throw new Error("The saved repair record is invalid; files were kept");
   }
 }
 async function healthy(owned: Owned): Promise<boolean> {
@@ -165,7 +165,7 @@ const STEPS = [
 ] as const;
 
 const REPAIR_TECHNICAL = (owned: Owned): string =>
-  `Missing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, pairing or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration/pairing hashes before any metadata mutation. No configuration/key/floor rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits.`;
+  `Missing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, pairing or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration/pairing hashes before any metadata mutation. No configuration/key/revocation record rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits.`;
 
 async function repairWork(
   agentDir: string,
@@ -239,7 +239,7 @@ export async function repairRoute(
           withTechnical(
             [
               "Repair downloads a verified gateway and records it as this setup's program.",
-              "Settings, keys, revocation floors and this session are kept. Nothing is restarted.",
+              "Settings, keys, revocation records and this session are kept. Nothing is restarted.",
             ],
             [route.description, REPAIR_TECHNICAL(owned)],
           ),
@@ -292,7 +292,7 @@ async function applyRepair(
   const ledger = await repairLedger(owned, backend, progress);
   const executable = ledger.nextInstalled.executable;
   if ((await executableDigest(executable)) !== ledger.nextInstalled.sha256) {
-    throw new Error("Repair candidate changed; never executed");
+    throw new Error("The new gateway program changed before it ran; it was not run");
   }
   await validateExecutable(
     executable,
