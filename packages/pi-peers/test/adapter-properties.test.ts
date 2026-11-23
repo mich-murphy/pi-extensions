@@ -197,7 +197,7 @@ function renderLines(
   args: unknown,
   payload: unknown,
   options: { expanded: boolean; isError: boolean; width: number },
-): string[] {
+): readonly string[] {
   const theme = { fg: (_token: string, value: string) => value };
   const context = {
     args,

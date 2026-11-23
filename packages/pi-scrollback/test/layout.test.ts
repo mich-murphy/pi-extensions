@@ -227,6 +227,22 @@ describe("native chat viewport", () => {
     f.adapter.dispose();
   });
 
+  test("a scroll-only frame that reuses earlier output still shows the new turn's prompt", () => {
+    const f = fixture();
+    f.render();
+    f.transcript.scrollTo(40);
+    const later = f.render();
+    expect(plain(later.lines)[0]?.trim()).toBe("❯ second prompt");
+    // Pi 1.6 passes the previous frame's cache when only the scroll position moved.
+    f.transcript.scrollTo(8);
+    const reused = renderLayoutFrame(f.root, 40, 12, () => undefined, later.renderCache);
+    expect(plain(reused.lines)[0]?.trim()).toBe("❯ first prompt");
+    f.transcript.scrollTo(40);
+    const back = renderLayoutFrame(f.root, 40, 12, () => undefined, reused.renderCache);
+    expect(plain(back.lines)[0]?.trim()).toBe("❯ second prompt");
+    f.adapter.dispose();
+  });
+
   test("near-bottom and resize converge without render loops or blank reserved row", () => {
     const f = fixture();
     f.render();

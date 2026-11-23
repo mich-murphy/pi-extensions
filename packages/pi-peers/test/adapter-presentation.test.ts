@@ -62,7 +62,7 @@ function render(
   expanded = false,
   width = 100,
   extra: Record<string, unknown> = {},
-): string[] {
+): readonly string[] {
   const renderer = toolPresentation(name);
   const context = {
     args,
@@ -88,7 +88,7 @@ function render(
 function stripStyle(value: string): string {
   return value.replaceAll(new RegExp(`${String.fromCodePoint(27)}\\[[0-9;]*m`, "gu"), "");
 }
-function compact(lines: string[]): string {
+function compact(lines: readonly string[]): string {
   return stripStyle(lines.join("")).replaceAll(/\s+/gu, "");
 }
 const cases = [
@@ -527,7 +527,7 @@ describe("presentation-only session tool rendering", () => {
         const payload = result({ outcome: admitted, note: body });
         const before = JSON.stringify({ args, payload });
         // In render order: collapsed call, collapsed result, expanded call, expanded result.
-        const rendered: string[][] = [];
+        const rendered: (readonly string[])[] = [];
         for (const expanded of [false, true]) {
           for (const slot of ["call", "result"] as const) {
             const lines = render("peers_send", slot, args, payload, expanded, width);

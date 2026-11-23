@@ -855,7 +855,7 @@ describe("pi-skills guard", () => {
           },
         },
       );
-      let rendered: string[] = [];
+      let rendered: readonly string[] = [];
       const custom = async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
         initTheme();
         const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
