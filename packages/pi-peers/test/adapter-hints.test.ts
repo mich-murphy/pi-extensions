@@ -53,6 +53,7 @@ describe("send hints say what happened to the message", () => {
       const hint = sendHint({ tag: "unknown", code });
       expect(hint).toMatch(/^It may have arrived\./u);
       expect(hint).toMatch(/Do not send it/u);
+      expect(hint).toMatch(/retryOf/u);
     },
   );
   test("only a missing route says sending again cannot duplicate the message", () => {
