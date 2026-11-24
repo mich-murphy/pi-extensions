@@ -221,7 +221,10 @@ describe("presentation-only session tool rendering", () => {
         code: "unavailable",
         note: "Peers is not set up or not running in this session. Ask the user to run `/peers status`.",
       };
-      await expect(tool.execute("id", {})).resolves.toStrictEqual(result(value));
+      await expect(tool.execute("id", {})).resolves.toStrictEqual({
+        ...result(value),
+        isError: true,
+      });
     }
   });
   test.each([1, 4, 12, 30, 80])(

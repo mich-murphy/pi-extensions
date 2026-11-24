@@ -250,6 +250,18 @@ function missingPublication(request: Request): Reply | undefined {
   };
 }
 
+function unroutedGateway(request: Request): Reply | undefined {
+  if (request.op !== "send") {
+    return toolGateway(request);
+  }
+  return {
+    v: 1,
+    op: "result",
+    rid: request.rid,
+    forOp: "send",
+    outcome: { tag: "not_admitted", binding: binding(request.message), code: "no_route" },
+  };
+}
 function toolGateway(request: Request): Reply | undefined {
   if (request.op === "send") {
     return {
@@ -347,6 +359,28 @@ async function acceptedProbe(fixture: Awaited<ReturnType<typeof gateway>>): Prom
   });
   await expect.poll(() => fixture.connections()).toBeGreaterThan(before);
 }
+async function flaggedResult(
+  tools: readonly CapturedTool[],
+  name: string,
+  args: unknown,
+): Promise<{ isError: boolean; value: unknown; note: unknown }> {
+  const definition = tools.find((tool) => tool.name === name);
+  assert(definition);
+  assert(typeof definition.execute === "function");
+  const result: unknown = await Reflect.apply(definition.execute, undefined, [
+    "unit",
+    args,
+    new AbortController().signal,
+  ]);
+  assert(typeof result === "object" && result !== null && "details" in result);
+  const details: unknown = result.details;
+  assert(typeof details === "object" && details !== null && "value" in details);
+  const value: unknown = details.value;
+  const note: unknown =
+    typeof value === "object" && value !== null && "note" in value ? value.note : undefined;
+  return { isError: "isError" in result && result.isError === true, value, note };
+}
+
 function restoreAgentDir(previous: string | undefined): void {
   if (previous === undefined) {
     delete process.env.PI_CODING_AGENT_DIR;
@@ -1307,7 +1341,7 @@ describe("public adapter transport and notice accounting", () => {
     ).resolves.toMatchObject({
       tag: "error",
       code: "invalid_input",
-      note: "This request was rejected. Check the tool arguments and configured scopes. If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.",
+      note: "The arguments were rejected before anything was sent. Check them and the configured scopes.",
     });
   });
   test("a tool call on a closed client reports a cancelled request", async () => {
@@ -1334,8 +1368,40 @@ describe("public adapter transport and notice accounting", () => {
     await expect(executeTool(tools, "peers_take", {})).resolves.toStrictEqual({
       tag: "error",
       code: "cancelled",
-      note: "The request was cancelled. If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.",
+      note: "The request was cancelled.",
     });
+  });
+  test("a send the gateway could not route is flagged as an error and says resending cannot duplicate it", async () => {
+    const fixture = await gateway(unroutedGateway);
+    const tools: CapturedTool[] = [];
+    const owned = await createAdapterRuntime(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
+    );
+    cleanups.push(async () => {
+      await owned.dispose();
+    });
+    registerTools(
+      {
+        registerTool: (definition) => {
+          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
+        },
+      },
+      () => owned.session,
+    );
+    await expect.poll(() => owned.session.client.status().connected).toBe(true);
+    const result = await flaggedResult(tools, "peers_send", {
+      to: other,
+      scopeId: "team",
+      message: { kind: "request", content: "hi", format: "text" },
+    });
+    expect(result).toMatchObject({
+      isError: true,
+      value: { outcome: { tag: "not_admitted", code: "no_route" } },
+    });
+    expect(result.note).toMatch(/^Not delivered\. .*Call peers_list.*cannot duplicate it\.$/u);
   });
   test("report commits once, holds all eight logical slots across four-wide partial delivery, then releases", async () => {
     const fixture = await gateway(() => undefined);

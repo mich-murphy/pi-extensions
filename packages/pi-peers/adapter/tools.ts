@@ -4,6 +4,7 @@ import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
 import type { PublishInput } from "../state/types.js";
 import { permits, visibleText } from "./config.js";
+import { failureHint, sendHint } from "./hints.js";
 import { toolPresentation } from "./presentation.js";
 import { deliveryText } from "./session.js";
 import type { AdapterSession } from "./session.js";
@@ -108,10 +109,29 @@ type ToolValue = {
   isError?: boolean;
 };
 function output(value: unknown): ToolValue {
-  return {
+  const result: ToolValue = {
     content: [{ type: "text", text: visibleText(JSON.stringify(value)) }],
     details: { value },
   };
+  return failed(value) ? { ...result, isError: true } : result;
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+function fieldsOf(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+function failed(value: unknown): boolean {
+  const fields = fieldsOf(value);
+  return fields.tag === "error" || fieldsOf(fields.outcome).tag === "not_admitted";
+}
+function hinted(value: unknown): unknown {
+  const fields = fieldsOf(value);
+  if (fields.tag !== "error" || fields.note !== undefined || typeof fields.code !== "string") {
+    return value;
+  }
+  const resource = typeof fields.resource === "string" ? fields.resource : undefined;
+  return { ...fields, note: failureHint(fields.code, resource) };
 }
 async function invoke(
   getSession: () => AdapterSession | undefined,
@@ -134,28 +154,11 @@ async function invoke(
     } else {
       await session.client.recoverForTool();
     }
-    return output(await run(session));
+    return output(hinted(await run(session)));
   } catch (error) {
-    return {
-      ...output({
-        tag: "error",
-        code: error instanceof ConnectionFailure ? error.code : "invalid_input",
-        note: `${failureNote(error)} If this was peers_send, do not call it again for this message; it may have arrived. No delivery or work-completion claim.`,
-      }),
-      isError: true,
-    };
+    const code = error instanceof ConnectionFailure ? error.code : "invalid_input";
+    return output({ tag: "error", code, note: failureHint(code) });
   }
-}
-function failureNote(error: unknown): string {
-  if (!(error instanceof ConnectionFailure)) {
-    return "This request was rejected. Check the tool arguments and configured scopes.";
-  }
-  if (error.code === "cancelled") {
-    return "The request was cancelled.";
-  }
-  return error.code === "overloaded"
-    ? "The peers gateway is busy; try again shortly."
-    : "The peers gateway did not complete this request. Ask the user to run `/peers status`.";
 }
 function ownScope(session: AdapterSession, scopeId: string): void {
   if (!session.client.effectiveScopes().has(scopeId)) {
@@ -231,13 +234,7 @@ export function registerTools(
           throw new Error("Invalid send");
         }
         const outcome = await session.send(frame.to, frame.scopeId, frame.message, signal);
-        return {
-          outcome,
-          note:
-            outcome.tag === "unknown"
-              ? "The message may already have arrived. Do not call peers_send again for it; nothing is resent automatically."
-              : "Admission is not model reading, persistence, acceptance of work, or completion.",
-        };
+        return { outcome, note: sendHint(outcome) };
       }),
   });
   pi.registerTool({
