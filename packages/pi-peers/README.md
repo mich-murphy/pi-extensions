@@ -169,6 +169,10 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 `peers_send` and `peers_take` are declared to the model only (`model-only`). `peers_list` also returns `structuredContent` for scripts.
 
+### Use from codemode
+
+Scripts can call only `peers_list`, which resolves to `{ ok, peers: [{ handle, label, self, restarted }] }` or `{ ok: false, code, note }`. `peers_send` and `peers_take` are not callable from scripts: a script that fails after a send cannot tell whether to resend, and a take removes messages that a failed script would lose. Call them directly instead.
+
 `format` is `text`, `markdown`, `git-diff` or `git-format-patch`. All formats are descriptive; nothing is applied or fetched.
 
 `waitSeconds` makes an empty `peers_take` wait for the first message, up to `maxWaitSeconds`. It returns as soon as one arrives, and says so when none arrived in time. Only one take can wait at a time. A wait ends early, as an error, when Escape cancels it, Peers disconnects (nothing can arrive) or the session stops.
