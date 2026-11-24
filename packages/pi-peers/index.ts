@@ -4,7 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { loadConfiguration, visibleText } from "./adapter/config.js";
 import type { Configuration } from "./adapter/config.js";
 import { connectLabel } from "./adapter/label.js";
-import { footerStatus, statusSummary, statusText } from "./adapter/presentation.js";
+import { footerLine, footerStatus, statusSummary, statusText } from "./adapter/presentation.js";
 import type { StatusState, StatusSummary } from "./adapter/presentation.js";
 import { createAdapterRuntime } from "./adapter/runtime.js";
 import { registerTools } from "./adapter/tools.js";
@@ -176,7 +176,7 @@ export default function registerCommunication(
         return;
       }
       diagnostic = "configuration or startup failed";
-      ctx.ui.setStatus("peers", "Peers: setup failed");
+      ctx.ui.setStatus("peers", footerLine("setup_failed", ctx.ui.theme));
     }
   });
   pi.on("session_shutdown", async () => {
@@ -287,7 +287,7 @@ export default function registerCommunication(
     diagnostic = "participation disabled";
   };
   const footer = (ctx: ExtensionContext, outcome: Outcome, kind: ActionKind, saved: boolean) => {
-    const live = footerStatus(owned?.session.status(), owned !== undefined);
+    const live = footerStatus(owned?.session.status(), owned !== undefined, ctx.ui.theme);
     if (kind === "reconnect" && live === undefined) {
       return;
     }
@@ -296,7 +296,10 @@ export default function registerCommunication(
     } else {
       ctx.ui.setStatus(
         "peers",
-        outcome.headline.startsWith("!") ? "Peers: activation pending" : "Peers: setup failed",
+        footerLine(
+          outcome.headline.startsWith("!") ? "activation_pending" : "setup_failed",
+          ctx.ui.theme,
+        ),
       );
     }
   };
@@ -365,7 +368,7 @@ export default function registerCommunication(
         reconnect: async () => reconnectOutcome(ctx),
         started: (kind, done) => {
           if (kind === "setup") {
-            ctx.ui.setStatus("peers", "Peers: setting up…");
+            ctx.ui.setStatus("peers", footerLine("setting_up", ctx.ui.theme));
           }
           track(done).catch(() => undefined);
         },

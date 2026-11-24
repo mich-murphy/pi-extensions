@@ -6,7 +6,8 @@ const SHAPE = {
   hint: /^(?<keys>.+) · Esc (?<esc>back|close|hide)$/u,
   separator: " › ",
 };
-const FOOTER = /Peers: (?:connected|setting up…|activation pending|unavailable|setup failed)/u;
+const FOOTER =
+  /peers (?:✓(?: waiting…)?|● \d+|⋯ setting up|! activation pending|✕ (?:offline|setup failed))/u;
 const REPORT_SCROLL = /^\((?<first>\d+)–\d+ of \d+\)$/u;
 const LIST_SCROLL = /^\(\d+\/\d+\)$/u;
 const CONSENT = /\bconsent:(?<action>\S+)#(?<count>\d+)/u;

@@ -17,13 +17,14 @@ import { permits } from "./config.js";
 import type { Configuration } from "./config.js";
 import { Handles, TakenIndex } from "./handles.js";
 import { footerStatus } from "./presentation.js";
+import type { FooterTheme } from "./presentation.js";
 import { UnsureSends } from "./retries.js";
 import { freshId } from "./transport.js";
 import type { Reply, Request } from "./transport.js";
 
 export type AdapterHost = {
   isIdle: () => boolean;
-  ui: Pick<ExtensionContext["ui"], "setStatus">;
+  ui: Pick<ExtensionContext["ui"], "setStatus"> & { readonly theme?: FooterTheme };
 };
 export const NOTICE_TYPE = "peers-wake";
 const LEGACY_NOTICE_TYPE = "session-communication-wake";
@@ -107,11 +108,13 @@ export class AdapterSession {
       peer: this.peer,
       ...this.client.status(),
       ...this.state.stats(),
+      waiting: this.waiter !== undefined,
       notice,
     };
   }
   private updateStatus(): void {
-    this.context()?.ui.setStatus("peers", footerStatus(this.client.status(), true));
+    const host = this.context();
+    host?.ui.setStatus("peers", footerStatus(this.status(), true, host.ui.theme));
   }
   private incoming(request: Request): Reply {
     if (request.op === "deliver") {
@@ -120,6 +123,7 @@ export class AdapterSession {
       if (this.inbox.length > previous) {
         this.wakeNeeded = true;
         this.waiter?.("message");
+        this.updateStatus();
         this.signalPump();
       }
       return checkedReply({
@@ -255,6 +259,7 @@ export class AdapterSession {
         }
         signal?.removeEventListener("abort", aborted);
         this.waiter = undefined;
+        this.updateStatus();
         resolve(result);
       };
       timers.push(
@@ -264,6 +269,7 @@ export class AdapterSession {
       );
       signal?.addEventListener("abort", aborted, { once: true });
       this.waiter = finish;
+      this.updateStatus();
     });
   }
   take(limit: number): { messages: readonly Delivery[] } {
@@ -282,6 +288,9 @@ export class AdapterSession {
     }
     if (this.inbox.length === 0) {
       this.wakeNeeded = false;
+    }
+    if (messages.length > 0) {
+      this.updateStatus();
     }
     return { messages };
   }

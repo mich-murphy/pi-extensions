@@ -375,18 +375,61 @@ export function statusText(summary: StatusSummary): string {
       : ["Technical details:", ...summary.technical.map((line) => `  ${line}`)]),
   ].join("\n");
 }
-export function footerStatus(status: unknown, configured: boolean): string | undefined {
+export type FooterTone = "dim" | "success" | "accent" | "muted" | "warning" | "error";
+export type FooterTheme = { fg: (color: FooterTone, text: string) => string };
+export type FooterState =
+  | "connected"
+  | "waiting"
+  | "setting_up"
+  | "activation_pending"
+  | "offline"
+  | "setup_failed";
+const FOOTER_PARTS: Record<FooterState, readonly (readonly [FooterTone, string])[]> = {
+  connected: [["success", "✓"]],
+  waiting: [
+    ["success", "✓"],
+    ["muted", " waiting…"],
+  ],
+  setting_up: [["muted", "⋯ setting up"]],
+  activation_pending: [["warning", "! activation pending"]],
+  offline: [["warning", "✕ offline"]],
+  setup_failed: [["error", "✕ setup failed"]],
+};
+function styled(parts: readonly (readonly [FooterTone, string])[], theme?: FooterTheme): string {
+  return [["dim", "peers "] as const, ...parts]
+    .map(([tone, part]) => (theme === undefined ? part : theme.fg(tone, part)))
+    .join("");
+}
+export function footerLine(state: FooterState, theme?: FooterTheme): string {
+  return styled(FOOTER_PARTS[state], theme);
+}
+function unreadCount(status: Fields): number {
+  const count = status.inboxMessages;
+  return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : 0;
+}
+export function footerStatus(
+  status: unknown,
+  configured: boolean,
+  theme?: FooterTheme,
+): string | undefined {
   if (!configured) {
     return undefined;
   }
   if (!isFields(status)) {
-    return "Peers: setup failed";
+    return footerLine("setup_failed", theme);
   }
-  const code = fields(status).status;
+  const code = status.status;
   if (code === "connected") {
-    return "Peers: connected";
+    const unread = unreadCount(status);
+    if (unread > 0) {
+      return styled([["accent", `● ${unread}`]], theme);
+    }
+    return footerLine(status.waiting === true ? "waiting" : "connected", theme);
   }
-  return code === "activation_pending" || code === "activation_unconfirmed"
-    ? "Peers: activation pending"
-    : "Peers: unavailable";
+  return footerLine(
+    code === "activation_pending" || code === "activation_unconfirmed"
+      ? "activation_pending"
+      : "offline",
+    theme,
+  );
 }

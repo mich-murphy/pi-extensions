@@ -64,7 +64,7 @@ function setupSucceeded(screen: Screen): boolean {
 function turnedOffShown(screen: Screen): boolean {
   return (
     (screen.headline ?? "").startsWith(TURNED_OFF) ||
-    (screen.statusOff && screen.footer !== "Peers: connected")
+    (screen.statusOff && screen.footer !== "peers ✓")
   );
 }
 
@@ -129,7 +129,7 @@ export const setupSucceeds: Formula = eventually(() => facts()?.succeeded === tr
 );
 
 export const footerConnected: Formula = eventually(
-  () => facts()?.succeeded === true && ui.current?.footer === "Peers: connected",
+  () => facts()?.succeeded === true && ui.current?.footer === "peers ✓",
 ).within(160, "seconds");
 
 export const statusConnected: Formula = eventually(() => facts()?.statusSeen === true).within(

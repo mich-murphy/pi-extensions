@@ -17,7 +17,8 @@ export const ESCAPE = "\u001B";
 export const ENTER = "\r";
 export const UP = "\u001B[A";
 export const DOWN = "\u001B[B";
-const SETTING_UP = "Peers: setting up…";
+const SETTING_UP = "peers ⋯ setting up";
+const CONNECTED = "peers ✓";
 const CONSENT_ROWS = new Set([
   "Apply",
   "Restart and activate",
@@ -258,7 +259,7 @@ export const footerAgrees: Formula = always(() => {
   }
   const connected = view.headline.startsWith("✓ Peers set up");
   return eventually(() =>
-    connected ? ui.current?.footer === "Peers: connected" : ui.current?.footer !== SETTING_UP,
+    connected ? ui.current?.footer === CONNECTED : ui.current?.footer !== SETTING_UP,
   ).within(10, "seconds");
 });
 

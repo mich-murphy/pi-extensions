@@ -4,7 +4,7 @@ import { bottomBorderBelow, readMenu } from "../../../test-support/bombadil-menu
 import { outcomeOf, readPeers } from "./bombadil/peers-screen.ts";
 
 const RULE = "─".repeat(80);
-const CHROME = [RULE, ">", RULE, "~/cwd", "0.0%/200k (auto)", "probe:ok Peers: setting up…"];
+const CHROME = [RULE, ">", RULE, "~/cwd", "0.0%/200k (auto)", "probe:ok peers ⋯ setting up"];
 
 function screen(menu: readonly string[]): string[] {
   const rows = ["Welcome", RULE, ...menu, RULE, ...CHROME];
@@ -33,8 +33,8 @@ describe("readPeers", () => {
       cursors: 1,
       selected: "Status",
       bottomShown: true,
-      footer: "Peers: setting up…",
-      probe: "probe:ok Peers: setting up…",
+      footer: "peers ⋯ setting up",
+      probe: "probe:ok peers ⋯ setting up",
     });
   });
 

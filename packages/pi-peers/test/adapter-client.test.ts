@@ -1047,7 +1047,7 @@ describe("public adapter transport and notice accounting", () => {
     await host.event("session_shutdown");
     await writeFile(join(directory, "pi-peers.json"), "invalid");
     await host.event("session_start");
-    expect(host.statuses.at(-1)).toBe("Peers: setup failed");
+    expect(host.statuses.at(-1)).toBe("peers ✕ setup failed");
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("invalid JSON");
     expect(host.notifications.at(-1)).toContain(directory);
@@ -1081,7 +1081,7 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toContain("This session may still be connected");
     expect(host.notifications.at(-1)).toContain("Connected as");
     expect(host.notifications.at(-1)).not.toContain("participation is off");
-    expect(host.statuses.at(-1)).toBe("Peers: connected");
+    expect(host.statuses.at(-1)).toBe("peers ✓");
     await host.event("message_end", { message: { role: "custom" } });
     await host.event("agent_before_settle", { entries: [] });
     await host.event("agent_settled");
@@ -1523,6 +1523,44 @@ describe("public adapter transport and notice accounting", () => {
     idle = true;
     session.pumpIdle();
     expect(notices).toHaveLength(0);
+  });
+  test("the footer follows unread mail and waits: ● on arrival, ✓ after take, waiting… while waiting", async () => {
+    const fixture = await gateway(() => undefined);
+    const footers: (string | undefined)[] = [];
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => ({
+        isIdle: () => false,
+        ui: {
+          setStatus: (_key: string, text: string | undefined) => {
+            footers.push(text);
+          },
+        },
+      }),
+      () => undefined,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.start();
+    await expect.poll(() => footers.at(-1)).toBe("peers ✓");
+    const waiting = session.waitForMessage(60);
+    expect(footers.at(-1)).toBe("peers ✓ waiting…");
+    fixture.sendFrame({
+      v: 1,
+      op: "deliver",
+      rid: "4".repeat(32),
+      from: other,
+      to: peer,
+      scopeId: "team",
+      message: authored("a".repeat(32)),
+    });
+    await expect(waiting).resolves.toBe("message");
+    expect(footers.at(-1)).toBe("peers ● 1");
+    expect(session.take(8).messages).toHaveLength(1);
+    expect(footers.at(-1)).toBe("peers ✓");
   });
   test("a wait returns on the first admission, allows one waiter, and ends on timeout or abort", async () => {
     const fixture = await gateway(() => undefined);

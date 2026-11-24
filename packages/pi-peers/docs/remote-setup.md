@@ -37,8 +37,8 @@ everything required is filled in. Esc goes back one level without applying.
 After Apply, the result screen lists the remote link and the next step, such as
 issuing the peer's certificate. `/peers doctor` reports whether the remote
 credentials look valid and when the pairing expires; it does not prove the live
-link is up. The footer shows `Peers: connected` once this session reaches its
-local gateway, and `Peers: activation pending` while the gateway still runs older
+link is up. The footer shows `peers ✓` once this session reaches its
+local gateway, and `peers ! activation pending` while the gateway still runs older
 settings.
 
 To change a remote setup later, choose **Setup** again. It reads `Manage` and
