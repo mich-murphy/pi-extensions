@@ -296,20 +296,7 @@ fn message(value: &Value) -> Result<(), DecodeError> {
         if value["kind"] == "request" {
             return Err(DecodeError);
         }
-        enum_value(
-            status,
-            &[
-                "accepted",
-                "declined",
-                "needs_clarification",
-                "planned",
-                "in_progress",
-                "blocked",
-                "completed",
-                "failed",
-                "cancelled",
-            ],
-        )?;
+        status_value(status)?;
     }
     if let Some(refs) = value.get("refs") {
         references(refs)?;
@@ -442,10 +429,7 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
 fn authored_bytes(value: &Value) -> Option<usize> {
     match value {
         Value::Object(fields) => fields.iter().try_fold(0_usize, |total, (name, value)| {
-            let bytes = if matches!(
-                name.as_str(),
-                "content" | "title" | "summary" | "label" | "locator"
-            ) {
+            let bytes = if matches!(name.as_str(), "content" | "label" | "locator") {
                 value.as_str()?.len()
             } else {
                 authored_bytes(value)?
@@ -570,8 +554,6 @@ fn error_outcome(value: &Value, op: &str) -> Result<(), DecodeError> {
         "id_conflict" | "invalid_correlation" | "delivery_too_large" => {
             matches!(op, "send" | "deliver")
         }
-        "not_found" => matches!(op, "state.get" | "interest.add"),
-        "revision_mismatch" => op == "state.get",
         _ => false,
     };
     if !allowed {
@@ -585,8 +567,6 @@ fn error_outcome(value: &Value, op: &str) -> Result<(), DecodeError> {
                 "inbox",
                 "receipts",
                 "relations",
-                "interests",
-                "publications",
                 "operations",
                 "buffers",
                 "watch",
@@ -620,83 +600,8 @@ fn success(value: &Value, op: &str) -> Result<(), DecodeError> {
             }
             Ok(())
         }
-        // Authored publication/work-state semantics belong to the adapter. These
-        // generic routing result bodies still reject unknown outer fields.
-        "state.get" => {
-            object(value, &["publisher", "scopeId", "publication"], &[])?;
-            peer(&value["publisher"])?;
-            key(&value["scopeId"])?;
-            publication(&value["publication"], PublicationKind::Full)
-        }
-        "state.list" => {
-            object(value, &["publisher", "scopeId", "revision", "items"], &[])?;
-            peer(&value["publisher"])?;
-            key(&value["scopeId"])?;
-            number(&value["revision"])?;
-            let items = value["items"].as_array().ok_or(DecodeError)?;
-            if items.len() > 16 {
-                return Err(DecodeError);
-            }
-            for item in items {
-                publication(item, PublicationKind::Summary)?;
-            }
-            Ok(())
-        }
-        "interest.add" | "interest.remove" => {
-            object(
-                value,
-                &["publisher", "scopeId", "work", "active"],
-                if op == "interest.add" {
-                    &["expiresInMs", "current"]
-                } else {
-                    &[]
-                },
-            )?;
-            peer(&value["publisher"])?;
-            key(&value["scopeId"])?;
-            work(&value["work"])?;
-            let active = value["active"].as_bool().ok_or(DecodeError)?;
-            if active {
-                if op == "interest.remove" || value["expiresInMs"] != 86_400_000 {
-                    return Err(DecodeError);
-                }
-            } else if value.get("expiresInMs").is_some() {
-                return Err(DecodeError);
-            }
-            if op == "interest.add"
-                && !active
-                && !value.get("current").is_some_and(|current| {
-                    current["status"].as_str().is_some_and(|status| {
-                        ["completed", "failed", "cancelled", "declined"].contains(&status)
-                    })
-                })
-            {
-                return Err(DecodeError);
-            }
-            if let Some(current) = value.get("current") {
-                if active
-                    && current["status"].as_str().is_some_and(|status| {
-                        ["completed", "failed", "cancelled", "declined"].contains(&status)
-                    })
-                {
-                    return Err(DecodeError);
-                }
-                object(current, &["key", "revision"], &["status"])?;
-                key(&current["key"])?;
-                number(&current["revision"])?;
-                if let Some(status) = current.get("status") {
-                    status_value(status)?;
-                }
-            }
-            Ok(())
-        }
         _ => Err(DecodeError),
     }
-}
-#[derive(Clone, Copy)]
-enum PublicationKind {
-    Full,
-    Summary,
 }
 fn status_value(value: &Value) -> Result<(), DecodeError> {
     enum_value(
@@ -714,63 +619,6 @@ fn status_value(value: &Value) -> Result<(), DecodeError> {
         ],
     )
 }
-fn publication(value: &Value, kind: PublicationKind) -> Result<(), DecodeError> {
-    let required: &[&str] = match kind {
-        PublicationKind::Full => &[
-            "key",
-            "revision",
-            "category",
-            "title",
-            "summary",
-            "format",
-            "preparation",
-        ],
-        PublicationKind::Summary => &["key", "revision", "category", "title"],
-    };
-    let optional: &[&str] = match kind {
-        PublicationKind::Full => &["content", "work", "status", "refs"],
-        PublicationKind::Summary => &["work", "status"],
-    };
-    object(value, required, optional)?;
-    key(&value["key"])?;
-    number(&value["revision"])?;
-    text(&value["title"], 128)?;
-    enum_value(
-        &value["category"],
-        &["context", "research", "spec", "plan", "finding", "work"],
-    )?;
-    if let Some(work_ref) = value.get("work") {
-        work(work_ref)?;
-    }
-    if value["category"] == "work" && value.get("work").is_none() {
-        return Err(DecodeError);
-    }
-    if let Some(status) = value.get("status") {
-        if value["category"] != "work" {
-            return Err(DecodeError);
-        }
-        status_value(status)?;
-    }
-    if matches!(kind, PublicationKind::Full) {
-        text(&value["summary"], 1024)?;
-        if let Some(content) = value.get("content") {
-            text(content, MAX_AUTHORED)?;
-        }
-        enum_value(
-            &value["format"],
-            &["text", "markdown", "git-diff", "git-format-patch"],
-        )?;
-        if let Some(refs) = value.get("refs") {
-            references(refs)?;
-        }
-        enum_value(
-            &value["preparation"],
-            &["authored", "summarized", "curated"],
-        )?;
-    }
-    Ok(())
-}
-
 /// Decodes a complete JSON body at the routing boundary, including encoded descriptor spans.
 ///
 /// # Errors

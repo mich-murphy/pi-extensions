@@ -213,7 +213,7 @@ fn send(stream: &mut UnixStream, to: &Value, n: u32) {
 }
 
 #[test]
-fn two_real_daemons_route_exact_receipts_read_interest_and_withdraw_without_replay() {
+fn two_real_daemons_route_exact_receipts_refuse_retired_requests_and_withdraw_without_replay() {
     let ca = Authority::new("two-process private test CA");
     let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
@@ -236,29 +236,23 @@ fn two_real_daemons_route_exact_receipts_read_interest_and_withdraw_without_repl
     assert_eq!(result["rid"], rid(5));
     assert_eq!(result["forOp"], "send");
     assert_eq!(result["outcome"]["tag"], "admitted");
-    write(
-        &mut a,
-        &json!({"v":1,"op":"state.list","rid":rid(6),"publisher":beta_peer,"scopeId":"team"}),
-    );
-    let query = read(&mut b);
-    assert_eq!(query["from"], alpha_peer);
-    write(
-        &mut b,
-        &json!({"v":1,"op":"result","rid":query["rid"],"forOp":"state.list","outcome":{"tag":"ok","value":{"publisher":beta_peer,"scopeId":"team","revision":0,"items":[]}}}),
-    );
-    assert_eq!(read(&mut a)["outcome"]["tag"], "ok");
     let work = json!({"kind":"request","origin":alpha_peer,"requestId":rid(1005)});
-    write(
-        &mut a,
-        &json!({"v":1,"op":"interest.add","rid":rid(7),"publisher":beta_peer,"scopeId":"team","work":work}),
-    );
-    let interest = read(&mut b);
-    assert_eq!(interest["from"], alpha_peer);
-    write(
-        &mut b,
-        &json!({"v":1,"op":"result","rid":interest["rid"],"forOp":"interest.add","outcome":{"tag":"ok","value":{"publisher":beta_peer,"scopeId":"team","work":work,"active":true,"expiresInMs":86_400_000}}}),
-    );
-    assert_eq!(read(&mut a)["outcome"]["value"]["active"], true);
+    for (n, retired) in [
+        json!({"v":1,"op":"state.list","rid":rid(6),"publisher":beta_peer,"scopeId":"team"}),
+        json!({"v":1,"op":"interest.add","rid":rid(7),"publisher":beta_peer,"scopeId":"team","work":work}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        write(&mut a, &retired);
+        let refused = read(&mut a);
+        assert_eq!(refused["rid"], retired["rid"], "retired request {n} answered");
+        assert_eq!(
+            refused["outcome"],
+            json!({"tag":"error","code":"forbidden"}),
+            "a retired request is refused by the local gateway, not routed"
+        );
+    }
     send(&mut a, &beta_peer, 8);
     let _possibly_admitted = read(&mut b);
     beta.stop();
@@ -291,18 +285,14 @@ fn real_pair_push_only_does_not_require_discover_and_incoming_ceiling_is_indepen
     register(&mut observer, "observer", 22);
     let snapshot = watch(&mut observer, 23);
     await_peer(&mut observer, &snapshot, &alpha_peer);
-    // A real round trip binds beta as a source at alpha; no discover call at alpha.
-    write(
-        &mut b,
-        &json!({"v":1,"op":"state.list","rid":rid(24),"publisher":alpha_peer,"scopeId":"team"}),
+    // A real round trip through alpha binds beta as a source there; no discover call at alpha.
+    // Alpha's only incoming grant is the retired read, which parses but grants nothing.
+    send(&mut b, &alpha_peer, 24);
+    assert_eq!(
+        read(&mut b)["outcome"]["code"],
+        "forbidden",
+        "outgoing adapter capability cannot exceed peer gateway incoming grant"
     );
-    let query = read(&mut a);
-    assert_eq!(query["op"], "state.list");
-    write(
-        &mut a,
-        &json!({"v":1,"op":"result","rid":query["rid"],"forOp":"state.list","outcome":{"tag":"ok","value":{"publisher":alpha_peer,"scopeId":"team","revision":0,"items":[]}}}),
-    );
-    read(&mut b);
     write(
         &mut a,
         &json!({"v":1,"op":"discover","rid":rid(25),"scopeIds":["team"],"watch":false}),
@@ -315,21 +305,6 @@ fn real_pair_push_only_does_not_require_discover_and_incoming_ceiling_is_indepen
         read(&mut a)["outcome"]["tag"],
         "admitted",
         "push is independent of discovery"
-    );
-    send(&mut b, &alpha_peer, 27);
-    assert_eq!(
-        read(&mut b)["outcome"]["code"],
-        "forbidden",
-        "outgoing adapter capability cannot exceed peer gateway incoming grant"
-    );
-    write(
-        &mut a,
-        &json!({"v":1,"op":"state.list","rid":rid(28),"publisher":beta_peer,"scopeId":"team"}),
-    );
-    assert_eq!(
-        read(&mut a)["outcome"]["code"],
-        "forbidden",
-        "read requires a separate receiving gateway grant"
     );
 }
 
@@ -731,6 +706,49 @@ async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_t
             if survives { "keep" } else { "close" }
         );
     }
+    drop(beta);
+}
+
+#[tokio::test]
+async fn real_daemon_refuses_retired_requests_from_an_older_remote_gateway_and_keeps_the_link() {
+    let ca = Authority::new("retired operation CA");
+    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let address = beta.address();
+    let mut receiver = beta.connect();
+    let target = register(&mut receiver, "receiver", 1);
+    let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
+    let origin = imported(0)["peer"].clone();
+    let work = json!({"kind":"request","origin":origin,"requestId":rid(6100)});
+    let retired = [
+        json!({"v":1,"op":"state.get","rid":rid(6001),"from":origin,"publisher":target,"scopeId":"team","key":"report"}),
+        json!({"v":1,"op":"state.list","rid":rid(6002),"from":origin,"publisher":target,"scopeId":"team"}),
+        json!({"v":1,"op":"interest.add","rid":rid(6003),"from":origin,"publisher":target,"scopeId":"team","work":work}),
+        json!({"v":1,"op":"interest.remove","rid":rid(6004),"from":origin,"publisher":target,"scopeId":"team","work":work}),
+    ];
+    for request in &retired {
+        remote_write(&mut stream, request).await;
+        let refused = tokio::time::timeout(Duration::from_secs(3), remote_read(&mut stream))
+            .await
+            .expect("a retired request is answered promptly")
+            .expect("the link stays open");
+        assert_eq!(refused["rid"], request["rid"]);
+        assert_eq!(refused["forOp"], request["op"]);
+        assert_eq!(
+            refused["outcome"],
+            json!({"tag":"error","code":"forbidden"})
+        );
+    }
+    assert!(
+        link_is_alive(&mut stream).await,
+        "the link survives retired requests"
+    );
+    let send = json!({"v":1,"op":"send","rid":rid(6005),"from":origin,"to":target,"scopeId":"team","message":{"id":rid(6006),"kind":"request","content":"still routed","format":"text"}});
+    remote_write(&mut stream, &send).await;
+    assert_eq!(
+        read(&mut receiver)["message"]["id"],
+        rid(6006),
+        "nothing retired reached the receiver; the next send does"
+    );
     drop(beta);
 }
 

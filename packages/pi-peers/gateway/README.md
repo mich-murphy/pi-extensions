@@ -58,7 +58,7 @@ The config is strict JSON, 32 KiB or smaller, with no unknown fields.
 | `policies` | 64 or fewer | Grants. Each machine, scope and direction pair appears once. |
 | `policies[].machineId` | Machine pattern | Machine the grant applies to. |
 | `policies[].scopeId` | Listed in `scopeIds` | Scope of the grant. |
-| `policies[].permissions` | 1–4 unique of `discover`, `read`, `push`, `interest` | Allowed actions. |
+| `policies[].permissions` | 1–4 unique of `discover`, `push`, `read`, `interest` | Allowed actions. `read` and `interest` are retired: they still parse so older files start, but grant nothing. |
 | `policies[].direction` | `outgoing` (default) or `incoming` | `outgoing`: your local sessions acting on that machine. `incoming`: that machine acting on your sessions. |
 | `remote` | Optional object | One peer gateway. |
 | `remote.machineId` | Machine pattern, not your own | Peer name. It must have a policy. |

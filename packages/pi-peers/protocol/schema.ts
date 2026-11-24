@@ -69,7 +69,6 @@ const status = Schema.Literals([
   "cancelled",
 ]);
 const format = Schema.Literals(["text", "markdown", "git-diff", "git-format-patch"]);
-const category = Schema.Literals(["context", "research", "spec", "plan", "finding", "work"]);
 const refs = boundedArray(
   Schema.Union([
     Schema.Struct({ kind: Schema.Literal("publication"), publisher: Peer, key, revision }),
@@ -103,36 +102,8 @@ export const Message = Schema.Struct({
 );
 export type Message = typeof Message.Type;
 
-const publication = Schema.Struct({
-  key,
-  revision,
-  category,
-  title: text(128),
-  summary: text(1024),
-  content: Schema.optionalKey(text(MAX_AUTHORED_BYTES)),
-  format,
-  ...reportFields,
-  preparation: Schema.Literals(["authored", "summarized", "curated"]),
-}).check(
-  Schema.makeFilter((record) =>
-    record.category === "work" ? record.work !== undefined : record.status === undefined,
-  ),
-);
-const summary = Schema.Struct({
-  key,
-  revision,
-  category,
-  title: text(128),
-  work: Schema.optionalKey(work),
-  status: Schema.optionalKey(status),
-}).check(
-  Schema.makeFilter((record) =>
-    record.category === "work" ? record.work !== undefined : record.status === undefined,
-  ),
-);
-const workSummary = Schema.Struct({ key, revision, status: Schema.optionalKey(status) });
 const descriptor = Schema.Struct({ peer: Peer, label, scopeIds: scopeIds(4) });
-const routing = { from: Schema.optionalKey(Peer), publisher: Peer, scopeId: key };
+const retiredRouting = { from: Schema.optionalKey(Peer), publisher: Peer, scopeId: key };
 const head = { v: Schema.Literal(1), rid: randomId };
 
 const requests = [
@@ -178,13 +149,13 @@ const requests = [
   Schema.Struct({
     ...head,
     op: Schema.Literal("state.get"),
-    ...routing,
+    ...retiredRouting,
     key,
     expectedRevision: Schema.optionalKey(revision),
   }),
-  Schema.Struct({ ...head, op: Schema.Literal("state.list"), ...routing }),
-  Schema.Struct({ ...head, op: Schema.Literal("interest.add"), ...routing, work }),
-  Schema.Struct({ ...head, op: Schema.Literal("interest.remove"), ...routing, work }),
+  Schema.Struct({ ...head, op: Schema.Literal("state.list"), ...retiredRouting }),
+  Schema.Struct({ ...head, op: Schema.Literal("interest.add"), ...retiredRouting, work }),
+  Schema.Struct({ ...head, op: Schema.Literal("interest.remove"), ...retiredRouting, work }),
 ] as const;
 
 const binding = Schema.Struct({ messageId: randomId, sender: Peer, recipient: Peer, scopeId: key });
@@ -193,8 +164,6 @@ const resource = Schema.Literals([
   "inbox",
   "receipts",
   "relations",
-  "interests",
-  "publications",
   "operations",
   "buffers",
   "watch",
@@ -214,6 +183,15 @@ function failure<const C extends readonly string[]>(codes: C) {
     Schema.Struct({ tag: Schema.Literal("error"), code: Schema.Literal("overloaded"), resource }),
   ]);
 }
+export const retiredOps = ["state.get", "state.list", "interest.add", "interest.remove"] as const;
+function refused<const O extends string>(op: O) {
+  return Schema.Struct({
+    ...head,
+    op: Schema.Literal("result"),
+    forOp: Schema.Literal(op),
+    outcome: failure(routedCodes),
+  });
+}
 function result<
   const O extends string,
   S extends Schema.Constraint,
@@ -226,30 +204,6 @@ function result<
     outcome: Schema.Union([Schema.Struct({ tag: Schema.Literal("ok"), value }), failure(codes)]),
   });
 }
-const interestBase = { publisher: Peer, scopeId: key, work };
-const terminal = new Set(["completed", "failed", "cancelled", "declined"]);
-const inactive = Schema.Struct({
-  ...interestBase,
-  active: Schema.Literal(false),
-  current: workSummary,
-}).check(
-  Schema.makeFilter(
-    (value) => value.current.status !== undefined && terminal.has(value.current.status),
-  ),
-);
-const interestAdded = Schema.Union([
-  Schema.Struct({
-    ...interestBase,
-    active: Schema.Literal(true),
-    expiresInMs: Schema.Literal(86_400_000),
-    current: Schema.optionalKey(workSummary),
-  }).check(
-    Schema.makeFilter(
-      (value) => value.current?.status === undefined || !terminal.has(value.current.status),
-    ),
-  ),
-  inactive,
-]);
 const admittedOutcome = Schema.Struct({
   tag: Schema.Literal("admitted"),
   binding,
@@ -296,22 +250,7 @@ const results = [
     Schema.Struct({ peers: boundedArray(descriptor, 60), watching: Schema.Boolean }),
     baseCodes,
   ),
-  result("state.get", Schema.Struct({ publisher: Peer, scopeId: key, publication }), [
-    ...routedCodes,
-    "not_found",
-    "revision_mismatch",
-  ]),
-  result(
-    "state.list",
-    Schema.Struct({ publisher: Peer, scopeId: key, revision, items: boundedArray(summary, 16) }),
-    routedCodes,
-  ),
-  result("interest.add", interestAdded, [...routedCodes, "not_found"]),
-  result(
-    "interest.remove",
-    Schema.Struct({ ...interestBase, active: Schema.Literal(false) }),
-    routedCodes,
-  ),
+  ...retiredOps.map((op) => refused(op)),
   Schema.Struct({
     ...head,
     op: Schema.Literal("result"),
@@ -340,4 +279,3 @@ const event = Schema.Struct({
 export const Frame = Schema.Union([...requests, ...results, event]);
 export type Frame = typeof Frame.Type;
 export type WorkRef = typeof work.Type;
-export type Publication = typeof publication.Type;

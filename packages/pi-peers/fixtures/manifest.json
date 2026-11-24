@@ -659,33 +659,8 @@
       "role": "local-client",
       "hexFile": "wire/result-state-get.hex",
       "expected": {
-        "tag": "accepted",
-        "value": {
-          "v": 1,
-          "op": "result",
-          "rid": "11111111111111111111111111111111",
-          "forOp": "state.get",
-          "outcome": {
-            "tag": "ok",
-            "value": {
-              "publisher": {
-                "machineId": "alpha",
-                "sessionId": "session",
-                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-              },
-              "scopeId": "team",
-              "publication": {
-                "key": "report",
-                "revision": 1,
-                "category": "context",
-                "title": "Title",
-                "summary": "Summary",
-                "format": "text",
-                "preparation": "authored"
-              }
-            }
-          }
-        }
+        "tag": "rejected",
+        "connection": "closed"
       }
     },
     {
@@ -694,33 +669,8 @@
       "role": "local-client",
       "hexFile": "wire/result-state-list.hex",
       "expected": {
-        "tag": "accepted",
-        "value": {
-          "v": 1,
-          "op": "result",
-          "rid": "11111111111111111111111111111111",
-          "forOp": "state.list",
-          "outcome": {
-            "tag": "ok",
-            "value": {
-              "publisher": {
-                "machineId": "alpha",
-                "sessionId": "session",
-                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-              },
-              "scopeId": "team",
-              "revision": 1,
-              "items": [
-                {
-                  "key": "report",
-                  "revision": 1,
-                  "category": "context",
-                  "title": "Title"
-                }
-              ]
-            }
-          }
-        }
+        "tag": "rejected",
+        "connection": "closed"
       }
     },
     {
@@ -729,35 +679,8 @@
       "role": "local-client",
       "hexFile": "wire/result-interest-add.hex",
       "expected": {
-        "tag": "accepted",
-        "value": {
-          "v": 1,
-          "op": "result",
-          "rid": "11111111111111111111111111111111",
-          "forOp": "interest.add",
-          "outcome": {
-            "tag": "ok",
-            "value": {
-              "publisher": {
-                "machineId": "alpha",
-                "sessionId": "session",
-                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-              },
-              "scopeId": "team",
-              "work": {
-                "kind": "publication",
-                "publisher": {
-                  "machineId": "alpha",
-                  "sessionId": "session",
-                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                },
-                "key": "report"
-              },
-              "active": true,
-              "expiresInMs": 86400000
-            }
-          }
-        }
+        "tag": "rejected",
+        "connection": "closed"
       }
     },
     {
@@ -766,34 +689,8 @@
       "role": "local-client",
       "hexFile": "wire/result-interest-remove.hex",
       "expected": {
-        "tag": "accepted",
-        "value": {
-          "v": 1,
-          "op": "result",
-          "rid": "11111111111111111111111111111111",
-          "forOp": "interest.remove",
-          "outcome": {
-            "tag": "ok",
-            "value": {
-              "publisher": {
-                "machineId": "alpha",
-                "sessionId": "session",
-                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-              },
-              "scopeId": "team",
-              "work": {
-                "kind": "publication",
-                "publisher": {
-                  "machineId": "alpha",
-                  "sessionId": "session",
-                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                },
-                "key": "report"
-              },
-              "active": false
-            }
-          }
-        }
+        "tag": "rejected",
+        "connection": "closed"
       }
     },
     {
@@ -2234,39 +2131,8 @@
       "role": "local-client",
       "hexFile": "wire/interest-terminal-inactive.hex",
       "expected": {
-        "tag": "accepted",
-        "value": {
-          "v": 1,
-          "op": "result",
-          "rid": "11111111111111111111111111111111",
-          "forOp": "interest.add",
-          "outcome": {
-            "tag": "ok",
-            "value": {
-              "publisher": {
-                "machineId": "alpha",
-                "sessionId": "session",
-                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-              },
-              "scopeId": "team",
-              "work": {
-                "kind": "publication",
-                "publisher": {
-                  "machineId": "alpha",
-                  "sessionId": "session",
-                  "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                },
-                "key": "report"
-              },
-              "active": false,
-              "current": {
-                "key": "report",
-                "revision": 2,
-                "status": "completed"
-              }
-            }
-          }
-        }
+        "tag": "rejected",
+        "connection": "closed"
       }
     },
     {

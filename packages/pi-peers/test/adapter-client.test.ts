@@ -269,58 +269,6 @@ function toolGateway(request: Request): Reply | undefined {
       },
     };
   }
-  if (request.op === "state.get") {
-    return {
-      v: 1,
-      op: "result",
-      rid: request.rid,
-      forOp: "state.get",
-      outcome: { tag: "error", code: "not_found" },
-    };
-  }
-  if (request.op === "state.list") {
-    return {
-      v: 1,
-      op: "result",
-      rid: request.rid,
-      forOp: "state.list",
-      outcome: {
-        tag: "ok",
-        value: {
-          publisher: request.publisher,
-          scopeId: request.scopeId,
-          revision: 0,
-          items: [],
-        },
-      },
-    };
-  }
-  if (request.op === "interest.add") {
-    return {
-      v: 1,
-      op: "result",
-      rid: request.rid,
-      forOp: "interest.add",
-      outcome: { tag: "error", code: "not_found" },
-    };
-  }
-  if (request.op === "interest.remove") {
-    return {
-      v: 1,
-      op: "result",
-      rid: request.rid,
-      forOp: "interest.remove",
-      outcome: {
-        tag: "ok",
-        value: {
-          publisher: request.publisher,
-          scopeId: request.scopeId,
-          work: request.work,
-          active: false,
-        },
-      },
-    };
-  }
   return discoveryReply(request);
 }
 type CapturedTool = { name: string; execute: unknown };

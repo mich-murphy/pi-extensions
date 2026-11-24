@@ -1,12 +1,12 @@
 import { Schema } from "effect";
 import { decodeJson, MAX_BODY_BYTES, ProtocolError } from "./json.js";
 import type { ObjectBytesVisitor } from "./json.js";
-import { Frame, MAX_AUTHORED_BYTES } from "./schema.js";
+import { Frame, MAX_AUTHORED_BYTES, retiredOps } from "./schema.js";
 
 export const MAX_DESCRIPTOR_BYTES = 512;
 
 export type BoundaryRole = "local-client" | "gateway-forward" | "adapter-delivery" | "remote-link";
-const routed = new Set(["send", "state.get", "state.list", "interest.add", "interest.remove"]);
+const routed = new Set(["send", ...retiredOps]);
 const decode = Schema.decodeUnknownSync(Frame, { onExcessProperty: "error" });
 
 export function frameBodyLength(prefix: Uint8Array): number {
@@ -30,13 +30,7 @@ const roleOperations: Record<BoundaryRole, ReadonlySet<string>> = {
     ...routed,
   ]),
   "gateway-forward": routed,
-  "adapter-delivery": new Set([
-    "deliver",
-    "state.get",
-    "state.list",
-    "interest.add",
-    "interest.remove",
-  ]),
+  "adapter-delivery": new Set(["deliver", ...retiredOps]),
   "remote-link": new Set(["ping", "discover", "unwatch", ...routed]),
 };
 
@@ -67,7 +61,7 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   }
 }
 
-const authoredFields = new Set(["content", "title", "summary", "label", "locator"]);
+const authoredFields = new Set(["content", "label", "locator"]);
 function authoredBytes(value: unknown): number {
   if (typeof value !== "object" || value === null) {
     return 0;

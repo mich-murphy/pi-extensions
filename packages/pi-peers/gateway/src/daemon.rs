@@ -66,11 +66,10 @@ struct Remote {
 struct Forward {
     origin: ConnectionId,
     destination: ConnectionId,
+    /// The original request, retained for exact result binding and correlation checks.
     request: Value,
-    expected_op: String,
-    binding: Option<Value>,
+    binding: Value,
     deadline: Instant,
-    // The original request is retained for exact result identity/scope/work checks.
     reservation: Charge,
 }
 
@@ -447,18 +446,9 @@ impl Daemon {
     }
 
     fn respond(&mut self, id: ConnectionId, request: &Value, outcome: Value) {
-        let class = if outcome["tag"] == "ok"
-            && matches!(
-                request["op"].as_str(),
-                Some("discover" | "state.get" | "state.list" | "interest.add")
-            ) {
-            BufferClass::Data
-        } else {
-            BufferClass::Control
-        };
         let mut response = json!({"v":1,"op":"result","rid":request["rid"],"forOp":request["op"]});
         response["outcome"] = outcome;
-        if !self.queue(id, &response, class, None) {
+        if !self.queue(id, &response, BufferClass::Control, None) {
             self.fail(id);
         }
     }
@@ -552,8 +542,9 @@ impl Daemon {
                 }
                 self.respond(id, &request, json!({"tag":"ok","value":{}}));
             }
-            Some("send" | "state.get" | "state.list" | "interest.add" | "interest.remove") => {
-                self.forward(id, request);
+            Some("send") => self.forward(id, request),
+            Some("state.get" | "state.list" | "interest.add" | "interest.remove") => {
+                self.reject(id, &request, "forbidden", None);
             }
             _ => self.fail(id),
         }
@@ -640,18 +631,12 @@ impl Daemon {
     fn descriptor(&self, id: ConnectionId) -> Option<&Value> {
         self.clients.get(&id)?.descriptor.as_ref()
     }
-    fn eligible(
-        &self,
-        id: ConnectionId,
-        descriptor: &Value,
-        scope: &str,
-        permission: Permission,
-    ) -> bool {
+    fn eligible(&self, id: ConnectionId, descriptor: &Value, scope: &str) -> bool {
         self.descriptor(id).is_some_and(|own| member(own, scope))
             && member(descriptor, scope)
             && descriptor["peer"]["machineId"]
                 .as_str()
-                .is_some_and(|machine| self.config.permits(machine, scope, permission))
+                .is_some_and(|machine| self.config.permits(machine, scope, Permission::Push))
     }
 
     fn discover(&mut self, id: ConnectionId, request: &Value) {
@@ -772,7 +757,6 @@ impl Daemon {
         origin: ConnectionId,
         target: &Value,
         scope: &str,
-        permission: Permission,
     ) -> Option<ConnectionId> {
         self.clients
             .iter()
@@ -780,25 +764,15 @@ impl Daemon {
                 !client.failed
                     && !client.closing
                     && client.descriptor.as_ref().is_some_and(|descriptor| {
-                        descriptor["peer"] == *target
-                            && self.eligible(origin, descriptor, scope, permission)
+                        descriptor["peer"] == *target && self.eligible(origin, descriptor, scope)
                     })
             })
             .map(|(id, _)| *id)
     }
 
     fn route(&mut self, origin: ConnectionId, request: &Value) -> Option<ConnectionId> {
-        let target = if request["op"] == "send" {
-            &request["to"]
-        } else {
-            &request["publisher"]
-        };
+        let target = &request["to"];
         let scope = request["scopeId"].as_str().unwrap_or("");
-        let permission = match request["op"].as_str() {
-            Some("send") => Permission::Push,
-            Some("interest.add" | "interest.remove") => Permission::Interest,
-            _ => Permission::Read,
-        };
         // Deny before looking up existence, so policy failures cannot probe hidden routes.
         let machine = target["machineId"].as_str().unwrap_or("");
         let remote_origin = self.is_remote(origin);
@@ -808,7 +782,7 @@ impl Daemon {
                     self.config.permits_direction(
                         remote.machine_id(),
                         scope,
-                        permission,
+                        Permission::Push,
                         Direction::Incoming,
                     )
                 })
@@ -818,16 +792,15 @@ impl Daemon {
         } else {
             self.descriptor(origin)
                 .is_some_and(|own| member(own, scope))
-                && self.config.permits(machine, scope, permission)
+                && self.config.permits(machine, scope, Permission::Push)
         };
         if !authorized {
             self.reject(origin, request, "forbidden", None);
             return None;
         }
-        if request["op"] == "send"
-            && request["message"]
-                .get("replyTo")
-                .is_some_and(|reply| reply["sender"] != request["to"])
+        if request["message"]
+            .get("replyTo")
+            .is_some_and(|reply| reply["sender"] != request["to"])
         {
             self.reject(origin, request, "invalid_correlation", None);
             return None;
@@ -844,13 +817,12 @@ impl Daemon {
                 })
                 .map(|(id, _)| *id)
         } else {
-            self.destination(origin, target, scope, permission)
-                .or_else(|| {
-                    self.remote_id().filter(|id| {
-                        self.remote_descriptor(*id, target)
-                            .is_some_and(|descriptor| member(descriptor, scope))
-                    })
+            self.destination(origin, target, scope).or_else(|| {
+                self.remote_id().filter(|id| {
+                    self.remote_descriptor(*id, target)
+                        .is_some_and(|descriptor| member(descriptor, scope))
                 })
+            })
         };
         let Some(destination) = destination else {
             self.reject(origin, request, "no_route", None);
@@ -886,7 +858,7 @@ impl Daemon {
             self.descriptor(origin)
                 .map_or(Value::Null, |descriptor| descriptor["peer"].clone())
         };
-        let binding = (request["op"] == "send").then(|| json!({"messageId":request["message"]["id"],"sender":sender,"recipient":request["to"],"scopeId":request["scopeId"]}));
+        let binding = json!({"messageId":request["message"]["id"],"sender":sender,"recipient":request["to"],"scopeId":request["scopeId"]});
         let retained = encoded_length(&request).unwrap_or(wire::MAX_BODY);
         let Ok(reservation) = self.buffers.reserve(origin, BufferClass::Data, retained) else {
             self.reject(origin, &request, "overloaded", Some("buffers"));
@@ -895,29 +867,14 @@ impl Daemon {
         let mut forwarded = request.clone();
         forwarded["rid"] = Value::from(rid.clone());
         forwarded["from"] = sender;
-        if request["op"] == "send" && !self.is_remote(destination) {
+        if !self.is_remote(destination) {
             forwarded["op"] = Value::from("deliver");
         }
         if encoded_length(&forwarded).is_none_or(|length| {
-            length
-                + if request["op"] == "send" && self.is_remote(destination) {
-                    3
-                } else {
-                    0
-                }
-                > wire::MAX_BODY
+            length + if self.is_remote(destination) { 3 } else { 0 } > wire::MAX_BODY
         }) {
             drop(reservation);
-            self.reject(
-                origin,
-                &request,
-                if binding.is_some() {
-                    "delivery_too_large"
-                } else {
-                    "unavailable"
-                },
-                None,
-            );
+            self.reject(origin, &request, "delivery_too_large", None);
             return;
         }
         let sender_peer = if remote_origin {
@@ -926,11 +883,7 @@ impl Daemon {
             &forwarded["from"]
         };
         let mut source = self.forward_permit(origin, sender_peer);
-        let target = if request["op"] == "send" {
-            &request["to"]
-        } else {
-            &request["publisher"]
-        };
+        let target = &request["to"];
         if let (Some(source), Some(target)) =
             (source.as_mut(), self.forward_permit(destination, target))
         {
@@ -946,7 +899,6 @@ impl Daemon {
             Forward {
                 origin,
                 destination,
-                expected_op: forwarded["op"].as_str().unwrap_or("").to_owned(),
                 request,
                 binding,
                 deadline: Instant::now() + OPERATION_TIMEOUT,
@@ -976,8 +928,13 @@ impl Daemon {
         let Some(forward) = self.forwards.get(rid) else {
             return;
         }; // structurally valid retired controls allocate nothing
+        let expected_op = if self.is_remote(forward.destination) {
+            "send"
+        } else {
+            "deliver"
+        };
         if id != forward.destination
-            || response["forOp"] != forward.expected_op
+            || response["forOp"] != expected_op
             || !matches_result(forward, &response["outcome"])
         {
             // A malformed/misbound receipt cannot authoritatively deny possible admission.
@@ -997,10 +954,7 @@ impl Daemon {
         let Some(forward) = self.forwards.remove(rid) else {
             return;
         };
-        let outcome = forward.binding.as_ref().map_or_else(
-            || json!({"tag":"error","code":"unavailable"}),
-            |binding| json!({"tag":"unknown","binding":binding,"code":code}),
-        );
+        let outcome = json!({"tag":"unknown","binding":forward.binding,"code":code});
         self.respond(forward.origin, &forward.request, outcome);
         drop(forward.reservation);
     }
@@ -1099,32 +1053,10 @@ fn project(descriptor: &Value, scopes: &[String]) -> Option<Value> {
     }
 }
 fn matches_result(forward: &Forward, outcome: &Value) -> bool {
-    if let Some(binding) = &forward.binding {
-        return outcome["binding"] == *binding
-            && (outcome["tag"] != "admitted"
-                || (outcome["correlation"] == "none")
-                    == forward.request["message"].get("replyTo").is_none());
-    }
-    if outcome["tag"] == "error" {
-        return true;
-    }
-    let value = &outcome["value"];
-    if value["publisher"] != forward.request["publisher"]
-        || value["scopeId"] != forward.request["scopeId"]
-    {
-        return false;
-    }
-    match forward.expected_op.as_str() {
-        "state.get" => {
-            value["publication"]["key"] == forward.request["key"]
-                && forward
-                    .request
-                    .get("expectedRevision")
-                    .is_none_or(|revision| value["publication"]["revision"] == *revision)
-        }
-        "interest.add" | "interest.remove" => value["work"] == forward.request["work"],
-        _ => true,
-    }
+    outcome["binding"] == forward.binding
+        && (outcome["tag"] != "admitted"
+            || (outcome["correlation"] == "none")
+                == forward.request["message"].get("replyTo").is_none())
 }
 fn random_id() -> io::Result<String> {
     use std::fmt::Write;

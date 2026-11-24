@@ -4,6 +4,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { samePeer } from "../protocol/identity.js";
+import { retiredOps } from "../protocol/schema.js";
 import type { Message, PeerRef } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
 import { createState } from "../state/core.js";
@@ -127,19 +128,15 @@ export class AdapterSession {
         outcome,
       });
     }
-    if (
-      request.op !== "state.get" &&
-      request.op !== "state.list" &&
-      request.op !== "interest.add" &&
-      request.op !== "interest.remove"
-    ) {
+    const retired = retiredOps.find((op) => op === request.op);
+    if (retired === undefined) {
       throw new Error("Unsupported adapter request");
     }
     return checkedReply({
       v: 1,
       op: "result",
       rid: request.rid,
-      forOp: request.op,
+      forOp: retired,
       outcome: { tag: "error", code: "forbidden" },
     });
   }

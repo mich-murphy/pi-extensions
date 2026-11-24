@@ -261,7 +261,10 @@ impl Daemon {
                 }
                 self.respond(id, &request, json!({"tag":"ok","value":{}}));
             }
-            Some("send" | "state.get" | "state.list" | "interest.add" | "interest.remove") => {
+            Some("state.get" | "state.list" | "interest.add" | "interest.remove") => {
+                self.reject(id, &request, "forbidden", None);
+            }
+            Some("send") => {
                 let valid_source =
                     self.remote_descriptor(id, &request["from"])
                         .is_some_and(|descriptor| {

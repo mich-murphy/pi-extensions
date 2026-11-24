@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { Socket } from "node:net";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { sendWithRetries } from "../adapter/send.js";
-import { connectTransport } from "../adapter/transport.js";
+import {
+  CONNECTION_WRITE_BYTES,
+  CONTROL_WRITE_BYTES,
+  connectTransport,
+} from "../adapter/transport.js";
 import type { Reply, Request } from "../adapter/transport.js";
 import type { Frame } from "../protocol/schema.js";
 import { encodeFrame } from "../protocol/wire.js";
@@ -32,7 +36,7 @@ class BlockedSocket extends Socket {
 }
 const peer = { machineId: "alpha", sessionId: "sender", runtimeNonce: "1".repeat(32) };
 const other = { machineId: "alpha", sessionId: "receiver", runtimeNonce: "2".repeat(32) };
-function readRequest(index: number): Request {
+function retiredRequest(index: number): Request {
   return {
     v: 1,
     op: "state.get",
@@ -43,32 +47,18 @@ function readRequest(index: number): Request {
     key: "report",
   };
 }
-function readReply(request: Request): Reply {
+function retiredReply(request: Request): Reply {
   assert(request.op === "state.get");
   return {
     v: 1,
     op: "result",
     rid: request.rid,
     forOp: "state.get",
-    outcome: {
-      tag: "ok",
-      value: {
-        publisher: other,
-        scopeId: "team",
-        publication: {
-          key: "report",
-          revision: 1,
-          category: "context",
-          title: "report",
-          summary: "authored",
-          content: "x".repeat(15_000),
-          format: "text",
-          preparation: "authored",
-        },
-      },
-    },
+    outcome: { tag: "error", code: "forbidden" },
   };
 }
+const replyBytes = encodeFrame(retiredReply(retiredRequest(0)), "adapter-delivery").length;
+const repliesUnderCap = Math.floor(CONTROL_WRITE_BYTES / replyBytes);
 function deliver(socket: Socket, frame: Frame): void {
   socket.emit("data", Buffer.from(encodeFrame(frame, "adapter-delivery")));
 }
@@ -89,7 +79,7 @@ async function fixture() {
     {
       socketPath: "/unused/callback-seam.sock",
       deadline: performance.now() + 5000,
-      incoming: readReply,
+      incoming: retiredReply,
       event: () => undefined,
       validateReply: () => undefined,
       disconnected: (code) => {
@@ -112,7 +102,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
     const { socket, connection, disconnected } = await fixture();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(disconnected).toStrictEqual([]);
-    deliver(socket, readRequest(1));
+    deliver(socket, retiredRequest(1));
     expect(connection.pendingCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(4999);
     expect(disconnected).toStrictEqual([]);
@@ -133,7 +123,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
       delay: fakeDelay,
     });
     await vi.advanceTimersByTimeAsync(4000);
-    deliver(socket, readRequest(2));
+    deliver(socket, retiredRequest(2));
     await vi.advanceTimersByTimeAsync(999);
     expect(disconnected).toStrictEqual([]);
     await vi.advanceTimersByTimeAsync(1);
@@ -144,11 +134,12 @@ describe("bounded transport write completion and absolute progress deadlines", (
   });
   test("control flooding hits its independent 32KiB ceiling, far below total connection capacity", async () => {
     const { socket, connection, disconnected } = await fixture();
-    deliver(socket, readRequest(1));
-    deliver(socket, readRequest(2));
-    expect(socket.writableLength).toBeLessThan(32_768);
+    for (let index = 1; index <= repliesUnderCap; index += 1) {
+      deliver(socket, retiredRequest(index));
+    }
+    expect(socket.writableLength).toBeLessThanOrEqual(CONTROL_WRITE_BYTES);
     expect(disconnected).toStrictEqual([]);
-    deliver(socket, readRequest(3));
+    deliver(socket, retiredRequest(repliesUnderCap + 1));
     expect(disconnected).toHaveLength(1);
     expect(socket.destroyed).toBe(true);
     connection.close();
@@ -156,13 +147,13 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("actual completion releases control bytes and advances to the next original deadline, not a fresh five seconds", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { socket, connection, disconnected } = await fixture();
-    deliver(socket, readRequest(1));
+    deliver(socket, retiredRequest(1));
     await vi.advanceTimersByTimeAsync(1000);
-    deliver(socket, readRequest(2));
+    deliver(socket, retiredRequest(2));
     await vi.advanceTimersByTimeAsync(3000);
     socket.release();
     await vi.advanceTimersByTimeAsync(0);
-    deliver(socket, readRequest(3));
+    deliver(socket, retiredRequest(3));
     expect(disconnected).toStrictEqual([]);
     await vi.advanceTimersByTimeAsync(1999);
     expect(disconnected).toStrictEqual([]);
@@ -230,10 +221,10 @@ describe("bounded transport write completion and absolute progress deadlines", (
         performance.now() + 15_000,
       ),
     ).rejects.toMatchObject({ code: "overloaded", possible: false });
-    deliver(socket, readRequest(20));
-    deliver(socket, readRequest(21));
+    deliver(socket, retiredRequest(20));
+    deliver(socket, retiredRequest(21));
     expect(disconnected).toStrictEqual([]);
-    expect(socket.writableLength).toBeLessThanOrEqual(262_144);
+    expect(socket.writableLength).toBeLessThanOrEqual(CONNECTION_WRITE_BYTES);
     connection.close();
     socket.release();
     expect(disconnected).toStrictEqual(["cancelled"]);
@@ -250,12 +241,12 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("fully completed writes cancel the progress timer and restore a quiet connection", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { socket, connection, disconnected } = await fixture();
-    deliver(socket, readRequest(1));
+    deliver(socket, retiredRequest(1));
     await vi.advanceTimersByTimeAsync(4000);
     socket.release();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(disconnected).toStrictEqual([]);
-    deliver(socket, readRequest(2));
+    deliver(socket, retiredRequest(2));
     expect(disconnected).toStrictEqual([]);
     connection.close();
     await vi.advanceTimersByTimeAsync(20_000);
