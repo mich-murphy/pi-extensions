@@ -4,7 +4,6 @@ import type { SendOutcome } from "../adapter/send.js";
 
 type Refused = Extract<SendOutcome, { tag: "not_admitted" }>;
 type Unsure = Extract<SendOutcome, { tag: "unknown" }>;
-type Resource = Extract<Refused, { code: "overloaded" }>["resource"];
 const refusedCodes = Object.keys({
   forbidden: true,
   unavailable: true,
@@ -21,17 +20,6 @@ const unsureCodes = Object.keys({
   protocol_error: true,
   cancelled: true,
 } satisfies Record<Unsure["code"], true>);
-const resources = Object.keys({
-  registrations: true,
-  inbox: true,
-  receipts: true,
-  relations: true,
-  interests: true,
-  publications: true,
-  operations: true,
-  buffers: true,
-  watch: true,
-} satisfies Record<Resource, true>);
 
 describe("send hints say what happened to the message", () => {
   test.each(refusedCodes)(
@@ -42,8 +30,8 @@ describe("send hints say what happened to the message", () => {
       expect(hint).not.toMatch(/may have arrived/u);
     },
   );
-  test.each(resources)("an overloaded %s refusal says not delivered", (resource) => {
-    const hint = sendHint({ tag: "not_admitted", code: "overloaded", resource });
+  test("an overloaded refusal naming a resource says not delivered", () => {
+    const hint = sendHint({ tag: "not_admitted", code: "overloaded", resource: "inbox" });
     expect(hint).toMatch(/^Not delivered\./u);
     expect(hint).not.toMatch(/may have arrived/u);
   });

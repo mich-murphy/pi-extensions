@@ -82,44 +82,31 @@ function filled(bytes: number, wide: boolean): string {
   return wide ? `${"€".repeat(Math.floor(bytes / 3))}${"x".repeat(bytes % 3)}` : "x".repeat(bytes);
 }
 
-function publicationFrame(sizes: {
-  title: number;
-  summary: number;
+function authoredFrame(sizes: {
   content: number;
   label: number;
   locator: number;
   wide: boolean;
 }): unknown {
-  const peer = { machineId: "alpha", sessionId: "s", runtimeNonce: nonce };
   return {
     v: 1,
-    op: "result",
+    op: "send",
     rid,
-    forOp: "state.get",
-    outcome: {
-      tag: "ok",
-      value: {
-        publisher: peer,
-        scopeId: "team",
-        publication: {
-          key: "report",
-          revision: 1,
-          category: "context",
-          title: filled(sizes.title, sizes.wide),
-          summary: filled(sizes.summary, sizes.wide),
-          content: filled(sizes.content, sizes.wide),
-          format: "text",
-          preparation: "authored",
-          refs: [
-            {
-              kind: "resource",
-              machineId: "alpha",
-              locator: filled(sizes.locator, sizes.wide),
-              label: filled(sizes.label, sizes.wide),
-            },
-          ],
+    to: { machineId: "beta", sessionId: "s", runtimeNonce: nonce },
+    scopeId: "team",
+    message: {
+      id: "2".repeat(32),
+      kind: "request",
+      format: "text",
+      content: filled(sizes.content, sizes.wide),
+      refs: [
+        {
+          kind: "resource",
+          machineId: "alpha",
+          locator: filled(sizes.locator, sizes.wide),
+          label: filled(sizes.label, sizes.wide),
         },
-      },
+      ],
     },
   };
 }
@@ -186,17 +173,15 @@ describe("Hegel size-bound edges", () => {
     });
   });
 
-  test("the sum of title, summary, content, label and locator bytes is accepted iff <= MAX_AUTHORED_BYTES", () => {
+  test("the sum of content, label and locator bytes is accepted iff <= MAX_AUTHORED_BYTES", () => {
     property("aggregate", (tc) => {
       const offset = tc.draw(edge, "offset");
-      const title = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "title bytes");
-      const summary = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "summary bytes");
       const label = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "label bytes");
       const locator = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "locator bytes");
       const wide = tc.draw(gs.booleans(), "multi-byte text");
-      const content = MAX_AUTHORED_BYTES + offset - title - summary - label - locator;
+      const content = MAX_AUTHORED_BYTES + offset - label - locator;
       assertFrameEdge(
-        publicationFrame({ title, summary, content, label, locator, wide }),
+        authoredFrame({ content, label, locator, wide }),
         "local-client",
         offset <= 0,
       );

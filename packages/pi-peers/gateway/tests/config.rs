@@ -1,6 +1,8 @@
 //! Operator configuration has no implicit grants or remote fallback.
-use pi_gateway::config::Config;
+use pi_gateway::config::{Config, Direction, Permission};
 use serde_json::{Value, json};
+
+mod support;
 
 fn valid() -> Value {
     json!({"machineId":"alpha","socketPath":"/private/tmp/not-bound","scopeIds":["team"],"policies":[{"machineId":"alpha","scopeId":"team","permissions":["discover","read","push","interest"]}]})
@@ -88,5 +90,41 @@ fn loaded_fingerprint_cannot_be_supplied_in_config_json() {
             Config::parse(&serde_json::to_vec(&value).unwrap()).is_err(),
             "internal hash field {field} must not be accepted"
         );
+    }
+}
+
+#[hegel::test(support::property_settings(200, 45678))]
+fn permissions_grant_exactly_their_live_members(tc: hegel::TestCase) {
+    use hegel::generators as gs;
+    let names = vec!["discover", "read", "push", "interest"];
+    let mut listed = tc.draw(
+        gs::vecs(gs::sampled_from(names))
+            .min_size(1)
+            .max_size(4)
+            .unique(true),
+    );
+    listed.sort_by_key(|_| tc.draw(gs::booleans()));
+    let incoming = tc.draw(gs::booleans());
+    let (direction, other, name) = if incoming {
+        (Direction::Incoming, Direction::Outgoing, "incoming")
+    } else {
+        (Direction::Outgoing, Direction::Incoming, "outgoing")
+    };
+    let mut value = valid();
+    value["policies"] =
+        json!([{"machineId":"beta","scopeId":"team","permissions":listed,"direction":name}]);
+    let config = Config::parse(&serde_json::to_vec(&value).unwrap())
+        .expect("any non-empty unique set of known permissions parses, retired ones included");
+    for (permission, granted) in [
+        (Permission::Discover, "discover"),
+        (Permission::Push, "push"),
+    ] {
+        assert_eq!(
+            config.permits_direction("beta", "team", permission, direction),
+            listed.contains(&granted),
+            "{granted} is granted exactly when listed"
+        );
+        assert!(!config.permits_direction("beta", "team", permission, other));
+        assert!(!config.permits_direction("alpha", "team", permission, direction));
     }
 }

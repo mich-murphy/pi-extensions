@@ -17,6 +17,8 @@ export class ConnectionFailure extends Error {
     super(`Session communication ${code}`);
   }
 }
+export const CONTROL_WRITE_BYTES = 32_768;
+export const CONNECTION_WRITE_BYTES = 262_144;
 type QueuedWrite = { bytes: number; control: boolean; deadline: number };
 type Pending = {
   request: Request;
@@ -102,11 +104,13 @@ export async function connectTransport(
   };
   const write = (frame: Frame, control: boolean, operation?: Pending) => {
     const encoded = encodeFrame(frame, frame.op === "result" ? "adapter-delivery" : "local-client");
-    const available = control ? 32_768 - controlBytes : 229_376 - ordinaryBytes;
+    const available = control
+      ? CONTROL_WRITE_BYTES - controlBytes
+      : CONNECTION_WRITE_BYTES - CONTROL_WRITE_BYTES - ordinaryBytes;
     if (
       closed ||
       encoded.length > available ||
-      ordinaryBytes + controlBytes + encoded.length > 262_144
+      ordinaryBytes + controlBytes + encoded.length > CONNECTION_WRITE_BYTES
     ) {
       throw new ConnectionFailure(closed ? "unavailable" : "overloaded", false);
     }

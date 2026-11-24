@@ -50,11 +50,11 @@ pub enum Direction {
 pub enum Permission {
     /// Reveal eligible roster entries.
     Discover,
-    /// Read adapter-owned state.
+    /// Retired with publications; still parsed so older configurations start, grants nothing.
     Read,
     /// Admit collaboration pushes at the destination adapter.
     Push,
-    /// Mutate volatile publisher interest.
+    /// Retired with interests; still parsed so older configurations start, grants nothing.
     Interest,
 }
 
@@ -158,7 +158,10 @@ impl Config {
         self.permits_direction(machine, scope, permission, Direction::Outgoing)
     }
 
-    pub(crate) fn permits_direction(
+    /// Whether a policy grants `permission` on `scope` to `machine` in `direction`.
+    /// The retired `read` and `interest` permissions are never asked for, so they grant nothing.
+    #[must_use]
+    pub fn permits_direction(
         &self,
         machine: &str,
         scope: &str,

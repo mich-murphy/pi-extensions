@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+mod support;
+
 static DIRECTORY: AtomicU64 = AtomicU64::new(1);
 struct Gateway {
     child: Child,
@@ -18,6 +20,11 @@ struct Gateway {
 }
 impl Gateway {
     fn start(permissions: &[&str]) -> Self {
+        Self::with_policies(
+            &json!([{"machineId":"alpha","scopeId":"team","permissions":permissions}]),
+        )
+    }
+    fn with_policies(policies: &Value) -> Self {
         let directory = PathBuf::from("/tmp")
             .canonicalize()
             .expect("isolated fixture setup and framed I/O must succeed")
@@ -31,7 +38,7 @@ impl Gateway {
             .expect("isolated fixture setup and framed I/O must succeed");
         let socket = directory.join("s");
         let config = directory.join("config.json");
-        fs::write(&config, serde_json::to_vec(&json!({"machineId":"alpha","socketPath":socket,"scopeIds":["team","private"],"policies":[{"machineId":"alpha","scopeId":"team","permissions":permissions}]})).expect("isolated fixture setup and framed I/O must succeed")).expect("isolated fixture setup and framed I/O must succeed");
+        fs::write(&config, serde_json::to_vec(&json!({"machineId":"alpha","socketPath":socket,"scopeIds":["team","private"],"policies":policies})).expect("isolated fixture setup and framed I/O must succeed")).expect("isolated fixture setup and framed I/O must succeed");
         let mut child = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
             .args([
                 "--config",
@@ -447,4 +454,178 @@ fn gateway_refuses_a_socket_directory_that_others_can_enter() {
         !socket.exists(),
         "no socket is created in an unsafe directory"
     );
+}
+
+const SCOPES: [&str; 2] = ["team", "private"];
+const PERMISSIONS: [&str; 4] = ["discover", "read", "push", "interest"];
+const RETIRED: [&str; 4] = ["state.get", "state.list", "interest.add", "interest.remove"];
+
+fn subset(tc: &hegel::TestCase, items: &[&'static str], min: usize) -> Vec<&'static str> {
+    use hegel::generators as gs;
+    tc.draw(
+        gs::vecs(gs::sampled_from(items.to_vec()))
+            .min_size(min)
+            .max_size(items.len())
+            .unique(true),
+    )
+}
+
+/// A real gateway with generated grants for both machines, scopes and directions, and two
+/// registered sessions in generated scopes.
+struct World {
+    policies: Value,
+    sender: UnixStream,
+    sender_peer: Value,
+    sender_scopes: Vec<&'static str>,
+    receiver: UnixStream,
+    receiver_peer: Value,
+    receiver_scopes: Vec<&'static str>,
+    _gateway: Gateway,
+}
+fn draw_world(tc: &hegel::TestCase) -> World {
+    let mut policies = Vec::new();
+    for machine in ["alpha", "beta"] {
+        for scope in SCOPES {
+            for direction in ["outgoing", "incoming"] {
+                let permissions = subset(tc, &PERMISSIONS, 0);
+                if !permissions.is_empty() {
+                    policies.push(json!({"machineId":machine,"scopeId":scope,"permissions":permissions,"direction":direction}));
+                }
+            }
+        }
+    }
+    let policies = Value::from(policies);
+    let gateway = Gateway::with_policies(&policies);
+    let sender_scopes = subset(tc, &SCOPES, 1);
+    let receiver_scopes = subset(tc, &SCOPES, 1);
+    let mut sender = gateway.connect();
+    let sender_peer = register(&mut sender, "sender", 10, &sender_scopes);
+    let mut receiver = gateway.connect();
+    let receiver_peer = register(&mut receiver, "receiver", 11, &receiver_scopes);
+    World {
+        policies,
+        sender,
+        sender_peer,
+        sender_scopes,
+        receiver,
+        receiver_peer,
+        receiver_scopes,
+        _gateway: gateway,
+    }
+}
+/// The live receiver, the same session after a restart, or a session on a machine with no route.
+fn draw_target(tc: &hegel::TestCase, receiver: &Value) -> Value {
+    use hegel::generators as gs;
+    match tc.draw(gs::sampled_from(vec![0_u8, 1, 2])) {
+        0 => receiver.clone(),
+        1 => json!({"machineId":"alpha","sessionId":"receiver","runtimeNonce":rid(99)}),
+        _ => json!({"machineId":"beta","sessionId":"receiver","runtimeNonce":rid(11)}),
+    }
+}
+/// Oracle written from the policy text alone: only outgoing grants apply to local sessions.
+fn granted(policies: &Value, machine: &str, scope: &str, permission: &str) -> bool {
+    policies.as_array().into_iter().flatten().any(|policy| {
+        policy["machineId"] == machine
+            && policy["scopeId"] == scope
+            && policy["direction"] == "outgoing"
+            && policy["permissions"]
+                .as_array()
+                .is_some_and(|listed| listed.iter().any(|item| item == permission))
+    })
+}
+/// The session's next frame is the answer to a fresh request, so nothing else was queued for it.
+fn assert_nothing_queued(stream: &mut UnixStream, number: u64) {
+    write(
+        stream,
+        &json!({"v":1,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":false}),
+    );
+    let reply = read(stream);
+    assert_eq!(
+        (reply["rid"].clone(), reply["forOp"].clone()),
+        (json!(rid(number)), json!("discover")),
+        "the connection is alive and nothing else reached this session first"
+    );
+}
+
+#[hegel::test(support::property_settings(100, 56789))]
+fn send_and_discover_follow_the_outgoing_grants_exactly(tc: hegel::TestCase) {
+    use hegel::generators as gs;
+    let mut world = draw_world(&tc);
+    let scope = tc.draw(gs::sampled_from(SCOPES.to_vec()));
+    let target = draw_target(&tc, &world.receiver_peer);
+    let machine = target["machineId"].as_str().unwrap_or("");
+    let authorized =
+        world.sender_scopes.contains(&scope) && granted(&world.policies, machine, scope, "push");
+    let delivered =
+        authorized && target == world.receiver_peer && world.receiver_scopes.contains(&scope);
+    write(
+        &mut world.sender,
+        &json!({"v":1,"op":"send","rid":rid(20),"to":target,"scopeId":scope,"message":{"id":rid(600),"kind":"request","content":"routed","format":"text"}}),
+    );
+    let binding =
+        json!({"messageId":rid(600),"sender":world.sender_peer,"recipient":target,"scopeId":scope});
+    if delivered {
+        let delivery = read(&mut world.receiver);
+        assert_eq!(delivery["op"], "deliver");
+        assert_eq!(delivery["from"], world.sender_peer);
+        write(
+            &mut world.receiver,
+            &json!({"v":1,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":binding,"correlation":"none"}}),
+        );
+        assert_eq!(
+            read(&mut world.sender)["outcome"],
+            json!({"tag":"admitted","binding":binding,"correlation":"none"})
+        );
+    } else {
+        let code = if authorized { "no_route" } else { "forbidden" };
+        assert_eq!(
+            read(&mut world.sender)["outcome"],
+            json!({"tag":"not_admitted","binding":binding,"code":code}),
+            "an unauthorized send is forbidden before any route lookup; an authorized one without a live member is no_route"
+        );
+    }
+    let scopes = subset(&tc, &SCOPES, 1);
+    let visible = scopes.iter().all(|scope| {
+        world.sender_scopes.contains(scope) && granted(&world.policies, "alpha", scope, "discover")
+    });
+    write(
+        &mut world.sender,
+        &json!({"v":1,"op":"discover","rid":rid(21),"scopeIds":scopes,"watch":false}),
+    );
+    assert_eq!(
+        read(&mut world.sender)["outcome"]["tag"],
+        if visible { "ok" } else { "error" },
+        "discover succeeds exactly when every requested scope is joined and granted"
+    );
+    assert_nothing_queued(&mut world.receiver, 22);
+}
+
+#[hegel::test(support::property_settings(100, 67890))]
+fn retired_requests_are_refused_alike_whatever_the_grants_and_never_reach_a_session(
+    tc: hegel::TestCase,
+) {
+    use hegel::generators as gs;
+    let mut world = draw_world(&tc);
+    let count = tc.draw(gs::sampled_from(vec![1_u64, 2, 3, 4]));
+    for number in 30..30 + count {
+        let op = tc.draw(gs::sampled_from(RETIRED.to_vec()));
+        let publisher = draw_target(&tc, &world.receiver_peer);
+        let scope = tc.draw(gs::sampled_from(vec!["team", "private", "elsewhere"]));
+        let mut request =
+            json!({"v":1,"op":op,"rid":rid(number),"publisher":publisher,"scopeId":scope});
+        if op == "state.get" {
+            request["key"] = json!("report");
+        } else if op.starts_with("interest.") {
+            request["work"] =
+                json!({"kind":"request","origin":world.sender_peer,"requestId":rid(700)});
+        }
+        write(&mut world.sender, &request);
+        assert_eq!(
+            read(&mut world.sender),
+            json!({"v":1,"op":"result","rid":rid(number),"forOp":op,"outcome":{"tag":"error","code":"forbidden"}}),
+            "the same refusal whatever the grants, scope or target, so it reveals no route"
+        );
+    }
+    assert_nothing_queued(&mut world.sender, 40);
+    assert_nothing_queued(&mut world.receiver, 41);
 }

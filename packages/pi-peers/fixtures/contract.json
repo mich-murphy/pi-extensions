@@ -7,8 +7,8 @@
   },
   "roles": {
     "local-client": "Local session/gateway request path; caller omits authenticated from. Results/events on same path are schema-validated before live mapping checks.",
-    "gateway-forward": "Authenticated routed forwarding path: send/state.get/state.list/interest.add/interest.remove, all requiring from.",
-    "adapter-delivery": "Gateway-to-Pi path: deliver plus authenticated state/interest requests. Receiver deliver result may only admit/reject, never claim unknown.",
+    "gateway-forward": "Authenticated routed forwarding path: send, plus the retired state.get/state.list/interest.add/interest.remove, all requiring from. Retired requests still decode so older peers get a forbidden result instead of a closed link; their results are error-only.",
+    "adapter-delivery": "Gateway-to-Pi path: deliver plus the retired state/interest requests, which the adapter answers with forbidden. Receiver deliver result may only admit/reject, never claim unknown.",
     "remote-link": "Authenticated inter-gateway path: own-machine discovery/unwatch, ping and authenticated routed operations. Machine/scope authorization belongs to live connection state."
   },
   "encodedBounds": "wire/*.hex is authoritative raw evidence; expected.value is canonical decoded data, not a generator. Descriptor bytes include its actual object representation including escaping/whitespace. Full frame cap counts the prefix.",
