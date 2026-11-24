@@ -40,19 +40,6 @@ const baseline = {
 };
 const keys = Object.keys(baseline);
 const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
-const REMOVED_PERMISSIONS =
-  "policies (the read and interest permissions were removed; drop them via /peers setup)";
-function removedPermission(value: object): boolean {
-  const policies: unknown = Reflect.get(value, "policies");
-  return (
-    Array.isArray(policies) &&
-    policies.some((policy: unknown) => {
-      const listed: unknown =
-        typeof policy === "object" && policy !== null ? Reflect.get(policy, "permissions") : [];
-      return Array.isArray(listed) && listed.some((item) => item === "read" || item === "interest");
-    })
-  );
-}
 export function invalidFields(value: unknown): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return ["root (expected an object)"];
@@ -63,7 +50,7 @@ export function invalidFields(value: unknown): string[] {
       const field: unknown = Reflect.get(value, key);
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
-      fields.push(key === "policies" && removedPermission(value) ? REMOVED_PERMISSIONS : key);
+      fields.push(key);
     }
   }
   for (const key of optionalKeys.filter((name) => Object.hasOwn(value, name))) {
