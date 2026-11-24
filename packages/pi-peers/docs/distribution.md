@@ -150,12 +150,12 @@ Until these gates pass, report fallback unavailable; do not ship fabricated
 hashes, treat nonexistent URLs as working acquisition, or send users to Cargo.
 A usable pinned Nix build remains an independent acquisition path. The shipped
 `onboarding/catalog.ts` pins the reviewed Nix source revision
-`e7eafc877ff1e19934f01f69f8edd3680c826598`, version `0.1.1`,
-`sha256-jUHlKJSGGIrRs5dhwdqM68s6zW2IZlqBwAIW5YCL8C4=`. It also pins the
+`7c0bdcc33ac03ec1a4dd1f3b81078959f78ebf9d`, version `0.2.0`,
+`sha256-eIUMx5JB9+k1Ld07li4oYo1/rLbo+MVdI0t7azSCvRs=`. It also pins the
 published native release
-[`pi-gateway-v0.1.1`](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.1.1)
+[`pi-gateway-v0.2.0`](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.2.0)
 from the same revision, with manifest SHA-256
-`4484725f4240c70f5c27f5b8179a877685fadb216f06deada9dc45d7e4147f51`. That digest
+`a209cb6ded07de0a50dfdefa313ed1a491e03154b534b2479061f18085060240`. That digest
 was reviewed against the published asset and an independent authentication of
 the original CI-built archives, not taken from the adjacent `manifest.sha256`.
 On the three supported targets, hosts without usable Nix use this native
