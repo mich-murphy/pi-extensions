@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { MessageAliases } from "../adapter/aliases.js";
 import { Handles, sessionHandle, TakenIndex } from "../adapter/handles.js";
 import { UnsureSends } from "../adapter/retries.js";
 import { registerTools } from "../adapter/tools.js";
@@ -45,6 +46,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     handles: new Handles(),
     taken,
     unsure: new UnsureSends(() => clock),
+    aliases: new MessageAliases(),
     client: {
       isClosed: () => false,
       recoverForTool: async () => undefined,
@@ -158,7 +160,7 @@ describe("peers_send", () => {
     });
     expect(result.content[0]?.text).toMatch(
       new RegExp(
-        `^Delivered to their inbox; not yet read, accepted or done\\.\\nto ${handle} · messageId [0-9a-f]{32}$`,
+        String.raw`^Delivered to their inbox; not yet read, accepted or done\.\nid m-[0-9a-f]{4}$`,
         "u",
       ),
     );
@@ -188,6 +190,41 @@ describe("peers_send", () => {
     expect(result.content[0]?.text).toContain(note);
     expect(fx.sent).toHaveLength(0);
   });
+  test("limits dropped from the schema are still enforced in code", async () => {
+    const fx = await listedFixture();
+    const large = await fx.call("peers_send", {
+      to: handle,
+      kind: "update",
+      content: "é".repeat(12_289),
+    });
+    expect(large).toMatchObject({
+      isError: true,
+      details: { value: { code: "delivery_too_large" } },
+    });
+    const scoped = await fx.call("peers_send", {
+      to: handle,
+      kind: "update",
+      content: "x",
+      scope: "bad scope",
+    });
+    expect(scoped).toMatchObject({ isError: true, details: { value: { code: "invalid_input" } } });
+    expect(fx.sent).toHaveLength(0);
+  });
+  test("replyTo accepts the short id shown by peers_take", async () => {
+    const fx = await listedFixture();
+    fx.inbox.push({
+      from: beta,
+      to: self,
+      scopeId: "team",
+      message: { id: "5a5a".padEnd(32, "0"), kind: "request", content: "q", format: "text" },
+    });
+    expect(textOf(await fx.call("peers_take"))).toContain("id m-5a5a");
+    await fx.call("peers_send", { to: handle, kind: "reply", content: "a", replyTo: "m-5a5a" });
+    expect(fx.sent[0]?.message.replyTo).toStrictEqual({
+      sender: beta,
+      messageId: "5a5a".padEnd(32, "0"),
+    });
+  });
   test("replyTo resolves sender and scope from taken messages; unknown ids are refused", async () => {
     const fx = fixture([{ peer: beta, label: "Pi" }]);
     await fx.call("peers_list");
@@ -198,7 +235,7 @@ describe("peers_send", () => {
       replyTo: "d".repeat(32),
     });
     expect(unknown.content[0]?.text).toBe(
-      "replyTo does not match a message you took; check the messageId.",
+      "replyTo does not match a message you took; check its id.",
     );
     fx.inbox.push({
       from: beta,
@@ -257,10 +294,10 @@ describe("peers_take", () => {
     const result = await fx.call("peers_take");
     expect(result.content[0]?.text).toBe(
       [
-        `from ${handle} · request · messageId ${"1".repeat(32)}`,
+        `from ${handle} · request · id m-1111`,
         "first",
         "",
-        `from ${handle} · reply · messageId ${"2".repeat(32)} · reply to ${"3".repeat(32)} · status completed`,
+        `from ${handle} · reply · id m-2222 · reply to m-3333 · status completed`,
         "second",
       ].join("\n"),
     );
@@ -303,7 +340,7 @@ describe("peers_take waitSeconds", () => {
       message: { id: "1".repeat(32), kind: "update", content: "done", format: "text" },
     });
     const result = await fx.call("peers_take", { waitSeconds: 30 });
-    expect(textOf(result)).toBe(`from ${handle} · update · messageId ${"1".repeat(32)}\ndone`);
+    expect(textOf(result)).toBe(`from ${handle} · update · id m-1111\ndone`);
   });
 });
 describe("peers_send retryOf", () => {
@@ -318,9 +355,19 @@ describe("peers_send retryOf", () => {
     expect(retried.isError).toBeUndefined();
     expect(fx.sent).toHaveLength(2);
     expect(fx.sent[1]).toStrictEqual(original);
+    expect(textOf(first)).toMatch(/\nid m-[0-9a-f]{4}$/u);
     const again = await fx.call("peers_send", { ...args, retryOf: original?.message.id });
     expect(again.isError).toBe(true);
     expect(fx.sent).toHaveLength(2);
+  });
+  test("retryOf accepts the short id from the send result", async () => {
+    const fx = await listedFixture();
+    fx.outcomes.push("unknown");
+    const first = await fx.call("peers_send", args);
+    const short = /id (?<alias>m-[0-9a-f]+)$/u.exec(textOf(first))?.groups?.alias;
+    const retried = await fx.call("peers_send", { ...args, retryOf: short });
+    expect(retried.isError).toBeUndefined();
+    expect(fx.sent[1]).toStrictEqual(fx.sent[0]);
   });
   test("an unsure retry can be retried again, and a changed message is refused", async () => {
     const fx = await listedFixture();

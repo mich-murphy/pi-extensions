@@ -10,6 +10,7 @@ import { validateFrame } from "../protocol/wire.js";
 import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
 import type { Delivery } from "../state/types.js";
+import { MessageAliases } from "./aliases.js";
 import type { EnsureGateway } from "./client.js";
 import { GatewayClient } from "./client.js";
 import { permits } from "./config.js";
@@ -37,6 +38,7 @@ export class AdapterSession {
   readonly handles = new Handles();
   readonly taken = new TakenIndex();
   readonly unsure = new UnsureSends();
+  readonly aliases = new MessageAliases();
   private readonly inbox: Waiting[] = [];
   private waiter: ((result: Waited) => void) | undefined;
   private readonly abort = new AbortController();
