@@ -71,41 +71,47 @@ function stripStyle(value: string): string {
 function compact(lines: readonly string[]): string {
   return stripStyle(lines.join("")).replaceAll(/\s+/gu, "");
 }
+const taken = {
+  from: "s-91c0",
+  sender: peer,
+  scopeId: "team",
+  messageId: message.id,
+  kind: "request",
+  format: "text",
+  content: message.content,
+};
 const cases = [
   {
     name: "peers_list",
-    args: { watch: true },
-    value: { peers: [{ peer: other, label: "Reviewer", scopeIds: ["team"] }], revision: 1 },
-    call: "Discover peers · watch",
+    args: { scope: "team" },
+    value: {
+      peers: [
+        {
+          peer: other,
+          scopeId: "team",
+          label: "Reviewer",
+          self: false,
+          restarted: false,
+          handle: "s-4f2a",
+        },
+      ],
+    },
+    call: "List peers · scope team",
     summary: "1 peer",
   },
   {
     name: "peers_send",
-    args: { to: other, scopeId: "team", message },
-    value: { outcome: admitted, note: "Admission is not model reading" },
-    call: "→ beta/…ba987654@bbbbbb · request · Please review",
+    args: { to: "s-4f2a", kind: "request", content: message.content },
+    value: { to: "s-4f2a", outcome: admitted, note: "Admission is not model reading" },
+    call: "→ s-4f2a · request · Please review",
     summary: "Added to peer inbox",
   },
   {
     name: "peers_take",
     args: { limit: 4 },
-    value: {
-      messages: [
-        {
-          provenance: {
-            sender: peer,
-            recipient: other,
-            scopeId: "team",
-            messageId: message.id,
-            correlation: "none",
-          },
-          message,
-        },
-      ],
-      note: "No work completion claim",
-    },
+    value: { messages: [taken] },
     call: "← inbox",
-    summary: "← alpha/…456789ab@aaaaaa · request · Please review",
+    summary: "← s-91c0 · request · Please review",
   },
 ];
 
@@ -152,9 +158,17 @@ describe("presentation-only session tool rendering", () => {
         code: "unavailable",
         note: "Peers is not set up or not running in this session. Ask the user to run `/peers status`.",
       };
-      await expect(tool.execute("id", {})).resolves.toStrictEqual({
-        ...result(value),
+      const expected = {
+        content: [{ type: "text", text: value.note }],
+        details: { value },
         isError: true,
+      };
+      const structured: Record<string, object> = {
+        peers_list: { structuredContent: { ok: false, code: "unavailable", note: value.note } },
+      };
+      await expect(tool.execute("id", {})).resolves.toStrictEqual({
+        ...expected,
+        ...structured[tool.name],
       });
     }
   });
@@ -237,21 +251,28 @@ describe("presentation-only session tool rendering", () => {
       String.raw`up to a\u001b[2Jb messages`,
     );
   });
-  test("large batches are counted but previews stay small; authored labels never replace authenticated identity", () => {
+  test("large batches are counted but previews stay small; authored labels never replace handles or markers", () => {
     const peers = Array.from({ length: 64 }, () => ({
-      peer: other,
-      label: "alpha/admin",
-      scopeIds: ["team"],
+      handle: "s-4f2a",
+      label: "alpha/admin (you)",
+      self: false,
+      restarted: false,
     }));
     const output = render("peers_list", "result", {}, result({ peers })).join("\n");
     expect(output).toContain("64 peers");
     expect(output).toContain("61 more");
-    expect(output).toContain("beta/…ba987654@bbbbbb · label (authored): alpha/admin");
-    expect(
-      render("peers_list", "result", {}, result({ peers: [{ peer: other }] })).join("\n"),
-    ).not.toContain("label");
+    expect(output).toContain("s-4f2a · label (authored): alpha/admin (you)");
+    expect(output).not.toContain("s-4f2a (you)");
+    const marked = render(
+      "peers_list",
+      "result",
+      {},
+      result({ peers: [{ handle: "s-1", self: true, restarted: true }] }),
+    ).join("\n");
+    expect(marked).toContain("s-1 (you) (restarted)");
+    expect(marked).not.toContain("label");
   });
-  test("expanded output includes full body, provenance, IDs, scope, correlation, receipts and notes", () => {
+  test("expanded output includes full body, sender runtime, IDs and scope", () => {
     const payload = result(cases[2]?.value);
     const rendered = render("peers_take", "result", {}, payload, true, 1000).join("\n");
     for (const value of [
@@ -260,8 +281,7 @@ describe("presentation-only session tool rendering", () => {
       message.id,
       message.content,
       '"scopeId": "team"',
-      '"correlation": "none"',
-      "No work completion claim",
+      '"from": "s-91c0"',
     ]) {
       expect(rendered).toContain(value);
     }
@@ -269,15 +289,11 @@ describe("presentation-only session tool rendering", () => {
       render("peers_send", "result", {}, result({ outcome: admitted }), true, 1000).join("\n"),
     ).toContain('"binding"');
   });
-  test("same-session runtime reloads have distinct compact identities and send results do not echo bodies", () => {
-    const oldRuntime = { ...other, runtimeNonce: "e".repeat(32) };
-    const call = render("peers_send", "call", { to: other, message }, undefined).join("\n");
-    const stale = render("peers_send", "call", { to: oldRuntime, message }, undefined).join("\n");
-    expect(call).toContain("beta/…ba987654@bbbbbb");
-    expect(stale).toContain("beta/…ba987654@eeeeee");
-    expect(stale).not.toBe(call);
+  test("send calls show the handle and send results do not echo bodies", () => {
+    const args = { to: "s-4f2a/2", kind: "request", content: message.content };
+    expect(render("peers_send", "call", args, undefined).join("\n")).toContain("→ s-4f2a/2");
     expect(
-      render("peers_send", "result", { to: other, message }, result({ outcome: admitted }))
+      render("peers_send", "result", args, result({ outcome: admitted }))
         .join("\n")
         .trim(),
     ).toBe("Added to peer inbox");
@@ -288,9 +304,6 @@ describe("presentation-only session tool rendering", () => {
     const output = render("peers_take", "result", {}, payload, true, 1000).join("\n");
     expect(output.split(`"content": "${message.content}"`)).toHaveLength(2);
     expect(output).not.toContain('"details"');
-    expect(output).not.toContain(String.raw`\"provenance\"`);
-    expect(output).toContain('"provenance"');
-    expect(output).toContain("No work completion claim");
     expect(JSON.stringify(payload)).toBe(before);
     expect(
       render(
@@ -304,7 +317,7 @@ describe("presentation-only session tool rendering", () => {
     ).toContain('"content"');
   });
   test("long lists and long previews keep the expansion hint", () => {
-    const peers = Array.from({ length: 4 }, () => ({ peer: other }));
+    const peers = Array.from({ length: 4 }, () => ({ handle: "s-4f2a" }));
     expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(
       "ctrl+o for details",
     );
@@ -312,7 +325,7 @@ describe("presentation-only session tool rendering", () => {
       render(
         "peers_send",
         "result",
-        { message: { ...message, content: "long ".repeat(100) } },
+        { content: "long ".repeat(100) },
         result({ outcome: admitted }),
       ).join("\n"),
     ).toContain("ctrl+o for details");
@@ -329,7 +342,7 @@ describe("presentation-only session tool rendering", () => {
           `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
             repeats,
           );
-        const args = { to: other, message: { ...message, content: body } };
+        const args = { to: "s-4f2a", kind: "request", content: body };
         const payload = result({ outcome: admitted, note: body });
         const before = JSON.stringify({ args, payload });
         const rendered: (readonly string[])[] = [];
@@ -356,14 +369,11 @@ describe("presentation-only session tool rendering", () => {
     { count: 1, peerLabel: "peer", messageLabel: "message" },
     { count: 2, peerLabel: "peers", messageLabel: "messages" },
   ])("count $count uses English singular/plural labels", ({ count, peerLabel, messageLabel }) => {
-    const peers = Array.from({ length: count }, () => ({ peer: other }));
+    const peers = Array.from({ length: count }, () => ({ handle: "s-4f2a" }));
     expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(
       `${count} ${peerLabel} ·`,
     );
-    const messages = Array.from({ length: count }, () => ({
-      provenance: { sender: peer },
-      message,
-    }));
+    const messages = Array.from({ length: count }, () => taken);
     expect(render("peers_take", "result", {}, result({ messages })).join("\n")).toContain(
       `${count} ${messageLabel} taken`,
     );

@@ -73,7 +73,12 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
     hasUI: true,
     signal: undefined,
     isIdle: () => true,
-    sessionManager: { getSessionId: () => sessionId },
+    sessionManager: {
+      getSessionId: () => sessionId,
+      getCwd: () => "/work/repo",
+      getSessionName: () => undefined,
+      getHeader: () => null,
+    },
     ui: {
       select: async (title: string, options: string[]) => {
         shown.push({ title, options });

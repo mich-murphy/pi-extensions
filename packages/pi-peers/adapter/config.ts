@@ -35,7 +35,8 @@ const configuration = Schema.Struct({
         value.length > 0 &&
         value.isWellFormed() &&
         Buffer.byteLength(value) <= 128 &&
-        !hasControls(value),
+        !hasControls(value) &&
+        plainText(value).length > 0,
     ),
   ),
   policies: Schema.Array(
@@ -45,8 +46,10 @@ const configuration = Schema.Struct({
       permissions: Schema.Array(Schema.Literals(["discover", "push"])),
     }),
   ).check(Schema.makeFilter<readonly unknown[]>((items) => items.length <= 256)),
+  shareBranch: Schema.optionalKey(Schema.Boolean),
 });
 export type Configuration = typeof configuration.Type;
+export const configurationKeys: readonly string[] = Object.keys(configuration.fields);
 export type Permission = Configuration["policies"][number]["permissions"][number];
 export function decodeConfiguration(value: unknown): Configuration {
   return Schema.decodeUnknownSync(configuration, { onExcessProperty: "error" })(value);
@@ -98,4 +101,15 @@ export function visibleText(value: string): string {
       ? `\\u${code.toString(16).padStart(4, "0")}`
       : character;
   }).join("");
+}
+export function plainText(value: string): string {
+  return Array.from(value.toWellFormed(), (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 31 || (code >= 127 && code <= 159) || bidiControl.test(character)
+      ? " "
+      : character;
+  })
+    .join("")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
 }

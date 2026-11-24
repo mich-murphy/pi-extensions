@@ -24,7 +24,12 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
     hasUI: true,
     signal: undefined,
     isIdle: () => idle,
-    sessionManager: { getSessionId: () => sessionId },
+    sessionManager: {
+      getSessionId: () => sessionId,
+      getCwd: () => "/work/repo",
+      getSessionName: () => undefined,
+      getHeader: () => null,
+    },
     ui: {
       ...ui.ui,
       notify: (message: string) => {

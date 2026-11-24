@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 import { loadConfiguration, visibleText } from "./adapter/config.js";
 import type { Configuration } from "./adapter/config.js";
+import { connectLabel } from "./adapter/label.js";
 import { footerStatus, statusSummary, statusText } from "./adapter/presentation.js";
 import type { StatusState, StatusSummary } from "./adapter/presentation.js";
 import { createAdapterRuntime } from "./adapter/runtime.js";
@@ -120,8 +121,10 @@ export default function registerCommunication(
     started: number,
   ): Promise<Runtime> => {
     current = ctx;
+    const label = await connectLabel(config, ctx.sessionManager);
+    await ensureCurrent(started);
     const runtime = await (testBackend?.runtime ?? createAdapterRuntime)(
-      config,
+      { ...config, label },
       {
         machineId: config.machineId,
         sessionId: ctx.sessionManager.getSessionId(),

@@ -20,12 +20,6 @@ function text(value: unknown, fallback = "…"): string {
 function preview(value: unknown, fallback = "…"): string {
   return truncateToWidth(visibleText(text(value, fallback)).replaceAll(/\s+/gu, " "), 96);
 }
-function identity(value: unknown): string {
-  const peer = fields(value);
-  const session = visibleText(text(peer.sessionId)).replaceAll(/\s+/gu, " ");
-  const short = session.length > 12 ? `…${session.slice(-8)}` : session;
-  return `${preview(peer.machineId)}/${short}@${preview(peer.runtimeNonce).slice(-6)}`;
-}
 function listing(values: unknown[], render: (value: unknown) => string): string[] {
   return [
     ...values.slice(0, 3).map((value) => render(value)),
@@ -48,14 +42,13 @@ function delivery(value: unknown): string {
 function callSummary(name: string, args: Fields): string {
   switch (name) {
     case "peers_send": {
-      const message = fields(args.message);
-      return `→ ${identity(args.to)} · ${preview(message.kind)} · ${preview(message.content)}`;
+      return `→ ${preview(args.to)} · ${preview(args.kind)} · ${preview(args.content)}`;
     }
     case "peers_take": {
       return `← inbox · up to ${preview(args.limit, "4")} messages`;
     }
     default: {
-      return `Discover peers${args.watch === true ? " · watch" : ""}`;
+      return `List peers${args.scope === undefined ? "" : ` · scope ${preview(args.scope)}`}`;
     }
   }
 }
@@ -79,9 +72,8 @@ function resultSummary(name: string, raw: unknown): string[] {
       return [
         `${messages.length} ${messages.length === 1 ? "message" : "messages"} taken`,
         ...listing(messages, (entry) => {
-          const envelope = fields(entry);
-          const message = fields(envelope.message);
-          return `← ${identity(fields(envelope.provenance).sender)} · ${preview(message.kind)} · ${preview(message.content)}`;
+          const taken = fields(entry);
+          return `← ${preview(taken.from)} · ${preview(taken.kind)} · ${preview(taken.content)}`;
         }),
       ];
     }
@@ -93,8 +85,9 @@ function resultSummary(name: string, raw: unknown): string[] {
       return [
         `${peers.length} ${peers.length === 1 ? "peer" : "peers"} · presence only`,
         ...listing(peers, (entry) => {
-          const descriptor = fields(entry);
-          return `${identity(descriptor.peer)}${descriptor.label === undefined ? "" : ` · label (authored): ${preview(descriptor.label)}`}`;
+          const listed = fields(entry);
+          const marks = `${listed.self === true ? " (you)" : ""}${listed.restarted === true ? " (restarted)" : ""}`;
+          return `${preview(listed.handle)}${marks}${listed.label === undefined ? "" : ` · label (authored): ${preview(listed.label)}`}`;
         }),
       ];
     }
@@ -128,10 +121,7 @@ function full(value: unknown): string {
 function hasHiddenPreview(summary: string[], raw: unknown, args: Fields): boolean {
   const result = fields(raw);
   const value = result.tag === "ok" ? fields(result.value) : result;
-  const previews = [
-    fields(args.message).content,
-    ...items(value.messages).map((entry) => fields(fields(entry).message).content),
-  ];
+  const previews = [args.content, ...items(value.messages).map((entry) => fields(entry).content)];
   return (
     summary.some((line) => line.includes("more (expand)")) ||
     previews.some((entry) => typeof entry === "string" && visibleWidth(visibleText(entry)) > 96)

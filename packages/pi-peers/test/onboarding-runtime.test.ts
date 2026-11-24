@@ -399,9 +399,8 @@ describe("actual setup plan/apply lifecycle", () => {
       expect(gate.attempts()).toBe(6);
       gate.allow();
       await expect(tools.get("peers_list")?.()).resolves.toMatchObject({
-        details: {
-          value: { peers: [{ label: "native-host", peer: session.peer, scopeIds: ["local"] }] },
-        },
+        details: { value: { peers: [{ label: "native-host", peer: session.peer, self: true }] } },
+        structuredContent: { ok: true, peers: [{ label: "native-host", self: true }] },
       });
       expect([...session.client.effectiveScopes()]).toStrictEqual(["local"]);
     } finally {
