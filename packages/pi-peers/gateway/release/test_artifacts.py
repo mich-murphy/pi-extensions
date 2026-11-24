@@ -91,7 +91,8 @@ class ArtifactTests(CatalogFixture, unittest.TestCase):
                     artifacts.verify_manifest(self.path, artifacts.digest(self.path.read_bytes()))
 
     def test_manifest_rejects_version_or_source_not_bound_to_records(self):
-        for change in ({"version": "0.2.0", "releaseTag": "pi-gateway-v0.2.0"},
+        other = f"{self.manifest['version']}-other"
+        for change in ({"version": other, "releaseTag": f"pi-gateway-v{other}"},
                        {"sourceRevision": "b" * 40}):
             with self.subTest(change=change):
                 self.path.write_bytes(artifacts.canonical({**self.manifest, **change}))
