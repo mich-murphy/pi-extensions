@@ -31,9 +31,19 @@ const fields = {
   },
   policies: {
     required: true,
-    valid: [[], [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }]],
+    valid: [
+      [],
+      [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
+      [
+        {
+          machineId: "beta",
+          scopeId: "team",
+          permissions: ["discover", "read", "push", "interest"],
+        },
+      ],
+    ],
     invalid: [
-      [{ machineId: "beta", scopeId: "team", permissions: ["read"] }],
+      [{ machineId: "beta", scopeId: "team", permissions: ["admin"] }],
       [{ machineId: "Beta", scopeId: "team", permissions: [] }],
       {},
     ],

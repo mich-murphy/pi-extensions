@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path";
 import { Schema } from "effect";
+import { dropRetiredPermissions } from "../adapter/config.js";
 
 const text = Schema.String;
 const path = text.check(
@@ -102,5 +103,8 @@ export const decodeCached = Schema.decodeUnknownSync(cachedSchema, { onExcessPro
 export const decodeReset = Schema.decodeUnknownSync(resetSchema, { onExcessProperty: "error" });
 export const decodeOwnership = Schema.decodeUnknownSync(ownershipSchema);
 export const decodePairing = Schema.decodeUnknownSync(pairingSchema, { onExcessProperty: "error" });
-export const decodeGateway = Schema.decodeUnknownSync(gatewaySchema, { onExcessProperty: "error" });
+const decodeGatewayFields = Schema.decodeUnknownSync(gatewaySchema, { onExcessProperty: "error" });
+export function decodeGateway(value: unknown): typeof gatewaySchema.Type {
+  return decodeGatewayFields(dropRetiredPermissions(value));
+}
 export const decodeCredentials = Schema.decodeUnknownSync(credentialSchema);

@@ -6,6 +6,7 @@ import { decodeConfiguration, loadConfiguration } from "../adapter/config.js";
 import { sendWithRetries } from "../adapter/send.js";
 import { ConnectionFailure } from "../adapter/transport.js";
 import { waitFor } from "../adapter/wait.js";
+import { decodeGateway } from "../onboarding/schema.js";
 import { fakeDelay } from "./fake-delay.js";
 
 describe("adapter configuration and retry boundaries", () => {
@@ -25,6 +26,40 @@ describe("adapter configuration and retry boundaries", () => {
     label: "label",
     policies: [],
   };
+
+  test("a saved configuration granting the removed read and interest permissions still loads without them", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "psc-legacy-"));
+    directories.push(directory);
+    const grant = { machineId: "alpha", scopeId: "team" };
+    await writeFile(
+      join(directory, "pi-peers.json"),
+      JSON.stringify({
+        ...config,
+        policies: [{ ...grant, permissions: ["discover", "read", "push", "interest"] }],
+      }),
+    );
+    await expect(loadConfiguration(directory)).resolves.toStrictEqual({
+      ...config,
+      policies: [{ ...grant, permissions: ["discover", "push"] }],
+    });
+    const gateway = {
+      machineId: "alpha",
+      socketPath: "/tmp/gateway.sock",
+      scopeIds: ["team"],
+      policies: [
+        { ...grant, permissions: ["read", "interest"], direction: "outgoing" },
+        { ...grant, permissions: ["push", "read"], direction: "incoming" },
+        { ...grant, permissions: [], direction: "outgoing" },
+      ],
+    };
+    expect(decodeGateway(gateway).policies).toStrictEqual([
+      { ...grant, permissions: ["push"], direction: "incoming" },
+      { ...grant, permissions: [], direction: "outgoing" },
+    ]);
+    expect(() =>
+      decodeConfiguration({ ...config, policies: [{ ...grant, permissions: ["admin"] }] }),
+    ).toThrow(Error);
+  });
 
   test("user configuration absent, valid, oversized, unreadable, and invalid files", async () => {
     const directory = await mkdtemp(join(tmpdir(), "psc-config-"));

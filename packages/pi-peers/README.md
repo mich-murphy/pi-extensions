@@ -153,7 +153,7 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 | `policies` | yes | 256 or fewer entries | Which machines may do what in which scope. |
 | `policies[].machineId` | yes | Same pattern as `machineId` | Machine the grant applies to. |
 | `policies[].scopeId` | yes | Scope pattern | Scope the grant applies to. |
-| `policies[].permissions` | yes | Any of `discover`, `push` | Allowed actions. |
+| `policies[].permissions` | yes | Any of `discover`, `push` | Allowed actions. The retired `read` and `interest` are accepted and ignored, so older files still load; the next Apply writes them without. |
 
 ## First call
 

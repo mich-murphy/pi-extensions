@@ -2,7 +2,7 @@ import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { applyLocal, setupPaths } from "../onboarding/backend.js";
-import { createPrivate } from "../onboarding/files.js";
+import { createPrivate, digest } from "../onboarding/files.js";
 import type { ManagedSetup } from "../onboarding/managed.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import { saveOwnedPlan } from "../onboarding/update.js";
@@ -119,6 +119,26 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
       "the saved settings changed",
     );
     await expect(snapshot(agent)).resolves.toStrictEqual(before);
+  });
+  test("a saved adapter that still grants read and interest saves the same plan without them", async () => {
+    const { plan, previous } = await reviewed(false);
+    const paths = setupPaths(agent);
+    const legacy = `${JSON.stringify(
+      {
+        ...plan.adapter,
+        policies: plan.adapter.policies.map((policy) => ({
+          ...policy,
+          permissions: [...policy.permissions, "read", "interest"],
+        })),
+      },
+      null,
+      2,
+    )}\n`;
+    const current = { ...previous, adapterSha256: digest(legacy) };
+    await writeFile(paths.adapter, legacy);
+    await writeFile(paths.metadata, `${JSON.stringify(current, null, 2)}\n`);
+    await saveOwnedPlan(agent, current, plan);
+    expect(JSON.parse(await readFile(paths.adapter, "utf8"))).toStrictEqual(plan.adapter);
   });
   test("pairing drift also refuses a reviewed pairing replacement before journal creation", async () => {
     const { plan, previous } = await reviewed(true);

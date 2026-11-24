@@ -56,8 +56,31 @@ const configuration = Schema.Struct({
 export type Configuration = typeof configuration.Type;
 export const configurationKeys: readonly string[] = Object.keys(configuration.fields);
 export type Permission = Configuration["policies"][number]["permissions"][number];
+const retiredPermissions: ReadonlySet<unknown> = new Set(["read", "interest"]);
+function withoutRetired(policy: unknown): unknown[] {
+  if (typeof policy !== "object" || policy === null) {
+    return [policy];
+  }
+  const listed: unknown = Reflect.get(policy, "permissions");
+  if (!Array.isArray(listed)) {
+    return [policy];
+  }
+  const kept = listed.filter((item: unknown) => !retiredPermissions.has(item));
+  return kept.length === 0 && listed.length > 0 ? [] : [{ ...policy, permissions: kept }];
+}
+export function dropRetiredPermissions(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  const policies: unknown = Reflect.get(value, "policies");
+  return Array.isArray(policies)
+    ? { ...value, policies: policies.flatMap((policy: unknown) => withoutRetired(policy)) }
+    : value;
+}
 export function decodeConfiguration(value: unknown): Configuration {
-  return Schema.decodeUnknownSync(configuration, { onExcessProperty: "error" })(value);
+  return Schema.decodeUnknownSync(configuration, { onExcessProperty: "error" })(
+    dropRetiredPermissions(value),
+  );
 }
 export async function loadConfiguration(agentDir: string): Promise<Configuration | undefined> {
   let content: string;

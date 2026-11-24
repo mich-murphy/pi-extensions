@@ -1,4 +1,6 @@
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { decodeConfiguration } from "../adapter/config.js";
 import { setupPaths } from "./backend.js";
 import { createPrivate, digest, regularBytes, withSetupLock, durableUnlink } from "./files.js";
 import type { ManagedSetup } from "./managed.js";
@@ -36,7 +38,10 @@ export async function saveOwnedPlan(
     }
     const nextAdapter = `${JSON.stringify(plan.adapter, null, 2)}\n`;
     const nextGateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;
-    if (!allowAdapterChange && digest(nextAdapter) !== previous.adapterSha256) {
+    if (
+      !allowAdapterChange &&
+      !isDeepStrictEqual(decodeConfiguration(parseJson(adapter)), plan.adapter)
+    ) {
       throw new Error(
         "This change would also change this Pi's peer permissions, so nothing was saved.",
       );
