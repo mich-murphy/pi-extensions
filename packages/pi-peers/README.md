@@ -149,6 +149,7 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 | `scopeIds` | yes | 1–4 unique values matching `^[A-Za-z0-9_-]{1,64}$` | Groups this session joins. |
 | `label` | yes | 1–128 bytes, no control or bidirectional characters, some visible text | Display name for peers. Keep paths and transcript text out. |
 | `shareBranch` | no | `true` or `false` (default) | Adds the git branch checked out at connect to the label peers see. |
+| `maxWaitSeconds` | no | Integer 1–300 (default 300) | Longest `peers_take` wait this session allows. |
 | `policies` | yes | 256 or fewer entries | Which machines may do what in which scope. |
 | `policies[].machineId` | yes | Same pattern as `machineId` | Machine the grant applies to. |
 | `policies[].scopeId` | yes | Scope pattern | Scope the grant applies to. |
@@ -164,11 +165,13 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 | --- | --- | --- |
 | `peers_list` | `scope?` | List sessions you can message, each with a handle and its label. |
 | `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (messageId), `status?`, `scope?` | Send a request, reply or update to one session. |
-| `peers_take` | `limit?` (1–8, default 4) | Move messages from your inbox into the conversation. |
+| `peers_take` | `limit?` (1–8, default 4), `waitSeconds?` (0–300, default 0) | Move messages from your inbox into the conversation, waiting for the first one when asked. |
 
 `peers_send` and `peers_take` are declared to the model only (`model-only`). `peers_list` also returns `structuredContent` for scripts.
 
 `format` is `text`, `markdown`, `git-diff` or `git-format-patch`. All formats are descriptive; nothing is applied or fetched.
+
+`waitSeconds` makes an empty `peers_take` wait for the first message, up to `maxWaitSeconds`. It returns as soon as one arrives, and says so when none arrived in time. Only one take can wait at a time. A wait ends early, as an error, when Escape cancels it, Peers disconnects (nothing can arrive) or the session stops.
 
 ### Handles
 
