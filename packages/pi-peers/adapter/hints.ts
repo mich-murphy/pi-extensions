@@ -34,7 +34,7 @@ export function sendHint(outcome: { tag: string; code?: string; resource?: strin
     return "Delivered to their inbox; not yet read, accepted or done.";
   }
   if (outcome.tag === "unknown") {
-    return "It may have arrived. Do not send it again.";
+    return "It may have arrived. Do not send it as a new message. To retry within 8 minutes, repeat the call unchanged with retryOf set to this messageId.";
   }
   const hint = failureHint(outcome.code ?? "unavailable", outcome.resource);
   return outcome.code === "no_route"

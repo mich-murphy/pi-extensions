@@ -15,6 +15,7 @@ import { permits } from "./config.js";
 import type { Configuration } from "./config.js";
 import { Handles, TakenIndex } from "./handles.js";
 import { footerStatus } from "./presentation.js";
+import { UnsureSends } from "./retries.js";
 import { freshId } from "./transport.js";
 import type { Reply, Request } from "./transport.js";
 
@@ -34,6 +35,7 @@ export class AdapterSession {
   readonly state: SessionState;
   readonly handles = new Handles();
   readonly taken = new TakenIndex();
+  readonly unsure = new UnsureSends();
   private readonly inbox: Waiting[] = [];
   private waiter: ((result: Waited) => void) | undefined;
   private readonly abort = new AbortController();

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { Handles, sessionHandle, TakenIndex } from "../adapter/handles.js";
+import { UnsureSends } from "../adapter/retries.js";
 import { registerTools } from "../adapter/tools.js";
+import { defaults } from "../state/shared.js";
 
 const self = { machineId: "alpha", sessionId: "me", runtimeNonce: "a".repeat(32) };
 const beta = { machineId: "beta", sessionId: "them", runtimeNonce: "b".repeat(32) };
@@ -23,6 +25,8 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
   let roster = initial.map((entry) => ({ ...entry, scopeIds: ["team"] }));
   const waits: number[] = [];
   let waited = "timed_out";
+  let clock = 0;
+  const outcomes: string[] = [];
   const sent: Sent[] = [];
   const inbox: Incoming[] = [];
   const taken = new TakenIndex();
@@ -40,6 +44,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     },
     handles: new Handles(),
     taken,
+    unsure: new UnsureSends(() => clock),
     client: {
       isClosed: () => false,
       recoverForTool: async () => undefined,
@@ -51,7 +56,10 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     },
     send: async (to: unknown, scopeId: string, message: Record<string, unknown>) => {
       sent.push({ to, scopeId, message });
-      return { tag: "admitted", binding: {}, correlation: "none" };
+      const tag = outcomes.shift() ?? "admitted";
+      return tag === "admitted"
+        ? { tag, binding: {}, correlation: "none" }
+        : { tag, binding: {}, code: "unavailable" };
     },
     take: () => {
       const messages = inbox.splice(0);
@@ -82,6 +90,10 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     sent,
     inbox,
     waits,
+    outcomes,
+    advance: (milliseconds: number) => {
+      clock += milliseconds;
+    },
     setWaited: (next: string) => {
       waited = next;
     },
@@ -89,6 +101,11 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
       roster = next.map((entry) => ({ ...entry, scopeIds: ["team"] }));
     },
   };
+}
+async function listedFixture() {
+  const fx = fixture([{ peer: beta, label: "Beta" }]);
+  await fx.call("peers_list");
+  return fx;
 }
 function textOf(result: Result): string {
   return result.content[0]?.text ?? "";
@@ -287,5 +304,49 @@ describe("peers_take waitSeconds", () => {
     });
     const result = await fx.call("peers_take", { waitSeconds: 30 });
     expect(textOf(result)).toBe(`from ${handle} · update · messageId ${"1".repeat(32)}\ndone`);
+  });
+});
+describe("peers_send retryOf", () => {
+  const args = { to: handle, kind: "update", content: "hello" };
+  test("resends an unsure message with the same id and bytes to the same runtime", async () => {
+    const fx = await listedFixture();
+    fx.outcomes.push("unknown");
+    const first = await fx.call("peers_send", args);
+    expect(textOf(first)).toMatch(/retryOf/u);
+    const original = fx.sent[0];
+    const retried = await fx.call("peers_send", { ...args, retryOf: original?.message.id });
+    expect(retried.isError).toBeUndefined();
+    expect(fx.sent).toHaveLength(2);
+    expect(fx.sent[1]).toStrictEqual(original);
+    const again = await fx.call("peers_send", { ...args, retryOf: original?.message.id });
+    expect(again.isError).toBe(true);
+    expect(fx.sent).toHaveLength(2);
+  });
+  test("an unsure retry can be retried again, and a changed message is refused", async () => {
+    const fx = await listedFixture();
+    fx.outcomes.push("unknown", "unknown");
+    await fx.call("peers_send", args);
+    const id = fx.sent[0]?.message.id;
+    await fx.call("peers_send", { ...args, retryOf: id });
+    const changed = await fx.call("peers_send", { ...args, content: "other", retryOf: id });
+    expect(changed.isError).toBe(true);
+    expect(textOf(changed)).toMatch(/unchanged/u);
+    await fx.call("peers_send", { ...args, retryOf: id });
+    expect(fx.sent).toHaveLength(3);
+  });
+  test("refuses ids that were delivered, never sent, or are past the window", async () => {
+    const fx = await listedFixture();
+    await fx.call("peers_send", args);
+    const delivered = await fx.call("peers_send", { ...args, retryOf: fx.sent[0]?.message.id });
+    expect(delivered.isError).toBe(true);
+    const unseen = await fx.call("peers_send", { ...args, retryOf: "f".repeat(32) });
+    expect(textOf(unseen)).toMatch(/Nothing was sent/u);
+    fx.outcomes.push("unknown");
+    await fx.call("peers_send", args);
+    fx.advance(defaults.receiptTtlMs);
+    const late = await fx.call("peers_send", { ...args, retryOf: fx.sent[1]?.message.id });
+    expect(late.isError).toBe(true);
+    expect(textOf(late)).toMatch(/Nothing was sent/u);
+    expect(fx.sent).toHaveLength(2);
   });
 });
