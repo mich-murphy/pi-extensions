@@ -11,7 +11,9 @@ const busy: Record<string, string> = {
 const reasons: Record<string, string> = {
   forbidden: "The peers configuration does not allow this. Do not retry.",
   no_route:
-    "That session runtime no longer exists (restarted or closed), and its unread messages were discarded. Call peers_list; if the session is back, use its new entry.",
+    "That session runtime is not reachable now: it may have restarted or closed. Call peers_list; if the session is listed again, use its entry.",
+  link_down:
+    "The link to that machine is down; the session may still exist. Try later, or wait for replies with peers_take and waitSeconds.",
   unavailable: `Peers is not connected, or that scope is not available to this session. ${STATUS}`,
   protocol_error: `The peers gateway sent an invalid reply. ${STATUS}`,
   cancelled: "The request was cancelled.",
@@ -29,15 +31,27 @@ export function failureHint(code: string, resource?: string): string {
   return reasons[code] ?? `The request failed (${code}).`;
 }
 
-export function sendHint(outcome: { tag: string; code?: string; resource?: string }): string {
+export type HintOutcome = {
+  tag: string;
+  code?: string;
+  resource?: string;
+  binding?: { recipient: { machineId: string } };
+};
+const SAFE = new Set(["no_route", "link_down"]);
+export function sendHint(outcome: HintOutcome): string {
   if (outcome.tag === "admitted") {
     return "Delivered to their inbox; not yet read, accepted or done.";
   }
   if (outcome.tag === "unknown") {
     return "It may have arrived. Do not send it as a new message. To retry within 8 minutes, repeat the call unchanged with retryOf set to this id.";
   }
+  if (outcome.code === "link_down") {
+    const machine = outcome.binding?.recipient.machineId;
+    const link = machine === undefined ? "The link to that machine" : `The link to ${machine}`;
+    return `Not delivered. ${link} is down; the session may still exist. Sending again cannot duplicate it; try later, or wait for replies with peers_take and waitSeconds.`;
+  }
   const hint = failureHint(outcome.code ?? "unavailable", outcome.resource);
-  return outcome.code === "no_route"
+  return SAFE.has(outcome.code ?? "")
     ? `Not delivered. ${hint} Sending again cannot duplicate it.`
     : `Not delivered. ${hint}`;
 }

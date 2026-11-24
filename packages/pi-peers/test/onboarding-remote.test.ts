@@ -362,7 +362,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       content: "old-root must not reach new Pi",
       format: "text",
     });
-    expect(sent).toMatchObject({ tag: "not_admitted", code: "no_route" });
+    expect(sent).toMatchObject({ tag: "not_admitted", code: "link_down" });
     expect(client(fresh).status().connected).toBe(true);
     oldClient.close();
   });

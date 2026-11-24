@@ -8,6 +8,7 @@ const refusedCodes = Object.keys({
   forbidden: true,
   unavailable: true,
   no_route: true,
+  link_down: true,
   id_conflict: true,
   invalid_correlation: true,
   delivery_too_large: true,
@@ -48,6 +49,22 @@ describe("send hints say what happened to the message", () => {
     const safe = refusedCodes.filter((code) =>
       /cannot duplicate/u.test(sendHint({ tag: "not_admitted", code })),
     );
-    expect(safe).toStrictEqual(["no_route"]);
+    expect(safe).toStrictEqual(["no_route", "link_down"]);
+  });
+  test("a link_down refusal names the machine and says the session may still exist", () => {
+    const hint = sendHint({
+      tag: "not_admitted",
+      code: "link_down",
+      binding: { recipient: { machineId: "dev-01" } },
+    });
+    expect(hint).toMatch(/^Not delivered\. The link to dev-01 is down/u);
+    expect(hint).toMatch(/may still exist/u);
+    expect(hint).toMatch(/waitSeconds/u);
+    expect(hint).not.toMatch(/discarded|no longer exists/u);
+  });
+  test("a missing route no longer claims unread messages were discarded", () => {
+    const hint = sendHint({ tag: "not_admitted", code: "no_route" });
+    expect(hint).not.toMatch(/discarded|no longer exists/u);
+    expect(hint).toMatch(/peers_list/u);
   });
 });

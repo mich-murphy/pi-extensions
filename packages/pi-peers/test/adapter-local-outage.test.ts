@@ -39,7 +39,11 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
         const total = frameBodyLength(buffer.subarray(0, 4)) + 4;
         const request = decodeFrame(buffer.subarray(0, total), "local-client");
         buffer = Buffer.from(buffer.subarray(total));
-        if (request.op === "result" || request.op === "roster.event") {
+        if (
+          request.op === "result" ||
+          request.op === "roster.event" ||
+          request.op === "link.state"
+        ) {
           continue;
         }
         log.push(request);

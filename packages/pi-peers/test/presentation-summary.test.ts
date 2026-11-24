@@ -66,6 +66,33 @@ function primary(status: unknown, diagnostic: string): string {
 }
 
 describe("plain-language status summary", () => {
+  test("remote link state appears as one row per machine with its next try", () => {
+    const summary = statusSummary(
+      {
+        enabled: true,
+        status: "connected",
+        peer,
+        scopes: ["local"],
+        links: [
+          { machineId: "laptop", state: "up", since: Date.UTC(2026, 0, 1, 9, 0, 0) },
+          {
+            machineId: "dev-01",
+            state: "down",
+            since: Date.UTC(2026, 0, 1, 10, 0, 0),
+            nextProbe: Date.UTC(2026, 0, 1, 10, 0, 30),
+          },
+          { machineId: "x", state: "weird", since: 1 },
+        ],
+      },
+      "enabled",
+    );
+    expect(summary.rows).toContainEqual(["Link to laptop", "Up (since 09:00:00 UTC)"]);
+    expect(summary.rows).toContainEqual([
+      "Link to dev-01",
+      "Down — sends to it fail at once; the gateway keeps retrying (since 10:00:00 UTC, next try 10:00:30 UTC)",
+    ]);
+    expect(summary.rows.map(([label]) => label)).not.toContain("Link to x");
+  });
   test("connected names the machine and scope and keeps identifiers technical", () => {
     const summary = statusSummary(
       { enabled: true, status: "connected", peer, scopes: ["local"], inboxMessages: 2 },

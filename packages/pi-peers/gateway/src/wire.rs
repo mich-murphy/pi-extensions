@@ -343,7 +343,7 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
     let (required, optional): (&[&str], &[&str]) = match op {
         "register" if role == Role::LocalClient => (
             &["sessionId", "runtimeNonce", "scopeIds", "label"],
-            &["expectedConfigSha256"],
+            &["expectedConfigSha256", "linkEvents"],
         ),
         "close" if role == Role::LocalClient => (&[], &[]),
         "gateway.restart" if role == Role::LocalClient => (&["expectedMachineId"], &[]),
@@ -362,10 +362,16 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
         "interest.add" | "interest.remove" => (&["publisher", "scopeId", "work"], &["from"]),
         "result" => (&["forOp", "outcome"], &[]),
         "roster.event" => (&["event"], &[]),
+        "link.state" if role == Role::AdapterDelivery => {
+            (&["machineId", "state", "since"], &["nextProbe"])
+        }
         _ => return Err(DecodeError),
     };
     if op == "result"
-        && value["outcome"]["code"] == "config_mismatch"
+        && matches!(
+            value["outcome"]["code"].as_str(),
+            Some("config_mismatch" | "link_down")
+        )
         && !matches!(role, Role::LocalClient | Role::AdapterDelivery)
     {
         return Err(DecodeError);
@@ -376,7 +382,7 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
     for (name, field) in fields {
         match name.as_str() {
             "to" | "from" | "publisher" => peer(field)?,
-            "expectedMachineId" => machine(field)?,
+            "expectedMachineId" | "machineId" => machine(field)?,
             "expectedConfigSha256" => {
                 let hash = field.as_str().ok_or(DecodeError)?;
                 if hash.len() != 64
@@ -396,12 +402,13 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
             "label" => {
                 plain(field, 128)?;
             }
-            "watch" => {
+            "watch" | "linkEvents" => {
                 field.as_bool().ok_or(DecodeError)?;
             }
+            "state" => enum_value(field, &["up", "down", "probing"])?,
             "message" => message(field)?,
             "work" => work(field)?,
-            "expectedRevision" => number(field)?,
+            "expectedRevision" | "since" | "nextProbe" => number(field)?,
             _ => {}
         }
     }
@@ -551,6 +558,7 @@ fn error_outcome(value: &Value, op: &str) -> Result<(), DecodeError> {
             op,
             "send" | "deliver" | "state.get" | "state.list" | "interest.add" | "interest.remove"
         ),
+        "link_down" => op == "send",
         "id_conflict" | "invalid_correlation" | "delivery_too_large" => {
             matches!(op, "send" | "deliver")
         }

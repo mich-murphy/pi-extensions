@@ -265,7 +265,7 @@ Each gateway prints one line on stdout once it is bound:
 
 A listening gateway adds `"remoteListenAddress"` with the address it bound, for example `"0.0.0.0:7443"`. If you set the listener's port to `0`, the OS picks a free port and this field is where you read it. Give that address to the connector. A connector never accepts port `0`.
 
-`ready` does not announce the link. To confirm it, run `lsof -nP -iTCP:7443` and look for an `ESTABLISHED` connection. The connector retries up to six times per minute. If it gives up, it writes `remote_unavailable` to stderr.
+`ready` does not announce the link. To confirm it, run `lsof -nP -iTCP:7443` and look for an `ESTABLISHED` connection. The connector retries up to six times per minute, then probes every 30 seconds to 5 minutes until it connects. Each change writes a `link_state` event to stderr, and `/peers status` shows a `Link to <machine>` row.
 
 ## 10. Point each Pi at its socket
 

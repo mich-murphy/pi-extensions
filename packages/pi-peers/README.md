@@ -200,9 +200,9 @@ Labels are claims made by the other session and are not verified. Your own sessi
 | Command | Behavior |
 | --- | --- |
 | `/peers` | Opens the Peers menu in the terminal UI; prints status elsewhere. |
-| `/peers status` | Plain status for this session: machine, scopes, inbox and the next step. Exact identifiers are under Technical details. It does not check remote credentials; `/peers doctor` does. |
+| `/peers status` | Plain status for this session: machine, scopes, inbox, one `Link to <machine>` row per remote link (`Up`, `Reconnecting` or `Down`, with since and next try) and the next step. Exact identifiers are under Technical details. It does not check remote credentials; `/peers doctor` does. |
 | `/peers setup` | Opens the Peers menu with Setup open; Esc returns to the menu. For an existing setup, the form is filled in from the saved configuration, with repair, pairing, adding a peer or activating saved settings where needed. |
-| `/peers doctor` | Read-only checks of the config file, gateway, permissions, remote credentials and pairing expiry, each with what to do next, ending with `Live: <status headline>`. Never starts or connects to the gateway or writes files. |
+| `/peers doctor` | Read-only checks of the config file, gateway, permissions, remote credentials and pairing expiry, each with what to do next, ending with `Live: <status headline>`. When this session knows the remote link state, the remote row adds `Live link: <machine> <state>`. Never starts or connects to the gateway or writes files. |
 | `/peers reconnect` | Retries the connection without losing this session's inbox or state, and never resends uncertain messages. |
 | `/peers reset` | Opens the Peers menu with Reset open; `Turn off peers` disables setup-owned participation. Keeps the executable, keys and revocation state; never stops the shared gateway. |
 
@@ -219,11 +219,12 @@ Labels are claims made by the other session and are not verified. Your own sessi
 | Requesting peers per work item | 8 |
 | Sessions per gateway | 30 |
 | Send attempts | 3 within 15 seconds |
+| Remote link retries | 6 within 60 seconds, then a probe every 30 seconds to 5 minutes (jittered), forever |
 
 ## Delivery receipts
 
 - `admitted`: the receiving session's inbox holds the message. It does not mean read, accepted or done.
-- `not_admitted`: the attempt is known not to have been admitted.
+- `not_admitted`: the attempt is known not to have been admitted. Code `link_down` means the link to the recipient's machine is down: the session may still exist, and sending again later cannot duplicate the message. `peers_list` marks such peers `(link down)`. Code `no_route` means the runtime is not reachable now; it does not mean its messages were discarded.
 - `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message. To try again later, repeat the call unchanged with `retryOf` set to its id. The adapter resends the stored message, with the same id and bytes, to the exact runtime it first went to, and the receiver answers a duplicate with its original receipt. `retryOf` is refused for a message that was delivered or not delivered, for a changed `to`, `kind` or `content`, and after 8 minutes, because receivers keep receipts for 10.
 
 See [design](docs/design.md#receipts-and-idempotency).

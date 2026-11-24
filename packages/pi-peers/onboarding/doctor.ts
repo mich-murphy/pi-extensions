@@ -116,7 +116,17 @@ type Check = { readonly row?: DoctorRow; readonly detail: string };
 function line(label: string, value: string, level: DoctorLevel = "ok"): DoctorRow {
   return { label, value, level };
 }
-export type DoctorOptions = { readonly inMenu?: boolean };
+export type DoctorOptions = {
+  readonly inMenu?: boolean;
+  readonly liveLinks?: readonly { readonly machineId: string; readonly state: string }[];
+};
+function liveLinkText(options: DoctorOptions): string | undefined {
+  const links = options.liveLinks;
+  if (links === undefined || links.length === 0) {
+    return undefined;
+  }
+  return `Live link: ${links.map((link) => `${visibleText(link.machineId)} ${visibleText(link.state)}`).join(", ")} (from this session)`;
+}
 function setupStep(options: DoctorOptions): string {
   return options.inMenu === true ? "Choose Setup" : "Run /peers setup";
 }
@@ -220,8 +230,8 @@ const MARK: Record<DoctorLevel, string> = { ok: "✓", warn: "!", error: "✗" }
 export function doctorRowText(row: DoctorRow): string {
   return `${MARK[row.level]} ${row.label}: ${row.value}`;
 }
-export async function doctor(agentDir: string): Promise<string> {
-  const report = await doctorReport(agentDir);
+export async function doctor(agentDir: string, options: DoctorOptions = {}): Promise<string> {
+  const report = await doctorReport(agentDir, options);
   return [
     "Peers doctor (read-only)",
     ...report.rows.map((row) => doctorRowText(row)),
@@ -370,8 +380,17 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
       return { row: line("Remote link", "None (this machine only)"), detail };
     }
     if (state === "configured") {
+      const live = liveLinkText(options);
       return {
-        row: line("Remote link", "Credentials look valid; the live link is not checked here"),
+        row: line(
+          "Remote link",
+          live === undefined
+            ? "Credentials look valid; the live link is not checked here"
+            : `Credentials look valid. ${live}`,
+          live === undefined || options.liveLinks?.every((link) => link.state === "up") === true
+            ? "ok"
+            : "warn",
+        ),
         detail,
       };
     }

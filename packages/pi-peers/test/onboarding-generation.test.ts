@@ -366,11 +366,11 @@ describe("managed generation admission with actual native helper", () => {
       const entries = await readdir(setupPaths(agent).directory);
       await expect(
         ensure(performance.now() + 5000, new AbortController().signal),
-      ).resolves.toStrictEqual({ gatewaySha256: setup.gatewaySha256 });
+      ).resolves.toStrictEqual({ gatewaySha256: setup.gatewaySha256, linkEvents: true });
       current = { ...setup, gatewaySha256: "d".repeat(64) };
       await expect(
         ensure(performance.now() + 5000, new AbortController().signal),
-      ).resolves.toStrictEqual({ gatewaySha256: current.gatewaySha256 });
+      ).resolves.toStrictEqual({ gatewaySha256: current.gatewaySha256, linkEvents: true });
       expect(reload).toHaveBeenCalledTimes(2);
       await expect(readdir(setupPaths(agent).directory)).resolves.toStrictEqual(entries);
     }));

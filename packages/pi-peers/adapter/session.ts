@@ -11,7 +11,7 @@ import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
 import type { Delivery } from "../state/types.js";
 import { MessageAliases } from "./aliases.js";
-import type { EnsureGateway } from "./client.js";
+import type { EnsureGateway, LinkState } from "./client.js";
 import { GatewayClient } from "./client.js";
 import { permits } from "./config.js";
 import type { Configuration } from "./config.js";
@@ -47,6 +47,7 @@ export class AdapterSession {
   private notice: { id: string; at: number } | undefined;
   private deferred: ReturnType<typeof setImmediate> | undefined;
   private disposed = false;
+  private readonly linkListeners = new Set<(links: readonly LinkState[]) => void>();
   constructor(
     readonly config: Configuration,
     readonly peer: PeerRef,
@@ -60,6 +61,12 @@ export class AdapterSession {
       peer,
       ...(ensureGateway === undefined ? {} : { ensureGateway }),
       incoming: (request) => this.incoming(request),
+      linkChanged: () => {
+        const links = this.client.links();
+        for (const listener of this.linkListeners) {
+          listener(links);
+        }
+      },
       statusChanged: () => {
         this.updateStatus();
         if (!this.client.status().connected) {
@@ -97,6 +104,15 @@ export class AdapterSession {
   async reconnect(fresh = false): Promise<void> {
     return this.client.reconnect(this.abort.signal, fresh);
   }
+  linkStates(): readonly LinkState[] {
+    return this.client.links();
+  }
+  onLinkChange(listener: (links: readonly LinkState[]) => void): () => void {
+    this.linkListeners.add(listener);
+    return () => {
+      this.linkListeners.delete(listener);
+    };
+  }
   status() {
     let notice = "none";
     if (this.notice !== undefined) {
@@ -109,6 +125,7 @@ export class AdapterSession {
       ...this.client.status(),
       ...this.state.stats(),
       waiting: this.waiter !== undefined,
+      links: this.client.links(),
       notice,
     };
   }
@@ -327,6 +344,7 @@ export class AdapterSession {
     this.deferred = undefined;
     this.waiter?.("closed");
     this.client.close();
+    this.linkListeners.clear();
     this.inbox.length = 0;
     this.notice = undefined;
     this.wakeNeeded = false;

@@ -307,12 +307,44 @@ export function statusSummary(
       status.watching === true ? "Watching for other sessions" : "Unknown — not watching",
     ],
     ["Inbox", inbox === 0 ? "Empty" : `${plural(inbox, "message", "messages")} waiting`],
+    ...linkRows(status.links),
   ];
   return liveSummary(
     text(status.status, "disconnected"),
     { machine, scopes, rows, technical },
     options,
   );
+}
+const LINK_WORDS: Record<string, string> = {
+  up: "Up",
+  down: "Down — sends to it fail at once; the gateway keeps retrying",
+  probing: "Reconnecting",
+};
+function clock(value: unknown): string {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? new Date(value).toISOString().slice(11, 19)
+    : "";
+}
+function linkRows(value: unknown): [string, string][] {
+  return items(value).flatMap((entry) => {
+    const link = fields(entry);
+    const machine = plain(link.machineId, 32);
+    const word = LINK_WORDS[text(link.state, "")];
+    if (machine.length === 0 || word === undefined) {
+      return [];
+    }
+    const since = clock(link.since);
+    const next = clock(link.nextProbe);
+    const detail = [
+      ...(since.length > 0 ? [`since ${since} UTC`] : []),
+      ...(next.length > 0 ? [`next try ${next} UTC`] : []),
+    ];
+    const row: [string, string] = [
+      `Link to ${machine}`,
+      detail.length === 0 ? word : `${word} (${detail.join(", ")})`,
+    ];
+    return [row];
+  });
 }
 type LiveFacts = {
   readonly machine: string;

@@ -35,10 +35,13 @@ const roleOperations: Record<BoundaryRole, ReadonlySet<string>> = {
 };
 
 function checkRole(frame: Frame, role: BoundaryRole): void {
+  if (frame.op === "link.state" && role !== "adapter-delivery") {
+    throw new ProtocolError();
+  }
   if (
     frame.op === "result" &&
-    frame.outcome.tag === "error" &&
-    frame.outcome.code === "config_mismatch" &&
+    "code" in frame.outcome &&
+    (frame.outcome.code === "config_mismatch" || frame.outcome.code === "link_down") &&
     role !== "local-client" &&
     role !== "adapter-delivery"
   ) {
@@ -47,7 +50,7 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   if (frame.op === "result" && frame.forOp === "gateway.restart" && role !== "local-client") {
     throw new ProtocolError();
   }
-  if (frame.op === "result" || frame.op === "roster.event") {
+  if (frame.op === "result" || frame.op === "roster.event" || frame.op === "link.state") {
     return;
   }
   if (!roleOperations[role].has(frame.op)) {

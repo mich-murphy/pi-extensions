@@ -12,8 +12,10 @@ use tokio::time::Instant;
 use serde_json::{Value, json};
 use tokio::net::{UnixListener, UnixStream};
 
+use crate::breaker::LinkView;
 use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
 use crate::config::{Config, Direction, Permission};
+use crate::events::Events;
 use crate::link::Driver;
 use crate::remote::Authenticated;
 
@@ -49,6 +51,7 @@ struct Client {
     descriptor: Option<Value>,
     watch: Option<Watch>,
     remote: Option<Remote>,
+    link_events: Option<String>,
     closing: bool,
     failed: bool,
 }
@@ -87,6 +90,9 @@ pub struct Daemon {
     buffers: Accounting,
     forwards: HashMap<String, Forward>,
     link: Option<Driver>,
+    link_view: Option<LinkView>,
+    bound_at: Instant,
+    events: Events,
     next_generation: u64,
     next_watch_generation: u64,
 }
@@ -152,6 +158,9 @@ impl Daemon {
             managed: false,
             restart: None,
             link,
+            link_view: None,
+            bound_at: Instant::now(),
+            events: Events::default(),
             listener,
             socket_inode: socket.ino(),
             socket_device: socket.dev(),
@@ -236,6 +245,7 @@ impl Daemon {
             if !active && let Some(link) = self.link.as_mut() {
                 link.start();
             }
+            self.announce_link();
             let deadline = self.deadline();
             tokio::select! {
                 () = &mut shutdown => return Ok(()),
@@ -247,8 +257,11 @@ impl Daemon {
                 }
                 authenticated = remote_progress(self.link.as_mut()) => {
                     if let Some(authenticated) = authenticated? && self.remote_id().is_none() {
-                        if tasks.len() < MAX_CONNECTIONS + 1 { self.activate(authenticated, &events, &mut tasks)?; }
-                        else if let Some(link) = self.link.as_mut() { link.retry(); }
+                        if tasks.len() < MAX_CONNECTIONS + 1 {
+                            self.activate(authenticated, &events, &mut tasks)?;
+                            if let Some(link) = self.link.as_mut() { link.connected(); }
+                        }
+                        else if let Some(link) = self.link.as_mut() { link.handshake_failed(); }
                     }
                 }
                 Some(event) = receive.recv() => self.event(event),
@@ -266,7 +279,11 @@ impl Daemon {
                     self.liveness();
                     let now = Instant::now();
                     let expired: Vec<_> = self.forwards.iter().filter(|(_, forward)| forward.deadline <= now).map(|(rid, _)| rid.clone()).collect();
-                    for rid in expired { self.retire(&rid, "unavailable"); }
+                    for rid in expired {
+                        let remote = self.forwards.get(&rid).is_some_and(|forward| self.is_remote(forward.destination));
+                        self.events.emit("forward_timeout", json!({"event":"forward_timeout","remote":remote}));
+                        self.retire(&rid, "unavailable");
+                    }
                 }
             }
         }
@@ -310,6 +327,7 @@ impl Daemon {
                 descriptor: None,
                 remote: None,
                 watch: None,
+                link_events: None,
                 closing: false,
                 failed: false,
             },
@@ -454,6 +472,14 @@ impl Daemon {
     }
 
     fn reject(&mut self, id: ConnectionId, request: &Value, code: &str, resource: Option<&str>) {
+        if code == "overloaded"
+            && let Some(resource) = resource
+        {
+            self.events.emit(
+                &format!("overloaded:{resource}"),
+                json!({"event":"overloaded","resource":resource,"op":request["op"]}),
+            );
+        }
         let mut outcome = if request["op"] == "send" {
             let sender = if self.is_remote(id) {
                 request.get("from")
@@ -608,14 +634,23 @@ impl Daemon {
             self.reject(id, request, "descriptor_too_large", None);
             return;
         }
+        let link_events = (request["linkEvents"] == true)
+            .then(|| request["rid"].as_str().unwrap_or("").to_owned());
         if let Some(client) = self.clients.get_mut(&id) {
             client.descriptor = Some(descriptor.clone());
+            client.link_events.clone_from(&link_events);
         }
         self.respond(
             id,
             request,
             json!({"tag":"ok","value":{"peer":peer,"scopeIds":scopes}}),
         );
+        if let Some(rid) = link_events
+            && let Some(frame) = self.link_frame(&rid)
+            && !self.queue(id, &frame, BufferClass::Control, None)
+        {
+            self.fail(id);
+        }
         self.publish(&descriptor, "upsert");
         if self
             .config
@@ -825,7 +860,18 @@ impl Daemon {
             })
         };
         let Some(destination) = destination else {
-            self.reject(origin, request, "no_route", None);
+            let code = if !remote_origin
+                && self.link_down(machine)
+                && self
+                    .clients
+                    .get(&origin)
+                    .is_some_and(|client| client.link_events.is_some())
+            {
+                "link_down"
+            } else {
+                "no_route"
+            };
+            self.reject(origin, request, code, None);
             return None;
         };
         Some(destination)
@@ -1009,7 +1055,7 @@ impl Daemon {
         }
         self.buffers.close(id);
         if remote && let Some(link) = self.link.as_mut() {
-            link.retry();
+            link.lost();
         }
     }
 }
@@ -1322,5 +1368,91 @@ mod tests {
         drop(daemon);
         drop(tasks);
         std::fs::remove_dir_all(directory).expect("remove isolated directory");
+    }
+    async fn read_frame(stream: &mut UnixStream) -> Value {
+        use tokio::io::AsyncReadExt;
+        let mut header = [0_u8; 4];
+        tokio::time::timeout(Duration::from_secs(2), stream.read_exact(&mut header))
+            .await
+            .expect("bounded frame")
+            .expect("frame header");
+        let mut body = vec![0; usize::try_from(u32::from_be_bytes(header)).expect("small frame")];
+        stream.read_exact(&mut body).await.expect("frame body");
+        serde_json::from_slice(&body).expect("frame JSON")
+    }
+
+    fn remote_daemon(name: &str) -> (Daemon, PathBuf) {
+        let directory = PathBuf::from("/tmp")
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!("gw-{name}-{}", random_id().expect("nonce")));
+        std::fs::create_dir(&directory).expect("isolated directory");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("private directory");
+        let missing = directory.join("missing");
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[{"machineId":"beta","scopeId":"team","permissions":["discover","push"]}],"remote":{"machineId":"beta","endpoint":{"mode":"connect","address":"127.0.0.1:9"},"rootCertificates":[missing],"certificateChain":[missing],"privateKey":missing,"crls":[missing],"revocationState":missing}})).expect("config JSON")).expect("remote config");
+        let daemon = Daemon::bind(config).expect("remote side degrades, local binds");
+        assert!(
+            daemon.remote_degraded_reason().is_some(),
+            "no link can start"
+        );
+        (daemon, directory)
+    }
+
+    #[tokio::test]
+    async fn opted_in_sessions_get_link_state_and_fail_fast_with_link_down() {
+        let (mut daemon, directory) = remote_daemon("link-down");
+        let (events, _receive) = mpsc::channel(68);
+        let mut tasks = JoinSet::new();
+        let (opted, mut opted_peer) = UnixStream::pair().expect("sockets");
+        let (legacy, mut legacy_peer) = UnixStream::pair().expect("sockets");
+        daemon
+            .accept(opted, &events, &mut tasks)
+            .expect("opted connection");
+        daemon
+            .accept(legacy, &events, &mut tasks)
+            .expect("legacy connection");
+        let register = |nonce: &str, opt: bool| {
+            let mut value = json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":"s","runtimeNonce":nonce,"scopeIds":["team"],"label":"fixture"});
+            if opt {
+                value["linkEvents"] = Value::Bool(true);
+            }
+            value
+        };
+        daemon.handle(
+            ConnectionId(1),
+            register("00000000000000000000000000000002", true),
+        );
+        daemon.handle(
+            ConnectionId(2),
+            register("00000000000000000000000000000003", false),
+        );
+        assert_eq!(read_frame(&mut opted_peer).await["outcome"]["tag"], "ok");
+        let state = read_frame(&mut opted_peer).await;
+        assert_eq!(state["op"], "link.state");
+        assert_eq!(state["machineId"], "beta");
+        assert_eq!(state["state"], "down");
+        assert_eq!(state["rid"], "00000000000000000000000000000001");
+        assert_eq!(read_frame(&mut legacy_peer).await["outcome"]["tag"], "ok");
+        let send = |rid: &str| json!({"v":1,"op":"send","rid":rid,"to":{"machineId":"beta","sessionId":"remote","runtimeNonce":"00000000000000000000000000000009"},"scopeId":"team","message":{"id":"0000000000000000000000000000000a","kind":"update","content":"hi","format":"text"}});
+        daemon.handle(ConnectionId(1), send("00000000000000000000000000000004"));
+        let refused = read_frame(&mut opted_peer).await;
+        assert_eq!(refused["outcome"]["tag"], "not_admitted");
+        assert_eq!(
+            refused["outcome"]["code"], "link_down",
+            "fails fast with a distinct code"
+        );
+        assert!(wire::validate_value(&refused, Role::LocalClient).is_ok());
+        daemon.handle(ConnectionId(2), send("00000000000000000000000000000005"));
+        assert_eq!(
+            read_frame(&mut legacy_peer).await["outcome"]["code"],
+            "no_route",
+            "a session that did not opt in keeps the old code"
+        );
+        daemon.announce_link();
+        daemon.announce_link();
+        drop(daemon);
+        tasks.abort_all();
+        std::fs::remove_dir_all(directory).expect("cleanup");
     }
 }

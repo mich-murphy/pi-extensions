@@ -60,6 +60,18 @@ Admission is not consumption. Replacing the runtime discards the inbox and recei
 
 Local tools do not wait on gateway recovery. While the gateway is unreachable, `peers_take` still returns already-admitted messages. Local tools never start recovery. After the bounded automatic reconnect episode gives up, the runtime stays disconnected until a remote tool runs its recovery preflight or `/peers reconnect` succeeds, and until then it receives no new deliveries. Discovery and sends keep the guarded recovery preflight and fail closed.
 
+## Remote link
+
+Each gateway keeps a circuit breaker for its remote machine.
+
+- **Closed:** after a lost link or a failed handshake, up to 6 attempts within 60 seconds, backing off from 250 ms. A link that drops right after its handshake counts as a failure too.
+- **Open:** when that episode is spent. Sends routed to that machine fail at once with `not_admitted` code `link_down` instead of waiting 15 seconds. One probe is scheduled after 30 s, doubling to 240 s, plus up to a quarter of jitter, so every wait is between 30 s and 5 min. A failed probe reopens it; there is no final state.
+- **Half-open:** one probe in flight. Success closes the breaker and the roster is fetched again. A local session registering in a scope the remote serves brings the next probe forward.
+
+Sessions see `up`, `probing` (an attempt is in flight or due within seconds) or `down` (open, with the next probe time). A gateway pushes a `link.state` frame to a session that registered with `linkEvents: true`: once after registration and then exactly on each change. Only those sessions get `link_down`; others keep `no_route`, so an older adapter never sees a frame or code it does not know. The adapter opts in only when the setup executable reports capability `link-state-v1`.
+
+The gateway writes coalesced JSON events to stderr, at most one per kind every 30 s with a `suppressed` count: `link_state`, `forward_timeout` and `overloaded`. They carry no payload, path or credential.
+
 ## Trust model
 
 - Gateways talk over TLS 1.3 only, with mutual authentication. Session resumption and early data are off.
