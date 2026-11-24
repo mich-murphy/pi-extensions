@@ -1,14 +1,8 @@
 // Mutation runs only. Fallow counts a file under test/ that reaches source as a test file, and one
 // the default Vitest config never lists marks every run partial; `--compare` accepts only complete
 // reports. Hidden here: live tests, which need provider credentials and run under
-// vitest.live.config.ts, and the Bombadil and codemode helpers, which are scripts, not tests.
+// vitest.live.config.ts, and the Bombadil helpers, which are scripts, not tests.
 {
   "extends": "../.fallowrc.json",
-  "ignorePatterns": [
-    "packages/*/test/**/*.live.ts",
-    "packages/pi-peers/test/bombadil/*.ts",
-    "packages/pi-peers/test/codemode/run.ts",
-    "packages/pi-peers/test/codemode/serve.ts",
-    "packages/pi-peers/test/codemode/trial.ts",
-  ],
+  "ignorePatterns": ["packages/*/test/**/*.live.ts", "packages/pi-peers/test/bombadil/*.ts"],
 }

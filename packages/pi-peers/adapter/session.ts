@@ -8,7 +8,7 @@ import type { Message, PeerRef } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
 import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
-import type { Delivery, ReportInput } from "../state/types.js";
+import type { Delivery } from "../state/types.js";
 import type { EnsureGateway } from "./client.js";
 import { GatewayClient } from "./client.js";
 import { permits, visibleText } from "./config.js";
@@ -37,8 +37,6 @@ export class AdapterSession {
   private notice: { id: string; at: number } | undefined;
   private deferred: ReturnType<typeof setImmediate> | undefined;
   private disposed = false;
-  private reportRunning = false;
-  private reportRelease: (() => void) | undefined;
   constructor(
     readonly config: Configuration,
     readonly peer: PeerRef,
@@ -66,13 +64,6 @@ export class AdapterSession {
           this.client.effectiveScopes().has(query.scopeId) &&
           permits(config, other.machineId, query.scopeId, query.action)
         );
-      },
-      reservePushes: (count) => {
-        if (!this.reportRunning || this.reportRelease !== undefined) {
-          return false;
-        }
-        this.reportRelease = this.client.reservePushes(count);
-        return this.reportRelease !== undefined;
       },
       offer: (delivery) => {
         if (this.disposed || this.inboxKeys.length >= 64) {
@@ -126,61 +117,20 @@ export class AdapterSession {
         outcome,
       });
     }
-    if (!("publisher" in request) || request.from === undefined) {
+    if (
+      request.op !== "state.get" &&
+      request.op !== "state.list" &&
+      request.op !== "interest.add" &&
+      request.op !== "interest.remove"
+    ) {
       throw new Error("Unsupported adapter request");
-    }
-    if (!samePeer(request.publisher, this.peer)) {
-      return checkedReply({
-        v: 1,
-        op: "result",
-        rid: request.rid,
-        forOp: request.op,
-        outcome: { tag: "error", code: "no_route" },
-      });
-    }
-    let outcome: unknown;
-    switch (request.op) {
-      case "state.get": {
-        outcome = this.state.read({
-          caller: request.from,
-          scopeId: request.scopeId,
-          key: request.key,
-          ...(request.expectedRevision === undefined
-            ? {}
-            : { expectedRevision: request.expectedRevision }),
-        });
-        break;
-      }
-      case "state.list": {
-        outcome = this.state.list({
-          caller: request.from,
-          scopeId: request.scopeId,
-        });
-        break;
-      }
-      case "interest.add": {
-        outcome = this.state.interest.add({
-          subscriber: request.from,
-          scopeId: request.scopeId,
-          work: request.work,
-        });
-        break;
-      }
-      case "interest.remove": {
-        outcome = this.state.interest.remove({
-          subscriber: request.from,
-          scopeId: request.scopeId,
-          work: request.work,
-        });
-        break;
-      }
     }
     return checkedReply({
       v: 1,
       op: "result",
       rid: request.rid,
       forOp: request.op,
-      outcome,
+      outcome: { tag: "error", code: "forbidden" },
     });
   }
   pumpIdle(): void {
@@ -274,13 +224,7 @@ export class AdapterSession {
       note: "Messages taken from the inbox. They are not accepted work; never fetch or apply their references automatically.",
     };
   }
-  async send(
-    to: PeerRef,
-    scopeId: string,
-    message: Message,
-    signal?: AbortSignal,
-    reserved = false,
-  ) {
+  async send(to: PeerRef, scopeId: string, message: Message, signal?: AbortSignal) {
     const binding = {
       messageId: message.id,
       sender: this.peer,
@@ -304,43 +248,7 @@ export class AdapterSession {
         };
       }
     }
-    return this.client.send(to, scopeId, message, signal, reserved);
-  }
-  async report(input: ReportInput, signal?: AbortSignal) {
-    if (this.reportRunning) {
-      return {
-        tag: "error",
-        code: "overloaded",
-        resource: "operations",
-      } as const;
-    }
-    this.reportRunning = true;
-    try {
-      const plan = this.state.prepareReport(input);
-      if (plan.tag !== "ok") {
-        return plan;
-      }
-      const outcomes: unknown[] = [];
-      for (let offset = 0; offset < plan.value.pushes.length; offset += 4) {
-        const batch = plan.value.pushes.slice(offset, offset + 4);
-        // eslint-disable-next-line eslint/no-await-in-loop -- Bound fanout to four concurrent sends while retaining the complete reservation.
-        const results = await Promise.all(
-          batch.map(async (push) => ({
-            recipient: push.to,
-            outcome: await this.send(push.to, push.scopeId, push.message, signal, true),
-          })),
-        );
-        outcomes.push(...results);
-      }
-      return {
-        tag: "ok",
-        value: { publication: plan.value.publication, pushes: outcomes },
-      };
-    } finally {
-      this.reportRelease?.();
-      this.reportRelease = undefined;
-      this.reportRunning = false;
-    }
+    return this.client.send(to, scopeId, message, signal);
   }
   close(): void {
     this.disposed = true;

@@ -10,9 +10,7 @@ import { gatewayBinary } from "./gateway-binary.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = fileURLToPath(new URL("../../../../", import.meta.url));
 const GATEWAY_SOCKET_PATH_MAX_BYTES = 100;
-const POLICIES = [
-  { machineId: "alpha", scopeId: "team", permissions: ["discover", "read", "push", "interest"] },
-];
+const POLICIES = [{ machineId: "alpha", scopeId: "team", permissions: ["discover", "push"] }];
 
 async function ready(child: ChildProcess): Promise<void> {
   const stdout = child.stdout;

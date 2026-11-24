@@ -65,7 +65,7 @@ const pairingSchema = Schema.Struct({
   output: record,
   inspection: Schema.optionalKey(record),
 });
-const permissions = Schema.Array(Schema.Literals(["discover", "read", "push", "interest"]));
+const permissions = Schema.Array(Schema.Literals(["discover", "push"]));
 const gatewaySchema = Schema.Struct({
   machineId: machine,
   socketPath: path,

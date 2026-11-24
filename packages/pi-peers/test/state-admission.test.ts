@@ -137,7 +137,7 @@ describe("synchronous bounded admission and protected receipts", () => {
     { limits: { inboxMessages: 0 }, resource: "inbox" },
     { limits: { inboxBytes: 1 }, resource: "inbox" },
     { limits: { receipts: 0 }, resource: "receipts" },
-    { limits: { relationsAndInterests: 0 }, resource: "relations" },
+    { limits: { relations: 0 }, resource: "relations" },
     { limits: { recipientsPerWork: 0 }, resource: "relations" },
   ])("capacity refusal is pre-admission: $resource $limits", ({ limits, resource }) => {
     const h = harness(limits);
@@ -225,7 +225,7 @@ describe("synchronous bounded admission and protected receipts", () => {
     expect(h.offered).toHaveLength(2);
   });
   test("post-retention re-admission replaces its old relation rather than consuming a second slot", () => {
-    const h = harness({ relationsAndInterests: 1 });
+    const h = harness({ relations: 1 });
     h.state.admit(input);
     h.state.retire(key);
     h.clock(600_000);

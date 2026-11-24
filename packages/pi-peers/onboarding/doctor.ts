@@ -38,6 +38,19 @@ const baseline = {
   policies: [],
 };
 const keys = Object.keys(baseline);
+const REMOVED_PERMISSIONS =
+  "policies (the read and interest permissions were removed; drop them via /peers setup)";
+function removedPermission(value: object): boolean {
+  const policies: unknown = Reflect.get(value, "policies");
+  return (
+    Array.isArray(policies) &&
+    policies.some((policy: unknown) => {
+      const listed: unknown =
+        typeof policy === "object" && policy !== null ? Reflect.get(policy, "permissions") : [];
+      return Array.isArray(listed) && listed.some((item) => item === "read" || item === "interest");
+    })
+  );
+}
 function invalidFields(value: unknown): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return ["root (expected an object)"];
@@ -48,7 +61,7 @@ function invalidFields(value: unknown): string[] {
       const field: unknown = Reflect.get(value, key);
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
-      fields.push(key);
+      fields.push(key === "policies" && removedPermission(value) ? REMOVED_PERMISSIONS : key);
     }
   }
   if (Object.keys(value).some((key) => !keys.includes(key))) {
@@ -302,7 +315,7 @@ async function describeValid(
   ];
   const socket = await socketCheck(config.socketPath);
   technical.push(socket.detail);
-  const actions: readonly Permission[] = ["discover", "read", "push", "interest"];
+  const actions: readonly Permission[] = ["discover", "push"];
   const missing = config.scopeIds.filter(
     (scope) => !actions.every((action) => permits(config, config.machineId, scope, action)),
   );
@@ -316,7 +329,7 @@ async function describeValid(
   technical.push(
     remote.detail,
     pairing.detail,
-    "Reconnect keeps this session's state and does not reread pi-peers.json. /reload loads changed settings but clears this session's inbox, publications, interests and receipts.",
+    "Reconnect keeps this session's state and does not reread pi-peers.json. /reload loads changed settings but clears this session's inbox and receipts.",
   );
   return {
     rows: [

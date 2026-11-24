@@ -22,7 +22,7 @@ export async function nativeFixture() {
 }
 const LOCAL = "Local only — no remote connections (recommended)";
 const CONSENT = /(?:: Ready$|^Turn off peers$|^Keep and reconnect$)/u;
-const TOGGLES = ["discover", "read", "push", "interest"];
+const TOGGLES = ["discover", "push"];
 const GRANT = /^(?:Allow|Deny)$/u;
 function toggled(
   answers: (string | undefined)[],

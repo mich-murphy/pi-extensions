@@ -28,7 +28,7 @@ import {
 } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
-const narrow = [local, "Edit choices", "Permissions", "Deny", "Allow", "Deny", "Deny", "APPLY"];
+const narrow = [local, "Edit choices", "Permissions", "Deny", "Allow", "APPLY"];
 
 function requiredSetup(setup: ManagedSetup | undefined): ManagedSetup {
   if (setup === undefined) {
@@ -150,7 +150,7 @@ describe("managed generation admission with actual native helper", () => {
         const restart = vi.fn<typeof requestManagedRestart>(async (setup) => {
           expect(setup.gatewaySha256).not.toBe(old.gatewaySha256);
           const state = await inspectSetup(agent);
-          const selected = localPlan({ ...state.choices, permissions: ["read"] }, setup.socketPath);
+          const selected = localPlan({ ...state.choices, permissions: ["push"] }, setup.socketPath);
           const blocked = client(selected, setup);
           const blockedAt = performance.now();
           await expect(blocked.reconnect()).rejects.toThrow("unavailable");
@@ -210,7 +210,7 @@ describe("managed generation admission with actual native helper", () => {
           restart,
         });
         const state = await inspectSetup(agent);
-        const selected = localPlan({ ...state.choices, permissions: ["read"] }, state.paths.socket);
+        const selected = localPlan({ ...state.choices, permissions: ["push"] }, state.paths.socket);
         const { readManaged } = await import("../onboarding/backend.js");
         const setup = await readManaged(agent, selected.adapter);
         expect(setup).toBeDefined();
@@ -250,19 +250,6 @@ describe("managed generation admission with actual native helper", () => {
       await session.reconnect();
       const peer = session.peer;
       const state = session.state;
-      const publication = state.publish({
-        scopeId: "local",
-        key: "retained",
-        record: {
-          category: "context",
-          title: "Retained",
-          summary: "narrowed activation",
-          content: "same bytes",
-          format: "text",
-          preparation: "authored",
-        },
-      });
-      expect(publication.tag).toBe("ok");
       const before = session.status();
       await resetLocal(agent);
       const restart = vi.fn<typeof requestManagedRestart>(async () => "uncertain");
@@ -290,12 +277,11 @@ describe("managed generation admission with actual native helper", () => {
       expect(session.status()).toMatchObject({
         connected: false,
         scopes: [],
-        publications: before.publications,
-        revision: before.revision,
+        receipts: before.receipts,
+        relations: before.relations,
       });
       expect(session.peer).toBe(peer);
       expect(session.state).toBe(state);
-      expect(state.read({ caller: peer, scopeId: "local", key: "retained" }).tag).toBe("error");
       expect(restart).toHaveBeenCalledOnce();
       expect(activate).not.toHaveBeenCalled();
       session.close();
@@ -335,19 +321,6 @@ describe("managed generation admission with actual native helper", () => {
       const peer = session.peer;
       const state = session.state;
       await session.reconnect();
-      const publication = session.state.publish({
-        scopeId: "local",
-        key: "retained",
-        record: {
-          category: "context",
-          title: "Retained generation state",
-          summary: "explicit restart",
-          content: "same bytes",
-          format: "text",
-          preparation: "authored",
-        },
-      });
-      expect(publication.tag).toBe("ok");
       const before = session.status();
       const cancel = dialog(["Activate saved configuration", "Back", "Back", undefined]);
       const entries = await readdir(setupPaths(agent).directory);
@@ -370,17 +343,14 @@ describe("managed generation admission with actual native helper", () => {
         expect.stringContaining("Saved configuration activated"),
         "info",
       );
-      expect(session.state.read({ caller: peer, scopeId: "local", key: "retained" }).tag).toBe(
-        "ok",
-      );
       expect(session.peer).toBe(peer);
       expect(session.state).toBe(state);
       expect(session.status()).toMatchObject({
         peer: before.peer,
         connected: true,
         scopes: before.scopes,
-        publications: before.publications,
-        revision: before.revision,
+        receipts: before.receipts,
+        relations: before.relations,
       });
       expect(restart).toHaveBeenCalledOnce();
       expect(activate).not.toHaveBeenCalled();

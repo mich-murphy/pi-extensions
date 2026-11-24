@@ -2,7 +2,7 @@
 
 Lets live Pi sessions send each other messages, on one machine or across machines.
 
-pi-peers does not export transcripts, transfer files, apply patches or run tasks on a peer. Messages are authored by the model or user. Loading an unconfigured extension is inert. After reviewed setup, participating Pi sessions start a detached shared gateway on demand. Session inboxes/publications are volatile; setup choices and credential/floor state remain on disk.
+pi-peers does not export transcripts, transfer files, apply patches or run tasks on a peer. Messages are authored by the model or user. Loading an unconfigured extension is inert. After reviewed setup, participating Pi sessions start a detached shared gateway on demand. Session inboxes are volatile; setup choices and credential/floor state remain on disk.
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ flowchart LR
 
 Every session connects to its machine's gateway, including two sessions on the same machine.
 
-Same-machine grants apply across projects on the OS account, not just within a repository. Only explicitly published records are readable; files and whole transcripts are not automatically shared. Authorized new messages can wake a model and incur provider usage. Peer messages are untrusted content.
+Same-machine grants apply across projects on the OS account, not just within a repository. Files and whole transcripts are not automatically shared. Authorized new messages can wake a model and incur provider usage. Peer messages are untrusted content.
 
 ## Install
 
@@ -136,7 +136,7 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
     {
       "machineId": "workstation",
       "scopeId": "team",
-      "permissions": ["discover", "read", "push", "interest"]
+      "permissions": ["discover", "push"]
     }
   ]
 }
@@ -151,7 +151,7 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 | `policies` | yes | 256 or fewer entries | Which machines may do what in which scope. |
 | `policies[].machineId` | yes | Same pattern as `machineId` | Machine the grant applies to. |
 | `policies[].scopeId` | yes | Scope pattern | Scope the grant applies to. |
-| `policies[].permissions` | yes | Any of `discover`, `read`, `push`, `interest` | Allowed actions. |
+| `policies[].permissions` | yes | Any of `discover`, `push` | Allowed actions. |
 
 ## First call
 
@@ -164,9 +164,6 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 | `peers_list` | `scopeIds?` (1–4), `watch?` | List live sessions you may discover. |
 | `peers_send` | `to` (PeerRef), `scopeId`, `message` (`kind`, `content`, `format`, `work?`, `status?`, `refs?`, `replyTo?`) | Send a request, reply or update to one session. |
 | `peers_take` | `limit?` (1–8, default 4) | Move messages from your inbox into the conversation. |
-| `peers_state` | `action` (`get`, `list`, `put`, `remove`), `publisher`, `scopeId`, `key`, `expectedRevision?`, `record` | Read peers' publications or manage your own. |
-| `peers_interest` | `action` (`add`, `remove`), `publisher`, `scopeId`, `work` | Subscribe to a peer's work updates. |
-| `peers_report` | `scopeId`, `key`, `record`, `notify` (`interested`, `selected`), `recipients?` (1–8) | Publish a work report and push it to recipients. |
 
 `format` is `text`, `markdown`, `git-diff` or `git-format-patch`. All formats are descriptive; nothing is applied or fetched.
 
@@ -190,9 +187,8 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 | `refs` per message | 8 |
 | Inbox | 64 messages, 1 MiB |
 | Receipts kept | 1,024, for at least 10 minutes |
-| Publications | 16, 512 KiB |
-| Relations and interests | 256 |
-| Recipients per report | 8 |
+| Relations | 256 |
+| Requesting peers per work item | 8 |
 | Sessions per gateway | 30 |
 | Send attempts | 3 within 15 seconds |
 
@@ -203,14 +199,6 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 - `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message.
 
 See [design](docs/design.md#receipts-and-idempotency).
-
-## Use from codemode
-
-- Start with discovery and publication listing and reading. Keep full `PeerRef`s and revisions for later calls.
-- Call simple reads, `peers_take` and single sends directly.
-- Do not rebuild `peers_report` in a script.
-- Never rerun sends or reports after a script fails. Cancelling a script does not undo effects.
-- `peers_take` consumes the inbox. A later script failure does not restore it.
 
 ## Safety and setup details
 
@@ -249,7 +237,7 @@ Setup-managed gateways run without launchd/systemd definitions: the first
 participating Pi starts the singleton; the last closes it after a bounded grace.
 Closing one Pi never kills the shared process. A crash while Pis remain open
 triggers bounded reconnect-or-spawn/re-registration episodes, keeping their nonce,
-publications and inbox state and never replaying uncertain sends. Exhaustion is
+inbox state and never replaying uncertain sends. Exhaustion is
 reported; the next explicit reconnect or tool call can start another bounded
 episode, not a perpetual background retry.
 
@@ -284,15 +272,14 @@ control or replay application requests. To explicitly retire an old instance, us
 `/peers setup` → **Activate saved configuration**, review, then
 **Restart and activate**. This sends
 one separate user-approved restart and reconnects the same Pi runtime: nonce,
-inbox, publications, interests and receipts are retained. Incompatible survivors
+inbox and receipts are retained. Incompatible survivors
 with narrowed identity/scope/grants remain refused. A cancelled action does
 nothing; uncertain control is never automatically replayed.
 
 Reconnect is not a blanket `/reload`: it does not replace an existing runtime's
 adapter policy snapshot. Maintenance reloads compatible setup metadata for the
 launcher while retaining the Pi's identity/state. Adding remote grants explicitly
-reviews replacement of **this** Pi runtime and loss of its inbox, publications,
-interests and receipts. Other already-open Pis keep their conservative earlier
+reviews replacement of **this** Pi runtime and loss of its inbox and receipts. Other already-open Pis keep their conservative earlier
 adapter grants; they do not automatically gain the new remote permissions.
 
 Missing configuration on disk does not prove an old runtime is disabled. Reset

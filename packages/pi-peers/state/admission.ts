@@ -48,10 +48,7 @@ function requestRelation(
     return undefined;
   }
   const key = scopedMessageKey(input.from, input.to, input.scopeId, input.message.id);
-  if (
-    !store.relations.has(key) &&
-    store.relations.size + store.interests.size >= store.limits.relationsAndInterests
-  ) {
+  if (!store.relations.has(key) && store.relations.size >= store.limits.relations) {
     return overload("relations");
   }
   const work = root(input.from, input.message);
@@ -205,7 +202,7 @@ export function rememberOutgoing(
       ? { tag: "ok", value: key }
       : { tag: "error", code: "id_conflict" };
   }
-  if (store.relations.size + store.interests.size >= store.limits.relationsAndInterests) {
+  if (store.relations.size >= store.limits.relations) {
     return overload("relations");
   }
   store.relations.set(key, {

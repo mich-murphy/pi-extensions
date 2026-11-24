@@ -6,13 +6,6 @@ import type { AdmitInput } from "../state/types.js";
 
 const peer = { machineId: "beta", sessionId: "b", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "a", runtimeNonce: "a".repeat(32) };
-const record = {
-  category: "context",
-  title: "Title",
-  summary: "Summary",
-  format: "text",
-  preparation: "authored",
-} as const;
 const id = (index: number) => index.toString(16).padStart(32, "0");
 function incoming(index: number, kind: "update" | "request", deliveryBytes?: number): AdmitInput {
   return {
@@ -49,14 +42,10 @@ describe("README default limits, without overriding any", () => {
       inboxMessages: 64,
       inboxBytes: 1_048_576,
       receipts: 1024,
-      publications: 16,
-      publicationBytes: 524_288,
-      relationsAndInterests: 256,
+      relations: 256,
       recipientsPerWork: 8,
       receiptTtlMs: 600_000,
       relationTtlMs: 86_400_000,
-      terminalRelationTtlMs: 3_600_000,
-      interestTtlMs: 86_400_000,
     });
   });
   test("the inbox holds 64 messages and refuses the 65th", () => {
@@ -118,17 +107,6 @@ describe("README default limits, without overriding any", () => {
       tag: "not_admitted",
       code: "overloaded",
       resource: "relations",
-    });
-  });
-  test("16 publications are kept and the 17th is refused", () => {
-    const { state } = stock();
-    for (let index = 1; index <= 16; index += 1) {
-      expect(state.publish({ scopeId: "team", key: `key-${index}`, record }).tag).toBe("ok");
-    }
-    expect(state.publish({ scopeId: "team", key: "key-17", record })).toMatchObject({
-      tag: "error",
-      code: "overloaded",
-      resource: "publications",
     });
   });
 });

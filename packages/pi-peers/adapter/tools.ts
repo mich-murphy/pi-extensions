@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import { validateFrame } from "../protocol/wire.js";
-import type { PublishInput } from "../state/types.js";
 import { permits, visibleText } from "./config.js";
 import { failureHint, sendHint } from "./hints.js";
 import { toolPresentation } from "./presentation.js";
@@ -79,29 +78,6 @@ const message = Type.Object(
   },
   { additionalProperties: false },
 );
-const record = Type.Object(
-  {
-    category: Type.Union([
-      Type.Literal("context"),
-      Type.Literal("research"),
-      Type.Literal("spec"),
-      Type.Literal("plan"),
-      Type.Literal("finding"),
-      Type.Literal("work"),
-    ]),
-    title: Type.String({ minLength: 1, maxLength: 128 }),
-    summary: Type.String({ minLength: 1, maxLength: 1024 }),
-    content: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_AUTHORED_BYTES })),
-    format,
-    ...authored,
-    preparation: Type.Union([
-      Type.Literal("authored"),
-      Type.Literal("summarized"),
-      Type.Literal("curated"),
-    ]),
-  },
-  { additionalProperties: false },
-);
 
 type ToolValue = {
   content: { type: "text"; text: string }[];
@@ -165,17 +141,6 @@ function ownScope(session: AdapterSession, scopeId: string): void {
     throw new ConnectionFailure("unavailable", false);
   }
 }
-const offline = (session: AdapterSession): boolean => !session.client.status().connected;
-function mutateOwn(
-  session: AdapterSession,
-  args: (PublishInput & { action: "put" }) | { action: "remove"; scopeId: string; key: string },
-) {
-  if (!offline(session)) {
-    ownScope(session, args.scopeId);
-  }
-  return args.action === "put" ? session.state.publish(args) : session.state.remove(args);
-}
-
 export function registerTools(
   pi: Pick<ExtensionAPI, "registerTool">,
   getSession: () => AdapterSession | undefined,
@@ -260,135 +225,5 @@ export function registerTools(
         },
         () => true,
       ),
-  });
-  pi.registerTool({
-    name: "peers_state",
-    ...toolPresentation("peers_state"),
-    label: "Published collaboration state",
-    description:
-      "Get/list authorized current publications without waking a publisher, or put/remove only this runtime's own publication. References never fetch or apply resources. No historical revision store.",
-    parameters: Type.Union([
-      Type.Object({
-        action: Type.Literal("get"),
-        publisher: peer,
-        scopeId: scope,
-        key: scope,
-        expectedRevision: Type.Optional(
-          Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
-        ),
-      }),
-      Type.Object({
-        action: Type.Literal("list"),
-        publisher: peer,
-        scopeId: scope,
-      }),
-      Type.Object({
-        action: Type.Literal("put"),
-        scopeId: scope,
-        key: scope,
-        record,
-      }),
-      Type.Object({
-        action: Type.Literal("remove"),
-        scopeId: scope,
-        key: scope,
-      }),
-    ]),
-    execute: async (_id, args, signal) =>
-      invoke(
-        getSession,
-        async (session) => {
-          if (args.action === "put" || args.action === "remove") {
-            return mutateOwn(session, args);
-          }
-          ownScope(session, args.scopeId);
-          if (!permits(session.config, args.publisher.machineId, args.scopeId, "read")) {
-            return { tag: "error", code: "forbidden" };
-          }
-          const frame = validateFrame(
-            {
-              v: 1,
-              op: args.action === "get" ? "state.get" : "state.list",
-              rid: freshId(),
-              publisher: args.publisher,
-              scopeId: args.scopeId,
-              ...(args.action === "get"
-                ? {
-                    key: args.key,
-                    ...(args.expectedRevision === undefined
-                      ? {}
-                      : { expectedRevision: args.expectedRevision }),
-                  }
-                : {}),
-            },
-            "local-client",
-          );
-          if (frame.op !== "state.get" && frame.op !== "state.list") {
-            throw new Error("Invalid state operation");
-          }
-          return session.client.operation(async () => {
-            const reply = await session.client.request(frame, signal);
-            return reply.outcome;
-          });
-        },
-        (session) => (args.action === "put" || args.action === "remove") && offline(session),
-      ),
-  });
-  pi.registerTool({
-    name: "peers_interest",
-    ...toolPresentation("peers_interest"),
-    label: "Work report interest",
-    description:
-      "Add/renew or remove one volatile explicit work interest. Does not wake the publisher; does not grant permission or imply automatic broadcasts.",
-    parameters: Type.Object({
-      action: Type.Union([Type.Literal("add"), Type.Literal("remove")]),
-      publisher: peer,
-      scopeId: scope,
-      work,
-    }),
-    execute: async (_id, args, signal) =>
-      invoke(getSession, async (session) => {
-        ownScope(session, args.scopeId);
-        if (!permits(session.config, args.publisher.machineId, args.scopeId, "interest")) {
-          return { tag: "error", code: "forbidden" };
-        }
-        const frame = validateFrame(
-          {
-            v: 1,
-            op: args.action === "add" ? "interest.add" : "interest.remove",
-            rid: freshId(),
-            publisher: args.publisher,
-            scopeId: args.scopeId,
-            work: args.work,
-          },
-          "local-client",
-        );
-        if (frame.op !== "interest.add" && frame.op !== "interest.remove") {
-          throw new Error("Invalid interest operation");
-        }
-        return session.client.operation(async () => {
-          const reply = await session.client.request(frame, signal);
-          return reply.outcome;
-        });
-      }),
-  });
-  pi.registerTool({
-    name: "peers_report",
-    ...toolPresentation("peers_report"),
-    label: "Publish and report work",
-    description:
-      "Atomically publish own work report and snapshot bounded explicit recipients/interests, then send independent admission pushes (max four concurrent). Partial failures are reported; this is not a distributed transaction or resumable report action.",
-    parameters: Type.Object({
-      scopeId: scope,
-      key: scope,
-      record,
-      notify: Type.Union([Type.Literal("interested"), Type.Literal("selected")]),
-      recipients: Type.Optional(Type.Array(peer, { minItems: 1, maxItems: 8 })),
-    }),
-    execute: async (_id, args, signal) =>
-      invoke(getSession, async (session) => {
-        ownScope(session, args.scopeId);
-        return session.report(args, signal);
-      }),
   });
 }

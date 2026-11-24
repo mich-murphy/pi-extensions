@@ -1,18 +1,7 @@
-import { randomBytes } from "node:crypto";
 import type { Message, PeerRef } from "../protocol/schema.js";
 import { admit, rememberOutgoing, retire, take } from "./admission.js";
-import { addInterest, prepareReport, removeInterest } from "./interests.js";
-import { list, publish, read, removePublication } from "./publications.js";
 import { defaults, sweep } from "./shared.js";
-import type {
-  AdmitInput,
-  InterestInput,
-  Options,
-  PublishInput,
-  ReadInput,
-  ReportInput,
-  Store,
-} from "./types.js";
+import type { AdmitInput, Options, Store } from "./types.js";
 
 function createStore(options: Options): Store {
   const limits = { ...defaults, ...options.limits };
@@ -23,9 +12,7 @@ function createStore(options: Options): Store {
   }
   if (
     limits.receiptTtlMs < defaults.receiptTtlMs ||
-    limits.interestTtlMs !== defaults.interestTtlMs ||
     limits.relationTtlMs !== defaults.relationTtlMs ||
-    limits.terminalRelationTtlMs !== defaults.terminalRelationTtlMs ||
     limits.recipientsPerWork > 8
   ) {
     throw new TypeError("State limits violate the v1 retention or fanout contract");
@@ -34,18 +21,12 @@ function createStore(options: Options): Store {
     peer: structuredClone(options.peer),
     scopeIds: new Set(options.scopeIds),
     limits,
-    reservePushes: options.reservePushes ?? (() => true),
     authorize: options.authorize,
     offer: options.offer,
-    newMessageId: options.newMessageId ?? (() => randomBytes(16).toString("hex")),
     receipts: new Map(),
     outstanding: new Map(),
     relations: new Map(),
-    interests: new Map(),
-    publications: new Map(),
-    revision: 0,
     inboxBytes: 0,
-    publicationBytes: 0,
   };
 }
 
@@ -76,26 +57,12 @@ export function createState(options: Options) {
       operation((now) => rememberOutgoing(store, input, now)),
     take: (key?: string) => operation(() => take(store, key)),
     retire: (key: string) => operation(() => retire(store, key)),
-    publish: (input: PublishInput) => operation(() => publish(store, input)),
-    remove: (input: { scopeId: string; key: string }) =>
-      operation(() => removePublication(store, input)),
-    read: (input: ReadInput) => operation(() => read(store, input)),
-    list: (input: { caller: PeerRef; scopeId: string }) => operation(() => list(store, input)),
-    interest: {
-      add: (input: InterestInput) => operation((now) => addInterest(store, input, now)),
-      remove: (input: InterestInput) => operation(() => removeInterest(store, input)),
-    },
-    prepareReport: (input: ReportInput) => operation((now) => prepareReport(store, input, now)),
     stats: () =>
       operation(() => ({
         inboxMessages: store.outstanding.size,
         inboxBytes: store.inboxBytes,
         receipts: store.receipts.size,
         relations: store.relations.size,
-        interests: store.interests.size,
-        publications: store.publications.size,
-        publicationBytes: store.publicationBytes,
-        revision: store.revision,
       })),
   };
 }

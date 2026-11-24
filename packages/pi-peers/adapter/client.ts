@@ -354,25 +354,11 @@ export class GatewayClient {
     this.diagnostic = "disconnected";
     this.options.statusChanged();
   }
-  reservePushes(count: number): (() => void) | undefined {
-    if (this.closed || count < 1 || count > 8 || this.active + count > 8) {
-      return undefined;
-    }
-    this.active += count;
-    let released = false;
-    return () => {
-      if (!released) {
-        released = true;
-        this.active -= count;
-      }
-    };
-  }
   async send(
     to: PeerRef,
     scopeId: string,
     message: Message,
     signal?: AbortSignal,
-    reserved = false,
   ): Promise<SendOutcome> {
     const binding = {
       messageId: message.id,
@@ -393,7 +379,7 @@ export class GatewayClient {
           this.request({ v: 1, op: "send", rid, to, scopeId, message }, combined, deadline),
       });
     try {
-      return reserved ? await run() : await this.operation(run);
+      return await this.operation(run);
     } catch (error) {
       if (error instanceof ConnectionFailure && error.code === "overloaded") {
         return {

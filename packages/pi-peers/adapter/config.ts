@@ -42,7 +42,7 @@ const configuration = Schema.Struct({
     Schema.Struct({
       machineId: machine,
       scopeId: scope,
-      permissions: Schema.Array(Schema.Literals(["discover", "read", "push", "interest"])),
+      permissions: Schema.Array(Schema.Literals(["discover", "push"])),
     }),
   ).check(Schema.makeFilter<readonly unknown[]>((items) => items.length <= 256)),
 });

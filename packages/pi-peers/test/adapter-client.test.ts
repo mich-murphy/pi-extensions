@@ -112,7 +112,7 @@ async function gateway(
       {
         machineId: "beta",
         scopeId: "team",
-        permissions: ["discover", "read", "push", "interest"],
+        permissions: ["discover", "push"],
       },
     ],
   };
@@ -235,19 +235,6 @@ function makeClient(config: Configuration): GatewayClient {
     },
     statusChanged: () => undefined,
   });
-}
-
-function missingPublication(request: Request): Reply | undefined {
-  if (request.op !== "state.get") {
-    return undefined;
-  }
-  return {
-    v: 1,
-    op: "result",
-    rid: request.rid,
-    forOp: "state.get",
-    outcome: { tag: "error", code: "not_found" },
-  };
 }
 
 function unroutedGateway(request: Request): Reply | undefined {
@@ -387,36 +374,6 @@ function restoreAgentDir(previous: string | undefined): void {
   } else {
     process.env.PI_CODING_AGENT_DIR = previous;
   }
-}
-function replyToReport(
-  fixture: Awaited<ReturnType<typeof gateway>>,
-  request: Extract<Request, { op: "send" }>,
-  denied: boolean,
-): void {
-  const receipt = {
-    messageId: request.message.id,
-    sender: peer,
-    recipient: request.to,
-    scopeId: request.scopeId,
-  };
-  const outcome = denied
-    ? {
-        tag: "not_admitted" as const,
-        binding: receipt,
-        code: "forbidden" as const,
-      }
-    : {
-        tag: "admitted" as const,
-        binding: receipt,
-        correlation: "none" as const,
-      };
-  fixture.sendFrame({
-    v: 1,
-    op: "result",
-    rid: request.rid,
-    forOp: "send",
-    outcome,
-  });
 }
 function extensionHost(select: () => Promise<unknown> = async () => undefined) {
   const handlers = new Map<string, unknown>();
@@ -1178,7 +1135,7 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).not.toContain("Remote config snapshot");
     expect(host.notifications.at(-1)).not.toContain("Connected as");
   });
-  test("public tools share the scoped runtime and reserve report fanout before publication", async () => {
+  test("public tools share the scoped runtime", async () => {
     const fixture = await gateway(toolGateway);
     const current: { session?: AdapterSession } = {};
     const tools: CapturedTool[] = [];
@@ -1228,105 +1185,6 @@ describe("public adapter transport and notice accounting", () => {
       outcome: { tag: "not_admitted", code: "forbidden" },
     });
     await expect(executeTool(tools, "peers_take", {})).resolves.toMatchObject({ messages: [] });
-    const record = {
-      category: "context",
-      title: "title",
-      summary: "summary",
-      format: "text",
-      preparation: "authored",
-    };
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "put",
-        scopeId: "team",
-        key: "notes",
-        record,
-      }),
-    ).resolves.toMatchObject({ tag: "ok" });
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "remove",
-        scopeId: "team",
-        key: "notes",
-      }),
-    ).resolves.toMatchObject({ tag: "ok" });
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "get",
-        publisher: other,
-        scopeId: "team",
-        key: "notes",
-        expectedRevision: 1,
-      }),
-    ).resolves.toMatchObject({ tag: "error", code: "not_found" });
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "list",
-        publisher: other,
-        scopeId: "team",
-      }),
-    ).resolves.toMatchObject({ tag: "ok" });
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "list",
-        publisher: peer,
-        scopeId: "team",
-      }),
-    ).resolves.toMatchObject({ code: "forbidden" });
-    await expect(
-      executeTool(tools, "peers_state", {
-        action: "remove",
-        scopeId: "other",
-        key: "notes",
-      }),
-    ).resolves.toMatchObject({ code: "unavailable" });
-    const work = { kind: "request", origin: peer, requestId: "8".repeat(32) };
-    await expect(
-      executeTool(tools, "peers_interest", {
-        action: "add",
-        publisher: other,
-        scopeId: "team",
-        work,
-      }),
-    ).resolves.toMatchObject({ code: "not_found" });
-    await expect(
-      executeTool(tools, "peers_interest", {
-        action: "remove",
-        publisher: other,
-        scopeId: "team",
-        work,
-      }),
-    ).resolves.toMatchObject({ tag: "ok" });
-    await expect(
-      executeTool(tools, "peers_interest", {
-        action: "add",
-        publisher: peer,
-        scopeId: "team",
-        work,
-      }),
-    ).resolves.toMatchObject({ code: "forbidden" });
-    const report = {
-      scopeId: "team",
-      key: "work",
-      record: { ...record, category: "work", work, status: "in_progress" },
-      notify: "selected",
-      recipients: [other],
-    };
-    const release = owned.session.client.reservePushes(8);
-    assert(release);
-    const revision = owned.session.state.stats().revision;
-    await expect(executeTool(tools, "peers_report", report)).resolves.toMatchObject({
-      tag: "error",
-      code: "overloaded",
-      resource: "operations",
-    });
-    expect(owned.session.state.stats().revision).toBe(revision);
-    release();
-    await expect(executeTool(tools, "peers_report", report)).resolves.toMatchObject({
-      tag: "ok",
-      value: { pushes: [{ outcome: { tag: "admitted" } }] },
-    });
-    expect(owned.session.client.status().operations).toBe(0);
     await expect(
       executeTool(tools, "peers_send", {
         to: other,
@@ -1402,106 +1260,6 @@ describe("public adapter transport and notice accounting", () => {
       value: { outcome: { tag: "not_admitted", code: "no_route" } },
     });
     expect(result.note).toMatch(/^Not delivered\. .*Call peers_list.*cannot duplicate it\.$/u);
-  });
-  test("report commits once, holds all eight logical slots across four-wide partial delivery, then releases", async () => {
-    const fixture = await gateway(() => undefined);
-    const session = new AdapterSession(
-      fixture.config,
-      peer,
-      { sendMessage: () => undefined },
-      () => undefined,
-      () => undefined,
-    );
-    cleanups.push(async () => {
-      session.close();
-    });
-    await session.start();
-    const recipients = Array.from({ length: 8 }, (_, index) => ({
-      ...other,
-      sessionId: `recipient-${index}`,
-    }));
-    const pending = session.report({
-      scopeId: "team",
-      key: "report",
-      notify: "selected",
-      recipients,
-      record: {
-        category: "work",
-        title: "bounded report",
-        summary: "authored terminal result",
-        format: "text",
-        preparation: "authored",
-        status: "completed",
-        work: { kind: "publication", publisher: peer, key: "report" },
-      },
-    });
-    await expect
-      .poll(() => fixture.requests.filter((request) => request.op === "send").length)
-      .toBe(4);
-    expect(session.state.stats().revision).toBe(1);
-    expect(session.client.status().operations).toBe(8);
-    await expect(
-      session.report({
-        scopeId: "team",
-        key: "unused",
-        notify: "selected",
-        recipients,
-        record: {
-          category: "context",
-          title: "not published",
-          summary: "not work",
-          format: "text",
-          preparation: "authored",
-        },
-      }),
-    ).resolves.toMatchObject({
-      tag: "error",
-      code: "overloaded",
-      resource: "operations",
-    });
-    await expect(session.send(other, "team", authored())).resolves.toMatchObject({
-      tag: "not_admitted",
-      code: "overloaded",
-    });
-    const firstBatch = fixture.requests.filter((request) => request.op === "send");
-    for (const [index, request] of firstBatch.entries()) {
-      replyToReport(fixture, request, index === 0);
-    }
-    await expect
-      .poll(() => fixture.requests.filter((request) => request.op === "send").length)
-      .toBe(8);
-    expect(session.client.status().operations).toBe(8);
-    const secondBatch = fixture.requests.filter((request) => request.op === "send").slice(4);
-    for (const request of secondBatch) {
-      replyToReport(fixture, request, false);
-    }
-    const result = await pending;
-    expect(result).toMatchObject({
-      tag: "ok",
-      value: { publication: { revision: 1 } },
-    });
-    assert(result.tag === "ok");
-    expect(result.value.pushes).toHaveLength(8);
-    expect(result.value.pushes[0]).toMatchObject({
-      outcome: { tag: "not_admitted", code: "forbidden" },
-    });
-    expect(session.state.stats().revision).toBe(1);
-    expect(session.client.status().operations).toBe(0);
-    await expect(
-      session.report({
-        scopeId: "team",
-        key: "unused",
-        notify: "interested",
-        record: {
-          category: "context",
-          title: "invalid report",
-          summary: "not work",
-          format: "text",
-          preparation: "authored",
-        },
-      }),
-    ).resolves.toMatchObject({ tag: "error" });
-    expect(session.client.status().operations).toBe(0);
   });
   test("shared registration survives initiating caller cancellation", async () => {
     const fixture = await gateway(discoveryReply, true);
@@ -1860,20 +1618,8 @@ describe("public adapter transport and notice accounting", () => {
     await expect.poll(() => client.status().watching).toBe(false);
     await client.discover(["team"], true);
     expect(fixture.requests.filter((item) => item.op === "discover")).toHaveLength(2);
-    const release = client.reservePushes(8);
-    assert(release);
-    expect(client.reservePushes(1)).toBeUndefined();
-    expect(client.reservePushes(0)).toBeUndefined();
-    expect(client.reservePushes(9)).toBeUndefined();
-    await expect(client.send(other, "team", authored())).resolves.toMatchObject({
-      tag: "not_admitted",
-      code: "overloaded",
-    });
-    release();
-    release();
     expect(client.status().operations).toBe(0);
     client.close();
-    expect(client.reservePushes(1)).toBeUndefined();
     await expect(client.send(other, "team", authored())).resolves.toMatchObject({
       code: "cancelled",
     });
@@ -2012,93 +1758,7 @@ describe("public adapter transport and notice accounting", () => {
       connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 60_000),
     ).rejects.toMatchObject({ code: "unavailable" });
   });
-  test("peers_state get puts expectedRevision on the wire only when the caller supplied one", async () => {
-    const fixture = await gateway(missingPublication);
-    const current: { session?: AdapterSession } = {};
-    const tools: CapturedTool[] = [];
-    registerTools(
-      {
-        registerTool: (definition) => {
-          tools.push({
-            name: definition.name,
-            execute: definition.execute.bind(definition),
-          });
-        },
-      },
-      () => current.session,
-    );
-    const owned = await createAdapterRuntime(
-      fixture.config,
-      peer,
-      { sendMessage: () => undefined },
-      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
-    );
-    cleanups.push(async () => {
-      await owned.dispose();
-    });
-    current.session = owned.session;
-    await expect.poll(() => owned.session.client.status().connected).toBe(true);
-    const get = {
-      action: "get",
-      publisher: other,
-      scopeId: "team",
-      key: "notes",
-    };
-    await executeTool(tools, "peers_state", { ...get, expectedRevision: 7 });
-    await executeTool(tools, "peers_state", { ...get, expectedRevision: 0 });
-    await executeTool(tools, "peers_state", get);
-    const sent = fixture.requests.filter((request) => request.op === "state.get");
-    expect(sent.map((request) => request.expectedRevision)).toStrictEqual([7, 0, undefined]);
-    expect(sent.map((request) => "expectedRevision" in request)).toStrictEqual([true, true, false]);
-  });
-  test("adapter answers a state.get whose expectedRevision differs from the current publication with revision_mismatch", async () => {
-    const fixture = await gateway(() => undefined);
-    const session = new AdapterSession(
-      fixture.config,
-      peer,
-      { sendMessage: () => undefined },
-      () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
-      () => undefined,
-    );
-    cleanups.push(async () => {
-      session.close();
-    });
-    await session.start();
-    expect(
-      session.state.publish({
-        scopeId: "team",
-        key: "report",
-        record: {
-          category: "context",
-          title: "report",
-          summary: "summary",
-          format: "text",
-          preparation: "authored",
-        },
-      }),
-    ).toMatchObject({ tag: "ok" });
-    const ask = (rid: string, expectedRevision: number) => {
-      fixture.sendFrame({
-        v: 1,
-        op: "state.get",
-        rid,
-        from: other,
-        publisher: peer,
-        scopeId: "team",
-        key: "report",
-        expectedRevision,
-      });
-    };
-    ask("a".repeat(32), 1);
-    ask("b".repeat(32), 2);
-    await expect.poll(() => fixture.replies.length).toBe(2);
-    expect(fixture.replies[0]?.outcome).toMatchObject({ tag: "ok" });
-    expect(fixture.replies[1]?.outcome).toStrictEqual({
-      tag: "error",
-      code: "revision_mismatch",
-    });
-  });
-  test("adapter serves read/interest controls without wakes, including wrong-runtime routing", async () => {
+  test("adapter answers forwarded state and interest requests with forbidden, without wakes", async () => {
     const fixture = await gateway(() => undefined);
     const notices: unknown[] = [];
     const session = new AdapterSession(
@@ -2116,25 +1776,7 @@ describe("public adapter transport and notice accounting", () => {
       session.close();
     });
     await session.start();
-    const work = {
-      kind: "publication" as const,
-      publisher: peer,
-      key: "report",
-    };
-    expect(
-      session.state.publish({
-        scopeId: "team",
-        key: "report",
-        record: {
-          category: "work",
-          title: "report",
-          summary: "summary",
-          format: "text",
-          preparation: "authored",
-          work,
-        },
-      }),
-    ).toMatchObject({ tag: "ok" });
+    const work = { kind: "publication" as const, publisher: peer, key: "report" };
     fixture.sendFrame({
       v: 1,
       op: "state.get",
@@ -2180,10 +1822,12 @@ describe("public adapter transport and notice accounting", () => {
       scopeId: "team",
     });
     await expect.poll(() => fixture.replies.length).toBe(5);
-    expect(fixture.replies.slice(0, 4).every((reply) => reply.outcome.tag === "ok")).toBe(true);
-    expect(fixture.replies[4]).toMatchObject({
-      outcome: { tag: "error", code: "no_route" },
-    });
+    expect(fixture.replies.map((reply) => [reply.forOp, reply.outcome])).toStrictEqual(
+      ["state.get", "state.list", "interest.add", "interest.remove", "state.list"].map((op) => [
+        op,
+        { tag: "error", code: "forbidden" },
+      ]),
+    );
     expect(notices).toHaveLength(0);
     session.afterCompaction(true);
     session.afterCompaction();

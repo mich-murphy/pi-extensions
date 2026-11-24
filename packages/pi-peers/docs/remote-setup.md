@@ -222,9 +222,9 @@ Both configs carry the full `remote` object. This is alpha, the listener. Replac
   "socketPath": "/home/me/pi-peers/run/alpha.sock",
   "scopeIds": ["team"],
   "policies": [
-    { "machineId": "alpha", "scopeId": "team", "permissions": ["discover", "read", "push", "interest"] },
+    { "machineId": "alpha", "scopeId": "team", "permissions": ["discover", "push"] },
     { "machineId": "beta", "scopeId": "team", "permissions": ["discover", "push"] },
-    { "machineId": "beta", "scopeId": "team", "direction": "incoming", "permissions": ["discover", "read", "push", "interest"] }
+    { "machineId": "beta", "scopeId": "team", "direction": "incoming", "permissions": ["discover", "push"] }
   ],
   "remote": {
     "machineId": "beta",

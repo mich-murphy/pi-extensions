@@ -90,7 +90,7 @@ describe("peers menu model", () => {
       plan: {
         choices: {
           scopeId: "team",
-          permissions: ["discover", "read", "interest"],
+          permissions: ["discover"],
         },
       },
     });
@@ -207,7 +207,7 @@ describe("Manage form", () => {
       ["Machine", "saved-host"],
       ["Scope", "local"],
       ["Label", "Saved label"],
-      ["Permissions", "4 of 4 on"],
+      ["Permissions", "2 of 2 on"],
       ["Review details", ""],
       ["Apply", "No changes"],
       ["Keep and reconnect", ""],
@@ -230,7 +230,7 @@ describe("Manage form", () => {
     model.activate("apply");
     expect(consented).toHaveBeenCalledExactlyOnceWith("Apply");
     expect(apply.mock.calls[0]?.[0]).toMatchObject({
-      choices: { permissions: ["discover", "read", "interest"] },
+      choices: { permissions: ["discover"] },
       adapter: { socketPath: "/private/owned/s" },
     });
   });

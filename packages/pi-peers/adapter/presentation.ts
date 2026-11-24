@@ -26,10 +26,6 @@ function identity(value: unknown): string {
   const short = session.length > 12 ? `…${session.slice(-8)}` : session;
   return `${preview(peer.machineId)}/${short}@${preview(peer.runtimeNonce).slice(-6)}`;
 }
-function publication(value: unknown): string {
-  const record = fields(value);
-  return `${preview(record.key)} r${text(record.revision)} · ${preview(record.status ?? record.category)} · ${preview(record.title)}`;
-}
 function listing(values: unknown[], render: (value: unknown) => string): string[] {
   return [
     ...values.slice(0, 3).map((value) => render(value)),
@@ -58,103 +54,12 @@ function callSummary(name: string, args: Fields): string {
     case "peers_take": {
       return `← inbox · up to ${preview(args.limit, "4")} messages`;
     }
-    case "peers_list": {
+    default: {
       return `Discover peers${args.watch === true ? " · watch" : ""}`;
     }
-    case "peers_state": {
-      return stateCall(args);
-    }
-    case "peers_interest": {
-      return `${preview(args.action)} interest · ${identity(args.publisher)} · ${workLabel(args.work)}`;
-    }
-    default: {
-      return `Publish report · ${preview(fields(args.record).status)} · ${preview(fields(args.record).title)} · ${preview(args.notify)}`;
-    }
   }
 }
-function stateCall(args: Fields): string {
-  const action = preview(args.action);
-  if (args.action === "list") {
-    return `list · ${identity(args.publisher)}`;
-  }
-  if (args.action === "get") {
-    return `get · ${identity(args.publisher)} · ${preview(args.key)}`;
-  }
-  if (args.action === "remove") {
-    return `remove · ${preview(args.key)}`;
-  }
-  if (args.action === "put") {
-    return `Publish · ${preview(args.key)} · ${preview(fields(args.record).title)}`;
-  }
-  return action;
-}
-function workLabel(value: unknown): string {
-  const work = fields(value);
-  return work.kind === "publication"
-    ? `publication ${preview(work.key)}`
-    : `request …${preview(work.requestId).slice(-8)}`;
-}
-function reportSummary(value: Fields): string[] {
-  if (value.publication === undefined || !Array.isArray(value.pushes)) {
-    return ["Report result unavailable"];
-  }
-  const pushes = items(value.pushes);
-  const count = (tag: string) =>
-    pushes.filter((push) => fields(fields(push).outcome).tag === tag).length;
-  const admitted = count("admitted");
-  const unknown = count("unknown");
-  const denied = count("not_admitted");
-  const other = pushes.length - admitted - unknown - denied;
-  if (pushes.length === 0) {
-    return [`Published; no peer notifications · ${publication(value.publication)}`];
-  }
-  const counts = [
-    ...(admitted > 0 ? [`${admitted} added to peer inbox`] : []),
-    ...(denied > 0 ? [`${denied} not admitted`] : []),
-    ...(unknown > 0 ? [`${unknown} UNKNOWN`] : []),
-    ...(other > 0 ? [`${other} other failures`] : []),
-  ].join("; ");
-  return [
-    ...(unknown > 0 ? [UNCERTAIN] : []),
-    ...(denied + unknown + other > 0
-      ? ["Partial/mixed outcomes; publication is not rolled back."]
-      : []),
-    `${pushes.length} ${pushes.length === 1 ? "push" : "pushes"}: ${counts}`,
-    `Published · ${publication(value.publication)}`,
-    ...listing(pushes, (push) => {
-      const entry = fields(push);
-      return `→ ${identity(entry.recipient)} · ${fields(entry.outcome).tag === "unknown" ? "uncertain" : delivery(entry.outcome)}`;
-    }),
-  ];
-}
-function stateSummary(result: Fields, value: Fields, args: Fields): string[] {
-  if (result.tag !== "ok") {
-    return ["Publication result unavailable"];
-  }
-  if (args.action === "list") {
-    const records = items(value.items);
-    return [
-      `${records.length} ${records.length === 1 ? "publication" : "publications"}`,
-      ...listing(records, publication),
-    ];
-  }
-  if (args.action === "remove") {
-    return [value.removed === true ? "Publication removed" : "No publication removed"];
-  }
-  return [
-    `${args.action === "put" ? "Published" : "Publication"} · ${publication(value.publication ?? value)}`,
-    preview(fields(value.publication ?? value).summary),
-  ];
-}
-function interestSummary(value: Fields, args: Fields): string[] {
-  if (typeof value.active !== "boolean") {
-    return ["Interest result unavailable"];
-  }
-  return [
-    `Interest ${value.active ? "active" : "inactive"} · ${identity(value.publisher ?? args.publisher)}${fields(value.current).status === undefined ? "" : ` · ${preview(fields(value.current).status)}`}`,
-  ];
-}
-function resultSummary(name: string, raw: unknown, args: Fields): string[] {
+function resultSummary(name: string, raw: unknown): string[] {
   const result = fields(raw);
   if (result.tag === "error") {
     return [
@@ -193,15 +98,6 @@ function resultSummary(name: string, raw: unknown, args: Fields): string[] {
         }),
       ];
     }
-    case "peers_state": {
-      return stateSummary(result, value, args);
-    }
-    case "peers_interest": {
-      return interestSummary(value, args);
-    }
-    case "peers_report": {
-      return reportSummary(value);
-    }
     default: {
       return ["Result unavailable"];
     }
@@ -234,7 +130,6 @@ function hasHiddenPreview(summary: string[], raw: unknown, args: Fields): boolea
   const value = result.tag === "ok" ? fields(result.value) : result;
   const previews = [
     fields(args.message).content,
-    fields(value.publication ?? value).summary,
     ...items(value.messages).map((entry) => fields(fields(entry).message).content),
   ];
   return (
@@ -255,7 +150,7 @@ export function toolPresentation(name: string): ToolRenderers {
       const raw = fields(fields(result).details).value;
       const summary = options.isPartial
         ? ["In progress · outcome not final"]
-        : resultSummary(name, raw, fields(context.args));
+        : resultSummary(name, raw);
       if (context.isError) {
         summary.unshift("Failed · tool execution error");
       }
@@ -270,14 +165,7 @@ export function toolPresentation(name: string): ToolRenderers {
         );
       }
       let color: "error" | "warning" | "toolOutput" = "toolOutput";
-      if (
-        summary.some(
-          (line) =>
-            line.startsWith("UNKNOWN") ||
-            line.startsWith("Not added") ||
-            line.startsWith("Partial/mixed"),
-        )
-      ) {
+      if (summary.some((line) => line.startsWith("UNKNOWN") || line.startsWith("Not added"))) {
         color = "warning";
       }
       if (context.isError || fields(raw).tag === "error") {
@@ -290,7 +178,7 @@ export function toolPresentation(name: string): ToolRenderers {
         theme.fg(color, summary.join("\n")) +
           (options.expanded ? `\n${full(raw === undefined ? result : raw)}` : hint),
         options.expanded,
-        summary.slice(0, name === "peers_report" ? 3 : 1).join("\n"),
+        summary.slice(0, 1).join("\n"),
       );
     },
   };
@@ -321,8 +209,7 @@ export function diagnostics(value: unknown, diagnostic: string): string {
         .map((scope) => preview(scope))
         .join(", ") || "none"
     } · watch=${status.watching === true ? "active" : "off"}`,
-    `Inbox: ${text(status.inboxMessages, "0")} messages / ${text(status.inboxBytes, "0")} bytes · receipts=${text(status.receipts, "0")} · operations=${text(status.operations, "0")}`,
-    `Publications: ${text(status.publications, "0")} / ${text(status.publicationBytes, "0")} bytes · revision=${text(status.revision, "0")} · interests=${text(status.interests, "0")} · relations=${text(status.relations, "0")}`,
+    `Inbox: ${text(status.inboxMessages, "0")} messages / ${text(status.inboxBytes, "0")} bytes · receipts=${text(status.receipts, "0")} · operations=${text(status.operations, "0")} · relations=${text(status.relations, "0")}`,
     `Wake notice: ${preview(status.notice)} · inbox admission does not imply reading or work completion.`,
   ].join("\n");
 }
@@ -353,8 +240,7 @@ function runtimeTechnical(status: Fields): string[] {
   return [
     `Runtime status: ${plain(status.status, 96) || "unknown"}`,
     `Exact runtime: machine=${plain(peer.machineId, 96)} session=${plain(peer.sessionId, 96)} nonce=${plain(peer.runtimeNonce, 96)}`,
-    `Inbox: ${tally(status.inboxMessages)} messages / ${tally(status.inboxBytes)} bytes · receipts=${tally(status.receipts)} · operations=${tally(status.operations)}`,
-    `Publications: ${tally(status.publications)} / ${tally(status.publicationBytes)} bytes · revision=${tally(status.revision)} · interests=${tally(status.interests)} · relations=${tally(status.relations)}`,
+    `Inbox: ${tally(status.inboxMessages)} messages / ${tally(status.inboxBytes)} bytes · receipts=${tally(status.receipts)} · operations=${tally(status.operations)} · relations=${tally(status.relations)}`,
     `Wake notice: ${plain(notice, 96)} · inbox admission does not imply reading or work completion.`,
   ];
 }

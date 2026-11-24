@@ -128,7 +128,7 @@ describe("Manage on a paired setup", () => {
       "Scope: local",
       "Review details",
       "Back",
-      "Permissions: 4 of 4 on",
+      "Permissions: 2 of 2 on",
       "push: On",
       "Back",
       "Apply: Ready",
@@ -163,7 +163,7 @@ describe("Manage on a paired setup", () => {
     );
 
     const after = await gateway();
-    const kept = ["discover", "read", "interest"];
+    const kept = ["discover"];
     expect(after.policies.filter((policy) => policy.machineId === PEER)).toStrictEqual([
       { machineId: PEER, scopeId: "local", permissions: kept, direction: "outgoing" },
       { machineId: PEER, scopeId: "local", permissions: kept, direction: "incoming" },

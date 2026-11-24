@@ -107,24 +107,9 @@ async function connected(host: ReturnType<typeof extensionHost>) {
   });
   return identity(await host.command("status"));
 }
-async function localPublication(host: ReturnType<typeof extensionHost>) {
+async function localSetup(host: ReturnType<typeof extensionHost>) {
   await host.command("setup", ["Local only — no remote connections (recommended)", "APPLY"]);
-  const peer = await connected(host);
-  await host.tool("peers_state", {
-    action: "put",
-    scopeId: "local",
-    key: "kept",
-    record: {
-      category: "context",
-      title: "Before upgrade",
-      summary: "Owned volatile publication",
-      content: "retain unless reviewed replacement",
-      format: "text",
-      preparation: "authored",
-    },
-  });
-  const get = { action: "get", scopeId: "local", key: "kept", publisher: peer };
-  return { peer, get, value: await host.tool("peers_state", get) };
+  return { peer: await connected(host) };
 }
 async function upgrade(host: ReturnType<typeof extensionHost>) {
   const address = await nativeAddress();
@@ -169,7 +154,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await production.event("session_shutdown");
   });
   test("reviewed local-to-remote upgrade replaces THIS idle runtime and loses only its reviewed volatile state", async () => {
-    const before = await localPublication(host);
+    const before = await localSetup(host);
     expect(host.entries).toContain("peers-report");
     await host.command("setup", ["Keep and reconnect"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
@@ -184,24 +169,20 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
       `Address=${cancelledAddress}`,
       "Back",
     ]);
-    await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
+    await expect(connected(host)).resolves.toStrictEqual(before.peer);
     const messages = await upgrade(host);
     expect(messages.join("\n")).toContain("Remote peer added — upgrade-peer");
     const after = await connected(host);
     expect(after.runtimeNonce).not.toBe(before.peer.runtimeNonce);
     expect(after.machineId).toBe(before.peer.machineId);
     expect(after.sessionId).toBe(before.peer.sessionId);
-    await expect(
-      host.tool("peers_state", { ...before.get, publisher: after }),
-    ).resolves.toMatchObject({ tag: "error", code: "not_found" });
   });
-  test("busy Pi refuses reviewed replacement after staging and retains its original nonce/publication", async () => {
-    const before = await localPublication(host);
+  test("busy Pi refuses reviewed replacement after staging and retains its original nonce", async () => {
+    const before = await localSetup(host);
     host.setIdle(false);
     const messages = await upgrade(host);
     expect(messages.join("\n")).toContain("is busy and was not replaced");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
   });
   test("reset with nothing configured says so without asking for Apply or writing", async () => {
     const messages = await host.command("reset", ["APPLY"]);
@@ -219,7 +200,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     expect(messages.join("\n")).toContain("Nothing to reset");
   });
   test("a corrupt reset ledger is refused without quoting its content", async () => {
-    const before = await localPublication(host);
+    const before = await localSetup(host);
     await writeFile(
       join(setupPaths(agent).directory, "reset.json"),
       '{"path": /Users/secret-owner/private}',
@@ -233,7 +214,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
   });
   test("reset cancellation keeps current runtime; approved reset disables participation and disposes it", async () => {
-    const before = await localPublication(host);
+    const before = await localSetup(host);
     await host.command("reset", ["Back"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     const messages = await host.command("reset", ["APPLY"]);
@@ -244,7 +225,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     expect(status.join("\n")).toContain("participation disabled");
   });
   test("changed owned configuration makes reset refuse before closing the existing runtime", async () => {
-    const before = await localPublication(host);
+    const before = await localSetup(host);
     const path = setupPaths(agent).adapter;
     const bytes = await readFile(path);
     await writeFile(path, Buffer.concat([bytes, Buffer.from("\n")]));
@@ -252,10 +233,9 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     expect(messages.join("\n")).toContain("Reset failed: pi-peers.json was edited by hand");
     expect(messages.join("\n")).toContain("Nothing was turned off");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    await expect(host.tool("peers_state", before.get)).resolves.toStrictEqual(before.value);
   });
   test("already-disabled interrupted reset failure still truthfully disposes this runtime", async () => {
-    await localPublication(host);
+    await localSetup(host);
     const paths = setupPaths(agent);
     const adapter = await readFile(paths.adapter);
     const backup = `${paths.adapter}.disabled-fixture`;

@@ -132,7 +132,7 @@ async function nativeGateway() {
     {
       machineId: "alpha",
       scopeId: "team",
-      permissions: ["discover", "read", "push", "interest"] as const,
+      permissions: ["discover", "push"] as const,
     },
   ];
   await writeFile(
@@ -186,7 +186,7 @@ async function nativeGateway() {
 }
 
 describe("production adapter / native local gateway vertical slice", () => {
-  test("routes exact runtimes, bound receipts, publications and interests without replay or read wakes", async () => {
+  test("routes exact runtimes and bound receipts without replay", async () => {
     const gateway = await nativeGateway();
     const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: freshId() };
     const receiver = { machineId: "alpha", sessionId: "receiver", runtimeNonce: freshId() };
@@ -248,67 +248,6 @@ describe("production adapter / native local gateway vertical slice", () => {
         details: notices[0]?.details,
       });
       expect(right.session.status().notice).toBe("none");
-      const work = { kind: "request" as const, origin: sender, requestId: message.id };
-      const record = {
-        category: "work" as const,
-        title: "Native report",
-        summary: "Authored progress",
-        format: "text" as const,
-        preparation: "authored" as const,
-        work,
-        status: "in_progress" as const,
-      };
-      expect(right.session.state.publish({ scopeId: "team", key: "report", record })).toMatchObject(
-        { tag: "ok" },
-      );
-      await expect(
-        left.session.client.request({
-          v: 1,
-          op: "state.get",
-          rid: freshId(),
-          publisher: receiver,
-          scopeId: "team",
-          key: "report",
-          expectedRevision: 1,
-        }),
-      ).resolves.toMatchObject({
-        outcome: { tag: "ok", value: { publisher: receiver, publication: { revision: 1 } } },
-      });
-      await expect(
-        left.session.client.request({
-          v: 1,
-          op: "state.list",
-          rid: freshId(),
-          publisher: receiver,
-          scopeId: "team",
-        }),
-      ).resolves.toMatchObject({ outcome: { tag: "ok", value: { items: [{ key: "report" }] } } });
-      await expect(
-        left.session.client.request({
-          v: 1,
-          op: "interest.add",
-          rid: freshId(),
-          publisher: receiver,
-          scopeId: "team",
-          work,
-        }),
-      ).resolves.toMatchObject({ outcome: { tag: "ok", value: { active: true } } });
-      expect(notices).toHaveLength(1);
-      await expect(
-        right.session.report({
-          scopeId: "team",
-          key: "report",
-          record: { ...record, status: "completed" },
-          notify: "interested",
-        }),
-      ).resolves.toMatchObject({
-        tag: "ok",
-        value: {
-          publication: { revision: 2 },
-          pushes: [{ recipient: sender, outcome: { tag: "admitted" } }],
-        },
-      });
-      expect(left.session.take(8).messages).toHaveLength(1);
       expect(right.session.client.status().operations).toBe(0);
       const proxy = await receiptLossProxy(gateway.config, () => {
         right.session.close();

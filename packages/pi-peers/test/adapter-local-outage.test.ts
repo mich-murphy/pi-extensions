@@ -22,18 +22,6 @@ const other = {
   sessionId: "sender",
   runtimeNonce: "2".repeat(32),
 };
-const stranger = {
-  machineId: "gamma",
-  sessionId: "reader",
-  runtimeNonce: "5".repeat(32),
-};
-const record = {
-  category: "context",
-  title: "title",
-  summary: "summary",
-  format: "text",
-  preparation: "authored",
-};
 const cleanups: (() => Promise<void>)[] = [];
 
 function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
@@ -130,33 +118,6 @@ async function tool(tools: readonly Tool[], name: string, args: unknown) {
   const details = recordWith(result.details, "value", "tool details");
   return { value: details.value, isError: result.isError === true };
 }
-function remoteRead(
-  session: AdapterSession,
-  scopeId: string,
-  key: string,
-  from: typeof other = other,
-): unknown {
-  const incoming: unknown = Reflect.get(session, "incoming");
-  if (typeof incoming !== "function") {
-    throw new TypeError("incoming seam");
-  }
-  const reply = recordWith(
-    Reflect.apply(incoming, session, [
-      {
-        v: 1,
-        op: "state.get",
-        rid: "9".repeat(32),
-        from,
-        publisher: peer,
-        scopeId,
-        key,
-      },
-    ]),
-    "outcome",
-    "reply",
-  );
-  return reply.outcome;
-}
 
 async function setup(grants: readonly string[], managed = true) {
   const directory = await mkdtemp(join(tmpdir(), "pc-outage-"));
@@ -173,9 +134,9 @@ async function setup(grants: readonly string[], managed = true) {
       {
         machineId: "beta",
         scopeId: "team",
-        permissions: ["discover", "read", "push", "interest"],
+        permissions: ["discover", "push"],
       },
-      { machineId: "beta", scopeId: "extra", permissions: ["read"] },
+      { machineId: "beta", scopeId: "extra", permissions: ["discover"] },
     ],
   };
   const ensure = vi.fn<EnsureGateway>(async () => ({
@@ -278,111 +239,7 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     expect(fx.log).toHaveLength(requestsBefore);
   }, 30_000);
 
-  test("own put/remove offline use configured scopes only; exposure still needs current grants", async () => {
-    const fx = await setup(["team"]);
-    const put = async (scopeId: string, key: string) =>
-      tool(fx.tools, "peers_state", { action: "put", scopeId, key, record });
-    await expect(put("extra", "k")).resolves.toMatchObject({
-      isError: true,
-      value: { code: "unavailable" },
-    });
-    await fx.outage();
-    const ensureBefore = fx.ensure.mock.calls.length;
-    const requestsBefore = fx.log.length;
-    await expect(put("extra", "k")).resolves.toMatchObject({
-      isError: false,
-      value: { tag: "ok" },
-    });
-    await expect(put("team", "t")).resolves.toMatchObject({
-      isError: false,
-      value: { tag: "ok" },
-    });
-    await expect(put("zzz", "k")).resolves.toMatchObject({
-      value: { tag: "error", code: "forbidden" },
-    });
-    await expect(
-      tool(fx.tools, "peers_state", {
-        action: "remove",
-        scopeId: "zzz",
-        key: "k",
-      }),
-    ).resolves.toMatchObject({ value: { tag: "error", code: "forbidden" } });
-    expect(fx.ensure.mock.calls).toHaveLength(ensureBefore);
-    expect(fx.log).toHaveLength(requestsBefore);
-    expect(remoteRead(fx.session, "team", "t")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    await expect(
-      tool(fx.tools, "peers_state", {
-        action: "list",
-        publisher: other,
-        scopeId: "team",
-      }),
-    ).resolves.toMatchObject({ isError: true, value: { code: "unavailable" } });
-    expect(fx.ensure.mock.calls.length).toBeGreaterThan(ensureBefore);
-    await fx.restore(["team"]);
-    await expect(fx.session.reconnect()).resolves.toBeUndefined();
-    expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    expect(remoteRead(fx.session, "team", "t")).toMatchObject({ tag: "ok" });
-    await fx.outage();
-    await expect(
-      tool(fx.tools, "peers_state", {
-        action: "remove",
-        scopeId: "team",
-        key: "t",
-      }),
-    ).resolves.toMatchObject({
-      isError: false,
-      value: { tag: "ok", value: { removed: true } },
-    });
-    expect(fx.log.every((request) => request.op === "register")).toBe(true);
-  }, 30_000);
-
-  test("scope denied while connected, written offline, becomes readable only after a later grant", async () => {
-    const fx = await setup(["team"]);
-    const put = async () =>
-      tool(fx.tools, "peers_state", {
-        action: "put",
-        scopeId: "extra",
-        key: "k",
-        record,
-      });
-    await expect(put()).resolves.toMatchObject({
-      isError: true,
-      value: { code: "unavailable" },
-    });
-    await fx.outage();
-    await expect(put()).resolves.toMatchObject({
-      isError: false,
-      value: { tag: "ok" },
-    });
-    expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    await fx.restore(["team", "extra"]);
-    await expect(fx.session.reconnect()).resolves.toBeUndefined();
-    expect(fx.session.client.effectiveScopes().has("extra")).toBe(true);
-    expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
-      tag: "ok",
-      value: { scopeId: "extra", publication: { key: "k" } },
-    });
-    expect(remoteRead(fx.session, "extra", "k", stranger)).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    expect(fx.log.every((request) => request.op === "register")).toBe(true);
-  }, 30_000);
-
-  test("manually configured runtime (no ensureGateway): offline local tools work, peer reads fail closed", async () => {
+  test("manually configured runtime (no ensureGateway): offline local tools work", async () => {
     const fx = await setup(["team"], false);
     fx.server().send({
       v: 1,
@@ -403,7 +260,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     });
     await fx.outage();
     const requestsBefore = fx.log.length;
-    const state = async (args: Record<string, unknown>) => tool(fx.tools, "peers_state", args);
     await expect(tool(fx.tools, "peers_take", {})).resolves.toMatchObject({
       isError: false,
       value: { messages: [{ message: { id: "7".repeat(32) } }] },
@@ -411,31 +267,6 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
     await expect(tool(fx.tools, "peers_take", {})).resolves.toMatchObject({
       value: { messages: [] },
     });
-    await expect(
-      state({ action: "put", scopeId: "team", key: "t", record }),
-    ).resolves.toMatchObject({ isError: false, value: { tag: "ok" } });
-    await expect(
-      state({ action: "put", scopeId: "extra", key: "k", record }),
-    ).resolves.toMatchObject({ isError: false, value: { tag: "ok" } });
-    await expect(state({ action: "put", scopeId: "zzz", key: "k", record })).resolves.toMatchObject(
-      { value: { tag: "error", code: "forbidden" } },
-    );
-    await expect(state({ action: "remove", scopeId: "zzz", key: "k" })).resolves.toMatchObject({
-      value: { tag: "error", code: "forbidden" },
-    });
-    expect(remoteRead(fx.session, "team", "t")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    expect(remoteRead(fx.session, "extra", "k")).toMatchObject({
-      tag: "error",
-      code: "forbidden",
-    });
-    await expect(state({ action: "remove", scopeId: "team", key: "t" })).resolves.toMatchObject({
-      isError: false,
-      value: { tag: "ok", value: { removed: true } },
-    });
-    expect(fx.session.state.stats().publications).toBe(1);
     expect(fx.ensure).not.toHaveBeenCalled();
     expect(fx.log).toHaveLength(requestsBefore);
     expect(fx.session.client.status().connected).toBe(false);
@@ -448,14 +279,5 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
       isError: true,
       value: { code: "cancelled" },
     });
-    await expect(
-      tool(fx.tools, "peers_state", {
-        action: "put",
-        scopeId: "team",
-        key: "k",
-        record,
-      }),
-    ).resolves.toMatchObject({ isError: true, value: { code: "cancelled" } });
-    expect(fx.session.state.stats().publications).toBe(0);
   });
 });
