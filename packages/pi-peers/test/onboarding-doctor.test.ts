@@ -143,19 +143,19 @@ describe("plain-language doctor report", () => {
         .map(async (directory) => rm(directory, { recursive: true, force: true })),
     );
   });
-  const writers: Record<string, (directory: string, path: string) => Promise<void>> = {
+  const writers = {
     missing: async () => undefined,
     "invalid JSON": async (_directory, path) => writeFile(path, "{"),
     "invalid fields": async (_directory, path) =>
       writeFile(path, JSON.stringify({ machineId: "X" })),
     oversized: async (_directory, path) => writeFile(path, "x".repeat(32_769)),
     valid: async (directory, path) => writeFile(path, valid(directory)),
-  };
-  test.each(Object.keys(writers))(
+  } satisfies Record<string, (directory: string, path: string) => Promise<void>>;
+  test.each(Object.entries(writers))(
     "%s: rows are plain, problems say what to do, details stay technical",
-    async (name) => {
+    async (_name, write) => {
       const { directory, path } = await fixture();
-      await writers[name]?.(directory, path);
+      await write(directory, path);
       const report = await doctorReport(directory);
       expect(report.rows.length).toBeGreaterThan(0);
       for (const row of report.rows) {

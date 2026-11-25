@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Schema } from "effect";
 import type { Message, PeerRef } from "./schema.js";
 
 export function samePeer(left: PeerRef, right: PeerRef): boolean {
@@ -27,11 +28,14 @@ export function scopedMessageKey(
   ]);
 }
 
-function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item: unknown) => stableValue(item));
+const isJsonArray = Schema.is(Schema.Array(Schema.Json));
+const isJsonObject = Schema.is(Schema.JsonObject);
+
+export function stableValue(value: Schema.Json): Schema.Json {
+  if (isJsonArray(value)) {
+    return value.map((item) => stableValue(item));
   }
-  if (typeof value === "object" && value !== null) {
+  if (isJsonObject(value)) {
     return Object.fromEntries(
       Object.entries(value)
         .toSorted(([left], [right]) => left.localeCompare(right))

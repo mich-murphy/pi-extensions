@@ -1,6 +1,7 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 
 const TOKEN = /peer-msg-\d+/gu;
 let calls = 0;
@@ -28,19 +29,13 @@ function reply(model: Model<Api>, take: boolean): AssistantMessage {
   };
 }
 
-function field(value: unknown, key: string): unknown {
-  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
-}
-
-function takenContents(details: unknown): string[] {
-  const messages = field(field(details, "value"), "messages");
-  return Array.isArray(messages)
-    ? messages.flatMap((entry: unknown) => {
-        const content = field(field(entry, "message"), "content");
-        return typeof content === "string" ? [content] : [];
-      })
-    : [];
-}
+const decodeTaken = Schema.decodeUnknownOption(
+  Schema.Struct({
+    value: Schema.Struct({
+      messages: Schema.Array(Schema.Struct({ message: Schema.Struct({ content: Schema.String }) })),
+    }),
+  }),
+);
 
 function registerProbe(pi: ExtensionAPI): void {
   const seen = new Set<string>();
@@ -55,7 +50,13 @@ function registerProbe(pi: ExtensionAPI): void {
     if (event.toolName !== "peers_take") {
       return;
     }
-    for (const content of takenContents(event.details)) {
+    const taken = decodeTaken(event.details);
+    if (taken._tag === "None") {
+      return;
+    }
+    for (const {
+      message: { content },
+    } of taken.value.value.messages) {
       for (const token of content.match(TOKEN) ?? []) {
         duplicate ??= seen.has(token) ? token : undefined;
         seen.add(token);

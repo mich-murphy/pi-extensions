@@ -378,10 +378,7 @@ function longLink(href: string): string {
   return `<a href="${href}">${"words ".repeat(25)}</a>`;
 }
 
-function edgeCaseBlock(
-  text: string,
-  index: number,
-): { readonly html: string; readonly markdown: string } {
+function edgeCaseBlock(text: string, index: number) {
   if (index % 500 === 499) {
     return { html: `<pre>\tcode ${index}</pre>`, markdown: `\tcode ${index}` };
   }

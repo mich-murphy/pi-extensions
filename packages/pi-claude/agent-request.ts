@@ -7,8 +7,10 @@ import type {
   Tool,
   TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { Option, Schema } from "effect";
+import { lenientOptional } from "./sdk/lenient-schema";
 import { sdkToolName } from "./sdk/tool-catalog";
-import { VALIDATION_ERROR_TOOL, VALIDATION_REASONS } from "./validation-recovery";
+import { VALIDATION_ERROR_TOOL, decodeValidationInput } from "./validation-recovery";
 
 export type ImageAttachment = {
   readonly data: string;
@@ -154,7 +156,9 @@ function attribute(value: string): string {
 }
 
 function bodyOf(content: MessageContent, images: ImageAttachment[]): string {
-  const blocks = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
+  const blocks = Schema.is(Schema.String)(content)
+    ? [{ type: "text" as const, text: content }]
+    : content;
   return blocks
     .map((block) => {
       if (block.type === "text") {
@@ -166,12 +170,10 @@ function bodyOf(content: MessageContent, images: ImageAttachment[]): string {
     .join("\n");
 }
 
-const REJECTION_REASONS: ReadonlySet<string> = new Set(VALIDATION_REASONS);
-
-function rejectionNote(args: unknown): string {
-  const value =
-    typeof args === "object" && args !== null && "error" in args ? args.error : undefined;
-  const reason = typeof value === "string" && REJECTION_REASONS.has(value) ? value : "unknown";
+function rejectionNote(
+  args: Extract<AssistantContent[number], { type: "toolCall" }>["arguments"],
+): string {
+  const reason = Option.getOrUndefined(decodeValidationInput(args))?.error ?? "unknown";
   return `[Rejected tool request: nothing executed (${reason}). Only declared mcp__pi__ tools can run.]`;
 }
 
@@ -260,16 +262,31 @@ function insideFence(prefix: string): boolean {
   return (prefix.match(/^[ \t]*```/gmu)?.length ?? 0) % 2 === 1;
 }
 
-function isPrintedJsonCall(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) {
-    return false;
+const printedNode = Schema.Struct({
+  type: lenientOptional(Schema.String),
+  name: lenientOptional(Schema.String),
+  content: lenientOptional(Schema.Array(Schema.Unknown)),
+});
+const decodePrintedCall = Schema.decodeUnknownOption(Schema.fromJsonString(printedNode));
+const decodePrintedChild = Schema.decodeUnknownOption(printedNode);
+
+function isPrintedJsonCall(root: typeof printedNode.Type): boolean {
+  const pending = [root];
+  for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+    if (node.type === "toolCall") {
+      if (node.name !== undefined) {
+        return true;
+      }
+    } else {
+      for (const child of node.content ?? []) {
+        const parsed = decodePrintedChild(child);
+        if (Option.isSome(parsed)) {
+          pending.push(parsed.value);
+        }
+      }
+    }
   }
-  if ("type" in value && value.type === "toolCall") {
-    return "name" in value && typeof value.name === "string";
-  }
-  return (
-    "content" in value && Array.isArray(value.content) && value.content.some(isPrintedJsonCall)
-  );
+  return false;
 }
 
 export function endsWithPrintedToolCall(text: string): boolean {
@@ -287,11 +304,8 @@ export function endsWithPrintedToolCall(text: string): boolean {
     if (!tail.endsWith("}") || insideFence(tail.slice(0, candidate.index))) {
       return false;
     }
-    try {
-      return isPrintedJsonCall(JSON.parse(tail.slice(candidate.index).trim()));
-    } catch {
-      return false;
-    }
+    const parsed = decodePrintedCall(tail.slice(candidate.index).trim());
+    return Option.isSome(parsed) && isPrintedJsonCall(parsed.value);
   });
 }
 

@@ -1,6 +1,7 @@
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Option, Schema } from "effect";
 
 export type FakeClaudeBehaviour = {
   readonly version: string;
@@ -12,8 +13,12 @@ export type FakeClaude = {
   readonly path: string;
   readonly directory: string;
   readonly spawnedWith: () => readonly (readonly string[])[];
-  readonly controlRequests: () => readonly unknown[];
+  readonly controlRequests: () => readonly Schema.JsonObject[];
 };
+
+const readControlLine = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ request: Schema.JsonObject })),
+);
 
 const SCRIPT = `#!/usr/bin/env node
 const fs = require("node:fs");
@@ -75,12 +80,10 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
         return readFileSync(join(directory, "stdin.jsonl"), "utf8")
           .split("\n")
           .filter(Boolean)
-          .map((line): unknown => JSON.parse(line))
-          .flatMap((message) =>
-            typeof message === "object" && message !== null && "request" in message
-              ? [message.request]
-              : [],
-          );
+          .flatMap((line) => {
+            const message = readControlLine(line);
+            return Option.isSome(message) ? [message.value.request] : [];
+          });
       } catch {
         return [];
       }

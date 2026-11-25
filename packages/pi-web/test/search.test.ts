@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Duration, Effect, Layer, Result } from "effect";
+import { Duration, Effect, Layer, Result, Schema } from "effect";
 import { CredentialFailure } from "../credentials";
 import type { CredentialSnapshot } from "../credentials";
 import { McpClients } from "../mcp";
@@ -430,16 +430,11 @@ describe("provider route isolation", () => {
       };
       const outbound: { url: string; headers: Headers; body: string }[] = [];
       const fetchImpl: typeof fetch = async (input, init) => {
-        let url: string;
-        if (typeof input === "string") {
-          url = input;
-        } else {
-          url = input instanceof URL ? input.href : input.url;
-        }
+        const url = input instanceof Request ? input.url : String(input);
         outbound.push({
           url,
           headers: new Headers(init?.headers),
-          body: typeof init?.body === "string" ? init.body : "",
+          body: Schema.is(Schema.String)(init?.body) ? init.body : "",
         });
         return new Response(
           JSON.stringify({ result: { content: [], structuredContent: { results: [] } } }),

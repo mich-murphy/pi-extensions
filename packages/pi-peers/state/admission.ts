@@ -136,7 +136,11 @@ export function admit(store: Store, authored: AdmitInput, now: number): Admissio
       : rejection(input, { tag: "error", code: "id_conflict" });
   }
   const classification = correlation(store, input);
-  if (typeof classification !== "string") {
+  if (
+    classification !== "none" &&
+    classification !== "unresolved" &&
+    classification !== "verified"
+  ) {
     return rejection(input, classification);
   }
   const capacity = reservationFailure(store, bytes);

@@ -1,10 +1,15 @@
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 
 export type RenderTheme = {
   readonly fg: (name: ThemeColor, value: string) => string;
   readonly bold: (value: string) => string;
 };
+
+const isTextContent = Schema.is(
+  Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
+);
 
 export function getTextContent(
   content: readonly { readonly type: string; readonly text?: string }[] | undefined,
@@ -13,10 +18,7 @@ export function getTextContent(
     return "";
   }
   return content
-    .filter(
-      (item): item is { type: "text"; text: string } =>
-        item.type === "text" && typeof item.text === "string",
-    )
+    .filter((item) => isTextContent(item))
     .map((item) => item.text)
     .join("\n");
 }

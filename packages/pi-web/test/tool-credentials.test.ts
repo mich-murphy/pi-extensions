@@ -5,11 +5,7 @@ import { FetchPage } from "../fetch-page";
 import { PrivateIpBlocked } from "../network";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
-import { settingsFrom, toolRuntimeWith } from "./fakes";
-
-function rejectionMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unexpected failure";
-}
+import { errorMessage, settingsFrom, toolRuntimeWith } from "./fakes";
 
 describe("credential wait lifecycle", () => {
   test.each([
@@ -77,10 +73,10 @@ describe("credential wait lifecycle", () => {
       runtime: searchRuntime,
       redactText: (input) => input,
     });
-    await fetchTool.execute("fetch", { url: "https://example.com/" }).catch(rejectionMessage);
+    await fetchTool.execute("fetch", { url: "https://example.com/" }).catch(errorMessage);
     expect(resolved).toStrictEqual(["exa", "parallel"]);
     resolved.length = 0;
-    await searchTool.execute("search", { query: "query" }).catch(rejectionMessage);
+    await searchTool.execute("search", { query: "query" }).catch(errorMessage);
     expect(resolved).toStrictEqual(["exa", "parallel", "brave"]);
     await Promise.all([fetchRuntime.dispose(), searchRuntime.dispose()]);
   });
@@ -129,7 +125,7 @@ describe("credential wait lifecycle", () => {
       .execute("pending", { query: "query" }, undefined, (update) => {
         updates.push(update);
       })
-      .catch(rejectionMessage);
+      .catch(errorMessage);
     await started.promise;
     await runtime.dispose();
     await expect(outcome).resolves.toBe("Web search cancelled");

@@ -57,14 +57,14 @@ const intent = Schema.Struct({
   confirmedRootSha256: Schema.optionalKey(hash),
   existing: Schema.optionalKey(existing),
 });
-const record = Schema.Record(text, Schema.Unknown);
+const parseJsonString = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 const pairingSchema = Schema.Struct({
   version: Schema.Literal(1),
   intent,
   runtimeDir: path,
   issuerDir: path,
-  output: record,
-  inspection: Schema.optionalKey(record),
+  output: Schema.JsonObject,
+  inspection: Schema.optionalKey(Schema.JsonObject),
 });
 const permissions = Schema.Array(Schema.Literals(["discover", "push"]));
 const gatewaySchema = Schema.Struct({
@@ -92,19 +92,17 @@ const gatewaySchema = Schema.Struct({
     }),
   ),
 });
-export function parseJson(bytes: Buffer | string): unknown {
-  return JSON.parse(bytes.toString());
+export function parseJson(bytes: Buffer | string): Schema.Json {
+  return parseJsonString(bytes.toString());
 }
-export function decodeRecord(value: unknown): Record<string, unknown> {
-  return Schema.decodeUnknownSync(record)(value);
-}
+export const decodeRecord = Schema.decodeUnknownSync(Schema.JsonObject);
 export const decodeManaged = Schema.decodeUnknownSync(managedSchema, { onExcessProperty: "error" });
 export const decodeCached = Schema.decodeUnknownSync(cachedSchema, { onExcessProperty: "error" });
 export const decodeReset = Schema.decodeUnknownSync(resetSchema, { onExcessProperty: "error" });
 export const decodeOwnership = Schema.decodeUnknownSync(ownershipSchema);
 export const decodePairing = Schema.decodeUnknownSync(pairingSchema, { onExcessProperty: "error" });
 const decodeGatewayFields = Schema.decodeUnknownSync(gatewaySchema, { onExcessProperty: "error" });
-export function decodeGateway(value: unknown): typeof gatewaySchema.Type {
+export function decodeGateway(value: Schema.Json): typeof gatewaySchema.Type {
   return decodeGatewayFields(dropRetiredPermissions(value));
 }
 export const decodeCredentials = Schema.decodeUnknownSync(credentialSchema);

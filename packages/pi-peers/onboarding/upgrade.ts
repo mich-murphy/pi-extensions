@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import type { Schema } from "effect";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
+import { stableValue } from "../protocol/identity.js";
 import { activationScreen } from "./activation.js";
 import { inspectSetup, readManaged, setupPaths } from "./backend.js";
 import {
@@ -103,7 +105,7 @@ async function addWork(
     }
     await activate(next, updated, true);
   } catch (error) {
-    return afterSave(error, technical);
+    return afterSave(error instanceof Error ? error : undefined, technical);
   }
   const saved = decodePairing(parseJson(pairing));
   return {
@@ -172,14 +174,8 @@ type Manage = {
   shared: boolean;
 };
 
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) =>
-    typeof item === "object" && item !== null && !Array.isArray(item)
-      ? Object.fromEntries(
-          Object.entries(item).toSorted(([left], [right]) => left.localeCompare(right)),
-        )
-      : item,
-  );
+function canonical(value: Schema.Json): string {
+  return JSON.stringify(stableValue(value));
 }
 
 async function rebuilder(
@@ -251,7 +247,7 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
     }
     await activate(plan, updated, true);
   } catch (error) {
-    return afterSave(error, technical);
+    return afterSave(error instanceof Error ? error : undefined, technical);
   }
   return {
     ok: true,

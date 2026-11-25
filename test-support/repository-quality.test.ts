@@ -17,6 +17,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 // oxlint-disable-next-line import/no-unassigned-import -- run for its side effect: it clears git hook variables before any fixture spawns git
 import "./isolate-git.ts";
+import { Schema } from "effect";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runner = resolve(checkout, "scripts/repository-quality.ts");
@@ -75,13 +76,7 @@ function fixture() {
   };
 }
 
-function parseBatch(line: string): string[] {
-  const batch: unknown = JSON.parse(line);
-  assert.ok(Array.isArray(batch));
-  const args: unknown[] = batch;
-  assert.ok(args.every((arg) => typeof arg === "string"));
-  return args;
-}
+const parseBatch = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 function assertSuccess(result: ReturnType<ReturnType<typeof fixture>["run"]>) {
   assert.equal(result.status, 0, result.stdout + result.stderr);

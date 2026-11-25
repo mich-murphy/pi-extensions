@@ -244,7 +244,7 @@ type BodyPull = (controller: ReadableStreamDefaultController<Uint8Array>) => voi
 function trackedResponse(
   init: { readonly status: number; readonly headers?: Readonly<Record<string, string>> },
   source: { readonly pull?: BodyPull } = {},
-): { readonly response: Response; readonly wasCancelled: () => boolean } {
+) {
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>(
     {
@@ -268,10 +268,11 @@ function recordingClient(
   ],
 ) {
   const hops: { readonly url: string; readonly init: RequestInit | undefined }[] = [];
-  const fetchImpl: typeof fetch = async (input: unknown, init?: RequestInit) => {
-    hops.push({ url: String(input), init });
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : input.toString();
+    hops.push({ url, init });
     await Promise.resolve();
-    return respond(String(input));
+    return respond(url);
   };
   return { client: publicWebClientWith({ fetchImpl, lookup }), hops };
 }
@@ -318,7 +319,7 @@ async function neverResponds(): Promise<Response> {
   return Promise.withResolvers<Response>().promise;
 }
 
-const nestedCode = (code: unknown) =>
+const nestedCode = (code: string | number) =>
   new TypeError("fetch failed", { cause: new Error("inner", { cause: { code } }) });
 
 describe("fetchPublicWebClient hop checks", () => {
@@ -341,13 +342,7 @@ describe("fetchPublicWebClient hop checks", () => {
   test("rejects URL credentials before the private-host check", async () => {
     const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
     const request = { ...makeRequest(), url: "http://user:secret@127.0.0.1/" };
-    const invocation: unknown = Reflect.apply(client.get, client, [request]);
-    assert(Effect.isEffect(invocation));
-    const execution: unknown = Reflect.apply(Effect.runPromise, undefined, [
-      Effect.result(invocation),
-    ]);
-    assert(execution instanceof Promise);
-    const result: unknown = await execution;
+    const result = await Effect.runPromise(Effect.result(client.get(request)));
     expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
     expect(hops).toHaveLength(0);
   });

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import type { Schema } from "effect";
 import { Effect } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { ClaudeUsageQueries, inspectClaudeUsage } from "../sdk-usage";
+import { ClaudeUsageQueries, decodeUsageResponse, inspectClaudeUsage } from "../sdk-usage";
 import type { ClaudeUsageStatus } from "../sdk-usage";
 
 const settings = propertySettings(200);
@@ -22,14 +23,14 @@ type Window = { utilization: number | null; resets_at: string | null };
 type Candidate = { name: string; usedPercent: number | null };
 type Outcome = { status: ClaudeUsageStatus } | { failed: string };
 
-async function inspect(rateLimits: unknown): Promise<Outcome> {
+async function inspect(rateLimits: Schema.Json): Promise<Outcome> {
   const response = {
     subscription_type: null,
     rate_limits_available: true,
     rate_limits: rateLimits,
   };
   const layer = ClaudeUsageQueries.fromStart(() => ({
-    readUsage: async () => response,
+    readUsage: async () => decodeUsageResponse(response),
     close: async () => undefined,
   }));
   return Effect.runPromise(
@@ -37,7 +38,9 @@ async function inspect(rateLimits: unknown): Promise<Outcome> {
       Effect.provide(layer),
       Effect.match({
         onSuccess: (status): Outcome => ({ status }),
-        onFailure: (error): Outcome => ({ failed: String(Reflect.get(error, "operation")) }),
+        onFailure: (error): Outcome => ({
+          failed: "operation" in error ? error.operation : "undefined",
+        }),
       }),
     ),
   );
@@ -56,7 +59,9 @@ function drawWindow(tc: TestCase): Window | null | undefined {
 }
 
 async function assertDedupe(tc: TestCase): Promise<void> {
-  const rateLimits: Record<string, unknown> = {};
+  const rateLimits: Partial<Record<(typeof FIXED)[number][0], Window | null>> & {
+    model_scoped?: { display_name: string; utilization: number | null; resets_at: null }[];
+  } = {};
   const candidates: Candidate[] = [];
   for (const [key, name] of FIXED) {
     const window = drawWindow(tc);

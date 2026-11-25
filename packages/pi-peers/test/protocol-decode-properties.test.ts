@@ -4,6 +4,7 @@ import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
+import type { Frame } from "../protocol/schema.js";
 import type { BoundaryRole } from "../protocol/wire.js";
 import { decodeFrame, encodeFrame } from "../protocol/wire.js";
 
@@ -17,7 +18,7 @@ const roles: readonly BoundaryRole[] = [
 const nonce = "a".repeat(32);
 const rid = "1".repeat(32);
 const peer = { machineId: "beta", sessionId: "s", runtimeNonce: nonce };
-const validFrames: readonly { role: BoundaryRole; frame: unknown }[] = [
+const validFrames: readonly { role: BoundaryRole; frame: Frame }[] = [
   {
     role: "local-client",
     frame: {
@@ -61,7 +62,7 @@ function withPrefix(body: Uint8Array): Uint8Array {
 }
 
 function assertTotal(bytes: Uint8Array, role: BoundaryRole): void {
-  let frame: unknown;
+  let frame: Frame;
   try {
     frame = decodeFrame(bytes, role);
   } catch (error) {
@@ -86,11 +87,7 @@ function arbitraryBytes(raw: Uint8Array, fixPrefix: boolean): Uint8Array {
   return fixPrefix ? withPrefix(raw) : raw;
 }
 
-function mutated(
-  index: number,
-  edits: readonly (readonly [number, number])[],
-  fixPrefix: boolean,
-): { bytes: Uint8Array; role: BoundaryRole } {
+function mutated(index: number, edits: readonly (readonly [number, number])[], fixPrefix: boolean) {
   const entry = validFrames[index];
   assert.ok(entry !== undefined);
   const { role, frame } = entry;

@@ -26,7 +26,7 @@ function setup(mode = "tui") {
     },
   });
   const setWidget = vi.fn<CommandContext["ui"]["setWidget"]>((_key, content) => {
-    if (typeof content === "function") {
+    if (content !== undefined) {
       const tui = testTui();
       const renders = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
       content(tui, testTheme());
@@ -45,7 +45,7 @@ function setup(mode = "tui") {
     setWidget,
     notify,
     command,
-    start: () => handlers.get("session_start")?.({}, ctx),
+    start: () => handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx),
     run: async (args: string) => command.handler(args, ctx),
   };
 }
@@ -69,7 +69,7 @@ describe("/scrollback [on|off]", () => {
     await run("  ");
     expect(adapters).toHaveLength(2);
     expect(setWidget.mock.calls.at(-1)?.[0]).toBe("scrollback");
-    expect(typeof setWidget.mock.calls.at(-1)?.[1]).toBe("function");
+    expect(setWidget.mock.calls.at(-1)?.[1]).toBeDefined();
     expect(notify).toHaveBeenLastCalledWith("Scrollback is on for this session.", "info");
   });
 

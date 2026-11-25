@@ -16,6 +16,8 @@ const ESCAPE = "\u001b";
 const DOWN = "\u001b[B";
 const HINT = /^(?<keys>.+) · Esc (?<esc>back|close|hide)$/u;
 
+type MenuHolder = { model?: MenuModel };
+
 function menu(rows: number, start?: "setup" | "reset") {
   initTheme();
   setKeybindings(testKeybindings());
@@ -28,7 +30,7 @@ function menu(rows: number, start?: "setup" | "reset") {
     shared: false,
     remote: remoteDraft(),
   };
-  const holder: { model?: MenuModel } = {};
+  const holder: MenuHolder = {};
   const model = peersMenu(
     {
       state: () => ({

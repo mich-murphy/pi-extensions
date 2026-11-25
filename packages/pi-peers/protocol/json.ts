@@ -1,3 +1,8 @@
+import { Schema } from "effect";
+
+const decodeObject = Schema.decodeUnknownSync(Schema.JsonObject);
+const isString = Schema.is(Schema.String);
+
 export const MAX_BODY_BYTES = 32_764;
 export const MAX_ARRAY_ITEMS = 64;
 export const MAX_NESTING_DEPTH = 16;
@@ -43,10 +48,10 @@ class JsonEvidence {
       const character = this.text[this.position++];
       if (character === '"') {
         const value: unknown = JSON.parse(this.text.slice(start, this.position));
-        requireValid(typeof value === "string" && value.isWellFormed());
-        if (typeof value === "string") {
+        if (isString(value) && value.isWellFormed()) {
           return value;
         }
+        throw new ProtocolError();
       }
       if (character === "\\") {
         this.position++;
@@ -127,13 +132,12 @@ class JsonEvidence {
   }
 }
 
-export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): unknown {
+export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): Schema.JsonObject {
   try {
     requireValid(bytes.length > 0 && bytes.length <= MAX_BODY_BYTES);
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     new JsonEvidence(text, onObject).check();
-    const value: unknown = JSON.parse(text);
-    return value;
+    return decodeObject(JSON.parse(text));
   } catch {
     throw new ProtocolError();
   }

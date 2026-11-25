@@ -1,4 +1,5 @@
 import type { State } from "@antithesishq/bombadil/terminal";
+import { Schema } from "effect";
 
 export function screenRows(state: State): string[] {
   const rows: string[] = [];
@@ -8,17 +9,17 @@ export function screenRows(state: State): string[] {
   return rows;
 }
 
+const isText = Schema.is(Schema.String);
+const hasTypeText = Schema.is(
+  Schema.Struct({
+    TypeText: Schema.Union([Schema.String, Schema.Struct({ text: Schema.String })]),
+  }),
+);
+
 export function typedText(state: State): string | null {
-  const action: unknown = state.lastAction;
-  if (typeof action !== "object" || action === null || !("TypeText" in action)) {
+  const action = state.lastAction;
+  if (!hasTypeText(action)) {
     return null;
   }
-  const typed: unknown = action.TypeText;
-  if (typeof typed === "string") {
-    return typed;
-  }
-  if (typeof typed === "object" && typed !== null && "text" in typed) {
-    return typeof typed.text === "string" ? typed.text : null;
-  }
-  return null;
+  return isText(action.TypeText) ? action.TypeText : action.TypeText.text;
 }

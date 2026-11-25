@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import { Schema } from "effect";
-import { stateLocations } from "./locations.js";
+import { Option, Schema } from "effect";
+import { isMissingFile, stateLocations } from "./locations.js";
 
 function hasControls(value: string): boolean {
   // eslint-disable-next-line typescript/no-misused-spread -- Inspect Unicode code points only for forbidden control ranges.
@@ -56,28 +56,37 @@ const configuration = Schema.Struct({
 export type Configuration = typeof configuration.Type;
 export const configurationKeys: readonly string[] = Object.keys(configuration.fields);
 export type Permission = Configuration["policies"][number]["permissions"][number];
-const retiredPermissions: ReadonlySet<unknown> = new Set(["read", "interest"]);
-function withoutRetired(policy: unknown): unknown[] {
-  if (typeof policy !== "object" || policy === null) {
+const decodeJsonObject = Schema.decodeUnknownOption(Schema.JsonObject);
+const isJsonArray = Schema.is(Schema.Array(Schema.Json));
+const isRetiredPermission = Schema.is(Schema.Literals(["read", "interest"]));
+function withoutRetired(policy: Schema.Json): Schema.Json[] {
+  const fields = Option.getOrUndefined(decodeJsonObject(policy));
+  if (fields === undefined) {
     return [policy];
   }
-  const listed: unknown = Reflect.get(policy, "permissions");
-  if (!Array.isArray(listed)) {
+  const listed = fields.permissions;
+  if (!isJsonArray(listed)) {
     return [policy];
   }
-  const kept = listed.filter((item: unknown) => !retiredPermissions.has(item));
-  return kept.length === 0 && listed.length > 0 ? [] : [{ ...policy, permissions: kept }];
+  const kept = listed.filter((item) => !isRetiredPermission(item));
+  return kept.length === 0 && listed.length > 0
+    ? []
+    : [Object.fromEntries([...Object.entries(fields), ["permissions", kept]])];
 }
-export function dropRetiredPermissions(value: unknown): unknown {
-  if (typeof value !== "object" || value === null) {
+export function dropRetiredPermissions(value: Schema.Json): Schema.Json {
+  const fields = Option.getOrUndefined(decodeJsonObject(value));
+  const policies = fields?.policies;
+  if (fields === undefined || !isJsonArray(policies)) {
     return value;
   }
-  const policies: unknown = Reflect.get(value, "policies");
-  return Array.isArray(policies)
-    ? { ...value, policies: policies.flatMap((policy: unknown) => withoutRetired(policy)) }
-    : value;
+  return Object.fromEntries([
+    ...Object.entries(fields),
+    ["policies", policies.flatMap((policy) => withoutRetired(policy))],
+  ]);
 }
-export function decodeConfiguration(value: unknown): Configuration {
+const parseConfigurationJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
+
+export function decodeConfiguration(value: Schema.Json): Configuration {
   return Schema.decodeUnknownSync(configuration, { onExcessProperty: "error" })(
     dropRetiredPermissions(value),
   );
@@ -91,13 +100,13 @@ export async function loadConfiguration(agentDir: string): Promise<Configuration
     }
     content = bytes.toString("utf8");
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+    if (isMissingFile(error)) {
       return undefined;
     }
     throw new Error("Peers configuration could not be loaded", { cause: error });
   }
   try {
-    return decodeConfiguration(JSON.parse(content));
+    return decodeConfiguration(parseConfigurationJson(content));
   } catch {
     throw new Error("pi-peers.json is not valid");
   }

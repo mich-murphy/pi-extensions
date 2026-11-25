@@ -18,7 +18,7 @@ type FetchPageInput = {
 };
 
 export type FetchPageMeta = {
-  readonly requestedUrl: PublicHttpUrl;
+  readonly requestedUrl: string;
   readonly finalUrl: PublicHttpUrl;
   readonly format: WebFetchFormat;
   readonly status: number;

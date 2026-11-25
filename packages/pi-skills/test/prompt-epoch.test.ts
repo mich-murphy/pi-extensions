@@ -68,11 +68,9 @@ function head(skills: readonly PromptResource[], withRules = true) {
 
 const assistant = { role: "assistant", provider: "p", model: "m" };
 const model = { provider: "p", id: "m" };
-const badNoteValue = { role: "custom", customType: TOGGLE_NOTE_TYPE, details: 1 };
-const badNote: { readonly role: string } = badNoteValue;
-const otherNoteValue = { role: "custom", customType: "other", details: {} };
-const otherNote: { readonly role: string } = otherNoteValue;
-function usageOf(input: number, cacheRead: number): { readonly role: string } {
+const badNote = { role: "custom", customType: TOGGLE_NOTE_TYPE, details: 1 };
+const otherNote = { role: "custom", customType: "other", details: {} };
+function usageOf(input: number, cacheRead: number) {
   const message = {
     ...assistant,
     usage: { input, output: 5, cacheRead, cacheWrite: 0 },
@@ -353,7 +351,7 @@ describe("cache debug", () => {
     const stderr = vi.spyOn(process.stderr, "write");
     try {
       const path = join(directory, "log.jsonl");
-      cacheDebugSink(path)?.({ type: "discover", contributed: 1 });
+      cacheDebugSink(path)?.({ type: "discover", contributed: 1, cwd: "/project", durationMs: 1 });
       expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
         type: "discover",
         contributed: 1,
@@ -361,7 +359,9 @@ describe("cache debug", () => {
       const failing = cacheDebugSink(path, () => {
         throw new Error("disk full");
       });
-      expect(() => failing?.({ type: "discover" })).not.toThrow();
+      expect(() =>
+        failing?.({ type: "discover", contributed: 0, cwd: "/project", durationMs: 1 }),
+      ).not.toThrow();
       expect(stdout).not.toHaveBeenCalled();
       expect(stderr).not.toHaveBeenCalled();
     } finally {

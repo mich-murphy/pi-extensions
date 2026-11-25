@@ -6,8 +6,9 @@ import { createCacheDiagnosticTracker } from "../cache-tracker";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { buildPromptStream } from "../sdk/prompt-stream";
 import { contextFixture, drain, sdkContentRecords, textBlock } from "./fixtures";
+import type { SdkPromptBlock } from "./fixtures";
 
-function withoutCacheMetadata(block: Readonly<Record<string, unknown>>): Record<string, unknown> {
+function withoutCacheMetadata(block: SdkPromptBlock) {
   const { cache_control: _cacheControl, ...content } = block;
   return content;
 }

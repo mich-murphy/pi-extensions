@@ -13,6 +13,7 @@ import type { PromptResource } from "../prompt-view";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
 import { noteView } from "../toggle-note";
+import type { ToggleNote } from "../toggle-note";
 import { assertProperty } from "./hegel-property";
 import { timeoutOverTenfold } from "./test-timeouts";
 
@@ -23,7 +24,16 @@ const MODELS = [
   { provider: "q", id: "m" },
 ] as const;
 
-type Item = { readonly role: string };
+type Item =
+  | {
+      readonly role: "system";
+      readonly content: string;
+      readonly sections: Readonly<Record<string, string>>;
+      readonly timestamp: number;
+    }
+  | { readonly role: "assistant"; readonly provider: string; readonly model: string }
+  | { readonly role: "model_change"; readonly provider: string; readonly modelId: string }
+  | ({ readonly role: "custom" } & ToggleNote);
 
 type World = {
   readonly resources: readonly PromptResource[];
@@ -78,7 +88,7 @@ function systemMessage(
       sections[RESOURCE_SECTIONS[kind]] = renderSection(kind, resources, visible);
     }
   }
-  return { role: "system", content: "", sections, timestamp: 1 } as Item;
+  return { role: "system", content: "", sections, timestamp: 1 };
 }
 
 function snapshotOf(world: World): PromptSnapshot {
@@ -190,7 +200,7 @@ function respond(world: World): void {
     world.items.push({ role: "custom", ...plan.note });
   }
   const model = MODELS[world.selected] ?? MODELS[0];
-  world.items.push({ role: "assistant", provider: model.provider, model: model.id } as Item);
+  world.items.push({ role: "assistant", provider: model.provider, model: model.id });
 
   const after = snapshotOf(world);
   assert.deepEqual([...after.view].toSorted(), [...desired].toSorted(), "the view converges");
@@ -220,7 +230,7 @@ const machine: stateful.StateMachine<World> = {
         role: "model_change",
         provider: model.provider,
         modelId: model.id,
-      } as Item);
+      });
       world.selected = index;
     },
     compact: (_tc, world) => {

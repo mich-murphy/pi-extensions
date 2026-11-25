@@ -109,7 +109,7 @@ describe("orphan installation recovery with actual native flock", () => {
   });
   async function driftCase(drift: string) {
     const state = await orphan(false, true);
-    const paths: Record<string, string> = {
+    const paths = {
       ...state.paths,
       pairing: join(state.paths.directory, "pairing.json"),
       repair: join(state.paths.directory, "repair.json"),
@@ -117,7 +117,7 @@ describe("orphan installation recovery with actual native flock", () => {
       target: fixture.executable,
     };
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => {
-      const path = paths[drift];
+      const path = Object.entries(paths).find(([name]) => name === drift)?.[1];
       if (path === undefined) {
         throw new Error("Invalid test drift");
       }

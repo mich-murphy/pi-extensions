@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 import { hasExecutableCat } from "./output-safety-shell";
 
@@ -80,9 +80,15 @@ export function inspectBashCommand(command: string): string | undefined {
   return 'Blocked, so the command did not run: it may print an executable, or its shell syntax cannot be checked. Use file "$(which COMMAND)", otool or strings; use the write tool for literal content.';
 }
 
+export type ContextMessage =
+  | ContextEvent["messages"][number]
+  | (Omit<ToolResultMessage, "content"> & { readonly content: string });
+
 export function sanitizeContextMessages(
   messages: Readonly<ContextEvent["messages"]>,
-): ContextEvent["messages"] {
+): ContextEvent["messages"];
+export function sanitizeContextMessages(messages: readonly ContextMessage[]): ContextMessage[];
+export function sanitizeContextMessages(messages: readonly ContextMessage[]): ContextMessage[] {
   return messages.map((message) => {
     if (message.role !== "toolResult" || message.toolName !== "bash") {
       return message;

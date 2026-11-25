@@ -127,8 +127,12 @@ function clip(text: string): string {
   return text.length > FIELD_LIMIT ? `${text.slice(0, FIELD_LIMIT - 1)}…` : text;
 }
 
-function clean(value: unknown): unknown {
-  return typeof value === "string" ? clip(redact(value)) : value;
+type FieldValue<Event extends LedgerEvent> = Event extends LedgerEvent ? Event[keyof Event] : never;
+type LedgerField = FieldValue<LedgerEvent>;
+const isText = Schema.is(Schema.String);
+
+function clean(value: LedgerField): LedgerField {
+  return isText(value) ? clip(redact(value)) : value;
 }
 
 export async function appendEvent(
@@ -138,7 +142,7 @@ export async function appendEvent(
 ): Promise<LedgerEvent> {
   const stamped = { ...draft, id: clock.id(), at: clock.now().toISOString() };
   const cleaned = Object.fromEntries(
-    Object.entries(stamped).map(([key, value]) => [key, clean(value)]),
+    Object.entries<LedgerField>(stamped).map(([key, value]) => [key, clean(value)]),
   );
   const event = Option.getOrUndefined(decodeEvent(cleaned));
   if (event === undefined) {
@@ -167,15 +171,11 @@ export function parseLedger(text: string): LedgerRead {
   return { events, skipped };
 }
 
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 export async function readLedger(file: string): Promise<LedgerRead> {
   try {
     return parseLedger(await readFile(file, "utf8"));
   } catch (error) {
-    if (isMissingFile(error)) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { events: [], skipped: 0 };
     }
     throw error;

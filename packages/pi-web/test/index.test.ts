@@ -33,7 +33,7 @@ describe("webExtension", () => {
     await emit("session_start");
     await emit("session_start");
     for (const { id } of Object.values(WEB_AUTH_PROVIDERS)) {
-      expect(typeof registry.getProvider(id)?.auth.apiKey?.login).toBe("function");
+      expect(registry.getProvider(id)).toHaveProperty("auth.apiKey.login");
       expect(registry.getModelsOfType("chat", id)).toStrictEqual([]);
       expect(registry.getModelsOfType("image", id)).toStrictEqual([]);
       expect(registry.getModelsOfType("classifier", id)).toStrictEqual([]);
@@ -49,12 +49,11 @@ describe("webExtension", () => {
     vi.stubEnv("PI_WEB_PROVIDERS", "exa,google");
     const { pi, tools, emit, registry, notifications } = await fakePi();
     webExtension(pi);
-    await expect(tools[0]?.execute()).rejects.toThrow("is not configured");
+    const search = tools.find((tool) => tool.name === "websearch");
+    await expect(search?.execute("call", { query: "test" })).rejects.toThrow("is not configured");
     await emit("session_start");
     expect(notifications.some((message) => message.includes("unknown provider"))).toBe(true);
-    expect(typeof registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)?.auth.apiKey?.login).toBe(
-      "function",
-    );
+    expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toHaveProperty("auth.apiKey.login");
   });
 
   test("provider conflicts fail safely without replacing unrelated registrations", async () => {

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
 import { decodeConfiguration } from "../adapter/config.js";
@@ -24,9 +25,11 @@ import {
 
 type Profile = { agent: string; client?: GatewayClient };
 type Pairing = ReturnType<typeof decodePairing>;
+const isString = Schema.is(Schema.String);
+const isNumberPair = Schema.is(Schema.Tuple([Schema.Number]));
 const field = (pair: Pairing, key: string): string => {
   const value = pair.output[key];
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     throw new TypeError(`Missing public ${key}`);
   }
   return value;
@@ -71,11 +74,7 @@ async function epoch(profile: Profile): Promise<number> {
     throw new TypeError("Floor issuers missing");
   }
   const issuer = decodeRecord(record.issuers[0]);
-  if (
-    !Array.isArray(issuer.number) ||
-    issuer.number.length !== 1 ||
-    typeof issuer.number[0] !== "number"
-  ) {
+  if (!isNumberPair(issuer.number)) {
     throw new Error("Unexpected fixture CRL epoch");
   }
   return issuer.number[0];

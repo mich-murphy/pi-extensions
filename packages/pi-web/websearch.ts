@@ -89,7 +89,7 @@ export function parseWebSearchParams(
 
 export function createWebSearchTool(composition: WebSearchToolComposition) {
   return {
-    name: "websearch",
+    name: "websearch" as const,
     label: "Web Search",
     description:
       "Search the public web and return ranked results with titles, URLs, and snippets. Defaults to Exa, with automatic fallback across configured providers.",

@@ -25,7 +25,6 @@ import { requestManagedRestart } from "./managed.js";
 import type { ManagedSetup } from "./managed.js";
 import { report, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
-import type { MenuModel } from "./menu/model.js";
 import { outcomeLevel, outcomeText } from "./menu/progress.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft } from "./menu/remote-form.js";
@@ -88,6 +87,7 @@ async function productionBackend(
   const target = discovered.target;
   const method = pin.method;
   const fallback = method === "nix" ? discovered.native : null;
+  const nixOptions = nixExecutable === undefined ? {} : { nixExecutable };
   return {
     description: acquisitionDescription(pin, fallback),
     backend: {
@@ -102,19 +102,21 @@ async function productionBackend(
               target,
               installRoot,
               deadlineMs: Date.now() + 600_000,
-              ...(nixExecutable === undefined ? {} : { nixExecutable }),
+              ...nixOptions,
             },
             { catalog },
           );
           return result.executable;
         } catch (error) {
-          const native = nativeFallback(error, fallback);
+          if (fallback === null || error instanceof UnsafeFolder) {
+            throw error;
+          }
           progress(
             "Nix acquisition unavailable; using the separately reviewed pinned native fallback",
           );
           const result = await acquireGateway(
             {
-              ...native,
+              ...fallback,
               approved: true,
               requiredCapabilities,
               method: "native",
@@ -129,13 +131,6 @@ async function productionBackend(
       },
     },
   };
-}
-function nativeFallback<T>(error: unknown, fallback: T | null): T {
-  const fallbackUsesTheSameRefusedFolders = error instanceof UnsafeFolder;
-  if (fallback === null || fallbackUsesTheSameRefusedFolders) {
-    throw error;
-  }
-  return fallback;
 }
 function selectedSource(
   discovered: ReturnType<typeof discoverGateway>,
@@ -189,7 +184,7 @@ function reportRoute(
   };
 }
 
-function unreadableRoute(error: unknown): SetupRoute {
+function unreadableRoute(error: Error | undefined): SetupRoute {
   const reason = safeReason(error);
   const what = reason === "" ? "saved files are unreadable" : "saved files were changed";
   return reportRoute(
@@ -409,7 +404,7 @@ export async function prepareSetup(
       ? await existingRoute(agentDir, state, activate, supplied, reconnect, catalog)
       : await freshRoute(agentDir, state, activate, supplied, catalog);
   } catch (error) {
-    return unreadableRoute(error);
+    return unreadableRoute(error instanceof Error ? error : undefined);
   }
 }
 
@@ -427,8 +422,7 @@ export async function setupCommand(
 ): Promise<void> {
   requireAttendedUI(ctx);
   const route = await prepareSetup(agentDir, activate, supplied, reconnect, options);
-  const holder: { model?: MenuModel } = {};
-  holder.model = peersMenu(
+  const model = peersMenu(
     {
       state: () => ({
         status: { value: "", lines: ["Run /peers status for details."] },
@@ -442,13 +436,13 @@ export async function setupCommand(
       started: () => undefined,
       finished: (outcome) => {
         ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
-        holder.model?.close();
+        model.close();
       },
     },
     undefined,
     "setup",
   );
-  await runMenu(ctx, holder.model, () => {
+  await runMenu(ctx, model, () => {
     const notice = route.cancelled();
     ctx.ui.notify(notice.message, notice.level);
   });
@@ -570,7 +564,10 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
     await activate({ ...plan, adapter: actual }, setup);
     return await success(agentDir, plan, state, remote);
   } catch (error) {
-    return saved ? afterSave(error, [SAVED]) : failedWith("Setup failed", error, INCOMPLETE_NEXT);
+    const failure = error instanceof Error ? error : undefined;
+    return saved
+      ? afterSave(failure, [SAVED])
+      : failedWith("Setup failed", failure, INCOMPLETE_NEXT);
   }
 }
 
@@ -613,7 +610,7 @@ export async function resetOutcome(
     }
     return failedWith(
       "Reset failed",
-      error,
+      error instanceof Error ? error : undefined,
       "Nothing was turned off. Run /peers doctor to check your files.",
     );
   }

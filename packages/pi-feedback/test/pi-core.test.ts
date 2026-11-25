@@ -45,7 +45,7 @@ type Fixture = {
   readonly error: string;
   readonly scores: Scores;
   readonly siblings?: readonly BatchCall[];
-  readonly args?: object;
+  readonly args?: BatchCall["args"];
 };
 
 const harnessLike: Scores = { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 };

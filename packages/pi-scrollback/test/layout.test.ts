@@ -1,11 +1,20 @@
 import { AssistantMessageComponent, UserMessageComponent } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
-import { Container, Text, stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, test, vi } from "vitest";
+import type { Component, StackEntryOptions } from "@earendil-works/pi-tui";
+import {
+  Container,
+  Text,
+  VStack,
+  stripTerminalSequences,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
+import { assert, describe, expect, test, vi } from "vitest";
 import { createChatViewport } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/chat-viewport";
 import { initTheme } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme";
 import { renderLayoutFrame } from "../../../node_modules/@earendil-works/pi-tui/dist/layout";
-import { getLayoutNode } from "../../../node_modules/@earendil-works/pi-tui/dist/layout-node";
+import {
+  getLayoutNode,
+  LAYOUT_NODE,
+} from "../../../node_modules/@earendil-works/pi-tui/dist/layout-node";
 import { testTui } from "../../../test-support/pi-tui";
 import { contextRow, selectContext } from "../context";
 import { createHostAdapter } from "../host";
@@ -55,6 +64,8 @@ function fixture(firstPrompt = "first prompt") {
     footer: empty,
     scrollbar: "hidden",
   });
+  const { root } = viewport;
+  assert(root instanceof VStack);
   const tui = testTui();
   Object.defineProperty(tui, "layoutRoot", {
     configurable: true,
@@ -65,17 +76,12 @@ function fixture(firstPrompt = "first prompt") {
   const adapter = createHostAdapter(tui, (text) => text);
   const render = (width = 40, height = 12) =>
     renderLayoutFrame(viewport.root, width, height, () => undefined);
-  return { ...viewport, document, output, tui, adapter, render, request };
+  return { ...viewport, root, document, output, tui, adapter, render, request };
 }
 
 const plain = (lines: readonly string[]) => lines.map((line) => stripTerminalSequences(line));
 
-function callMethod(method: unknown, receiver: unknown): unknown {
-  return typeof method === "function" ? Reflect.apply(method, receiver, []) : undefined;
-}
-
-function driftedRoot(native: Component, which: "transcript" | "dock", change: object) {
-  const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
+function driftedRoot(native: Component, which: "transcript" | "dock", change: StackEntryOptions) {
   const node = getLayoutNode(native);
   if (node?.type !== "vstack") {
     throw new Error("test setup: native root is not a vstack");
@@ -85,7 +91,7 @@ function driftedRoot(native: Component, which: "transcript" | "dock", change: ob
     index === target ? { ...entry, ...change } : entry,
   );
   const layoutNode = () => ({ ...node, entries });
-  return { root: { render: () => [], [symbol]: layoutNode }, layoutNode, symbol };
+  return { root: { render: () => [], [LAYOUT_NODE]: layoutNode }, layoutNode };
 }
 
 function visible(component: Component): boolean | undefined {
@@ -120,16 +126,15 @@ describe("native chat viewport", () => {
     f.adapter.dispose();
     const muted = vi.fn<(text: string) => string>((text) => text);
     const adapter = createHostAdapter(f.tui, muted);
-    const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
-    const patched: unknown = Reflect.get(f.root, symbol);
-    const wrapped = () => callMethod(patched, f.root);
-    Reflect.set(f.root, symbol, wrapped);
+    const patched = f.root[LAYOUT_NODE];
+    const wrapped = () => patched.call(f.root);
+    f.root[LAYOUT_NODE] = wrapped;
     f.render();
     f.transcript.scrollTo(8);
     expect(plain(f.render().lines)[0]).toContain("❯ first prompt");
     adapter.dispose();
     muted.mockClear();
-    expect(Reflect.get(f.root, symbol)).toBe(wrapped);
+    expect(f.root[LAYOUT_NODE]).toBe(wrapped);
     expect(plain(f.render().lines)[0]).not.toContain("❯");
     expect(muted).not.toHaveBeenCalled();
   });
@@ -147,27 +152,25 @@ describe("native chat viewport", () => {
   test("dispose puts the root's layout property back exactly as it found it", () => {
     const f = fixture();
     f.adapter.dispose();
-    const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
-    const ownBefore = Object.getOwnPropertyDescriptor(f.root, symbol);
-    const methodBefore: unknown = Reflect.get(f.root, symbol);
+    const ownBefore = Object.getOwnPropertyDescriptor(f.root, LAYOUT_NODE);
+    const methodBefore = f.root[LAYOUT_NODE];
     const adapter = createHostAdapter(f.tui, (text) => text);
-    expect(Reflect.get(f.root, symbol)).not.toBe(methodBefore);
+    expect(f.root[LAYOUT_NODE]).not.toBe(methodBefore);
     adapter.dispose();
-    expect(Reflect.get(f.root, symbol)).toBe(methodBefore);
-    expect(Object.getOwnPropertyDescriptor(f.root, symbol)).toStrictEqual(ownBefore);
+    expect(f.root[LAYOUT_NODE]).toBe(methodBefore);
+    expect(Object.getOwnPropertyDescriptor(f.root, LAYOUT_NODE)).toStrictEqual(ownBefore);
   });
 
   test("dispose also restores an own layout property the root already had", () => {
     const f = fixture();
     f.adapter.dispose();
-    const symbol = Symbol.for("@earendil-works/pi-tui/layout-node");
-    const inherited: unknown = Reflect.get(f.root, symbol);
-    const own = () => callMethod(inherited, f.root);
-    Object.defineProperty(f.root, symbol, { configurable: true, writable: true, value: own });
+    const inherited = f.root[LAYOUT_NODE];
+    const own = () => inherited.call(f.root);
+    Object.defineProperty(f.root, LAYOUT_NODE, { configurable: true, writable: true, value: own });
     const adapter = createHostAdapter(f.tui, (text) => text);
-    expect(Reflect.get(f.root, symbol)).not.toBe(own);
+    expect(f.root[LAYOUT_NODE]).not.toBe(own);
     adapter.dispose();
-    expect(Reflect.get(f.root, symbol)).toBe(own);
+    expect(f.root[LAYOUT_NODE]).toBe(own);
   });
 
   test.each(
@@ -179,10 +182,10 @@ describe("native chat viewport", () => {
   )("does not patch a root whose %s allocation drifted by %j", (which, change) => {
     const f = fixture();
     f.adapter.dispose();
-    const { root, layoutNode, symbol } = driftedRoot(f.root, which, change);
+    const { root, layoutNode } = driftedRoot(f.root, which, change);
     Reflect.set(f.tui, "layoutRoot", root);
     const adapter = createHostAdapter(f.tui, (text) => text);
-    expect(Reflect.get(root, symbol)).toBe(layoutNode);
+    expect(root[LAYOUT_NODE]).toBe(layoutNode);
     adapter.dispose();
   });
 

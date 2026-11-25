@@ -86,22 +86,26 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
   };
   return {
     start() {
-      handlers.session_start?.({ type: "session_start" }, ctx);
+      handlers.session_start?.({ type: "session_start", reason: "startup" }, ctx);
     },
     shutdown() {
-      handlers.session_shutdown?.({ type: "session_shutdown" }, ctx);
+      handlers.session_shutdown?.();
     },
     switchTo(next: string) {
       id = next;
-      handlers.session_start?.({ type: "session_start" }, ctx);
+      handlers.session_start?.({ type: "session_start", reason: "startup" }, ctx);
     },
     freeze(skills: readonly Skill[]) {
-      const head: TranscriptMessage = {
+      const head = {
         role: "system",
         content: "",
         sections: { skills: formatSkillsForPrompt([...skills]).trim() },
         timestamp: 1,
-      } as TranscriptMessage;
+      } satisfies TranscriptMessage & {
+        content: string;
+        sections: { skills: string };
+        timestamp: number;
+      };
       projection = { messages: [head, { role: "assistant" }], entries: [] };
     },
     run(skills: readonly Skill[]) {
@@ -165,7 +169,9 @@ describe("session registry", () => {
       unregisterSession(PARENT, policy);
     }).not.toThrow();
     expect(sessionPolicy(PARENT)).toBeUndefined();
-    expect(Reflect.get(globalThis, REGISTRY)).toBe("not a map");
+    expect(Object.getOwnPropertyDescriptor(globalThis, REGISTRY)).toMatchObject({
+      value: "not a map",
+    });
   });
 
   test("never throws when the registry map itself throws", () => {

@@ -3,40 +3,24 @@ import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-codin
 import { WEB_AUTH_PROVIDERS } from "../authentication";
 import webExtension from "../index";
 import { fakePi } from "./fake-pi";
-import type { RegisteredTool } from "./fake-pi";
 import { textOf } from "./fakes";
 
 const KEY = "stored-exa-composition-key";
 
 type ProviderCall = { readonly url: string; readonly apiKey: string | null };
 
-async function runTool(tool: RegisteredTool | undefined, params: object, context: object) {
-  assert(tool !== undefined);
-  const result: unknown = await Reflect.apply(tool.execute, undefined, [
-    "call",
-    params,
-    undefined,
-    undefined,
-    context,
-  ]);
-  assert(typeof result === "object" && result !== null && "content" in result);
-  assert(Array.isArray(result.content));
-  return textOf({ content: result.content });
-}
-
 async function composedExtension() {
   const { pi, tools, emit, ctx, fixture } = await fakePi();
   webExtension(pi);
   await emit("session_start");
-  const named = (name: string) => tools.find((tool) => tool.name === name);
   const login = async (key: string) =>
     fixture.runtime.login(WEB_AUTH_PROVIDERS.exa.id, "api_key", {
       prompt: async () => key,
       notify: () => undefined,
     });
   return {
-    webfetch: named("webfetch"),
-    websearch: named("websearch"),
+    webfetch: tools.find((tool) => tool.name === "webfetch"),
+    websearch: tools.find((tool) => tool.name === "websearch"),
     emit,
     context: { modelRegistry: ctx.modelRegistry },
     login,
@@ -52,9 +36,9 @@ describe("the composed extension", () => {
     }
     clearApiKeyCache();
     providerCalls.length = 0;
-    vi.stubGlobal("fetch", async (input: unknown, init?: { headers?: HeadersInit }) => {
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       providerCalls.push({
-        url: String(input),
+        url: input instanceof Request ? input.url : input.toString(),
         apiKey: new Headers(init?.headers).get("x-api-key"),
       });
       return new Response(
@@ -80,7 +64,10 @@ describe("the composed extension", () => {
     "webfetch refuses %s through the real client and transport layers",
     async (_name, url, message) => {
       const { webfetch, emit, context } = await composedExtension();
-      await expect(runTool(webfetch, { url }, context)).rejects.toThrow(message);
+      assert(webfetch !== undefined);
+      await expect(
+        webfetch.execute("call", { url }, undefined, undefined, context),
+      ).rejects.toThrow(message);
       expect(providerCalls).toStrictEqual([]);
       await emit("session_shutdown");
     },
@@ -89,7 +76,16 @@ describe("the composed extension", () => {
   test("the composed credential resolver hands Pi's stored key to the provider request", async () => {
     const { websearch, emit, context, login } = await composedExtension();
     await login(KEY);
-    const text = await runTool(websearch, { query: "composition", provider: "exa" }, context);
+    assert(websearch !== undefined);
+    const text = textOf(
+      await websearch.execute(
+        "call",
+        { query: "composition", provider: "exa" },
+        undefined,
+        undefined,
+        context,
+      ),
+    );
     expect(text).toContain("Composed result");
     expect(providerCalls).toHaveLength(1);
     expect(providerCalls[0]?.apiKey).toBe(KEY);

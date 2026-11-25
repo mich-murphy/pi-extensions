@@ -7,7 +7,7 @@ import {
   ProviderStatusRejected,
   ProviderTimedOut,
 } from "./provider-types";
-import type { ProviderError } from "./provider-types";
+import type { ProviderError, ProviderJson } from "./provider-types";
 import { withSafeSpan } from "./telemetry";
 
 export type ProviderHttpResponse = {
@@ -17,14 +17,14 @@ export type ProviderHttpResponse = {
 export type ProviderHttpRequest = {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
-  readonly body?: unknown;
+  readonly body?: ProviderJson;
   readonly maxResponseBytes: number;
   readonly timeout: Duration.Duration;
 };
 
 export function readProviderJson(
   response: Effect.Effect<ProviderHttpResponse, ProviderError>,
-): Effect.Effect<unknown, ProviderError> {
+): Effect.Effect<ProviderJson, ProviderError> {
   return Effect.flatMap(response, (settled) => Effect.fromResult(parseJsonBody(settled.bodyText)));
 }
 
@@ -136,7 +136,7 @@ export class ProviderHttpClient extends Context.Service<
   );
 }
 
-function safeProviderFailure(error: ProviderError): unknown {
+function safeProviderFailure(error: ProviderError) {
   return {
     type: error._tag,
     network:

@@ -88,12 +88,27 @@ function lowerInitial(text: string): string {
     : text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-export function parseJsonBody(bodyText: string): Result.Result<unknown, ProviderProtocolInvalid> {
-  try {
-    return Result.succeed(JSON.parse(bodyText));
-  } catch {
-    return Result.fail(new ProviderProtocolInvalid({ reason: "Invalid JSON response" }));
-  }
+export type ProviderJson = typeof Schema.Json.Type;
+
+export const ProviderJson: Schema.Codec<ProviderJson> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.Array(ProviderJson),
+    Schema.Record(Schema.String, ProviderJson),
+  ]),
+);
+const decodeJsonBody = Schema.decodeUnknownResult(Schema.fromJsonString(ProviderJson));
+
+export function parseJsonBody(
+  bodyText: string,
+): Result.Result<ProviderJson, ProviderProtocolInvalid> {
+  return Result.mapError(
+    decodeJsonBody(bodyText),
+    () => new ProviderProtocolInvalid({ reason: "Invalid JSON response" }),
+  );
 }
 
 export function lenientArray<S extends Schema.Constraint & Schema.ConstraintDecoder<unknown>>(

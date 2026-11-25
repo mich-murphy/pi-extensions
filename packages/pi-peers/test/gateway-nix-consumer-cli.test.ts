@@ -5,9 +5,11 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { Schema } from "effect";
 import { afterAll, afterEach, describe, expect, test } from "vitest";
 import { jsonObject, sha256 } from "../onboarding/artifact.js";
 import { gatewayTarget } from "../onboarding/catalog.js";
+import { parseJson } from "../onboarding/schema.js";
 
 const repository = path.resolve(import.meta.dirname, "../../..");
 const script = path.join(repository, "scripts/verify-gateway-nix.ts");
@@ -33,7 +35,7 @@ async function cli(args: string[]): Promise<Outcome> {
         if (error === null) {
           resolve({ code: 0, signal: null, stdout, stderr });
         } else {
-          const code = typeof error.code === "number" ? error.code : null;
+          const code = numericExit(error.code) ? error.code : null;
           resolve({ code, signal: error.signal ?? null, stdout, stderr });
         }
       },
@@ -91,7 +93,9 @@ async function ownedRun() {
   return { runnerTemp, root, marker, record, fixture, extracted, work, native, common };
 }
 
-async function prepareRefusesExisting(plant: (out: string) => Promise<unknown>): Promise<string> {
+const numericExit = Schema.is(Schema.Number);
+
+async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Promise<string> {
   const target = gatewayTarget();
   expect(target).toBeDefined();
   const runnerTemp = await ownedTemp("nix-cli-out-");
@@ -164,7 +168,7 @@ const PREPARING = [
   { status: "preparing", pad: "y".repeat(9000) },
 ];
 
-function serialized(record: object): string {
+function serialized(record: Schema.Json): string {
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
@@ -246,8 +250,11 @@ describe("verify-gateway-nix consumer CLI", () => {
     test("cleanup removes exactly the owned root and proves it absent; forged markers are refused", async () => {
       const forged = await ownedRun();
       await fs.chmod(forged.marker, 0o600);
-      const marker = jsonObject(JSON.parse(await fs.readFile(forged.marker, "utf8")));
-      await fs.writeFile(forged.marker, JSON.stringify({ ...marker, nonce: "c".repeat(32) }));
+      const marker = jsonObject(parseJson(await fs.readFile(forged.marker)));
+      await fs.writeFile(
+        forged.marker,
+        JSON.stringify({ ...Object.fromEntries(Object.entries(marker)), nonce: "c".repeat(32) }),
+      );
       refused(await cli(["cleanup", ...forged.common]), /marker does not match/u);
       expect(existsSync(forged.root)).toBe(true);
 
@@ -330,7 +337,7 @@ describe("verify-gateway-nix consumer CLI", () => {
             maxBuffer: 1_048_576,
           },
         );
-        const report = jsonObject(JSON.parse(stdout));
+        const report = jsonObject(parseJson(stdout));
 
         expect(report.contents).toStrictEqual(PREPARING.map((record) => serialized(record)));
         expect(report.replaced).toMatch(/Record path .*record\.json was replaced/u);

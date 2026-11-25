@@ -5,6 +5,7 @@ import { open } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { isAbsolute, dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { Schema } from "effect";
 import type { EnsureGateway } from "../adapter/client.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_WIRE_VERSION } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
@@ -27,28 +28,30 @@ export type ManagedSnapshot = {
   readonly reason?: string;
   readonly text: string;
 };
+const isNativeSnapshot = Schema.is(
+  Schema.Struct({
+    version: Schema.Literal(1),
+    remote: Schema.Struct({
+      state: Schema.Literals(["disabled", "configured", "degraded"]),
+      reason: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-z-]{1,64}$/u))),
+    }),
+  }),
+);
+
 export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnapshot> {
   const { stdout } = await execute(setup.executable, ["--diagnose", setup.gatewayPath], {
     timeout: 5000,
     maxBuffer: 16_384,
     env: gatewayEnvironment(),
   });
-  const value = decodeRecord(parseJson(stdout));
-  const remote = decodeRecord(value.remote);
-  const state = remote.state;
-  const reason = remote.reason;
-  if (
-    value.version !== 1 ||
-    typeof state !== "string" ||
-    !["disabled", "configured", "degraded"].includes(state) ||
-    (reason !== undefined && (typeof reason !== "string" || !/^[a-z-]{1,64}$/u.test(reason)))
-  ) {
+  const value = parseJson(stdout);
+  if (!isNativeSnapshot(value)) {
     throw new Error("Native diagnostic contract mismatch");
   }
-  const known = state === "disabled" || state === "configured" ? state : "degraded";
+  const { state, reason } = value.remote;
   return {
-    state: known,
-    ...(typeof reason === "string" ? { reason } : {}),
+    state,
+    ...(reason === undefined ? {} : { reason }),
     text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
   };
 }
@@ -128,7 +131,7 @@ async function reachable(path: string, signal: AbortSignal): Promise<boolean> {
 export function managedLauncher(
   setup: ManagedSetup,
   reload?: () => Promise<ManagedSetup>,
-): EnsureGateway {
+): (...args: Parameters<EnsureGateway>) => Promise<{ gatewaySha256: string }> {
   return async (deadline, signal) => {
     const current = reload === undefined ? setup : await reload();
     startupDemand(deadline, signal);

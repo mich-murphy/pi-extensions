@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit, Logger, Redacted, Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { CredentialResolver, resolveCredentialSnapshot } from "../credentials";
-import { expectNoLeak, observableText } from "./leaks";
+import { decodeInspectable, expectNoLeak, observableText } from "./leaks";
 
 const credentialEffect = Effect.gen(function* () {
   return yield* (yield* CredentialResolver).resolve("exa");
@@ -69,7 +69,7 @@ describe("credential boundary", () => {
   test("captured failure telemetry retains neither rejected values nor raw causes", async () => {
     const messages: string[] = [];
     const logger = Logger.make((options) => {
-      messages.push(observableText(options.message));
+      messages.push(observableText(decodeInspectable(options.message)));
     });
     const program = Effect.gen(function* () {
       const result = yield* Effect.result(credentialEffect);

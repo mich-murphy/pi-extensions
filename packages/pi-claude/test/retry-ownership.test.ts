@@ -19,7 +19,7 @@ import {
 } from "../sdk/errors";
 import type { SdkTurnFailure } from "../sdk/errors";
 import { diagnoseSdkRunError, formatSdkRunError } from "../sdk/failure-diagnostics";
-import { parseSdkMessage } from "../sdk/messages";
+import { decodeSdkEvent, parseSdkMessage } from "../sdk/messages";
 import { ResultFailureCategory } from "../sdk/result-failure";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunSdkQuery } from "../sdk/runner";
@@ -61,12 +61,12 @@ const completed = [stopped("end_turn"), messageStop, resultMessage()];
 
 type Observed = { params?: SdkQueryParameters; consumedAfterRetry: boolean };
 
-const DEFAULT_ENVIRONMENT: Readonly<Record<string, string | undefined>> = { PATH: "/bin" };
+const DEFAULT_ENVIRONMENT = { PATH: "/bin" };
 
 async function runMessages(
   messages: readonly unknown[],
   options: SimpleStreamOptions = {},
-  sdkEnvironment = DEFAULT_ENVIRONMENT,
+  sdkEnvironment: ReturnType<typeof subscriptionEnvironment> = DEFAULT_ENVIRONMENT,
 ) {
   const observed: Observed = { consumedAfterRetry: false };
   const runner = createClaudeAgentSdkRunner({
@@ -103,7 +103,9 @@ function textsOf(events: readonly BridgeEvent[]): string[] {
   return events.flatMap((event) => (event.type === "text_delta" ? [event.text] : []));
 }
 
-const parse = (input: unknown) => Result.getOrThrow(parseSdkMessage(input));
+const parse = (
+  input: ReturnType<typeof streamEvent> | { readonly type: string; readonly subtype?: string },
+) => Result.getOrThrow(parseSdkMessage(decodeSdkEvent(input)));
 
 function retryable(error: SdkTurnFailure): boolean {
   const message: AssistantMessage = {

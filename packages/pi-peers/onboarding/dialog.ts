@@ -1,8 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 
 export type DialogContext = Pick<ExtensionContext, "mode" | "hasUI" | "signal"> & {
   readonly ui: Pick<ExtensionContext["ui"], "select" | "input" | "notify">;
 };
+const isAnswer = Schema.is(Schema.String);
 const timeout = 120_000;
 function aborted(ctx: DialogContext): boolean {
   return ctx.signal?.aborted === true;
@@ -27,9 +29,7 @@ export async function selectChoice(
     timeout,
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   });
-  return !aborted(ctx) && typeof answer === "string" && options.includes(answer)
-    ? answer
-    : undefined;
+  return !aborted(ctx) && isAnswer(answer) && options.includes(answer) ? answer : undefined;
 }
 export async function inputChoice(
   ctx: DialogContext,
@@ -44,5 +44,5 @@ export async function inputChoice(
     timeout,
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   });
-  return !aborted(ctx) && typeof answer === "string" ? answer : undefined;
+  return !aborted(ctx) && isAnswer(answer) ? answer : undefined;
 }

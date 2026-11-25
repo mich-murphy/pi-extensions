@@ -10,6 +10,7 @@ import {
   registerRetry,
 } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
+import type { TestUsageNotice } from "./fake-pi";
 
 const MINUTE = CHECK_INTERVAL_MS;
 const RESETS_AT = 90 * MINUTE;
@@ -21,7 +22,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   return pi;
 }
 
-function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: unknown = NOTICE) {
+function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: TestUsageNotice = NOTICE) {
   pi.startRun();
   pi.publish(USAGE_LIMIT_CHANNEL, notice);
   return pi.settle("error", [userEntry("u1"), assistantEntry("a1", "error")]);

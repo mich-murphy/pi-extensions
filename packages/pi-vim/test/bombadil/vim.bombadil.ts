@@ -2,7 +2,7 @@ import { always, next } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
-import type { State } from "@antithesishq/bombadil/terminal";
+import type { ActionTemplate, State } from "@antithesishq/bombadil/terminal";
 import { CharSets, typeFromSet } from "@antithesishq/bombadil/terminal/defaults/actions";
 import { screenRows, typedText } from "../../../../test-support/bombadil-screen.ts";
 
@@ -46,7 +46,9 @@ function rowCells(state: State, index: number): string[] {
   return cells;
 }
 
-function labelParts(row: string): { mode: Mode; pending: string } {
+type Label = { mode: Mode; pending: string };
+
+function labelParts(row: string): Label {
   const groups = LABEL.exec(row)?.groups;
   return { mode: groups?.mode === "INSERT" ? "INSERT" : "NORMAL", pending: groups?.pending ?? "" };
 }
@@ -87,8 +89,7 @@ const editor = extract((state: State) => readEditor(state));
 const exitStatus = extract((state: State) => state.exitStatus);
 const lastKey = extract((state: State) => typedText(state));
 const resized = extract((state: State) => {
-  const action: unknown = state.lastAction;
-  return typeof action === "object" && action !== null && "Resize" in action;
+  return state.lastAction !== null && "Resize" in state.lastAction;
 });
 
 const PRINTABLE = CharSet.union(
@@ -130,8 +131,8 @@ const INERT_WHOLE_CHARACTERS_NEVER_SPLIT_INTO_SURROGATES = [
   "😀",
 ];
 const RESIZE = {
-  Resize: { columns: [60, 140] as [number, number], rows: [20, 50] as [number, number] },
-};
+  Resize: { columns: [60, 140], rows: [20, 50] },
+} satisfies ActionTemplate;
 
 export const vimKeys = weighted([
   [30, typeFromSet(VIM_KEYS)],

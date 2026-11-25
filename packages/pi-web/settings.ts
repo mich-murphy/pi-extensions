@@ -55,10 +55,8 @@ const RENAMED_SETTINGS = [
   FETCH_DENY_DOMAINS_ENV,
 ] as const;
 
-function withLegacySettings(
-  environment: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string | undefined>> {
-  const resolved: Record<string, string | undefined> = { ...environment };
+function withLegacySettings(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const resolved = { ...environment };
   for (const name of RENAMED_SETTINGS) {
     resolved[name] = environment[name] ?? environment[name.replace(/^PI_WEB_/u, "PI_WEB_TOOLS_")];
   }

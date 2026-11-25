@@ -6,14 +6,16 @@ const WORD_END = /[\s;&|()<>]/u;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
 const GROUP_PREFIXES = new Set(["!", "if", "then", "elif", "else", "do", "while", "until"]);
 type WrapperOptions = { flags: readonly string[]; values: readonly string[] };
-const WRAPPERS: Readonly<Record<string, WrapperOptions>> = {
-  command: { flags: ["-p"], values: [] },
-  env: { flags: ["-i", "--ignore-environment"], values: ["-u", "--unset"] },
-  sudo: { flags: ["-n", "-E", "-H"], values: ["-u", "-g"] },
-  exec: { flags: ["-c", "-l"], values: ["-a"] },
-  nohup: { flags: [], values: [] },
-  time: { flags: ["-p"], values: [] },
-};
+const WRAPPERS = new Map<string, WrapperOptions>(
+  Object.entries({
+    command: { flags: ["-p"], values: [] },
+    env: { flags: ["-i", "--ignore-environment"], values: ["-u", "--unset"] },
+    sudo: { flags: ["-n", "-E", "-H"], values: ["-u", "-g"] },
+    exec: { flags: ["-c", "-l"], values: ["-a"] },
+    nohup: { flags: [], values: [] },
+    time: { flags: ["-p"], values: [] },
+  }),
+);
 
 function wrapperName(text: string): string {
   return text.replace(/^\/(?:usr\/)?bin\/(?<wrapper>env|sudo|nohup)$/u, "$<wrapper>");
@@ -24,7 +26,7 @@ function assignment(word: Word | undefined): boolean {
 }
 
 function wrapperEnd(words: readonly Word[], start: number, name: string): number {
-  const options = Object.hasOwn(WRAPPERS, name) ? WRAPPERS[name] : undefined;
+  const options = WRAPPERS.get(name);
   if (!options) {
     return start;
   }

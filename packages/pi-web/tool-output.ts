@@ -5,7 +5,7 @@ import {
   formatSize,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { Type } from "typebox";
 import type { FetchPageResult } from "./fetch-page";
 import { WEB_FETCH_FORMATS } from "./settings";
@@ -110,10 +110,13 @@ export const WEB_SEARCH_OUTPUT_SCHEMA = Type.Object({
   ),
 });
 
-function limitUtf8Bytes(
-  text: string,
-  maxBytes: number,
-): { readonly content: string; readonly truncated: boolean; readonly bytes: number } {
+type LimitedText = {
+  readonly content: string;
+  readonly truncated: boolean;
+  readonly bytes: number;
+};
+
+function limitUtf8Bytes(text: string, maxBytes: number): LimitedText {
   const bytes = Buffer.from(text, "utf8");
   if (bytes.length <= maxBytes) {
     return { content: text, truncated: false, bytes: bytes.length };
@@ -190,7 +193,7 @@ export function formatSearchResults(
     if (result.source !== undefined && result.source !== "") {
       lines.push(`   Source: ${result.source}`);
     }
-    if (typeof result.score === "number") {
+    if (Schema.is(Schema.Number)(result.score)) {
       lines.push(`   Score: ${result.score}`);
     }
     if (result.snippet !== undefined && result.snippet !== "") {
@@ -384,10 +387,16 @@ function untruncatedRange(start: number, total: number, endNote: string | undefi
   return range === "" ? `\n\n${endNote}` : `\n\n[${range}]\n${endNote}`;
 }
 
+type OutputWindow = {
+  readonly shownText: string;
+  readonly shownBytes: number;
+  readonly summary: string;
+};
+
 function truncatedWindow(
   window: string,
   truncation: ReturnType<typeof truncateHead>,
-): { readonly shownText: string; readonly shownBytes: number; readonly summary: string } {
+): OutputWindow {
   if (truncation.firstLineExceedsLimit) {
     const lineEnd = window.indexOf("\n");
     const lineSize = Buffer.byteLength(lineEnd === -1 ? window : window.slice(0, lineEnd), "utf8");

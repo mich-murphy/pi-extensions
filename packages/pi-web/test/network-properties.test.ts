@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as gs from "@hegeldev/hegel/generators";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import { isPrivateOrLocalIp, parseContentType } from "../network";
@@ -92,7 +92,7 @@ const toGroups = (o: readonly number[]) => [
   (o[2] ?? 0) * 256 + (o[3] ?? 0),
 ];
 
-const V6_PREFIX_TEMPLATES: Record<string, readonly (number | undefined)[]> = {
+const V6_PREFIX_TEMPLATES = {
   mapped: [0, 0, 0, 0, 0, 0xff_ff],
   siit: [0, 0, 0, 0, 0xff_ff, 0],
   siitLookAlikeWithFreeGroupFive: [0, 0, 0, 0, 0xff_ff],
@@ -207,7 +207,7 @@ describe("isPrivateOrLocalIp properties", () => {
   test("arbitrary text never throws and non-IPs are not private", () => {
     assertHegel(settings, (tc) => {
       const text = tc.draw(gs.text({ maxSize: 40 }), "text");
-      expect(typeof isPrivateOrLocalIp(text)).toBe("boolean");
+      expect(isPrivateOrLocalIp(text)).toSatisfy(Schema.is(Schema.Boolean));
       expect(isPrivateOrLocalIp(`x${text}`)).toBe(false);
     });
   });

@@ -100,18 +100,6 @@ export function instrumentRequest(
   );
 }
 
-export function instrumentEvent(
-  event: unknown,
-  model: Model<Api>,
-  options: SimpleStreamOptions | undefined,
-  signal: AbortSignal,
-) {
-  if (!options?.onProviderStreamEvent) {
-    return Effect.succeed(event);
-  }
-  const onEvent = options.onProviderStreamEvent;
-  return callback("event", signal, async () => {
-    await onEvent(event, model);
-    return event;
-  });
+export function instrumentEvent(signal: AbortSignal, notify: () => Promise<void>) {
+  return callback("event", signal, notify);
 }

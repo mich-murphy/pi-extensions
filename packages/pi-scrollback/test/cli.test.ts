@@ -4,32 +4,23 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
+import { readManifest } from "../../../test-support/pi-manifest";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const host = join(repo, "node_modules/@earendil-works/pi-coding-agent");
-function jsonObject(path: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Expected manifest object");
-  }
-  return Object.fromEntries(Object.entries(value));
-}
-const manifest = jsonObject(join(host, "package.json"));
-const bin = manifest.bin;
-if (typeof bin !== "object" || bin === null || !("pi" in bin) || typeof bin.pi !== "string") {
-  throw new Error("Missing Pi executable");
-}
-const cli = resolve(host, bin.pi);
-const dependencies = jsonObject(join(repo, "package.json")).devDependencies;
-if (
-  typeof dependencies !== "object" ||
-  dependencies === null ||
-  !("@earendil-works/pi-coding-agent" in dependencies)
-) {
-  throw new Error("Missing Pi pin");
-}
-const pinned = dependencies["@earendil-works/pi-coding-agent"];
+const manifest = readManifest(join(host, "package.json"));
+const cli = resolve(host, manifest.bin.pi);
+const decodeDependencies = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      devDependencies: Schema.Struct({ "@earendil-works/pi-coding-agent": Schema.String }),
+    }),
+  ),
+);
+const { devDependencies } = decodeDependencies(readFileSync(join(repo, "package.json"), "utf8"));
+const pinned = devDependencies["@earendil-works/pi-coding-agent"];
 const tmuxAvailable = spawnSync("tmux", ["-V"], { encoding: "utf8" }).status === 0;
 const skipJourney = !tmuxAvailable && process.env.CI !== "true";
 

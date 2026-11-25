@@ -6,6 +6,7 @@ import { createHostAdapter } from "../host";
 import scrollback from "../index";
 import type { ScrollRegistration } from "../index";
 
+type Handler = Parameters<ScrollRegistration["on"]>[1];
 type Context = Parameters<Parameters<ScrollRegistration["on"]>[1]>[1];
 initTheme("dark");
 
@@ -13,24 +14,21 @@ function install(
   factory: Parameters<ExtensionUIContext["setWidget"]>[1],
   tui: ReturnType<typeof testTui>,
 ): void {
-  if (typeof factory === "function") {
-    factory(tui, testTheme());
-  }
+  factory?.(tui, testTheme());
 }
 
 const layout = Symbol.for("@earendil-works/pi-tui/layout-node");
 
 describe("extension lifecycle and incompatible hosts", () => {
   test("non-TUI sessions do not install UI; shutdown and repeated start clean up", () => {
-    const handlers = new Map<string, (event: unknown, ctx: Context) => void>();
+    const handlers = new Map<string, Handler>();
     const api = {
-      on: (name: string, handler: (event: unknown, ctx: Context) => void) =>
-        handlers.set(name, handler),
+      on: (name: string, handler: Handler) => handlers.set(name, handler),
     };
     scrollback({ ...api, registerCommand: () => undefined });
     const widget = vi.fn<ExtensionUIContext["setWidget"]>();
     const ctx = { mode: "rpc", ui: { setWidget: widget, theme: testTheme() } };
-    handlers.get("session_start")?.({}, ctx);
+    handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
     expect(widget).not.toHaveBeenCalled();
     const tui = testTui();
     const request = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
@@ -38,10 +36,10 @@ describe("extension lifecycle and incompatible hosts", () => {
       install(factory, tui);
     });
     const interactive = { mode: "tui", ui: { setWidget, theme: testTheme() } };
-    handlers.get("session_start")?.({}, interactive);
-    handlers.get("session_start")?.({}, interactive);
-    handlers.get("session_shutdown")?.({}, interactive);
-    handlers.get("session_shutdown")?.({}, interactive);
+    handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, interactive);
+    handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, interactive);
+    handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, interactive);
+    handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, interactive);
     expect(setWidget).toHaveBeenCalledTimes(2);
     expect(request).toHaveBeenCalledTimes(2);
   });

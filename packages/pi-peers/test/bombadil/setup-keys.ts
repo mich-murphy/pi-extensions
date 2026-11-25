@@ -28,10 +28,10 @@ const CONSENT_ROWS = new Set([
   "Turn off peers",
 ]);
 const NOT_READY = /^(?:No changes|Missing: |Invalid: |Blocked: )/u;
-const ROOT_OUTCOMES: Readonly<Record<string, RegExp>> = {
-  "Peers › Reconnect › Result": /^(?:✓ Reconnected — |✗ Reconnect failed: |✗ Failed: )/u,
-  "Peers › Reset › Result": /^(?:✓ Peers turned off|✗ Reset failed: |✗ Failed: )/u,
-};
+const ROOT_OUTCOMES = new Map([
+  ["Peers › Reconnect › Result", /^(?:✓ Reconnected — |✗ Reconnect failed: |✗ Failed: )/u],
+  ["Peers › Reset › Result", /^(?:✓ Peers turned off|✗ Reset failed: |✗ Failed: )/u],
+]);
 
 export type Screen = PeersView & {
   connectedShown: boolean;
@@ -224,7 +224,7 @@ export const outcomeReadable: Formula = always(() => {
 
 export const rootOutcomesMatch: Formula = always(() => {
   const view = ui.current;
-  const expected = ROOT_OUTCOMES[view?.title ?? ""];
+  const expected = ROOT_OUTCOMES.get(view?.title ?? "");
   return (
     view?.kind !== "outcome" ||
     view.headline === null ||

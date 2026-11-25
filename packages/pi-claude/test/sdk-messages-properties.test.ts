@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
+import {
+  applyUsage,
+  contextWindowFor,
+  decodeSdkEvent,
+  maxOutputTokensFor,
+  parseSdkMessage,
+} from "../sdk/messages";
 import type { ReportedUsage } from "../sdk/messages";
 import { resultMessage } from "./fixtures";
 
@@ -22,7 +28,7 @@ const count = gs.optional(gs.integers({ minValue: 0, maxValue: 6 }));
 const maybeCount = gs.oneOf(count, gs.just(undefined));
 
 function lastReported(values: readonly (number | null | undefined)[]): number | undefined {
-  return values.findLast((value) => typeof value === "number");
+  return values.findLast((value) => Schema.is(Schema.Number)(value));
 }
 
 function drawReport(tc: TestCase): ReportedUsage {
@@ -79,16 +85,23 @@ function assertTurnScopeSplit(tc: TestCase): void {
   assert.equal(turn.cacheWrite, expectedWrite);
 }
 
-function limitsFor(context: unknown, output: unknown, canonical: string, key: string) {
+function limitsFor(
+  context: number | string | null,
+  output: number | string | null,
+  canonical: string,
+  key: string,
+) {
   const parsed = parseSdkMessage(
-    resultMessage({
-      modelUsage: {
-        [key]: { canonicalModel: canonical, contextWindow: context },
-        decoy: { canonicalModel: "claude-decoy-9", maxOutputTokens: 1 },
-        alias: { canonicalModel: canonical, maxOutputTokens: output },
-        "claude-other-1-20250101": { maxOutputTokens: output },
-      },
-    }),
+    decodeSdkEvent(
+      resultMessage({
+        modelUsage: {
+          [key]: { canonicalModel: canonical, contextWindow: context },
+          decoy: { canonicalModel: "claude-decoy-9", maxOutputTokens: 1 },
+          alias: { canonicalModel: canonical, maxOutputTokens: output },
+          "claude-other-1-20250101": { maxOutputTokens: output },
+        },
+      }),
+    ),
   );
   if (Result.isFailure(parsed)) {
     throw parsed.failure;
@@ -100,8 +113,10 @@ function limitsFor(context: unknown, output: unknown, canonical: string, key: st
   return parsed.success.modelUsage;
 }
 
-function validLimit(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+function validLimit(value: number | string | null): number | undefined {
+  return Schema.is(Schema.Number)(value) && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function assertLimitLookup(tc: TestCase): void {

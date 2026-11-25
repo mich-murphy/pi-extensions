@@ -23,27 +23,30 @@ export async function waitFor<A>(
       clearTimeout(timer);
       signal.removeEventListener("abort", aborted);
     };
-    function finish(error: unknown): void {
+    function finish(error: Error): void {
       if (settled) {
         return;
       }
       settled = true;
       cleanup();
-      reject(
-        error instanceof Error
-          ? error
-          : new Error("Shared initialization failed", { cause: error }),
-      );
+      reject(error);
     }
     signal.addEventListener("abort", aborted, { once: true });
-    void shared.then((value) => {
-      if (settled) {
+    void shared.then(
+      (value) => {
+        if (settled) {
+          return undefined;
+        }
+        settled = true;
+        cleanup();
+        resolve(value);
         return undefined;
-      }
-      settled = true;
-      cleanup();
-      resolve(value);
-      return undefined;
-    }, finish);
+      },
+      (cause: unknown) => {
+        finish(
+          cause instanceof Error ? cause : new Error("Shared initialization failed", { cause }),
+        );
+      },
+    );
   });
 }

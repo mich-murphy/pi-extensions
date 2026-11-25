@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { Schema } from "effect";
 import type { Frame, Message, PeerRef } from "../protocol/schema.js";
 import type { Configuration } from "./config.js";
 import { LinkTable } from "./links.js";
@@ -14,17 +15,17 @@ type Descriptor = Extract<
   Extract<Frame, { op: "result"; forOp: "discover" }>["outcome"],
   { tag: "ok" }
 >["value"]["peers"][number];
+const validGatewaySnapshot = Schema.is(
+  Schema.Struct({ gatewaySha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)) }),
+);
+
 export type EnsureGateway = (
   deadline: number,
   signal: AbortSignal,
-) => Promise<{ gatewaySha256: string }>;
+) => Promise<{ gatewaySha256?: string | number | undefined } | null | undefined>;
 export type { LinkState } from "./links.js";
-function outdated(error: unknown): boolean {
-  return (
-    error instanceof ConnectionFailure &&
-    error.possible &&
-    (error.peerClosed || error.code === "protocol_error")
-  );
+function outdated(error: ConnectionFailure): boolean {
+  return error.possible && (error.peerClosed || error.code === "protocol_error");
 }
 
 export type ClientOptions = {
@@ -174,14 +175,8 @@ export class GatewayClient {
       return undefined;
     }
     try {
-      const snapshot: unknown = await ensure(deadline, signal);
-      if (
-        typeof snapshot !== "object" ||
-        snapshot === null ||
-        !("gatewaySha256" in snapshot) ||
-        typeof snapshot.gatewaySha256 !== "string" ||
-        !/^[a-f0-9]{64}$/u.test(snapshot.gatewaySha256)
-      ) {
+      const snapshot = await ensure(deadline, signal);
+      if (!validGatewaySnapshot(snapshot)) {
         throw new ConnectionFailure("protocol_error", false);
       }
       return snapshot.gatewaySha256;
@@ -245,7 +240,10 @@ export class GatewayClient {
       return this.registered(connection, reply);
     } catch (error) {
       connection.close();
-      this.registrationFailed(current() && expected !== undefined, current() && outdated(error));
+      this.registrationFailed(
+        current() && expected !== undefined,
+        current() && error instanceof ConnectionFailure && outdated(error),
+      );
       throw error;
     } finally {
       signal.removeEventListener("abort", abort);

@@ -1,8 +1,16 @@
 /// <reference lib="dom" />
 
 declare module "html-to-text" {
-  export function convert(html: string, options?: unknown): string;
-  export function compile(options: unknown): (html: string) => string;
+  type HtmlToTextOptions = {
+    baseElements?: { selectors?: string[]; returnDomByDefault?: boolean };
+    wordwrap?: number | false;
+    selectors?: {
+      selector: string;
+      format?: string;
+      options?: { uppercase?: boolean; uppercaseHeaderCells?: boolean };
+    }[];
+  };
+  export function compile(options: HtmlToTextOptions): (html: string) => string;
 }
 
 declare module "@mixmark-io/domino" {
@@ -10,5 +18,7 @@ declare module "@mixmark-io/domino" {
 }
 
 declare module "turndown-plugin-gfm" {
-  export const gfm: (service: unknown) => void;
+  import type { Plugin } from "turndown";
+
+  export const gfm: Plugin;
 }

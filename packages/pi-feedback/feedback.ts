@@ -1,5 +1,8 @@
 import { StringEnum } from "@earendil-works/pi-ai";
+import type { JsonObject } from "@earendil-works/pi-ai";
 import type {
+  AgentToolUpdateCallback,
+  EntryRenderOptions,
   ExtensionContext,
   MessageEndEvent,
   Theme,
@@ -7,7 +10,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
-import { Option, Schema } from "effect";
+import { flow, Option, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { onOffCommand } from "../shared/on-off-command.ts";
@@ -89,7 +92,7 @@ export type FeedbackTool = {
     toolCallId: string,
     params: FeedbackParams,
     signal: AbortSignal | undefined,
-    onUpdate: unknown,
+    onUpdate: AgentToolUpdateCallback<FeedbackDetails> | undefined,
     ctx: FeedbackContext,
   ) => Promise<FeedbackResult>;
 };
@@ -102,7 +105,7 @@ export type FeedbackNote = {
 
 export type NoteRenderer = (
   entry: { readonly data?: unknown },
-  options: unknown,
+  options: EntryRenderOptions,
   theme: Pick<Theme, "fg">,
 ) => Component | undefined;
 
@@ -114,8 +117,8 @@ export type FeedbackRegistration = {
     (
       name: "tool_execution_end",
       handler: (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>,
-    ): unknown;
-    (name: "message_end", handler: (event: Pick<MessageEndEvent, "message">) => void): unknown;
+    ): void;
+    (name: "message_end", handler: (event: Pick<MessageEndEvent, "message">) => void): void;
   };
   readonly appendEntry: (customType: string, data: FeedbackNote) => void;
   readonly getAllTools: () => readonly ToolSource[];
@@ -154,32 +157,15 @@ function result(text: string, details: FeedbackDetails, isError = false): Feedba
   return { content: [{ type: "text", text }], details, ...(isError ? { isError } : {}) };
 }
 
-function isTextPart(part: unknown): part is { readonly type: "text"; readonly text: string } {
-  return (
-    typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    part.type === "text" &&
-    "text" in part &&
-    typeof part.text === "string"
-  );
-}
+const isTextPart = Schema.is(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }));
 
-export function errorText(toolResult: unknown): string {
-  if (
-    typeof toolResult !== "object" ||
-    toolResult === null ||
-    !("content" in toolResult) ||
-    !Array.isArray(toolResult.content)
-  ) {
-    return "";
-  }
-  const parts: unknown[] = toolResult.content;
-  return parts
-    .filter((part) => isTextPart(part))
-    .map((part) => part.text)
-    .join("\n");
-}
+export const errorText = flow(
+  Schema.decodeUnknownOption(Schema.Struct({ content: Schema.Array(Schema.Unknown) })),
+  Option.map(({ content }) =>
+    content.flatMap((part) => (isTextPart(part) ? [part.text] : [])).join("\n"),
+  ),
+  Option.getOrElse(() => ""),
+);
 
 function runContext(ctx: FeedbackContext, piVersion: string) {
   return {
@@ -188,23 +174,12 @@ function runContext(ctx: FeedbackContext, piVersion: string) {
   };
 }
 
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null;
-}
-
-function toolCallsOf(message: unknown): readonly BatchCall[] | undefined {
-  if (!isObject(message) || message.role !== "assistant") {
+function toolCallsOf(message: MessageEndEvent["message"]): readonly BatchCall[] | undefined {
+  if (message.role !== "assistant") {
     return undefined;
   }
-  const content: unknown = message.content;
-  const parts: readonly unknown[] = Array.isArray(content) ? content : [];
-  return parts.flatMap((part) =>
-    isObject(part) &&
-    part.type === "toolCall" &&
-    typeof part.id === "string" &&
-    typeof part.name === "string"
-      ? [{ id: part.id, name: part.name, args: part.arguments }]
-      : [],
+  return message.content.flatMap((part) =>
+    part.type === "toolCall" ? [{ id: part.id, name: part.name, args: part.arguments }] : [],
   );
 }
 
@@ -228,7 +203,7 @@ export function registerFeedback(
   const schedule = dependencies.schedule ?? serialQueue();
   let unclassified = 0;
 
-  const classifyLater = (ctx: FeedbackContext, event: LedgerEvent, input?: unknown): void => {
+  const classifyLater = (ctx: FeedbackContext, event: LedgerEvent, input?: JsonObject): void => {
     if (!isRecordEvent(event)) {
       return;
     }

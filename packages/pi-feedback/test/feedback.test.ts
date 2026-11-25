@@ -247,6 +247,7 @@ describe("errorText", () => {
       { content: [{ type: "text", text: "a" }, { type: "image" }, { type: "text", text: "b" }] },
       "a\nb",
     ],
+    [{ content: [{ type: "text", text: 1 }, null, { type: "text", text: "valid" }] }, "valid"],
     [{ content: "not a list" }, ""],
     [undefined, ""],
     ["text", ""],

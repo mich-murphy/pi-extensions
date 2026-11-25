@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
@@ -633,7 +633,11 @@ async function observeUsageLimits(...messages: readonly unknown[]) {
   return { events, observations };
 }
 
-function rateLimitEvent(info: Readonly<Record<string, unknown>>): Record<string, unknown> {
+function rateLimitEvent(info: {
+  readonly status: string;
+  readonly resetsAt?: number;
+  readonly rateLimitType?: string;
+}) {
   return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
 }
 
@@ -833,13 +837,13 @@ describe("deferred tool calls", () => {
   test.each(["clean-result", "clean-eof", "rejection"] as const)(
     "fails closed and aborts if the SDK executes the MCP fallback (%s)",
     async (ending) => {
-      let fallback: (() => Promise<unknown>) | undefined;
+      let fallback: (() => Promise<void>) | undefined;
       const createMcpServer: typeof createSdkMcpServer = (options) => {
         const server = createSdkMcpServer(options);
         const register = server.instance.registerTool.bind(server.instance);
         server.instance.registerTool = (name, config, handler) => {
-          fallback = async () =>
-            handler(
+          fallback = async () => {
+            await handler(
               { path: "package.json" },
               {
                 signal: new AbortController().signal,
@@ -850,6 +854,7 @@ describe("deferred tool calls", () => {
                 },
               },
             );
+          };
           return register(name, config, handler);
         };
         return server;
@@ -886,7 +891,7 @@ describe("deferred tool calls", () => {
   );
 
   test("keeps fallback contract failure ahead of pending correction calls", async () => {
-    let fallback: (() => Promise<unknown>) | undefined;
+    let fallback: (() => Promise<void>) | undefined;
     const events = await runTurn(
       async function* (params) {
         await deliverToolUses(
@@ -903,8 +908,8 @@ describe("deferred tool calls", () => {
           const server = createSdkMcpServer(options);
           const register = server.instance.registerTool.bind(server.instance);
           server.instance.registerTool = (name, config, handler) => {
-            fallback = async () =>
-              handler(
+            fallback = async () => {
+              await handler(
                 { path: "package.json" },
                 {
                   signal: new AbortController().signal,
@@ -915,6 +920,7 @@ describe("deferred tool calls", () => {
                   },
                 },
               );
+            };
             return register(name, config, handler);
           };
           return server;
@@ -1542,7 +1548,7 @@ describe("SDK isolation options", () => {
     expect(options.strictMcpConfig).toBe(true);
     expect(options.skills).toStrictEqual([]);
     expect(options.persistSession).toBe(false);
-    expect(typeof options.title).toBe("string");
+    expect(Schema.is(Schema.String)(options.title)).toBe(true);
     assert(options.mcpServers !== undefined);
     expect(Object.keys(options.mcpServers)).toStrictEqual(["pi"]);
   });

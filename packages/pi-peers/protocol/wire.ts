@@ -7,6 +7,7 @@ export const MAX_DESCRIPTOR_BYTES = 512;
 
 export type BoundaryRole = "local-client" | "gateway-forward" | "adapter-delivery" | "remote-link";
 const routed = new Set(["send", ...retiredOps]);
+type Descriptor = Extract<Frame, { op: "roster.event" }>["event"] & { tag: "upsert" };
 const decode = Schema.decodeUnknownSync(Frame, { onExcessProperty: "error" });
 
 export function frameBodyLength(prefix: Uint8Array): number {
@@ -64,15 +65,19 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   }
 }
 
+const isString = Schema.is(Schema.String);
+const isNumber = Schema.is(Schema.Number);
+const isObject = Schema.is(Schema.JsonObject);
+const isArray = Schema.is(Schema.Array(Schema.Json));
 const authoredFields = new Set(["content", "label", "locator"]);
-function authoredBytes(value: unknown): number {
-  if (typeof value !== "object" || value === null) {
+function authoredBytes(value: Schema.Json): number {
+  if (!isObject(value) && !isArray(value)) {
     return 0;
   }
   let total = 0;
   for (const [name, child] of Object.entries(value)) {
     total +=
-      authoredFields.has(name) && typeof child === "string"
+      authoredFields.has(name) && isString(child)
         ? Buffer.byteLength(child, "utf8")
         : authoredBytes(child);
   }
@@ -89,13 +94,13 @@ function checkDescriptorBounds(frame: Frame): void {
     }
   }
 }
-function checkDescriptor(value: unknown): void {
+function checkDescriptor(value: Descriptor["peer"]): void {
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_DESCRIPTOR_BYTES) {
     throw new ProtocolError();
   }
 }
 
-export function validateFrame(value: unknown, role: BoundaryRole): Frame {
+export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
   try {
     const frame = decode(value);
     decodeJson(Buffer.from(JSON.stringify(frame), "utf8"));
@@ -122,7 +127,7 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
       path[0] === "outcome" &&
       path[1] === "value" &&
       path[2] === "peers" &&
-      typeof path[3] === "number" &&
+      isNumber(path[3]) &&
       byteLength > MAX_DESCRIPTOR_BYTES
     ) {
       snapshotOverflow = true;
@@ -148,7 +153,7 @@ export function decodeFrame(bytes: Uint8Array, role: BoundaryRole): Frame {
   return decodeBody(bytes.subarray(4), role);
 }
 
-export function encodeFrame(value: unknown, role: BoundaryRole): Uint8Array {
+export function encodeFrame(value: Schema.Json, role: BoundaryRole): Uint8Array {
   const frame = validateFrame(value, role);
   const body = Buffer.from(JSON.stringify(frame), "utf8");
   decodeJson(body);

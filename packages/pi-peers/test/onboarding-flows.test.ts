@@ -14,7 +14,7 @@ import { peersMenu } from "../onboarding/menu/root.js";
 import type { ActionKind, RootState } from "../onboarding/menu/root.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, setupForm } from "../onboarding/menu/setup-form.js";
-import type { SetupDraft } from "../onboarding/menu/setup-form.js";
+import type { SetupChoice, SetupDraft } from "../onboarding/menu/setup-form.js";
 import { PeersMenu } from "../onboarding/menu/tui.js";
 import { attempt, failedWith, INCOMPLETE_NEXT, safeReason } from "../onboarding/outcome.js";
 import { defaultChoices } from "../onboarding/plan.js";
@@ -34,7 +34,7 @@ const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 });
 
 function form(state: SetupDraft, remoteBlocked?: string) {
-  const apply = vi.fn<(choice: unknown) => void>();
+  const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
   const screen = setupForm({
     draft: state,
@@ -425,7 +425,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
       setupForm({
         draft: state,
         details: () => "",
-        apply: vi.fn<(choice: unknown) => void>(),
+        apply: vi.fn<(choice: SetupChoice) => void>(),
         probe: async () => probed.promise,
       }),
     );
@@ -443,7 +443,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
       setupForm({
         draft: state,
         details: () => "",
-        apply: vi.fn<(choice: unknown) => void>(),
+        apply: vi.fn<(choice: SetupChoice) => void>(),
         probe: async () => true,
       }),
     );
@@ -499,7 +499,7 @@ describe("F9: RPC context and no-op feedback", () => {
       setupForm({
         draft: fixDraft(),
         details: () => "",
-        apply: vi.fn<(choice: unknown) => void>(),
+        apply: vi.fn<(choice: SetupChoice) => void>(),
       }),
     );
     model.activate("label");
@@ -514,7 +514,7 @@ describe("F9: RPC context and no-op feedback", () => {
       setupForm({
         draft: fixDraft(),
         details: () => "",
-        apply: vi.fn<(choice: unknown) => void>(),
+        apply: vi.fn<(choice: SetupChoice) => void>(),
       }),
     );
     model.activate("apply");

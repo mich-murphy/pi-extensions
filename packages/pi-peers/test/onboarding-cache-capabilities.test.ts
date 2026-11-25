@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdapterSession } from "../adapter/session.js";
 import { freshId } from "../adapter/transport.js";
@@ -60,9 +61,10 @@ async function requiredRepair(
   return found.screen;
 }
 
-function requiredField(output: Record<string, unknown>, key: string): string {
+const isString = Schema.is(Schema.String);
+function requiredField(output: Schema.JsonObject, key: string): string {
   const value = output[key];
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     throw new TypeError("Missing native pairing output");
   }
   return value;

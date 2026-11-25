@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import type { Schema } from "effect";
 import { GATEWAY_REMOTE_SETUP_CAPABILITIES } from "./catalog.js";
 import { createPrivate } from "./files.js";
 import { gatewayEnvironment, validateExecutable } from "./managed.js";
@@ -20,12 +21,14 @@ export type PairOperation =
   | "revoke"
   | "export"
   | "inspect";
+export type PairInput = Readonly<Record<string, Schema.Json | undefined>>;
+
 export async function pairAction(
   executable: string,
   directory: string,
   operation: PairOperation,
-  input: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+  input: PairInput,
+): Promise<Schema.JsonObject> {
   if (!isAbsolute(executable) || !isAbsolute(directory)) {
     throw new Error("Pairing paths must be absolute");
   }
@@ -52,6 +55,4 @@ export async function pairAction(
   }
 }
 export type Credentials = typeof credentialSchema.Type;
-export function credentials(value: unknown): Credentials {
-  return decodeCredentials(value);
-}
+export const credentials = decodeCredentials;

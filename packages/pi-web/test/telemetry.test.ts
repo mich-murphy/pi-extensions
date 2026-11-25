@@ -76,7 +76,7 @@ describe("safe telemetry", () => {
   });
 
   test("MCP failure spans scrub current and rotated keys before truncation", async () => {
-    const secrets = ["secret", `secret${"-suffix".repeat(60)}`, "rotated-key"];
+    const secrets = ["secret", `secret${"-suffix".repeat(60)}`, "rotated-key"] as const;
     for (const rpc of [true, false]) {
       const { spans, tracer } = recordingTracer();
       let calls = 0;

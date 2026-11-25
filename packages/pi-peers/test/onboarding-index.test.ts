@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { freshId } from "../adapter/transport.js";
 import communication from "../index.js";
+import type { PeersContext } from "../index.js";
 import { setupPaths } from "../onboarding/backend.js";
+import { extensionFixture } from "./extension-fixture.js";
 import { nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
-const runtimes: { during: (() => Promise<void>) | undefined; disposed: boolean[] } = {
+type RuntimeObservations = { during: (() => Promise<void>) | undefined; disposed: boolean[] };
+const runtimes: RuntimeObservations = {
   during: undefined,
   disposed: [],
 };
@@ -35,40 +38,21 @@ type Answer = (
 ) => string | undefined | Promise<string | undefined>;
 type Shown = { readonly title: string; readonly options: readonly string[] };
 
-async function invoke(handler: unknown, args: unknown[]): Promise<void> {
-  if (typeof handler !== "function") {
-    throw new TypeError("Unregistered fixture callback");
-  }
-  await Reflect.apply(handler, undefined, args);
-}
-
 function rpcHost(acquire: () => Promise<string>, consented: string[]) {
-  const handlers = new Map<string, unknown>();
-  const commands = new Map<string, unknown>();
   const notifications: string[] = [];
   const sessionId = freshId();
-  const api = {
-    on: (name: string, handler: unknown) => {
-      handlers.set(name, handler);
-    },
-    registerTool: () => undefined,
-    registerCommand: (name: string, definition: { handler: unknown }) => {
-      commands.set(name, definition.handler);
-    },
-    sendMessage: () => undefined,
-    appendEntry: () => undefined,
-    registerEntryRenderer: () => undefined,
-  };
-  Reflect.apply(communication, undefined, [
-    api,
-    {
-      backend: { acquire },
-      description: "Explicit immutable native TEST fixture",
-      observe: { consented: (action: string) => consented.push(action) },
-      runtime: observedRuntime,
-    },
-  ]);
-  const context = (answer: Answer, shown: Shown[], mode = "rpc") => ({
+  const fixture = extensionFixture();
+  communication(fixture.api, {
+    backend: { acquire },
+    description: "Explicit immutable native TEST fixture",
+    observe: { consented: (action) => consented.push(action) },
+    runtime: observedRuntime,
+  });
+  const context = (
+    answer: Answer,
+    shown: Shown[],
+    mode: PeersContext["mode"] = "rpc",
+  ): PeersContext => ({
     mode,
     hasUI: true,
     signal: undefined,
@@ -93,15 +77,20 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
   });
   return {
     notifications,
-    event: async (name: string) => invoke(handlers.get(name), [{}, context(() => undefined, [])]),
+    event: async (type: "session_start" | "session_shutdown") =>
+      fixture.event(
+        type,
+        { type },
+        context(() => undefined, []),
+      ),
     command: async (
       args: string,
       answer: Answer = () => undefined,
       shown: Shown[] = [],
-      mode = "rpc",
+      mode: PeersContext["mode"] = "rpc",
     ) => {
       const start = notifications.length;
-      await invoke(commands.get("peers"), [args, context(answer, shown, mode)]);
+      await fixture.command("peers", args, context(answer, shown, mode));
       return notifications.slice(start);
     },
   };
@@ -249,15 +238,18 @@ describe("registerCommunication: commands outside an Apply", () => {
     await rm(fixture.root, { recursive: true, force: true });
   });
 
-  test.each(["print", "json"])("%s: setup and reset refuse in plain words", async (mode) => {
-    for (const action of ["setup", "reset"]) {
-      await expect(host.command(action, applyOnce, [], mode)).resolves.toStrictEqual([
-        `/peers ${action} needs an interactive session.`,
-      ]);
-    }
-    expect(consented).toStrictEqual([]);
-    expect(existsSync(join(fixture.root, "agent"))).toBe(false);
-  });
+  test.each(["print", "json"] as const)(
+    "%s: setup and reset refuse in plain words",
+    async (mode) => {
+      for (const action of ["setup", "reset"]) {
+        await expect(host.command(action, applyOnce, [], mode)).resolves.toStrictEqual([
+          `/peers ${action} needs an interactive session.`,
+        ]);
+      }
+      expect(consented).toStrictEqual([]);
+      expect(existsSync(join(fixture.root, "agent"))).toBe(false);
+    },
+  );
 
   test("/peers reconnect notifies once, in at most two plain sentences", async () => {
     const [message, ...rest] = await host.command("reconnect");

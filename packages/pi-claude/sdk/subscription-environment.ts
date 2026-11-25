@@ -81,7 +81,7 @@ function entrypointLabel(override: string | undefined): string {
   return override;
 }
 
-const BACKGROUND_TRAFFIC_PINS: Readonly<Record<string, string>> = {
+const BACKGROUND_TRAFFIC_PINS = {
   DISABLE_ERROR_REPORTING: "1",
   DISABLE_AUTOUPDATER: "1",
   CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",

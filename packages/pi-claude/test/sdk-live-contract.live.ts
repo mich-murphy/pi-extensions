@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
@@ -46,7 +46,9 @@ async function collect(
   const results: unknown[] = [];
   async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
     for await (const message of runSdkQuery(params)) {
-      recordClaudeCodeVersion(message);
+      if (isInitMessage(message)) {
+        recordClaudeCodeVersion(message);
+      }
       if (isTerminalResult(message)) {
         results.push(message);
       }
@@ -111,7 +113,7 @@ const isTerminalReasonDeferred = Schema.is(
   }),
 );
 
-function deferredResultOf(message: unknown): DeferredResult | undefined {
+function deferredResultOf(message: SDKMessage): DeferredResult | undefined {
   if (isStopReasonDeferred(message)) {
     return "stop_reason:tool_deferred";
   }
@@ -146,7 +148,7 @@ const initMessage = Schema.Struct({
 const isInitMessage = Schema.is(initMessage);
 let observedClaudeCodeVersion: string | undefined;
 
-function recordClaudeCodeVersion(message: unknown): void {
+function recordClaudeCodeVersion(message: SDKMessage | typeof initMessage.Type): void {
   if (isInitMessage(message)) {
     observedClaudeCodeVersion = message.claude_code_version;
   }

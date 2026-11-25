@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+
 export type GatewayReleasePin = {
   sourceRevision: string;
   version: string;
@@ -14,7 +16,11 @@ export type GatewayCatalog = {
 };
 
 export const GATEWAY_WIRE_VERSION = 2;
-export function wireMismatch(source: string, pinned: string, wires: unknown): string {
+export function wireMismatch(
+  source: string,
+  pinned: string,
+  wires: Schema.Json | undefined,
+): string {
   return `${source} gateway ${pinned} (pinned) speaks wire ${JSON.stringify(wires ?? null)}; this adapter needs wire ${String(GATEWAY_WIRE_VERSION)}. Tag a gateway release that speaks it and re-pin the catalog.`;
 }
 export const GATEWAY_MANAGED_CAPABILITY = "managed-on-demand-v1";
@@ -42,22 +48,18 @@ export const gatewayCatalog: GatewayCatalog = {
   },
 };
 
-export function gatewayTarget(
-  platform = process.platform as string,
-  arch = process.arch as string,
-): string | undefined {
-  return (
-    {
-      "darwin/arm64": "aarch64-apple-darwin",
-      "linux/arm64": "aarch64-unknown-linux-gnu",
-      "linux/x64": "x86_64-unknown-linux-gnu",
-    } as Record<string, string>
-  )[`${platform}/${arch}`];
+const targets = new Map([
+  ["darwin/arm64", "aarch64-apple-darwin"],
+  ["linux/arm64", "aarch64-unknown-linux-gnu"],
+  ["linux/x64", "x86_64-unknown-linux-gnu"],
+]);
+export function gatewayTarget(platform: string = process.platform, arch: string = process.arch) {
+  return targets.get(`${platform}/${arch}`);
 }
 
-export function isGatewayVersion(version: unknown): version is string {
-  return typeof version === "string" && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u.test(version);
-}
+export const isGatewayVersion = Schema.is(
+  Schema.String.check(Schema.isPattern(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u)),
+);
 
 export function validatePin(
   pin: Pick<GatewayReleasePin, "sourceRevision" | "version"> & {

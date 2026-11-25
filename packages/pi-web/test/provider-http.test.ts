@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Duration, Effect, Fiber, Result } from "effect";
+import { Duration, Effect, Fiber, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { providerHttpWith } from "./fakes";
 
@@ -19,7 +19,7 @@ async function startLocalServer(
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (typeof address !== "object" || address === null) {
+  if (!Schema.is(Schema.Struct({ port: Schema.Number }))(address)) {
     throw new Error("Test HTTP server did not expose a TCP address");
   }
   return {
@@ -45,7 +45,7 @@ type SeenRequest = {
 
 function recordingFetch(reply: () => Response) {
   const seen: SeenRequest[] = [];
-  const fetchImpl: typeof fetch = async (_input: unknown, init?: RequestInit) => {
+  const fetchImpl: typeof fetch = async (_input, init) => {
     seen.push({
       method: init?.method,
       body: init?.body,

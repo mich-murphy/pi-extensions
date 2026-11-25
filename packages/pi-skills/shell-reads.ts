@@ -14,7 +14,7 @@ type Command = {
   readonly words: readonly Word[];
   readonly inputs: readonly Word[];
   readonly substitutions: readonly string[];
-  readonly heredoc: { body: string | undefined };
+  readonly heredoc: HereDocument;
 };
 
 type Item =
@@ -199,15 +199,17 @@ type Scan = {
   span: number;
 };
 
+type HereDocument = { body: string | undefined };
+
 class Lexer {
   readonly items: Item[] = [];
   private substitutions: string[] = [];
   private index = 0;
   private words: Word[] = [];
   private inputs: Word[] = [];
-  private heredoc: { body: string | undefined } = { body: undefined };
+  private heredoc: HereDocument = { body: undefined };
   private readonly pending: {
-    readonly heredoc: { body: string | undefined };
+    readonly heredoc: HereDocument;
     readonly delimiter: string;
     readonly quoted: boolean;
     readonly substitutions: string[];

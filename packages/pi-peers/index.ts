@@ -1,13 +1,22 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentBeforeSettleEvent,
+  AgentBeforeSettleEventResult,
+  ExtensionAPI,
+  ExtensionContext,
+  RegisteredCommand,
+  SessionCompactFailedEvent,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { loadConfiguration, visibleText } from "./adapter/config.js";
 import type { Configuration } from "./adapter/config.js";
 import { connectLabel } from "./adapter/label.js";
 import { footerLine, footerStatus, statusSummary, statusText } from "./adapter/presentation.js";
-import type { StatusState, StatusSummary } from "./adapter/presentation.js";
+import type { FooterTheme, StatusState, StatusSummary } from "./adapter/presentation.js";
 import { createAdapterRuntime } from "./adapter/runtime.js";
+import type { AdapterSession } from "./adapter/session.js";
 import { registerTools } from "./adapter/tools.js";
+import type { ToolHost } from "./adapter/tools.js";
 import { freshId } from "./adapter/transport.js";
 import { hasResetTarget, readManaged, reloadManagedLauncher } from "./onboarding/backend.js";
 import type { SetupBackend } from "./onboarding/backend.js";
@@ -25,10 +34,13 @@ import type { Outcome } from "./onboarding/menu/progress.js";
 import { peersMenu } from "./onboarding/menu/root.js";
 import type { ActionKind, RootState } from "./onboarding/menu/root.js";
 import { runMenu } from "./onboarding/menu/run.js";
+import type { MenuContext } from "./onboarding/menu/run.js";
 import { NotActive, refusalText } from "./onboarding/outcome.js";
 import { NO_CHANGES, NOTHING_TO_RESET } from "./onboarding/route.js";
 import type { ActivatePlan, SetupRoute } from "./onboarding/route.js";
 import { prepareSetup, resetOutcome } from "./onboarding/setup.js";
+
+type MenuHolder = { model?: MenuModel };
 
 const COMMANDS = [
   { value: "status", description: "Show whether peers is connected" },
@@ -80,12 +92,58 @@ const CHECKING: SetupRoute = {
   cancelled: () => NO_CHANGES,
 };
 
-function attended(ctx: ExtensionContext): boolean {
+export type PeersContext = MenuContext &
+  Pick<ExtensionContext, "isIdle"> & {
+    readonly ui: MenuContext["ui"] &
+      Pick<ExtensionContext["ui"], "setStatus"> & { readonly theme?: FooterTheme };
+    readonly sessionManager: Pick<
+      ExtensionContext["sessionManager"],
+      "getCwd" | "getSessionId" | "getSessionName" | "getHeader"
+    >;
+  };
+export type PeersCommand = Omit<RegisteredCommand, "name" | "sourceInfo" | "handler"> & {
+  handler: (args: string, context: PeersContext) => Promise<void>;
+};
+export type PeersEventPayloads = {
+  session_start: { readonly type: "session_start" };
+  session_shutdown: { readonly type: "session_shutdown" };
+  message_end: { readonly type: "message_end" } & {
+    message: Parameters<AdapterSession["observed"]>[0];
+  };
+  agent_before_settle: Pick<AgentBeforeSettleEvent, "entries" | "type">;
+  agent_settled: { readonly type: "agent_settled" };
+  session_compact: { readonly type: "session_compact" };
+  session_compact_failed: Pick<SessionCompactFailedEvent, "aborted" | "type">;
+};
+export type PeersEvents = {
+  [Name in keyof PeersEventPayloads]: (
+    event: PeersEventPayloads[Name],
+    context: PeersContext,
+  ) => Name extends "agent_before_settle"
+    ? AgentBeforeSettleEventResult | undefined
+    : Promise<void> | void;
+};
+export type PeersHost = Pick<ExtensionAPI, "sendMessage" | "registerEntryRenderer"> &
+  Partial<Pick<ExtensionAPI, "appendEntry">> &
+  ToolHost & {
+    registerCommand: (name: string, options: PeersCommand) => void;
+    on: {
+      (name: "session_start", handler: PeersEvents["session_start"]): void;
+      (name: "session_shutdown", handler: PeersEvents["session_shutdown"]): void;
+      (name: "message_end", handler: PeersEvents["message_end"]): void;
+      (name: "agent_before_settle", handler: PeersEvents["agent_before_settle"]): void;
+      (name: "agent_settled", handler: PeersEvents["agent_settled"]): void;
+      (name: "session_compact", handler: PeersEvents["session_compact"]): void;
+      (name: "session_compact_failed", handler: PeersEvents["session_compact_failed"]): void;
+    };
+  };
+
+function attended(ctx: PeersContext): boolean {
   return ctx.hasUI && (ctx.mode === "tui" || ctx.mode === "rpc");
 }
 
 export default function registerCommunication(
-  pi: ExtensionAPI,
+  pi: PeersHost,
   testBackend?: {
     backend: SetupBackend;
     description: string;
@@ -94,7 +152,7 @@ export default function registerCommunication(
     runtime?: typeof createAdapterRuntime;
   },
 ): void {
-  let current: ExtensionContext | undefined;
+  let current: PeersContext | undefined;
   let owned: Runtime | undefined;
   let diagnostic = "not enabled (no user-agent pi-peers.json)";
   let generation = 0;
@@ -115,7 +173,7 @@ export default function registerCommunication(
     }
   };
   const startRuntime = async (
-    ctx: ExtensionContext,
+    ctx: PeersContext,
     config: Configuration,
     setup: ManagedSetup | undefined,
     started: number,
@@ -138,7 +196,7 @@ export default function registerCommunication(
     owned = runtime;
     return runtime;
   };
-  const restore = async (ctx: ExtensionContext, started: number): Promise<void> => {
+  const restore = async (ctx: PeersContext, started: number): Promise<void> => {
     const config = await loadConfiguration(getAgentDir());
     await ensureCurrent(started);
     if (config === undefined) {
@@ -199,7 +257,7 @@ export default function registerCommunication(
   pi.on("session_compact_failed", (event) => {
     owned?.session.afterCompaction(event.aborted);
   });
-  const activatePlan = (ctx: ExtensionContext): ActivatePlan => {
+  const activatePlan = (ctx: PeersContext): ActivatePlan => {
     const started = generation;
     return async (plan, setup, replace) => {
       await ensureCurrent(started);
@@ -236,10 +294,7 @@ export default function registerCommunication(
       throw new Error(NOT_ACCEPTED);
     }
   };
-  const ensureRuntime = async (
-    ctx: ExtensionContext,
-    started: number,
-  ): Promise<string | undefined> => {
+  const ensureRuntime = async (ctx: PeersContext, started: number): Promise<string | undefined> => {
     if (owned !== undefined) {
       return undefined;
     }
@@ -250,7 +305,7 @@ export default function registerCommunication(
       return generation === started ? START_TECHNICAL : STALE_TECHNICAL;
     }
   };
-  const reconnectCurrent = async (ctx: ExtensionContext, fresh = false): Promise<Reconnected> => {
+  const reconnectCurrent = async (ctx: PeersContext, fresh = false): Promise<Reconnected> => {
     const started = generation;
     const failure = await ensureRuntime(ctx, started);
     const session = owned?.session;
@@ -269,7 +324,7 @@ export default function registerCommunication(
   };
   const summary = () => statusSummary(owned?.session.status(), diagnostic);
   const liveLinks = () => owned?.session.linkStates() ?? [];
-  const reconnectOutcome = async (ctx: ExtensionContext): Promise<Outcome> => {
+  const reconnectOutcome = async (ctx: PeersContext): Promise<Outcome> => {
     const { connected, technical } = await reconnectCurrent(ctx);
     const after = summary();
     return {
@@ -287,7 +342,7 @@ export default function registerCommunication(
     owned = undefined;
     diagnostic = "participation disabled";
   };
-  const footer = (ctx: ExtensionContext, outcome: Outcome, kind: ActionKind, saved: boolean) => {
+  const footer = (ctx: PeersContext, outcome: Outcome, kind: ActionKind, saved: boolean) => {
     const live = footerStatus(owned?.session.status(), owned !== undefined, ctx.ui.theme);
     if (kind === "reconnect" && live === undefined) {
       return;
@@ -305,27 +360,25 @@ export default function registerCommunication(
     }
   };
   const report = (
-    ctx: ExtensionContext,
+    ctx: PeersContext,
     outcome: Outcome,
     hidden: boolean,
     kind: ActionKind,
     saved: boolean,
   ): void => {
     footer(ctx, outcome, kind, saved);
-    if (typeof pi.appendEntry === "function") {
-      pi.appendEntry("peers-report", outcome);
-    }
+    pi.appendEntry?.("peers-report", outcome);
     if (hidden || ctx.mode !== "tui") {
       ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
     }
   };
-  const reconnectGuarded = (ctx: ExtensionContext) => async (fresh?: boolean) => {
+  const reconnectGuarded = (ctx: PeersContext) => async (fresh?: boolean) => {
     const result = await reconnectCurrent(ctx, fresh);
     if (!result.connected) {
       throw new Error(NOT_ACCEPTED);
     }
   };
-  const load = async (ctx: ExtensionContext): Promise<RootState> => {
+  const load = async (ctx: PeersContext): Promise<RootState> => {
     const agentDir = getAgentDir();
     const [setup, checks, resettable] = await Promise.all([
       prepareSetup(agentDir, activatePlan(ctx), testBackend, reconnectGuarded(ctx)),
@@ -343,7 +396,7 @@ export default function registerCommunication(
       busy: busy(),
     };
   };
-  const openMenu = async (ctx: ExtensionContext, start?: "setup" | "reset"): Promise<void> => {
+  const openMenu = async (ctx: PeersContext, start?: "setup" | "reset"): Promise<void> => {
     const opened = generation;
     let state: RootState = {
       status: { value: "", lines: ["Checking…"] },
@@ -357,7 +410,7 @@ export default function registerCommunication(
     if (!tui) {
       state = await loading;
     }
-    const holder: { model?: MenuModel } = {};
+    const holder: MenuHolder = {};
     const reload = async (): Promise<void> => {
       state = await load(ctx);
       holder.model?.refresh();
@@ -410,7 +463,7 @@ export default function registerCommunication(
         : undefined,
     );
   };
-  const menuCommand = async (action: string, ctx: ExtensionContext): Promise<void> => {
+  const menuCommand = async (action: string, ctx: PeersContext): Promise<void> => {
     if (!attended(ctx)) {
       ctx.ui.notify(
         action === "" ? statusText(summary()) : `/peers ${action} needs an interactive session.`,
@@ -430,7 +483,10 @@ export default function registerCommunication(
       await openMenu(ctx, action === "setup" || action === "reset" ? action : undefined);
     } catch (error) {
       ctx.ui.notify(
-        refusalText(error, "The peers menu could not open. Run /peers doctor to check your files."),
+        refusalText(
+          error instanceof Error ? error : undefined,
+          "The peers menu could not open. Run /peers doctor to check your files.",
+        ),
         "error",
       );
     }

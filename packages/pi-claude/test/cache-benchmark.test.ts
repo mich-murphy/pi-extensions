@@ -4,7 +4,7 @@ import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
 import { cacheTtlFor } from "../sdk/prompt-stream";
 import { createCacheSimulator, estimateTextTokens, readShare } from "./cache-simulator";
-import type { CacheUsage } from "./cache-simulator";
+import type { CacheSimulator, CacheUsage } from "./cache-simulator";
 import { contextFixture, requestFixture, textBlock } from "./fixtures";
 import type { MessageFixture } from "./fixtures";
 
@@ -293,7 +293,7 @@ function clockedSimulator() {
 
 async function readsAt(
   clock: { now: number },
-  simulator: ReturnType<typeof createCacheSimulator>,
+  simulator: CacheSimulator,
   request: AgentRequest,
   minutes: readonly number[],
 ): Promise<number[]> {

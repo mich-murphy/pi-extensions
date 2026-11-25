@@ -15,6 +15,7 @@ import type {
   UserMessage,
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
+import { Schema } from "effect";
 import { Type } from "typebox";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
@@ -130,14 +131,20 @@ export async function deliverToolUse(
   hook: HookCallback,
   { id, input, toolName }: ToolUse,
 ): Promise<HookJSONOutput> {
-  const targeted =
-    typeof input === "object" &&
-    input !== null &&
-    "name" in input &&
-    typeof input.name === "string";
-  const directName = toolName ?? (targeted ? `mcp__pi__${String(input.name)}` : "mcp__pi__read");
+  const targeted = Schema.is(
+    Schema.Struct({
+      name: Schema.String,
+      arguments: Schema.optional(Schema.Unknown),
+    }),
+  )(input)
+    ? input
+    : undefined;
+  const directName =
+    toolName ?? (targeted === undefined ? "mcp__pi__read" : `mcp__pi__${targeted.name}`);
   const directInput =
-    toolName === undefined && targeted && "arguments" in input ? input.arguments : input;
+    toolName === undefined && targeted !== undefined && "arguments" in targeted
+      ? targeted.arguments
+      : input;
   const hookInput = {
     session_id: "test-session",
     transcript_path: "/dev/null",
@@ -167,33 +174,86 @@ export function installedHook(params: Parameters<RunSdkQuery>[0]): HookCallback 
   return hook;
 }
 
-export function resultMessage(
-  fields: Readonly<Record<string, unknown>> = {},
-): Record<string, unknown> {
+export type SdkResultFields = {
+  readonly is_error?: Schema.Json;
+  readonly stop_reason?: Schema.Json;
+  readonly terminal_reason?: Schema.Json | undefined;
+  readonly subtype?: Schema.Json;
+  readonly usage?: Schema.Json;
+  readonly modelUsage?:
+    | Schema.Json
+    | Readonly<
+        Record<
+          string,
+          {
+            readonly contextWindow?: Schema.Json | undefined;
+            readonly maxOutputTokens?: Schema.Json | undefined;
+          }
+        >
+      >
+    | undefined;
+  readonly num_turns?: Schema.Json;
+  readonly errors?: Schema.Json;
+  readonly result?: Schema.Json;
+};
+
+export function resultMessage(fields: SdkResultFields = {}) {
   return { type: "result", is_error: false, stop_reason: "end_turn", ...fields };
 }
 
-export function streamEvent(event: Readonly<Record<string, unknown>>): Record<string, unknown> {
+export function streamEvent(event: {
+  readonly type?: Schema.Json;
+  readonly delta?: Schema.Json;
+  readonly index?: number;
+  readonly message?: Schema.Json;
+  readonly usage?: Schema.Json;
+  readonly content_block?: Schema.Json;
+}) {
   return { type: "stream_event", event };
 }
 
-export function textDelta(text: string): Record<string, unknown> {
+export function textDelta(text: string) {
   return streamEvent({ type: "content_block_delta", delta: { type: "text_delta", text } });
 }
 
 export function sdkPromptFixture(
   prompt: Parameters<RunSdkQuery>[0]["prompt"],
 ): AsyncIterable<SDKUserMessage> {
-  if (typeof prompt === "string") {
+  if (Schema.is(Schema.String)(prompt)) {
     throw new TypeError("test setup: expected an async SDK prompt");
   }
   return prompt;
 }
 
-export function sdkContentRecords(message: SDKUserMessage | undefined): Record<string, unknown>[] {
+const sdkPromptBlock = Schema.Struct({
+  type: Schema.Literals(["text", "image"]),
+  text: Schema.optional(Schema.String),
+  source: Schema.optional(
+    Schema.Struct({
+      type: Schema.Literal("base64"),
+      data: Schema.String,
+      media_type: Schema.String,
+    }),
+  ),
+  cache_control: Schema.optional(
+    Schema.Struct({
+      type: Schema.Literal("ephemeral"),
+      ttl: Schema.optional(Schema.Literals(["5m", "1h"])),
+    }),
+  ),
+});
+
+export type SdkPromptBlock = typeof sdkPromptBlock.Type;
+
+export function sdkContentRecords(message: SDKUserMessage | undefined): SdkPromptBlock[] {
   const content = message?.message.content;
-  if (!Array.isArray(content)) {
+  if (!Schema.is(Schema.Array(Schema.Unknown))(content)) {
     return [];
   }
-  return content.map((block): Record<string, unknown> => ({ ...block }));
+  return content.map((block) => {
+    if (!Schema.is(sdkPromptBlock)(block)) {
+      throw new Error("test setup: expected a text or image block in the SDK prompt");
+    }
+    return { ...block };
+  });
 }

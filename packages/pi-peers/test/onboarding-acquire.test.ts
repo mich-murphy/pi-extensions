@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { Schema } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { acquireGateway } from "../onboarding/acquire.js";
 import type {
@@ -19,7 +20,7 @@ import { fixture } from "./onboarding-artifact-fixture.js";
 const roots: string[] = [];
 const narHash = `sha256-${Buffer.alloc(32, 251).toString("base64")}`;
 function requestUrl(url: string | URL | Request): string {
-  if (typeof url === "string") {
+  if (isString(url)) {
     return url;
   }
   if (url instanceof URL) {
@@ -36,7 +37,7 @@ async function mockNixBuild(_file: string, args: string[]): Promise<string> {
   return "";
 }
 const failCompletionWrite: typeof fs.writeFile = async (filename, content, options) => {
-  if (typeof filename === "string" && filename.endsWith("installed.json")) {
+  if (isString(filename) && filename.endsWith("installed.json")) {
     throw new Error("simulated completion failure");
   }
   return fs.writeFile(filename, content, options);
@@ -293,7 +294,7 @@ describe("approved gateway acquisition", () => {
     const error: unknown = await acquireGateway(
       { ...s.plan, installRoot: path.join(shared, "agent", "install") },
       s.options,
-    ).catch((caught: unknown) => caught);
+    ).catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     expect(error).toBeInstanceOf(UnsafeFolder);
     expect(error).toMatchObject({
       folder: shared,
@@ -424,6 +425,8 @@ function replacingOpen(replace: (filename: string) => Promise<void>): typeof fs.
     return fs.open(filename, flags, mode);
   };
 }
+const isString = Schema.is(Schema.String);
+
 function ioError(code: string): Error {
   return Object.assign(new Error(`simulated ${code}`), { code });
 }

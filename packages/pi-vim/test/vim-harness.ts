@@ -80,7 +80,7 @@ export function loadVim(mode: ExtensionContext["mode"]): VimSession {
     notices,
     command: registered,
     startSession: () => {
-      start({}, contextDouble);
+      start({ type: "session_start", reason: "startup" }, contextDouble);
     },
     runCommand: async (args) => registered.handler(args, contextDouble),
   };

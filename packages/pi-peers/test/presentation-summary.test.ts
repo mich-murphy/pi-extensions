@@ -7,7 +7,9 @@ import {
   propertySettings,
   propertyTimeout,
 } from "../../../test-support/hegel-settings";
+import type { LinkState } from "../adapter/links.js";
 import { footerStatus, statusSummary, statusText } from "../adapter/presentation.js";
+import type { StatusSnapshot } from "../adapter/presentation.js";
 
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
 const internal =
@@ -38,7 +40,7 @@ const hostile = gs.oneOf(
   gs.text({ maxSize: 40 }),
   gs.sampledFrom(["\u001b[31mx", "\u009b1m", "‮evil", "nonce", "generation", "ledger"]),
 );
-function drawStatus(tc: TestCase): { value: unknown; authored: string[] } {
+function drawStatus(tc: TestCase) {
   const status = tc.draw(
     gs.sampledFrom(["connected", "activation_pending", "activation_unconfirmed", "x"]),
     "status",
@@ -60,12 +62,12 @@ function assertPlain(text: string, authored: string[]): void {
   }
   assert.equal(internal.test(own), false, `internal term in ${JSON.stringify(own)}`);
 }
-function primary(status: unknown, diagnostic: string): string {
+function primary(status: StatusSnapshot | undefined, diagnostic: string): string {
   const summary = statusSummary(status, diagnostic);
   return [summary.headline, ...summary.rows.flat(), summary.next ?? ""].join("\n");
 }
 
-function links(...states: [string, string][]) {
+function links(...states: [string, LinkState["state"]][]) {
   return states.map(([machineId, state]) => ({ machineId, state, since: 0 }));
 }
 describe("plain-language status summary", () => {
@@ -84,7 +86,7 @@ describe("plain-language status summary", () => {
             since: Date.UTC(2026, 0, 1, 10, 0, 0),
             nextProbe: Date.UTC(2026, 0, 1, 10, 0, 30),
           },
-          { machineId: "x", state: "weird", since: 1 },
+          { machineId: " ", state: "up", since: 1 },
         ],
       },
       "enabled",
@@ -94,7 +96,7 @@ describe("plain-language status summary", () => {
       "Link to dev-01",
       "Down — sends to it fail at once; the gateway keeps retrying (since 10:00:00 UTC, next try 10:00:30 UTC)",
     ]);
-    expect(summary.rows.map(([label]) => label)).not.toContain("Link to x");
+    expect(summary.rows.map(([label]) => label)).not.toContain("Link to ");
   });
   test("connected names the machine and scope and keeps identifiers technical", () => {
     const summary = statusSummary(

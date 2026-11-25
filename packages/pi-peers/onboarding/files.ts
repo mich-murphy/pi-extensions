@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, unlink } from "node:fs/promises";
 import { dirname, parse, resolve as absolutePath, join } from "node:path";
+import { isMissingFile } from "../adapter/locations.js";
 import { foreignFolder, linkedFolder, openFolder, SETUP_BUSY } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
@@ -35,7 +36,7 @@ export async function regularBytes(path: string, follow = false): Promise<Buffer
       await file.close();
     }
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+    if (isMissingFile(error)) {
       return undefined;
     }
     throw error;
@@ -53,9 +54,7 @@ export async function privateDirectory(path: string): Promise<void> {
         throw linkedFolder(current);
       }
     } catch (error) {
-      if (
-        !(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-      ) {
+      if (!isMissingFile(error)) {
         throw error;
       }
       // eslint-disable-next-line eslint/no-await-in-loop -- Ownership checks and durable filesystem mutations must be ordered before the next step.

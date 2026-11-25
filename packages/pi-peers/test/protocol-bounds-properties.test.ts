@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import {
@@ -26,7 +27,7 @@ const nonce = "a".repeat(32);
 
 const edge = gs.integers({ minValue: -3, maxValue: 3 });
 
-function accepts(run: () => unknown): boolean {
+function accepts(run: () => void): boolean {
   try {
     run();
     return true;
@@ -43,7 +44,7 @@ function withPrefix(body: Uint8Array): Uint8Array {
   return bytes;
 }
 
-function assertFrameEdge(value: unknown, role: BoundaryRole, expected: boolean): void {
+function assertFrameEdge(value: Schema.Json, role: BoundaryRole, expected: boolean): void {
   const raw = Buffer.from(JSON.stringify(value), "utf8");
   assert.equal(
     accepts(() => validateFrame(value, role)),
@@ -62,7 +63,7 @@ function assertFrameEdge(value: unknown, role: BoundaryRole, expected: boolean):
   );
 }
 
-function sendFrame(contentBytes: number): unknown {
+function sendFrame(contentBytes: number) {
   return {
     v: 2,
     op: "send",
@@ -83,12 +84,7 @@ function filled(bytes: number, wide: boolean): string {
   return wide ? `${"€".repeat(Math.floor(bytes / 3))}${"x".repeat(bytes % 3)}` : "x".repeat(bytes);
 }
 
-function authoredFrame(sizes: {
-  content: number;
-  label: number;
-  locator: number;
-  wide: boolean;
-}): unknown {
+function authoredFrame(sizes: { content: number; label: number; locator: number; wide: boolean }) {
   return {
     v: 2,
     op: "send",
@@ -121,7 +117,7 @@ function makeDescriptor(sessionId: string) {
   };
 }
 
-function upsertWithDescriptorBytes(size: number): unknown {
+function upsertWithDescriptorBytes(size: number) {
   const make = makeDescriptor;
   const base = Buffer.byteLength(JSON.stringify(make("s")), "utf8");
   const descriptor = make("s".repeat(1 + size - base));

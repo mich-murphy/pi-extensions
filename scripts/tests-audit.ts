@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
-
-type Json = Record<string, unknown>;
+import { Schema } from "effect";
 
 type Finding = {
   readonly test: string;
@@ -17,64 +16,57 @@ type Report = {
   readonly incomplete: readonly string[];
 };
 
-function object(value: unknown, where: string): Json {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError(`${where} is not an object`);
-  }
-  return Object.fromEntries(Object.entries(value));
-}
-
-function list(value: unknown, where: string): readonly unknown[] {
-  if (!Array.isArray(value)) {
-    throw new TypeError(`${where} is not an array`);
-  }
-  return value;
-}
-
-function text(value: unknown, where: string): string {
-  if (typeof value !== "string") {
-    throw new TypeError(`${where} is not a string`);
-  }
-  return value;
-}
+const Kills = Schema.Array(Schema.Unknown);
+const Target = Schema.Struct({
+  status: Schema.String,
+  target: Schema.String,
+  test_ids: Schema.Array(Schema.String),
+  reasons: Schema.Array(Schema.String),
+});
+const TestRow = Schema.Struct({
+  kills: Kills,
+  unique_kills: Kills,
+  target_only_kills: Schema.optional(Kills.pipe(Schema.NullOr)),
+  test_id: Schema.String,
+});
+const decodeReport = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      completion: Schema.Struct({ status: Schema.String }),
+      kill_matrix: Schema.Struct({
+        targets: Schema.Array(Target),
+        tests: Schema.Array(TestRow),
+        coverage_without_kills: Schema.Array(Schema.String),
+      }),
+    }),
+  ),
+);
 
 function readReport(path: string): Report {
-  const root = object(JSON.parse(readFileSync(path, "utf8")), path);
-  const matrix = object(root.kill_matrix, `${path}: kill_matrix`);
-  const completion = text(object(root.completion, `${path}: completion`).status, "status");
-  const targets = list(matrix.targets, `${path}: kill_matrix.targets`).map((entry) =>
-    object(entry, "target"),
-  );
+  const { completion, kill_matrix: matrix } = decodeReport(readFileSync(path, "utf8"));
   const completeTests = new Set(
-    targets
+    matrix.targets
       .filter((target) => target.status === "complete")
-      .flatMap((target) => list(target.test_ids, "test_ids").map((id) => text(id, "test id"))),
+      .flatMap((target) => target.test_ids),
   );
-  const incomplete = targets
+  const incomplete = matrix.targets
     .filter((target) => target.status !== "complete")
-    .map((target) => {
-      const reasons = list(target.reasons, "reasons").map((reason) => text(reason, "reason"));
-      return `${text(target.target, "target")} (${reasons.join(", ")})`;
-    });
-  const rows = list(matrix.tests, `${path}: kill_matrix.tests`).map((entry) =>
-    object(entry, "row"),
-  );
-  const noDetection = rows
-    .filter((row) => list(row.kills, "kills").length > 0)
-    .filter((row) => list(row.unique_kills, "unique_kills").length === 0)
-    .map((row) => {
-      const test = text(row.test_id, "test_id");
-      return {
-        test,
-        kills: list(row.kills, "kills").length,
-        sharedWithTargets: list(row.target_only_kills ?? [], "target_only_kills").length,
-        complete: completeTests.has(test),
-      };
-    });
-  const noKills = list(matrix.coverage_without_kills, "coverage_without_kills").map((id) =>
-    text(id, "test id"),
-  );
-  return { path, completion, noDetection, noKills, incomplete };
+    .map((target) => `${target.target} (${target.reasons.join(", ")})`);
+  const noDetection = matrix.tests
+    .filter((row) => row.kills.length > 0 && row.unique_kills.length === 0)
+    .map((row) => ({
+      test: row.test_id,
+      kills: row.kills.length,
+      sharedWithTargets: row.target_only_kills?.length ?? 0,
+      complete: completeTests.has(row.test_id),
+    }));
+  return {
+    path,
+    completion: completion.status,
+    noDetection,
+    noKills: matrix.coverage_without_kills,
+    incomplete,
+  };
 }
 
 function cell(value: string): string {

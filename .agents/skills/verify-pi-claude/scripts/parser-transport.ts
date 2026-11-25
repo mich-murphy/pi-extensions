@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
+import type { RawMessageStreamEvent } from "@anthropic-ai/sdk/resources/messages";
+import { Schema } from "effect";
+
+type TransportEvents = RawMessageStreamEvent["type"];
+type TransportPayload = typeof Schema.JsonObject.Type;
+const isTcpAddress = Schema.is(Schema.Struct({ port: Schema.Number }));
 
 export const DUMMY_PARSER_KEY = "pi-offline-parser-dummy-key";
 
@@ -35,7 +41,7 @@ export async function startParserTransport() {
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      const emit = (type: string, data: Record<string, unknown>) =>
+      const emit = (type: TransportEvents, data: TransportPayload) =>
         response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
       emit("message_start", {
         message: {
@@ -105,7 +111,7 @@ export async function startParserTransport() {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  assert(address !== null && typeof address === "object");
+  assert(isTcpAddress(address));
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     summary: () => ({ requests, unexpected, invalidJsonResponses }),

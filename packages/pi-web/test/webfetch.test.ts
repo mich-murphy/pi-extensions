@@ -1,4 +1,4 @@
-import { Duration, Effect, Result } from "effect";
+import { Duration, Effect, Result, Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { FetchPage } from "../fetch-page";
 import {
@@ -400,10 +400,9 @@ describe("webfetch tool", () => {
       }),
     });
 
-    const failure = await tool.execute("t1", { url: "https://echo.example/" }).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
+    const failure = await tool
+      .execute("t1", { url: "https://echo.example/" })
+      .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     assert(failure instanceof Error);
     expect(failure.message).toBe("Request failed (500 Internal Server Error)");
     expectNoLeak(failure, "sekrit-key");
@@ -470,7 +469,7 @@ describe("webfetch tool", () => {
     );
     const failure = await tool
       .execute("t1", { url: "https://secret-token.evil.example/page" })
-      .catch((error: unknown) => error);
+      .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     assert(failure instanceof Error);
     expect(failure.message).not.toContain("secret-token");
     expect(failure.message).not.toContain("evil.example");

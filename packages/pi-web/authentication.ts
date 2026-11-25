@@ -1,6 +1,6 @@
 import type { Credential, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import { Effect, Redacted } from "effect";
+import { Effect, Option, Redacted, Schema } from "effect";
 import { CredentialFailure } from "./credentials";
 import type { CredentialResolver } from "./credentials";
 import { BRAVE_API_KEY_ENV, EXA_API_KEY_ENV, PARALLEL_API_KEY_ENV } from "./settings";
@@ -35,7 +35,7 @@ export function effectiveCredential(
     return credential;
   }
   const legacy = readLegacy(legacyId);
-  if (legacy?.type !== "api_key" || typeof legacy.key !== "string") {
+  if (legacy?.type !== "api_key" || !Schema.is(Schema.String)(legacy.key)) {
     return undefined;
   }
   const key = legacy.key.trim();
@@ -44,7 +44,7 @@ export function effectiveCredential(
 
 function usable(value: string | undefined): value is string {
   return (
-    typeof value === "string" &&
+    Schema.is(Schema.String)(value) &&
     value.trim() !== "" &&
     !value
       .trim()
@@ -55,13 +55,20 @@ function usable(value: string | undefined): value is string {
 
 const ORIGINS = Symbol.for("pi-web.native-auth-origins.v1");
 
+const decodeOrigins = Schema.decodeUnknownOption(
+  Schema.Struct({
+    [ORIGINS]: Schema.optional(Schema.instanceOf(WeakMap<Provider, ModelRegistry>)),
+  }),
+);
+
 function origins(): WeakMap<Provider, ModelRegistry> | undefined {
-  const existing: unknown = Reflect.get(globalThis, ORIGINS);
-  if (existing instanceof WeakMap) {
-    return existing;
-  }
-  if (existing !== undefined) {
+  const decoded = decodeOrigins(globalThis);
+  if (Option.isNone(decoded)) {
     return undefined;
+  }
+  const existing = decoded.value[ORIGINS];
+  if (existing !== undefined) {
+    return existing;
   }
   const map = new WeakMap<Provider, ModelRegistry>();
   return Reflect.set(globalThis, ORIGINS, map) ? map : undefined;
@@ -87,14 +94,18 @@ function collides(
   return !owned.has(id) || registry.getRegisteredNativeProvider(id) !== owned.get(id);
 }
 
-export function createWebAuthentication(readLegacy: LegacyCredentialReader = () => undefined): {
+export type WebAuthentication = {
   readonly register: (pi: Pick<ExtensionAPI, "registerProvider">, registry: ModelRegistry) => void;
   readonly unregister: (
     pi: Pick<ExtensionAPI, "unregisterProvider">,
     registry: ModelRegistry,
   ) => void;
   readonly resolverFor: (registry: ModelRegistry) => CredentialResolver["Service"];
-} {
+};
+
+export function createWebAuthentication(
+  readLegacy: LegacyCredentialReader = () => undefined,
+): WebAuthentication {
   const ownership = new WeakMap<ModelRegistry, Map<string, Provider>>();
   return {
     register(pi, registry) {
@@ -109,7 +120,11 @@ export function createWebAuthentication(readLegacy: LegacyCredentialReader = () 
       }
       const registrations = new Map<string, Provider>();
       ownership.set(registry, registrations);
-      const providers: readonly SearchProviderName[] = ["exa", "parallel", "brave"];
+      const providers = [
+        "exa",
+        "parallel",
+        "brave",
+      ] as const satisfies readonly SearchProviderName[];
       for (const provider of providers) {
         const metadata = WEB_AUTH_PROVIDERS[provider];
         pi.registerProvider(metadata.id, { models: [] });

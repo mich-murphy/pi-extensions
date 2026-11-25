@@ -6,9 +6,17 @@ import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunSdkQuery } from "../sdk/runner";
 import { drain, requestFixture, resultMessage, sonnet } from "./fixtures";
 
+type RateLimitInfo = {
+  readonly status: string;
+  readonly resetsAt?: number;
+  readonly isUsingOverage?: boolean;
+  readonly rateLimitType?: string;
+  readonly overageResetsAt?: number;
+};
+
 const RESET = 1_792_548_000;
 
-function limit(info: unknown) {
+function limit(info: RateLimitInfo) {
   return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
 }
 

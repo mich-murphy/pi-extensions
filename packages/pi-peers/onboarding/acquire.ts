@@ -4,6 +4,8 @@ import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Schema } from "effect";
+import { isMissingFile } from "../adapter/locations.js";
 import {
   MAX_ARCHIVE,
   MAX_BINARY,
@@ -23,6 +25,7 @@ import {
 } from "./catalog.js";
 import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog.js";
 import { foreignFolder, linkedFolder, openFolder, Refusal, sharedFolder } from "./refusal.js";
+import { parseJson } from "./schema.js";
 
 export type AcquisitionPlanCommon = Readonly<{
   approved: true;
@@ -215,7 +218,7 @@ async function ensureSafeAncestor(current: string, io: AcquisitionSeams["fs"]): 
     const stat = await io.lstat(current);
     validateAncestorStat(current, stat);
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") {
+    if (!(error instanceof Error && isMissingFile(error))) {
       throw error;
     }
     await io.mkdir(current, { mode: 0o700 });
@@ -307,7 +310,7 @@ function matchesContentPin(plan: AcquisitionPlan, catalog: GatewayCatalog): bool
   if (plan.method === "native") {
     return catalog.native?.manifestSha256 === plan.manifestSha256;
   }
-  return typeof plan.narHash === "string" && catalog.nix?.narHash === plan.narHash;
+  return isString(plan.narHash) && catalog.nix?.narHash === plan.narHash;
 }
 
 function acquisitionSignal(plan: AcquisitionPlan, externalSignal?: AbortSignal): AbortSignal {
@@ -345,7 +348,7 @@ async function entryExists(filename: string, io: AcquisitionSeams["fs"]): Promis
     await io.lstat(filename);
     return true;
   } catch (error) {
-    if (errorCode(error) === "ENOENT") {
+    if (error instanceof Error && isMissingFile(error)) {
       return false;
     }
     throw error;
@@ -387,10 +390,8 @@ async function installedPayload(
     throw new Error("Unsafe existing installation");
   }
   const payload = path.join(plan.installRoot, target);
-  const payloadStat = await io.lstat(payload).catch((error: unknown) => {
-    throw new Error("Unsafe existing installation: its gateway files are missing", {
-      cause: error,
-    });
+  const payloadStat = await io.lstat(payload).catch((cause: unknown) => {
+    throw new Error("Unsafe existing installation: its gateway files are missing", { cause });
   });
   validatePrivateDirectory(payloadStat);
   return payload;
@@ -402,11 +403,11 @@ async function verifyCompletionMarker(
   io: AcquisitionSeams["fs"],
 ): Promise<void> {
   const markerBytes = await boundedOwnedFile(path.join(payload, "installed.json"), 16_384, io);
-  const marker = jsonObject(JSON.parse(markerBytes.toString("utf8")));
+  const marker = jsonObject(parseJson(markerBytes));
   if (marker.sourceRevision !== plan.sourceRevision || marker.version !== plan.version) {
     throw new Error("The installed gateway does not match its record; it was kept");
   }
-  if (typeof marker.executable !== "string") {
+  if (!isString(marker.executable)) {
     throw new TypeError("Invalid completion marker");
   }
   if (marker.executable !== executable) {
@@ -519,9 +520,7 @@ async function probeGateway(
   io: AcquisitionSeams,
   signal: AbortSignal,
 ): Promise<void> {
-  const version = jsonObject(
-    JSON.parse(await io.exec(executable, ["--version", "--json"], signal)),
-  );
+  const version = jsonObject(parseJson(await io.exec(executable, ["--version", "--json"], signal)));
   const capabilities = version.capabilities;
   const wires = version.wireVersions;
   if (
@@ -542,9 +541,8 @@ async function probeGateway(
   }
 }
 
-function errorCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
-}
+const isString = Schema.is(Schema.String);
+const isExistingFile = Schema.is(Schema.Struct({ code: Schema.Literal("EEXIST") }));
 
 function validateAncestorStat(folder: string, stat: Stats): void {
   const uid = process.getuid?.();
@@ -666,7 +664,7 @@ async function isOwnLink(
 async function publicationCollision(
   plan: AcquisitionPlanNative,
   installation: Installation,
-  error: unknown,
+  cause: unknown,
   io: AcquisitionSeams,
   signal: AbortSignal,
 ): Promise<AcquisitionResult> {
@@ -677,7 +675,7 @@ async function publicationCollision(
   } catch (inspection) {
     installation.retained = true;
     throw new AggregateError(
-      [error, inspection],
+      [cause, inspection],
       "The gateway install could not be confirmed; it was kept",
       {
         cause: inspection,
@@ -687,17 +685,19 @@ async function publicationCollision(
   if (own) {
     installation.retained = true;
     throw new Error("The gateway install could not be confirmed; it was kept for reuse", {
-      cause: error,
+      cause,
     });
   }
-  if (errorCode(error) !== "EEXIST") {
-    throw error;
+  if (!(cause instanceof Error && isExistingFile(cause))) {
+    throw cause;
   }
   let winner: AcquisitionResult;
   try {
     winner = await reuseNative(plan, io, signal);
-  } catch (cause) {
-    throw new Error("Another gateway install has the same name; nothing was replaced", { cause });
+  } catch (reuseError) {
+    throw new Error("Another gateway install has the same name; nothing was replaced", {
+      cause: reuseError,
+    });
   }
   await io.fs.rm(installation.installDirectory, { recursive: true, force: true });
   return winner;

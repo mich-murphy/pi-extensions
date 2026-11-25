@@ -1,3 +1,4 @@
+import { Option, Predicate, Schema } from "effect";
 import type { ToggleResource } from "./resources";
 
 const REGISTRY = Symbol.for("pi-skills.sessions");
@@ -14,21 +15,35 @@ export type SessionPolicy = {
   readonly desiredVisible: (resource: SessionResource) => boolean | undefined;
 };
 
-type Callable = (...args: readonly unknown[]) => unknown;
+const RegistryMap = Schema.instanceOf(Map<string, typeof Schema.Unknown.Type>);
+const decodeRegistry = Schema.decodeUnknownOption(
+  Schema.Struct({ [REGISTRY]: Schema.optional(RegistryMap) }),
+);
 
-function isCallable(value: unknown): value is Callable {
-  return typeof value === "function";
-}
+type PolicyMatch = (path: string) => typeof Schema.Unknown.Type;
+type PolicyVisibility = (resource: SessionResource) => typeof Schema.Unknown.Type;
 
-function sessions(create: boolean): Map<unknown, unknown> | undefined {
-  const existing: unknown = Reflect.get(globalThis, REGISTRY);
-  if (existing instanceof Map) {
-    return existing;
-  }
-  if (existing !== undefined || !create) {
+const Policy = Schema.Struct({
+  version: Schema.Literal(1),
+  match: Schema.declare<PolicyMatch>((value): value is PolicyMatch => Predicate.isFunction(value)),
+  desiredVisible: Schema.declare<PolicyVisibility>((value): value is PolicyVisibility =>
+    Predicate.isFunction(value),
+  ),
+});
+const decodePolicy = Schema.decodeUnknownOption(Policy);
+
+type RegisteredPolicy = typeof Policy.Type;
+
+function sessions(create: boolean): typeof RegistryMap.Type | undefined {
+  const registry = decodeRegistry(globalThis);
+  if (Option.isNone(registry)) {
     return undefined;
   }
-  const map = new Map<unknown, unknown>();
+  const existing = registry.value[REGISTRY];
+  if (existing !== undefined || !create) {
+    return existing;
+  }
+  const map = new Map<string, RegisteredPolicy>();
   return Reflect.set(globalThis, REGISTRY, map) ? map : undefined;
 }
 
@@ -51,28 +66,20 @@ export function unregisterSession(id: string, policy: SessionPolicy): boolean {
 
 export function sessionPolicy(id: string): SessionPolicy | undefined {
   try {
-    const entry: unknown = sessions(false)?.get(id);
-    if (typeof entry !== "object" || entry === null) {
-      return undefined;
-    }
-    const version: unknown = Reflect.get(entry, "version");
-    const match: unknown = Reflect.get(entry, "match");
-    const desiredVisible: unknown = Reflect.get(entry, "desiredVisible");
-    return version === 1 && isCallable(match) && isCallable(desiredVisible)
-      ? safePolicy(match, desiredVisible)
-      : undefined;
+    const decoded = decodePolicy(sessions(false)?.get(id));
+    return Option.isSome(decoded) ? safePolicy(decoded.value) : undefined;
   } catch {
     return undefined;
   }
 }
 
-function safePolicy(match: Callable, desiredVisible: Callable): SessionPolicy {
+function safePolicy({ match, desiredVisible }: RegisteredPolicy): SessionPolicy {
   return {
     version: 1,
     match: (path) => {
       try {
         const result = match(path);
-        return typeof result === "string" ? result : undefined;
+        return Schema.is(Schema.String)(result) ? result : undefined;
       } catch {
         return path;
       }
@@ -80,7 +87,7 @@ function safePolicy(match: Callable, desiredVisible: Callable): SessionPolicy {
     desiredVisible: (resource) => {
       try {
         const result = desiredVisible(resource);
-        return typeof result === "boolean" ? result : undefined;
+        return Schema.is(Schema.Boolean)(result) ? result : undefined;
       } catch {
         return undefined;
       }

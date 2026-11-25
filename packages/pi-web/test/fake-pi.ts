@@ -1,32 +1,36 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { RegisteredWebTool, WebToolsHandlers, WebToolsRegistration } from "../index";
 import { nativeAuthFixture } from "./native-auth-fixture";
 
-export type RegisteredTool = {
-  readonly name: string;
-  readonly execute: (...args: readonly never[]) => Promise<unknown>;
-};
-
-type TestContext = Pick<ExtensionContext, "modelRegistry"> & {
-  readonly ui: { readonly notify: (message: string) => void };
+type HandlerLists = {
+  session_start: WebToolsHandlers["session_start"][];
+  session_shutdown: WebToolsHandlers["session_shutdown"][];
 };
 
 export async function fakePi() {
   const fixture = await nativeAuthFixture({ register: false });
   const { registry } = fixture;
-  const tools: RegisteredTool[] = [];
-  type Handler = (event: unknown, ctx: TestContext) => void | Promise<void>;
-  const handlers = new Map<string, Handler[]>();
+  const tools: RegisteredWebTool[] = [];
+  const handlers: HandlerLists = {
+    session_start: [],
+    session_shutdown: [],
+  };
   const notifications: string[] = [];
-  const api = {
+  const api: WebToolsRegistration = {
     registerProvider: registry.registerProvider.bind(registry),
     unregisterProvider: registry.unregisterProvider.bind(registry),
-    registerTool: (tool: RegisteredTool) => {
+    registerTool: (tool) => {
       tools.push(tool);
     },
-    on: (event: string, handler: Handler) => {
-      const existing = handlers.get(event) ?? [];
-      existing.push(handler);
-      handlers.set(event, existing);
+    on: (
+      ...args:
+        | ["session_start", WebToolsHandlers["session_start"]]
+        | ["session_shutdown", WebToolsHandlers["session_shutdown"]]
+    ) => {
+      if (args[0] === "session_start") {
+        handlers.session_start.push(args[1]);
+      } else {
+        handlers.session_shutdown.push(args[1]);
+      }
     },
   };
   const ctx = {
@@ -37,9 +41,15 @@ export async function fakePi() {
       },
     },
   };
-  const emit = async (event: string) => {
-    for (const handler of handlers.get(event) ?? []) {
-      await handler({}, ctx);
+  const emit = async (event: keyof WebToolsHandlers) => {
+    if (event === "session_start") {
+      for (const handler of handlers.session_start) {
+        handler({ type: "session_start", reason: "startup" }, ctx);
+      }
+    } else {
+      for (const handler of handlers.session_shutdown) {
+        await handler();
+      }
     }
   };
   return { pi: api, tools, ctx, emit, registry, notifications, fixture };

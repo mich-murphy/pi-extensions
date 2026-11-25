@@ -5,6 +5,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { Schema } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 import { gatewayCatalog, gatewayTarget } from "../onboarding/catalog.js";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
@@ -76,57 +77,24 @@ await setupCommand(agentDir, ctx, async () => {
 console.log(JSON.stringify(record));
 `;
 
-type ChildRecord = {
-  fetches: string[];
-  allowed: string[];
-  denied: { name: string; file: string; args: string[] }[];
-  selects: string[];
-  notices: { message: string; level: string }[];
-  activated: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-const isStrings = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === "string");
-const isDenied = (value: unknown): value is ChildRecord["denied"] =>
-  Array.isArray(value) &&
-  value.every(
-    (item: unknown) =>
-      isRecord(item) &&
-      typeof item.name === "string" &&
-      typeof item.file === "string" &&
-      isStrings(item.args),
-  );
-const isNotices = (value: unknown): value is ChildRecord["notices"] =>
-  Array.isArray(value) &&
-  value.every(
-    (item: unknown) =>
-      isRecord(item) && typeof item.message === "string" && typeof item.level === "string",
-  );
-function childRecord(stdout: string): ChildRecord {
-  const value: unknown = JSON.parse(stdout);
-  if (
-    isRecord(value) &&
-    isStrings(value.fetches) &&
-    isStrings(value.allowed) &&
-    isDenied(value.denied) &&
-    isStrings(value.selects) &&
-    isNotices(value.notices) &&
-    typeof value.activated === "number"
-  ) {
-    return {
-      fetches: value.fetches,
-      allowed: value.allowed,
-      denied: value.denied,
-      selects: value.selects,
-      notices: value.notices,
-      activated: value.activated,
-    };
-  }
-  throw new TypeError("Malformed child record");
-}
+const childRecord = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      fetches: Schema.Array(Schema.String),
+      allowed: Schema.Array(Schema.String),
+      denied: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          file: Schema.String,
+          args: Schema.Array(Schema.String),
+        }),
+      ),
+      selects: Schema.Array(Schema.String),
+      notices: Schema.Array(Schema.Struct({ message: Schema.String, level: Schema.String })),
+      activated: Schema.Number,
+    }),
+  ),
+);
 
 function hostExpectation(version: string, supported: boolean) {
   return {
@@ -147,7 +115,7 @@ const unsupportedArch = process.platform === "darwin" ? "x64" : "ia32";
 const hostCases = [
   {
     name: "on the real host",
-    arch: process.arch as string,
+    arch: process.arch,
     archOverride: "",
     supported: gatewayTarget() !== undefined,
   },

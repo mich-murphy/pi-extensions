@@ -4,10 +4,10 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const FAILURES: Partial<Record<string, string>> = {
-  transient: "Connection error.",
-  aborted: "Connection error.",
-};
+const FAILURES = new Map([
+  ["transient", "Connection error."],
+  ["aborted", "Connection error."],
+]);
 
 async function untilAborted(signal: AbortSignal | undefined): Promise<void> {
   await new Promise<void>((resolve) => {
@@ -76,7 +76,7 @@ export default function synthetic(pi: ExtensionAPI): void {
         const first = index === 1;
         const unlimited = ["error", "plain", "transient", "aborted"];
         if (first && !unlimited.includes(scenario)) {
-          let publishedReset: unknown = resetsAt;
+          let publishedReset: number | "tomorrow" = resetsAt;
           if (scenario === "invalid") {
             publishedReset = "tomorrow";
           }
@@ -110,7 +110,9 @@ export default function synthetic(pi: ExtensionAPI): void {
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
           },
           stopReason: failed ? "error" : "stop",
-          ...(failed ? { errorMessage: FAILURES[scenario] ?? "Synthetic terminal failure" } : {}),
+          ...(failed
+            ? { errorMessage: FAILURES.get(scenario) ?? "Synthetic terminal failure" }
+            : {}),
         };
         stream.push({ type: "start", partial: { ...message, stopReason: "pending", content: [] } });
         if (failed && scenario === "aborted") {

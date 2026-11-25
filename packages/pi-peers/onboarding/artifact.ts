@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
+import { Schema } from "effect";
 import { isGatewayVersion, validatePin } from "./catalog.js";
 import type { GatewayReleasePin } from "./catalog.js";
+import { parseJson } from "./schema.js";
 
 export const MAX_ARCHIVE = 64 * 1024 * 1024;
 export const MAX_BINARY = 128 * 1024 * 1024;
@@ -14,64 +16,83 @@ export function gatewayReleaseTag(version: string): string {
   }
   return `pi-gateway-v${version}`;
 }
-export type ArtifactRecord = {
-  schema: number;
-  sourceRevision: string;
-  version: string;
-  target: string;
-  file: string;
-  size: number;
-  sha256: string;
-  binarySize: number;
-  binarySha256: string;
-  [key: string]: unknown;
-};
-export type ArtifactManifest = {
-  schema: number;
-  sourceRevision: string;
-  version: string;
-  releaseTag: string;
-  artifacts: ArtifactRecord[];
-};
+const artifactRecord = Schema.StructWithRest(
+  Schema.Struct({
+    schema: Schema.Number,
+    sourceRevision: Schema.String,
+    version: Schema.String,
+    target: Schema.String,
+    file: Schema.String,
+    size: Schema.Number,
+    sha256: Schema.String,
+    binarySize: Schema.Number,
+    binarySha256: Schema.String,
+  }),
+  [Schema.JsonObject],
+);
+export type ArtifactRecord = typeof artifactRecord.Type;
+const manifestHeader = Schema.StructWithRest(
+  Schema.Struct({
+    schema: Schema.Number,
+    sourceRevision: Schema.String,
+    version: Schema.String,
+    releaseTag: Schema.String,
+    artifacts: Schema.Array(Schema.Json),
+  }),
+  [Schema.JsonObject],
+);
+const isManifestHeader = Schema.is(manifestHeader);
+const isArtifactRecord = Schema.is(artifactRecord);
+const isJsonObject = Schema.is(Schema.JsonObject);
 
-export function jsonObject(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+export type VerifiedManifest = {
+  manifest: Omit<typeof manifestHeader.Type, "artifacts"> & {
+    readonly artifacts: ArtifactRecord[];
+  };
+  record: ArtifactRecord;
+};
+type ArtifactManifest = VerifiedManifest["manifest"];
+
+export function jsonObject(value: Schema.Json | undefined): Schema.JsonObject {
+  if (!isJsonObject(value)) {
     throw new Error("Invalid JSON object");
   }
-  return Object.fromEntries(Object.entries(value));
+  return value;
 }
-function isManifest(value: unknown): value is ArtifactManifest {
-  const object = jsonObject(value);
-  return (
-    typeof object.schema === "number" &&
-    typeof object.sourceRevision === "string" &&
-    typeof object.version === "string" &&
-    typeof object.releaseTag === "string" &&
-    Array.isArray(object.artifacts) &&
-    object.artifacts.every((entry: unknown) => {
-      const item = jsonObject(entry);
-      return (
-        ["sourceRevision", "version", "target", "file", "sha256", "binarySha256"].every(
-          (key) => typeof item[key] === "string",
-        ) && ["schema", "size", "binarySize"].every((key) => typeof item[key] === "number")
-      );
-    })
-  );
+
+function readManifest(data: Buffer): ArtifactManifest {
+  const manifest = jsonObject(parseJson(data));
+  if (!isManifestHeader(manifest)) {
+    throw new Error("The gateway release manifest has an unexpected format");
+  }
+  const artifacts = manifest.artifacts.map((entry) => {
+    const record = jsonObject(entry);
+    if (!isArtifactRecord(record)) {
+      throw new Error("The gateway release manifest has an unexpected format");
+    }
+    return record;
+  });
+  const { schema, sourceRevision, version, releaseTag } = manifest;
+  return {
+    ...Object.fromEntries(Object.entries(manifest)),
+    schema,
+    sourceRevision,
+    version,
+    releaseTag,
+    artifacts,
+  };
 }
 
 export function verifyManifest(
   data: Buffer,
   pin: GatewayReleasePin,
   target: string,
-): { manifest: ArtifactManifest; record: ArtifactRecord } {
+): VerifiedManifest {
   validatePin(pin);
   if (data.length > 65_536 || sha256(data) !== pin.manifestSha256) {
     throw new Error("Manifest trusted pin mismatch");
   }
-  const manifest: unknown = JSON.parse(data.toString("utf8"));
-  if (!isManifest(manifest)) {
-    throw new Error("The gateway release manifest has an unexpected format");
-  }
+  const manifest = readManifest(data);
   validateManifestIdentity(manifest, pin);
   validateArtifactIdentities(manifest, pin);
   const record = manifest.artifacts.find((item) => item.target === target);
@@ -218,7 +239,7 @@ function validateTarFormat(header: Buffer, sum: number): void {
   }
 }
 function validateEmbeddedMetadata(release: Buffer, record: ArtifactRecord): void {
-  const metadata = jsonObject(JSON.parse(release.toString("utf8")));
+  const metadata = jsonObject(parseJson(release));
   const {
     file: _file,
     size: _size,

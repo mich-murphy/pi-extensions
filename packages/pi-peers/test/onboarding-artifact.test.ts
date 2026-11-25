@@ -6,6 +6,8 @@ import {
   verifyArtifact,
   verifyManifest,
 } from "../onboarding/artifact.js";
+import type { VerifiedManifest } from "../onboarding/artifact.js";
+import { parseJson } from "../onboarding/schema.js";
 import { fixture, tar } from "./onboarding-artifact-fixture.js";
 
 describe("bounded authenticated artifacts", () => {
@@ -35,7 +37,10 @@ describe("bounded authenticated artifacts", () => {
   ])("rejects %s even with a matching trusted digest", (_name, manifestChange, pinChange) => {
     const f = fixture();
     const manifest = Buffer.from(
-      JSON.stringify({ ...jsonObject(JSON.parse(f.manifest.toString("utf8"))), ...manifestChange }),
+      JSON.stringify({
+        ...Object.fromEntries(Object.entries(jsonObject(parseJson(f.manifest)))),
+        ...manifestChange,
+      }),
     );
     const pin = { ...f.pin, ...pinChange, manifestSha256: sha256(manifest) };
     expect(() => verifyManifest(manifest, pin, f.record.target)).toThrow("wrong name or version");
@@ -78,7 +83,7 @@ describe("bounded authenticated artifacts", () => {
       ],
       "Embedded metadata mismatch",
     ],
-  ] as [string, [string, "binary" | "emptyObject", number][], string][])(
+  ] satisfies [string, [string, "binary" | "emptyObject", number][], string][])(
     "rejects %s",
     (_name, members, message) => {
       const f = fixture();
@@ -178,7 +183,10 @@ describe("bounded authenticated artifacts", () => {
         Buffer.from(
           JSON.stringify({
             ...metadata,
-            requirements: { ...jsonObject(metadata.requirements), [key]: value },
+            requirements: {
+              ...Object.fromEntries(Object.entries(jsonObject(metadata.requirements))),
+              [key]: value,
+            },
           }),
         ),
         0o644,
@@ -189,7 +197,7 @@ describe("bounded authenticated artifacts", () => {
     const index = trusted.artifacts.findIndex((item) => item.target === record.target);
     trusted.artifacts[index] = record;
     const manifest = Buffer.from(JSON.stringify(trusted));
-    const verified = verifyManifest(
+    const verified: VerifiedManifest = verifyManifest(
       manifest,
       { ...f.pin, manifestSha256: sha256(manifest) },
       record.target,

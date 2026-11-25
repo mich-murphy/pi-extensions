@@ -39,8 +39,10 @@ const sdkMetadataSchema = Schema.Struct({
 });
 const decodeSdkMetadata = Schema.decodeUnknownSync(sdkMetadataSchema);
 
-export async function readJson(url: URL): Promise<unknown> {
-  return JSON.parse(await readFile(url, "utf8")) as unknown;
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
+
+export async function readJson(url: URL): Promise<Schema.Json> {
+  return decodeJson(await readFile(url, "utf8"));
 }
 
 export async function readInstalledSdk(): Promise<typeof sdkMetadataSchema.Type> {

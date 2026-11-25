@@ -5,20 +5,15 @@ import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
+import type { SessionHeader, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
+import { Result, Schema } from "effect";
+import { readManifest } from "../../../../test-support/pi-manifest.ts";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const host = resolve(process.argv[2] ?? join(repo, "node_modules/@earendil-works/pi-coding-agent"));
-const rawManifest: unknown = JSON.parse(readFileSync(join(host, "package.json"), "utf8"));
-assert.ok(
-  typeof rawManifest === "object" &&
-    rawManifest !== null &&
-    "version" in rawManifest &&
-    typeof rawManifest.version === "string" &&
-    "bin" in rawManifest,
-);
-const manifest = rawManifest;
-const bin = manifest.bin;
-assert.ok(typeof bin === "object" && bin !== null && "pi" in bin && typeof bin.pi === "string");
+const manifest = readManifest(join(host, "package.json"));
+const { bin } = manifest;
 const root = mkdtempSync(join(tmpdir(), "pi-scrollback-native-"));
 const socket = join(root, "tmux.sock");
 for (const part of ["home", "agent", "sessions", "cwd", "tmp"]) {
@@ -61,7 +56,7 @@ const prompts = [
   `LATEST_CONTEXT 漢字 👩‍💻 é ${"narrow Unicode context ".repeat(7)}`,
 ];
 const timestamp = 1_700_000_000_000;
-const entries: Record<string, unknown>[] = [
+const entries: (SessionHeader | SessionMessageEntry)[] = [
   {
     type: "session",
     version: 3,
@@ -71,7 +66,9 @@ const entries: Record<string, unknown>[] = [
   },
 ];
 let parentId: string | null = null;
-function message(value: Record<string, unknown>): void {
+function message(
+  value: Omit<UserMessage, "timestamp"> | Omit<AssistantMessage, "timestamp">,
+): void {
   const id = String(entries.length).padStart(8, "0");
   entries.push({
     type: "message",
@@ -173,23 +170,12 @@ function key(value: string, repeat = 1): void {
 function text(value: string): void {
   tmux("send-keys", "-t", "journey:0.0", "-l", value);
 }
-function readSettingsOrUndefinedDuringNonAtomicRewrite(): unknown {
-  try {
-    return JSON.parse(readFileSync(join(root, "agent/settings.json"), "utf8"));
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-function readMode(): unknown {
-  const value = readSettingsOrUndefinedDuringNonAtomicRewrite();
-  if (value === undefined) {
-    return undefined;
-  }
-  assert.ok(typeof value === "object" && value !== null && "tuiMode" in value);
-  return value.tuiMode;
+const decodeJson = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Json));
+const decodeMode = Schema.decodeUnknownSync(Schema.Struct({ tuiMode: Schema.String }));
+
+function readMode(): string | undefined {
+  const decoded = decodeJson(readFileSync(join(root, "agent/settings.json"), "utf8"));
+  return Result.isSuccess(decoded) ? decodeMode(decoded.success).tuiMode : undefined;
 }
 const first = (screen: string): string => screen.split("\n")[0] ?? "";
 const sticky = (screen: string, prompt: string): void => {

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { afterEach, assert, beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { cacheDiagnosticsTracker, parseCacheDiagnosticsMode } from "../cache-diagnostics";
 import type { CacheDiagnosticsMode } from "../cache-diagnostics";
@@ -10,6 +10,10 @@ import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import { SdkQueryError } from "../sdk/errors";
 import { writeSdkFailureDiagnostic } from "../sdk/failure-diagnostics";
 import { textBlock } from "./fixtures";
+
+const decodeDiagnosticRecord = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ type: Schema.String })),
+);
 
 const stderr = process.stderr;
 const ttyDescriptor = Object.getOwnPropertyDescriptor(stderr, "isTTY");
@@ -123,7 +127,7 @@ describe("terminal-safe diagnostic output", () => {
     const records = readFileSync(file, "utf8")
       .trim()
       .split("\n")
-      .map((line): unknown => JSON.parse(line));
+      .map((line) => decodeDiagnosticRecord(line));
     expect(records).toMatchObject([
       { type: "request" },
       { type: "usage" },

@@ -1,4 +1,8 @@
-import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionUIContext,
+  SessionShutdownEvent,
+  SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 import { onOffCommand } from "../shared/on-off-command";
 import type { OnOffCommand } from "../shared/on-off-command";
 import { createHostAdapter } from "./host";
@@ -9,7 +13,7 @@ export type ScrollRegistration = {
   on: (
     event: "session_start" | "session_shutdown",
     handler: (
-      event: unknown,
+      event: SessionStartEvent | SessionShutdownEvent,
       ctx: {
         mode: string;
         ui: {

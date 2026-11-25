@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { readTransientSettings, registerRetry } from "../retry";
-import type { TransientSettings } from "../retry";
+import type { RetrySettingsInput, TransientSettings } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = 60_000;
@@ -30,7 +31,7 @@ function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly
   return out;
 }
 
-function setup(transient: object) {
+function setup(transient: Plan) {
   const pi = fakePi("tui", { piRetry: { transient } });
   registerRetry(pi.pi, pi.deps);
   return pi;
@@ -99,7 +100,13 @@ function drawPlan(tc: TestCase): Plan {
   };
 }
 
-const leaf = gs.oneOf<unknown>(
+type SettingsLeaf = number | string | boolean | null | number[];
+type FieldName = keyof TransientSettings;
+type TestFields = Partial<Record<FieldName, SettingsLeaf>>;
+
+const fieldNames = ["enabled", "delaysMinutes", "maxAttempts", "windowMinutes"] as const;
+
+const leaf = gs.oneOf<SettingsLeaf>(
   gs.integers({ minValue: -5, maxValue: 400 }),
   gs.floats({ allowNan: true, allowInfinity: true }),
   gs.floats({ minValue: 0.1, maxValue: 50 }),
@@ -111,7 +118,7 @@ const leaf = gs.oneOf<unknown>(
 );
 
 function checkValid(result: TransientSettings): void {
-  assert.equal(typeof result.enabled, "boolean");
+  assert.ok(Schema.is(Schema.Boolean)(result.enabled));
   assert.ok(Number.isInteger(result.maxAttempts) && result.maxAttempts > 0);
   assert.ok(Number.isFinite(result.windowMinutes) && result.windowMinutes > 0);
   assert.ok(result.delaysMinutes.length > 0);
@@ -124,14 +131,8 @@ function checkValid(result: TransientSettings): void {
   ]);
 }
 
-function assertReader(shape: number, fields: Record<string, unknown>, junkKeys: string[]): void {
-  const keys = ["enabled", "delaysMinutes", "maxAttempts", "windowMinutes"];
-  const transient: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (key in fields) {
-      transient[key] = fields[key];
-    }
-  }
+function assertReader(shape: number, fields: TestFields, junkKeys: string[]): void {
+  const transient = fields;
   const plain = plainShape(shape, transient, fields);
   const junk = Object.fromEntries(
     junkKeys.map((key) => [key, { maxAttempts: 99, enabled: false }]),
@@ -160,9 +161,9 @@ function assertReader(shape: number, fields: Record<string, unknown>, junkKeys: 
   }
 }
 
-function drawFields(tc: TestCase): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-  for (const name of ["enabled", "delaysMinutes", "maxAttempts", "windowMinutes"]) {
+function drawFields(tc: TestCase): TestFields {
+  const fields: TestFields = {};
+  for (const name of fieldNames) {
     if (tc.draw(gs.booleans())) {
       fields[name] = tc.draw(leaf);
     }
@@ -170,15 +171,22 @@ function drawFields(tc: TestCase): Record<string, unknown> {
   return fields;
 }
 
-function plainShape(shape: number, transient: object, fields: Record<string, unknown>): object {
+function plainShape(
+  shape: number,
+  transient: TestFields,
+  fields: TestFields,
+): RetrySettingsInput & TestFields {
   if (shape === 0) {
     return { piRetry: { transient } };
   }
-  return shape === 1 ? { piRetry: fields.enabled } : fields;
+  return shape === 1 ? { piRetry: fields.enabled } : { ...fields };
 }
 
-function wrap(own: object, proto: object): object {
-  const copy: object = { ...own };
+function wrap<Fields extends RetrySettingsInput | TestFields | { transient: TestFields }>(
+  own: Fields,
+  proto: RetrySettingsInput | TestFields | { transient: TestFields },
+): Fields {
+  const copy = { ...own };
   Object.setPrototypeOf(copy, proto);
   return copy;
 }

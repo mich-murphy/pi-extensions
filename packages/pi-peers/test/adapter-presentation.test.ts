@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { Text, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import * as gs from "@hegeldev/hegel/generators";
+import type { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import {
   assertHegel,
@@ -8,7 +9,9 @@ import {
   propertyTimeout,
 } from "../../../test-support/hegel-settings";
 import { diagnostics, footerStatus, toolPresentation } from "../adapter/presentation.js";
+import type { RenderContext, RenderPayload } from "../adapter/presentation.js";
 import { registerTools } from "../adapter/tools.js";
+import { toolRecorder } from "./adapter-tool-fixture.js";
 
 const peer = {
   machineId: "alpha",
@@ -30,39 +33,40 @@ const binding = { messageId: message.id, sender: peer, recipient: other, scopeId
 const admitted = { tag: "admitted", binding, correlation: "none" };
 const denied = { tag: "not_admitted", binding, code: "forbidden" };
 const unknown = { tag: "unknown", binding, code: "unavailable" };
+type RenderOptions = { argsComplete?: boolean; isError?: boolean; isPartial?: boolean };
 const theme = { fg: (_token: string, value: string) => value };
-function result(value: unknown) {
-  return { content: [{ type: "text", text: JSON.stringify(value) }], details: { value } };
+function result(value: Schema.Json | undefined): RenderPayload {
+  return {
+    content: [{ type: "text", text: JSON.stringify(value) ?? "" }],
+    details: value === undefined ? {} : { value },
+  };
 }
 function render(
   name: string,
   slot: "call" | "result",
-  args: unknown,
-  payload: unknown,
+  args: Schema.Json | undefined,
+  payload: RenderPayload | undefined,
   expanded = false,
   width = 100,
-  extra: Record<string, unknown> = {},
+  extra: RenderOptions = {},
 ): readonly string[] {
   const renderer = toolPresentation(name);
-  const context = {
+  const context: RenderContext = {
     args,
-    state: {},
-    argsComplete: true,
     expanded,
     isError: false,
     keyHint: (_key: string, description: string) => `ctrl+o ${description}`,
     ...extra,
   };
-  const fn = slot === "call" ? renderer.renderCall : renderer.renderResult;
-  assert(typeof fn === "function");
-  const component: unknown = Reflect.apply(
-    fn,
-    undefined,
+  const component =
     slot === "call"
-      ? [args, theme, context]
-      : [payload, { expanded, isPartial: extra.isPartial === true }, theme, context],
-  );
-  assert(component instanceof Text);
+      ? renderer.renderCall(args, theme, context)
+      : renderer.renderResult(
+          payload,
+          { expanded, isPartial: extra.isPartial === true },
+          theme,
+          context,
+        );
   return component.render(width);
 }
 function stripStyle(value: string): string {
@@ -80,7 +84,14 @@ const taken = {
   format: "text",
   content: message.content,
 };
-const cases = [
+type RenderCase = {
+  name: string;
+  args: Schema.JsonObject;
+  value: Schema.JsonObject;
+  call: string;
+  summary: string;
+};
+const cases: RenderCase[] = [
   {
     name: "peers_list",
     args: { scope: "team" },
@@ -115,7 +126,7 @@ const cases = [
   },
 ];
 
-const takeCall = (args: unknown) => render("peers_take", "call", args, undefined);
+const takeCall = (args: Schema.JsonObject) => render("peers_take", "call", args, undefined);
 
 describe("presentation-only session tool rendering", () => {
   test.each(cases)(
@@ -139,20 +150,12 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test("all three public registrations hook up both renderers without changing unavailable model output", async () => {
-    const tools: {
-      name: string;
-      renderCall?: unknown;
-      renderResult?: unknown;
-      execute: (...args: unknown[]) => Promise<unknown>;
-    }[] = [];
-    Reflect.apply(registerTools, undefined, [
-      { registerTool: (tool: (typeof tools)[number]) => tools.push(tool) },
-      () => undefined,
-    ]);
-    expect(tools).toHaveLength(3);
-    for (const tool of tools) {
-      expect(typeof tool.renderCall).toBe("function");
-      expect(typeof tool.renderResult).toBe("function");
+    const fixture = toolRecorder();
+    registerTools(fixture, () => undefined);
+    expect(fixture.tools).toHaveLength(3);
+    for (const tool of fixture.tools) {
+      expect(tool.renderCall).toBe(true);
+      expect(tool.renderResult).toBe(true);
       const value = {
         tag: "error",
         code: "unavailable",
@@ -163,12 +166,12 @@ describe("presentation-only session tool rendering", () => {
         details: { value },
         isError: true,
       };
-      const structured: Record<string, object> = {
-        peers_list: { structuredContent: { ok: false, code: "unavailable", note: value.note } },
-      };
-      await expect(tool.execute("id", {})).resolves.toStrictEqual({
+      const structured = new Map([
+        ["peers_list", { structuredContent: { ok: false, code: "unavailable", note: value.note } }],
+      ]);
+      await expect(fixture.run(tool.name, {})).resolves.toStrictEqual({
         ...expected,
-        ...structured[tool.name],
+        ...structured.get(tool.name),
       });
     }
   });

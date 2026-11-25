@@ -28,7 +28,7 @@ function toScalar(value: number): number {
 const nonce = "a".repeat(32);
 const rid = "1".repeat(32);
 const peerOf = (machineId: string) => ({ machineId, sessionId: "s", runtimeNonce: nonce });
-type Case = { role: BoundaryRole; frame: Record<string, unknown> };
+type Case = { role: BoundaryRole; frame: Schema.JsonObject };
 
 function frameCases(content: string): Case[] {
   const message = { id: "2".repeat(32), kind: "request", format: "text", content };
@@ -42,8 +42,11 @@ function frameCases(content: string): Case[] {
     { op: "interest.remove", publisher: peerOf("beta"), scopeId: "team", work },
   ];
   const cases: Case[] = [];
-  const add = (role: BoundaryRole, body: Record<string, unknown>) =>
-    cases.push({ role, frame: { ...head, ...body } });
+  const add = (role: BoundaryRole, body: Schema.JsonObject) =>
+    cases.push({
+      role,
+      frame: Object.fromEntries([...Object.entries(head), ...Object.entries(body)]),
+    });
   add("local-client", {
     op: "register",
     sessionId: "s",
@@ -84,13 +87,18 @@ function frameCases(content: string): Case[] {
   return cases;
 }
 
+const isOp = Schema.is(Schema.String);
 const routedOps = new Set(["send", "state.get", "state.list", "interest.add", "interest.remove"]);
 
 function assertRoundtrip({ role, frame }: Case): void {
   assert.deepStrictEqual(decodeFrame(encodeFrame(frame, role), role), frame);
-  if (routedOps.has(String(frame.op))) {
+  const op = frame.op;
+  if (isOp(op) && routedOps.has(op)) {
     const { from, ...without } = frame;
-    const flipped = role === "local-client" ? { ...frame, from: peerOf("alpha") } : without;
+    const flipped =
+      role === "local-client"
+        ? Object.fromEntries([...Object.entries(frame), ["from", peerOf("alpha")]])
+        : without;
     assert.notEqual(from === undefined, role !== "local-client");
     assert.throws(() => encodeFrame(flipped, role), ProtocolError);
   }

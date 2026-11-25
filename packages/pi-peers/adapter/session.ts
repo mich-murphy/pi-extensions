@@ -3,6 +3,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import { samePeer } from "../protocol/identity.js";
 import { retiredOps } from "../protocol/schema.js";
 import type { Message, PeerRef } from "../protocol/schema.js";
@@ -28,10 +29,12 @@ export type AdapterHost = {
   ui: Pick<ExtensionContext["ui"], "setStatus"> & { readonly theme?: FooterTheme };
 };
 export const NOTICE_TYPE = "peers-wake";
+const isNoticeDetails = Schema.is(Schema.Struct({ noticeId: Schema.String }));
 const LEGACY_NOTICE_TYPE = "session-communication-wake";
 export function isWakeNotice(customType: string | undefined): boolean {
   return customType === NOTICE_TYPE || customType === LEGACY_NOTICE_TYPE;
 }
+export type TakenMessages<Item = Delivery> = { messages: readonly Item[] };
 export type Waited = "message" | "timed_out" | "cancelled" | "disconnected" | "closed" | "busy";
 type Waiting = { key: string; from: PeerRef; scopeId: string };
 export class AdapterSession {
@@ -221,9 +224,7 @@ export class AdapterSession {
     if (
       message.role === "custom" &&
       isWakeNotice(message.customType) &&
-      typeof details === "object" &&
-      details !== null &&
-      "noticeId" in details &&
+      isNoticeDetails(details) &&
       details.noticeId === this.notice?.id
     ) {
       this.notice = undefined;
@@ -292,7 +293,7 @@ export class AdapterSession {
       this.updateStatus();
     });
   }
-  take(limit: number): { messages: readonly Delivery[] } {
+  take(limit: number): TakenMessages {
     const messages: Delivery[] = [];
     for (let index = 0; index < limit; index += 1) {
       const key = this.inbox.shift()?.key;
@@ -353,7 +354,7 @@ export class AdapterSession {
   }
 }
 
-function checkedReply(value: unknown): Reply {
+function checkedReply(value: Reply): Reply {
   const frame = validateFrame(value, "adapter-delivery");
   if (frame.op !== "result") {
     throw new Error("Invalid reply");

@@ -36,7 +36,7 @@ const accepted = fixtures.flatMap((fixture) =>
 );
 const rejected = fixtures.filter((fixture) => fixture.expected.tag === "rejected");
 
-function decodeFixture(fixture: (typeof fixtures)[number]): unknown {
+function decodeFixture(fixture: (typeof fixtures)[number]) {
   const raw = bytes(fixture.hexFile);
   return fixture.boundary === "json" ? decodeJson(raw) : decodeFrame(raw, fixture.role);
 }

@@ -1,13 +1,13 @@
 import process from "node:process";
 import { isContextOverflow } from "@earendil-works/pi-ai";
 import type { AssistantMessageEvent, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import { createAgentSdkStream } from "../bridge";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
-import { parseSdkMessage } from "../sdk/messages";
+import { decodeSdkEvent, parseSdkMessage } from "../sdk/messages";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import {
@@ -24,6 +24,7 @@ import {
   textDelta,
   unsettled,
 } from "./fixtures";
+import type { SdkPromptBlock } from "./fixtures";
 
 const PRIVATE = "SYNTHETIC_PRIVATE_SENTINEL";
 const context = contextFixture({
@@ -65,16 +66,18 @@ function messagesQuery(...messages: readonly unknown[]): RunSdkQuery {
 function serverNames(options: Parameters<RunSdkQuery>[0]["options"]) {
   return Object.keys(requiredOptions(options).mcpServers ?? {});
 }
-function assertObject(value: unknown): asserts value is object {
-  assert(typeof value === "object" && value !== null);
-}
-function firstObjectField(data: object, key: string): object {
-  const value: unknown = Reflect.get(data, key);
-  assert(Array.isArray(value));
-  const first: unknown = value[0];
-  assertObject(first);
-  return first;
-}
+const isPayload = Schema.is(
+  Schema.Struct({
+    promptBlocks: Schema.Array(
+      Schema.Struct({
+        text: Schema.String,
+        images: Schema.Array(Schema.Struct({ data: Schema.String, mediaType: Schema.String })),
+      }),
+    ),
+    cacheBreakpoints: Schema.Array(Schema.Number),
+  }),
+);
+
 function requiredOptions(options: Parameters<RunSdkQuery>[0]["options"]) {
   assert(options);
   return options;
@@ -83,12 +86,13 @@ function requiredOptions(options: Parameters<RunSdkQuery>[0]["options"]) {
 function sdkErrorDetail(isArray: boolean, detail: string) {
   return isArray ? [detail, 42] : detail;
 }
-function chooseReplacement(replace: boolean, original: unknown) {
-  return replace ? payload : original;
-}
 async function rejectPrivate(): Promise<never> {
   throw new Error(PRIVATE);
 }
+function replacementOf(replace: boolean) {
+  return replace ? payload : undefined;
+}
+
 function phaseSignal(phase: string): true | undefined {
   return phase === "event" ? true : undefined;
 }
@@ -130,7 +134,7 @@ describe("public terminal failure privacy", () => {
         [field]: sdkErrorDetail(isArray, detail),
         terminal_reason: detail,
       });
-      const parsed = parseSdkMessage(sdkResult);
+      const parsed = parseSdkMessage(decodeSdkEvent(sdkResult));
       assert(Result.isSuccess(parsed));
       expect(JSON.stringify(parsed)).not.toContain(PRIVATE);
       const message = await turn(messagesQuery(sdkResult));
@@ -374,7 +378,7 @@ describe("public SDK-adapted instrumentation", () => {
     "honors %s mutation/replacement and tracks the applied prompt and breakpoint",
     async (replace) => {
       const diagnostics: CacheDiagnostic[] = [];
-      let wire: Record<string, unknown>[] = [];
+      let wire: SdkPromptBlock[] = [];
       const message = await turn(
         async function* ({ prompt, options }) {
           const [sdkPrompt] = await drain(sdkPromptFixture(prompt));
@@ -392,10 +396,10 @@ describe("public SDK-adapted instrumentation", () => {
         },
         {
           onPayload: (original) => {
-            assertObject(original);
+            assert(isPayload(original));
             expect(Object.keys(original)).toStrictEqual(["promptBlocks", "cacheBreakpoints"]);
             Object.assign(original, payload);
-            return chooseReplacement(replace, undefined);
+            return replacementOf(replace);
           },
         },
         {
@@ -422,7 +426,7 @@ describe("public SDK-adapted instrumentation", () => {
   );
 
   test("forwards validated replacement images and null cache boundary", async () => {
-    let wire: Record<string, unknown>[] = [];
+    let wire: SdkPromptBlock[] = [];
     await turn(
       async function* ({ prompt }) {
         const [message] = await drain(sdkPromptFixture(prompt));
@@ -559,10 +563,12 @@ describe("public SDK-adapted instrumentation", () => {
     await drain(
       run(original, sonnet, {
         onPayload: (data) => {
-          assertObject(data);
-          const block = firstObjectField(data, "promptBlocks");
+          assert(isPayload(data));
+          const [block] = data.promptBlocks;
+          assert(block);
           Object.assign(block, { text: "edited" });
-          const image = firstObjectField(block, "images");
+          const [image] = block.images;
+          assert(image);
           Object.assign(image, { data: "edited-image" });
         },
       }),

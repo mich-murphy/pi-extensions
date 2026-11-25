@@ -1,5 +1,7 @@
-import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback, PreToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { validateToolArguments } from "@earendil-works/pi-ai";
+import type { Tool } from "@earendil-works/pi-ai";
+import { Schema, SchemaGetter } from "effect";
 import { z } from "zod";
 import type { DeferredCall } from "../bridge";
 import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
@@ -16,8 +18,19 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
 });
 
 const MAX_PARAMETERS_CHARS = 4000;
+const cleanToolArguments = z.record(z.string(), z.json());
+const readToolArguments = Schema.decodeUnknownSync(
+  Schema.JsonObject.pipe(
+    Schema.decode({
+      decode: SchemaGetter.transform((input) => cleanToolArguments.parse(input)),
+      encode: SchemaGetter.transform((input) => input),
+    }),
+  ),
+);
 
-function parametersLine(parameters: unknown): string {
+type ToolInvocation = Pick<PreToolUseHookInput, "tool_use_id" | "tool_name" | "tool_input">;
+
+function parametersLine(parameters: Tool["parameters"]): string {
   const json = JSON.stringify(parameters) ?? "{}";
   const bounded =
     json.length > MAX_PARAMETERS_CHARS
@@ -62,7 +75,10 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
   let lifecycleCalls = 0;
   let sdkRejectedCalls = 0;
 
-  const capture = (id: string, toolName: string, input: unknown, preToolUse: boolean): void => {
+  const capture = (
+    { tool_use_id: id, tool_name: toolName, tool_input: input }: ToolInvocation,
+    preToolUse: boolean,
+  ): void => {
     if (calls.has(id)) {
       return;
     }
@@ -75,22 +91,20 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     if (selected) {
       reason = "invalid_tool_input";
       try {
-        if (typeof input === "object" && input !== null && !Array.isArray(input)) {
-          const args = z.record(z.string(), z.json()).parse(
-            validateToolArguments(selected.declaration, {
-              type: "toolCall",
-              id,
-              name: selected.declaration.name,
-              arguments: z.record(z.string(), z.json()).parse(input),
-            }),
-          );
-          selected.schema.parse(args);
-          if (preToolUse) {
-            calls.set(id, { id, name: selected.declaration.name, arguments: args });
-            return;
-          }
-          reason = "uncaptured_tool_batch";
+        const args = readToolArguments(
+          validateToolArguments(selected.declaration, {
+            type: "toolCall",
+            id,
+            name: selected.declaration.name,
+            arguments: readToolArguments(input),
+          }),
+        );
+        selected.schema.parse(args);
+        if (preToolUse) {
+          calls.set(id, { id, name: selected.declaration.name, arguments: args });
+          return;
         }
+        reason = "uncaptured_tool_batch";
       } catch {
         reason = "invalid_tool_input";
       }
@@ -112,7 +126,7 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     if (input.hook_event_name !== "PreToolUse") {
       return {};
     }
-    capture(input.tool_use_id, input.tool_name, input.tool_input, true);
+    capture(input, true);
     return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" } };
   };
   const batchHook: HookCallback = async (input) => {
@@ -120,7 +134,7 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
       return {};
     }
     for (const call of input.tool_calls) {
-      capture(call.tool_use_id, call.tool_name, call.tool_input, false);
+      capture(call, false);
     }
     batchStopped = true;
     return { continue: false, stopReason: "Stopped so that Pi can run the requested tools." };

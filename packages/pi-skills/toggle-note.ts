@@ -1,5 +1,6 @@
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import type { PromptResource, SkillReader } from "./prompt-view";
 import type { ResourcePath } from "./resource-path";
 
@@ -41,6 +42,8 @@ const REVERT = [
 const DISABLED_SKILLS = "Disabled skills (do not load unless the user invokes /skill:<name>): ";
 const DISABLED_INSTRUCTIONS = "Disabled instructions (disregard): ";
 
+const isVisibleDetails = Schema.is(Schema.Struct({ visible: Schema.Array(Schema.String) }));
+
 export function noteView(message: { readonly role: string }): ReadonlySet<string> | undefined {
   if (
     message.role !== "custom" ||
@@ -50,17 +53,7 @@ export function noteView(message: { readonly role: string }): ReadonlySet<string
   ) {
     return undefined;
   }
-  return detailsView(message.details);
-}
-
-function detailsView(details: unknown): ReadonlySet<string> | undefined {
-  if (typeof details !== "object" || details === null || !("visible" in details)) {
-    return undefined;
-  }
-  const { visible } = details;
-  return Array.isArray(visible) && visible.every((id) => typeof id === "string")
-    ? new Set<string>(visible)
-    : undefined;
+  return isVisibleDetails(message.details) ? new Set(message.details.visible) : undefined;
 }
 
 export function toggleChanges(

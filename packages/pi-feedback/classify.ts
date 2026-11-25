@@ -42,7 +42,7 @@ export type ClassifyJob = {
   readonly registry: ClassifierRegistry;
   readonly ledger: string;
   readonly record: RecordEvent;
-  readonly input?: unknown;
+  readonly input?: JsonObject | undefined;
   readonly clock?: Clock | undefined;
 };
 
@@ -82,7 +82,7 @@ function sideOf(record: RecordEvent): JsonObject {
     : { component: record.component, kind: record.kind, error: clip(record.actual, ERROR_LIMIT) };
 }
 
-function inputText(input: unknown): JsonObject {
+function inputText(input: JsonObject | undefined): JsonObject {
   const text = input === undefined ? undefined : JSON.stringify(input);
   return text === undefined ? {} : { input: clip(redact(text), INPUT_LIMIT) };
 }

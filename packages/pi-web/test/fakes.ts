@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { isIP } from "node:net";
 import { dirname } from "node:path";
 import type { Context } from "effect";
-import { Duration, Effect, Exit, Layer, Redacted, Result } from "effect";
+import { Duration, Effect, Exit, Layer, Redacted, Result, Schema, SchemaGetter } from "effect";
 import { TestClock } from "effect/testing";
 import { onTestFinished } from "vitest";
 import { CredentialResolver } from "../credentials";
@@ -16,6 +16,7 @@ import { ProviderHttpClient } from "../provider-http";
 import type { ProviderHttpRequest, ProviderHttpResponse } from "../provider-http";
 import type { FetchProvider, ProviderError, SearchProvider } from "../provider-types";
 import { PublicWebTransport } from "../public-web-transport";
+import { getTextContent } from "../render";
 import { FetchRescueProviders, SearchProviders } from "../search";
 import { parseSettings, WebToolsConfig } from "../settings";
 import type { WebToolsSettings } from "../settings";
@@ -82,7 +83,7 @@ export function searchQuery(input: string): SearchQuery {
 
 type RecordedMcpCall = {
   readonly name: string;
-  readonly args: Readonly<Record<string, unknown>>;
+  readonly args: Parameters<McpClient["callTool"]>[1];
 };
 
 export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult, ProviderError>[]) {
@@ -138,13 +139,7 @@ export function redactorFor(...secrets: readonly string[]): (input: string) => s
 export function textOf(result: {
   readonly content: readonly { readonly type: string; readonly text?: string }[];
 }): string {
-  return result.content
-    .filter(
-      (item): item is { type: "text"; text: string } =>
-        item.type === "text" && typeof item.text === "string",
-    )
-    .map((item) => item.text)
-    .join("\n");
+  return getTextContent(result.content);
 }
 
 export function renderText(component: {
@@ -373,3 +368,14 @@ export async function settleOnTestClock(
     throw new Error("The tool call did not settle on the test clock");
   }
 }
+
+export const errorMessage = Schema.decodeUnknownSync(
+  Schema.Unknown.pipe(
+    Schema.decodeTo(Schema.String, {
+      decode: SchemaGetter.transform((error) =>
+        error instanceof Error ? error.message : "Unexpected failure",
+      ),
+      encode: SchemaGetter.passthrough({ strict: false }),
+    }),
+  ),
+);

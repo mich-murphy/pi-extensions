@@ -4,6 +4,7 @@ import type { AgentRequest } from "../agent-request";
 import { buildPromptStream } from "../sdk/prompt-stream";
 import type { CacheTtl } from "../sdk/prompt-stream";
 import { drain, sdkContentRecords } from "./fixtures";
+import type { SdkPromptBlock } from "./fixtures";
 
 const IMAGE_TOKENS = 1500;
 
@@ -35,25 +36,29 @@ export function estimateTextTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function contentTokens(block: Readonly<Record<string, unknown>>): number {
+type CacheContentBlock =
+  | SdkPromptBlock
+  | { readonly type: "tools" | "system"; readonly text: string; readonly cache_control?: never };
+
+function contentTokens(block: Omit<CacheContentBlock, "cache_control">): number {
   if (block.type === "image") {
     return IMAGE_TOKENS;
   }
-  return typeof block.text === "string" ? estimateTextTokens(block.text) : 0;
+  return block.text === undefined ? 0 : estimateTextTokens(block.text);
 }
 
-function breakpointTtlMs(cacheControl: unknown): number | undefined {
-  if (typeof cacheControl !== "object" || cacheControl === null) {
+function breakpointTtlMs(cacheControl: SdkPromptBlock["cache_control"]): number | undefined {
+  if (cacheControl === undefined) {
     return undefined;
   }
-  return "ttl" in cacheControl && cacheControl.ttl === "1h" ? ONE_HOUR_MS : FIVE_MINUTES_MS;
+  return cacheControl.ttl === "1h" ? ONE_HOUR_MS : FIVE_MINUTES_MS;
 }
 
 async function wireBlocks(request: AgentRequest, ttl: CacheTtl): Promise<WireBlock[]> {
   const [message] = await drain(
     buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
   );
-  const content: Record<string, unknown>[] = [
+  const content: CacheContentBlock[] = [
     { type: "tools", text: request.toolDescription },
     { type: "system", text: request.systemPrompt },
     ...sdkContentRecords(message),
@@ -118,9 +123,11 @@ function writeUncached(store: CacheStore, breakpoints: readonly Breakpoint[], no
   return furthest;
 }
 
-export function createCacheSimulator(clock: () => number): {
+export type CacheSimulator = {
   readonly send: (request: AgentRequest, ttl: CacheTtl) => Promise<CacheUsage>;
-} {
+};
+
+export function createCacheSimulator(clock: () => number): CacheSimulator {
   const store: CacheStore = new Map();
   return {
     send: async (request, ttl) => {

@@ -108,36 +108,35 @@ export function undatedModelId(modelId: string): string {
 }
 
 // https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations
-const otherCacheMinimums: Readonly<Record<string, number>> = {
-  "claude-fable-5": 512,
-  "claude-fable-5-1": 512,
-  "claude-mythos-5-2": 512,
-  "claude-mythos-5": 512,
-  "claude-mythos-5-1": 512,
-  "claude-opus-5": 512,
-  "claude-mythos-preview": 2048,
-  "claude-opus-4-7": 2048,
-  "claude-opus-4-5": 4096,
-  "claude-opus-4-6": 4096,
-  "claude-opus-4-8": 1024,
-  "claude-sonnet-5": 1024,
-  "claude-sonnet-4-6": 1024,
-  "claude-sonnet-4-5": 1024,
-  "claude-opus-4-1": 1024,
-  "claude-opus-4": 1024,
-  "claude-sonnet-4": 1024,
-  "claude-3-5-haiku": 2048,
-};
+const otherCacheMinimums = new Map(
+  Object.entries({
+    "claude-fable-5": 512,
+    "claude-fable-5-1": 512,
+    "claude-mythos-5-2": 512,
+    "claude-mythos-5": 512,
+    "claude-mythos-5-1": 512,
+    "claude-opus-5": 512,
+    "claude-mythos-preview": 2048,
+    "claude-opus-4-7": 2048,
+    "claude-opus-4-5": 4096,
+    "claude-opus-4-6": 4096,
+    "claude-opus-4-8": 1024,
+    "claude-sonnet-5": 1024,
+    "claude-sonnet-4-6": 1024,
+    "claude-sonnet-4-5": 1024,
+    "claude-opus-4-1": 1024,
+    "claude-opus-4": 1024,
+    "claude-sonnet-4": 1024,
+    "claude-3-5-haiku": 2048,
+  }),
+);
 
 export function minimumCacheableTokensFor(modelId: string): number | undefined {
   const id = undatedModelId(modelId.replace(/^claude(?:-sdk)?\//u, ""));
   const registered = models.find(
     (model) => model.id === id || model.sdkModel === id || model.canonicalModel === id,
   );
-  return (
-    registered?.minimumCacheableTokens ??
-    (Object.hasOwn(otherCacheMinimums, id) ? otherCacheMinimums[id] : undefined)
-  );
+  return registered?.minimumCacheableTokens ?? otherCacheMinimums.get(id);
 }
 
 export function formatModelStatus(observed: ReadonlyMap<string, string>): string {

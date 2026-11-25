@@ -144,18 +144,26 @@ describe("usage limit notices", () => {
 
 describe("bash output safety hooks", () => {
   test("adds the bash output rule as a section and keeps other extensions' sections", () => {
-    const sections: Record<string, string> = { "mm-mode": "Router." };
+    const sections = { "mm-mode": "Router." };
     const result = loadExtension().emit("before_agent_start", {
       systemPromptOptions: { sections },
     });
 
-    const bashRule: unknown = expect.stringMatching(/^Bash output safety: never cat/u);
     expect(result).toBeUndefined();
-    expect(sections).toStrictEqual({
-      "mm-mode": "Router.",
-      "bash-output-safety": bashRule,
-      "claude-scratchpad": expect.stringContaining("native session IDs") as unknown,
-    });
+    expect(Object.keys(sections).toSorted()).toStrictEqual([
+      "bash-output-safety",
+      "claude-scratchpad",
+      "mm-mode",
+    ]);
+    expect(sections["mm-mode"]).toBe("Router.");
+    expect(sections).toHaveProperty(
+      "bash-output-safety",
+      expect.stringMatching(/^Bash output safety: never cat/u),
+    );
+    expect(sections).toHaveProperty(
+      "claude-scratchpad",
+      expect.stringContaining("native session IDs"),
+    );
   });
 
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {

@@ -1,6 +1,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import process from "node:process";
+import { Option, Schema } from "effect";
 import { claudeVariable } from "../environment-variables";
 
 export const MIN_CLAUDE_CODE_VERSION = "2.1.317";
@@ -27,17 +28,27 @@ export function isBelowMinimumClaudeCode(version: string): boolean {
   return (difference.find((part) => part !== 0) ?? 0) < 0;
 }
 
-export function tooOldClaudeCode(message: unknown): string | undefined {
-  if (
-    typeof message !== "object" ||
-    message === null ||
-    Reflect.get(message, "type") !== "system" ||
-    Reflect.get(message, "subtype") !== "init"
-  ) {
-    return undefined;
-  }
-  const version: unknown = Reflect.get(message, "claude_code_version");
-  return typeof version === "string" && isBelowMinimumClaudeCode(version) ? version : undefined;
+const decodeInit = Schema.decodeUnknownOption(
+  Schema.Struct({
+    type: Schema.Literal("system"),
+    subtype: Schema.Literal("init"),
+    claude_code_version: Schema.String,
+  }),
+);
+
+export function tooOldClaudeCode(
+  message:
+    | {
+        readonly type: string;
+        readonly subtype?: unknown;
+        readonly claude_code_version?: unknown;
+      }
+    | null
+    | undefined,
+): string | undefined {
+  const init = Option.getOrUndefined(decodeInit(message));
+  const version = init?.claude_code_version;
+  return version !== undefined && isBelowMinimumClaudeCode(version) ? version : undefined;
 }
 
 function isExecutableFile(path: string, platform: NodeJS.Platform): boolean {

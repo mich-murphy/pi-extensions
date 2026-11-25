@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { Value } from "typebox/value";
 import { assert, describe, expect, test } from "vitest";
 import { HttpStatusRejected } from "../network";
@@ -70,12 +70,9 @@ function jsonBody(bytes: number): string {
   return `{"data":"${"x".repeat(bytes - 11)}"}`;
 }
 
-function textPage(structured: unknown): { content: string; truncated: boolean } {
-  assert(typeof structured === "object" && structured !== null);
-  assert("content" in structured && typeof structured.content === "string");
-  assert("truncated" in structured && typeof structured.truncated === "boolean");
-  return { content: structured.content, truncated: structured.truncated };
-}
+const textPage = Schema.decodeUnknownSync(
+  Schema.Struct({ content: Schema.String, truncated: Schema.Boolean }),
+);
 
 function plainResponse(body: string, url = "https://example.com/page"): PublicWebResponse {
   return { ...textWebResponse(body, "text/plain"), finalUrl: publicUrl(url) };

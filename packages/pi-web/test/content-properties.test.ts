@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import {
@@ -102,7 +102,7 @@ function assertContentTypeTotal(header: string | null): void {
 
 function assertDecodeTotal(bytes: Uint8Array, charset: string | null, partial: boolean): void {
   const decoded = decodeTextBuffer(Buffer.from(bytes), charset ?? undefined, { partial });
-  assert.equal(typeof decoded.text, "string");
+  assert.ok(Schema.is(Schema.String)(decoded.text));
   assert.doesNotThrow(() => new TextDecoder(decoded.decoder));
 }
 

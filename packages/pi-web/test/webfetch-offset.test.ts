@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";
 import type { FetchPageResult } from "../fetch-page";
@@ -21,6 +21,8 @@ import {
   textWebResponse,
   toolRuntimeWith,
 } from "./fakes";
+
+const decodeNormalizedOutput = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
 const CAP = 10 * 1024 * 1024;
 const PREFIX_NOTE =
@@ -106,7 +108,7 @@ describe("webfetch offset paging", () => {
     const withPath = async (offset?: number) => {
       const result = await project(large, offset);
       const path = String(result.details.fullOutputPath);
-      return JSON.parse(JSON.stringify(result).replaceAll(path, "PATH")) as unknown;
+      return decodeNormalizedOutput(JSON.stringify(result).replaceAll(path, "PATH"));
     };
     await expect(withPath(0)).resolves.toStrictEqual(await withPath());
     expect(JSON.stringify(await project(large))).not.toContain('"offset"');
@@ -135,7 +137,7 @@ describe("webfetch offset paging", () => {
     const text = "line\n".repeat(30_000);
     const result = await project(text, 100);
     const path = result.details.fullOutputPath;
-    expect(typeof path).toBe("string");
+    expect(path).toStrictEqual(expect.any(String));
     await expect(readFile(String(path), "utf8")).resolves.toBe(text);
   });
 
@@ -201,7 +203,7 @@ describe("webfetch tool offset parameter", () => {
 
   test("accepts non-negative integers only", () => {
     const { parameters } = tool("x");
-    const check = (offset: unknown) =>
+    const check = (offset: string | number) =>
       Value.Check(parameters, { url: "https://example.com", offset });
     expect(check(0)).toBe(true);
     expect(check(1234)).toBe(true);

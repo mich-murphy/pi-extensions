@@ -9,13 +9,16 @@ import type {
   ExtensionContext,
   InputEvent,
   InputEventResult,
+  MessageRenderOptions,
+  MessageRenderer,
   RegisteredCommand,
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import type { Component } from "@earendil-works/pi-tui";
+import type { Component, TUI } from "@earendil-works/pi-tui";
+import { Result, Schema, SchemaGetter } from "effect";
 import { onOffCommand } from "../shared/on-off-command";
-import { USAGE_LIMIT_CHANNEL, readUsageLimitNotice } from "../shared/usage-limit";
+import { USAGE_LIMIT_CHANNEL, decodeUsageLimitNotice } from "../shared/usage-limit";
 import type { UsageLimitNotice } from "../shared/usage-limit";
 
 export const RETRY_TYPE = "retry";
@@ -53,11 +56,11 @@ export const DEFAULT_TRANSIENT_SETTINGS: TransientSettings = {
 
 export type ThemeColors = Pick<Theme, "fg">;
 
-export type WidgetFactory = (tui: unknown, theme: ThemeColors) => Component;
+export type WidgetFactory = (tui: TUI, theme: ThemeColors) => Component;
 
 export type MarkerRenderer = (
-  message: { readonly content: unknown },
-  options: unknown,
+  message: Pick<Parameters<MessageRenderer>[0], "content">,
+  options: MessageRenderOptions,
   theme: ThemeColors,
 ) => Component;
 
@@ -82,7 +85,7 @@ export type RetryHandlers = {
 };
 
 export type RetryRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"> & {
-  readonly getSettings: () => object;
+  readonly getSettings: () => RetrySettingsInput | ReturnType<ExtensionAPI["getSettings"]>;
   readonly registerMessageRenderer: (customType: string, renderer: MarkerRenderer) => void;
   readonly events: Pick<ExtensionAPI["events"], "on">;
   readonly registerCommand: (
@@ -92,13 +95,13 @@ export type RetryRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"
     },
   ) => void;
   readonly on: {
-    (name: "agent_start", handler: RetryHandlers["agent_start"]): unknown;
-    (name: "turn_start", handler: RetryHandlers["turn_start"]): unknown;
-    (name: "session_tree", handler: RetryHandlers["session_tree"]): unknown;
-    (name: "agent_before_settle", handler: RetryHandlers["agent_before_settle"]): unknown;
-    (name: "input", handler: RetryHandlers["input"]): unknown;
-    (name: "context", handler: RetryHandlers["context"]): unknown;
-    (name: "session_shutdown", handler: RetryHandlers["session_shutdown"]): unknown;
+    (name: "agent_start", handler: RetryHandlers["agent_start"]): void;
+    (name: "turn_start", handler: RetryHandlers["turn_start"]): void;
+    (name: "session_tree", handler: RetryHandlers["session_tree"]): void;
+    (name: "agent_before_settle", handler: RetryHandlers["agent_before_settle"]): void;
+    (name: "input", handler: RetryHandlers["input"]): void;
+    (name: "context", handler: RetryHandlers["context"]): void;
+    (name: "session_shutdown", handler: RetryHandlers["session_shutdown"]): void;
   };
 };
 
@@ -122,57 +125,87 @@ type Wait = WaitPlan & {
 
 type Streak = { readonly attempts: number; readonly firstFailureAt: number };
 
-function isPositive(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
+export type RetrySettingsInput = {
+  readonly piRetry?: unknown;
+  readonly autoResume?: unknown;
+};
 
-function isRecord(value: unknown): value is object {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+type DataDescriptor = { readonly value?: unknown };
 
-function field(record: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(record, key)?.value;
-}
+const isSettingsObject = Schema.is(
+  Schema.ObjectKeyword.check(Schema.makeFilter((raw) => !Array.isArray(raw))),
+);
+const ownSettingsObject = Schema.Unknown.pipe(
+  Schema.decode({
+    decode: SchemaGetter.transform((raw) => {
+      if (!isSettingsObject(raw)) {
+        return raw;
+      }
+      const entries = Object.entries(Object.getOwnPropertyDescriptors(raw));
+      const fields = Object.fromEntries(
+        entries.flatMap(([key, descriptor]: [string, DataDescriptor]) =>
+          Object.hasOwn(descriptor, "value") ? [[key, descriptor.value] as const] : [],
+        ),
+      );
+      Object.setPrototypeOf(fields, null);
+      return fields;
+    }),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
 
-const INVALID = Symbol("invalid");
+const readSettingsSections = Schema.decodeUnknownSync(
+  ownSettingsObject.pipe(
+    Schema.decodeTo(
+      Schema.Struct({
+        piRetry: Schema.optional(Schema.Unknown),
+        autoResume: Schema.optional(Schema.Unknown),
+      }),
+    ),
+  ),
+);
+const readRetrySection = Schema.decodeUnknownResult(
+  ownSettingsObject.pipe(
+    Schema.decodeTo(Schema.Struct({ transient: Schema.optional(Schema.Unknown) })),
+  ),
+);
+const positive = Schema.Finite.check(Schema.isGreaterThan(0));
+const readTransientSection = Schema.decodeUnknownResult(
+  ownSettingsObject.pipe(
+    Schema.decodeTo(
+      Schema.Struct({
+        enabled: Schema.optional(Schema.NullOr(Schema.Boolean)),
+        delaysMinutes: Schema.optional(Schema.NullOr(Schema.NonEmptyArray(positive))),
+        maxAttempts: Schema.optional(
+          Schema.NullOr(
+            Schema.Number.check(Schema.makeFilter(Number.isInteger), Schema.isGreaterThan(0)),
+          ),
+        ),
+        windowMinutes: Schema.optional(Schema.NullOr(positive)),
+      }),
+    ),
+  ),
+);
 
-function isBoolean(value: unknown): value is boolean {
-  return typeof value === "boolean";
-}
-
-function isCount(value: unknown): value is number {
-  return Number.isInteger(value) && isPositive(value);
-}
-
-function isDelays(value: unknown): value is readonly number[] {
-  return Array.isArray(value) && value.length > 0 && value.every((delay) => isPositive(delay));
-}
-
-function pick<T>(
-  record: object,
-  key: keyof TransientSettings,
-  valid: (value: unknown) => value is T,
-): T | typeof INVALID {
-  const value = field(record, key) ?? DEFAULT_TRANSIENT_SETTINGS[key];
-  return valid(value) ? value : INVALID;
-}
-
-export function readTransientSettings(settings: object): TransientSettings | undefined {
-  const section = field(settings, "piRetry") ?? field(settings, "autoResume") ?? {};
-  const transient = isRecord(section) ? (field(section, "transient") ?? {}) : null;
-  if (!isRecord(transient)) {
+export function readTransientSettings(
+  settings: RetrySettingsInput | ReturnType<ExtensionAPI["getSettings"]>,
+): TransientSettings | undefined {
+  const { piRetry, autoResume } = readSettingsSections(settings);
+  const section = readRetrySection(piRetry ?? autoResume ?? {});
+  if (Result.isFailure(section)) {
     return undefined;
   }
-  const enabled = pick(transient, "enabled", isBoolean);
-  const delaysMinutes = pick(transient, "delaysMinutes", isDelays);
-  const maxAttempts = pick(transient, "maxAttempts", isCount);
-  const windowMinutes = pick(transient, "windowMinutes", isPositive);
-  return enabled === INVALID ||
-    delaysMinutes === INVALID ||
-    maxAttempts === INVALID ||
-    windowMinutes === INVALID
-    ? undefined
-    : { enabled, delaysMinutes, maxAttempts, windowMinutes };
+  const transient = readTransientSection(section.success.transient ?? {});
+  if (Result.isFailure(transient)) {
+    return undefined;
+  }
+  const { enabled, delaysMinutes, maxAttempts, windowMinutes } = transient.success;
+  return {
+    enabled: enabled ?? DEFAULT_TRANSIENT_SETTINGS.enabled,
+    delaysMinutes: delaysMinutes ?? DEFAULT_TRANSIENT_SETTINGS.delaysMinutes,
+    maxAttempts: maxAttempts ?? DEFAULT_TRANSIENT_SETTINGS.maxAttempts,
+    windowMinutes: windowMinutes ?? DEFAULT_TRANSIENT_SETTINGS.windowMinutes,
+  };
 }
 
 function isTransientFailure(message: AssistantMessage, contextWindow?: number): boolean {
@@ -205,7 +238,7 @@ function omit(targetId: string): BoundaryResult {
 
 const renderMarker: MarkerRenderer = (message, _options, theme) =>
   new Text(
-    theme.fg("dim", `↻ ${typeof message.content === "string" ? message.content : ""}`),
+    theme.fg("dim", `↻ ${Schema.is(Schema.String)(message.content) ? message.content : ""}`),
     1,
     0,
   );
@@ -338,7 +371,8 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   };
 
   pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
-    publishedThisTurn = readUsageLimitNotice(data);
+    const notice = decodeUsageLimitNotice(data);
+    publishedThisTurn = Result.isSuccess(notice) ? notice.success : undefined;
   });
 
   for (const type of MARKER_TYPES) {

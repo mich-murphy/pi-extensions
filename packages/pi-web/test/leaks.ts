@@ -1,55 +1,64 @@
 import { inspect } from "node:util";
+import { Predicate, Schema } from "effect";
 import { expect } from "vitest";
 
 const MAX_DEPTH = 16;
 
-type Walk = { readonly seen: Set<object>; readonly out: string[] };
+const Scalars = Schema.Union([Schema.String, Schema.Number, Schema.BigInt, Schema.Boolean]);
+const OtherScalars = Schema.Union([Schema.Symbol, Schema.Null, Schema.Undefined]);
+const Reference = Schema.ObjectKeyword;
+const inspectable = Schema.Union([Scalars, OtherScalars, Reference]);
+type Inspectable = typeof inspectable.Type;
+type Reference = typeof Reference.Type;
 
-function collectPrimitive(value: unknown, out: string[]): boolean {
-  if (typeof value === "string") {
-    out.push(value);
-    return true;
-  }
-  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
-    out.push(String(value));
-    return true;
-  }
-  return false;
-}
+export const decodeInspectable = Schema.decodeUnknownSync(inspectable);
+const isInspectable = Schema.is(inspectable);
+const isScalar = Schema.is(Scalars);
+const isReference = Schema.is(
+  Reference.pipe(Schema.check(Schema.makeFilter((value) => !Predicate.isFunction(value)))),
+);
+const isMap = Schema.is(Schema.instanceOf(Map<Inspectable, Inspectable>));
+const isSet = Schema.is(Schema.instanceOf(Set<Inspectable>));
 
-function collectError(value: object, out: string[]): void {
+type Walk = { readonly seen: Set<Reference>; readonly out: string[] };
+
+function collectError(value: Reference, out: string[]): void {
   if (value instanceof Error) {
     out.push(value.name, value.message, value.stack ?? "");
   }
 }
 
-function collectEntries(value: object, walk: Walk, depth: number): void {
-  if (value instanceof Map || value instanceof Set) {
+function collectEntries(value: Reference, walk: Walk, depth: number): void {
+  if (isMap(value) || isSet(value)) {
     for (const entry of value) {
       collect(entry, walk, depth + 1);
     }
   }
 }
 
-function collectOwnProperties(value: object, walk: Walk, depth: number): void {
+function collectOwnProperties(value: Reference, walk: Walk, depth: number): void {
   for (const key of Reflect.ownKeys(value)) {
     walk.out.push(String(key));
     const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
     if (descriptor !== undefined && "value" in descriptor) {
-      collect(descriptor.value, walk, depth + 1);
+      const child: unknown = descriptor.value;
+      if (isInspectable(child)) {
+        collect(child, walk, depth + 1);
+      }
     }
   }
 }
 
-function alreadyVisitedOrTooDeep(value: object, walk: Walk, depth: number): boolean {
+function alreadyVisitedOrTooDeep(value: Reference, walk: Walk, depth: number): boolean {
   return walk.seen.has(value) || depth > MAX_DEPTH;
 }
 
-function collect(value: unknown, walk: Walk, depth: number): void {
-  if (collectPrimitive(value, walk.out)) {
+function collect(value: Inspectable, walk: Walk, depth: number): void {
+  if (isScalar(value)) {
+    walk.out.push(String(value));
     return;
   }
-  if (typeof value !== "object" || value === null || alreadyVisitedOrTooDeep(value, walk, depth)) {
+  if (!isReference(value) || alreadyVisitedOrTooDeep(value, walk, depth)) {
     return;
   }
   walk.seen.add(value);
@@ -58,14 +67,17 @@ function collect(value: unknown, walk: Walk, depth: number): void {
   collectOwnProperties(value, walk, depth);
 }
 
-export function observableText(value: unknown): string {
+export function observableText(value: ReturnType<typeof decodeInspectable>): string {
   const out: string[] = [];
   collect(value, { seen: new Set(), out }, 0);
   out.push(inspect(value, { depth: null, showHidden: true }));
   return out.join("\n");
 }
 
-export function expectNoLeak(value: unknown, ...fragments: readonly string[]): void {
+export function expectNoLeak(
+  value: ReturnType<typeof decodeInspectable>,
+  ...fragments: readonly string[]
+): void {
   const text = observableText(value);
   for (const fragment of fragments) {
     expect(text, `leaked ${JSON.stringify(fragment)}`).not.toContain(fragment);
