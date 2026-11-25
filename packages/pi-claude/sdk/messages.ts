@@ -149,17 +149,22 @@ function messageParser<S extends Schema.ConstraintDecoder<unknown>>(
     );
 }
 
+type ObservedUsage = Extract<SdkMessage, { type: "usage" }>;
+type UsageMessage = { -readonly [Key in keyof ObservedUsage]: ObservedUsage[Key] };
+
 function usageMessage(
   { model, usage }: typeof modelCallSchema.Type,
   apiError: string | undefined,
-): Result.Result<SdkMessage, string> {
+): UsageMessage {
   const safeError = safeApiError(apiError);
-  return Result.succeed({
-    type: "usage",
-    usage,
-    ...(model === undefined ? {} : { model }),
-    ...(safeError === undefined ? {} : { apiError: safeError }),
-  });
+  const message: UsageMessage = { type: "usage", usage };
+  if (model !== undefined) {
+    message.model = model;
+  }
+  if (safeError !== undefined) {
+    message.apiError = safeError;
+  }
+  return message;
 }
 
 const blockSchema = withFallback(
@@ -220,6 +225,8 @@ function rateLimitMessage(input: SdkEventEnvelope): Result.Result<SdkMessage, st
   });
 }
 
+type ResultUsage = { usage?: ReportedUsage };
+
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
     "stream_event.content_block_delta.text_delta",
@@ -247,11 +254,11 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
           message: Schema.Struct({ ...modelCallSchema.fields, id: lenientOptional(Schema.String) }),
         }),
       }),
-      ({ event }) =>
-        Result.map(usageMessage(event.message, undefined), (message) => ({
-          ...message,
-          modelRequestStart: event.message.id === undefined ? {} : { id: event.message.id },
-        })),
+      ({ event }) => {
+        const message = usageMessage(event.message, undefined);
+        message.modelRequestStart = event.message.id === undefined ? {} : { id: event.message.id };
+        return Result.succeed(message);
+      },
     ),
   ],
   [
@@ -265,16 +272,14 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
           ),
         }),
       }),
-      ({ event }) =>
-        Result.succeed({
-          type: "usage",
-          usage: event.usage,
-          ...(event.delta?.stop_reason !== undefined &&
-          event.delta.stop_reason !== null &&
-          event.delta.stop_reason !== ""
-            ? { requestStopped: true as const }
-            : {}),
-        }),
+      ({ event }) => {
+        const message: UsageMessage = { type: "usage", usage: event.usage };
+        const stopReason = event.delta?.stop_reason;
+        if (stopReason !== undefined && stopReason !== null && stopReason !== "") {
+          message.requestStopped = true;
+        }
+        return Result.succeed(message);
+      },
     ),
   ],
   [
@@ -287,13 +292,13 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
         }),
         error: lenientOptional(Schema.String),
       }),
-      ({ message, error }) =>
-        Result.map(usageMessage(message, error), (parsed) => ({
-          ...parsed,
-          ...(message.content === undefined
-            ? {}
-            : { assistantToolUses: countBlocks(message.content, "tool_use") }),
-        })),
+      ({ message, error }) => {
+        const parsed = usageMessage(message, error);
+        if (message.content !== undefined) {
+          parsed.assistantToolUses = countBlocks(message.content, "tool_use");
+        }
+        return Result.succeed(parsed);
+      },
     ),
   ],
   [
@@ -318,15 +323,25 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
     "result",
     messageParser(resultSchema, (result) => {
       const turn = turnResult(result);
-      return turn === undefined
-        ? Result.fail("unsupported stop_reason")
-        : Result.succeed({
-            type: "result",
-            result: turn,
-            ...(result.usage === undefined ? {} : { usage: result.usage }),
-            modelUsage: result.modelUsage ?? {},
-            ...(result.num_turns === undefined ? {} : { numTurns: result.num_turns }),
-          });
+      if (turn === undefined) {
+        return Result.fail("unsupported stop_reason");
+      }
+      const reported: ResultUsage = {};
+      if (result.usage !== undefined) {
+        reported.usage = result.usage;
+      }
+      const message: Omit<Extract<SdkMessage, { type: "result" }>, "numTurns"> & {
+        numTurns?: number;
+      } = {
+        type: "result",
+        result: turn,
+        ...reported,
+        modelUsage: result.modelUsage ?? {},
+      };
+      if (result.num_turns !== undefined) {
+        message.numTurns = result.num_turns;
+      }
+      return Result.succeed(message);
     }),
   ],
 ]);
@@ -409,16 +424,22 @@ export function applyUsage(
 
 const NO_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
+type CacheWriteSplit = { cacheWrite1h?: number; cacheWrite5m?: number };
+
 function cacheWriteSplit(
   creation: NonNullable<ReportedUsage["cache_creation"]>,
   prior: TokenUsage,
-): Pick<TokenUsage, "cacheWrite1h" | "cacheWrite5m"> {
+): CacheWriteSplit {
   const cacheWrite1h = creation.ephemeral_1h_input_tokens ?? prior.cacheWrite1h;
   const cacheWrite5m = creation.ephemeral_5m_input_tokens ?? prior.cacheWrite5m;
-  return {
-    ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
-    ...(cacheWrite5m === undefined ? {} : { cacheWrite5m }),
-  };
+  const split: CacheWriteSplit = {};
+  if (cacheWrite1h !== undefined) {
+    split.cacheWrite1h = cacheWrite1h;
+  }
+  if (cacheWrite5m !== undefined) {
+    split.cacheWrite5m = cacheWrite5m;
+  }
+  return split;
 }
 
 function modelLimitFor(

@@ -60,8 +60,7 @@ export function sanitizeBashContent(
   content: readonly (TextContent | ImageContent)[],
 ): SanitizedBashContent {
   const combinedText = content
-    .filter((block): block is TextContent => block.type === "text")
-    .map((block) => block.text)
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("\n");
   const detected = suspiciousOutputKind(combinedText);
   if (detected) {

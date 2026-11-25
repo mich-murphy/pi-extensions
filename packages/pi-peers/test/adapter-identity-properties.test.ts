@@ -37,7 +37,10 @@ function bind(model: Model, handle: string, peer: PeerRef): void {
   model.bound.set(handle, peer);
 }
 function listStep(handles: Handles, model: Model, indices: readonly number[]): void {
-  const listed = indices.map((index) => runtimes[index]).filter((peer) => peer !== undefined);
+  const listed = indices.flatMap((index) => {
+    const peer = runtimes[index];
+    return peer === undefined ? [] : [peer];
+  });
   const before = new Map(model.bound);
   const result = handles.list(listed.map((peer) => ({ peer, scopeId: "team" })));
   const shown = result.map((entry) => entry.handle);

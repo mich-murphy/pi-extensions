@@ -43,9 +43,10 @@ export function composeLabel(facts: LabelFacts): string {
     basename(facts.cwd),
     parent === undefined ? "" : `derived from ${sessionHandle(facts.machineId, parent)}`,
     facts.branch === undefined ? "" : `branch ${facts.branch} at connect`,
-  ]
-    .map((part) => plainText(part))
-    .filter((part) => part.length > 0);
+  ].flatMap((part) => {
+    const text = plainText(part);
+    return text.length > 0 ? [text] : [];
+  });
   for (let count = parts.length; count > 0; count -= 1) {
     const label = parts.slice(0, count).join(" · ");
     if (fits(label)) {

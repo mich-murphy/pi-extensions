@@ -1,7 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { env } from "node:process";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const FAILURES = new Map([
@@ -19,6 +19,35 @@ async function untilAborted(signal: AbortSignal | undefined): Promise<void> {
       resolve();
     });
   });
+}
+
+function fixtureMessage(
+  identity: Pick<Model<Api>, "api" | "provider" | "id">,
+  at: number,
+  text: string,
+  failure: string | undefined,
+): AssistantMessage {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: identity.api,
+    provider: identity.provider,
+    model: identity.id,
+    timestamp: at,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: failure === undefined ? "stop" : "error",
+  };
+  if (failure !== undefined) {
+    message.errorMessage = FAILURES.get(failure) ?? "Synthetic terminal failure";
+  }
+  return message;
 }
 
 export default function synthetic(pi: ExtensionAPI): void {
@@ -94,26 +123,7 @@ export default function synthetic(pi: ExtensionAPI): void {
         }
         const failed = first && scenario !== "plain" && scenario !== "success";
         const text = failed ? "FAILED_ATTEMPT_SENTINEL" : `FIXTURE_OK_${index}`;
-        const message: AssistantMessage = {
-          role: "assistant",
-          content: [{ type: "text", text }],
-          api: model.api,
-          provider: model.provider,
-          model: model.id,
-          timestamp: at,
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
-          stopReason: failed ? "error" : "stop",
-          ...(failed
-            ? { errorMessage: FAILURES.get(scenario) ?? "Synthetic terminal failure" }
-            : {}),
-        };
+        const message = fixtureMessage(model, at, text, failed ? scenario : undefined);
         stream.push({ type: "start", partial: { ...message, stopReason: "pending", content: [] } });
         if (failed && scenario === "aborted") {
           await untilAborted(options?.signal);

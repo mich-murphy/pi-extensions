@@ -151,17 +151,28 @@ function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
     [failing, ...(fixture.siblings ?? [])],
     readOnly,
   );
-  const signals = ["a", "b", "c"].map((session, index): LedgerEvent => ({
-    type: "signal",
-    ...stamp(start + index),
-    session,
-    owner: attribution.owner,
-    fingerprint,
-    tool: fixture.tool,
-    error: fixture.error,
-    ...(ordered ? { cause: "parallel-batch" as const } : {}),
-    ...(attribution.evidence === undefined ? {} : { evidence: attribution.evidence }),
-  }));
+  const signals = ["a", "b", "c"].map((session, index): LedgerEvent => {
+    type Signal = Extract<LedgerEvent, { type: "signal" }>;
+    const event: Omit<Signal, "cause" | "evidence"> & {
+      cause?: NonNullable<Signal["cause"]>;
+      evidence?: NonNullable<Signal["evidence"]>;
+    } = {
+      type: "signal",
+      ...stamp(start + index),
+      session,
+      owner: attribution.owner,
+      fingerprint,
+      tool: fixture.tool,
+      error: fixture.error,
+    };
+    if (ordered) {
+      event.cause = "parallel-batch";
+    }
+    if (attribution.evidence !== undefined) {
+      event.evidence = attribution.evidence;
+    }
+    return event;
+  });
   const verdict: LedgerEvent = {
     type: "verdict",
     ...stamp(start + 3),
@@ -175,6 +186,13 @@ function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
 describe("Pi core label", () => {
   const events = FIXTURES.flatMap((fixture, index) => eventsFor(fixture, index * 10 + 1));
   const groups = deriveGroups(events);
+  const expectedPiCore = FIXTURES.flatMap((fixture) =>
+    fixture.piCore ? [signalFingerprint(fixture.tool, fixture.error)] : [],
+  );
+  const labelledPiCore = groups.flatMap((group) => (group.piCore ? [group.fingerprint] : []));
+  const recordsInExcludedGroups = groups.flatMap((group) =>
+    group.excluded > 0 ? [group.records] : [],
+  );
 
   test.each(FIXTURES.map((fixture) => [fixture.label, fixture]))(
     "labels %s correctly",
@@ -186,11 +204,7 @@ describe("Pi core label", () => {
   );
 
   test("labels no record Pi core unless its fixture is", () => {
-    const expected = FIXTURES.filter((fixture) => fixture.piCore).map((fixture) =>
-      signalFingerprint(fixture.tool, fixture.error),
-    );
-    const labelled = groups.filter((group) => group.piCore).map((group) => group.fingerprint);
-    expect(labelled).toStrictEqual(expected);
+    expect(labelledPiCore).toStrictEqual(expectedPiCore);
   });
 
   test("leaves Pi core groups out of the ready queue", () => {
@@ -199,7 +213,6 @@ describe("Pi core label", () => {
   });
 
   test("excludes batch-ordered and outside-service records from the count", () => {
-    const excluded = groups.filter((group) => group.excluded > 0).map((group) => group.records);
-    expect(excluded).toStrictEqual([0, 0]);
+    expect(recordsInExcludedGroups).toStrictEqual([0, 0]);
   });
 });

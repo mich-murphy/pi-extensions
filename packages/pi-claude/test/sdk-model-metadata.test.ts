@@ -4,19 +4,20 @@ import { models } from "../models";
 import { assertModelMetadata } from "./sdk-model-metadata";
 
 function catalog(): ModelInfo[] {
-  return models.map((entry) => ({
-    value: entry.sdkModel === "claude-fable-5-2" ? "fable" : entry.sdkModel,
-    resolvedModel: entry.canonicalModel,
-    displayName: entry.name,
-    description: "Metadata contract fixture",
-    ...(entry.canonicalModel === "claude-haiku-4-5"
-      ? {}
-      : {
-          supportsAdaptiveThinking: true,
-          supportsEffort: true,
-          supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
-        }),
-  }));
+  return models.map((entry) => {
+    const info: ModelInfo = {
+      value: entry.sdkModel === "claude-fable-5-2" ? "fable" : entry.sdkModel,
+      resolvedModel: entry.canonicalModel,
+      displayName: entry.name,
+      description: "Metadata contract fixture",
+    };
+    if (entry.canonicalModel !== "claude-haiku-4-5") {
+      info.supportsAdaptiveThinking = true;
+      info.supportsEffort = true;
+      info.supportedEffortLevels = ["low", "medium", "high", "xhigh", "max"];
+    }
+    return info;
+  });
 }
 
 function rowAt(rows: ModelInfo[], index: number): ModelInfo {

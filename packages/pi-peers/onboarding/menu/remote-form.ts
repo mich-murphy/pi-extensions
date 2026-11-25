@@ -239,20 +239,15 @@ function intentOf(draft: RemoteDraft): RemoteIntent {
       confirmedRootSha256: draft.rootSha256,
     };
   }
-  return {
-    kind: draft.kind,
-    peerMachineId: draft.peer,
-    endpoint,
-    ...(draft.kind === "existing"
-      ? {
-          existing: {
-            ...draft.paths,
-            confirmedRootSha256: draft.rootSha256,
-            floorMode: draft.floor,
-          },
-        }
-      : {}),
-  };
+  const intent: RemoteIntent = { kind: draft.kind, peerMachineId: draft.peer, endpoint };
+  if (draft.kind === "existing") {
+    intent.existing = {
+      ...draft.paths,
+      confirmedRootSha256: draft.rootSha256,
+      floorMode: draft.floor,
+    };
+  }
+  return intent;
 }
 
 export function remoteGate(

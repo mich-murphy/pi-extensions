@@ -24,6 +24,7 @@ import type { Row, Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
 import { manageForm, peerGrantText } from "./menu/setup-form.js";
+import type { ManageFormOptions } from "./menu/setup-form.js";
 import {
   afterSave,
   attempt,
@@ -344,34 +345,43 @@ export async function manageRoute(
     shared: observed.sharedInstance,
   };
   const rebuild = await rebuilder(manage);
+  return (progress) => manageScreen(manage, rebuild, progress);
+}
+
+function manageScreen(
+  manage: Manage,
+  rebuild: ManageFormOptions["rebuild"],
+  progress: Progress,
+): Screen {
+  const { config, pair } = manage;
   const machine = visibleText(config.machineId);
-  return (progress) =>
-    manageForm({
-      saved: savedChoices(config),
-      note:
-        pair === undefined
-          ? `Peers is set up on this computer as ${machine}. Nothing changes until you choose Apply.`
-          : `Set up as ${machine}, paired with ${visibleText(pair.pairing.intent.peerMachineId)}. Nothing changes until you choose Apply.`,
-      ...(pair === undefined
-        ? {}
-        : {
-            fixedMachine:
-              "Can't change here: the pair's certificates name this machine. Re-pair or Reset to rename it.",
-            peer: pair.pairing.intent.peerMachineId,
-          }),
-      ...(rebuild === undefined ? {} : { rebuild }),
-      shared: () => manage.shared,
-      details: (plan) => editDetails(manage, plan),
-      apply: (plan) => {
-        progress(
-          "Applying",
-          manage.shared ? EDIT_STEPS : [EDIT_STEPS[0], EDIT_STEPS[2]],
-          async (step) =>
-            attempt("Changing settings failed", INCOMPLETE_NEXT, async () =>
-              editWork(manage, plan, step),
-            ),
-        );
-      },
-      actions: () => actionRows(manage, progress),
-    });
+  const options: ManageFormOptions = {
+    saved: savedChoices(config),
+    note:
+      pair === undefined
+        ? `Peers is set up on this computer as ${machine}. Nothing changes until you choose Apply.`
+        : `Set up as ${machine}, paired with ${visibleText(pair.pairing.intent.peerMachineId)}. Nothing changes until you choose Apply.`,
+    shared: () => manage.shared,
+    details: (plan) => editDetails(manage, plan),
+    apply: (plan) => {
+      progress(
+        "Applying",
+        manage.shared ? EDIT_STEPS : [EDIT_STEPS[0], EDIT_STEPS[2]],
+        async (step) =>
+          attempt("Changing settings failed", INCOMPLETE_NEXT, async () =>
+            editWork(manage, plan, step),
+          ),
+      );
+    },
+    actions: () => actionRows(manage, progress),
+  };
+  if (pair !== undefined) {
+    options.fixedMachine =
+      "Can't change here: the pair's certificates name this machine. Re-pair or Reset to rename it.";
+    options.peer = pair.pairing.intent.peerMachineId;
+  }
+  if (rebuild !== undefined) {
+    options.rebuild = rebuild;
+  }
+  return manageForm(options);
 }

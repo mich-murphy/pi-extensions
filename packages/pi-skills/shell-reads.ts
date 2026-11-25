@@ -1194,9 +1194,11 @@ function fileArguments(name: string, args: readonly Word[]): readonly Word[] | u
 }
 
 function ddInputs(args: readonly Word[]): readonly Word[] {
-  return args
-    .filter((word) => word.literal && word.text.startsWith("if="))
-    .map((word) => ({ text: word.text.slice(3), literal: true }));
+  return args.flatMap((word) =>
+    word.literal && word.text.startsWith("if=")
+      ? [{ text: word.text.slice(3), literal: true }]
+      : [],
+  );
 }
 
 function withoutProgram(parsed: Arguments, programOptions: readonly string[]): readonly Word[] {

@@ -131,16 +131,16 @@ function checkValid(result: TransientSettings): void {
   ]);
 }
 
-function assertReader(shape: number, fields: TestFields, junkKeys: string[]): void {
+function assertReader(settingsCase: number, fields: TestFields, junkKeys: string[]): void {
   const transient = fields;
-  const plain = plainShape(shape, transient, fields);
+  const plain = unpollutedSettings(settingsCase, transient, fields);
   const junk = Object.fromEntries(
     junkKeys.map((key) => [key, { maxAttempts: 99, enabled: false }]),
   );
   const inherited = { maxAttempts: 3, delaysMinutes: [7], windowMinutes: 9, enabled: false };
   const top = wrap(plain, { piRetry: { transient: inherited } });
   const polluted =
-    shape === 0
+    settingsCase === 0
       ? wrap(
           {
             piRetry: wrap(
@@ -171,15 +171,15 @@ function drawFields(tc: TestCase): TestFields {
   return fields;
 }
 
-function plainShape(
-  shape: number,
+function unpollutedSettings(
+  settingsCase: number,
   transient: TestFields,
   fields: TestFields,
 ): RetrySettingsInput & TestFields {
-  if (shape === 0) {
+  if (settingsCase === 0) {
     return { piRetry: { transient } };
   }
-  return shape === 1 ? { piRetry: fields.enabled } : { ...fields };
+  return settingsCase === 1 ? { piRetry: fields.enabled } : { ...fields };
 }
 
 function wrap<Fields extends RetrySettingsInput | TestFields | { transient: TestFields }>(
@@ -213,13 +213,13 @@ describe("transient backoff properties", () => {
   test("reader never throws, only returns valid settings, ignores prototype keys", () => {
     new Hegel((tc) => {
       const fields = drawFields(tc);
-      const shape = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
+      const settingsCase = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
       const junk = tc.draw(
         gs.arrays(gs.sampledFrom(["__proto__", "constructor", "prototype", "toString"]), {
           maxSize: 4,
         }),
       );
-      assertReader(shape, fields, junk);
+      assertReader(settingsCase, fields, junk);
     })
       .settings(settings)
       .runSync();

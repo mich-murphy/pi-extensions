@@ -23,9 +23,7 @@ export function onOffCommand<C extends OnOffContext>(options: OnOffOptions<C>): 
   return {
     description: options.description,
     getArgumentCompletions: (prefix) =>
-      ["on", "off"]
-        .filter((value) => value.startsWith(prefix))
-        .map((value) => ({ value, label: value })),
+      ["on", "off"].flatMap((value) => (value.startsWith(prefix) ? [{ value, label: value }] : [])),
     handler: async (args, ctx) => {
       const choice = args.trim();
       if (choice !== "" && choice !== "on" && choice !== "off") {

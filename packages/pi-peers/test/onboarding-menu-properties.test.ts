@@ -10,6 +10,7 @@ import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { peersMenu } from "../onboarding/menu/root.js";
 import type { RootState } from "../onboarding/menu/root.js";
 import { setupForm } from "../onboarding/menu/setup-form.js";
+import type { SetupFormOptions } from "../onboarding/menu/setup-form.js";
 import { defaultChoices } from "../onboarding/plan.js";
 import { NO_CHANGES } from "../onboarding/route.js";
 
@@ -41,7 +42,7 @@ function run(tc: TestCase): Run {
   const blocked = tc.draw(gs.booleans());
   const events: string[] = [];
   const depths: number[] = [];
-  const form = setupForm({
+  const options: SetupFormOptions = {
     draft: {
       mode: "local",
       choices: defaultChoices("Prop Host"),
@@ -50,12 +51,15 @@ function run(tc: TestCase): Run {
       shared: false,
       remote: remoteDraft(),
     },
-    ...(blocked ? { blocked: "no source" } : {}),
     details: () => "details",
     apply: () => {
       events.push("effect");
     },
-  });
+  };
+  if (blocked) {
+    options.blocked = "no source";
+  }
+  const form = setupForm(options);
   const root: Screen = {
     kind: "list",
     title: "Peers",

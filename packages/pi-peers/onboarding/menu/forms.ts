@@ -186,10 +186,13 @@ export type ActionForm<T> = {
 };
 
 export function actionForm<T>(form: ActionForm<T>): Screen {
+  type Heading = Pick<Extract<Screen, { kind: "list" }>, "kind" | "title"> & { note?: string };
+  const heading: Heading = { kind: "list", title: form.title };
+  if (form.note !== undefined) {
+    heading.note = form.note;
+  }
   return {
-    kind: "list",
-    title: form.title,
-    ...(form.note === undefined ? {} : { note: form.note }),
+    ...heading,
     rows: () => [
       ...(form.rows?.() ?? []),
       detailsRow(form.details, form.detailsDescription),

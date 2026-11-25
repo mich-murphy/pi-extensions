@@ -20,7 +20,7 @@ function drawMarker(tc: TestCase): string {
 
 function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
   const reason = tc.draw(gs.sampledFrom([...VALIDATION_REASONS, marker, "", 7]));
-  const shapes: (Schema.Json | undefined)[] = [
+  const inputs: (Schema.Json | undefined)[] = [
     marker,
     [marker, { error: marker }],
     { error: marker },
@@ -33,7 +33,7 @@ function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
     undefined,
     tc.draw(gs.integers()),
   ];
-  return shapes[tc.draw(gs.integers({ minValue: 0, maxValue: shapes.length - 1 }))];
+  return inputs[tc.draw(gs.integers({ minValue: 0, maxValue: inputs.length - 1 }))];
 }
 
 function assertTotalBoundedValueFree(tc: TestCase): void {

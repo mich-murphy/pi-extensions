@@ -80,8 +80,12 @@ export function modelFixture({
   reasoning = false,
   thinkingLevelMap,
 }: ModelFixtureFields): Model<"claude"> {
+  const thinking: Pick<Model<"claude">, "thinkingLevelMap"> = {};
+  if (thinkingLevelMap !== undefined) {
+    thinking.thinkingLevelMap = thinkingLevelMap;
+  }
   return {
-    ...(thinkingLevelMap === undefined ? {} : { thinkingLevelMap }),
+    ...thinking,
     id,
     name: id,
     api: "claude",

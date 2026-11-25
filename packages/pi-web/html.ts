@@ -107,8 +107,8 @@ const PREFERRED_CONTENT_SELECTORS: readonly string[] = CONTENT_SELECTOR_GROUPS.f
 );
 const matchPreferredContent = compileSelectorSet(PREFERRED_CONTENT_SELECTORS);
 
-const CONTENT_SELECTOR_BONUSES = CONTENT_SELECTOR_GROUPS.filter((group) => group.bonus !== 0).map(
-  (group) => ({ bonus: group.bonus, matches: compileSelector(group.selectors.join(", ")) }),
+const CONTENT_SELECTOR_BONUSES = CONTENT_SELECTOR_GROUPS.flatMap(({ bonus, selectors }) =>
+  bonus === 0 ? [] : [{ bonus, matches: compileSelector(selectors.join(", ")) }],
 );
 
 type UrlAttributeResolver = (value: string, baseUrl: string) => string | undefined;
@@ -537,12 +537,12 @@ function flattenLayoutTables(tables: readonly Element[], root: Element): void {
     if (table === undefined) {
       continue;
     }
-    const shape = inspectTable(table, root);
-    if (!isLikelyLayoutTable(shape)) {
+    const profile = inspectTable(table, root);
+    if (!isLikelyLayoutTable(profile)) {
       continue;
     }
-    for (let partIndex = shape.ownParts.length - 1; partIndex >= 0; partIndex -= 1) {
-      const part = shape.ownParts[partIndex];
+    for (let partIndex = profile.ownParts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = profile.ownParts[partIndex];
       if (part !== undefined) {
         replaceTag(part, "div");
       }
@@ -551,9 +551,9 @@ function flattenLayoutTables(tables: readonly Element[], root: Element): void {
   }
 }
 
-function isLikelyLayoutTable(shape: TableShape): boolean {
+function isLikelyLayoutTable(profile: TableProfile): boolean {
   for (const rule of LAYOUT_TABLE_RULES) {
-    const verdict = rule(shape);
+    const verdict = rule(profile);
     if (verdict !== undefined) {
       return verdict === "layout";
     }
@@ -561,7 +561,7 @@ function isLikelyLayoutTable(shape: TableShape): boolean {
   return false;
 }
 
-type TableShape = {
+type TableProfile = {
   readonly table: Element;
   readonly root: Element;
   readonly hasHeadingMarkup: boolean;
@@ -573,7 +573,7 @@ type TableShape = {
 
 type TableVerdict = "layout" | "data" | undefined;
 
-const LAYOUT_TABLE_RULES: readonly ((shape: TableShape) => TableVerdict)[] = [
+const LAYOUT_TABLE_RULES: readonly ((profile: TableProfile) => TableVerdict)[] = [
   headingMarkupRule,
   tableRoleRule,
   hackerNewsRule,
@@ -592,8 +592,8 @@ const PRESENTATIONAL_TABLE_ATTRIBUTES = [
   "width",
 ] as const;
 
-function inspectTable(table: Element, root: Element): TableShape {
-  const draft: TableShapeDraft = {
+function inspectTable(table: Element, root: Element): TableProfile {
+  const draft: TableProfileDraft = {
     hasHeadingMarkup: false,
     hasNestedTable: false,
     ownLinkCount: 0,
@@ -634,7 +634,7 @@ function inspectTable(table: Element, root: Element): TableShape {
   return { table, root, ...draft };
 }
 
-type TableShapeDraft = {
+type TableProfileDraft = {
   hasHeadingMarkup: boolean;
   hasNestedTable: boolean;
   ownLinkCount: number;
@@ -663,16 +663,16 @@ function childCells(row: Element): Element[] {
   return cells;
 }
 
-function headingMarkupRule({ hasHeadingMarkup }: TableShape): TableVerdict {
+function headingMarkupRule({ hasHeadingMarkup }: TableProfile): TableVerdict {
   return hasHeadingMarkup ? "data" : undefined;
 }
 
-function tableRoleRule({ table }: TableShape): TableVerdict {
+function tableRoleRule({ table }: TableProfile): TableVerdict {
   const role = table.getAttribute("role");
   return role === "table" || role === "grid" ? "data" : undefined;
 }
 
-function hackerNewsRule({ table, root }: TableShape): TableVerdict {
+function hackerNewsRule({ table, root }: TableProfile): TableVerdict {
   for (let current: Element | null = table; current !== null; current = current.parentElement) {
     const id = current.getAttribute("id");
     if (id === "hnmain" || id === "bigbox") {
@@ -685,22 +685,22 @@ function hackerNewsRule({ table, root }: TableShape): TableVerdict {
   return undefined;
 }
 
-function nestedTableRule({ hasNestedTable }: TableShape): TableVerdict {
+function nestedTableRule({ hasNestedTable }: TableProfile): TableVerdict {
   return hasNestedTable ? "layout" : undefined;
 }
 
-function presentationalAttributeRule({ table }: TableShape): TableVerdict {
+function presentationalAttributeRule({ table }: TableProfile): TableVerdict {
   return PRESENTATIONAL_TABLE_ATTRIBUTES.some((attribute) => table.hasAttribute(attribute))
     ? "layout"
     : undefined;
 }
 
-function irregularGridRule({ ownRows }: TableShape): TableVerdict {
+function irregularGridRule({ ownRows }: TableProfile): TableVerdict {
   const widths = new Set(ownRows.map((cells) => cells.length));
   return widths.size === 1 && !widths.has(1) ? undefined : "layout";
 }
 
-function linkListRule({ ownRows, ownLinkCount }: TableShape): TableVerdict {
+function linkListRule({ ownRows, ownLinkCount }: TableProfile): TableVerdict {
   const cells = ownRows.flat();
   if (ownLinkCount <= cells.length * 0.6) {
     return undefined;

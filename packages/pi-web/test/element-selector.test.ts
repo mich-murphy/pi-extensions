@@ -50,6 +50,10 @@ const SELECTORS = [
 
 const elements = () => [...parseHTML(DOCUMENT).document.querySelectorAll("*")];
 
+function matchingSelectorIndexes(element: Element): number[] {
+  return SELECTORS.flatMap((selector, index) => (element.matches(selector) ? [index] : []));
+}
+
 describe("compileSelector", () => {
   test.each(SELECTORS)("matches %s exactly as linkedom does", (selector) => {
     const matches = compileSelector(selector);
@@ -77,12 +81,7 @@ describe("compileSelectorSet", () => {
       return [element.outerHTML, reported.toSorted((a, b) => a - b)];
     };
     expect(elements().map((element) => reportedFor(element))).toStrictEqual(
-      elements().map((element) => [
-        element.outerHTML,
-        SELECTORS.map((selector, index) => ({ selector, index }))
-          .filter(({ selector }) => element.matches(selector))
-          .map(({ index }) => index),
-      ]),
+      elements().map((element) => [element.outerHTML, matchingSelectorIndexes(element)]),
     );
   });
 });

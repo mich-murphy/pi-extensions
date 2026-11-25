@@ -49,9 +49,12 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
     throw new Error("Native diagnostic contract mismatch");
   }
   const { state, reason } = value.remote;
+  const snapshot: Pick<ManagedSnapshot, "state"> & { reason?: string } = { state };
+  if (reason !== undefined) {
+    snapshot.reason = reason;
+  }
   return {
-    state,
-    ...(reason === undefined ? {} : { reason }),
+    ...snapshot,
     text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
   };
 }
@@ -60,11 +63,12 @@ export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
   return snapshot.text;
 }
 export function gatewayEnvironment(): NodeJS.ProcessEnv {
-  return {
-    PATH: "/usr/bin:/bin",
-    LANG: "C",
-    ...(process.env.HOME === undefined ? {} : { HOME: process.env.HOME }),
-  };
+  const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin", LANG: "C" };
+  const home = process.env.HOME;
+  if (home !== undefined) {
+    env.HOME = home;
+  }
+  return env;
 }
 export async function validateExecutable(
   executable: string,

@@ -14,6 +14,7 @@ import type { ProviderError } from "../provider-types";
 import { FetchRescueProviders, SearchProviders } from "../search";
 import { WebToolsConfig } from "../settings";
 import { createToolRuntime } from "../tool-runtime";
+import type { SearchProviderName } from "../types";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
 import { errorMessage, settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
@@ -23,6 +24,7 @@ import type { AuthStorageData } from "./native-auth-fixture";
 
 const cleanup: (() => Promise<void>)[] = [];
 const pageUrl = "https://example.com/page";
+type SearchRequest = { query: string; provider?: SearchProviderName };
 const searchPayload = (text: string) => ({
   results: [{ title: text, url: pageUrl, text, excerpts: [text] }],
   web: { results: [{ title: text, url: pageUrl, description: text }] },
@@ -131,14 +133,13 @@ async function tools(
     });
   const logout = async (provider: keyof typeof WEB_AUTH_PROVIDERS) =>
     native.runtime.logout(WEB_AUTH_PROVIDERS[provider].id);
-  const runSearch = async (provider?: "exa" | "parallel" | "brave") =>
-    search.execute(
-      "search",
-      { query: "query", ...(provider ? { provider } : {}) },
-      undefined,
-      undefined,
-      context,
-    );
+  const runSearch = async (provider?: SearchProviderName) => {
+    const params: SearchRequest = { query: "query" };
+    if (provider) {
+      params.provider = provider;
+    }
+    return search.execute("search", params, undefined, undefined, context);
+  };
   const runFetch = async () =>
     fetch.execute("fetch", { url: pageUrl }, undefined, undefined, context);
   return {

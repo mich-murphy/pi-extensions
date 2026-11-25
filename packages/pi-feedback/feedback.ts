@@ -21,7 +21,7 @@ import { classifyRecord } from "./classify.ts";
 import type { ClassifierRegistry } from "./classify.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
-import type { Clock, LedgerEvent, RecordEvent } from "./ledger.ts";
+import type { Clock, EventDraft, LedgerEvent, RecordEvent } from "./ledger.ts";
 import { createAttribution } from "./owner.ts";
 import type { Attribution, CommandSource, ToolSource } from "./owner.ts";
 
@@ -154,7 +154,14 @@ const decodeNote = Schema.decodeUnknownOption(
 );
 
 function result(text: string, details: FeedbackDetails, isError = false): FeedbackResult {
-  return { content: [{ type: "text", text }], details, ...(isError ? { isError } : {}) };
+  const response: Omit<FeedbackResult, "isError"> & { isError?: boolean } = {
+    content: [{ type: "text", text }],
+    details,
+  };
+  if (isError) {
+    response.isError = isError;
+  }
+  return response;
 }
 
 const isTextPart = Schema.is(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }));
@@ -167,11 +174,70 @@ export const errorText = flow(
   Option.getOrElse(() => ""),
 );
 
-function runContext(ctx: FeedbackContext, piVersion: string) {
-  return {
+function recordProvenance(ctx: FeedbackContext, piVersion: string, attribution: Attribution) {
+  type RecordEvidence = { evidence?: NonNullable<Attribution["evidence"]> };
+  const evidence: RecordEvidence = {};
+  if (attribution.evidence !== undefined) {
+    evidence.evidence = attribution.evidence;
+  }
+  const provenance: typeof evidence & { piVersion: string; model?: string } = {
+    ...evidence,
     piVersion,
-    ...(ctx.model === undefined ? {} : { model: `${ctx.model.provider}/${ctx.model.id}` }),
   };
+  if (ctx.model !== undefined) {
+    provenance.model = `${ctx.model.provider}/${ctx.model.id}`;
+  }
+  return provenance;
+}
+
+function reportDraft(
+  ctx: FeedbackContext,
+  piVersion: string,
+  params: FeedbackParams,
+  record: Pick<RecordEvent, "session" | "fingerprint"> & { attribution: Attribution },
+): EventDraft {
+  type ReportDraft = Extract<EventDraft, { type: "report" }>;
+  const report: Omit<ReportDraft, "workaround" | "impact"> & { workaround?: string } = {
+    type: "report",
+    session: record.session,
+    owner: record.attribution.owner,
+    fingerprint: record.fingerprint,
+    kind: params.kind,
+    component: params.component,
+    summary: params.summary,
+    expected: params.expected,
+    actual: params.actual,
+  };
+  if (params.workaround !== undefined) {
+    report.workaround = params.workaround;
+  }
+  return {
+    ...report,
+    impact: params.impact,
+    ...recordProvenance(ctx, piVersion, record.attribution),
+  };
+}
+
+function signalDraft(
+  ctx: FeedbackContext,
+  piVersion: string,
+  attribution: Attribution,
+  failure: { tool: string; error: string; ordered: boolean },
+): EventDraft {
+  type SignalDraft = Extract<EventDraft, { type: "signal" }>;
+  const { tool, error, ordered } = failure;
+  const signal: Omit<SignalDraft, "cause"> & { cause?: NonNullable<SignalDraft["cause"]> } = {
+    type: "signal",
+    session: ctx.sessionManager.getSessionId(),
+    owner: attribution.owner,
+    fingerprint: signalFingerprint(tool, error),
+    tool,
+    error,
+  };
+  if (ordered) {
+    signal.cause = "parallel-batch";
+  }
+  return { ...signal, ...recordProvenance(ctx, piVersion, attribution) };
 }
 
 function toolCallsOf(message: MessageEndEvent["message"]): readonly BatchCall[] | undefined {
@@ -181,10 +247,6 @@ function toolCallsOf(message: MessageEndEvent["message"]): readonly BatchCall[] 
   return message.content.flatMap((part) =>
     part.type === "toolCall" ? [{ id: part.id, name: part.name, args: part.arguments }] : [],
   );
-}
-
-function evidenceOf(attribution: Attribution) {
-  return attribution.evidence === undefined ? {} : { evidence: attribution.evidence };
 }
 
 function renderNote(note: FeedbackNote, theme: Pick<Theme, "fg">): Component {
@@ -247,21 +309,7 @@ export function registerFeedback(
     try {
       const event = await appendEvent(
         ledger,
-        {
-          type: "report",
-          session,
-          owner,
-          fingerprint,
-          kind: params.kind,
-          component: params.component,
-          summary: params.summary,
-          expected: params.expected,
-          actual: params.actual,
-          ...(params.workaround === undefined ? {} : { workaround: params.workaround }),
-          impact: params.impact,
-          ...evidenceOf(attribution),
-          ...runContext(ctx, piVersion),
-        },
+        reportDraft(ctx, piVersion, params, { session, fingerprint, attribution }),
         clock,
       );
       classifyLater(ctx, event);
@@ -328,17 +376,7 @@ export function registerFeedback(
     try {
       const recorded = await appendEvent(
         ledger,
-        {
-          type: "signal",
-          session: ctx.sessionManager.getSessionId(),
-          owner: attribution.owner,
-          fingerprint: signalFingerprint(event.toolName, error),
-          tool: event.toolName,
-          error,
-          ...(ordered ? { cause: "parallel-batch" as const } : {}),
-          ...evidenceOf(attribution),
-          ...runContext(ctx, piVersion),
-        },
+        signalDraft(ctx, piVersion, attribution, { tool: event.toolName, error, ordered }),
         clock,
       );
       classifyLater(ctx, recorded, failing?.args);

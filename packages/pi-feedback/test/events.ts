@@ -36,7 +36,11 @@ export function signal({
   evidence,
   cause,
 }: SignalOptions): LedgerEvent {
-  return {
+  type Signal = Extract<LedgerEvent, { type: "signal" }>;
+  const event: Omit<Signal, "evidence" | "cause"> & {
+    evidence?: NonNullable<Signal["evidence"]>;
+    cause?: NonNullable<Signal["cause"]>;
+  } = {
     type: "signal",
     id: eventId(n),
     at: eventAt(n),
@@ -45,9 +49,14 @@ export function signal({
     fingerprint,
     tool: "read",
     error,
-    ...(evidence === undefined ? {} : { evidence }),
-    ...(cause === undefined ? {} : { cause }),
   };
+  if (evidence !== undefined) {
+    event.evidence = evidence;
+  }
+  if (cause !== undefined) {
+    event.cause = cause;
+  }
+  return event;
 }
 
 export type VerdictScores = {

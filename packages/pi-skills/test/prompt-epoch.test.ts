@@ -50,20 +50,16 @@ function skill(resource: PromptResource): Skill {
   };
 }
 
+type FixtureSections = { skills: string; project_context?: string };
+
 function head(skills: readonly PromptResource[], withRules = true) {
-  return {
-    role: "system",
-    content: "",
-    sections: {
-      skills: formatSkillsForPrompt(skills.map((resource) => skill(resource))).trim(),
-      ...(withRules
-        ? {
-            project_context: `<project_instructions path="${rules.path}">\nx\n</project_instructions>`,
-          }
-        : {}),
-    },
-    timestamp: 1,
+  const sections: FixtureSections = {
+    skills: formatSkillsForPrompt(skills.map((resource) => skill(resource))).trim(),
   };
+  if (withRules) {
+    sections.project_context = `<project_instructions path="${rules.path}">\nx\n</project_instructions>`;
+  }
+  return { role: "system", content: "", sections, timestamp: 1 };
 }
 
 const assistant = { role: "assistant", provider: "p", model: "m" };

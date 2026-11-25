@@ -18,7 +18,7 @@ import {
   validated,
   withTechnical,
 } from "./menu/forms.js";
-import type { Gate, Progress } from "./menu/forms.js";
+import type { ActionForm, Gate, Progress } from "./menu/forms.js";
 import type { Row, Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
@@ -259,10 +259,11 @@ type MaintenanceForm = {
 };
 
 function maintenanceForm(context: PairContext, progress: Progress, form: MaintenanceForm): Screen {
-  return actionForm({
+  const options: Omit<ActionForm<Maintenance>, "rows"> & {
+    rows?: NonNullable<MaintenanceForm["rows"]>;
+  } = {
     title: form.title,
     note: form.note,
-    ...(form.rows === undefined ? {} : { rows: form.rows }),
     details: () => maintenanceDetails(context, form.operation),
     detailsDescription: "What this pairing step changes and restarts.",
     consent: () => ({
@@ -281,7 +282,11 @@ function maintenanceForm(context: PairContext, progress: Progress, form: Mainten
         );
       },
     }),
-  });
+  };
+  if (form.rows !== undefined) {
+    options.rows = form.rows;
+  }
+  return actionForm(options);
 }
 
 function importForm(context: PairContext, progress: Progress): Screen {
@@ -495,11 +500,13 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
   const { pairing, paths, config } = context;
   const peer = pairing.intent.peerMachineId;
   const root = oldRoot(pairing);
-  const options: RemoteOptions = {
+  const options: Omit<RemoteOptions, "oldRoot"> & { oldRoot?: string } = {
     kinds: ["create", "join"],
     peer,
-    ...(root === undefined ? {} : { oldRoot: root }),
   };
+  if (root !== undefined) {
+    options.oldRoot = root;
+  }
   const draft = remoteDraft();
   draft.peer = peer;
   const directory = join(paths.directory, `re-pair-${randomBytes(12).toString("hex")}`);

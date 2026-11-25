@@ -34,8 +34,8 @@ export type SetupChoice = {
 
 export type SetupFormOptions = {
   readonly draft: SetupDraft;
-  readonly blocked?: string;
-  readonly remoteBlocked?: string;
+  blocked?: string;
+  remoteBlocked?: string;
   readonly details: (choice: SetupChoice) => string;
   readonly apply: (choice: SetupChoice) => void;
   readonly probe?: (socket: string) => Promise<boolean>;
@@ -134,14 +134,14 @@ export function applyState(
   if (remote !== undefined && remote.kind !== "ready") {
     return remote;
   }
-  return {
-    kind: "ready",
-    value: {
-      plan: local.value,
-      shared: draft.shared,
-      ...(remote?.kind === "ready" ? { remote: remote.value } : {}),
-    },
+  const choice: Omit<SetupChoice, "remote"> & { remote?: RemoteIntent } = {
+    plan: local.value,
+    shared: draft.shared,
   };
+  if (remote?.kind === "ready") {
+    choice.remote = remote.value;
+  }
+  return { kind: "ready", value: choice };
 }
 
 function localRows(
@@ -238,7 +238,7 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
   ];
 }
 
-function applyRows(options: SetupFormOptions): Row[] {
+function applyRows(options: Readonly<SetupFormOptions>): Row[] {
   const { draft } = options;
   const state = applyState(draft, options.blocked, options.remoteBlocked);
   const details = (): string[] => {
@@ -270,7 +270,7 @@ function applyRows(options: SetupFormOptions): Row[] {
   ];
 }
 
-export function setupForm(options: SetupFormOptions): Screen {
+export function setupForm(options: Readonly<SetupFormOptions>): Screen {
   const { draft } = options;
   const choices = (): LocalChoices => draft.choices;
   const set = (next: LocalChoices): void => {
@@ -349,16 +349,16 @@ const FIXED_SCOPE = "Can't change here: the paired computer uses this scope. Re-
 export type ManageFormOptions = {
   readonly saved: LocalChoices;
   readonly note: string;
-  readonly fixedMachine?: string;
-  readonly peer?: string;
-  readonly rebuild?: (choices: LocalChoices) => LocalPlan;
+  fixedMachine?: string;
+  peer?: string;
+  rebuild?: (choices: LocalChoices) => LocalPlan;
   readonly shared: () => boolean;
   readonly details: (plan: LocalPlan | undefined) => readonly string[];
   readonly apply: (plan: LocalPlan) => void;
   readonly actions: () => readonly Row[];
 };
 
-export function manageForm(options: ManageFormOptions): Screen {
+export function manageForm(options: Readonly<ManageFormOptions>): Screen {
   const draft = { choices: options.saved };
   const choices = (): LocalChoices => draft.choices;
   const set = (next: LocalChoices): void => {

@@ -32,7 +32,7 @@ import { peersMenu } from "./menu/root.js";
 import { runMenu } from "./menu/run.js";
 import type { MenuContext } from "./menu/run.js";
 import { setupForm } from "./menu/setup-form.js";
-import type { SetupChoice, SetupDraft } from "./menu/setup-form.js";
+import type { SetupChoice, SetupDraft, SetupFormOptions } from "./menu/setup-form.js";
 import {
   afterSave,
   failed,
@@ -320,6 +320,45 @@ async function applyChoice(
   );
 }
 
+function freshScreen(
+  fresh: Fresh,
+  local: Acquisition,
+  remote: Acquisition,
+  progress: Progress,
+): ReturnType<typeof setupForm> {
+  const acquisitionOf = (choice: SetupChoice): Acquisition =>
+    choice.remote === undefined ? local : remote;
+  const options: SetupFormOptions = {
+    draft: fresh.draft,
+    probe: async (socket) => {
+      const observed = await inspectSetup(fresh.agentDir, socket);
+      return observed.sharedInstance;
+    },
+    details: (choice) =>
+      `${localReview(choice.plan, choice.remote !== undefined)}\n${effectReview(
+        fresh.state,
+        choice.shared,
+        acquisitionOf(choice),
+        choice.plan.adapter.socketPath,
+        choice.remote === undefined
+          ? undefined
+          : { intent: choice.remote, directory: fresh.pairingDirectory },
+      )}`,
+    apply: (choice) => {
+      progress("Applying", SETUP_STEPS, async (step) =>
+        applyChoice(fresh, choice, acquisitionOf(choice), step),
+      );
+    },
+  };
+  if (local.backend === undefined) {
+    options.blocked = BLOCKED;
+  }
+  if (remote.backend === undefined) {
+    options.remoteBlocked = BLOCKED;
+  }
+  return setupForm(options);
+}
+
 async function freshRoute(
   agentDir: string,
   state: SetupState,
@@ -351,33 +390,7 @@ async function freshRoute(
     restart: supplied?.restart ?? requestManagedRestart,
     pairingDirectory: join(state.paths.directory, `pair-${randomBytes(12).toString("hex")}`),
   };
-  const acquisitionOf = (choice: { readonly remote?: RemoteIntent }): Acquisition =>
-    choice.remote === undefined ? local : remote;
-  const screen = (progress: Progress) =>
-    setupForm({
-      draft,
-      ...(local.backend === undefined ? { blocked: BLOCKED } : {}),
-      ...(remote.backend === undefined ? { remoteBlocked: BLOCKED } : {}),
-      probe: async (socket) => {
-        const observed = await inspectSetup(agentDir, socket);
-        return observed.sharedInstance;
-      },
-      details: (choice) =>
-        `${localReview(choice.plan, choice.remote !== undefined)}\n${effectReview(
-          state,
-          choice.shared,
-          acquisitionOf(choice),
-          choice.plan.adapter.socketPath,
-          choice.remote === undefined
-            ? undefined
-            : { intent: choice.remote, directory: fresh.pairingDirectory },
-        )}`,
-      apply: (choice) => {
-        progress("Applying", SETUP_STEPS, async (step) =>
-          applyChoice(fresh, choice, acquisitionOf(choice), step),
-        );
-      },
-    });
+  const screen = (progress: Progress) => freshScreen(fresh, local, remote, progress);
   return {
     value: "Set up",
     description: "Connect this Pi to other sessions. Nothing changes until Apply.",

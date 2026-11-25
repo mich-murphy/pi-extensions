@@ -97,6 +97,21 @@ const defaults = [
 ].filter((flag) => !omitted.has(flag));
 
 const writeLog = process.env.PI_TUI_WRITE_LOG;
+const childEnv: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH,
+  HOME: root.home,
+  TMPDIR: root.tmp,
+  TERM: process.env.TERM ?? "xterm-256color",
+  SHELL: "/bin/sh",
+  PI_CODING_AGENT_DIR: root.agent,
+  PI_CODING_AGENT_SESSION_DIR: root.sessions,
+  PI_OFFLINE: "1",
+  PI_SKIP_VERSION_CHECK: "1",
+  PI_TELEMETRY: "0",
+};
+if (writeLog !== undefined && writeLog !== "") {
+  childEnv.PI_TUI_WRITE_LOG = writeLog;
+}
 const child = spawn(
   process.execPath,
   [
@@ -109,20 +124,7 @@ const child = spawn(
   {
     cwd: root.cwd,
     stdio: "inherit",
-    env: {
-      PATH: process.env.PATH,
-      HOME: root.home,
-      TMPDIR: root.tmp,
-      TERM: process.env.TERM ?? "xterm-256color",
-      SHELL: "/bin/sh",
-      PI_CODING_AGENT_DIR: root.agent,
-      PI_CODING_AGENT_SESSION_DIR: root.sessions,
-      PI_OFFLINE: "1",
-      PI_SKIP_VERSION_CHECK: "1",
-      PI_TELEMETRY: "0",
-      ...(writeLog === undefined || writeLog === "" ? {} : { PI_TUI_WRITE_LOG: writeLog }),
-      ...launch.env,
-    },
+    env: { ...childEnv, ...launch.env },
   },
 );
 const TERMINATION_SIGNALS_A_SHARED_TERMINAL_DOES_NOT_DELIVER = ["SIGTERM", "SIGHUP"] as const;

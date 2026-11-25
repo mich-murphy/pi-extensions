@@ -21,7 +21,7 @@ function drawEvents(tc: TestCase): LedgerEvent[] {
     const owner = tc.draw(gs.sampledFrom([...OWNERS]), "owner");
     const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
     const session = tc.draw(gs.sampledFrom([...SESSIONS]), "session");
-    const shape = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }), "shape");
+    const fixtureIndex = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }), "shape");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
     const make = [
@@ -31,7 +31,7 @@ function drawEvents(tc: TestCase): LedgerEvent[] {
       () => report({ ...options, impact: "blocked" }),
       () => resolveEvent(n, group),
       () => reopenEvent(n, group),
-    ][shape];
+    ][fixtureIndex];
     assert.ok(make !== undefined);
     events.push(make());
   }

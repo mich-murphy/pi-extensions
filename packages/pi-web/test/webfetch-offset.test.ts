@@ -46,6 +46,10 @@ function textResult(text: string): FetchPageResult {
   };
 }
 
+type ProjectionOptions = Omit<Parameters<typeof projectFetchResult>[1], "offset"> & {
+  offset?: number;
+};
+
 async function project(
   text: string,
   offset?: number,
@@ -53,16 +57,19 @@ async function project(
   responseTruncated = false,
 ) {
   const page = textResult(text);
+  const options: ProjectionOptions = {
+    store: liveToolOutputStore(),
+    secrets,
+  };
+  if (offset !== undefined) {
+    options.offset = offset;
+  }
   return Effect.runPromise(
     projectFetchResult(
       responseTruncated
         ? { ...page, meta: { ...page.meta, bytes: CAP, responseTruncated: true } }
         : page,
-      {
-        store: liveToolOutputStore(),
-        secrets,
-        ...(offset === undefined ? {} : { offset }),
-      },
+      options,
     ),
   );
 }

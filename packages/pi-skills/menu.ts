@@ -60,23 +60,22 @@ class ContextMenu implements Component, Focusable {
       const resources = options.resources.filter(
         (r) => r.origin === group.origin && r.kind === group.kind,
       );
-      return {
+      const item: SettingItem = {
         id: group.title,
         label: group.title,
         currentValue: this.count(group, resources),
-        ...(resources.length === 0
-          ? {}
-          : {
-              submenu: (_value: string, back: (value?: string) => void) => {
-                this.active = new ResourceList(options, group, resources, () => {
-                  this.active = undefined;
-                  back(this.count(group, resources));
-                });
-                this.active.focused = this.hasFocus;
-                return this.active;
-              },
-            }),
       };
+      if (resources.length > 0) {
+        item.submenu = (_value, back) => {
+          this.active = new ResourceList(options, group, resources, () => {
+            this.active = undefined;
+            back(this.count(group, resources));
+          });
+          this.active.focused = this.hasFocus;
+          return this.active;
+        };
+      }
+      return item;
     });
     this.root = new SettingsList(
       items,

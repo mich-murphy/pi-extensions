@@ -173,7 +173,7 @@ const jsonValue = gs.recursive<Json>(
     ),
   { maxDepth: 5, maxLeaves: 40 },
 );
-const hostileShape = gs.sampledFrom(hostile).map((text): Json => ({
+const hostileToolArguments = gs.sampledFrom(hostile).map((text): Json => ({
   to: { machineId: text, sessionId: text, runtimeNonce: text },
   publisher: { machineId: text, sessionId: text, runtimeNonce: text },
   message: { kind: text, content: text },
@@ -183,7 +183,7 @@ const hostileShape = gs.sampledFrom(hostile).map((text): Json => ({
   code: text,
   tag: text,
 }));
-const argsValue = gs.oneOf<Json>(jsonValue, hostileShape);
+const argsValue = gs.oneOf<Json>(jsonValue, hostileToolArguments);
 function renderLines(
   name: string,
   slot: "call" | "result",

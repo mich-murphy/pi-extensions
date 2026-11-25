@@ -119,7 +119,7 @@ function projectResponse(
     return Result.fail(new UnsupportedBinaryContent({ mime: parsedContentType.mime }));
   }
 
-  const meta: FetchPageMeta = {
+  const meta: Omit<FetchPageMeta, "responseTruncated"> & { responseTruncated?: true } = {
     requestedUrl: response.requestedUrl,
     finalUrl: response.finalUrl,
     format,
@@ -128,8 +128,10 @@ function projectResponse(
     contentType: parsedContentType.contentType,
     charset: parsedContentType.charset,
     bytes: response.body.byteLength,
-    ...(response.responseTruncated === true ? { responseTruncated: true as const } : {}),
   };
+  if (response.responseTruncated === true) {
+    meta.responseTruncated = true;
+  }
   if (parsedContentType.kind === "raster-image") {
     return Result.succeed({ meta, body: { _tag: "Image", data: response.body } });
   }

@@ -68,20 +68,19 @@ function restoreOutcome({
     .flatMap((row) =>
       isFact(row) ? [[clean(row[0], MAX_TEXT), clean(row[1], MAX_TEXT)] as const] : [],
     );
-  return {
-    ok,
-    headline: clean(headline, MAX_TEXT),
-    facts: rows,
-    ...(isString(next) ? { next: clean(next, MAX_TEXT * 2) } : {}),
-    ...(lines === undefined
-      ? {}
-      : {
-          technical: lines
-            .slice(0, MAX_TECHNICAL)
-            .filter((line) => isString(line))
-            .map((line) => clean(line, MAX_TEXT * 4)),
-        }),
-  };
+  const outcome: Omit<Outcome, "next" | "technical"> & {
+    next?: string;
+    technical?: readonly string[];
+  } = { ok, headline: clean(headline, MAX_TEXT), facts: rows };
+  if (isString(next)) {
+    outcome.next = clean(next, MAX_TEXT * 2);
+  }
+  if (lines !== undefined) {
+    outcome.technical = lines
+      .slice(0, MAX_TECHNICAL)
+      .flatMap((line) => (isString(line) ? [clean(line, MAX_TEXT * 4)] : []));
+  }
+  return outcome;
 }
 
 export const storedOutcome = flow(
@@ -131,9 +130,9 @@ export async function runWithProgress(
         ? `… ${clean(item.text)} (${Math.round((Date.now() - item.started) / 1000)}s)`
         : `✓ ${clean(item.text)}`,
     ),
-    ...planned
-      .filter((text) => !steps.some((item) => item.text === text))
-      .map((text) => `· ${clean(text)}`),
+    ...planned.flatMap((text) =>
+      steps.some((item) => item.text === text) ? [] : [`· ${clean(text)}`],
+    ),
   ];
   const timer = setInterval(() => {
     model.refresh();

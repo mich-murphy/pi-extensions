@@ -17,12 +17,14 @@ function same(left: LinkState | undefined, right: LinkState): boolean {
 export class LinkTable {
   private readonly entries = new Map<string, LinkState>();
   apply(frame: Omit<LinkFrame, "v" | "op" | "rid">): boolean {
-    const next: LinkState = {
+    const next: Omit<LinkState, "nextProbe"> & { nextProbe?: number } = {
       machineId: frame.machineId,
       state: frame.state,
       since: frame.since,
-      ...(frame.nextProbe === undefined ? {} : { nextProbe: frame.nextProbe }),
     };
+    if (frame.nextProbe !== undefined) {
+      next.nextProbe = frame.nextProbe;
+    }
     const changed = !same(this.entries.get(frame.machineId), next);
     this.entries.set(frame.machineId, next);
     return changed;

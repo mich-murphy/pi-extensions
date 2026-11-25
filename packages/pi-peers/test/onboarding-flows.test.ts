@@ -14,7 +14,7 @@ import { peersMenu } from "../onboarding/menu/root.js";
 import type { ActionKind, RootState } from "../onboarding/menu/root.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, setupForm } from "../onboarding/menu/setup-form.js";
-import type { SetupChoice, SetupDraft } from "../onboarding/menu/setup-form.js";
+import type { SetupChoice, SetupDraft, SetupFormOptions } from "../onboarding/menu/setup-form.js";
 import { PeersMenu } from "../onboarding/menu/tui.js";
 import { attempt, failedWith, INCOMPLETE_NEXT, safeReason } from "../onboarding/outcome.js";
 import { defaultChoices } from "../onboarding/plan.js";
@@ -36,12 +36,11 @@ const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 function form(state: SetupDraft, remoteBlocked?: string) {
   const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
-  const screen = setupForm({
-    draft: state,
-    ...(remoteBlocked === undefined ? {} : { remoteBlocked }),
-    details: () => "details",
-    apply,
-  });
+  const options: SetupFormOptions = { draft: state, details: () => "details", apply };
+  if (remoteBlocked !== undefined) {
+    options.remoteBlocked = remoteBlocked;
+  }
+  const screen = setupForm(options);
   const menuRoot: Screen = {
     kind: "list",
     title: "Peers",

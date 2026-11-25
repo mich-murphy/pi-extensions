@@ -681,14 +681,19 @@ export class PublicWebClient extends Context.Service<
               ),
             ),
           );
-          return {
+          const result: Omit<PublicWebResponse, "responseTruncated"> & {
+            responseTruncated?: true;
+          } = {
             requestedUrl: request.url,
             finalUrl,
             status: response.status,
             headers: response.headers,
             body,
-            ...(truncated ? { responseTruncated: true } : {}),
           };
+          if (truncated) {
+            result.responseTruncated = true;
+          }
+          return result;
         },
         (effect) =>
           withSafeSpan("PublicWebClient.get", effect, (error) => ({
