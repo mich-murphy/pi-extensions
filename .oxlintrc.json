@@ -229,6 +229,7 @@
         "config/oxlint/*.ts",
         ".agents/skills/*/scripts/*-provider.ts",
         "packages/*/test/bombadil/*.ts",
+        "packages/*/test/fixtures/*.ts",
         "vitest*.config.ts"
       ],
       "rules": { "import/no-default-export": "off" }
