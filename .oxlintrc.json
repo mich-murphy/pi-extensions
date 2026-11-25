@@ -1,7 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise"],
-  "jsPlugins": ["./config/oxlint/no-comments.ts"],
+  "jsPlugins": [
+    "./config/oxlint/no-comments.ts",
+    { "name": "anti-slop", "specifier": "./config/oxlint/anti-slop/index.ts" },
+    { "name": "anti-slop-effect", "specifier": "./config/oxlint/anti-slop/effect/index.ts" }
+  ],
+  "ignorePatterns": ["config/oxlint/anti-slop/**"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -202,6 +207,12 @@
     "unicorn/prefer-module": "error",
     "unicorn/no-abusive-eslint-disable": "error",
     "pi-extensions/no-comments": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop-effect/no-manual-effect-error-tag": "error",
+    "anti-slop-effect/prefer-effect-match": "error",
 
     // Pi extensions share the TUI process: console output corrupts the screen, and exiting kills Pi
     "eslint/no-console": "error",
