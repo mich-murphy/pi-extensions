@@ -51,7 +51,16 @@ A verdict that an outside service failed (≥ 0.9) also stops its records from c
 
 ## Ledger
 
-Records are appended to `~/.pi/agent/harness-feedback/ledger.jsonl` (or under `PI_CODING_AGENT_DIR`). The directory is readable only by you. Common token formats and values assigned to key, token, secret or password names are replaced with `<secret>`, and each text field is cut to 2,000 characters. Nothing leaves the machine.
+Records are appended to `~/.pi/agent/harness-feedback/ledger.jsonl` (or under `PI_CODING_AGENT_DIR`). The directory is readable only by you. Common token formats and values assigned to key, token, secret or password names are replaced with `<secret>`, and each text field is cut to 2,000 characters. Only the classifier calls below leave the machine.
+
+## Classification
+
+When Pi has a TypeSafe key, each new record is classified in the background with TypeSafe's Jev model, pinned to `jev-1.14.0`. Without a key nothing is sent and records stay unclassified. Records from batch-ordered calls, and `unattributed` records without Pi path evidence, are not sent.
+
+- **Verdict.** Once per fingerprint, Jev is asked whether the error involves a path the harness created, whether that path existed, and whether an outside service caused it. It sees the tool name, the error text (at most 600 characters) and the call's arguments (redacted, at most 400 characters). For a report it sees the component, the kind and what happened.
+- **Same cause.** Once per pair, a new fingerprint is compared with up to 12 open groups that have the same owner. Groups whose answer is 0.7 or more merge, under the earliest fingerprint. A resolve or reopen that names a merged group's old ID still applies.
+
+Answers are stored in the ledger as `verdict` and `same_cause` events, so no question is asked twice, and ledgers from several machines merge the same way. `/feedback` shows how many classifier calls failed. The questions and thresholds are in `jev.ts`.
 
 ## Queue
 
