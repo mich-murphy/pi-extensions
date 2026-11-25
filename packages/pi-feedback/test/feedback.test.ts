@@ -44,7 +44,9 @@ describe("harness feedback extension", () => {
     registerFeedback(pi.pi, {
       ledger,
       packagesDir: PACKAGES,
-      ownPackages: ["pi-claude", "pi-web", "pi-feedback"],
+      ownPackages: ["pi-claude", "pi-web", "pi-feedback", "pi-skills"],
+      agentDir: "/home/u/.pi/agent",
+      home: "/home/u",
       piVersion: "1.6.0",
       clock: fakeClock(),
     });
@@ -146,6 +148,58 @@ describe("harness feedback extension", () => {
         owner: "unattributed",
         fingerprint: "read: ENOENT: no such file '<path>'",
       },
+    ]);
+  });
+
+  test("marks a read of a file a sibling call in the same batch writes", async () => {
+    const scratch = "/tmp/claude-1/-home-u-dev-x/0a1b/scratchpad";
+    const missing = `ENOENT: no such file or directory, access '${scratch}/z5.png'`;
+    pi.batch([
+      { id: "b1", name: "bash", args: { command: `S=${scratch}; sips x --out $S/z5.png` } },
+      { id: "r1", name: "read", args: { path: `${scratch}/z5.png` } },
+    ]);
+    await pi.end("read", true, missing, "r1");
+    pi.batch([{ id: "r2", name: "read", args: { path: `${scratch}/z5.png` } }]);
+    await pi.end("read", true, missing, "r2");
+    const { events } = await readLedger(ledger);
+    expect(events).toMatchObject([
+      { owner: "pi-claude", cause: "parallel-batch" },
+      { owner: "pi-claude" },
+    ]);
+    expect(events[1]).not.toHaveProperty("cause");
+  });
+
+  test("keeps the batch while its tool results arrive", async () => {
+    const scratch = "/tmp/claude-1/-home-u-dev-x/0a1b/scratchpad";
+    pi.batch([
+      { id: "b1", name: "bash", args: { command: `mkdir -p ${scratch}` } },
+      { id: "r1", name: "read", args: { path: `${scratch}/a.png` } },
+    ]);
+    pi.toolResult("b1");
+    await pi.end("read", true, `ENOENT: '${scratch}/a.png'`, "r1");
+    await expect(ledgerEvents(ledger)).resolves.toMatchObject([{ cause: "parallel-batch" }]);
+  });
+
+  test("forgets the batch when a reply has no tool calls", async () => {
+    const scratch = "/tmp/claude-1/-home-u-dev-x/0a1b/scratchpad";
+    pi.batch([
+      { id: "b1", name: "bash", args: { command: `mkdir -p ${scratch}` } },
+      { id: "r1", name: "read", args: { path: `${scratch}/a.png` } },
+    ]);
+    pi.batch([]);
+    await pi.end("read", true, `ENOENT: '${scratch}/a.png'`, "r1");
+    const events = await ledgerEvents(ledger);
+    expect(events[0]).not.toHaveProperty("cause");
+  });
+
+  test("marks a report that names a Pi path as Pi evidence", async () => {
+    await pi.call({
+      ...params,
+      component: "read",
+      actual: "ENOENT: /home/u/.pi/agent/sessions/x.jsonl",
+    });
+    await expect(ledgerEvents(ledger)).resolves.toMatchObject([
+      { type: "report", owner: "unattributed", evidence: "pi-path" },
     ]);
   });
 

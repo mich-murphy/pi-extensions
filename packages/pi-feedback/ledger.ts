@@ -34,7 +34,10 @@ const recorded = {
   fingerprint: Line,
   model: Schema.optionalKey(Line),
   piVersion: Schema.optionalKey(Line),
+  evidence: Schema.optionalKey(Schema.Literal("pi-path")),
 };
+
+const Score = Schema.Finite.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 1 })));
 
 const GroupId = matching(/^[0-9a-f]{12}$/u);
 
@@ -55,6 +58,17 @@ const SignalEvent = Schema.Struct({
   ...recorded,
   tool: matching(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u),
   error: Text,
+  cause: Schema.optionalKey(Schema.Literal("parallel-batch")),
+});
+
+const VerdictEvent = Schema.Struct({
+  type: Schema.Literal("verdict"),
+  ...stamp,
+  fingerprint: Line,
+  model: Line,
+  harnessPath: Score,
+  pathExisted: Score,
+  outsideService: Score,
 });
 
 const ResolveEvent = Schema.Struct({
@@ -72,10 +86,17 @@ const ReopenEvent = Schema.Struct({
   reason: Line,
 });
 
-const LedgerEvent = Schema.Union([ReportEvent, SignalEvent, ResolveEvent, ReopenEvent]);
+const LedgerEvent = Schema.Union([
+  ReportEvent,
+  SignalEvent,
+  VerdictEvent,
+  ResolveEvent,
+  ReopenEvent,
+]);
 
 export type LedgerEvent = typeof LedgerEvent.Type;
 export type RecordEvent = Extract<LedgerEvent, { readonly type: "report" | "signal" }>;
+export type VerdictEvent = Extract<LedgerEvent, { readonly type: "verdict" }>;
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 export type EventDraft = DistributiveOmit<LedgerEvent, "id" | "at">;
 export type LedgerRead = { readonly events: readonly LedgerEvent[]; readonly skipped: number };

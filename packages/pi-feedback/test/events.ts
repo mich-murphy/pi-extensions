@@ -23,6 +23,8 @@ export type SignalOptions = {
   readonly owner?: string;
   readonly fingerprint?: string;
   readonly error?: string;
+  readonly evidence?: "pi-path";
+  readonly cause?: "parallel-batch";
 };
 
 export function signal({
@@ -31,6 +33,8 @@ export function signal({
   owner = "pi-claude",
   fingerprint = "read: ENOENT",
   error = "ENOENT: no such file",
+  evidence,
+  cause,
 }: SignalOptions): LedgerEvent {
   return {
     type: "signal",
@@ -41,6 +45,25 @@ export function signal({
     fingerprint,
     tool: "read",
     error,
+    ...(evidence === undefined ? {} : { evidence }),
+    ...(cause === undefined ? {} : { cause }),
+  };
+}
+
+export type VerdictScores = {
+  readonly harnessPath: number;
+  readonly pathExisted: number;
+  readonly outsideService: number;
+};
+
+export function verdictEvent(n: number, fingerprint: string, scores: VerdictScores): LedgerEvent {
+  return {
+    type: "verdict",
+    id: eventId(n),
+    at: eventAt(n),
+    fingerprint,
+    model: "typesafe/jev-1.14.0",
+    ...scores,
   };
 }
 

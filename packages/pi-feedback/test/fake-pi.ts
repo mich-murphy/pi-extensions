@@ -1,4 +1,4 @@
-import type { ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
+import type { MessageEndEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import type {
   FeedbackCommandContext,
@@ -11,6 +11,13 @@ import type {
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
+type MessageHandler = (event: Pick<MessageEndEvent, "message">) => void;
+
+export type FakeCall = { readonly id: string; readonly name: string; readonly args: object };
+
+function isEndHandler(name: string, _handler: EndHandler | MessageHandler): _handler is EndHandler {
+  return name === "tool_execution_end";
+}
 
 const plainTheme = { fg: (_color: string, text: string) => text };
 
@@ -21,21 +28,30 @@ function renderText(component: Component | undefined): string {
     .trim();
 }
 
-export function fakePi(packagesDir: string) {
+export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
   const tools: FeedbackTool[] = [];
   const renderers = new Map<string, NoteRenderer>();
   const commands = new Map<string, Command>();
   const endHandlers: EndHandler[] = [];
+  const messageHandlers: MessageHandler[] = [];
   const notes: { customType: string; data: FeedbackNote }[] = [];
   const notifications: { message: string; level: string | undefined }[] = [];
   let active = ["read", "bash"];
   let session = "session-a";
 
   const registered = [
-    { name: "read", sourceInfo: { path: "builtin:read" } },
-    { name: "bash", sourceInfo: { path: "builtin:bash" } },
-    { name: "webfetch", sourceInfo: { path: `${packagesDir}/pi-web/index.ts` } },
-    { name: "outside", sourceInfo: { path: "/elsewhere/pi-web/index.ts" } },
+    { name: "read", sourceInfo: { path: "builtin:read", source: "builtin" } },
+    { name: "bash", sourceInfo: { path: "builtin:bash", source: "builtin" } },
+    {
+      name: "webfetch",
+      sourceInfo: { path: `${packagesDir}/pi-web/index.ts`, source: "local" },
+      annotations: { readOnlyHint: true },
+    },
+    { name: "outside", sourceInfo: { path: "/elsewhere/pi-web/index.ts", source: "local" } },
+  ];
+  const slashCommands = [
+    { name: "skills", sourceInfo: { path: `${packagesDir}/pi-skills/index.ts` } },
+    { name: "skill:tidy", sourceInfo: { path: `${agentDir}/skills/tidy/SKILL.md` } },
   ];
 
   const pi: FeedbackRegistration = {
@@ -49,8 +65,12 @@ export function fakePi(packagesDir: string) {
     registerCommand: (name, options) => {
       commands.set(name, options);
     },
-    on: (_name, handler) => {
-      endHandlers.push(handler);
+    on: (name: string, handler: EndHandler | MessageHandler) => {
+      if (isEndHandler(name, handler)) {
+        endHandlers.push(handler);
+      } else {
+        messageHandlers.push(handler);
+      }
     },
     appendEntry: (customType, data) => {
       notes.push({ customType, data });
@@ -59,9 +79,10 @@ export function fakePi(packagesDir: string) {
       ...registered,
       ...tools.map((tool) => ({
         name: tool.name,
-        sourceInfo: { path: `${packagesDir}/pi-feedback/index.ts` },
+        sourceInfo: { path: `${packagesDir}/pi-feedback/index.ts`, source: "local" },
       })),
     ],
+    getCommands: () => slashCommands,
     getActiveTools: () => [...active],
     setActiveTools: (names) => {
       active = [...names];
@@ -100,10 +121,50 @@ export function fakePi(packagesDir: string) {
     },
     call: async (params: Parameters<FeedbackTool["execute"]>[1]) =>
       tool().execute("call-1", params, undefined, undefined, ctx()),
-    end: async (toolName: string, isError: boolean, text: string) => {
+    batch: (calls: readonly FakeCall[]) => {
+      const message: MessageEndEvent["message"] = {
+        role: "assistant",
+        content: calls.map((call) => ({
+          type: "toolCall",
+          id: call.id,
+          name: call.name,
+          arguments: { ...call.args },
+        })),
+        api: "anthropic-messages",
+        provider: "claude",
+        model: "claude",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "toolUse",
+        timestamp: 0,
+      };
+      for (const handler of messageHandlers) {
+        handler({ message });
+      }
+    },
+    toolResult: (toolCallId: string) => {
+      const message: MessageEndEvent["message"] = {
+        role: "toolResult",
+        toolCallId,
+        toolName: "bash",
+        content: [{ type: "text", text: "done" }],
+        isError: false,
+        timestamp: 0,
+      };
+      for (const handler of messageHandlers) {
+        handler({ message });
+      }
+    },
+    end: async (toolName: string, isError: boolean, text: string, toolCallId = "call-2") => {
       const event: ToolExecutionEndEvent = {
         type: "tool_execution_end",
-        toolCallId: "call-2",
+        toolCallId,
         toolName,
         result: { content: [{ type: "text", text }] },
         isError,

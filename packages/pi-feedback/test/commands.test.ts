@@ -9,7 +9,7 @@ import type { CliIo } from "../commands.ts";
 import { groupId } from "../fingerprint.ts";
 import { ledgerPath, readLedger } from "../ledger.ts";
 import type { LedgerEvent } from "../ledger.ts";
-import { signal } from "./events.ts";
+import { signal, verdictEvent } from "./events.ts";
 
 const execFileAsync = promisify(execFile);
 const CLI = new URL("../cli.ts", import.meta.url).pathname;
@@ -54,6 +54,19 @@ describe("pi-feedback commands", () => {
     expect(io.stdout.split("\n")[0]).toMatch(/^READY\s+RANK\s+SESSIONS\s+RECORDS\s+STATUS/u);
     expect(io.stdout).toContain(
       `yes    4     2         2        open    pi-claude  ${claudeGroup}`,
+    );
+  });
+
+  test("shows a group that passes every Pi core check as pi-core", async () => {
+    const fingerprint = "bash: ls: unrecognized option '<path>'";
+    write(io.ledger, [
+      signal({ n: 3, session: "a", owner: "unattributed", fingerprint, evidence: "pi-path" }),
+      signal({ n: 4, session: "b", owner: "unattributed", fingerprint, evidence: "pi-path" }),
+      verdictEvent(5, fingerprint, { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 }),
+    ]);
+    await run("queue");
+    expect(io.stdout).toContain(
+      `no     4     2         2        open    pi-core    ${groupId("unattributed", fingerprint)}`,
     );
   });
 
