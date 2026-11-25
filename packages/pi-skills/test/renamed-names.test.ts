@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Result } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 import { cacheDebugValue } from "../cache-debug";
 import { resourcePathId } from "../resource-path";
@@ -30,10 +31,10 @@ function noteMessage(customType: string) {
 }
 
 function failure(result: ToggleStateResult): ToggleStateError {
-  if (result._tag === "ok") {
+  if (Result.isSuccess(result)) {
     throw new Error("expected the state operation to fail");
   }
-  return result.error;
+  return result.failure;
 }
 
 function agentDirectory() {
@@ -51,10 +52,10 @@ function agentDirectory() {
 }
 
 function loaded(result: ToggleStateResult): Record<string, string> {
-  if (result._tag === "err") {
-    throw result.error;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return Object.fromEntries(result.value.files);
+  return Object.fromEntries(result.success.files);
 }
 
 describe("renamed names", () => {

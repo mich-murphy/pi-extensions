@@ -1,6 +1,6 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
-import { UnsupportedBinaryContent } from "../fetch-page";
+import { FetchPageBody, UnsupportedBinaryContent } from "../fetch-page";
 import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse, fetchPageWith } from "./fakes";
 
@@ -28,7 +28,7 @@ describe("fetchPage", () => {
       );
 
       assert(Result.isSuccess(result));
-      assert(result.success.body._tag === "Text");
+      assert(FetchPageBody.$is("Text")(result.success.body));
       expect(result.success.body.text).toContain("# Hello");
       expect(result.success.body.kind).toBe("html");
       expect(result.success.meta).toStrictEqual({
@@ -62,7 +62,7 @@ describe("fetchPage", () => {
       );
 
       assert(Result.isSuccess(result));
-      expect(result.success.body).toStrictEqual({ _tag: "Image", data: png });
+      expect(result.success.body).toStrictEqual(FetchPageBody.Image({ data: png }));
       expect(result.success.meta.bytes).toBe(png.byteLength);
     }),
   );
@@ -111,12 +111,9 @@ describe("fetchPage", () => {
       );
 
       assert(Result.isSuccess(result));
-      expect(result.success.body).toStrictEqual({
-        _tag: "Text",
-        kind: "text",
-        text: "plain words",
-        decoder: UTF8,
-      });
+      expect(result.success.body).toStrictEqual(
+        FetchPageBody.Text({ kind: "text", text: "plain words", decoder: UTF8 }),
+      );
     }),
   );
 });
@@ -148,7 +145,7 @@ describe("fetchPage oversized pages", () => {
         fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
       assert(Result.isSuccess(result));
-      assert(result.success.body._tag === "Text");
+      assert(FetchPageBody.$is("Text")(result.success.body));
       expect(result.success.body.text).toBe("ab");
     }),
   );
@@ -165,7 +162,7 @@ describe("fetchPage oversized pages", () => {
         fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
       assert(Result.isSuccess(result));
-      assert(result.success.body._tag === "Text");
+      assert(FetchPageBody.$is("Text")(result.success.body));
       expect(result.success.body.text).toBe("a\uFFFD");
     }),
   );

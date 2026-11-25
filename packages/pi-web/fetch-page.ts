@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Data, Effect, Layer, Result, Schema } from "effect";
 import { absurd } from "effect/Function";
 import type { DomainPolicy } from "./domain-policy";
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
@@ -29,16 +29,20 @@ export type FetchPageMeta = {
   readonly responseTruncated?: true;
 };
 
+export type FetchPageBody = Data.TaggedEnum<{
+  Text: {
+    readonly kind: "html" | "text" | "svg";
+    readonly text: string;
+    readonly decoder: string;
+  };
+  Image: { readonly data: Readonly<Buffer> };
+}>;
+
+export const FetchPageBody = Data.taggedEnum<FetchPageBody>();
+
 export type FetchPageResult = {
   readonly meta: FetchPageMeta;
-  readonly body:
-    | {
-        readonly _tag: "Text";
-        readonly kind: "html" | "text" | "svg";
-        readonly text: string;
-        readonly decoder: string;
-      }
-    | { readonly _tag: "Image"; readonly data: Readonly<Buffer> };
+  readonly body: FetchPageBody;
 };
 
 export class UnsupportedBinaryContent extends Schema.TaggedError<UnsupportedBinaryContent>()(
@@ -133,7 +137,7 @@ function projectResponse(
     meta.responseTruncated = true;
   }
   if (parsedContentType.kind === "raster-image") {
-    return Result.succeed({ meta, body: { _tag: "Image", data: response.body } });
+    return Result.succeed({ meta, body: FetchPageBody.Image({ data: response.body }) });
   }
 
   const decoded = decodeTextBuffer(response.body, parsedContentType.charset, {
@@ -150,12 +154,11 @@ function projectResponse(
   }
   return Result.succeed({
     meta,
-    body: {
-      _tag: "Text",
+    body: FetchPageBody.Text({
       kind: parsedContentType.kind,
       text: converted.success,
       decoder: decoded.decoder,
-    },
+    }),
   });
 }
 

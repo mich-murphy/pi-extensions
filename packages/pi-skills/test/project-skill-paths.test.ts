@@ -9,11 +9,11 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { Result } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerPiSkills } from "../index";
 import type { ToggleHandlers } from "../index";
 import { discoverProjectSkillPaths } from "../project-skill-paths";
-import { ok } from "../result";
 import type { ToggleStateStore } from "../state";
 
 const temporaryDirectories: string[] = [];
@@ -262,8 +262,8 @@ describe("discoverProjectSkillPaths", () => {
       exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     };
     const store: ToggleStateStore = {
-      load: () => ok({ files: new Map(), repositories: new Map() }),
-      set: () => ok({ files: new Map(), repositories: new Map() }),
+      load: () => Result.succeed({ files: new Map(), repositories: new Map() }),
+      set: () => Result.succeed({ files: new Map(), repositories: new Map() }),
     };
     registerPiSkills(piDouble, store);
     const discover = requiredDiscover(handlers);

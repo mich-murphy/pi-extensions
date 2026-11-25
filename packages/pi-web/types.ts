@@ -13,15 +13,26 @@ export type WebFetchFormat = "markdown" | "text" | "html";
 export type SearchProviderName = "exa" | "parallel" | "brave";
 export type ContentKind = "html" | "text" | "raster-image" | "svg" | "binary";
 
+const EmptyUrl = Schema.TaggedStruct("EmptyUrl", {});
+const UnsupportedUrlProtocol = Schema.TaggedStruct("UnsupportedUrlProtocol", {
+  protocol: Schema.optionalKey(Schema.String),
+});
+const InvalidUrl = Schema.TaggedStruct("InvalidUrl", { input: Schema.Redacted(Schema.String) });
+const UrlCredentialsUnsupported = Schema.TaggedStruct("UrlCredentialsUnsupported", {
+  url: Schema.Redacted(Schema.String),
+});
+
 export const ParsePublicHttpUrlError = Schema.Union([
-  Schema.TaggedStruct("EmptyUrl", {}),
-  Schema.TaggedStruct("UnsupportedUrlProtocol", { protocol: Schema.optionalKey(Schema.String) }),
-  Schema.TaggedStruct("InvalidUrl", { input: Schema.Redacted(Schema.String) }),
-  Schema.TaggedStruct("UrlCredentialsUnsupported", { url: Schema.Redacted(Schema.String) }),
+  EmptyUrl,
+  UnsupportedUrlProtocol,
+  InvalidUrl,
+  UrlCredentialsUnsupported,
 ]);
 export type ParsePublicHttpUrlError = typeof ParsePublicHttpUrlError.Type;
 
-export type ParseSearchQueryError = { readonly _tag: "EmptySearchQuery" };
+const EmptySearchQuery = Schema.TaggedStruct("EmptySearchQuery", {});
+
+export type ParseSearchQueryError = typeof EmptySearchQuery.Type;
 
 export type NormalizedSearchResult = {
   readonly title: string;
@@ -65,7 +76,7 @@ export function parsePublicHttpUrl(
 ): Result.Result<PublicHttpUrl, ParsePublicHttpUrlError> {
   const trimmed = input.trim();
   if (!trimmed) {
-    return Result.fail({ _tag: "EmptyUrl" });
+    return Result.fail(EmptyUrl.make({}));
   }
 
   const schemeMatch = /^(?<scheme>[a-z][a-z0-9+.-]*):/iu.exec(trimmed);
@@ -73,20 +84,20 @@ export function parsePublicHttpUrl(
   const normalized = trimmed.toLowerCase();
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
     if (protocol !== undefined) {
-      return Result.fail({ _tag: "UnsupportedUrlProtocol", protocol: `${protocol}:` });
+      return Result.fail(UnsupportedUrlProtocol.make({ protocol: `${protocol}:` }));
     }
-    return Result.fail({ _tag: "UnsupportedUrlProtocol" });
+    return Result.fail(UnsupportedUrlProtocol.make({}));
   }
 
   let url: URL;
   try {
     url = new URL(trimmed);
   } catch {
-    return Result.fail({ _tag: "InvalidUrl", input: Redacted.make(trimmed) });
+    return Result.fail(InvalidUrl.make({ input: Redacted.make(trimmed) }));
   }
 
   if (url.username || url.password) {
-    return Result.fail({ _tag: "UrlCredentialsUnsupported", url: Redacted.make(url.toString()) });
+    return Result.fail(UrlCredentialsUnsupported.make({ url: Redacted.make(url.toString()) }));
   }
 
   return Result.succeed(NormalizedPublicHttpUrl.make(url.toString()));
@@ -103,7 +114,7 @@ export const isPublicHttpUrl = Schema.is(
 
 export function parseSearchQuery(input: string): Result.Result<SearchQuery, ParseSearchQueryError> {
   const query = input.trim();
-  return isSearchQuery(query) ? Result.succeed(query) : Result.fail({ _tag: "EmptySearchQuery" });
+  return isSearchQuery(query) ? Result.succeed(query) : Result.fail(EmptySearchQuery.make({}));
 }
 
 function isSearchQuery(value: string): value is SearchQuery {

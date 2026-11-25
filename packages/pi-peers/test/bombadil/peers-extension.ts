@@ -1,7 +1,7 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 
 const TOKEN = /peer-msg-\d+/gu;
 let calls = 0;
@@ -51,7 +51,7 @@ function registerProbe(pi: ExtensionAPI): void {
       return;
     }
     const taken = decodeTaken(event.details);
-    if (taken._tag === "None") {
+    if (Option.isNone(taken)) {
       return;
     }
     for (const {

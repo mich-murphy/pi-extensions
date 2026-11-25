@@ -2,15 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 import { diagnosticText } from "./diagnostic-text";
 import { RepositoryLocator } from "./repository";
 import { parseResourcePath } from "./resource-path";
 import type { ResourcePath } from "./resource-path";
 import { emptyOverrides, isGlobalResourcePath, isToggleValue } from "./resources";
 import type { ToggleOverrides, ToggleValue } from "./resources";
-import { err, ok } from "./result";
-import type { Result } from "./result";
 
 const STATE_VERSION = 7;
 const RESET_ADVICE = "Fix the file, or remove it to reset all toggles.";
@@ -96,7 +94,7 @@ export type ToggleStateError =
   | ToggleStateTooNew
   | ToggleStateMalformed;
 
-export type ToggleStateResult = Result<ToggleOverrides, ToggleStateError>;
+export type ToggleStateResult = Result.Result<ToggleOverrides, ToggleStateError>;
 
 export type ToggleStateStore = {
   readonly load: () => ToggleStateResult;
@@ -124,14 +122,14 @@ export class ToggleStateFile implements ToggleStateStore {
     origin?: "global" | "project",
   ): ToggleStateResult {
     const stored = this.read("update");
-    if (stored._tag === "err") {
+    if (Result.isFailure(stored)) {
       return stored;
     }
     return fileSystem("update", this.path, () => {
       const files = new Map(
-        [...stored.value.files].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
+        [...stored.success.files].filter(([path]) => resourceExistsOrIsUnverifiable(path)),
       );
-      const repositories = new Map(stored.value.repositories);
+      const repositories = new Map(stored.success.repositories);
       const location =
         origin === "global" || isGlobalResourcePath(id)
           ? undefined
@@ -168,7 +166,7 @@ export class ToggleStateFile implements ToggleStateStore {
     }
     const legacy =
       this.legacyPath === undefined ? undefined : readStateFile(operation, this.legacyPath);
-    return legacy ?? ok(emptyOverrides());
+    return legacy ?? Result.succeed(emptyOverrides());
   }
 
   private write(overrides: ToggleOverrides): void {
@@ -197,22 +195,22 @@ function readStateFile(
   path: string,
 ): ToggleStateResult | undefined {
   const content = fileSystem(operation, path, () => readFileSync(path, "utf8"));
-  if (content._tag === "ok") {
-    return parseState(path, content.value);
+  if (Result.isSuccess(content)) {
+    return parseState(path, content.success);
   }
-  return content.error.code === "ENOENT" ? undefined : content;
+  return content.failure.code === "ENOENT" ? undefined : Result.fail(content.failure);
 }
 
 function fileSystem<A>(
   operation: ToggleStateUnavailable["operation"],
   path: string,
   run: () => A,
-): Result<A, ToggleStateUnavailable> {
+): Result.Result<A, ToggleStateUnavailable> {
   try {
-    return ok(run());
+    return Result.succeed(run());
   } catch (cause) {
     if (cause instanceof Error && "syscall" in cause && "code" in cause) {
-      return err(new ToggleStateUnavailable(operation, path, String(cause.code), cause));
+      return Result.fail(new ToggleStateUnavailable(operation, path, String(cause.code), cause));
     }
     throw cause;
   }
@@ -235,24 +233,24 @@ function parseState(path: string, content: string): ToggleStateResult {
     state = JSON.parse(content);
   } catch (cause) {
     if (cause instanceof SyntaxError) {
-      return err(new ToggleStateInvalidJson(path, cause));
+      return Result.fail(new ToggleStateInvalidJson(path, cause));
     }
     throw cause;
   }
   if (!isStateDocument(state)) {
-    return err(new ToggleStateMalformed(path, undefined));
+    return Result.fail(new ToggleStateMalformed(path, undefined));
   }
   if (state.version > STATE_VERSION) {
-    return err(new ToggleStateTooNew(path, state.version));
+    return Result.fail(new ToggleStateTooNew(path, state.version));
   }
   if (Number.isInteger(state.version) && state.version < 4) {
-    return ok(emptyOverrides());
+    return Result.succeed(emptyOverrides());
   }
   if (state.version === 7) {
     return parsePolicy(path, state);
   }
   if (state.version !== 4 && state.version !== 5 && state.version !== 6) {
-    return err(new ToggleStateMalformed(path, undefined));
+    return Result.fail(new ToggleStateMalformed(path, undefined));
   }
   return migrateLegacyState(
     path,
@@ -267,7 +265,7 @@ function migrateLegacyState(
   entries: StateValue | undefined,
 ): ToggleStateResult {
   if (!isStateRecord(entries)) {
-    return err(new ToggleStateMalformed(path, undefined));
+    return Result.fail(new ToggleStateMalformed(path, undefined));
   }
   const files = new Map<ResourcePath, ToggleValue>();
   const repositories = new Map<string, Map<string, ToggleValue>>();
@@ -276,7 +274,7 @@ function migrateLegacyState(
     const id = parseResourcePath(key);
     const value = version === 6 ? entry : migrateEnabledResource(entry);
     if (!(id && isToggleValue(value))) {
-      return err(new ToggleStateMalformed(path, key));
+      return Result.fail(new ToggleStateMalformed(path, key));
     }
     const location = isGlobalResourcePath(id) ? undefined : locator.locate(id);
     if (location === undefined) {
@@ -289,7 +287,7 @@ function migrateLegacyState(
     }
     repositories.set(location.repository, repository);
   }
-  return ok({ files, repositories });
+  return Result.succeed({ files, repositories });
 }
 
 function migrateEnabledResource(entry: StateValue): ToggleValue | undefined {
@@ -301,69 +299,69 @@ function migrateEnabledResource(entry: StateValue): ToggleValue | undefined {
 
 function parsePolicy(path: string, state: StateRecord): ToggleStateResult {
   const files = parseFileOverrides(path, state.files);
-  if (files._tag === "err") {
-    return files;
+  if (Result.isFailure(files)) {
+    return Result.fail(files.failure);
   }
   const repositories = parseRepositoryOverrides(path, state.repositories);
-  if (repositories._tag === "err") {
-    return repositories;
+  if (Result.isFailure(repositories)) {
+    return Result.fail(repositories.failure);
   }
-  return ok({ files: files.value, repositories: repositories.value });
+  return Result.succeed({ files: files.success, repositories: repositories.success });
 }
 
 function parseFileOverrides(
   path: string,
   entries: StateValue | undefined,
-): Result<Map<ResourcePath, ToggleValue>, ToggleStateMalformed> {
+): Result.Result<Map<ResourcePath, ToggleValue>, ToggleStateMalformed> {
   if (!isStateRecord(entries)) {
-    return err(new ToggleStateMalformed(path, undefined));
+    return Result.fail(new ToggleStateMalformed(path, undefined));
   }
   const files = new Map<ResourcePath, ToggleValue>();
   for (const [key, value] of Object.entries(entries)) {
     const id = parseResourcePath(key);
     if (!(id && isToggleValue(value)) || files.has(id)) {
-      return err(new ToggleStateMalformed(path, key));
+      return Result.fail(new ToggleStateMalformed(path, key));
     }
     files.set(id, value);
   }
-  return ok(files);
+  return Result.succeed(files);
 }
 
 function parseRepositoryOverrides(
   path: string,
   entries: StateValue | undefined,
-): Result<Map<string, Map<string, ToggleValue>>, ToggleStateMalformed> {
+): Result.Result<Map<string, Map<string, ToggleValue>>, ToggleStateMalformed> {
   if (!isStateRecord(entries)) {
-    return err(new ToggleStateMalformed(path, undefined));
+    return Result.fail(new ToggleStateMalformed(path, undefined));
   }
   const repositories = new Map<string, Map<string, ToggleValue>>();
   for (const [repository, resources] of Object.entries(entries)) {
     const id = parseResourcePath(repository);
     if (!id || !isStateRecord(resources) || repositories.has(id)) {
-      return err(new ToggleStateMalformed(path, repository));
+      return Result.fail(new ToggleStateMalformed(path, repository));
     }
     const parsed = parseRelativeOverrides(path, resources);
-    if (parsed._tag === "err") {
-      return parsed;
+    if (Result.isFailure(parsed)) {
+      return Result.fail(parsed.failure);
     }
-    repositories.set(id, parsed.value);
+    repositories.set(id, parsed.success);
   }
-  return ok(repositories);
+  return Result.succeed(repositories);
 }
 
 function parseRelativeOverrides(
   path: string,
   entries: StateRecord,
-): Result<Map<string, ToggleValue>, ToggleStateMalformed> {
+): Result.Result<Map<string, ToggleValue>, ToggleStateMalformed> {
   const resources = new Map<string, ToggleValue>();
   for (const [key, value] of Object.entries(entries)) {
     const relativePath = key.replace(/\/+$/u, "");
     if (!validRelativePath(relativePath) || !isToggleValue(value) || resources.has(relativePath)) {
-      return err(new ToggleStateMalformed(path, key));
+      return Result.fail(new ToggleStateMalformed(path, key));
     }
     resources.set(relativePath, value);
   }
-  return ok(resources);
+  return Result.succeed(resources);
 }
 
 function validRelativePath(path: string): boolean {

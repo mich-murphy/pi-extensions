@@ -3,8 +3,7 @@ import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
-import type { CaffeinateNotice } from "../coffee-lifecycle";
+import { CaffeinateNotice, CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 const ACTIONS = [
@@ -34,12 +33,14 @@ class Child {
   }
   exit(): void {
     this.ended = true;
-    this.listener?.({ _tag: "exited", code: 1, signal: null });
+    this.listener?.(CaffeinateNotice.exited({ code: 1, signal: null }));
   }
   fail(): void {
     this.ended = true;
     const cause = new Error("boom");
-    this.listener?.({ _tag: "failed", error: new CaffeinateProcessError("start", "EPERM", cause) });
+    this.listener?.(
+      CaffeinateNotice.failed({ error: new CaffeinateProcessError("start", "EPERM", cause) }),
+    );
   }
 }
 

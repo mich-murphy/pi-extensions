@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { resourcePathId } from "../resource-path";
@@ -121,18 +122,18 @@ function inTemporaryDirectory(run: (directory: string) => void): void {
 }
 
 function assertWellFormed(result: ToggleStateResult): void {
-  if (result._tag === "err") {
+  if (Result.isFailure(result)) {
     stats.err += 1;
-    assert.ok(ERROR_TAGS.has(result.error._tag), result.error._tag);
+    assert.ok(ERROR_TAGS.has(result.failure._tag), result.failure._tag);
     return;
   }
   stats.ok += 1;
-  for (const [path, value] of result.value.files) {
+  for (const [path, value] of result.success.files) {
     assertAbsoluteNormalized(path);
     assert.ok(!path.includes("\0"), path);
     assert.ok(isToggleValue(value), value);
   }
-  for (const [repository, entries] of result.value.repositories) {
+  for (const [repository, entries] of result.success.repositories) {
     assertAbsoluteNormalized(repository);
     for (const [path, value] of entries) {
       assertRelativeEntry(path);
@@ -197,10 +198,9 @@ function assertLoads(fixture: Fixture, model: ReadonlyMap<ResourcePath, ToggleVa
   const repositories = entries.size === 0 ? new Map() : new Map([[fixture.repository, entries]]);
   for (const store of [fixture.store, new ToggleStateFile(fixture.statePath)]) {
     const loaded = store.load();
-    assert.equal(loaded._tag, "ok");
-    assert.ok(loaded._tag === "ok");
-    assert.deepEqual(loaded.value.files, files);
-    assert.deepEqual(loaded.value.repositories, repositories);
+    assert.ok(Result.isSuccess(loaded));
+    assert.deepEqual(loaded.success.files, files);
+    assert.deepEqual(loaded.success.repositories, repositories);
   }
 }
 
@@ -220,7 +220,7 @@ function applySet(fixture: Fixture, path: ResourcePath, value: ToggleValue | "de
     fixture.model.set(path, value);
   }
   const result = fixture.store.set(path, value);
-  assert.equal(result._tag, "ok");
+  assert.ok(Result.isSuccess(result));
   assertLoads(fixture, fixture.model);
 }
 
@@ -232,9 +232,9 @@ function probe(fixture: Fixture, path: ResourcePath): void {
     return;
   }
   const before = snapshot(fixture.statePath);
-  assert.equal(fixture.store.set(path, "enabled")._tag, "ok");
+  assert.ok(Result.isSuccess(fixture.store.set(path, "enabled")));
   assertLoads(fixture, new Map([...fixture.model, [path, "enabled"]]));
-  assert.equal(fixture.store.set(path, "default")._tag, "ok");
+  assert.ok(Result.isSuccess(fixture.store.set(path, "default")));
   assertLoads(fixture, fixture.model);
   const after = snapshot(fixture.statePath);
   if (before === undefined) {

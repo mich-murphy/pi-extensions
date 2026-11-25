@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Data } from "effect";
 import { onOffCommand } from "../shared/on-off-command";
 import type { OnOffCommand } from "../shared/on-off-command";
 
@@ -20,13 +21,12 @@ export class CaffeinateProcessError extends Error {
   }
 }
 
-export type CaffeinateNotice =
-  | {
-      readonly _tag: "exited";
-      readonly code: number | null;
-      readonly signal: NodeJS.Signals | null;
-    }
-  | { readonly _tag: "failed"; readonly error: Readonly<CaffeinateProcessError> };
+export type CaffeinateNotice = Data.TaggedEnum<{
+  exited: { readonly code: number | null; readonly signal: NodeJS.Signals | null };
+  failed: { readonly error: Readonly<CaffeinateProcessError> };
+}>;
+
+export const CaffeinateNotice = Data.taggedEnum<CaffeinateNotice>();
 
 export type CaffeinateProcess = {
   readonly onNotice: (listener: (notice: CaffeinateNotice) => void) => void;
@@ -113,7 +113,7 @@ export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDepen
         return;
       }
       held = undefined;
-      if (notice._tag === "failed") {
+      if (CaffeinateNotice.$is("failed")(notice)) {
         notify(ctx, `Coffee: ${notice.error.message}`, "error");
         return;
       }

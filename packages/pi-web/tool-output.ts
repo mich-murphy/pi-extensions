@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, Schema } from "effect";
 import { Type } from "typebox";
+import { FetchPageBody } from "./fetch-page";
 import type { FetchPageResult } from "./fetch-page";
 import { WEB_FETCH_FORMATS } from "./settings";
 import { writeTempTextFile } from "./temp";
@@ -268,7 +269,7 @@ export function projectFetchResult(
   if (meta.charset !== undefined) {
     safeMeta.charset = redactSecrets(meta.charset, options.secrets);
   }
-  if (body._tag === "Image") {
+  if (FetchPageBody.$is("Image")(body)) {
     const note = redactSecrets(
       `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
       options.secrets,

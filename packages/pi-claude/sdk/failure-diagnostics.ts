@@ -1,4 +1,4 @@
-import { absurd } from "effect/Function";
+import { Match, Predicate } from "effect";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import type {
   SdkQueryError,
@@ -53,10 +53,10 @@ function textKind(text: string): SdkFailureKind {
 }
 
 function queryFailureKind({ cause, reason }: SdkQueryError): SdkFailureKind {
-  if (reason._tag === "WorkingDirectoryUnavailable") {
+  if (Predicate.isTagged("WorkingDirectoryUnavailable")(reason)) {
     return "provider";
   }
-  return reason._tag === "Cancelled"
+  return Predicate.isTagged("Cancelled")(reason)
     ? "cancelled"
     : textKind(cause instanceof Error ? cause.message : String(cause));
 }
@@ -87,44 +87,22 @@ function resultFailureKind(error: SdkResultError): SdkFailureKind {
   return isResultKind(category) ? category : "provider";
 }
 
-function failureKind(error: SdkTurnFailure): SdkFailureKind {
-  switch (error._tag) {
-    case "SdkInstrumentationError": {
-      return "provider";
-    }
-    case "SdkProviderDefect": {
-      return "defect";
-    }
-    case "SdkInternalContinuationError": {
-      return "internal-continuation";
-    }
-    case "SdkStreamInterruptedError": {
-      return "stream-interrupted";
-    }
-    case "SdkProtocolError": {
-      return "protocol";
-    }
-    case "SdkToolContractError":
-    case "InvalidDeferredCallLimitError": {
-      return "tool-contract";
-    }
-    case "SdkQueryError": {
-      return queryFailureKind(error);
-    }
-    case "SdkResultError": {
-      return resultFailureKind(error);
-    }
-    case "SdkOverageError": {
-      return "usage-limit";
-    }
-    case "SdkMissingResultError": {
-      return "provider";
-    }
-    default: {
-      return absurd(error);
-    }
-  }
-}
+const failureKind = Match.type<SdkTurnFailure>().pipe(
+  Match.withReturnType<SdkFailureKind>(),
+  Match.tagsExhaustive({
+    SdkInstrumentationError: () => "provider",
+    SdkProviderDefect: () => "defect",
+    SdkInternalContinuationError: () => "internal-continuation",
+    SdkStreamInterruptedError: () => "stream-interrupted",
+    SdkProtocolError: () => "protocol",
+    SdkToolContractError: () => "tool-contract",
+    InvalidDeferredCallLimitError: () => "tool-contract",
+    SdkQueryError: queryFailureKind,
+    SdkResultError: resultFailureKind,
+    SdkOverageError: () => "usage-limit",
+    SdkMissingResultError: () => "provider",
+  }),
+);
 
 type FailureDiagnostic = {
   -readonly [Key in keyof SdkFailureDiagnostic]: SdkFailureDiagnostic[Key];
@@ -136,16 +114,16 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     kind: failureKind(error),
     errorTag: error._tag,
   };
-  if (error._tag === "SdkToolContractError") {
+  if (Predicate.isTagged("SdkToolContractError")(error)) {
     diagnostic.toolContract = error.reason;
   }
-  if (error._tag === "SdkQueryError") {
+  if (Predicate.isTagged("SdkQueryError")(error)) {
     diagnostic.operation = error.operation;
   }
-  if (error._tag === "SdkStreamInterruptedError") {
+  if (Predicate.isTagged("SdkStreamInterruptedError")(error)) {
     diagnostic.streamInterruption = error.evidence;
   }
-  if (error._tag === "SdkResultError" && error.terminalReason !== undefined) {
+  if (Predicate.isTagged("SdkResultError")(error) && error.terminalReason !== undefined) {
     diagnostic.terminalReason = safeTerminalReason(error.terminalReason);
   }
   return diagnostic;

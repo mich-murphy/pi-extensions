@@ -3,6 +3,7 @@ import * as gs from "@hegeldev/hegel/generators";
 import { Effect, Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
+import { FetchPageBody } from "../fetch-page";
 import type { FetchPageResult } from "../fetch-page";
 import { STRUCTURED_OUTPUT_MAX_BYTES, projectFetchResult, redactSecrets } from "../tool-output";
 import type { ToolOutputStore } from "../tool-output";
@@ -29,7 +30,7 @@ function textResult(text: string): FetchPageResult {
       charset: UTF8,
       bytes: text.length,
     },
-    body: { _tag: "Text", kind: "text", text, decoder: UTF8 },
+    body: FetchPageBody.Text({ kind: "text", text, decoder: UTF8 }),
   };
 }
 

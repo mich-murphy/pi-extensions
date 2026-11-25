@@ -1,6 +1,6 @@
 import { Duration, Effect, Result, Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import { FetchPage } from "../fetch-page";
+import { FetchPage, FetchPageBody } from "../fetch-page";
 import {
   HttpStatusRejected,
   PrivateHostBlocked,
@@ -424,7 +424,7 @@ describe("webfetch tool", () => {
             charset: "sekrit-key",
             bytes: raw.byteLength,
           },
-          body: { _tag: "Image" as const, data: raw },
+          body: FetchPageBody.Image({ data: raw }),
         }),
     });
     const tool = createWebFetchTool({

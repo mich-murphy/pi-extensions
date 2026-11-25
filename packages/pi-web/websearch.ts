@@ -1,7 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Cause, Effect, Exit, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Match, Result, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { resolveCredentialSnapshot } from "./credentials";
@@ -214,10 +214,13 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
 function renderWebSearchFailure(
   error: SearchChainError | ToolOutputStoreError | CredentialFailure,
 ): string {
-  if (error._tag === "OutputStoreError") {
-    return `Could not save full websearch output to ${error.path}: ${error.reason}`;
-  }
-  return error._tag === "CredentialFailure" ? `${error.provider}: ${error.message}` : error.message;
+  return Match.valueTags(error, {
+    OutputStoreError: ({ path, reason }) =>
+      `Could not save full websearch output to ${path}: ${reason}`,
+    CredentialFailure: ({ provider, message }) => `${provider}: ${message}`,
+    UnknownProvider: ({ message }) => message,
+    AllProvidersFailed: ({ message }) => message,
+  });
 }
 
 const runWebSearch = Effect.fnUntraced(function* (

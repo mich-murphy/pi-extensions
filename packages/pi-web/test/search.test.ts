@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Duration, Effect, Layer, Result, Schema } from "effect";
+import { Duration, Effect, Layer, Predicate, Result, Schema } from "effect";
 import { CredentialFailure } from "../credentials";
 import type { CredentialSnapshot } from "../credentials";
 import { McpClients } from "../mcp";
@@ -136,7 +136,7 @@ describe("searchWithFallback", () => {
       );
 
       assert(Result.isFailure(result));
-      assert(result.failure._tag === "AllProvidersFailed");
+      assert(Predicate.isTagged("AllProvidersFailed")(result.failure));
       expect(result.failure.attempts).toStrictEqual([
         "exa: request to mcp.exa.ai failed",
         "exa: TLS certificate error for mcp.exa.ai (CERT_HAS_EXPIRED)",
@@ -274,7 +274,7 @@ describe("free-tier rate limits", () => {
       );
 
       assert(Result.isFailure(result));
-      assert(result.failure._tag === "AllProvidersFailed");
+      assert(Predicate.isTagged("AllProvidersFailed")(result.failure));
       expect(result.failure.message).toBe(
         "Free-tier rate limit on exa, parallel. Ask the user to add a key with `/login pi-web-exa`.",
       );
@@ -313,7 +313,7 @@ describe("free-tier rate limits", () => {
       );
 
       assert(Result.isFailure(result));
-      assert(result.failure._tag === "AllProvidersFailed");
+      assert(Predicate.isTagged("AllProvidersFailed")(result.failure));
       expect(result.failure.freeTierRateLimited).toBeUndefined();
       expect(result.failure.attempts).toStrictEqual([
         "exa: rejected (HTTP 429)",
@@ -362,7 +362,7 @@ function attemptFor(error: ProviderError): Effect.Effect<string> {
       searchWithFallback([failingProvider(error)], { query: QUERY, maxResults: 8 }),
     );
     assert(Result.isFailure(result));
-    assert(result.failure._tag === "AllProvidersFailed");
+    assert(Predicate.isTagged("AllProvidersFailed")(result.failure));
     const [attempt] = result.failure.attempts;
     assert(attempt !== undefined);
     return attempt;

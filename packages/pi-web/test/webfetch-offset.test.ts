@@ -1,6 +1,7 @@
 import { Effect, Result, Schema } from "effect";
 import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";
+import { FetchPageBody } from "../fetch-page";
 import type { FetchPageResult } from "../fetch-page";
 import {
   projectFetchResult,
@@ -42,7 +43,7 @@ function textResult(text: string): FetchPageResult {
       charset: UTF8,
       bytes: Buffer.byteLength(text),
     },
-    body: { _tag: "Text", kind: "text", text, decoder: UTF8 },
+    body: FetchPageBody.Text({ kind: "text", text, decoder: UTF8 }),
   };
 }
 
@@ -166,7 +167,7 @@ describe("webfetch offset paging", () => {
         contentType: "image/png",
         bytes: 4,
       },
-      body: { _tag: "Image", data: Buffer.from([1, 2, 3, 4]) },
+      body: FetchPageBody.Image({ data: Buffer.from([1, 2, 3, 4]) }),
     };
     const options = { store: liveToolOutputStore(), secrets: [] };
     await expect(
