@@ -5,15 +5,19 @@ import type { CacheTtl } from "../sdk/prompt-stream";
 import { drain, textBlock } from "./fixtures";
 
 const CACHE_CONTROL = { type: "ephemeral" };
+
 const UNSUPPORTED_NOTE = {
   type: "text",
   text: '[Image data omitted from transcript: unsupported mime type "image/bmp"]',
 };
+
 const png = { data: "c3VwcG9ydGVk", mediaType: "image/png" };
+
 const pngBlock = {
   type: "image",
   source: { type: "base64", media_type: "image/png", data: png.data },
 };
+
 const bmp = { data: "dW5zdXBwb3J0ZWQ=", mediaType: "image/bmp" };
 
 async function contentOf(
@@ -24,6 +28,7 @@ async function contentOf(
   const messages = await drain(buildPromptStream(blocks, cacheBreakpoints, ttl));
   expect(messages).toHaveLength(1);
   expect(messages[0]).toMatchObject({ type: "user", parent_tool_use_id: null });
+
   return messages[0]?.message.content;
 }
 

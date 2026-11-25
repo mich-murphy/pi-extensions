@@ -13,11 +13,13 @@ async function composedExtension() {
   const { pi, tools, emit, ctx, fixture } = await fakePi();
   webExtension(pi);
   await emit("session_start");
+
   const login = async (key: string) =>
     fixture.runtime.login(WEB_AUTH_PROVIDERS.exa.id, "api_key", {
       prompt: async () => key,
       notify: () => undefined,
     });
+
   return {
     webfetch: tools.find((tool) => tool.name === "webfetch"),
     websearch: tools.find((tool) => tool.name === "websearch"),
@@ -34,6 +36,7 @@ describe("the composed extension", () => {
     for (const variable of ["EXA_API_KEY", "PARALLEL_API_KEY", "BRAVE_API_KEY"]) {
       vi.stubEnv(variable, "");
     }
+
     clearApiKeyCache();
     providerCalls.length = 0;
     vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -41,6 +44,7 @@ describe("the composed extension", () => {
         url: input instanceof Request ? input.url : input.toString(),
         apiKey: new Headers(init?.headers).get("x-api-key"),
       });
+
       return new Response(
         JSON.stringify({
           results: [{ title: "Composed result", url: "https://example.com/a", text: "body" }],
@@ -77,6 +81,7 @@ describe("the composed extension", () => {
     const { websearch, emit, context, login } = await composedExtension();
     await login(KEY);
     assert(websearch !== undefined);
+
     const text = textOf(
       await websearch.execute(
         "call",
@@ -86,6 +91,7 @@ describe("the composed extension", () => {
         context,
       ),
     );
+
     expect(text).toContain("Composed result");
     expect(providerCalls).toHaveLength(1);
     expect(providerCalls[0]?.apiKey).toBe(KEY);

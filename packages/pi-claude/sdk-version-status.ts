@@ -12,6 +12,7 @@ import {
 const execFileAsync = promisify(execFile);
 
 const SEMANTIC_VERSION = /(?:^|\D)(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\D|$)/u;
+
 const decodeSdkPackageMetadata = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
     Schema.Struct({ version: Schema.String, claudeCodeVersion: Schema.String }),
@@ -87,32 +88,40 @@ export type ClaudeSdkVersionReads = {
 
 function parseSemanticVersion(input: string): SemanticVersion | undefined {
   const parts = SEMANTIC_VERSION.exec(input)?.groups;
+
   if (parts === undefined) {
     return undefined;
   }
+
   const version = [Number(parts.major), Number(parts.minor), Number(parts.patch)] as const;
+
   return version.every((part) => Number.isSafeInteger(part)) ? version : undefined;
 }
 
 function isNewer(candidate: SemanticVersion, baseline: SemanticVersion): boolean {
   const difference = candidate.map((part, index) => part - (baseline[index] ?? 0));
+
   return (difference.find((part) => part !== 0) ?? 0) > 0;
 }
 
 async function defaultReadSdkPackageMetadata(): Promise<string> {
   const sdkEntryUrl = import.meta.resolve("@anthropic-ai/claude-agent-sdk");
+
   return readFile(new URL("package.json", sdkEntryUrl), "utf8");
 }
 
 async function defaultReadInstalledClaudeVersion(): Promise<string> {
   const path = resolveClaudeExecutable(process.env);
+
   if (path === undefined) {
     throw Object.assign(new Error("claude not found"), { code: "ENOENT" });
   }
+
   const { stdout } = await execFileAsync(path, ["--version"], {
     encoding: "utf8",
     timeout: INSTALLED_VERSION_TIMEOUT_MS,
   });
+
   return stdout.trim();
 }
 
@@ -120,9 +129,11 @@ function classifyInstalledVersionFailure(cause: unknown): InstalledVersionFailur
   if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
     return "not-installed";
   }
+
   if (cause instanceof Error && Predicate.hasProperty(cause, "killed") && cause.killed === true) {
     return "timed-out";
   }
+
   return "failed";
 }
 
@@ -175,6 +186,7 @@ function parseVersion(
   output: string,
 ): Effect.Effect<SemanticVersion, ClaudeVersionParseError> {
   const version = parseSemanticVersion(output);
+
   return version === undefined
     ? Effect.fail(new ClaudeVersionParseError({ source, output }))
     : Effect.succeed(version);
@@ -183,12 +195,15 @@ function parseVersion(
 export const inspectClaudeSdkVersions = Effect.fn("inspectClaudeSdkVersions")(function* () {
   const sources = yield* ClaudeSdkVersionSources;
   const metadataText = yield* sources.readSdkPackageMetadata();
+
   const metadata = yield* decodeSdkPackageMetadata(metadataText).pipe(
     Effect.mapError((cause) => new ClaudeSdkMetadataError({ cause })),
   );
+
   const installedOutput = yield* sources.readInstalledClaudeVersion();
   const bundled = yield* parseVersion("expected", metadata.claudeCodeVersion);
   const installed = yield* parseVersion("installed", installedOutput);
+
   return {
     agentSdk: metadata.version,
     expectedClaudeCode: metadata.claudeCodeVersion,

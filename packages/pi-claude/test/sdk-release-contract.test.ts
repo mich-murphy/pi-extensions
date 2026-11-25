@@ -14,6 +14,7 @@ import {
 const decodePackage = Schema.decodeUnknownSync(
   Schema.Struct({ dependencies: Schema.Struct({ [AGENT_SDK_PACKAGE]: Schema.String }) }),
 );
+
 const decodeLock = Schema.decodeUnknownSync(
   Schema.Struct({
     packages: Schema.Record(
@@ -26,9 +27,11 @@ const decodeLock = Schema.decodeUnknownSync(
 describe("claude SDK release contract", () => {
   test("pins, locks, and live-attests the installed SDK version", async () => {
     const installed = await readInstalledSdk();
+
     const packageMetadata = decodePackage(
       await readJson(new URL("../package.json", import.meta.url)),
     );
+
     const lock = decodeLock(await readJson(new URL("../../../package-lock.json", import.meta.url)));
     const attestation = decodeReleaseContract(await readJson(RELEASE_CONTRACT_URL));
 
@@ -54,6 +57,7 @@ describe("claude SDK release contract", () => {
     const root = Schema.decodeUnknownSync(
       Schema.Struct({ overrides: Schema.Record(Schema.String, Schema.String) }),
     )(await readJson(new URL("../../../package.json", import.meta.url)));
+
     const lock = Schema.decodeUnknownSync(
       Schema.Struct({
         packages: Schema.Record(
@@ -65,9 +69,11 @@ describe("claude SDK release contract", () => {
         ),
       }),
     )(await readJson(new URL("../../../package-lock.json", import.meta.url)));
+
     const sdkEntry = Schema.decodeUnknownSync(
       Schema.Struct({ optionalDependencies: Schema.Record(Schema.String, Schema.String) }),
     )(lock.packages[`node_modules/${AGENT_SDK_PACKAGE}`]);
+
     const platforms = Object.keys(sdkEntry.optionalDependencies);
     const stub = "file:./packages/pi-claude/vendor/no-bundled-claude";
 

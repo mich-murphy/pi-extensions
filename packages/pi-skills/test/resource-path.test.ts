@@ -38,6 +38,7 @@ describe("resource paths", () => {
 
   test("does not dereference symlinks", () => {
     const directory = mkdtempSync(join(tmpdir(), "resource-path-"));
+
     try {
       const target = join(directory, "target");
       const link = join(directory, "link");

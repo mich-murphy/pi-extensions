@@ -10,6 +10,7 @@ describe("usage query isolation", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+
     if (claude !== undefined) {
       rmSync(claude.directory, { recursive: true, force: true });
     }

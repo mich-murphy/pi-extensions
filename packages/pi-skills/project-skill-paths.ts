@@ -41,6 +41,7 @@ async function reservedNativeSkillNames(
   await settingsManager.reload();
   const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
   const resolved = await packageManager.resolve(async () => "skip");
+
   return {
     collisionWinnerNames: skillNamesAtPaths(
       cwd,
@@ -61,6 +62,7 @@ export async function discoverProjectSkillPaths(
   loadedNativeNames: ReadonlySet<string> = new Set(),
 ): Promise<readonly string[]> {
   const roots = supplementalSkillDirectories(cwd).filter((path) => existsSync(path));
+
   if (roots.length === 0) {
     return [];
   }
@@ -71,12 +73,15 @@ export async function discoverProjectSkillPaths(
     skillPaths: roots,
     includeDefaults: false,
   });
+
   const reservations = await reservedNativeSkillNames(cwd, agentDir);
+
   const nativeNames = new Set([
     ...reservations.collisionWinnerNames,
     ...reservations.excludedSkillNames,
     ...loadedNativeNames,
   ]);
+
   const invalidPaths = new Set(
     result.diagnostics.flatMap((diagnostic) =>
       diagnostic.type !== "collision" && diagnostic.path !== undefined && diagnostic.path !== ""
@@ -84,6 +89,7 @@ export async function discoverProjectSkillPaths(
         : [],
     ),
   );
+
   return result.skills
     .filter((skill) => !invalidPaths.has(skill.filePath) && !nativeNames.has(skill.name))
     .map((skill) => skill.filePath);
@@ -91,11 +97,14 @@ export async function discoverProjectSkillPaths(
 
 function directoriesThroughGitRoot(cwd: string): readonly string[] {
   const directories: string[] = [];
+
   for (let directory = cwd; ; directory = dirname(directory)) {
     directories.push(directory);
+
     if (existsSync(join(directory, ".git"))) {
       return directories;
     }
+
     if (dirname(directory) === directory) {
       return [cwd];
     }

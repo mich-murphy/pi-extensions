@@ -39,6 +39,7 @@ import {
 } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
+
 const remote = [
   "Mode=One remote peer",
   "Trust=Create new pair",
@@ -55,18 +56,23 @@ async function requiredRepair(
   acquisition: Parameters<typeof repairRoute>[1],
 ): Promise<NonNullable<Awaited<ReturnType<typeof repairRoute>>>["screen"]> {
   const found = await repairRoute(agent, acquisition);
+
   if (found === undefined) {
     throw new Error("Expected a repair route");
   }
+
   return found.screen;
 }
 
 const isString = Schema.is(Schema.String);
+
 function requiredField(output: Schema.JsonObject, key: string): string {
   const value = output[key];
+
   if (!isString(value)) {
     throw new TypeError("Missing native pairing output");
   }
+
   return value;
 }
 
@@ -83,29 +89,35 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await rm(fixture.root, { recursive: true, force: true });
   });
   const plan = () => localPlan(defaultChoices("Capabilities"), setupPaths(agent).socket);
+
   async function versionOnlyCache(
     capabilities: readonly string[],
     afterReset = false,
     delegateLock = false,
   ) {
     const paths = setupPaths(agent);
+
     if (afterReset) {
       await applyLocal(agent, plan(), { acquire: async () => fixture.executable }, () => undefined);
       await resetLocal(agent);
     } else {
       await mkdir(paths.directory, { recursive: true, mode: 0o700 });
     }
+
     const executable = join(fixture.root, "SIMULATED-old-version-only");
     const marker = join(fixture.root, "OLD-LOCK-PAIR-OR-SPAWN-INVOKED");
     const lockLog = join(fixture.root, "SIMULATED-old-delegated-native-locks");
+
     const lock = delegateLock
       ? `if [ "$1" = "--setup-lock" ]; then\n  printf 'lock\\n' >> ${JSON.stringify(lockLog)}\n  exec ${JSON.stringify(fixture.executable)} "$@"\nfi\n`
       : "";
+
     const output = JSON.stringify({
       name: "pi-gateway",
       wireVersions: [2],
       capabilities: ["managed-on-demand-v1", ...capabilities],
     });
+
     await rm(executable, { force: true });
     await writeFile(
       executable,
@@ -114,8 +126,10 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     );
     const installed = JSON.stringify({ executable, sha256: await executableDigest(executable) });
     await writeFile(paths.installed, installed, { mode: 0o600 });
+
     return { paths, executable, marker, installed, lockLog };
   }
+
   test.each(["config-generation-v1", "gateway-control-v1"])(
     "hash-valid post-reset orphan missing %s acquires NEW native helper and archives exact descriptor",
     async (missing) => {
@@ -123,6 +137,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
         without(missing),
         true,
       );
+
       const oldBytes = await readFile(executable);
       await expect(reusableExecutable(agent)).resolves.toBeUndefined();
       const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
@@ -204,6 +219,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const { paths, executable, marker, installed } = await versionOnlyCache(
       GATEWAY_LOCAL_SETUP_CAPABILITIES,
     );
+
     const entries = await readdir(paths.directory);
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => executable);
     const prepare = vi.fn<(executable: string, plan: LocalPlan) => Promise<LocalPlan>>();
@@ -220,6 +236,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     const { paths, executable, marker, installed } = await versionOnlyCache(
       without("config-generation-v1"),
     );
+
     await rm(executable);
     await writeFile(
       executable,
@@ -252,24 +269,30 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await expect(readFile(paths.metadata)).resolves.toStrictEqual(metadata);
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
   });
+
   async function maskCommitted(capabilities: readonly string[]) {
     const masked = await versionOnlyCache(capabilities, false, true);
     const prior = decodeManaged(parseJson(await readFile(masked.paths.metadata)));
     const cache = decodeCached(parseJson(masked.installed));
     const record = { ...prior, executable: cache.executable, executableSha256: cache.sha256 };
     await writeFile(masked.paths.metadata, JSON.stringify(record));
+
     return { ...masked, record };
   }
+
   async function committedMask(capabilities: readonly string[]) {
     await applyLocal(agent, plan(), { acquire: async () => fixture.executable }, () => undefined);
+
     return maskCommitted(capabilities);
   }
+
   test.each(["config-generation-v1", "gateway-control-v1"])(
     "committed old helper missing %s can RESET through a version-mask seam delegating actual native lock",
     async (missing) => {
       const { paths, executable, marker, installed, lockLog } = await committedMask(
         without(missing),
       );
+
       const key = join(paths.directory, "retained-key");
       const floor = join(paths.directory, "retained-floor");
       await writeFile(key, "key sentinel");
@@ -339,12 +362,14 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
   });
   test("approved old-cap repair uses actual NEW native lock and retains live nonce/state/config without control", async () => {
     const selected = plan();
+
     const setup = await applyLocal(
       agent,
       selected,
       { acquire: async () => fixture.executable },
       () => undefined,
     );
+
     const session = new AdapterSession(
       selected.adapter,
       { machineId: selected.adapter.machineId, sessionId: freshId(), runtimeNonce: freshId() },
@@ -353,15 +378,18 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       () => undefined,
       reloadManagedLauncher(agent, selected.adapter, setup),
     );
+
     try {
       await session.reconnect();
       const state = session.state;
       const identity = session.peer;
       const beforeStatus = session.status();
       const inode = await stat(setup.socketPath);
+
       const { paths, marker, lockLog, record } = await maskCommitted(
         without("config-generation-v1"),
       );
+
       const preserved = [paths.adapter, paths.gateway];
       const before = await Promise.all(preserved.map(async (path) => readFile(path)));
       const floor = join(paths.directory, "retained-floor-key");
@@ -437,9 +465,11 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       backend: { acquire: async () => fixture.executable },
       description: "TEST actual native pair creation",
     });
+
     const pair = decodePairing(
       parseJson(await readFile(join(setupPaths(creator).directory, "pairing.json"))),
     );
+
     const offer = requiredField(pair.output, "offerPath");
     const root = requiredField(pair.output, "rootSha256");
     await setupCommand(
@@ -459,22 +489,27 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
         description: "TEST actual native pending Join",
       },
     );
+
     const { paths, executable, marker, lockLog } = await maskCommitted(
       GATEWAY_LOCAL_SETUP_CAPABILITIES,
     );
+
     const gateway = decodeGateway(parseJson(await readFile(paths.gateway)));
     expect(gateway.remote).toBeUndefined();
     const owned = [paths.adapter, paths.gateway, join(paths.directory, "pairing.json")];
     const before = await Promise.all(owned.map(async (path) => readFile(path)));
     const metadata = await readFile(paths.metadata);
+
     const acquire = vi
       .fn<SetupBackend["acquire"]>()
       .mockResolvedValueOnce(executable)
       .mockResolvedValue(fixture.executable);
+
     const acquisition = vi.fn<Parameters<typeof repairRoute>[1]>(async () => ({
       backend: { acquire },
       description: "TEST pending pairing repair",
     }));
+
     const route = async () => requiredRepair(agent, acquisition);
     await expect(consentOutcome(await route(), "review")).resolves.toBeUndefined();
     expect(acquisition).toHaveBeenCalledWith(true);
@@ -491,8 +526,10 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(lockLog)).toBe(false);
   });
+
   async function driftDuringAcquire(drift: string) {
     const state = await versionOnlyCache(without("config-generation-v1"));
+
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => {
       if (drift === "target") {
         await rm(state.executable);
@@ -507,10 +544,13 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
           "concurrent external bytes",
         );
       }
+
       return fixture.executable;
     });
+
     return { ...state, acquire };
   }
+
   test.each(["installed", "prepared", "target"])(
     "incompatible cache still refuses concurrent %s drift",
     async (drift) => {

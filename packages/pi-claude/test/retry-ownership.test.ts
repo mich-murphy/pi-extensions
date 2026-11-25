@@ -31,14 +31,17 @@ type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 
 const start = (id: string) =>
   streamEvent({ type: "message_start", message: { id, usage: { input_tokens: 100 } } });
+
 const stopped = (reason: string) =>
   streamEvent({
     type: "message_delta",
     delta: { stop_reason: reason },
     usage: { output_tokens: 20 },
   });
+
 const blockStop = streamEvent({ type: "content_block_stop", index: 0 });
 const messageStop = streamEvent({ type: "message_stop" });
+
 const apiRetry = {
   type: "system",
   subtype: "api_retry",
@@ -48,16 +51,19 @@ const apiRetry = {
   error_status: null,
   error: "unknown",
 };
+
 const apiErrorAssistant = (error: string) => ({
   type: "assistant",
   message: { usage: {}, content: [{ type: "text", text: "API Error: injected" }] },
   error,
 });
+
 const apiErrorResult = resultMessage({
   is_error: true,
   stop_reason: "stop_sequence",
   terminal_reason: "api_error",
 });
+
 const completed = [stopped("end_turn"), messageStop, resultMessage()];
 
 type Observed = { params?: SdkQueryParameters; consumedAfterRetry: boolean };
@@ -70,12 +76,14 @@ async function runMessages(
   sdkEnvironment: ReturnType<typeof subscriptionEnvironment> = DEFAULT_ENVIRONMENT,
 ) {
   const observed: Observed = { consumedAfterRetry: false };
+
   const runner = createClaudeAgentSdkRunner({
     claudeExecutable: "/usr/bin/claude",
     sdkEnvironment,
     async *runSdkQuery(params) {
       observed.params = params;
       let retried = false;
+
       for (const message of messages) {
         yield message;
         observed.consumedAfterRetry ||= retried;
@@ -83,15 +91,19 @@ async function runMessages(
       }
     },
   });
+
   const events = await drain(runner(requestFixture(), sonnet, options));
+
   return { events, observed };
 }
 
 function failure(events: readonly BridgeEvent[]): SdkTurnFailure {
   const last = events.at(-1);
+
   if (last?.type !== "failed") {
     throw new Error("test setup: expected the turn to fail");
   }
+
   return last.error;
 }
 
@@ -105,6 +117,7 @@ function expectInterruption(
 
 async function failureOf(messages: readonly unknown[]): Promise<SdkTurnFailure> {
   const { events } = await runMessages(messages);
+
   return failure(events);
 }
 
@@ -135,6 +148,7 @@ function retryable(error: SdkTurnFailure): boolean {
     errorMessage: formatSdkRunError(error),
     timestamp: 0,
   };
+
   return isRetryableAssistantError(message);
 }
 
@@ -198,6 +212,7 @@ describe("commit point: no resend after output reached Pi", () => {
       textDelta("REST"),
       ...completed,
     ]);
+
     const error = failure(events);
     expect(error._tag).toBe("SdkInternalContinuationError");
     expect(retryable(error)).toBe(false);
@@ -212,6 +227,7 @@ describe("commit point: no resend after output reached Pi", () => {
       messageStop,
       apiErrorResult,
     ]);
+
     const error = failure(events);
     expectInterruption(error, "api-error");
     expect(retryable(error)).toBe(true);
@@ -242,6 +258,7 @@ describe("Pi owns retries", () => {
       PATH: "/bin",
       CLAUDE_CODE_MAX_RETRIES: "10",
     });
+
     expect(observed.params?.options?.env?.CLAUDE_CODE_MAX_RETRIES).toBe(expected);
   });
 
@@ -303,6 +320,7 @@ const queryReasons = [
   SdkQueryFailureReason.cases.ProcessKilled.make({ signal: "SIGKILL" }),
   SdkQueryFailureReason.cases.Unclassified.make({}),
 ];
+
 const RETRYABLE_RESULT_CATEGORIES = new Set(["rate-limit", "server-error", "overloaded"]);
 
 const failuresByTag = {

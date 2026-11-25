@@ -13,6 +13,7 @@ import { decodeGateway } from "../onboarding/schema.js";
 
 const retired = ["read", "interest"] as const;
 const everyPermission = [...livePermissions, ...retired];
+
 type Policy = {
   machineId: string;
   scopeId: string;
@@ -55,19 +56,23 @@ function assertDropKeepsLiveGrants(tc: TestCase): void {
   const dropped = dropRetiredPermissions(gateway);
   assert.deepEqual(dropRetiredPermissions(dropped), dropped, "dropping twice changes more");
   const decoded = decodeGateway(gateway);
+
   const kept = decoded.policies.map((policy) => ({
     ...policy,
     permissions: [...policy.permissions],
   }));
+
   assert.deepEqual(grants(kept), grants(policies), "a live grant was lost or invented");
   assert.equal(
     kept.filter((policy) => policy.permissions.length === 0).length,
     policies.filter((policy) => policy.permissions.length === 0).length,
     "retirement left a policy with no permissions, which the gateway refuses to start with",
   );
+
   if (policies.every((policy) => grants([policy]).length === policy.permissions.length)) {
     assert.equal(JSON.stringify(dropped), JSON.stringify(gateway), "an untouched file changed");
   }
+
   const adapter = decodeConfiguration({
     machineId: "alpha",
     socketPath: "/tmp/g.sock",
@@ -75,6 +80,7 @@ function assertDropKeepsLiveGrants(tc: TestCase): void {
     label: "alpha",
     policies: policies.map(({ direction: _direction, ...policy }) => policy),
   });
+
   assert.deepEqual(
     adapter.policies.map((policy) => policy.permissions),
     kept.map((policy) => policy.permissions),

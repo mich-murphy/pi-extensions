@@ -11,6 +11,7 @@ export function assertModelMetadata(
     const direct = supportedModels.find(
       (candidate) => undatedModelId(candidate.value) === entry.sdkModel,
     );
+
     const metadata =
       direct ??
       (undatedModelId(entry.sdkModel) === entry.canonicalModel
@@ -20,16 +21,19 @@ export function assertModelMetadata(
               undatedModelId(candidate.resolvedModel) === entry.canonicalModel,
           )
         : undefined);
+
     assert(metadata !== undefined, `missing model metadata for ${entry.sdkModel}`);
     assert(metadata.resolvedModel !== undefined, `missing resolution for ${entry.sdkModel}`);
     expect(undatedModelId(metadata.resolvedModel), `${entry.id} metadata resolution`).toBe(
       entry.canonicalModel,
     );
+
     const {
       supportsAdaptiveThinking = false,
       supportsEffort = false,
       supportedEffortLevels = [],
     } = metadata;
+
     const adaptive = entry.canonicalModel !== "claude-haiku-4-5";
     expect(
       { supportsAdaptiveThinking, supportsEffort, supportedEffortLevels },

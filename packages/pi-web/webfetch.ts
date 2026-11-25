@@ -103,6 +103,7 @@ export function parseWebFetchParams(
   settings: Pick<WebToolsSettings, "fetch">,
 ): Result.Result<WebFetchParams, WebFetchInputError> {
   const url = parsePublicHttpUrl(params.url);
+
   if (Result.isFailure(url)) {
     return Result.fail(new InvalidFetchUrlInput({ reason: url.failure }));
   }
@@ -125,7 +126,9 @@ export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPag
       RESCUE_STATUSES.has(result.failure.status)
     );
   }
+
   const { body } = result.success;
+
   return (
     FetchPageBody.$is("Text")(body) &&
     body.kind === "html" &&
@@ -155,6 +158,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       context?: ToolCredentialContext,
     ) {
       const parsed = parseWebFetchParams(params, composition.settings);
+
       if (Result.isFailure(parsed)) {
         throw new Error(composition.redactText(parsed.failure.message));
       }
@@ -163,6 +167,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         allow: composition.settings.fetch.allowDomains,
         deny: composition.settings.fetch.denyDomains,
       });
+
       if (Result.isFailure(policy)) {
         throw new Error(
           Predicate.isTagged("DomainDenied")(policy.failure)
@@ -172,6 +177,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       }
 
       const redactor = createRequestRedactor(composition.redactText);
+
       const program = runWebFetch(parsed.success, (snapshot) => {
         redactor.capture(snapshot);
         const { url, format } = parsed.success;
@@ -180,20 +186,26 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
           details: { requestedUrl: redactor.redactText(url), format, bytes: 0 },
         });
       });
+
       const exit = await composition.runtime.runExit(
         withToolCredentials(program, composition, context),
         signal,
       );
+
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
+
       if (Cause.hasInterrupts(exit.cause)) {
         throw new Error("Web fetch cancelled");
       }
+
       const failure = Cause.findError(exit.cause);
+
       if (Result.isSuccess(failure)) {
         throw new Error(redactor.redactText(renderWebFetchFailure(failure.success)));
       }
+
       throw new Error("Web fetch failed unexpectedly (a pi-web bug). Ask the user to report it.");
     },
 
@@ -206,9 +218,11 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
         "accent",
         composition.redactText(displayText(redactUrlCredentialsForDisplay(args.url))),
       );
+
       if (args.format !== undefined && args.format !== "markdown") {
         text += theme.fg("muted", ` (${args.format})`);
       }
+
       return new Text(text, 0, 0);
     },
 
@@ -224,6 +238,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Fetching..."), 0, 0);
       }
+
       if (result.isError === true) {
         return new Text(
           theme.fg(
@@ -252,6 +267,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
             maxColumns: 220,
           });
         }
+
         if (Schema.is(Schema.String)(details?.fullOutputPath)) {
           text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
         }
@@ -266,25 +282,33 @@ function fetchedBadges(details: WebFetchDetails | undefined, theme: RenderTheme)
   if (details === undefined) {
     return "";
   }
+
   let text = "";
+
   if (details.mime !== undefined && details.mime !== "") {
     text += theme.fg("muted", ` (${displayText(details.mime)})`);
   }
+
   if (details.bytes > 0) {
     text += theme.fg("dim", ` ${formatSize(details.bytes)}`);
   }
+
   if (details.via !== undefined && details.via !== "") {
     text += theme.fg("warning", ` [via ${details.via}]`);
   }
+
   if (details.responseTruncated === true) {
     text += theme.fg("warning", " [response truncated]");
   }
+
   if (details.truncated === true && details.responseTruncated !== true) {
     text += theme.fg("warning", " [truncated]");
   }
+
   if (details.image === true) {
     text += theme.fg("muted", " [image]");
   }
+
   return text;
 }
 
@@ -296,11 +320,13 @@ const runWebFetch = Effect.fnUntraced(
     const limits = config.fetch;
     const snapshot = yield* resolveCredentialSnapshot(credentialNames(config, { fetchOnly: true }));
     onCredentials(snapshot);
+
     const output = {
       store: yield* ToolOutputStore,
       secrets: snapshot.secrets,
       offset: input.offset,
     };
+
     const result = yield* Effect.result(
       fetchPage.fetch(
         { url, format },
@@ -312,14 +338,18 @@ const runWebFetch = Effect.fnUntraced(
         },
       ),
     );
+
     const hasDomainRestrictions = limits.allowDomains.length > 0 || limits.denyDomains.length > 0;
+
     const rescued =
       limits.rescue && !hasDomainRestrictions && format === "markdown" && isRescueEligible(result)
         ? yield* tryProviderRescue(url, (yield* FetchRescueProviders).forRequest(snapshot))
         : undefined;
+
     if (rescued !== undefined) {
       return yield* projectProviderFetchedPage(rescued, output);
     }
+
     return yield* projectFetchResult(yield* Effect.fromResult(result), output);
   },
   (effect, input) =>
@@ -335,10 +365,12 @@ const tryProviderRescue = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ProviderFetchedPage | undefined> {
   for (const provider of providers) {
     const markdown = yield* provider.fetchMarkdown(url);
+
     if (markdown !== undefined) {
       return { provider: provider.name, url, markdown };
     }
   }
+
   return undefined;
 });
 

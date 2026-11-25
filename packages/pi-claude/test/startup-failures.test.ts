@@ -26,6 +26,7 @@ async function shownToUser(query: RunSdkQuery, collaborators: RunnerOptions, too
   const events = await drain(createAgentSdkStream({ model: sonnet, context, options: {}, run }));
   const terminal = events.at(-1);
   assert(terminal?.type === "error", "test setup: expected the turn to fail");
+
   return terminal.error.errorMessage;
 }
 
@@ -51,6 +52,7 @@ describe("startup failures reach the user", () => {
       ...installed,
       runSdkQuery: currentClaude,
     });
+
     const request = buildAgentRequest(
       contextFixture({ messages: [{ role: "user", content: "hi" }], tools: [readTool] }),
     );
@@ -80,6 +82,7 @@ describe("startup failures reach the user", () => {
   test("a missing Claude Code tells the user how to install or point to one", async () => {
     const emptyPath = mkdtempSync(join(tmpdir(), "claude-no-claude-"));
     let started = false;
+
     try {
       const message = await shownToUser(
         async function* neverStarted() {

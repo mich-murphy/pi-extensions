@@ -22,10 +22,12 @@ function limit(info: RateLimitInfo) {
 
 async function run(messages: readonly unknown[], allow: boolean) {
   let signal: AbortSignal | undefined;
+
   async function* query(params: Parameters<RunSdkQuery>[0]) {
     signal = params.options?.abortController?.signal;
     yield* messages;
   }
+
   const events = await drain(
     createClaudeAgentSdkRunner({
       runSdkQuery: query,
@@ -33,14 +35,17 @@ async function run(messages: readonly unknown[], allow: boolean) {
       sdkEnvironment: allow ? { PI_CLAUDE_ALLOW_EXTRA_USAGE: "1" } : {},
     })(requestFixture(), sonnet, {}),
   );
+
   return { events, signal };
 }
 
 function lastFailure(events: readonly BridgeEvent[]) {
   const last = events.at(-1);
+
   if (last?.type !== "failed") {
     throw new Error("test setup: expected a failed event");
   }
+
   return last.error;
 }
 
@@ -76,6 +81,7 @@ describe("Extra Usage guard", () => {
       ],
       false,
     );
+
     expect(lastFailure(events)._tag).toBe("SdkResultError");
   });
 
@@ -98,6 +104,7 @@ describe("Extra Usage guard", () => {
       [limit({ status: "allowed", rateLimitType: "overage" }), resultMessage({})],
       false,
     );
+
     expect(failureTags(events)).toContain("SdkOverageError");
   });
 });

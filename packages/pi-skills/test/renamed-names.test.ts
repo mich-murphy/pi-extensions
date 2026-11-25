@@ -22,11 +22,13 @@ const directories: string[] = [];
 function writeState(path: string, overrides: Readonly<Record<string, string>>): string {
   const text = `${JSON.stringify({ version: 7, files: overrides, repositories: {} }, null, 2)}\n`;
   writeFileSync(path, text);
+
   return text;
 }
 
 function noteMessage(customType: string) {
   const value = { role: "custom", customType, details: { version: 1, visible: ["/a"] } };
+
   return value;
 }
 
@@ -34,6 +36,7 @@ function failure(result: ToggleStateResult): ToggleStateError {
   if (Result.isSuccess(result)) {
     throw new Error("expected the state operation to fail");
   }
+
   return result.failure;
 }
 
@@ -42,12 +45,15 @@ function agentDirectory() {
   directories.push(directory);
   const current = join(directory, "pi-skills.json");
   const legacy = join(directory, "pi-skill-toggle.json");
+
   const resource = (name: string) => {
     mkdirSync(join(directory, "skills", name), { recursive: true });
     const path = join(directory, "skills", name, "SKILL.md");
     writeFileSync(path, name);
+
     return resourcePathId(path, directory);
   };
+
   return { directory, current, legacy, resource, store: new ToggleStateFile(current) };
 }
 
@@ -55,6 +61,7 @@ function loaded(result: ToggleStateResult): Record<string, string> {
   if (Result.isFailure(result)) {
     throw result.failure;
   }
+
   return Object.fromEntries(result.success.files);
 }
 

@@ -53,14 +53,18 @@ let cleanupFailure: { cause: unknown } | undefined;
 function backend() {
   return { acquire: vi.fn<SetupBackend["acquire"]>(async () => executable) };
 }
+
 function plan() {
   return localPlan(defaultChoices("Native Host"), setupPaths(agent).socket);
 }
+
 function ui(answers: (string | undefined)[], mode: DialogContext["mode"] = "rpc"): DialogContext {
   const select = vi.fn<DialogContext["ui"]["select"]>(async (_title: string, options: string[]) => {
     const answer = answers.shift();
+
     return answer === "APPLY" ? options.find((item) => item.startsWith("Apply —")) : answer;
   });
+
   return {
     mode,
     signal: undefined,
@@ -72,19 +76,23 @@ function ui(answers: (string | undefined)[], mode: DialogContext["mode"] = "rpc"
     },
   };
 }
+
 async function until(
   check: () => Promise<boolean>,
   milliseconds = 5000,
   diagnostic: () => Promise<string> = async () => "",
 ) {
   const deadline = performance.now() + milliseconds;
+
   while (!(await check())) {
     if (performance.now() >= deadline) {
       throw new Error(`Native condition deadline exceeded: ${await diagnostic()}`);
     }
+
     await delay(25);
   }
 }
+
 function client(
   config: NonNullable<Awaited<ReturnType<typeof loadConfiguration>>>,
   ensureGateway: ReturnType<typeof managedLauncher>,
@@ -105,11 +113,13 @@ function client(
     }),
   );
 }
+
 describe("actual setup plan/apply lifecycle", () => {
   beforeEach(async () => {
     if (cleanupFailure !== undefined) {
       throw new Error("Prior native cleanup failed; refusing a new fixture", cleanupFailure);
     }
+
     participants = nativeParticipants();
     root = await realpath(await mkdtemp(join(tmpdir(), "pc-")));
     agent = join(root, "agent");
@@ -122,6 +132,7 @@ describe("actual setup plan/apply lifecycle", () => {
     if (cleanupFailure !== undefined) {
       return;
     }
+
     try {
       await participants.close();
       await until(async () => !existsSync(setupPaths(agent).socket), 12_000);
@@ -154,9 +165,11 @@ describe("actual setup plan/apply lifecycle", () => {
       { backend: injected, description: "Test backend" },
     );
     expect(existsSync(agent)).toBe(false);
+
     for (const mode of ["print", "json"] as const) {
       await expect(setupCommand(agent, ui([], mode), vi.fn())).rejects.toThrow("attended RPC");
     }
+
     expect(injected.acquire).not.toHaveBeenCalled();
   });
   test("custom and dangling symlink configurations are preserved", async () => {
@@ -196,6 +209,7 @@ describe("actual setup plan/apply lifecycle", () => {
     const injected = backend();
     injected.acquire.mockImplementation(async () => {
       await writeFile(setupPaths(agent).adapter, "external");
+
       return executable;
     });
     await expect(applyLocal(agent, selected, injected, () => undefined)).rejects.toThrow(
@@ -230,6 +244,7 @@ describe("actual setup plan/apply lifecycle", () => {
     const ensure = managedLauncher(setup);
     const first = client(selected.adapter, ensure);
     const second = client(selected.adapter, ensure);
+
     try {
       await Promise.all([first.reconnect(), second.reconnect()]);
       const roster = await first.discover(selected.adapter.scopeIds, false);
@@ -255,14 +270,17 @@ describe("actual setup plan/apply lifecycle", () => {
         const ensure = managedLauncher(setup);
         const first = client(selected.adapter, ensure);
         const second = client(selected.adapter, ensure);
+
         const child = spawn(executable, ["--managed", "--config", setup.gatewayPath], {
           stdio: ["ignore", "pipe", "pipe"],
         });
+
         let ready = "";
         child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk: string) => {
           ready += chunk;
         });
+
         try {
           await until(
             async () => ready.includes("\n"),
@@ -335,16 +353,20 @@ describe("actual setup plan/apply lifecycle", () => {
     const lockInode = await inode(path);
     holder.kill("SIGKILL");
     await once(holder, "exit");
+
     const results = await Promise.allSettled([
       withSetupLock(path, executable, async () => {
         await delay(150);
+
         return true;
       }),
       withSetupLock(path, executable, async () => {
         await delay(150);
+
         return true;
       }),
     ]);
+
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     await expect(inode(path)).resolves.toBe(lockInode);
@@ -367,6 +389,7 @@ describe("actual setup plan/apply lifecycle", () => {
     const setup = await applyLocal(agent, selected, backend(), () => undefined);
     const launcher = managedLauncher(setup);
     const gate = recoveryGate(launcher);
+
     const session = new AdapterSession(
       selected.adapter,
       { machineId: selected.adapter.machineId, sessionId: freshId(), runtimeNonce: freshId() },
@@ -375,8 +398,10 @@ describe("actual setup plan/apply lifecycle", () => {
       () => undefined,
       gate.ensure,
     );
+
     const tools = toolRecorder();
     registerTools(tools, () => session);
+
     try {
       await expect(session.reconnect()).rejects.toThrow("unavailable");
       expect(gate.attempts()).toBe(6);
@@ -398,24 +423,34 @@ describe("actual setup plan/apply lifecycle", () => {
 
 async function isLink(path: string) {
   const stat = await lstat(path);
+
   return stat.isSymbolicLink();
 }
+
 async function fileMode(path: string) {
   const stat = await lstat(path);
+
   return stat.mode & 0o777;
 }
+
 async function inode(path: string) {
   const stat = await lstat(path);
+
   return stat.ino;
 }
+
 async function pendingSetup(path: string) {
   const state = await inspectSetup(path);
+
   return state.pending;
 }
+
 async function hasBackup(path: string) {
   const files = await readdir(path);
+
   return files.some((name) => name.startsWith("pi-peers.json.disabled-"));
 }
+
 async function replacementConnected(
   path: string,
   old: string | undefined,
@@ -423,6 +458,7 @@ async function replacementConnected(
   second: GatewayClient,
 ) {
   const current = await nativeIncarnation(path);
+
   return (
     current !== undefined &&
     current !== old &&
@@ -434,6 +470,7 @@ async function replacementConnected(
 function recoveryGate(launcher: ReturnType<typeof managedLauncher>) {
   let available = false;
   let count = 0;
+
   return {
     allow: () => {
       available = true;
@@ -441,9 +478,11 @@ function recoveryGate(launcher: ReturnType<typeof managedLauncher>) {
     attempts: () => count,
     ensure: async (deadline: number, signal: AbortSignal) => {
       count += 1;
+
       if (!available) {
         throw new ConnectionFailure("unavailable", false);
       }
+
       return launcher(deadline, signal);
     },
   };
@@ -462,12 +501,14 @@ function incompatiblePlan(
       permissions: grant.permissions.filter((permission) => permission !== "push"),
     })),
   };
+
   return { ...selected, adapter: { ...selected.adapter, [field]: changes[field] } };
 }
 
 function readyAnnouncement(output: string) {
   return parseJson(output.split("\n")[0] ?? "");
 }
+
 function childExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }

@@ -5,9 +5,11 @@ import { parsePublicHttpUrl } from "../types";
 
 function publicUrl(input: string) {
   const parsed = parsePublicHttpUrl(input);
+
   if (Result.isFailure(parsed)) {
     throw new Error("bad test url");
   }
+
   return parsed.success;
 }
 
@@ -39,6 +41,7 @@ describe("checkDomainPolicy", () => {
       allow: [],
       deny: ["evil.example.com"],
     });
+
     assert(Result.isFailure(denied));
     expect(denied.failure).toBeInstanceOf(DomainDenied);
     expect(denied.failure.message).toBe(
@@ -49,6 +52,7 @@ describe("checkDomainPolicy", () => {
       allow: ["example.com"],
       deny: [],
     });
+
     assert(Result.isFailure(notAllowed));
     expect(notAllowed.failure).toBeInstanceOf(DomainNotAllowed);
     expect(notAllowed.failure.message).toBe(

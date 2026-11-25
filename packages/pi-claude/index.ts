@@ -129,11 +129,15 @@ function registerClaudeCommand(
       if (!ctx.hasUI) {
         return;
       }
+
       const action = args.trim() === "" ? "status" : args.trim();
+
       if (!isClaudeAction(action)) {
         ctx.ui.notify("Usage: /claude [status|usage]", "warning");
+
         return;
       }
+
       const notice =
         action === "status"
           ? await commands.report(inspectClaudeSdkVersions(), (status) => ({
@@ -144,6 +148,7 @@ function registerClaudeCommand(
               text: formatClaudeUsageStatus(status),
               level: "info",
             }));
+
       if (notice !== undefined) {
         ctx.ui.notify(notice.text, notice.level);
       }
@@ -157,10 +162,12 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
       "Bash output safety: never cat an executable or print raw binary/base64 data. Use file, otool, or strings for executables, and inspect encoded files via metadata instead of stdout.";
     event.systemPromptOptions.sections["claude-scratchpad"] =
       "Claude SDK queries are stateless: native session IDs and suggested scratchpad directories change each turn. Pi owns conversation continuity. Reuse scratch files explicitly recorded in this Pi conversation; a changed native session ID does not make earlier files foreign. Do not move or delete scratch directories just to match a new SDK session ID.";
+
     return undefined;
   });
   pi.on("message_end", (event, ctx) => {
     const { message } = event;
+
     if (
       message.role !== "toolResult" ||
       message.toolName !== VALIDATION_ERROR_TOOL ||
@@ -168,6 +175,7 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
     ) {
       return undefined;
     }
+
     return normalizeValidationResult(
       message,
       ctx.sessionManager
@@ -183,29 +191,37 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
             Option.getOrUndefined(decodeValidationInput(event.input)),
           )
         : undefined;
+
     if (recovery) {
       return recovery;
     }
+
     if (!isToolCallEventType("bash", event)) {
       return undefined;
     }
+
     const reason = inspectBashCommand(event.input.command);
+
     return reason === undefined ? undefined : { block: true, reason };
   });
   pi.on("tool_result", (event, ctx) => {
     if (event.toolName !== "bash") {
       return undefined;
     }
+
     const sanitized = sanitizeBashContent(event.content);
+
     if (!sanitized.detected) {
       return undefined;
     }
+
     if (ctx.hasUI) {
       ctx.ui.notify(
         `Quarantined ${sanitized.detected}-like bash output; it was kept out of the context.`,
         "warning",
       );
     }
+
     return { content: sanitized.content };
   });
   pi.on("context", (event) => ({ messages: sanitizeContextMessages(event.messages) }));
@@ -226,6 +242,7 @@ function registerProvider(pi: ClaudeRegistration, runClaudeAgentSdk: AgentSdkRun
 export default function registerClaudeProvider(pi: ClaudeRegistration): void {
   pi.registerTool(validationRecoveryTool);
   const observedModels = new Map<string, string>();
+
   const runClaudeAgentSdk = createClaudeAgentSdkRunner({
     validationRecovery: "pi-tool-loop",
     cacheDiagnostics: Effect.runSync(
@@ -236,6 +253,7 @@ export default function registerClaudeProvider(pi: ClaudeRegistration): void {
     },
     usageLimitObserver: usageLimitPublisher(pi.events),
   });
+
   const commands = createCommandRunner(commandLayer);
   pi.on("session_shutdown", async () => {
     await commands.dispose();

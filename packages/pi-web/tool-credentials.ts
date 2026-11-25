@@ -34,13 +34,16 @@ export function credentialNames(
   const candidates: readonly SearchProviderName[] = settings.search.defaultProviders
     ? [...settings.search.providers, "brave"]
     : settings.search.providers;
+
   return candidates.filter((name) => {
     if (options.providerOverride !== undefined && name !== options.providerOverride) {
       return false;
     }
+
     if (options.fetchOnly === true && name === "brave") {
       return false;
     }
+
     return name === "brave" || settings.endpoints[name] === undefined;
   });
 }
@@ -57,10 +60,13 @@ export function validateExplicitBrave(
   ) {
     return Effect.void;
   }
+
   const outcome = snapshot.outcomes.brave;
+
   if (Result.isFailure(outcome)) {
     return Effect.fail(outcome.failure);
   }
+
   return outcome.success === undefined
     ? Effect.fail(new CredentialFailure({ provider: "brave", reason: "unavailable" }))
     : Effect.void;
@@ -68,6 +74,7 @@ export function validateExplicitBrave(
 
 export function createRequestRedactor(redactText: (input: string) => string) {
   let secrets: readonly string[] = [];
+
   return {
     capture: (snapshot: CredentialSnapshot): void => {
       secrets = snapshot.secrets;

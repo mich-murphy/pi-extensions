@@ -19,6 +19,7 @@ import {
 import type { Screen } from "./setup-keys.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
+
 export {
   applyHasOutcome,
   applyReached,
@@ -57,6 +58,7 @@ const sticky: Facts = {
   resetConsent: 0,
   turnedOff: 0,
 };
+
 function setupSucceeded(screen: Screen): boolean {
   return screen.outcome === "ok" && (screen.headline ?? "").startsWith("✓ Peers set up");
 }
@@ -70,10 +72,13 @@ function turnedOffShown(screen: Screen): boolean {
 
 function noteReset(screen: Screen): void {
   const consent = screen.consent;
+
   if (consent?.action !== RESET_ACTION) {
     return;
   }
+
   sticky.resetConsent = Math.max(sticky.resetConsent, consent.count);
+
   if (turnedOffShown(screen)) {
     sticky.turnedOff = Math.max(sticky.turnedOff, consent.count);
   }
@@ -84,8 +89,10 @@ const memory = extract((state: State): Facts => {
   sticky.succeeded ||= setupSucceeded(screen);
   sticky.statusSeen ||= sticky.succeeded && screen.connectedShown;
   noteReset(screen);
+
   return { ...sticky };
 });
+
 const facts = (): Facts | undefined => memory.current;
 
 function choose(selected: string | null, row: string): ActionTemplate {
@@ -96,9 +103,11 @@ function successMenuKey(view: Screen | undefined): ActionTemplate {
   if (view?.kind === "outcome") {
     return key(ENTER);
   }
+
   if (view?.kind === "root") {
     return choose(view.selected, "Reset");
   }
+
   return view?.kind === "list" && view.path?.[1] === "Reset"
     ? choose(view.selected, RESET_ROW)
     : key(ESCAPE);
@@ -106,12 +115,15 @@ function successMenuKey(view: Screen | undefined): ActionTemplate {
 
 const afterSuccess = actions((): ActionTemplate[] => {
   const seen = facts();
+
   if (seen?.succeeded !== true) {
     return [];
   }
+
   if (idle()) {
     return [command(seen.statusSeen ? "" : " status"), key(ENTER)];
   }
+
   return [successMenuKey(ui.current)];
 });
 
@@ -143,6 +155,7 @@ export const resetReached: Formula = eventually(
 
 export const resetDisconnects: Formula = always(() => {
   const consent = facts()?.resetConsent ?? 0;
+
   return (
     consent === 0 || eventually(() => (facts()?.turnedOff ?? 0) >= consent).within(30, "seconds")
   );

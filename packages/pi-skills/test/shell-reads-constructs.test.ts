@@ -99,6 +99,7 @@ describe("brace expansion", () => {
       { length: 20 },
       (_, index) => `${String.fromCodePoint(97 + index)}x{1..256}`,
     ).join(" ");
+
     const found = reads(`cat ${words}`);
     assert.equal(found.length, 16 * 256);
     assert.ok(found.includes(resolve(cwd, "px256")));

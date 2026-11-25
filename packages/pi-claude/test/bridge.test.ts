@@ -23,6 +23,7 @@ async function piEvents(
   async function* run(): AsyncGenerator<BridgeEvent> {
     yield* events;
   }
+
   return drain(createAgentSdkStream({ model: sonnet, context, options, run }));
 }
 
@@ -33,10 +34,12 @@ async function* failingRun(): AsyncGenerator<BridgeEvent> {
 
 function breakTerminalPush(stream: AssistantMessageEventStream, type: "done" | "error") {
   const push = stream.push.bind(stream);
+
   return vi.spyOn(stream, "push").mockImplementation((event: AssistantMessageEvent) => {
     if (event.type === type) {
       throw new Error("finalization defect");
     }
+
     push(event);
   });
 }
@@ -50,6 +53,7 @@ function streamOf(event: BridgeEvent): AssistantMessageEventStream {
   async function* run(): AsyncGenerator<BridgeEvent> {
     yield event;
   }
+
   return createAgentSdkStream({ model: sonnet, context, options: {}, run });
 }
 
@@ -59,12 +63,15 @@ function contentIndexes(events: readonly AssistantMessageEvent[]): number[] {
 
 function terminalOf(events: readonly AssistantMessageEvent[]) {
   const terminal = events.at(-1);
+
   if (terminal?.type === "done") {
     return { reason: terminal.reason, message: terminal.message };
   }
+
   if (terminal?.type === "error") {
     return { reason: terminal.reason, message: terminal.error };
   }
+
   throw new Error("test setup: stream did not end with a terminal event");
 }
 
@@ -172,6 +179,7 @@ describe("terminal event", () => {
   test("stops consuming the run at the terminal event, so the SDK run is released", async () => {
     let resumedAfterTerminal = false;
     const closed = Promise.withResolvers<true>();
+
     async function* run(): AsyncGenerator<BridgeEvent> {
       try {
         yield { type: "done", reason: "stop" };
@@ -268,6 +276,7 @@ describe("broken stderr", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+
     if (ttyDescriptor === undefined) {
       Reflect.deleteProperty(stderr, "isTTY");
     } else {
@@ -281,19 +290,24 @@ describe("broken stderr", () => {
       throw new Error("EPIPE");
     });
     let unhandled = 0;
+
     const listener = (): void => {
       unhandled++;
     };
+
     process.on("unhandledRejection", listener);
+
     try {
       const events = await drain(
         createAgentSdkStream({ model: sonnet, context, options: {}, run }),
       );
+
       for (let turn = 0; turn < 2; turn += 1) {
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
       }
+
       return { events, unhandled };
     } finally {
       process.off("unhandledRejection", listener);
@@ -307,6 +321,7 @@ describe("broken stderr", () => {
         error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
       };
     });
+
     expect(terminalOf(events).reason).toBe("error");
     expect(unhandled).toBe(0);
   });
@@ -321,6 +336,7 @@ describe("broken stderr", () => {
     const { events, unhandled } = await drainWithBrokenStderr(() => {
       throw new Error("sync defect");
     });
+
     expect(terminalOf(events).reason).toBe("error");
     expect(unhandled).toBe(0);
   });
@@ -330,6 +346,7 @@ describe("broken stderr", () => {
       type: "failed",
       error: new SdkResultError({ terminalReason: undefined, category: "usage-limit" }),
     });
+
     const push = breakTerminalPush(stream, "error");
     const events = await drain(stream);
     expect(events.map((item) => item.type)).toStrictEqual(["start"]);
@@ -399,6 +416,7 @@ async function printedCallReply(text: string) {
       yield { type: "done", reason: "stop" } satisfies BridgeEvent;
     },
   });
+
   return stream.result();
 }
 

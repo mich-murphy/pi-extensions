@@ -27,10 +27,12 @@ function drawEvents(tc: TestCase): Drawn {
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 12 }), "count");
   const records: Extract<LedgerEvent, { readonly type: "signal" }>[] = [];
   const verdicts: LedgerEvent[] = [];
+
   for (let n = 1; n <= count; n += 1) {
     const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
     const piPath = tc.draw(gs.booleans(), "piPath");
     const batchOrdered = tc.draw(gs.booleans(), "batchOrdered");
+
     const options: Omit<SignalOptions, "evidence" | "cause"> & {
       evidence?: NonNullable<SignalOptions["evidence"]>;
       cause?: NonNullable<SignalOptions["cause"]>;
@@ -40,15 +42,19 @@ function drawEvents(tc: TestCase): Drawn {
       owner: tc.draw(gs.sampledFrom([...OWNERS]), "owner"),
       fingerprint,
     };
+
     if (piPath) {
       options.evidence = "pi-path";
     }
+
     if (batchOrdered) {
       options.cause = "parallel-batch";
     }
+
     const made = signal(options);
     assert.ok(made.type === "signal");
     records.push(made);
+
     if (tc.draw(gs.booleans(), "verdict")) {
       verdicts.push(
         verdictEvent(100 + n, fingerprint, {
@@ -59,6 +65,7 @@ function drawEvents(tc: TestCase): Drawn {
       );
     }
   }
+
   return { events: [...records, ...verdicts], records };
 }
 
@@ -72,6 +79,7 @@ describe("Pi core label properties", () => {
   test("only labels unattributed groups whose every record names a Pi path", () => {
     assertHegel(settings, (tc) => {
       const { events, records } = drawEvents(tc);
+
       for (const group of deriveGroups(events).filter((candidate) => candidate.piCore)) {
         const own = recordsOf(group, records);
         assert.equal(group.owner, "unattributed");

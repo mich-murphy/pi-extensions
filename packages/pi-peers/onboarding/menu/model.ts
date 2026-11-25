@@ -109,6 +109,7 @@ export class MenuModel {
     this.error = undefined;
     this.busy = false;
     const kind = this.top.kind;
+
     if (this.stack.length <= 1 || kind === "progress") {
       this.open = false;
     } else if (kind === "outcome") {
@@ -121,6 +122,7 @@ export class MenuModel {
   activate(id: string): void {
     const screen = this.top;
     const row = screen.kind === "list" ? screen.rows().find((item) => item.id === id) : undefined;
+
     if (row !== undefined) {
       this.activateRow(row);
     }
@@ -130,27 +132,34 @@ export class MenuModel {
     if (this.top.kind !== "list" || this.closed) {
       return;
     }
+
     const { activation } = row;
     this.error = undefined;
+
     switch (activation.kind) {
       case "open": {
         this.push(activation.screen());
         break;
       }
+
       case "cycle": {
         activation.next();
         break;
       }
+
       case "consent": {
         if (this.guard?.canAct() === false) {
           this.error = this.guard.busy;
+
           return;
         }
+
         this.observe?.consented(activation.action);
         this.acted = true;
         activation.run();
         break;
       }
+
       case "none": {
         this.error = row.description;
         break;
@@ -160,17 +169,23 @@ export class MenuModel {
 
   async submit(value: string): Promise<void> {
     const screen = this.top;
+
     if (screen.kind !== "text" || this.busy) {
       return;
     }
+
     const result = screen.save(value);
+
     if (!(result instanceof Promise)) {
       this.settle(screen, result);
+
       return;
     }
+
     this.busy = true;
     this.refresh();
     let saved: Saved;
+
     try {
       saved = await result;
     } catch {
@@ -178,6 +193,7 @@ export class MenuModel {
     } finally {
       this.busy = false;
     }
+
     this.settle(screen, saved);
     this.refresh();
   }
@@ -186,16 +202,20 @@ export class MenuModel {
     if (this.top !== screen || this.closed) {
       return;
     }
+
     if (saved !== undefined && "error" in saved) {
       this.error = saved.error;
+
       return;
     }
+
     saved?.apply();
     this.back();
   }
 
   toggle(id: string): void {
     const screen = this.top;
+
     if (screen.kind === "toggle") {
       screen.toggle(id);
     }
@@ -206,6 +226,7 @@ export type KeyNames = { readonly confirm: string; readonly cancel: string };
 
 export function hint(screen: Screen, depth: number, keys: KeyNames): string {
   const { confirm, cancel } = keys;
+
   const hints: Record<Screen["kind"], string> = {
     list: `${confirm} select · ${cancel} ${depth === 0 ? "close" : "back"}`,
     text: `${confirm} save · ${cancel} back`,
@@ -214,5 +235,6 @@ export function hint(screen: Screen, depth: number, keys: KeyNames): string {
     progress: `Working… · ${cancel} hide`,
     outcome: `${confirm} close · ${cancel} back`,
   };
+
   return hints[screen.kind];
 }

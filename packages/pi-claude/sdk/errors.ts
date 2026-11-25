@@ -96,28 +96,36 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
   if (cause instanceof AbortError || (cause instanceof Error && cause.name === "AbortError")) {
     return SdkQueryFailureReason.cases.Cancelled.make({});
   }
+
   if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
     return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
   }
+
   const tagged = Option.getOrUndefined(decodeSdkRejection(cause));
+
   if (tagged === undefined) {
     return SdkQueryFailureReason.cases.Unclassified.make({});
   }
+
   switch (tagged.errorClass) {
     case "aborted": {
       return SdkQueryFailureReason.cases.Cancelled.make({});
     }
+
     case "executable_not_found": {
       return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
     }
+
     case "executable_launch_failed": {
       return SdkQueryFailureReason.cases.ExecutableLaunchFailed.make({});
     }
+
     case "process_exited_nonzero": {
       return tagged.exitCode === undefined
         ? SdkQueryFailureReason.cases.Unclassified.make({})
         : SdkQueryFailureReason.cases.ProcessExited.make({ exitCode: tagged.exitCode });
     }
+
     case "process_killed_by_signal": {
       return tagged.signal === undefined ||
         !/^SIG(?:ABRT|ALRM|BUS|CHLD|CONT|FPE|HUP|ILL|INT|KILL|PIPE|QUIT|SEGV|STOP|TERM|TRAP|TSTP|TTIN|TTOU|URG|USR1|USR2|VTALRM|WINCH|XCPU|XFSZ)$/u.test(
@@ -126,6 +134,7 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
         ? SdkQueryFailureReason.cases.Unclassified.make({})
         : SdkQueryFailureReason.cases.ProcessKilled.make({ signal: tagged.signal });
     }
+
     default: {
       return SdkQueryFailureReason.cases.Unclassified.make({});
     }
@@ -217,6 +226,7 @@ export class SdkOverageError extends Schema.TaggedError<SdkOverageError>()("SdkO
       this.resetsAt === undefined
         ? "it resets"
         : `${new Date(this.resetsAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
     return `Plan limit hit until ${until}; stopped to avoid Extra Usage. To allow it, set \`PI_CLAUDE_ALLOW_EXTRA_USAGE=1\` and restart Pi.`;
   }
 }

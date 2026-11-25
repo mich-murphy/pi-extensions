@@ -8,6 +8,7 @@ import { propertySettings } from "../../../test-support/hegel-settings";
 import { ClaudeSdkVersionSources, inspectClaudeSdkVersions } from "../sdk-version-status";
 
 const settings = propertySettings(200);
+
 const NOISE: readonly ((version: string) => string)[] = [
   (version) => version,
   (version) => `${version} (Claude Code)`,
@@ -16,6 +17,7 @@ const NOISE: readonly ((version: string) => string)[] = [
 ];
 
 type Triple = readonly [number, number, number];
+
 type Scenario = { readonly bundled: Triple; readonly installed: Triple; readonly noise: number };
 
 function drawPart(tc: TestCase): number {
@@ -48,10 +50,12 @@ function inspect(expected: string, installed: string) {
 function lexicographicallyGreater(left: Triple, right: Triple): boolean {
   for (const [index, part] of left.entries()) {
     const other = right[index] ?? 0;
+
     if (part !== other) {
       return part > other;
     }
   }
+
   return false;
 }
 
@@ -73,6 +77,7 @@ async function assertScenario(scenario: Scenario): Promise<void> {
 function drawScenario(tc: TestCase): Scenario {
   const bundled = drawTriple(tc);
   const installed = tc.draw(gs.booleans()) ? bundled : drawTriple(tc);
+
   return { bundled, installed, noise: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) };
 }
 

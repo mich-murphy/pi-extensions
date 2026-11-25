@@ -29,9 +29,12 @@ export function disabledResourceMatcher(
   decide?: (resource: ToggleResource) => boolean | undefined,
 ): ResourceMatcher {
   const policy = new ResourcePolicy(overrides ?? emptyOverrides());
+
   const disabled = (resource: ToggleResource): boolean =>
     decide?.(resource) ?? (overrides === undefined || policy.value(resource) === "disabled");
+
   const canonical = canonicalizer();
+
   const loadedOnDisk = lazy(
     () =>
       new Map(
@@ -40,32 +43,41 @@ export function disabledResourceMatcher(
           .map((resource) => [onDiskKey(resource.kind, canonical(resource.id)), resource]),
       ),
   );
+
   const loadedAt = (path: string, kind: ToggleResource["kind"]): ToggleResource | undefined =>
     resources.find(
       (resource) =>
         resource.kind === kind && policy.sameResource(path, resource.id, resource.origin),
     ) ?? loadedOnDisk().get(onDiskKey(kind, canonical(path)));
+
   const skillOwner = (id: string): SkillOwner | undefined => {
     const exact = loadedAt(id, "skill");
+
     if (exact !== undefined && basename(exact.id) !== "SKILL.md") {
       return { resource: exact };
     }
+
     for (let directory = dirname(id); ; directory = dirname(directory)) {
       const skillFile = resourcePathId(join(directory, "SKILL.md"), "/");
       const loaded = loadedAt(skillFile, "skill");
+
       if (loaded !== undefined) {
         return { resource: loaded };
       }
+
       if (policy.override(skillFile) === "disabled") {
         return { disabledSkill: basename(directory) };
       }
+
       if (dirname(directory) === directory) {
         return undefined;
       }
     }
   };
+
   const matchId = (id: ResourcePath): string | undefined => {
     const instruction = loadedAt(id, "instruction");
+
     if (
       instruction
         ? disabled(instruction)
@@ -73,37 +85,49 @@ export function disabledResourceMatcher(
     ) {
       return instructionLabel(instruction?.id ?? id);
     }
+
     const owner = skillOwner(id);
+
     if (owner === undefined) {
       return undefined;
     }
+
     if ("resource" in owner) {
       const skill = owner.resource;
+
       return !manualSkills.has(skill.label) && disabled(skill)
         ? `skill "${skill.label}"`
         : undefined;
     }
+
     return `skill "${owner.disabledSkill}"`;
   };
+
   const linkedCandidates = lazy(() =>
     hardLinkIndex([...resources.map((resource) => resource.id), ...persistedPaths(overrides)]),
   );
+
   const hardLinkMatch = (path: string): string | undefined => {
     const identity = fileIdentity(path);
+
     for (const candidate of identity === undefined
       ? []
       : (linkedCandidates().get(identity) ?? [])) {
       const label = matchId(candidate);
+
       if (label !== undefined) {
         return label;
       }
     }
+
     return undefined;
   };
+
   return {
     match: (path) => {
       const id = resourcePathId(path, "/");
       const onDisk = resourcePathId(canonical(id), "/");
+
       return matchId(id) ?? (onDisk === id ? undefined : matchId(onDisk)) ?? hardLinkMatch(onDisk);
     },
   };
@@ -121,6 +145,7 @@ function persistedPaths(overrides: ToggleOverrides | undefined): readonly string
 function fileIdentity(path: string): string | undefined {
   try {
     const stats = statSync(path, { bigint: true });
+
     return stats.nlink > 1n && stats.isFile() ? `${stats.dev}:${stats.ino}` : undefined;
   } catch {
     return undefined;
@@ -129,12 +154,15 @@ function fileIdentity(path: string): string | undefined {
 
 function hardLinkIndex(paths: Iterable<string>): ReadonlyMap<string, readonly ResourcePath[]> {
   const index = new Map<string, ResourcePath[]>();
+
   for (const path of new Set(paths)) {
     const identity = fileIdentity(path);
+
     if (identity !== undefined) {
       index.set(identity, [...(index.get(identity) ?? []), resourcePathId(path, "/")]);
     }
   }
+
   return index;
 }
 
@@ -142,25 +170,34 @@ const onDiskKey = (kind: ToggleResource["kind"], path: string): string => `${kin
 
 function lazy<T>(make: () => T): () => T {
   let value: { readonly current: T } | undefined;
+
   return () => {
     value ??= { current: make() };
+
     return value.current;
   };
 }
 
 function canonicalizer(): (path: string) => string {
   const cache = new Map<string, string>();
+
   const canonical = (path: string): string => {
     const cached = cache.get(path);
+
     if (cached !== undefined) {
       return cached;
     }
+
     const parent = dirname(path);
+
     const result =
       realPath(path) ?? (parent === path ? path : join(canonical(parent), basename(path)));
+
     cache.set(path, result);
+
     return result;
   };
+
   return canonical;
 }
 
@@ -177,6 +214,7 @@ const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/gu;
 export function toolPath(path: string, cwd: string): string {
   const spaced = path.replaceAll(UNICODE_SPACES, " ");
   const withoutAt = spaced.startsWith("@") ? spaced.slice(1) : spaced;
+
   return resolve(cwd, expandHome(withoutAt) ?? fileUrlPath(withoutAt) ?? withoutAt);
 }
 
@@ -184,6 +222,7 @@ function expandHome(path: string): string | undefined {
   if (path === "~") {
     return homedir();
   }
+
   return path.startsWith("~/") ? join(homedir(), path.slice(2)) : undefined;
 }
 
@@ -191,6 +230,7 @@ function fileUrlPath(path: string): string | undefined {
   if (!path.startsWith("file://")) {
     return undefined;
   }
+
   try {
     return fileURLToPath(path);
   } catch {

@@ -6,8 +6,10 @@ const PEERS_MENU_PATTERNS = {
   hint: /^(?<keys>.+) · Esc (?<esc>back|close|hide)$/u,
   separator: " › ",
 };
+
 const FOOTER =
   /peers (?:✓(?: waiting…)?|● \d+|⋯ setting up|! activation pending|✕ (?:offline|setup failed))(?: ! (?:\S+|\d+ links) down)?/u;
+
 const REPORT_SCROLL = /^\((?<first>\d+)–\d+ of \d+\)$/u;
 const LIST_SCROLL = /^\(\d+\/\d+\)$/u;
 const CONSENT = /\bconsent:(?<action>\S+)#(?<count>\d+)/u;
@@ -52,6 +54,7 @@ export function outcomeOf(text = ""): OutcomeKind | null {
       return result;
     }
   }
+
   return null;
 }
 
@@ -61,10 +64,13 @@ function kind(keys: string | undefined, esc: string | undefined): PeersKind | nu
   if (keys === undefined || esc === undefined) {
     return null;
   }
+
   if (esc === "hide") {
     return /^Working…$/u.test(keys) ? "progress" : null;
   }
+
   const word = /(?<word>select|save|toggle|scroll|close)$/u.exec(keys)?.groups?.word;
+
   const kinds = new Map<string, PeersKind>([
     ["select", esc === "close" ? "root" : "list"],
     ["save", "editor"],
@@ -72,6 +78,7 @@ function kind(keys: string | undefined, esc: string | undefined): PeersKind | nu
     ["scroll", "report"],
     ["close", "outcome"],
   ]);
+
   return kinds.get(word ?? "") ?? null;
 }
 
@@ -100,10 +107,12 @@ function listRows(body: readonly string[]): ListRow[] {
   const start = body.indexOf("");
   const rest = body.slice(start + 1);
   const end = rest.indexOf("");
+
   return (end === -1 ? rest : rest.slice(0, end))
     .filter((row) => !LIST_SCROLL.test(row))
     .map((row) => {
       const [label = "", ...value] = row.replace(/^→ /u, "").split(/\s{2,}/u);
+
       return { label, value: value.join("  ") };
     });
 }
@@ -116,6 +125,7 @@ function outcomeFields(
   const scroll = REPORT_SCROLL.exec(lines.at(-1) ?? "")?.groups?.first;
   const scrollTop = scroll === undefined ? 1 : Number(scroll);
   const headline = shown === "outcome" && scrollTop === 1 ? (lines[0] ?? null) : null;
+
   return {
     scrollTop,
     headline,
@@ -126,17 +136,20 @@ function outcomeFields(
 
 function nextFollows(lines: readonly string[]): boolean | null {
   const next = lines.findIndex((row) => row.startsWith("Next:"));
+
   return next < 0 ? null : !lines.slice(1, next).some((row) => FACT.test(row));
 }
 
 function stepCounts(body: readonly string[], shown: PeersKind | null): PeersView["steps"] {
   const count = (mark: string): number =>
     shown === "progress" ? body.filter((row) => row.startsWith(`${mark} `)).length : 0;
+
   return { done: count("✓"), running: count("…"), pending: count("·") };
 }
 
 function editorValue(body: readonly string[], shown: PeersKind | null): string | null {
   const editor = shown === "editor" ? body.find((row) => /^>(?: |$)/u.test(row)) : undefined;
+
   return editor === undefined ? null : editor.slice(1).trim();
 }
 
@@ -144,6 +157,7 @@ function probeFields(rows: readonly string[]): Pick<PeersView, "probe" | "consen
   const probe = rows.find((row) => row.startsWith("probe:")) ?? null;
   const consent = CONSENT.exec(probe ?? "")?.groups;
   const reports = REPORTS.exec(probe ?? "")?.groups?.count;
+
   return {
     probe,
     consent:
@@ -161,6 +175,7 @@ function statusOffShown(
 ): boolean {
   const rootOff =
     shown === "root" && list.some((row) => row.label === "Status" && row.value === "Not set up");
+
   return rootOff || rows.some((row) => STATUS_OFF.test(row));
 }
 
@@ -181,6 +196,7 @@ export function readPeers(rows: readonly string[], height: number): PeersView {
   const { keys, esc } = menu.hintGroups;
   const shown = kind(keys, esc);
   const list = shownRows(menu.body, shown);
+
   return {
     ...menu,
     kind: shown,

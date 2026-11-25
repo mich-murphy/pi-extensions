@@ -17,18 +17,21 @@ type Report = {
 };
 
 const Kills = Schema.Array(Schema.Unknown);
+
 const Target = Schema.Struct({
   status: Schema.String,
   target: Schema.String,
   test_ids: Schema.Array(Schema.String),
   reasons: Schema.Array(Schema.String),
 });
+
 const TestRow = Schema.Struct({
   kills: Kills,
   unique_kills: Kills,
   target_only_kills: Schema.optional(Kills.pipe(Schema.NullOr)),
   test_id: Schema.String,
 });
+
 const decodeReport = Schema.decodeUnknownSync(
   Schema.fromJsonString(
     Schema.Struct({
@@ -44,14 +47,17 @@ const decodeReport = Schema.decodeUnknownSync(
 
 function readReport(path: string): Report {
   const { completion, kill_matrix: matrix } = decodeReport(readFileSync(path, "utf8"));
+
   const completeTests = new Set(
     matrix.targets
       .filter((target) => target.status === "complete")
       .flatMap((target) => target.test_ids),
   );
+
   const incomplete = matrix.targets
     .filter((target) => target.status !== "complete")
     .map((target) => `${target.target} (${target.reasons.join(", ")})`);
+
   const noDetection = matrix.tests
     .filter((row) => row.kills.length > 0 && row.unique_kills.length === 0)
     .map((row) => ({
@@ -60,6 +66,7 @@ function readReport(path: string): Report {
       sharedWithTargets: row.target_only_kills?.length ?? 0,
       complete: completeTests.has(row.test_id),
     }));
+
   return {
     path,
     completion: completion.status,
@@ -75,6 +82,7 @@ function cell(value: string): string {
 
 function findingRow(finding: Finding): string {
   const evidence = finding.complete ? "complete" : "incomplete";
+
   return `| ${cell(finding.test)} | ${finding.kills} | ${finding.sharedWithTargets} | ${evidence} |`;
 }
 
@@ -82,6 +90,7 @@ function findingTable(findings: readonly Finding[]): readonly string[] {
   if (findings.length === 0) {
     return [];
   }
+
   return [
     "| Test with no unique kill | Kills | Kills shared only with other audited tests | Evidence |",
     "| --- | --- | --- | --- |",
@@ -94,11 +103,13 @@ function bulletList(heading: string, items: readonly string[]): readonly string[
   if (items.length === 0) {
     return [];
   }
+
   return [heading, "", ...items.map((item) => `- ${cell(item)}`), ""];
 }
 
 function reportSection(report: Report): readonly string[] {
   const clean = report.noDetection.length + report.noKills.length === 0;
+
   return [
     `#### \`${report.path}\``,
     "",
@@ -120,12 +131,14 @@ function render(reports: readonly Report[]): string {
           "Read it before removing it: CONTRIBUTING.md, “Remove a test that adds no detection”.",
           "",
         ];
+
   const lines = [
     "### Tests audit",
     "",
     ...intro,
     ...reports.flatMap((report) => reportSection(report)),
   ];
+
   return `${lines.join("\n")}\n`;
 }
 

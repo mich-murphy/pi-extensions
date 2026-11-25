@@ -60,11 +60,13 @@ class ContextMenu implements Component, Focusable {
       const resources = options.resources.filter(
         (r) => r.origin === group.origin && r.kind === group.kind,
       );
+
       const item: SettingItem = {
         id: group.title,
         label: group.title,
         currentValue: this.count(group, resources),
       };
+
       if (resources.length > 0) {
         item.submenu = (_value, back) => {
           this.active = new ResourceList(options, group, resources, () => {
@@ -72,11 +74,14 @@ class ContextMenu implements Component, Focusable {
             back(this.count(group, resources));
           });
           this.active.focused = this.hasFocus;
+
           return this.active;
         };
       }
+
       return item;
     });
+
     this.root = new SettingsList(
       items,
       6,
@@ -99,6 +104,7 @@ class ContextMenu implements Component, Focusable {
 
   set focused(value: boolean) {
     this.hasFocus = value;
+
     if (this.active !== undefined) {
       this.active.focused = value;
     }
@@ -109,12 +115,14 @@ class ContextMenu implements Component, Focusable {
     const border = new DynamicBorder((text) => theme.fg("accent", text));
     const title = this.active?.title() ?? "Context";
     const heading = new Text(theme.fg("accent", theme.bold(title)), 1, 0);
+
     const note =
       this.active === undefined
         ? new Text(theme.fg("muted", "Auto-save: each change is saved immediately."), 1, 0).render(
             width,
           )
         : [];
+
     return [
       ...border.render(width),
       ...heading.render(width),
@@ -138,12 +146,15 @@ class ContextMenu implements Component, Focusable {
   private count(group: Group, resources: readonly ToggleResource[]): string {
     const policy = this.options.policy();
     const enabled = resources.filter((r) => policy.value(r) === "enabled").length;
+
     if (group.origin === "global" && group.kind === "instruction") {
       if (resources.length === 0) {
         return "Not loaded";
       }
+
       return enabled === resources.length ? "Always on" : `${resources.length - enabled} off`;
     }
+
     return `${enabled} on`;
   }
 }
@@ -175,12 +186,15 @@ class ResourceList implements Component, Focusable {
     if (this.group.origin === "global") {
       return this.group.title;
     }
+
     const repositoryResources = this.resources.filter((r) =>
       this.options.policy().repositoryWide(r),
     ).length;
+
     if (repositoryResources === this.resources.length) {
       return `${this.group.title} · all worktrees`;
     }
+
     return `${this.group.title} · ${repositoryResources === 0 ? "per path" : "mixed scope"}`;
   }
 
@@ -191,6 +205,7 @@ class ResourceList implements Component, Focusable {
     const cancel = this.search.getValue() === "" ? "back" : "clear";
     const hint = `${key(this.options, "tui.select.confirm")} toggle · ${key(this.options, "tui.select.cancel")} ${cancel}`;
     const prefix = this.search.getValue() === "" ? "Type to search · " : "";
+
     return [
       ...this.search.render(width),
       "",
@@ -207,6 +222,7 @@ class ResourceList implements Component, Focusable {
 
   handleInput(data: string): void {
     const keys = this.options.keybindings;
+
     if (keys.matches(data, "tui.select.cancel")) {
       if (this.search.getValue() === "") {
         this.back();
@@ -227,17 +243,22 @@ class ResourceList implements Component, Focusable {
 
   private navigate(data: string): boolean {
     const keys = this.options.keybindings;
+
     if (keys.matches(data, "tui.select.up") || keys.matches(data, "tui.select.down")) {
       this.list.handleInput(data);
+
       return true;
     }
+
     if (keys.matches(data, "tui.select.pageUp") || keys.matches(data, "tui.select.pageDown")) {
       const direction = keys.matches(data, "tui.select.pageUp") ? -1 : 1;
       const index = this.filtered().findIndex((r) => r.id === this.list.getSelectedItem()?.value);
       this.list.setSelectedIndex(index + direction * this.maxRows());
       this.selected = this.list.getSelectedItem()?.value;
+
       return true;
     }
+
     return false;
   }
 
@@ -261,6 +282,7 @@ class ResourceList implements Component, Focusable {
     const resources = this.filtered();
     const states = new Map<string, string>(resources.map((r) => [r.id, this.value(r)]));
     const stateWidth = Math.max(3, ...[...states.values()].map((value) => visibleWidth(value)));
+
     const nameWidth = Math.max(
       1,
       Math.min(
@@ -268,17 +290,21 @@ class ResourceList implements Component, Focusable {
         this.width - stateWidth - 6,
       ),
     );
+
     const primaryWidth = nameWidth + stateWidth + 4;
     const descriptionWidth = this.width - primaryWidth - 4;
     const { theme } = this.options;
+
     const items = resources.map<SelectItem>((r) => {
       const quotation = sourceQuote(r.description, descriptionWidth);
+
       return {
         value: r.id,
         label: r.label,
         description: quotation === "" ? "" : theme.fg("muted", quotation),
       };
     });
+
     const list = new SelectList(
       items,
       this.maxRows(),
@@ -298,15 +324,18 @@ class ResourceList implements Component, Focusable {
           const name = truncateToWidth(item.label, available, "…");
           const padding = " ".repeat(Math.max(0, available - visibleWidth(name)));
           const style = getSettingsListTheme();
+
           return `${style.label(name + padding, isSelected)}  ${style.value(state.padEnd(stateWidth), isSelected)}`;
         },
       },
     );
+
     const index = resources.findIndex((r) => r.id === this.selected);
     list.setSelectedIndex(Math.max(0, index));
     list.onSelectionChange = (item) => {
       this.selected = item.value;
     };
+
     return list;
   }
 
@@ -314,9 +343,11 @@ class ResourceList implements Component, Focusable {
     if (resource.editability === "manual-only") {
       return "Manual only";
     }
+
     if (this.fixed(resource)) {
       return "Always on";
     }
+
     return this.options.policy().value(resource) === "enabled" ? "On" : "Off";
   }
 
@@ -330,9 +361,11 @@ class ResourceList implements Component, Focusable {
 
   private toggle(): void {
     const resource = this.resources.find((r) => r.id === this.list.getSelectedItem()?.value);
+
     if (resource === undefined || resource.editability === "manual-only" || this.fixed(resource)) {
       return;
     }
+
     this.selected = resource.id;
     const value = this.options.policy().value(resource) === "enabled" ? "disabled" : "enabled";
     this.options.save(resource.id, value);
@@ -342,13 +375,16 @@ class ResourceList implements Component, Focusable {
 
 function sourceQuote(source: string, width: number): string {
   const text = stripVTControlCharacters(source).replaceAll(/\s+/gu, " ").trim();
+
   return text === "" || width < 3 ? "" : `“${truncateToWidth(text, width - 2, "…")}”`;
 }
 
 function key(options: MenuOptions, action: "tui.select.confirm" | "tui.select.cancel"): string {
   const binding = options.keybindings.getKeys(action)[0];
+
   if (binding === "enter") {
     return "Enter";
   }
+
   return binding === "escape" ? "Esc" : (binding ?? "Unbound");
 }

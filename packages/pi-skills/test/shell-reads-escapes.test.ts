@@ -71,6 +71,7 @@ describe("parameter expansions", () => {
     'echo ${x:-"$(cat "secret")"}',
     'echo ${x:-$(echo "}")} ; cat secret',
   ];
+
   test.each(hidden)("%s", (command) => {
     assert.deepEqual(reads(command), paths("secret"));
   });
@@ -88,6 +89,7 @@ describe("parameter expansions", () => {
     'echo "${x:-\\"}" ; cat secret',
     "echo ${x/\\}/a} ; cat secret",
   ];
+
   test.each(exact)("%s", (command) => {
     assert.deepEqual(reads(command), paths("secret"));
   });
@@ -119,6 +121,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
     "cat <<EOF\n$((1+$(cat secret)))\nEOF",
     "cat <<EOF\n\\\\$(cat secret)\nEOF",
   ];
+
   test.each(hidden)("%j", (command) => {
     assert.deepEqual(reads(command), paths("secret"));
   });
@@ -133,6 +136,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
     "echo ${a[$(cat secret)]}",
     'cat <<EOF\n"\nEOF\ncat secret',
   ];
+
   test.each(seen)("%j", (command) => {
     assert.deepEqual(reads(command), paths("secret"));
   });
@@ -146,6 +150,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
     "echo $((cat secret))",
     "echo $((1<2)) ; echo $((1+2))",
   ];
+
   test.each(literal)("%j reads nothing", (command) => {
     assert.deepEqual(reads(command), []);
   });
@@ -173,6 +178,7 @@ describe("ordinary commands keep their results", () => {
     ['cat "a$(echo "b")c"', []],
     [String.raw`echo "$(printf "%s" "x\"y")" && cat z`, ["z"]],
   ];
+
   test.each(benign)("%s", (command, expected) => {
     assert.deepEqual(reads(command), paths(...expected));
   });

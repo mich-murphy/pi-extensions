@@ -19,27 +19,36 @@ import { fixture } from "./onboarding-artifact-fixture.js";
 
 const roots: string[] = [];
 const narHash = `sha256-${Buffer.alloc(32, 251).toString("base64")}`;
+
 function requestUrl(url: string | URL | Request): string {
   if (isString(url)) {
     return url;
   }
+
   if (url instanceof URL) {
     return url.href;
   }
+
   return url.url;
 }
+
 async function mockNixBuild(_file: string, args: string[]): Promise<string> {
   const link = args[args.indexOf("--out-link") + 1];
+
   if (link === undefined) {
     throw new Error("Missing build link");
   }
+
   await fs.symlink("/nix/store/test-pi-gateway", link);
+
   return "";
 }
+
 const failCompletionWrite: typeof fs.writeFile = async (filename, content, options) => {
   if (isString(filename) && filename.endsWith("installed.json")) {
     throw new Error("simulated completion failure");
   }
+
   return fs.writeFile(filename, content, options);
 };
 
@@ -47,6 +56,7 @@ async function setup() {
   const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "pi-acquire-test-"));
   roots.push(root);
   const f = fixture(gatewayTarget());
+
   const plan: AcquisitionPlan = {
     approved: true,
     method: "native",
@@ -55,19 +65,23 @@ async function setup() {
     installRoot: path.join(root, "install"),
     deadlineMs: Date.now() + 30_000,
   };
+
   const versionJson = JSON.stringify({
     name: "pi-gateway",
     version: "0.1.0",
     wireVersions: [2],
     capabilities: ["managed-on-demand-v1"],
   });
+
   const exec = vi.fn<AcquisitionSeams["exec"]>(async () => versionJson);
+
   const fetcher = vi.fn<typeof fetch>(
     async (url) =>
       new Response(
         new Uint8Array(requestUrl(url).endsWith("manifest.json") ? f.manifest : f.archive),
       ),
   );
+
   return {
     root,
     f,
@@ -81,6 +95,7 @@ async function setup() {
     },
   };
 }
+
 describe("approved gateway acquisition", () => {
   afterEach(async () => {
     for (const root of roots.splice(0)) {
@@ -140,8 +155,10 @@ describe("approved gateway acquisition", () => {
   test("downloads only from the exact semantic version release, not the source revision", async () => {
     const s = await setup();
     await acquireGateway(s.plan, s.options);
+
     const origin =
       "https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v0.1.0/";
+
     expect(s.fetcher.mock.calls.map(([url]) => requestUrl(url))).toStrictEqual([
       `${origin}manifest.json`,
       `${origin}${s.f.record.file}`,
@@ -176,9 +193,11 @@ describe("approved gateway acquisition", () => {
   test("permits retry beside an interrupted private native attempt without sweeping unknown files", async () => {
     const s = await setup();
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+
     const abandoned = await fs.mkdtemp(
       path.join(s.plan.installRoot, `.gateway-${s.plan.version}-${s.plan.sourceRevision}-native-`),
     );
+
     await fs.writeFile(path.join(abandoned, "unknown"), "preserve");
     await acquireGateway(s.plan, s.options);
     await expect(fs.readFile(path.join(abandoned, "unknown"), "utf8")).resolves.toBe("preserve");
@@ -200,20 +219,24 @@ describe("approved gateway acquisition", () => {
   test("cleans a failed Nix attempt and permits same-pin retry without adopting an interrupted root", async () => {
     const s = await setup();
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+
     const stale = path.join(
       s.plan.installRoot,
       `${s.plan.version}-${s.plan.sourceRevision}-nix-abandoned`,
     );
+
     await fs.mkdir(stale);
     await fs.writeFile(path.join(stale, "unknown"), "preserve");
     const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
     exec.mockRejectedValueOnce(new Error("bounded build failure"));
+
     const plan = {
       ...s.plan,
       method: "nix" as const,
       narHash,
       nixExecutable: "/nix/store/test-nix/bin/nix",
     };
+
     const options = {
       catalog: { nix: { ...s.f.pin, narHash }, native: null },
       seams: {
@@ -221,6 +244,7 @@ describe("approved gateway acquisition", () => {
         fs: { ...fs, realpath: async () => "/nix/store/test-pi-gateway/bin/pi-gateway" },
       },
     };
+
     await expect(acquireGateway(plan, options)).rejects.toThrow("bounded build failure");
     await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([path.basename(stale)]);
     exec.mockImplementationOnce(mockNixBuild);
@@ -239,6 +263,7 @@ describe("approved gateway acquisition", () => {
     const exec = vi.fn<() => Promise<string>>();
     const filesystemEffect = vi.fn<() => Promise<never>>();
     const progress = vi.fn<(message: string) => void>();
+
     const plan = {
       ...s.plan,
       method: "nix" as const,
@@ -246,6 +271,7 @@ describe("approved gateway acquisition", () => {
       nixExecutable: "/nix/store/test-nix/bin/nix",
       ...override,
     };
+
     await expect(
       // @ts-expect-error -- Deliberately malformed runtime plan includes a missing required narHash.
       acquireGateway(plan, {
@@ -291,10 +317,12 @@ describe("approved gateway acquisition", () => {
     const shared = path.join(s.root, "shared");
     await fs.mkdir(shared, { mode: 0o700 });
     await fs.chmod(shared, 0o775);
+
     const error: unknown = await acquireGateway(
       { ...s.plan, installRoot: path.join(shared, "agent", "install") },
       s.options,
     ).catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
     expect(error).toBeInstanceOf(UnsafeFolder);
     expect(error).toMatchObject({
       folder: shared,
@@ -338,9 +366,11 @@ describe("approved gateway acquisition", () => {
     const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
     exec.mockImplementationOnce(mockNixBuild);
     exec.mockResolvedValue(s.versionJson);
+
     const realpath = vi.fn<(filename: string) => Promise<string>>(
       async () => "/nix/store/test-pi-gateway/bin/pi-gateway",
     );
+
     const result = await acquireGateway(
       { ...s.plan, method: "nix", narHash, nixExecutable: "/nix/store/test-nix/bin/nix" },
       {
@@ -348,6 +378,7 @@ describe("approved gateway acquisition", () => {
         seams: { exec, fs: { ...fs, realpath } },
       },
     );
+
     expect(result.executable).toContain("/nix/store/");
     expect(exec.mock.calls[0]?.[1]).toContain(
       `github:mich-murphy/pi-extensions/${s.f.pin.sourceRevision}?narHash=${encodeURIComponent(narHash)}#pi-gateway`,
@@ -367,108 +398,142 @@ describe("approved gateway acquisition", () => {
 });
 
 type Setup = Awaited<ReturnType<typeof setup>>;
+
 type Snapshot = { ino: number; mode: number; kind: string; content: string };
+
 function kindOf(stat: { isSymbolicLink: () => boolean; isDirectory: () => boolean }): string {
   if (stat.isSymbolicLink()) {
     return "link";
   }
+
   return stat.isDirectory() ? "dir" : "file";
 }
+
 async function snapshot(filename: string): Promise<Snapshot> {
   const stat = await fs.lstat(filename);
   let content: string;
+
   if (stat.isSymbolicLink()) {
     content = await fs.readlink(filename);
   } else if (stat.isDirectory()) {
     const names = await fs.readdir(filename);
+
     const parts = await Promise.all(
       names.toSorted().map(async (name) => {
         const child = await fs.lstat(path.join(filename, name));
         const body = child.isFile() ? await fs.readFile(path.join(filename, name), "utf8") : "";
+
         return `${name}:${child.ino}:${child.mode}:${body}`;
       }),
     );
+
     content = parts.join("|");
   } else {
     content = await fs.readFile(filename, "utf8");
   }
+
   return { ino: stat.ino, mode: stat.mode, kind: kindOf(stat), content };
 }
+
 function destinationOf(s: Setup): string {
   return path.join(s.plan.installRoot, `${s.plan.version}-${s.plan.sourceRevision}-native`);
 }
+
 function attemptPrefix(s: Setup): string {
   return `.gateway-${s.plan.version}-${s.plan.sourceRevision}-native-`;
 }
+
 function only<T>(items: T[]): T {
   const [item] = items;
+
   if (items.length !== 1 || item === undefined) {
     throw new Error("Expected exactly one item");
   }
+
   return item;
 }
+
 async function mkfifo(filename: string): Promise<void> {
   await promisify(execFile)("/usr/bin/mkfifo", ["-m", "600", filename], { timeout: 5000 });
 }
+
 const stagedReplacements: [string, (filename: string) => Promise<void>][] = [
   ["FIFO", mkfifo],
   ["directory", async (filename) => fs.mkdir(filename, { mode: 0o700 })],
 ];
+
 function replacingOpen(replace: (filename: string) => Promise<void>): typeof fs.open {
   let replaced = false;
+
   return async (filename, flags, mode) => {
     if (!replaced && String(filename).endsWith("/manifest.json")) {
       replaced = true;
       await fs.unlink(filename);
       await replace(String(filename));
     }
+
     return fs.open(filename, flags, mode);
   };
 }
+
 const isString = Schema.is(Schema.String);
 
 function ioError(code: string): Error {
   return Object.assign(new Error(`simulated ${code}`), { code });
 }
+
 function commitSeam(before: (destination: string) => Promise<void>) {
   const rename = vi.fn<typeof fs.rename>(fs.rename);
+
   const symlink: typeof fs.symlink = async (target, destination, type) => {
     await before(String(destination));
+
     return fs.symlink(target, destination, type);
   };
+
   return { rename, fs: { ...fs, rename, symlink } };
 }
+
 function barrier(count: number): () => Promise<void> {
   let arrived = 0;
   const reached = Promise.withResolvers<undefined>();
+
   return async () => {
     arrived += 1;
+
     if (arrived === count) {
       reached.resolve(undefined);
     }
+
     await reached.promise;
   };
 }
+
 const symlinkThenFail: typeof fs.symlink = async (target, destination, type) => {
   await fs.symlink(target, destination, type);
   throw ioError("EIO");
 };
+
 function failingOpen(failing: string): typeof fs.open {
   return async (filename, flags, mode) => {
     if (filename === failing) {
       throw ioError("EIO");
     }
+
     return fs.open(filename, flags, mode);
   };
 }
+
 function abortingOpen(abort: AbortController, suffix: string): typeof fs.open {
   return async (filename, flags, mode) => {
     if (String(filename).endsWith(suffix)) {
       abort.abort();
     }
+
     return fs.open(filename, flags, mode);
   };
 }
+
 async function writeInstall(directory: string, s: Setup): Promise<void> {
   await fs.writeFile(path.join(directory, "pi-gateway"), s.f.binary, { mode: 0o500 });
   await fs.writeFile(path.join(directory, "manifest.json"), s.f.manifest, { mode: 0o400 });
@@ -482,6 +547,7 @@ async function writeInstall(directory: string, s: Setup): Promise<void> {
     { mode: 0o400 },
   );
 }
+
 const foreignEntries: [string, (destination: string) => Promise<void>][] = [
   ["empty directory", async (destination) => fs.mkdir(destination, { mode: 0o700 })],
   ["regular file", async (destination) => fs.writeFile(destination, "foreign", { mode: 0o600 })],
@@ -495,11 +561,14 @@ const foreignEntries: [string, (destination: string) => Promise<void>][] = [
     },
   ],
 ];
+
 async function movedPayload(s: Setup, payload: string): Promise<string> {
   const name = `${attemptPrefix(s)}abcdef`;
   await fs.rename(payload, path.join(s.plan.installRoot, name));
+
   return name;
 }
+
 const unsafeLinks: [string, (s: Setup, payload: string) => Promise<string>][] = [
   [
     "parent traversal",
@@ -550,10 +619,12 @@ describe("exclusive native publication", () => {
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
     const seam = commitSeam(barrier(2));
     const options = { ...s.options, seams: { ...s.options.seams, fs: seam.fs } };
+
     const [first, second] = await Promise.all([
       acquireGateway(s.plan, options),
       acquireGateway(s.plan, options),
     ]);
+
     expect(first).toStrictEqual(second);
     const entries = await fs.readdir(s.plan.installRoot);
     const target = await fs.readlink(destinationOf(s));
@@ -573,12 +644,14 @@ describe("exclusive native publication", () => {
     const s = await setup();
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
     const winners: AcquisitionResult[] = [];
+
     const seam = commitSeam(async () => {
       const winner = await acquireGateway(s.plan, s.options);
       winners.push(winner);
       await fs.chmod(winner.executable, 0o700);
       await fs.writeFile(winner.executable, "tampered");
     });
+
     await expect(
       acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: seam.fs } }),
     ).rejects.toThrow("same name; nothing was replaced");
@@ -592,15 +665,18 @@ describe("exclusive native publication", () => {
     const s = await setup();
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
     const abort = new AbortController();
+
     const symlink: typeof fs.symlink = async (target, destination, type) => {
       await fs.symlink(target, destination, type);
       abort.abort();
     };
+
     const result = await acquireGateway(s.plan, {
       ...s.options,
       signal: abort.signal,
       seams: { ...s.options.seams, fs: { ...fs, symlink } },
     });
+
     await expect(fs.readFile(result.executable)).resolves.toStrictEqual(s.f.binary);
     s.fetcher.mockClear();
     await expect(acquireGateway(s.plan, s.options)).resolves.toStrictEqual(result);
@@ -643,11 +719,13 @@ describe("exclusive native publication", () => {
     await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
     const held = path.join(s.root, "held-install");
     const sentinel = "owned sentinel";
+
     const symlink: typeof fs.symlink = async () => {
       await fs.rename(s.plan.installRoot, held);
       await fs.writeFile(s.plan.installRoot, sentinel, { mode: 0o600, flag: "wx" });
       throw ioError("EIO");
     };
+
     try {
       await expect(
         acquireGateway(s.plan, {
@@ -664,6 +742,7 @@ describe("exclusive native publication", () => {
       await fs.rm(s.plan.installRoot, { force: true });
       await fs.rename(held, s.plan.installRoot);
     }
+
     const attempt = only(await fs.readdir(s.plan.installRoot));
     expect(attempt.startsWith(attemptPrefix(s))).toBe(true);
     await expect(
@@ -702,9 +781,11 @@ describe("exclusive native publication", () => {
 
   test("removes its unpublished attempt when symlink fails without creating a link", async () => {
     const s = await setup();
+
     const symlink = vi.fn<typeof fs.symlink>(async () => {
       throw ioError("EACCES");
     });
+
     await expect(
       acquireGateway(s.plan, {
         ...s.options,

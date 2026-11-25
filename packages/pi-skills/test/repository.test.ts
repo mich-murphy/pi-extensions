@@ -22,12 +22,15 @@ import type { ToggleStateResult } from "../state";
 import { timeoutOverTenfold } from "./test-timeouts";
 
 const directories: string[] = [];
+
 function value(result: ToggleStateResult) {
   if (Result.isFailure(result)) {
     throw result.failure;
   }
+
   return result.success;
 }
+
 function git(...args: string[]): string {
   return execFileSync(
     "git",
@@ -39,10 +42,12 @@ function git(...args: string[]): string {
     },
   ).trim();
 }
+
 function write(path: string) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, "rules\n");
 }
+
 function resource(path: string, origin: "global" | "project" = "project"): ToggleResource {
   return {
     id: resourcePathId(path, "/"),
@@ -53,6 +58,7 @@ function resource(path: string, origin: "global" | "project" = "project"): Toggl
     editability: "editable",
   };
 }
+
 type Checkouts = { root: string; main: string; common: string; child: string; second: string };
 
 function checkouts(separate: boolean): Checkouts {
@@ -62,9 +68,11 @@ function checkouts(separate: boolean): Checkouts {
   const child = join(root, "child");
   const second = join(root, "second");
   git("init", "-q", ...(separate ? ["--separate-git-dir", common] : []), main);
+
   for (const path of ["AGENTS.md", "nested/AGENTS.md", "custom-skills/deploy/SKILL.md"]) {
     write(join(main, path));
   }
+
   git("-C", main, "add", ".");
   git(
     "-C",
@@ -79,6 +87,7 @@ function checkouts(separate: boolean): Checkouts {
   );
   git("-C", main, "worktree", "add", "-q", "--detach", child);
   git("-C", main, "worktree", "add", "-q", "--detach", second);
+
   return { root, main, common, child, second };
 }
 
@@ -86,22 +95,27 @@ function scratch() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-skill-real-git-")));
   directories.push(root);
   const statePath = join(root, "state.json");
+
   return { root, statePath, store: new ToggleStateFile(statePath) };
 }
 
 function ownRepository(separate = false) {
   const layout = checkouts(separate);
   directories.push(layout.root);
+
   return { ...layout, ...scratch() };
 }
 
 const shared = new Map<boolean, Checkouts>();
+
 function readOnlySharedRepository(separate = false) {
   let layout = shared.get(separate);
+
   if (layout === undefined) {
     layout = checkouts(separate);
     shared.set(separate, layout);
   }
+
   return { ...layout, ...scratch() };
 }
 
@@ -119,6 +133,7 @@ function legacyState(version: number, entries: Record<string, string>) {
   if (version === 6) {
     return { version, overrides: entries };
   }
+
   return {
     version,
     resources: Object.fromEntries(
@@ -137,6 +152,7 @@ describe(
     afterEach(() => {
       vi.restoreAllMocks();
       vi.unstubAllEnvs();
+
       for (const path of directories.splice(0)) {
         rmSync(path, { recursive: true, force: true });
       }
@@ -145,6 +161,7 @@ describe(
       for (const layout of shared.values()) {
         rmSync(layout.root, { recursive: true, force: true });
       }
+
       shared.clear();
     });
 
@@ -203,11 +220,13 @@ describe(
       expect([...loaded.repositories]).toStrictEqual([
         [repo.common, new Map([["AGENTS.md", "enabled"]])],
       ]);
+
       for (const checkout of [repo.main, repo.second]) {
         expect(new ResourcePolicy(loaded).value(resource(join(checkout, "AGENTS.md")))).toBe(
           "enabled",
         );
       }
+
       expect(new ResourcePolicy(loaded).value(resource(stalePath))).toBe("disabled");
       value(repo.store.set(resourcePathId(join(repo.main, "nested/AGENTS.md"), "/"), "disabled"));
       expect(JSON.parse(readFileSync(repo.statePath, "utf8"))).toStrictEqual({
@@ -222,12 +241,14 @@ describe(
     test("memoizes locations only within one policy evaluation and keeps global scope separate", () => {
       const repo = scratch();
       const path = resourcePathId(join(repo.root, "new-repo/AGENTS.md"), "/");
+
       const choices: ToggleOverrides = {
         files: new Map(),
         repositories: new Map([
           [join(dirname(path), ".git"), new Map([["AGENTS.md", "disabled"]])],
         ]),
       };
+
       const locate = vi.spyOn(RepositoryLocator.prototype, "locate");
       const policy = new ResourcePolicy(choices);
       expect(policy.override(path)).toBeUndefined();
@@ -253,6 +274,7 @@ describe(
         const before = readFileSync(repo.statePath, "utf8");
         const loaded = value(repo.store.load());
         const policy = new ResourcePolicy(loaded);
+
         for (const checkout of [repo.main, repo.child, repo.second]) {
           expect(policy.value(resource(join(checkout, "nested/AGENTS.md")))).toBe("enabled");
           expect(
@@ -261,6 +283,7 @@ describe(
             ),
           ).toBeUndefined();
         }
+
         expect(readFileSync(repo.statePath, "utf8")).toBe(before);
         value(repo.store.set(resourcePathId(join(repo.child, "AGENTS.md"), "/"), "disabled"));
         expect(JSON.parse(readFileSync(repo.statePath, "utf8"))).toStrictEqual({
@@ -289,11 +312,13 @@ describe(
       const before = readFileSync(repo.statePath, "utf8");
       const loaded = value(repo.store.load());
       expect([...loaded.repositories.keys()]).toStrictEqual([repo.common]);
+
       for (const checkout of [repo.main, repo.child]) {
         const path = join(checkout, "AGENTS.md");
         expect(new ResourcePolicy(loaded).value(resource(path))).toBe("disabled");
         expect(disabledResourceMatcher([], loaded, new Set()).match(path)).toBe("AGENTS.md");
       }
+
       expect(readFileSync(repo.statePath, "utf8")).toBe(before);
       value(repo.store.set(resourcePathId(join(repo.main, "nested/AGENTS.md"), "/"), "enabled"));
       expect(JSON.parse(readFileSync(repo.statePath, "utf8"))).toStrictEqual({
@@ -312,10 +337,12 @@ describe(
       const repo = readOnlySharedRepository();
       const first = join(repo.child, "AGENTS.md");
       const second = join(repo.second, "AGENTS.md");
+
       const orders: Record<string, string>[] = [
         { [second]: "enabled", [first]: "disabled" },
         { [first]: "disabled", [second]: "enabled" },
       ];
+
       for (const entries of orders) {
         writeFileSync(repo.statePath, JSON.stringify({ version: 6, overrides: entries }));
         expect(
@@ -333,6 +360,7 @@ describe(
       git("-C", repo.main, "worktree", "remove", "--force", repo.child);
       value(repo.store.set(resourcePathId(join(repo.main, "AGENTS.md"), "/"), "enabled"));
       const loaded = value(new ToggleStateFile(repo.statePath).load());
+
       for (const checkout of [repo.main, repo.second]) {
         const target = join(checkout, "nested/AGENTS.md");
         expect(new ResourcePolicy(loaded).value(resource(target))).toBe("disabled");
@@ -340,6 +368,7 @@ describe(
           "nested/AGENTS.md",
         );
       }
+
       expect(loaded.files.size).toBe(0);
       expect(loaded.repositories.get(repo.common)?.get("nested/AGENTS.md")).toBe("disabled");
     });

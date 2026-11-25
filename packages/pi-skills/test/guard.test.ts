@@ -31,8 +31,10 @@ const temporaryDirectories: string[] = [];
 
 function temporaryFileSystemIgnoresCase(): boolean {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-case-"));
+
   try {
     writeFileSync(join(directory, "probe"), "");
+
     return existsSync(join(directory, "PROBE"));
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -44,6 +46,7 @@ const ignoresCase = temporaryFileSystemIgnoresCase();
 function write(path: string, content = "content\n"): string {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
+
   return path;
 }
 
@@ -57,17 +60,20 @@ function repository() {
   write(join(main, ".git", "worktrees", "worker3", "commondir"), "../..\n");
   write(join(worktree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "worker3")}\n`);
   mkdirSync(join(other, ".git"), { recursive: true });
+
   for (const checkout of [main, worktree, other]) {
     write(join(checkout, "AGENTS.md"));
     write(join(checkout, "web", "AGENTS.md"));
     write(join(checkout, ".agents", "skills", "deploy", "SKILL.md"));
     write(join(checkout, ".agents", "skills", "deploy", "references", "steps.md"));
   }
+
   return { main, worktree, other };
 }
 
 function instruction(path: string): ToggleResource {
   const id = resourcePathId(path, "/");
+
   return {
     id,
     kind: "instruction",
@@ -80,6 +86,7 @@ function instruction(path: string): ToggleResource {
 
 function skillResource(path: string, name: string): ToggleResource {
   const id = resourcePathId(path, "/");
+
   return {
     id,
     kind: "skill",
@@ -96,9 +103,11 @@ function overrides(entries: Readonly<Record<string, ToggleValue>>): ToggleOverri
   const path = join(directory, "state.json");
   writeFileSync(path, JSON.stringify({ version: 6, overrides: entries }));
   const loaded = new ToggleStateFile(path).load();
+
   if (Result.isFailure(loaded)) {
     throw loaded.failure;
   }
+
   return loaded.success;
 }
 
@@ -122,11 +131,13 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
     },
     stateStore,
   );
+
   const context = (parentSession?: string): GuardContext => ({
     cwd,
     ui: { notify: (message: string) => notifications.push(message) },
     sessionManager: { getHeader: () => (parentSession === undefined ? {} : { parentSession }) },
   });
+
   const start = (skills: readonly Skill[], contextPaths: readonly string[]) =>
     handlers.before_agent_start?.(
       {
@@ -147,16 +158,20 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
         },
       },
     );
+
   const call = (toolName: string, input: GuardedToolCall["input"], parentSession?: string) =>
     handlers.tool_call?.({ toolName, input }, context(parentSession));
+
   const type = (text: string, parentSession?: string) => {
     handlers.input?.({ text, source: "interactive" }, context(parentSession));
   };
+
   return { start, call, type, notifications, handlers };
 }
 
 function deploySkill(main: string): Skill {
   const path = join(main, ".agents/skills/deploy/SKILL.md");
+
   return {
     name: "deploy",
     description: "Deploy things",
@@ -176,9 +191,11 @@ function storeWith(entries: Readonly<Record<string, ToggleValue>>): ToggleStateS
 
 function loadedState(store: ToggleStateStore) {
   const result = store.load();
+
   if (Result.isFailure(result)) {
     throw result.failure;
   }
+
   return result.success;
 }
 
@@ -189,11 +206,13 @@ function caseFixture() {
   const { main } = checkouts;
   const rootAgents = instruction(join(main, "AGENTS.md"));
   const deploy = skillResource(join(main, ".agents/skills/deploy/SKILL.md"), "deploy");
+
   const matcher = disabledResourceMatcher(
     [rootAgents, deploy],
     overrides({ [rootAgents.id]: "disabled", [join(main, "web/AGENTS.md")]: "disabled" }),
     new Set(),
   );
+
   return { ...checkouts, matcher };
 }
 
@@ -235,12 +254,14 @@ describe("pi-skills guard", () => {
 
     test("main legacy policy wins even for a resource with an old worktree override", () => {
       const { main, worktree } = repository();
+
       const policy = new ResourcePolicy(
         overrides({
           [join(worktree, "AGENTS.md")]: "enabled",
           [join(main, "AGENTS.md")]: "disabled",
         }),
       );
+
       expect(policy.value(instruction(join(main, "AGENTS.md")))).toBe("disabled");
       expect(policy.value(instruction(join(worktree, "AGENTS.md")))).toBe("disabled");
     });
@@ -259,6 +280,7 @@ describe("pi-skills guard", () => {
       ]) {
         expect(matcher.match(path)).toBe('skill "deploy"');
       }
+
       expect(matcher.match(join(main, ".agents/skills/deployment/SKILL.md"))).toBeUndefined();
       expect(matcher.match(join(main, "docs/deploy/SKILL.md"))).toBeUndefined();
       expect(matcher.match(join(worktree, ".claude/skills/deploy/SKILL.md"))).toBeUndefined();
@@ -267,6 +289,7 @@ describe("pi-skills guard", () => {
 
     test("matches configured and nested loaded skill directories without same-name leakage", () => {
       const { main, worktree, other } = repository();
+
       for (const relative of [
         "custom-skills/deploy/SKILL.md",
         ".agents/skills/team/deploy/SKILL.md",
@@ -288,18 +311,22 @@ describe("pi-skills guard", () => {
       const outer = skillResource(write(join(main, "custom/outer/SKILL.md")), "outer");
       const inner = skillResource(write(join(main, "custom/outer/inner/SKILL.md")), "inner");
       const helper = skillResource(write(join(main, "custom/outer/helper.md")), "helper");
+
       const state = overrides({
         [outer.id]: "disabled",
         [inner.id]: "enabled",
         [helper.id]: "enabled",
       });
+
       const manualInner = { ...inner, editability: "manual-only" } as const;
       const enabled = disabledResourceMatcher([outer, inner, helper], state, new Set());
+
       const manual = disabledResourceMatcher(
         [outer, manualInner, helper],
         state,
         new Set(["inner"]),
       );
+
       for (const matcher of [enabled, manual]) {
         for (const checkout of [main, worktree]) {
           expect(matcher.match(join(checkout, "custom/outer/SKILL.md"))).toBe('skill "outer"');
@@ -327,10 +354,12 @@ describe("pi-skills guard", () => {
 
     test("manual-only source policy wins over enabled state, except explicit local invocation", () => {
       const { main } = repository();
+
       const deploy = {
         ...skillResource(join(main, "custom/deploy/SKILL.md"), "release"),
         editability: "manual-only",
       } as const;
+
       const state = overrides({ [deploy.id]: "enabled" });
       expect(new ResourcePolicy(state).value(deploy)).toBe("disabled");
       expect(disabledResourceMatcher([deploy], state, new Set()).match(deploy.id)).toBe(
@@ -357,6 +386,7 @@ describe("pi-skills guard", () => {
     test("blocks the same repository-relative instruction in every worktree only", () => {
       const { main, worktree, other } = repository();
       const rootAgents = instruction(join(main, "AGENTS.md"));
+
       const matcher = disabledResourceMatcher(
         [rootAgents],
         overrides({ [rootAgents.id]: "disabled" }),
@@ -374,6 +404,7 @@ describe("pi-skills guard", () => {
     test("honours nested instructions and resolves conflicting legacy worktree entries consistently", () => {
       const { main, worktree } = repository();
       const nested = join(main, "web/AGENTS.md");
+
       const matcher = disabledResourceMatcher(
         [],
         overrides({
@@ -460,11 +491,13 @@ describe("pi-skills guard", () => {
       const { main, other } = repository();
       const rootAgents = instruction(join(main, "AGENTS.md"));
       const deploy = skillResource(join(main, ".agents/skills/deploy/SKILL.md"), "deploy");
+
       const matcher = disabledResourceMatcher(
         [rootAgents, deploy],
         overrides({ [rootAgents.id]: "disabled", [join(main, "web/AGENTS.md")]: "disabled" }),
         new Set(),
       );
+
       const hardAgents = join(other, "notes.md");
       linkSync(rootAgents.id, hardAgents);
       const hardSkill = join(other, "skill-copy.md");
@@ -484,11 +517,13 @@ describe("pi-skills guard", () => {
     test("hard links to enabled files stay readable", () => {
       const { main, other } = repository();
       const rootAgents = instruction(join(main, "AGENTS.md"));
+
       const matcher = disabledResourceMatcher(
         [rootAgents],
         overrides({ [rootAgents.id]: "enabled" }),
         new Set(),
       );
+
       const copy = join(other, "notes.md");
       linkSync(rootAgents.id, copy);
       expect(matcher.match(copy)).toBeUndefined();
@@ -498,6 +533,7 @@ describe("pi-skills guard", () => {
       "case-insensitive file systems: case variants of protected files are blocked",
       () => {
         const { main, worktree, other, matcher } = caseFixture();
+
         for (const checkout of [main, worktree]) {
           expect(matcher.match(join(checkout, "agents.md"))).toBe("AGENTS.md");
           expect(matcher.match(join(checkout, "Agents.Md"))).toBe("AGENTS.md");
@@ -512,6 +548,7 @@ describe("pi-skills guard", () => {
             'skill "deploy"',
           );
         }
+
         expect(matcher.match(join(main, ".AGENTS/skills/DEPLOY/missing/notes.md"))).toBe(
           'skill "deploy"',
         );
@@ -525,6 +562,7 @@ describe("pi-skills guard", () => {
       "case-sensitive file systems: distinct differently-cased files stay readable",
       () => {
         const { main, worktree, matcher } = caseFixture();
+
         for (const checkout of [main, worktree]) {
           write(join(checkout, "agents.md"), "different file\n");
           write(join(checkout, "web/agents.md"), "different file\n");
@@ -534,6 +572,7 @@ describe("pi-skills guard", () => {
           expect(matcher.match(join(checkout, ".AGENTS/skills/DEPLOY/SKILL.md"))).toBeUndefined();
           expect(matcher.match(join(checkout, "AGENTS.md"))).toBe("AGENTS.md");
         }
+
         expect(matcher.match(join(main, "Agents.Md"))).toBeUndefined();
       },
     );
@@ -616,12 +655,14 @@ describe("pi-skills guard", () => {
         const saved = store.set(path, "disabled");
         expect(Result.isSuccess(saved)).toBe(true);
         const guard = guarded(store, main);
+
         const systemPromptOptions = {
           cwd: main,
           sections: {},
           skills: [],
           contextFiles: [{ path, content: "rules" }],
         };
+
         guard.handlers.before_agent_start?.(
           { systemPrompt: "base", systemPromptOptions },
           {
@@ -668,6 +709,7 @@ describe("pi-skills guard", () => {
         reason:
           'This command reads AGENTS.md, skill "deploy", which the user disabled in /skills on purpose; it did not run. Continue without them, do not retry them with any path or tool, and ask the user to re-enable them only if you need them.',
       });
+
       for (const command of [
         "cat web/AGENTS.md",
         "find . -name AGENTS.md",
@@ -704,6 +746,7 @@ describe("pi-skills guard", () => {
 
     test("fails closed when state cannot be loaded", () => {
       const { main } = repository();
+
       const failing: ToggleStateStore = {
         load: () =>
           Result.fail(
@@ -711,6 +754,7 @@ describe("pi-skills guard", () => {
           ),
         set: () => Result.succeed(emptyOverrides()),
       };
+
       const guard = guarded(failing, main);
       guard.start([deploySkill(main)], [join(main, "AGENTS.md")]);
 
@@ -769,15 +813,18 @@ describe("pi-skills guard", () => {
           custom: async (factory) => {
             initTheme();
             let closed = false;
+
             const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
               closed = true;
             });
+
             assert(component.handleInput !== undefined);
             const press = component.handleInput.bind(component);
             press("\u001b[B");
             press("\u001b[B");
             press("\u001b[B");
             press("\r");
+
             for (const { expected, label, other, expectedPrompt, read } of [
               {
                 expected: "disabled",
@@ -812,6 +859,7 @@ describe("pi-skills guard", () => {
               const saved = loadedState(store);
               expect(JSON.parse(readFileSync(statePath, "utf8"))).toMatchObject({ version: 7 });
               expect(saved.files.size).toBe(0);
+
               for (const [checkout, skill] of [
                 [main, mainSkill],
                 [worktree, childSkill],
@@ -823,14 +871,17 @@ describe("pi-skills guard", () => {
                 expect(prompt).toStrictEqual(expectedPrompt);
                 expect(Boolean(guard.call("read", { path: skill.filePath }))).toBe(read);
               }
+
               component.invalidate();
               const rendered = component.render(120).join("\n");
               expect(rendered).toContain(label);
               expect(rendered).not.toContain(other);
+
               for (const width of [1, 8, 20, 40, 60, 120]) {
                 expect(() => component.render(width)).not.toThrow();
               }
             }
+
             component.handleInput?.("d");
             component.handleInput?.("\u001b");
             expect(closed).toBe(false);
@@ -857,6 +908,7 @@ describe("pi-skills guard", () => {
           getCommands: () => [],
           exec: async (_command, args) => {
             execCalls.push(args);
+
             return {
               stdout: "web/AGENTS.md\0README.md\0",
               stderr: "",
@@ -870,11 +922,13 @@ describe("pi-skills guard", () => {
           load: () => Result.succeed(emptyOverrides()),
           set: (id, value) => {
             writes.push([id, value]);
+
             return Result.succeed(emptyOverrides());
           },
         },
       );
       let rendered: readonly string[] = [];
+
       const custom = async (factory: ToggleDialogFactory) => {
         initTheme();
         const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);

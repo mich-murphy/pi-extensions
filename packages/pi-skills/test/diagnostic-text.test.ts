@@ -14,6 +14,7 @@ describe("safe pi-skills error text", () => {
     const text = diagnosticText(
       `https://user:password@example.com/?token=secret \u001b[2J\u202e${"x".repeat(1000)}`,
     );
+
     expect(text.length).toBeLessThanOrEqual(512);
     expect(text).not.toMatch(/password|secret|\p{Cc}|\p{Bidi_Control}/u);
     expect(text).toContain(String.raw`\u001b`);
@@ -26,16 +27,19 @@ describe("safe pi-skills error text", () => {
       "/tmp/\u001b-state",
       "https://user:password@example.com/",
     );
+
     expect(malformed._tag).toBe("ToggleStateMalformed");
     expect(malformed.entry).toBe("https://user:password@example.com/");
     expect(malformed.message).not.toMatch(/password|\p{Cc}/u);
     expect(malformed.message).toContain("Fix or remove that entry");
+
     const unavailable = new ToggleStateUnavailable(
       "load",
       "/tmp/state",
       "EROFS",
       new Error("private cause"),
     );
+
     expect(unavailable.code).toBe("EROFS");
     expect(unavailable.message).toContain("Use a writable agent directory");
     expect(unavailable.message).not.toContain("private cause");

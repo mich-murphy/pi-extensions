@@ -19,6 +19,7 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
 
 const MAX_PARAMETERS_CHARS = 4000;
 const cleanToolArguments = z.record(z.string(), z.json());
+
 const readToolArguments = Schema.decodeUnknownSync(
   Schema.JsonObject.pipe(
     Schema.decode({
@@ -32,10 +33,12 @@ type ToolInvocation = Pick<PreToolUseHookInput, "tool_use_id" | "tool_name" | "t
 
 function parametersLine(parameters: Tool["parameters"]): string {
   const json = JSON.stringify(parameters) ?? "{}";
+
   const bounded =
     json.length > MAX_PARAMETERS_CHARS
       ? `${json.slice(0, MAX_PARAMETERS_CHARS)}…[truncated]`
       : json;
+
   return `\nParameters (JSON Schema): ${bounded}`;
 }
 
@@ -50,6 +53,7 @@ export function createDeferredPiTools(catalog: readonly CatalogTool[], onFallbac
     inputSchema: schema,
     handler: async () => {
       onFallback?.();
+
       return DEFERRED_PI_CALL_HANDLER();
     },
   }));
@@ -82,14 +86,18 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     if (calls.has(id)) {
       return;
     }
+
     const selected = catalog.find((entry) => entry.sdkName === toolName);
+
     let reason:
       | "unexpected_sdk_tool"
       | "invalid_tool_input"
       | "uncaptured_tool_batch"
       | "sdk_input_rejected" = "unexpected_sdk_tool";
+
     if (selected) {
       reason = "invalid_tool_input";
+
       try {
         const args = readToolArguments(
           validateToolArguments(selected.declaration, {
@@ -99,15 +107,20 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
             arguments: readToolArguments(input),
           }),
         );
+
         selected.schema.parse(args);
+
         if (preToolUse) {
           calls.set(id, { id, name: selected.declaration.name, arguments: args });
+
           return;
         }
+
         reason = "uncaptured_tool_batch";
       } catch {
         reason = "invalid_tool_input";
       }
+
       if (reason === "uncaptured_tool_batch") {
         lifecycleCalls += 1;
       } else if (preToolUse) {
@@ -119,6 +132,7 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     } else {
       unexpectedToolCalls += 1;
     }
+
     calls.set(id, { id, name: VALIDATION_ERROR_TOOL, arguments: { error: reason } });
   };
 
@@ -126,19 +140,26 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
     if (input.hook_event_name !== "PreToolUse") {
       return {};
     }
+
     capture(input, true);
+
     return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" } };
   };
+
   const batchHook: HookCallback = async (input) => {
     if (input.hook_event_name !== "PostToolBatch") {
       return {};
     }
+
     for (const call of input.tool_calls) {
       capture(call, false);
     }
+
     batchStopped = true;
+
     return { continue: false, stopReason: "Stopped so that Pi can run the requested tools." };
   };
+
   return {
     hook,
     batchHook,

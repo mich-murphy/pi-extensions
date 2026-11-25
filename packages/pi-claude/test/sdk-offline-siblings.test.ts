@@ -12,6 +12,7 @@ function skipReason(): string | undefined {
   if (process.platform !== "darwin") {
     return "the offline SDK contract uses sandbox-exec, which exists only on macOS";
   }
+
   return claudeCodeInstalled
     ? undefined
     : "Claude Code is not installed on PATH; the offline SDK contract runs the real executable";
@@ -25,12 +26,14 @@ describe("production Pi loop through actual offline SDK", () => {
       const reason = skipReason();
       context.skip(reason !== undefined, reason);
       const home = await mkdtemp(join(tmpdir(), "pi-sdk-contract-"));
+
       try {
         const profile = join(home, "network.sb");
         await writeFile(
           profile,
           '(version 1) (allow default) (deny network-outbound) (allow network-outbound (remote ip "localhost:*"))',
         );
+
         const result = spawnSync(
           "/usr/bin/sandbox-exec",
           [
@@ -54,6 +57,7 @@ describe("production Pi loop through actual offline SDK", () => {
             },
           },
         );
+
         expect(result.stderr).not.toContain("AssertionError");
         expect(result.stderr).not.toContain("Error:");
         expect(result.status).toBe(0);

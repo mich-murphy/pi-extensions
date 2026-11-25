@@ -31,14 +31,17 @@ describe("fresh Review details and the Manage form's edit Apply", () => {
       backend: { acquire: async () => fixture.executable },
       description: "TEST immutable native helper",
     };
+
     const activate = vi.fn<ActivatePlan>();
     const fresh = dialog(["Review details", "Back", "APPLY"]);
     await setupCommand(agent, fresh, activate, supplied);
     const paths = setupPaths(agent);
+
     const review = vi
       .mocked(fresh.ui.select)
       .mock.calls.map(([title]) => title)
       .find((title) => title.includes("Private files:"));
+
     expect(review).toBeDefined();
     const lines = String(review).split("\n");
     expect(lines).toContain("TEST immutable native helper");
@@ -77,6 +80,7 @@ describe("Manage on a paired setup", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let agent: string;
   let client: GatewayClient | undefined;
+
   const activate: ActivatePlan = async (plan, setup) => {
     client?.close();
     client = new GatewayClient({
@@ -90,10 +94,12 @@ describe("Manage on a paired setup", () => {
     });
     await client.reconnect();
   };
+
   const supplied = () => ({
     backend: { acquire: async () => fixture.executable },
     description: "Explicit immutable native TEST backend",
   });
+
   const gateway = async () => decodeGateway(parseJson(await readFile(setupPaths(agent).gateway)));
   beforeEach(async () => {
     fixture = await nativeFixture();
@@ -124,6 +130,7 @@ describe("Manage on a paired setup", () => {
   test("Scope is read-only; a Permissions edit changes the peer's grants exactly as disclosed", async () => {
     const before = await gateway();
     expect(before.remote).toBeDefined();
+
     const picks = [
       "Scope: local",
       "Review details",
@@ -133,7 +140,9 @@ describe("Manage on a paired setup", () => {
       "Back",
       "Apply: Ready",
     ];
+
     const shown: { title: string; options: readonly string[] }[] = [];
+
     const ctx: DialogContext = {
       mode: "rpc",
       hasUI: true,
@@ -141,12 +150,14 @@ describe("Manage on a paired setup", () => {
       ui: {
         select: vi.fn<DialogContext["ui"]["select"]>(async (title, options) => {
           shown.push({ title, options });
+
           return picks.shift();
         }),
         input: vi.fn<DialogContext["ui"]["input"]>(async () => undefined),
         notify: vi.fn<DialogContext["ui"]["notify"]>(),
       },
     };
+
     await setupCommand(agent, ctx, activate, supplied());
     expect(picks).toStrictEqual([]);
     expect(shown[1]?.title).toContain(

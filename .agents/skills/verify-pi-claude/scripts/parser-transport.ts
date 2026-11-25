@@ -5,7 +5,9 @@ import type { RawMessageStreamEvent } from "@anthropic-ai/sdk/resources/messages
 import { Schema } from "effect";
 
 type TransportEvents = RawMessageStreamEvent["type"];
+
 type TransportPayload = typeof Schema.JsonObject.Type;
+
 const isTcpAddress = Schema.is(Schema.Struct({ port: Schema.Number }));
 
 export const DUMMY_PARSER_KEY = "pi-offline-parser-dummy-key";
@@ -15,10 +17,12 @@ export async function startParserTransport() {
   let unexpected = 0;
   let invalidJsonResponses = 0;
   const sockets = new Set<Socket>();
+
   const server = createServer((request, response) => {
     let bytes = 0;
     request.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
+
       if (bytes > 1_048_576) {
         request.destroy();
       }
@@ -33,16 +37,20 @@ export async function startParserTransport() {
       ) {
         unexpected += 1;
         response.writeHead(400).end();
+
         return;
       }
+
       requests += 1;
       response.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
+
       const emit = (type: TransportEvents, data: TransportPayload) =>
         response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+
       emit("message_start", {
         message: {
           id: `offline-parser-${requests}`,
@@ -60,6 +68,7 @@ export async function startParserTransport() {
           },
         },
       });
+
       if (requests <= 2) {
         emit("content_block_start", {
           index: 0,
@@ -70,11 +79,14 @@ export async function startParserTransport() {
             input: {},
           },
         });
+
         const partial =
           requests === 1 ? '{"value":INVALID_JSON}' : JSON.stringify({ value: "corrected" });
+
         if (requests === 1) {
           invalidJsonResponses += 1;
         }
+
         emit("content_block_delta", {
           index: 0,
           delta: { type: "input_json_delta", partial_json: partial },
@@ -96,10 +108,12 @@ export async function startParserTransport() {
           usage: { output_tokens: 3 },
         });
       }
+
       emit("message_stop", {});
       response.end();
     });
   });
+
   server.on("connection", (socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
@@ -112,6 +126,7 @@ export async function startParserTransport() {
   });
   const address = server.address();
   assert(isTcpAddress(address));
+
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     summary: () => ({ requests, unexpected, invalidJsonResponses }),
@@ -119,6 +134,7 @@ export async function startParserTransport() {
       for (const socket of sockets) {
         socket.destroy();
       }
+
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

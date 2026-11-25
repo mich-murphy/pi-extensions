@@ -18,14 +18,18 @@ function bashResult(
 
 function sanitizedText(messages: ContextEvent["messages"], index: number) {
   const message = sanitizeContextMessages(messages)[index];
+
   if (message?.role !== "toolResult") {
     throw new Error("test setup: expected a tool result");
   }
+
   expect(message.content).toHaveLength(1);
   const [block] = message.content;
+
   if (block?.type !== "text") {
     throw new Error("test setup: expected a text notice");
   }
+
   return block.text;
 }
 

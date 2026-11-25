@@ -24,25 +24,31 @@ const LABEL = /^─.* (?<mode>INSERT|NORMAL)(?: (?<pending>\S+))?$/u;
 
 function labelRow(rows: readonly string[]): number {
   let index = rows.length - 1;
+
   while (index >= 0 && !LABEL.test(rows[index] ?? "")) {
     index--;
   }
+
   return index;
 }
 
 function topBorder(rows: readonly string[], bottom: number): number {
   let index = bottom - 1;
+
   while (index >= 0 && !(rows[index] ?? "").startsWith("─")) {
     index--;
   }
+
   return index;
 }
 
 function rowCells(state: State, index: number): string[] {
   const cells = state.grid.row(index).map((cell) => cell.contents);
+
   while (cells.length > 0 && cells.at(-1) === " ") {
     cells.pop();
   }
+
   return cells;
 }
 
@@ -50,14 +56,17 @@ type Label = { mode: Mode; pending: string };
 
 function labelParts(row: string): Label {
   const groups = LABEL.exec(row)?.groups;
+
   return { mode: groups?.mode === "INSERT" ? "INSERT" : "NORMAL", pending: groups?.pending ?? "" };
 }
 
 function textRows(state: State, top: number, bottom: number): string[][] {
   const text: string[][] = [];
+
   for (let index = top + 1; index < bottom; index++) {
     text.push(rowCells(state, index));
   }
+
   return text;
 }
 
@@ -68,12 +77,15 @@ function isClipped(top: string, bottom: string): boolean {
 function readEditor(state: State): Screen | null {
   const rows = screenRows(state);
   const bottom = labelRow(rows);
+
   if (bottom < 0) {
     return null;
   }
+
   const top = topBorder(rows, bottom);
   const { mode, pending } = labelParts(rows[bottom] ?? "");
   const label = pending === "" ? ` ${mode} ` : ` ${mode} ${pending} `;
+
   return {
     mode,
     pending,
@@ -88,6 +100,7 @@ function readEditor(state: State): Screen | null {
 const editor = extract((state: State) => readEditor(state));
 const exitStatus = extract((state: State) => state.exitStatus);
 const lastKey = extract((state: State) => typedText(state));
+
 const resized = extract((state: State) => {
   return state.lastAction !== null && "Resize" in state.lastAction;
 });
@@ -101,8 +114,10 @@ const PRINTABLE = CharSet.union(
   CharSets.UNICODE_CJK,
   CharSets.UNICODE_EMOTICONS,
 );
+
 const VIM_KEYS = CharSet.fromLiterals(..."iaAIoOhjklwb0$xDCudc".split(""));
 const ESCAPE = CharSet.fromLiterals("\u001B");
+
 const EDITING_KEYS = {
   enterSubmitsAndReportsMissingModel: "\r",
   backspace: "\u007F",
@@ -117,12 +132,14 @@ const EDITING_KEYS = {
   end: "\u001B[F",
   delete: "\u001B[3~",
 };
+
 const EDITING = CharSet.union(
   CharSet.fromLiterals(...Object.values(EDITING_KEYS)),
   CharSets.CONTROL_ARROWS,
   CharSets.CONTROL_ARROWS_MODIFIED,
   CharSets.CONTROL_EDITING_ALT,
 );
+
 const INERT_WHOLE_CHARACTERS_NEVER_SPLIT_INTO_SURROGATES = [
   ..."zqZQXYgGmMnNpPrRsStTvVeEfFyY~#%^&*()_+=-;:'\",.<>?|`".split(""),
   "漢",
@@ -130,6 +147,7 @@ const INERT_WHOLE_CHARACTERS_NEVER_SPLIT_INTO_SURROGATES = [
   "é",
   "😀",
 ];
+
 const RESIZE = {
   Resize: { columns: [60, 140], rows: [20, 50] },
 } satisfies ActionTemplate;
@@ -153,14 +171,18 @@ export const vimKeys = weighted([
 ]);
 
 const graphemes = (cells: readonly string[]): string[] => cells.filter((cell) => cell !== "");
+
 const textOf = (screen: Screen): string =>
   screen.rows
     .map((row) => graphemes(row).join(""))
     .join("\n")
     .trim();
+
 const compact = (screen: Screen): string => screen.rows.flat().join("").replaceAll(/\s/gu, "");
+
 const normalIdle = (): boolean =>
   editor.current?.mode === "NORMAL" && editor.current.pending === "";
+
 const pendingShown = (): boolean => (editor.current?.pending ?? "") !== "";
 
 function oneIdleLine(screen: Screen | null): screen is Screen {
@@ -171,16 +193,21 @@ function onDrawnCharacter(screen: Screen | null): screen is Screen {
   if (!oneIdleLine(screen) || screen.cursor.row !== 0) {
     return false;
   }
+
   const cells = screen.rows[0] ?? [];
+
   return screen.cursor.col < cells.length && cells[screen.cursor.col] !== "";
 }
 
 function wideColumns(): number[] {
   const screen = editor.current;
+
   if (!onDrawnCharacter(screen)) {
     return [];
   }
+
   const cells = screen.rows[0] ?? [];
+
   return cells.flatMap((cell, index) => (cell !== "" && cells[index + 1] === "" ? [index] : []));
 }
 
@@ -191,6 +218,7 @@ function onWide(): boolean {
 function towardWide() {
   const col = editor.current?.cursor.col ?? 0;
   const key = wideColumns().some((wide) => wide > col) ? "l" : "h";
+
   return [{ TypeText: { CharSet: CharSet.fromLiterals(key) } }];
 }
 
@@ -204,14 +232,18 @@ export const escapeEntersNormal: Formula = always(
 
 export const xDeletesOneCharacter: Formula = always(() => {
   const before = editor.current;
+
   if (!onDrawnCharacter(before)) {
     return true;
   }
+
   const cells = before.rows[0] ?? [];
   const index = graphemes(cells.slice(0, before.cursor.col)).length;
   const expected = graphemes(cells).toSpliced(index, 1).join("").trimEnd();
+
   return next(() => {
     const after = editor.current;
+
     return (
       lastKey.current !== "x" ||
       after === null ||
@@ -222,6 +254,7 @@ export const xDeletesOneCharacter: Formula = always(() => {
 
 export const editorFitsWidth: Formula = always(() => {
   const screen = editor.current;
+
   return (
     screen === null ||
     (screen.labelAtEnd && screen.rows.every((row) => row.length <= screen.width - 1))
@@ -230,14 +263,18 @@ export const editorFitsWidth: Formula = always(() => {
 
 export const pendingSurvivesResize: Formula = always(() => {
   const before = editor.current;
+
   if (before === null || before.pending === "" || before.clipped) {
     return true;
   }
+
   return next(() => {
     const after = editor.current;
+
     if (!resized.current || after === null || after.clipped) {
       return true;
     }
+
     return (
       after.mode === "NORMAL" &&
       after.pending === before.pending &&
@@ -248,11 +285,14 @@ export const pendingSurvivesResize: Formula = always(() => {
 
 export const submitReturnsToInsert: Formula = always(() => {
   const before = editor.current;
+
   if (before === null || !normalIdle() || textOf(before) === "") {
     return true;
   }
+
   return next(() => {
     const after = editor.current;
+
     return (
       lastKey.current !== "\r" || after === null || textOf(after) !== "" || after.mode === "INSERT"
     );

@@ -7,6 +7,7 @@ export class SentReceipts {
     this.durable.delete(messageId);
     this.durable.set(messageId, durable);
     const oldest = this.durable.keys().next();
+
     if (this.durable.size > this.limit && oldest.done !== true) {
       this.durable.delete(oldest.value);
     }

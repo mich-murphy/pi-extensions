@@ -52,6 +52,7 @@ const TRANSCRIPT_HEADER = [
 ].join("");
 
 type MessageContent = string | readonly (TextContent | ImageContent)[];
+
 type AssistantContent = AssistantMessage["content"];
 
 type HistoryItem =
@@ -71,6 +72,7 @@ function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
   const synthesised = new Set<string>();
   let pending: { readonly id: string; readonly name: string }[] = [];
   let answered = new Set<string>();
+
   const closePending = (): void => {
     for (const call of pending) {
       if (!answered.has(call.id)) {
@@ -84,28 +86,35 @@ function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
         });
       }
     }
+
     pending = [];
     answered = new Set();
   };
+
   for (const message of messages) {
     switch (message.role) {
       case "assistant": {
         closePending();
         const calls = message.content.filter((block) => block.type === "toolCall");
+
         if (message.stopReason === "error" || message.stopReason === "aborted") {
           for (const call of calls) {
             skippedCalls.add(call.id);
           }
+
           break;
         }
+
         pending = calls.map(({ id, name }) => ({ id, name }));
         items.push({ kind: "assistant", content: message.content });
         break;
       }
+
       case "toolResult": {
         if (skippedCalls.has(message.toolCallId) || synthesised.has(message.toolCallId)) {
           break;
         }
+
         answered.add(message.toolCallId);
         items.push({
           kind: "result",
@@ -116,20 +125,25 @@ function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
         });
         break;
       }
+
       case "user": {
         closePending();
         items.push({ kind: "user", content: message.content });
         break;
       }
+
       case "system": {
         break;
       }
+
       default: {
         break;
       }
     }
   }
+
   closePending();
+
   return items;
 }
 
@@ -159,12 +173,15 @@ function bodyOf(content: MessageContent, images: ImageAttachment[]): string {
   const blocks = Schema.is(Schema.String)(content)
     ? [{ type: "text" as const, text: content }]
     : content;
+
   return blocks
     .map((block) => {
       if (block.type === "text") {
         return escapeText(block.text);
       }
+
       images.push({ data: block.data, mediaType: block.mimeType });
+
       return `[image ${images.length - 1}: ${attribute(block.mimeType)}]`;
     })
     .join("\n");
@@ -174,6 +191,7 @@ function rejectionNote(
   args: Extract<AssistantContent[number], { type: "toolCall" }>["arguments"],
 ): string {
   const reason = Option.getOrUndefined(decodeValidationInput(args))?.error ?? "unknown";
+
   return `[Rejected tool request: nothing executed (${reason}). Only declared mcp__pi__ tools can run.]`;
 }
 
@@ -183,14 +201,18 @@ function assistantBody(content: AssistantContent, available: ReadonlySet<string>
       if (block.type === "text") {
         return block.text.length === 0 ? [] : [escapeText(block.text)];
       }
+
       if (block.type !== "toolCall") {
         return [];
       }
+
       if (block.name === VALIDATION_ERROR_TOOL) {
         return [rejectionNote(block.arguments)];
       }
+
       const args = escapeJson(JSON.stringify(block.arguments));
       const id = attribute(block.id);
+
       return available.has(block.name)
         ? [`<call id="${id}" tool="${sdkToolName(block.name)}">${args}</call>`]
         : [`<past-call id="${id}" tool="${attribute(block.name)}">${args}</past-call>`];
@@ -205,17 +227,21 @@ function resultsBlock(
   available: ReadonlySet<string>,
 ): PromptBlock | undefined {
   const images: ImageAttachment[] = [];
+
   const rendered = results.flatMap((result) => {
     if (result.name === VALIDATION_ERROR_TOOL) {
       return [];
     }
+
     const tag = available.has(result.name) ? "result" : "past-result";
     const tool = tag === "result" ? sdkToolName(result.name) : attribute(result.name);
     const flag = result.isError ? " error" : "";
+
     return [
       `<${tag} id="${attribute(result.id)}" tool="${tool}"${flag}>\n${bodyOf(result.content, images)}\n</${tag}>`,
     ];
   });
+
   return rendered.length === 0
     ? undefined
     : { text: `<results>\n${rendered.join("\n")}\n</results>`, images };
@@ -227,25 +253,31 @@ function transcriptEntries(
 ): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   const results: Extract<HistoryItem, { kind: "result" }>[] = [];
+
   const flushResults = (): void => {
     const block = resultsBlock(results, available);
     results.length = 0;
+
     if (block) {
       entries.push({ role: "toolResult", block });
     }
   };
+
   for (const item of normalizeHistory(messages)) {
     if (item.kind === "result") {
       results.push(item);
       continue;
     }
+
     flushResults();
+
     if (item.kind === "user") {
       const images: ImageAttachment[] = [];
       const body = bodyOf(item.content, images);
       entries.push({ role: "user", block: { text: `<user>\n${body}\n</user>`, images } });
     } else {
       const body = assistantBody(item.content, available);
+
       if (body.length > 0) {
         entries.push({
           role: "assistant",
@@ -254,7 +286,9 @@ function transcriptEntries(
       }
     }
   }
+
   flushResults();
+
   return entries;
 }
 
@@ -270,11 +304,13 @@ const printedNode = Schema.Struct({
   name: lenientOptional(Schema.String),
   content: lenientOptional(Schema.Array(Schema.Unknown)),
 });
+
 const decodePrintedCall = Schema.decodeUnknownOption(Schema.fromJsonString(printedNode));
 const decodePrintedChild = Schema.decodeUnknownOption(printedNode);
 
 function isPrintedJsonCall(root: typeof printedNode.Type): boolean {
   const pending = [root];
+
   for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
     if (node.type === "toolCall") {
       if (node.name !== undefined) {
@@ -283,18 +319,21 @@ function isPrintedJsonCall(root: typeof printedNode.Type): boolean {
     } else {
       for (const child of node.content ?? []) {
         const parsed = decodePrintedChild(child);
+
         if (Option.isSome(parsed)) {
           pending.push(parsed.value);
         }
       }
     }
   }
+
   return false;
 }
 
 export function endsWithPrintedToolCall(text: string): boolean {
   const tail = text.trimEnd();
   const opener = [...tail.matchAll(CALL_OPENER)].at(-1);
+
   if (
     opener !== undefined &&
     tail.endsWith("</call>") &&
@@ -302,12 +341,16 @@ export function endsWithPrintedToolCall(text: string): boolean {
   ) {
     return true;
   }
+
   const candidates = [...tail.matchAll(JSON_OPENER)].slice(-4).toReversed();
+
   return candidates.some((candidate) => {
     if (!tail.endsWith("}") || insideFence(tail.slice(0, candidate.index))) {
       return false;
     }
+
     const parsed = decodePrintedCall(tail.slice(candidate.index).trim());
+
     return Option.isSome(parsed) && isPrintedJsonCall(parsed.value);
   });
 }
@@ -325,18 +368,24 @@ function lookbackBreakpoint(
     const upper = breakpoints[index] ?? 0;
     let distance = 0;
     let candidate: number | undefined;
+
     for (let block = upper - 1; block > lower; block -= 1) {
       distance += wire[block + 1] ?? 0;
+
       if (distance > CACHE_LOOKBACK_BLOCKS) {
         break;
       }
+
       candidate = block;
     }
+
     const gap = wire.slice(lower + 1, upper + 1).reduce((total, count) => total + count, 0);
+
     if (gap > CACHE_LOOKBACK_BLOCKS && candidate !== undefined) {
       return candidate;
     }
   }
+
   return undefined;
 }
 
@@ -353,21 +402,28 @@ function placeCacheBreakpoints(
   if (roles.length === 0) {
     return [0];
   }
+
   const newestAssistant = roles.lastIndexOf("assistant");
+
   const breakpoints = [
     PREAMBLE_BLOCK,
     ...(newestAssistant > 0 ? [blockOfEntry(newestAssistant - 1)] : []),
     blockOfEntry(roles.length - 1),
   ];
+
   const wire = transcript.map((block) => wireBlocks(block));
+
   while (breakpoints.length < MAX_CACHE_BREAKPOINTS) {
     const extra = lookbackBreakpoint(wire, breakpoints);
+
     if (extra === undefined) {
       break;
     }
+
     breakpoints.push(extra);
     breakpoints.sort((left, right) => left - right);
   }
+
   return breakpoints;
 }
 
@@ -375,13 +431,17 @@ export function buildAgentRequest(context: TranscriptContext): AgentRequest {
   const tools = getCurrentTools(context.messages).filter(
     (tool) => tool.name !== VALIDATION_ERROR_TOOL,
   );
+
   const entries = transcriptEntries(context.messages, new Set(tools.map((tool) => tool.name)));
+
   const preamble = [
     "Pi working instructions:",
     getCurrentSystemPrompt(context.messages),
     TRANSCRIPT_HEADER,
   ].join("\n\n");
+
   const transcript = [{ text: preamble, images: [] }, ...entries.map((entry) => entry.block)];
+
   return {
     systemPrompt: BRIDGE_INSTRUCTIONS,
     promptBlocks: [

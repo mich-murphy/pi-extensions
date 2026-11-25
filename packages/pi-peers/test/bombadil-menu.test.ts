@@ -9,6 +9,7 @@ const CHROME = [RULE, ">", RULE, "~/cwd", "0.0%/200k (auto)", "probe:ok peers �
 
 function screen(menu: readonly string[]): string[] {
   const rows = ["Welcome", RULE, ...menu, RULE, ...CHROME];
+
   return [...rows, ...Array.from({ length: Math.max(0, 20 - rows.length) }, () => "")];
 }
 
@@ -27,6 +28,7 @@ describe("readPeers", () => {
       ]),
       20,
     );
+
     expect(view).toMatchObject({
       kind: "root",
       esc: "close",
@@ -49,15 +51,18 @@ describe("readPeers", () => {
       ]),
       20,
     );
+
     expect(setup).toMatchObject({
       kind: "list",
       path: ["Peers", "Setup"],
       depth: 1,
     });
+
     const editor = readPeers(
       screen(["Peers › Setup › Label", "> alpha", "Enter save · Esc back"]),
       20,
     );
+
     expect(editor).toMatchObject({
       kind: "editor",
       depth: 2,
@@ -66,10 +71,12 @@ describe("readPeers", () => {
     });
     const empty = readPeers(screen(["Peers › Setup › Label", ">", "Enter save · Esc back"]), 20);
     expect(empty.editorText).toBe("");
+
     const toggle = readPeers(
       screen(["Peers › Setup › Permissions", "→ read  On", "Enter toggle · Esc back"]),
       20,
     );
+
     expect(toggle.kind).toBe("toggle");
   });
 
@@ -84,6 +91,7 @@ describe("readPeers", () => {
       ]),
       20,
     );
+
     expect(progress).toMatchObject({
       kind: "progress",
       esc: "hide",
@@ -91,6 +99,7 @@ describe("readPeers", () => {
       outcome: null,
     });
     expect(progress.steps).toStrictEqual({ done: 1, running: 1, pending: 1 });
+
     const ok = readPeers(
       screen([
         "Peers › Setup › Result",
@@ -100,7 +109,9 @@ describe("readPeers", () => {
       ]),
       20,
     );
+
     expect(ok).toMatchObject({ kind: "outcome", outcome: "ok", depth: 2 });
+
     const fail = readPeers(
       screen([
         "Peers › Setup › Result",
@@ -109,6 +120,7 @@ describe("readPeers", () => {
       ]),
       20,
     );
+
     expect(fail.outcome).toBe("fail");
   });
 
@@ -149,6 +161,7 @@ describe("outcomes and the probe", () => {
       ["✓ Config file: ok", null],
       ["Machine: alpha", null],
     ];
+
     for (const [row, expected] of cases) {
       expect({ row, result: outcomeOf(row) }).toStrictEqual({ row, result: expected });
     }
@@ -167,12 +180,14 @@ describe("outcomes and the probe", () => {
       ]),
       20,
     );
+
     expect(reset).toMatchObject({
       kind: "outcome",
       outcome: "ok",
       headline: "✓ Peers turned off",
       nextFollows: true,
     });
+
     const late = readPeers(
       screen([
         "Peers › Setup › Result",
@@ -183,11 +198,14 @@ describe("outcomes and the probe", () => {
       ]),
       20,
     );
+
     expect(late).toMatchObject({ outcome: "pending", nextFollows: false });
+
     const scrolled = readPeers(
       screen(["Peers › Setup › Result", "Gateway: x", "(3–4 of 9)", "Enter close · Esc back"]),
       20,
     );
+
     expect(scrolled).toMatchObject({
       scrollTop: 3,
       headline: null,
@@ -207,6 +225,7 @@ describe("outcomes and the probe", () => {
       "Change a setting above first.",
       "Enter select · Esc back",
     ]);
+
     rows[rows.findIndex((row) => row.startsWith("probe:"))] =
       "probe:ok consent:Disable#3 reports:2";
     rows[1] = "Peers is turned off";
@@ -235,6 +254,7 @@ describe("readMenu", () => {
       hint: /^Enter x · Esc (?<esc>back)$/u,
       separator: " › ",
     });
+
     expect(view).toMatchObject({
       body: ["→ a  1"],
       hintGroups: { esc: "back" },
@@ -256,27 +276,34 @@ const decodeScripts = Schema.decodeUnknownSync(
     }),
   ),
 );
+
 function npmScript(name: string): string {
   const { scripts } = decodeScripts(
     readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
   );
+
   const script = scripts[name];
+
   if (script === undefined) {
     throw new TypeError(`No npm script ${name}`);
   }
+
   return script;
 }
 
 function defaultLimitSeconds(name: string): number {
   const match = /BOMBADIL_TIME_LIMIT:-(?<amount>\d+)(?<unit>m|s)\}/u.exec(npmScript(name));
+
   if (match?.groups === undefined) {
     throw new Error(`No default time limit for ${name}`);
   }
+
   return Number(match.groups.amount) * (match.groups.unit === "m" ? 60 : 1);
 }
 
 function guardSeconds(file: string): number[] {
   const source = readFileSync(new URL(`bombadil/${file}`, import.meta.url), "utf8");
+
   return [...source.matchAll(/\.within\(\s*(?<seconds>\d+),\s*"seconds"/gu)].map((match) =>
     Number(match.groups?.seconds),
   );

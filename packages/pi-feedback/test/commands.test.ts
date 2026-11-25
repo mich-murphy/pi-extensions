@@ -27,6 +27,7 @@ describe("pi-feedback commands", () => {
   async function run(...args: string[]): Promise<number> {
     io.stdout = "";
     io.stderr = "";
+
     return runCli(args, io);
   }
 
@@ -132,11 +133,13 @@ describe("pi-feedback commands", () => {
 
   test("runs as a script against the agent directory", async () => {
     write(ledgerPath(root), [signal({ n: 1, session: "a" })]);
+
     const { stdout } = await execFileAsync(
       process.execPath,
       ["--experimental-strip-types", "--no-warnings", CLI, "queue", "--json"],
       { env: { ...process.env, PI_CODING_AGENT_DIR: root } },
     );
+
     expect(JSON.parse(stdout)).toMatchObject([{ id: claudeGroup, records: 1 }]);
   });
 });

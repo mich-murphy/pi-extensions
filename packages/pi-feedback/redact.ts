@@ -11,14 +11,17 @@ const TOKENS: readonly RegExp[] = [
 ];
 
 const BEARER = /\b(?<label>Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/giu;
+
 const ASSIGNED =
   /\b(?<label>\w*(?:api[_-]?key|token|secret|password|passwd)\w*["']?\s*[=:]\s*["']?)[^\s"',;]{8,}/giu;
 
 export function redact(text: string): string {
   let current = text;
+
   for (const pattern of TOKENS) {
     current = current.replaceAll(pattern, REDACTED);
   }
+
   return current
     .replaceAll(BEARER, `$<label>${REDACTED}`)
     .replaceAll(ASSIGNED, `$<label>${REDACTED}`);

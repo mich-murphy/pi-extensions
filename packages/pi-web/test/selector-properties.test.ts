@@ -17,6 +17,7 @@ const VALUES = ["main", "MAIN", "a", "A", "x-y", "true", "TRUE", ""];
 const BARE_VALUES = VALUES.filter((value) => value !== "");
 
 const attributePair = gs.tuples(gs.sampledFrom(ATTRIBUTES), gs.sampledFrom(VALUES));
+
 const classValue = gs.tuples(
   gs.arrays(gs.sampledFrom(TOKENS), { minSize: 0, maxSize: 4 }),
   gs.sampledFrom([" ", "  ", "\t", "\n "]),
@@ -26,33 +27,43 @@ const classValue = gs.tuples(
 const elementGen = gs.composite((tc) => {
   const element = document.createElement(tc.draw(gs.sampledFrom(TAGS), "tag"));
   const id = tc.draw(gs.optional(gs.sampledFrom(IDS)), "id");
+
   if (id !== null) {
     element.setAttribute("id", id);
   }
+
   const [tokens, separator, pad] = tc.draw(classValue, "classes");
+
   if (tc.draw(gs.booleans(), "hasClass")) {
     element.setAttribute("class", `${pad}${tokens.join(separator)}${pad}`);
   }
+
   for (const [name, value] of tc.draw(gs.arrays(attributePair, { maxSize: 4 }), "attributes")) {
     element.setAttribute(name, value);
   }
+
   return element;
 });
 
 const partGen = gs.composite((tc) => {
   const kind = tc.draw(gs.sampledFrom(["id", "class", "has", "equals"]), "part");
   const name = tc.draw(gs.sampledFrom(ATTRIBUTES), "name");
+
   if (kind === "id") {
     return `#${tc.draw(gs.sampledFrom(IDS), "id")}`;
   }
+
   if (kind === "class") {
     return `.${tc.draw(gs.sampledFrom(TOKENS), "token")}`;
   }
+
   if (kind === "has") {
     return tc.draw(gs.booleans(), "class") ? "[class]" : `[${name}]`;
   }
+
   const quote = tc.draw(gs.sampledFrom(["", "'", '"']), "quote");
   const value = tc.draw(gs.sampledFrom(quote === "" ? BARE_VALUES : VALUES), "value");
+
   return `[${name}=${quote}${value}${quote}]`;
 });
 
@@ -60,23 +71,28 @@ const compoundGen = gs.composite((tc) => {
   const tag = tc.draw(gs.optional(gs.sampledFrom(TAGS)), "tag") ?? "";
   const parts = tc.draw(gs.arrays(partGen, { maxSize: 3 }), "parts");
   tc.assume(tag !== "" || parts.length > 0);
+
   return `${tag}${parts.join("")}`;
 });
 
 const listGen = gs.composite((tc) => {
   const compounds = tc.draw(gs.arrays(compoundGen, { minSize: 1, maxSize: 3 }), "compounds");
+
   return compounds.join(tc.draw(gs.sampledFrom([",", ", ", " ,  "]), "separator"));
 });
 
 function assertListsAgree(element: Element, lists: readonly string[]): void {
   const expectedIndexes: number[] = [];
+
   for (const [index, list] of lists.entries()) {
     const expected = element.matches(list);
     assert.equal(compileSelector(list)(element), expected, `compileSelector ${list}`);
+
     if (expected) {
       expectedIndexes.push(index);
     }
   }
+
   const reported: number[] = [];
   compileSelectorSet(lists)(element, (index) => reported.push(index));
   assert.deepEqual(
@@ -87,6 +103,7 @@ function assertListsAgree(element: Element, lists: readonly string[]): void {
 }
 
 const recaseFlags = gs.arrays(gs.booleans(), { minSize: 8, maxSize: 8 });
+
 function recase(value: string, flags: readonly boolean[]): string {
   return Array.from({ length: value.length }, (_, i) =>
     flags[i] === true ? value.charAt(i).toUpperCase() : value.charAt(i).toLowerCase(),

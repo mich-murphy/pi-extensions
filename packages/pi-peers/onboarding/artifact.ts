@@ -7,15 +7,19 @@ import { parseJson } from "./schema.js";
 
 export const MAX_ARCHIVE = 64 * 1024 * 1024;
 export const MAX_BINARY = 128 * 1024 * 1024;
+
 export function sha256(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
+
 export function gatewayReleaseTag(version: string): string {
   if (!isGatewayVersion(version)) {
     throw new Error("Invalid trusted gateway pin");
   }
+
   return `pi-gateway-v${version}`;
 }
+
 const artifactRecord = Schema.StructWithRest(
   Schema.Struct({
     schema: Schema.Number,
@@ -30,7 +34,9 @@ const artifactRecord = Schema.StructWithRest(
   }),
   [Schema.JsonObject],
 );
+
 export type ArtifactRecord = typeof artifactRecord.Type;
+
 const manifestHeader = Schema.StructWithRest(
   Schema.Struct({
     schema: Schema.Number,
@@ -41,6 +47,7 @@ const manifestHeader = Schema.StructWithRest(
   }),
   [Schema.JsonObject],
 );
+
 const isManifestHeader = Schema.is(manifestHeader);
 const isArtifactRecord = Schema.is(artifactRecord);
 const isJsonObject = Schema.is(Schema.JsonObject);
@@ -51,28 +58,36 @@ export type VerifiedManifest = {
   };
   record: ArtifactRecord;
 };
+
 type ArtifactManifest = VerifiedManifest["manifest"];
 
 export function jsonObject(value: Schema.Json | undefined): Schema.JsonObject {
   if (!isJsonObject(value)) {
     throw new Error("Invalid JSON object");
   }
+
   return value;
 }
 
 function readManifest(data: Buffer): ArtifactManifest {
   const manifest = jsonObject(parseJson(data));
+
   if (!isManifestHeader(manifest)) {
     throw new Error("The gateway release manifest has an unexpected format");
   }
+
   const artifacts = manifest.artifacts.map((entry) => {
     const record = jsonObject(entry);
+
     if (!isArtifactRecord(record)) {
       throw new Error("The gateway release manifest has an unexpected format");
     }
+
     return record;
   });
+
   const { schema, sourceRevision, version, releaseTag } = manifest;
+
   return {
     ...Object.fromEntries(Object.entries(manifest)),
     schema,
@@ -89,16 +104,20 @@ export function verifyManifest(
   target: string,
 ): VerifiedManifest {
   validatePin(pin);
+
   if (data.length > 65_536 || sha256(data) !== pin.manifestSha256) {
     throw new Error("Manifest trusted pin mismatch");
   }
+
   const manifest = readManifest(data);
   validateManifestIdentity(manifest, pin);
   validateArtifactIdentities(manifest, pin);
   const record = manifest.artifacts.find((item) => item.target === target);
+
   if (!record) {
     throw new Error("The gateway release has no build for this platform");
   }
+
   return { manifest, record };
 }
 
@@ -114,12 +133,14 @@ function validateManifestIdentity(manifest: ArtifactManifest, pin: GatewayReleas
     throw new Error("The gateway release manifest has the wrong name or version");
   }
 }
+
 function validateArtifactIdentities(manifest: ArtifactManifest, pin: GatewayReleasePin): void {
   const targets = new Set([
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-gnu",
     "x86_64-unknown-linux-gnu",
   ]);
+
   for (const item of manifest.artifacts) {
     if (
       !targets.delete(item.target) ||
@@ -130,19 +151,23 @@ function validateArtifactIdentities(manifest: ArtifactManifest, pin: GatewayRele
     ) {
       throw new Error("The gateway release lists an unexpected file");
     }
+
     validateArtifactContentClaims(item);
   }
 }
+
 function validateArtifactContentClaims(item: ArtifactRecord): void {
   const sizes: [number, number][] = [
     [item.size, MAX_ARCHIVE],
     [item.binarySize, MAX_BINARY],
   ];
+
   for (const [size, max] of sizes) {
     if (!Number.isSafeInteger(size) || size <= 0 || size > max) {
       throw new Error("The gateway release lists an invalid file size");
     }
   }
+
   if (!/^[a-f0-9]{64}$/u.test(item.sha256) || !/^[a-f0-9]{64}$/u.test(item.binarySha256)) {
     throw new Error("The gateway release lists an invalid checksum");
   }
@@ -151,13 +176,17 @@ function validateArtifactContentClaims(item: ArtifactRecord): void {
 function text(bytes: Buffer): string {
   return bytes.subarray(0, bytes.includes(0) ? bytes.indexOf(0) : bytes.length).toString("utf8");
 }
+
 function octal(bytes: Buffer): number {
   const value = text(bytes).trim();
+
   if (!/^[0-7]+$/u.test(value)) {
     throw new Error("The gateway archive has a malformed header");
   }
+
   return Number.parseInt(value, 8);
 }
+
 export function verifyArtifact(archive: Buffer, record: ArtifactRecord): Buffer {
   if (
     archive.length !== record.size ||
@@ -166,39 +195,51 @@ export function verifyArtifact(archive: Buffer, record: ArtifactRecord): Buffer 
   ) {
     throw new Error("Archive integrity mismatch");
   }
+
   const tar = gunzipSync(archive, { maxOutputLength: MAX_BINARY + 32_768 });
   const members = parseTarMembers(tar);
   const binary = members.get("pi-gateway");
   const release = members.get("release.json");
+
   if (!binary || !release) {
     throw new Error("The gateway archive is missing files");
   }
+
   validateEmbeddedMetadata(release, record);
+
   if (binary.length !== record.binarySize || sha256(binary) !== record.binarySha256) {
     throw new Error("Binary integrity mismatch");
   }
+
   validateBinaryTarget(binary, record.target);
+
   return binary;
 }
 
 function parseTarMembers(tar: Buffer): Map<string, Buffer> {
   const members = new Map<string, Buffer>();
   let offset = 0;
+
   while (offset + 512 <= tar.length) {
     const header = tar.subarray(offset, offset + 512);
+
     if (header.every((byte) => byte === 0)) {
       break;
     }
+
     const name = text(header.subarray(0, 100));
     const size = octal(header.subarray(124, 136));
     validateTarHeader(header, name, size, members);
     offset += 512;
+
     if (offset + size > tar.length) {
       throw new Error("The gateway archive is cut short");
     }
+
     members.set(name, tar.subarray(offset, offset + size));
     offset += Math.ceil(size / 512) * 512;
   }
+
   if (
     members.size !== 2 ||
     tar.length - offset < 1024 ||
@@ -206,8 +247,10 @@ function parseTarMembers(tar: Buffer): Map<string, Buffer> {
   ) {
     throw new Error("The gateway archive has unexpected contents");
   }
+
   return members;
 }
+
 function validateTarHeader(
   header: Buffer,
   name: string,
@@ -217,6 +260,7 @@ function validateTarHeader(
   const mode = octal(header.subarray(100, 108));
   const sum = [...header].reduce((total, byte, i) => total + (i >= 148 && i < 156 ? 32 : byte), 0);
   validateTarFormat(header, sum);
+
   if (
     members.has(name) ||
     !["pi-gateway", "release.json"].includes(name) ||
@@ -226,6 +270,7 @@ function validateTarHeader(
     throw new Error("Unsafe archive member");
   }
 }
+
 function validateTarFormat(header: Buffer, sum: number): void {
   if (
     sum !== octal(header.subarray(148, 156)) ||
@@ -238,8 +283,10 @@ function validateTarFormat(header: Buffer, sum: number): void {
     throw new Error("Unsafe archive member");
   }
 }
+
 function validateEmbeddedMetadata(release: Buffer, record: ArtifactRecord): void {
   const metadata = jsonObject(parseJson(release));
+
   const {
     file: _file,
     size: _size,
@@ -248,6 +295,7 @@ function validateEmbeddedMetadata(release: Buffer, record: ArtifactRecord): void
     binarySha256: _binaryHash,
     ...expected
   } = record;
+
   if (
     Object.keys(metadata).length !== Object.keys(expected).length ||
     Object.entries(expected).some(
@@ -257,6 +305,7 @@ function validateEmbeddedMetadata(release: Buffer, record: ArtifactRecord): void
     throw new Error("Embedded metadata mismatch");
   }
 }
+
 function validateBinaryTarget(binary: Buffer, target: string): void {
   if (target.endsWith("apple-darwin")) {
     validateMachO(binary);
@@ -264,6 +313,7 @@ function validateBinaryTarget(binary: Buffer, target: string): void {
     validateElf(binary, target);
   }
 }
+
 function validateMachO(binary: Buffer): void {
   if (
     binary.length < 32 ||
@@ -274,6 +324,7 @@ function validateMachO(binary: Buffer): void {
     throw new Error("Wrong Mach-O target");
   }
 }
+
 function validateElf(binary: Buffer, target: string): void {
   if (
     binary.length < 64 ||

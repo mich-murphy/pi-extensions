@@ -38,6 +38,7 @@ export function debugPath(
   if (value === undefined || value === "" || value === "0") {
     return undefined;
   }
+
   return value === "1" ? join(agentDir(), "pi-skills-cache-debug.jsonl") : value;
 }
 
@@ -46,12 +47,15 @@ export function cacheDebugSink(
   append: (path: string, data: string) => void = appendFileSync,
 ): DebugSink | undefined {
   const path = debugPath(value);
+
   if (path === undefined) {
     return undefined;
   }
+
   return (record) => {
     try {
       append(path, `${JSON.stringify({ ts: new Date().toISOString(), ...record })}\n`);
+
       return true;
     } catch {
       return false;
@@ -76,6 +80,7 @@ export type RunDiagnostics = {
 
 export function runRecord(run: RunDiagnostics) {
   const { snapshot, plan } = run;
+
   return {
     type: "run" as const,
     sessionId: run.sessionId,
@@ -123,8 +128,10 @@ export function usageRecord(message: TranscriptMessage, sessionId: string) {
   if (!isUsageMessage(message)) {
     return undefined;
   }
+
   const { input, output, cacheRead, cacheWrite } = message.usage;
   const promptTokens = input + cacheRead + cacheWrite;
+
   return {
     type: "usage" as const,
     sessionId,

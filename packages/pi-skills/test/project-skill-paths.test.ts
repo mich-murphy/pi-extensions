@@ -21,6 +21,7 @@ const temporaryDirectories: string[] = [];
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "pi-project-skills-"));
   temporaryDirectories.push(directory);
+
   return directory;
 }
 
@@ -28,6 +29,7 @@ function writeSkill(root: string, directory: string, name: string): string {
   const path = join(root, directory, "SKILL.md");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `---\nname: ${name}\ndescription: ${name} description\n---\n`);
+
   return path;
 }
 
@@ -38,6 +40,7 @@ function project() {
   mkdirSync(join(root, ".git"), { recursive: true });
   mkdirSync(cwd, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
+
   return { root, cwd, agentDir };
 }
 
@@ -47,15 +50,18 @@ async function pathsFor(cwd: string, agentDir: string): Promise<readonly string[
 
 function requiredDiscover(handlers: Partial<ToggleHandlers>): ToggleHandlers["resources_discover"] {
   const discover = handlers.resources_discover;
+
   if (!discover) {
     throw new Error("test setup: resources_discover was not registered");
   }
+
   return discover;
 }
 
 describe("discoverProjectSkillPaths", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -64,11 +70,14 @@ describe("discoverProjectSkillPaths", () => {
   test("Pi lists every loaded skill in getCommands even when enableSkillCommands is off", async () => {
     const { root, cwd, agentDir } = project();
     writeSkill(join(cwd, ".pi", "skills"), "native", "native-skill");
+
     const settingsManager = SettingsManager.inMemory(
       { enableSkillCommands: false },
       { projectTrusted: true },
     );
+
     let api: ExtensionAPI | undefined;
+
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir,
@@ -79,6 +88,7 @@ describe("discoverProjectSkillPaths", () => {
         },
       ],
     });
+
     await resourceLoader.reload();
     await createAgentSession({
       cwd,
@@ -109,6 +119,7 @@ describe("discoverProjectSkillPaths", () => {
     const codexOnly = writeSkill(join(root, ".codex", "skills"), "codex-only", "codex-only");
 
     const paths = await pathsFor(root, agentDir);
+
     const loaded = loadSkills({
       cwd: root,
       agentDir,
@@ -131,6 +142,7 @@ describe("discoverProjectSkillPaths", () => {
     const codexPath = writeSkill(join(root, ".codex", "skills"), "shared", "shared");
 
     const paths = await pathsFor(root, agentDir);
+
     const loaded = loadSkills({
       cwd: root,
       agentDir,
@@ -154,6 +166,7 @@ describe("discoverProjectSkillPaths", () => {
 
   test("ignores malformed supplemental skills", async () => {
     const { root, agentDir } = project();
+
     for (const path of [
       join(root, ".claude", "skills", "broken", "SKILL.md"),
       join(root, ".codex", "skills", "broken", "SKILL.md"),
@@ -183,9 +196,11 @@ describe("discoverProjectSkillPaths", () => {
     writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: [configured] }));
     writeSkill(join(cwd, ".pi", "skills"), "pi", "pi-winner");
     writeSkill(join(root, ".agents", "skills"), "agents", "agents-winner");
+
     for (const name of ["global-winner", "configured-winner", "pi-winner", "agents-winner"]) {
       writeSkill(join(root, ".claude", "skills"), name, name);
     }
+
     const supplemental = writeSkill(
       join(root, ".claude", "skills"),
       "supplemental",
@@ -209,6 +224,7 @@ describe("discoverProjectSkillPaths", () => {
     const extra = writeSkill(join(root, ".codex", "skills"), "extra", "extra");
 
     await expect(pathsFor(cwd, agentDir)).resolves.toStrictEqual([extra]);
+
     const loader = new DefaultResourceLoader({
       cwd,
       agentDir,
@@ -218,6 +234,7 @@ describe("discoverProjectSkillPaths", () => {
       noThemes: true,
       noContextFiles: true,
     });
+
     await loader.reload();
     expect(loader.getSkills().skills.find((skill) => skill.name === "shared")?.filePath).toBe(
       winner,
@@ -231,10 +248,12 @@ describe("discoverProjectSkillPaths", () => {
     const explicit = writeSkill(join(root, "explicit"), "winner", "cli-collision");
     writeSkill(join(root, ".claude", "skills"), "duplicate", "cli-collision");
     const extra = writeSkill(join(root, ".claude", "skills"), "extra", "extra");
+
     const settingsManager = SettingsManager.inMemory(
       { enableSkillCommands: false },
       { projectTrusted: true },
     );
+
     const loader = new DefaultResourceLoader({
       cwd,
       agentDir,
@@ -245,8 +264,10 @@ describe("discoverProjectSkillPaths", () => {
       noThemes: true,
       noContextFiles: true,
     });
+
     await loader.reload();
     const handlers: Partial<ToggleHandlers> = {};
+
     const piDouble = {
       registerCommand: () => undefined,
       on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
@@ -261,10 +282,12 @@ describe("discoverProjectSkillPaths", () => {
         })),
       exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     };
+
     const store: ToggleStateStore = {
       load: () => Result.succeed({ files: new Map(), repositories: new Map() }),
       set: () => Result.succeed({ files: new Map(), repositories: new Map() }),
     };
+
     registerPiSkills(piDouble, store);
     const discover = requiredDiscover(handlers);
 
@@ -272,6 +295,7 @@ describe("discoverProjectSkillPaths", () => {
       { type: "resources_discover", cwd, reason: "startup" },
       { cwd, isProjectTrusted: () => true },
     );
+
     expect(contribution).toStrictEqual({ skillPaths: [extra] });
     loader.extendResources({
       skillPaths: [extra].map((path) => ({
@@ -305,6 +329,7 @@ describe("discoverProjectSkillPaths", () => {
     writeSkill(join(root, ".claude", "skills"), "excluded-copy", "excluded-native");
     const extra = writeSkill(join(root, ".codex", "skills"), "extra", "extra");
     const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+
     const loader = new DefaultResourceLoader({
       cwd,
       agentDir,
@@ -314,6 +339,7 @@ describe("discoverProjectSkillPaths", () => {
       noThemes: true,
       noContextFiles: true,
     });
+
     await loader.reload();
 
     const paths = await pathsFor(cwd, agentDir);

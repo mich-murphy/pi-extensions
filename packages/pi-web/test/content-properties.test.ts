@@ -33,14 +33,17 @@ const KNOWN_KINDS: readonly (readonly [string, string])[] = [
   ["video/mp4", "binary"],
   ["", "binary"],
 ];
+
 const TABLE_MIMES = new Set(KNOWN_KINDS.map(([mime]) => mime));
 const KINDS = new Set(["html", "raster-image", "svg", "text", "binary"]);
 const PADDING = ["", " ", "\t", " \r\n "];
+
 const TOKEN = gs.text({
   alphabet: "abcdefghijklmnopqrstuvwxyz0123456789.-",
   minSize: 1,
   maxSize: 12,
 });
+
 const caseFlags = gs.arrays(gs.booleans(), { minSize: 40, maxSize: 40 });
 const padding = gs.tuples(gs.sampledFrom(PADDING), gs.sampledFrom(PADDING));
 
@@ -73,10 +76,13 @@ function assertSuffixIsText(
   pad: readonly [string, string],
 ): void {
   const mime = `${family[0]}${token}${family[1]}`;
+
   if (mime === "text/html" || mime === "application/xhtml+xml") {
     assertKind(mime, "html", flags, pad);
+
     return;
   }
+
   assertKind(mime, "text", flags, pad);
 }
 
@@ -86,6 +92,7 @@ function assertUnlistedIsBinary(
   pad: readonly [string, string],
 ): void {
   const mime = `application/${token}`;
+
   if (!TABLE_MIMES.has(mime) && !token.endsWith("+xml") && !token.endsWith("+json")) {
     assertKind(mime, "binary", flags, pad);
   }
@@ -109,13 +116,17 @@ function assertDecodeTotal(bytes: Uint8Array, charset: string | null, partial: b
 function wholeCharPrefix(text: string, cutBytes: number): string {
   let used = 0;
   let prefix = "";
+
   for (const char of text) {
     used += Buffer.byteLength(char);
+
     if (used > cutBytes) {
       break;
     }
+
     prefix += char;
   }
+
   return prefix;
 }
 
@@ -199,6 +210,7 @@ const cap = gs.integers({ minValue: 0, maxValue: 40 });
 function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
   const views: Uint8Array[] = [];
   let position = 0;
+
   for (const size of [...sizes, bytes.length]) {
     const slice = bytes.subarray(position, position + size);
     const padded = new Uint8Array(slice.length + 6).fill(0xaa);
@@ -206,6 +218,7 @@ function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
     views.push(padded.subarray(3, 3 + slice.length));
     position += slice.length;
   }
+
   return views;
 }
 
@@ -215,14 +228,17 @@ function chunkedResponse(
   contentType: string,
 ): Response {
   const views = chunkViews(bytes, sizes);
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       for (const view of views) {
         controller.enqueue(view);
       }
+
       controller.close();
     },
   });
+
   return new Response(body, { status: 200, headers: { "content-type": contentType } });
 }
 
@@ -233,6 +249,7 @@ async function assertFailModeRead(
 ): Promise<void> {
   const response = chunkedResponse(bytes, sizes, "application/octet-stream");
   const result = await Effect.runPromise(Effect.result(readResponseBodyWithLimit(response, max)));
+
   if (bytes.length <= max) {
     assert.ok(Result.isSuccess(result));
     assert.deepEqual(new Uint8Array(result.success), bytes);
@@ -266,6 +283,7 @@ async function readThroughClient(
     fetchImpl: async () => chunkedResponse(bytes, sizes, contentType),
     lookup: async () => [{ address: "93.184.216.34" }],
   });
+
   return Effect.runPromise(Effect.result(client.get(requestWithCap(max))));
 }
 
@@ -288,6 +306,7 @@ async function assertBinaryKeepsHardCap(
   max: number,
 ): Promise<void> {
   const result = await readThroughClient(bytes, sizes, max, "image/png");
+
   if (bytes.length > max) {
     assert.ok(Result.isFailure(result));
     assert.equal(result.failure._tag, "ResponseTooLarge");

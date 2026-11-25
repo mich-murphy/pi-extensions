@@ -13,7 +13,9 @@ export type RootState = {
   readonly resettable: boolean | undefined;
   readonly busy: boolean;
 };
+
 export type ActionKind = "setup" | "reset" | "reconnect";
+
 export type RootOptions = {
   readonly state: () => RootState;
   readonly reset: (step: Step) => Promise<Outcome>;
@@ -27,9 +29,11 @@ function resetValue(state: RootState): string {
   if (state.busy) {
     return "Busy";
   }
+
   if (state.resettable === undefined) {
     return "Checking…";
   }
+
   return state.resettable ? "" : "Nothing to reset";
 }
 
@@ -41,6 +45,7 @@ function resetScreen(state: RootState, progress: Progress, reset: RootOptions["r
   if (state.resettable !== true) {
     return report("Reset", [NOTHING_TO_RESET]);
   }
+
   return {
     kind: "list",
     title: "Reset",
@@ -73,6 +78,7 @@ export function peersMenu(
     (base: ActionKind): Progress =>
     (title, planned, work, result, override) => {
       const kind = override ?? base;
+
       const done = runWithProgress(
         model,
         title,
@@ -83,18 +89,24 @@ export function peersMenu(
         },
         result,
       );
+
       options.started(kind, done);
     };
+
   let cached: { readonly route: SetupRoute; readonly screen: Screen } | undefined;
+
   const setupScreen = (route: SetupRoute, open: (progress: Progress) => Screen): Screen => {
     if (cached?.route !== route) {
       cached = { route, screen: open(progress("setup")) };
     }
+
     return cached.screen;
   };
+
   const setupRow = (state: RootState): Row => {
     const { setup } = state;
     const open = setup.screen;
+
     return {
       id: "setup",
       label: "Setup",
@@ -106,6 +118,7 @@ export function peersMenu(
           : { kind: "open", screen: () => setupScreen(setup, open) },
     };
   };
+
   const reconnectRow = (state: RootState): Row => {
     if (!state.setup.configured) {
       return {
@@ -116,6 +129,7 @@ export function peersMenu(
         activation: { kind: "none" },
       };
     }
+
     return {
       id: "reconnect",
       label: "Reconnect",
@@ -137,8 +151,10 @@ export function peersMenu(
           },
     };
   };
+
   const rows = (): Row[] => {
     const state = options.state();
+
     return [
       {
         id: "status",
@@ -171,13 +187,16 @@ export function peersMenu(
       },
     ];
   };
+
   const model: MenuModel = new MenuModel(
     { kind: "list", title: "Peers", rows },
     observe,
     options.guard,
   );
+
   if (start !== undefined) {
     model.activate(start);
   }
+
   return model;
 }

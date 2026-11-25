@@ -13,6 +13,7 @@ import { composeLabel } from "../adapter/label.js";
 import type { PeerRef } from "../protocol/schema.js";
 
 const settings = propertySettings(200);
+
 const runtimes: PeerRef[] = ["x", "y"].flatMap((sessionId) =>
   ["1", "2", "3", "4"].map((nonce) => ({
     machineId: "beta",
@@ -20,13 +21,16 @@ const runtimes: PeerRef[] = ["x", "y"].flatMap((sessionId) =>
     runtimeNonce: nonce.repeat(32),
   })),
 );
+
 const same = (left: PeerRef, right: PeerRef) =>
   left.sessionId === right.sessionId && left.runtimeNonce === right.runtimeNonce;
+
 type Model = { bound: Map<string, PeerRef>; owner: Map<string, string> };
 
 function handleOf(bound: ReadonlyMap<string, PeerRef>, peer: PeerRef): string | undefined {
   return [...bound].find(([, runtime]) => same(runtime, peer))?.[0];
 }
+
 function bind(model: Model, handle: string, peer: PeerRef): void {
   const owner = model.owner.get(handle);
   assert(
@@ -36,15 +40,19 @@ function bind(model: Model, handle: string, peer: PeerRef): void {
   model.owner.set(handle, peer.sessionId);
   model.bound.set(handle, peer);
 }
+
 function listStep(handles: Handles, model: Model, indices: readonly number[]): void {
   const listed = indices.flatMap((index) => {
     const peer = runtimes[index];
+
     return peer === undefined ? [] : [peer];
   });
+
   const before = new Map(model.bound);
   const result = handles.list(listed.map((peer) => ({ peer, scopeId: "team" })));
   const shown = result.map((entry) => entry.handle);
   assert.equal(new Set(shown).size, shown.length, "one listing showed a handle twice");
+
   for (const entry of result) {
     const kept = handleOf(before, entry.peer);
     assert(kept === undefined || kept === entry.handle, "a listed runtime lost its handle");
@@ -58,6 +66,7 @@ function listStep(handles: Handles, model: Model, indices: readonly number[]): v
     bind(model, entry.handle, entry.peer);
   }
 }
+
 function senderStep(handles: Handles, model: Model, index: number): void {
   const peer = runtimes[index];
   assert(peer);
@@ -68,16 +77,19 @@ function senderStep(handles: Handles, model: Model, index: number): void {
   assert(kept !== undefined || !before.has(handle), "a new sender took a bound handle");
   bind(model, handle, peer);
 }
+
 function assertHandleTrace(tc: TestCase): void {
   const handles = new Handles();
   const model: Model = { bound: new Map(), owner: new Map() };
   const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 12 }), "steps");
+
   for (let step = 0; step < steps; step += 1) {
     if (tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), `kind${step}`) === 3) {
       const index = tc.draw(
         gs.integers({ minValue: 0, maxValue: runtimes.length - 1 }),
         `from${step}`,
       );
+
       senderStep(handles, model, index);
     } else {
       const indices = tc.draw(
@@ -87,8 +99,10 @@ function assertHandleTrace(tc: TestCase): void {
         }),
         `listed${step}`,
       );
+
       listStep(handles, model, indices);
     }
+
     for (const [handle, peer] of model.bound) {
       assert.deepEqual(handles.resolve(handle)?.peer, peer, `${handle} resolves elsewhere`);
     }
@@ -97,6 +111,7 @@ function assertHandleTrace(tc: TestCase): void {
 
 const hostile = ["‮", "⁦⁩", " ", "\u001b[31m", "a\nb", "界😀é", "a/b", "n".repeat(130)];
 const piece = gs.oneOf(gs.text({ maxSize: 40 }), gs.sampledFrom(hostile));
+
 function acceptsLabel(label: string): boolean {
   try {
     decodeConfiguration({
@@ -106,11 +121,13 @@ function acceptsLabel(label: string): boolean {
       label,
       policies: [],
     });
+
     return true;
   } catch {
     return false;
   }
 }
+
 function assertConfiguredFirst(label: string, configured: string, sessionName: string): void {
   const visible = plainText(configured);
   assert(visible.length > 0, "the config accepted a label with no visible text");
@@ -122,12 +139,14 @@ function assertConfiguredFirst(label: string, configured: string, sessionName: s
     "the session name was dropped though it fits",
   );
 }
+
 function assertLabel(tc: TestCase): void {
   const configured = tc.draw(piece, "configured");
   const sessionName = tc.draw(gs.optional(piece), "sessionName");
   const repo = tc.draw(piece, "repo");
   const parent = tc.draw(gs.optional(piece), "parent");
   const branch = tc.draw(gs.optional(piece), "branch");
+
   const label = composeLabel({
     configured,
     machineId: "alpha",
@@ -136,9 +155,11 @@ function assertLabel(tc: TestCase): void {
     parentSession: parent === null ? undefined : `/sessions/2026_${parent}.jsonl`,
     branch: branch ?? undefined,
   });
+
   assert(Buffer.byteLength(label) <= 128, "the label is over 128 bytes");
   assert(label.length > 0, "the label is empty");
   assert.equal(plainText(label), label, "the label has control, bidi or repeated whitespace");
+
   if (acceptsLabel(configured)) {
     assertConfiguredFirst(label, configured, sessionName ?? "");
   }

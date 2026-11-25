@@ -7,6 +7,7 @@ import type { AdmitInput } from "../state/types.js";
 const peer = { machineId: "beta", sessionId: "b", runtimeNonce: "b".repeat(32) };
 const sender = { machineId: "alpha", sessionId: "a", runtimeNonce: "a".repeat(32) };
 const id = (index: number) => index.toString(16).padStart(32, "0");
+
 function incoming(index: number, kind: "update" | "request", deliveryBytes?: number): AdmitInput {
   const request: AdmitInput = {
     from: sender,
@@ -14,13 +15,17 @@ function incoming(index: number, kind: "update" | "request", deliveryBytes?: num
     scopeId: "team",
     message: { id: id(index), kind, format: "text", content: "work" },
   };
+
   if (deliveryBytes !== undefined) {
     request.deliveryBytes = deliveryBytes;
   }
+
   return request;
 }
+
 function stock() {
   let now = 0;
+
   const state = createState({
     peer,
     scopeIds: ["team"],
@@ -28,8 +33,10 @@ function stock() {
     authorize: () => true,
     offer: () => true,
   });
+
   const retire = (input: AdmitInput) =>
     state.retire(scopedMessageKey(input.from, input.to, input.scopeId, input.message.id));
+
   return {
     state,
     retire,
@@ -53,9 +60,11 @@ describe("README default limits, without overriding any", () => {
   });
   test("the inbox holds 64 messages and refuses the 65th", () => {
     const { state } = stock();
+
     for (let index = 1; index <= 64; index += 1) {
       expect(state.admit(incoming(index, "update")).tag).toBe("admitted");
     }
+
     expect(state.admit(incoming(65, "update"))).toMatchObject({
       tag: "not_admitted",
       code: "overloaded",
@@ -64,9 +73,11 @@ describe("README default limits, without overriding any", () => {
   });
   test("the inbox holds 1 MiB of frames and refuses the next, though far fewer than 64 messages are held", () => {
     const { state } = stock();
+
     for (let index = 1; index <= 32; index += 1) {
       expect(state.admit(incoming(index, "update", 32_768)).tag).toBe("admitted");
     }
+
     expect(state.stats()).toMatchObject({ inboxMessages: 32, inboxBytes: 1_048_576 });
     expect(state.admit(incoming(33, "update"))).toMatchObject({
       tag: "not_admitted",
@@ -76,11 +87,13 @@ describe("README default limits, without overriding any", () => {
   });
   test("1,024 receipts are kept and the 1,025th message is refused", () => {
     const { state, retire } = stock();
+
     for (let index = 1; index <= 1024; index += 1) {
       const input = incoming(index, "update");
       expect(state.admit(input).tag).toBe("admitted");
       retire(input);
     }
+
     expect(state.stats().receipts).toBe(1024);
     expect(state.admit(incoming(1025, "update"))).toMatchObject({
       tag: "not_admitted",
@@ -100,11 +113,13 @@ describe("README default limits, without overriding any", () => {
   });
   test("256 relations are kept and the 257th request is refused", () => {
     const { state, retire } = stock();
+
     for (let index = 1; index <= 256; index += 1) {
       const input = incoming(index, "request");
       expect(state.admit(input).tag).toBe("admitted");
       retire(input);
     }
+
     expect(state.stats().relations).toBe(256);
     expect(state.admit(incoming(257, "request"))).toMatchObject({
       tag: "not_admitted",

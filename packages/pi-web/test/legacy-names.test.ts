@@ -7,9 +7,11 @@ import { parseSettings } from "../settings";
 
 function settings(environment: Record<string, string>) {
   const parsed = parseSettings(environment);
+
   if (Result.isFailure(parsed)) {
     throw new Error(parsed.failure.message);
   }
+
   return parsed.success;
 }
 
@@ -23,6 +25,7 @@ describe("renamed environment variables", () => {
       PI_WEB_FETCH_ALLOW_DOMAINS: "example.com",
       PI_WEB_FETCH_DENY_DOMAINS: "bad.example",
     });
+
     expect(parsed.search.providers).toStrictEqual(["brave"]);
     expect(parsed.fetch.rescue).toBe(false);
     expect(parsed.fetch.allowDomains).toStrictEqual(["example.com"]);
@@ -38,6 +41,7 @@ describe("renamed environment variables", () => {
       PI_WEB_TOOLS_FETCH_ALLOW_DOMAINS: "example.com",
       PI_WEB_TOOLS_FETCH_DENY_DOMAINS: "bad.example",
     });
+
     expect(parsed.search.providers).toStrictEqual(["parallel"]);
     expect(parsed.search.defaultProviders).toBe(false);
     expect(parsed.endpoints.exa).toContain("exa.example");
@@ -54,6 +58,7 @@ describe("renamed environment variables", () => {
       PI_WEB_FETCH_RESCUE: "on",
       PI_WEB_TOOLS_FETCH_RESCUE: "off",
     });
+
     expect(parsed.search.providers).toStrictEqual(["brave"]);
     expect(parsed.fetch.rescue).toBe(true);
   });

@@ -15,13 +15,16 @@ class CommandFailed extends Schema.TaggedError<CommandFailed>()("CommandFailed",
 
 function countingLayer() {
   const builds = { count: 0 };
+
   const layer = Layer.effect(
     Greeting,
     Effect.sync(() => {
       builds.count += 1;
+
       return Greeting.of({ text: `hello ${builds.count}` });
     }),
   );
+
   return { builds, layer };
 }
 

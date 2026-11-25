@@ -13,6 +13,7 @@ class FakeCaffeinate {
 
   stop(): void {
     this.stops += 1;
+
     if (this.exitsWhenStopped) {
       this.exit(null, "SIGTERM");
     }
@@ -39,9 +40,11 @@ function harness(platform: NodeJS.Platform = "darwin", hasUI = true, exitsWhenSt
     spawnCaffeinate: (args) => {
       const child = new FakeCaffeinate(exitsWhenStopped);
       spawned.push({ args, child });
+
       return child;
     },
   });
+
   return { ...pi, spawned };
 }
 

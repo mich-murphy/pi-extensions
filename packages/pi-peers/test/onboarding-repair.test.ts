@@ -34,34 +34,45 @@ import type { ActivatePlan } from "../onboarding/upgrade.js";
 import { builtGateway, dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
 
 type Damage = "missing" | "script" | "fifo" | "symlink" | "oversized";
+
 async function damage(path: string, kind: Damage, marker: string) {
   await rm(path);
+
   if (kind === "missing") {
     return;
   }
+
   if (kind === "fifo") {
     execFileSync("/usr/bin/mkfifo", [path]);
+
     return;
   }
+
   if (kind === "symlink") {
     await symlink(builtGateway, path);
+
     return;
   }
+
   if (kind === "oversized") {
     const file = await open(path, "wx", 0o500);
+
     try {
       await file.truncate(MAX_BINARY + 1);
     } finally {
       await file.close();
     }
+
     return;
   }
+
   const staged = `${path}.replacement`;
   await writeFile(staged, `#!/bin/sh\nprintf compromised > ${JSON.stringify(marker)}\nexit 1\n`, {
     mode: 0o500,
   });
   await rename(staged, path);
 }
+
 describe("explicit owned installation repair with actual native helper", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   beforeEach(async () => {
@@ -77,17 +88,20 @@ describe("explicit owned installation repair with actual native helper", () => {
     async (kind) => {
       const agent = join(fixture.root, "agent");
       const selected = localPlan(defaultChoices("Repair"), setupPaths(agent).socket);
+
       const setup = await applyLocal(
         agent,
         selected,
         { acquire: async () => fixture.executable },
         () => undefined,
       );
+
       const peer = {
         machineId: selected.adapter.machineId,
         sessionId: freshId(),
         runtimeNonce: freshId(),
       };
+
       const live = new GatewayClient({
         config: selected.adapter,
         peer,
@@ -97,6 +111,7 @@ describe("explicit owned installation repair with actual native helper", () => {
         statusChanged: () => undefined,
         ensureGateway: reloadManagedLauncher(agent, selected.adapter, setup),
       });
+
       const paths = setupPaths(agent);
       const marker = join(fixture.root, "UNTRUSTED-WAS-EXECUTED");
       const sentinel = join(paths.directory, "retained-key-floor-sentinel");
@@ -106,10 +121,13 @@ describe("explicit owned installation repair with actual native helper", () => {
       await chmod(replacement, 0o500);
       const acquire = vi.fn<SetupBackend["acquire"]>(async () => replacement);
       const activate = vi.fn<ActivatePlan>();
+
       const reconnect = vi.fn<() => Promise<void>>(async () => {
         await live.reconnect();
       });
+
       const owned = [paths.adapter, paths.gateway, paths.metadata, paths.installed, sentinel];
+
       try {
         await live.reconnect();
         await damage(fixture.executable, kind, marker);
@@ -180,11 +198,13 @@ describe("explicit owned installation repair with actual native helper", () => {
       );
       await damage(fixture.executable, "missing", join(fixture.root, "marker"));
       const paths = setupPaths(agent);
+
       const path = {
         adapter: paths.adapter,
         gateway: paths.gateway,
         pairing: join(paths.directory, "pairing.json"),
       }[field];
+
       const external = await changedProjection(path);
       const acquire = vi.fn<SetupBackend["acquire"]>(async () => builtGateway);
       const ui = dialog(["APPLY"]);
@@ -262,15 +282,19 @@ describe("explicit owned installation repair with actual native helper", () => {
 
 async function changedProjection(path: string): Promise<string> {
   let original: string;
+
   try {
     original = await readFile(path, "utf8");
   } catch (error) {
     if (!isMissingFile(error)) {
       throw error;
     }
+
     original = "{}";
   }
+
   const external = `${original}\n`;
   await writeFile(path, external);
+
   return external;
 }

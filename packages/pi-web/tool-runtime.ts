@@ -15,21 +15,27 @@ export function createToolRuntime<R>(layer: Layer.Layer<R>): ToolRuntime<R> {
   let active = true;
   let session = new AbortController();
   let disposing: Promise<void> | undefined;
+
   return {
     runExit: async (program, signal) => {
       const operationSignal =
         signal === undefined ? session.signal : AbortSignal.any([session.signal, signal]);
+
       await disposing;
+
       if (!active || operationSignal.aborted) {
         return Exit.interrupt();
       }
+
       runtime ??= ManagedRuntime.make(layer);
+
       return runtime.runPromiseExit(program, { signal: operationSignal });
     },
     start: () => {
       if (!active) {
         session = new AbortController();
       }
+
       active = true;
     },
     dispose: async () => {
@@ -39,6 +45,7 @@ export function createToolRuntime<R>(layer: Layer.Layer<R>): ToolRuntime<R> {
       runtime = undefined;
       disposing ??= current?.dispose() ?? Promise.resolve();
       const pending = disposing;
+
       try {
         await pending;
       } finally {

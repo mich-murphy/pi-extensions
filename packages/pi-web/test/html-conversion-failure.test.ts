@@ -15,6 +15,7 @@ describe("a library stack overflow", () => {
     const converted = convertGuarded(() => {
       throw OVERFLOW;
     });
+
     assert(Result.isFailure(converted));
     assert(converted.failure instanceof HtmlConversionFailed);
     expect(converted.failure.cause).toBe(OVERFLOW);

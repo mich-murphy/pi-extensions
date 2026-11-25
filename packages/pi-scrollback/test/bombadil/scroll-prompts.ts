@@ -21,9 +21,11 @@ const pad = (value: number, width: number): string => String(value).padStart(wid
 
 export function replyText(turn: number): string {
   const count = REPLY_LINES[turn - 1] ?? 5;
+
   return Array.from({ length: count }, (_, index) => {
     const line = index + 1;
     const tail = line % 5 === 0 ? ` ${FILLER}` : "";
+
     return `T${pad(turn, 2)}L${pad(line, 3)} reply for turn ${turn}${tail}`;
   }).join("\n");
 }

@@ -28,6 +28,7 @@ function expectedPiCall(
         arguments: input,
       }),
     );
+
     return { name: tool.name, arguments: normalized };
   } catch {
     return { name: "pi_claude_sdk_validation_error", arguments: { error: "invalid_tool_input" } };
@@ -48,7 +49,9 @@ describe("schema-faithful deferred tools", () => {
         ),
       },
     ]);
+
     const server = createSdkMcpServer({ name: "pi", tools: [] });
+
     for (const tool of createDeferredPiTools(catalog)) {
       server.instance.registerTool(
         tool.name,
@@ -56,7 +59,9 @@ describe("schema-faithful deferred tools", () => {
         tool.handler,
       );
     }
+
     const response = Promise.withResolvers<unknown>();
+
     const transport: Parameters<typeof server.instance.connect>[0] = {
       start: async () => undefined,
       close: async () => undefined,
@@ -64,7 +69,9 @@ describe("schema-faithful deferred tools", () => {
         response.resolve(message);
       },
     };
+
     await server.instance.connect(transport);
+
     try {
       transport.onmessage?.({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
       await expect(response.promise).resolves.toMatchObject({
@@ -97,6 +104,7 @@ describe("schema-faithful deferred tools", () => {
     const [selected] = compileToolCatalog([declaration]);
     expect(selected).toBeDefined();
     let valid = true;
+
     try {
       validateToolArguments(declaration, {
         type: "toolCall",
@@ -107,14 +115,17 @@ describe("schema-faithful deferred tools", () => {
     } catch {
       valid = false;
     }
+
     expect(selected?.schema.safeParse(input).success).toBe(valid);
   });
 
   test("retains each valid sibling exactly once and rejects malformed selected-tool input", async () => {
     const capture = createDeferredCallCapture(compileToolCatalog([declaration]));
+
     for (const id of ["first", "first", "second"]) {
       await deliverToolUse(capture.hook, { id, toolName: "mcp__pi__read", input: { path: id } });
     }
+
     await deliverToolUse(capture.hook, { id: "bad", toolName: "mcp__pi__read", input: {} });
     expect(capture.calls).toStrictEqual([
       { id: "first", name: "read", arguments: { path: "first" } },
@@ -149,6 +160,7 @@ describe("schema-faithful deferred tools", () => {
         { ...declaration, parameters: { ...declaration.parameters, [keyword]: {} } },
         { ...declaration, name: "healthy" },
       ]);
+
       expect(catalog.map((entry) => entry.degraded === true)).toStrictEqual([true, false]);
       expect(catalog[0]?.schema.safeParse({ anything: [1, "x"] }).success).toBe(true);
       expect(catalog[0]?.schema.safeParse("not-an-object").success).toBe(false);
@@ -178,6 +190,7 @@ describe("schema-faithful deferred tools", () => {
   test("a degraded tool's description carries its bounded declared parameters", () => {
     const parameters = { ...declaration.parameters, oneOf: [] };
     const long = { ...declaration.parameters, oneOf: [], description: "x".repeat(5000) };
+
     const [plain, big, healthy] = createDeferredPiTools(
       compileToolCatalog([
         { ...declaration, name: "d1", parameters },
@@ -185,6 +198,7 @@ describe("schema-faithful deferred tools", () => {
         { ...declaration, name: "ok" },
       ]),
     );
+
     expect(plain?.description).toContain(`Parameters (JSON Schema): ${JSON.stringify(parameters)}`);
     expect(big?.description).toContain("[truncated]");
     expect(big?.description.length).toBeLessThan(4500 + declaration.description.length);
@@ -193,24 +207,30 @@ describe("schema-faithful deferred tools", () => {
 
   test("the degraded-schema diagnostic is written once per tool per process", () => {
     const writes: string[] = [];
+
     const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
       writes.push(String(chunk));
+
       return true;
     });
+
     const isTty = process.stderr.isTTY;
     process.stderr.isTTY = false;
+
     try {
       const tool = {
         ...declaration,
         name: "dedupe_once",
         parameters: { type: "object", oneOf: [] },
       };
+
       compileToolCatalog([tool]);
       compileToolCatalog([tool]);
     } finally {
       process.stderr.isTTY = isTty;
       spy.mockRestore();
     }
+
     expect(writes.filter((line) => line.includes("dedupe_once"))).toHaveLength(1);
   });
 
@@ -226,6 +246,7 @@ describe("schema-faithful deferred tools", () => {
         }),
       },
     ];
+
     const capture = createDeferredCallCapture(compileToolCatalog(tools));
     await deliverToolUse(capture.hook, {
       id: "normalized",
@@ -275,6 +296,7 @@ describe("schema-faithful deferred tools", () => {
         }),
       },
     ]);
+
     expect(tool?.degraded).toBe(true);
   });
 
@@ -286,6 +308,7 @@ describe("schema-faithful deferred tools", () => {
         description: "integer",
         parameters: Type.Object({ i: Type.Integer() }),
       };
+
       const [compiled] = compileToolCatalog([tool]);
       expect(compiled?.schema.safeParse({ i }).success).toBe(true);
       expect(
@@ -321,6 +344,7 @@ describe("schema-faithful deferred tools", () => {
         note: Type.Optional(Type.String()),
       }),
     };
+
     const expected = expectedPiCall(tool, input);
     const capture = createDeferredCallCapture(compileToolCatalog([tool]));
     await deliverToolUse(capture.hook, { id: "corpus", toolName: "mcp__pi__corpus", input });
@@ -332,6 +356,7 @@ describe("schema-faithful deferred tools", () => {
     const names = ["read", "a.b", "a_b", "日本語", "x".repeat(100), "pi_reserved"];
     const catalog = compileToolCatalog(names.map((name) => ({ ...declaration, name })));
     const capture = createDeferredCallCapture(catalog);
+
     for (const tool of catalog) {
       await deliverToolUse(capture.hook, {
         id: tool.sdkName,
@@ -339,6 +364,7 @@ describe("schema-faithful deferred tools", () => {
         input: { path: "fixture" },
       });
     }
+
     expect(capture.calls.map((call) => call.name)).toStrictEqual(names);
     expect(() => compileToolCatalog([{ ...declaration, name: "" }])).toThrow(
       "Two tools share a name, or one has none, so nothing was sent to Claude.",
@@ -347,9 +373,11 @@ describe("schema-faithful deferred tools", () => {
 
   test("the fallback never executes Pi and remains a failure", async () => {
     let fallbacks = 0;
+
     const [tool] = createDeferredPiTools(compileToolCatalog([declaration]), () => {
       fallbacks += 1;
     });
+
     await expect(tool?.handler()).resolves.toMatchObject({ isError: true });
     expect(fallbacks).toBe(1);
   });

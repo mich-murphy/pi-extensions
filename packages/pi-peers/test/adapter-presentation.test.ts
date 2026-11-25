@@ -18,29 +18,36 @@ const peer = {
   sessionId: "019a1234-5678-7abc-8def-0123456789ab",
   runtimeNonce: "a".repeat(32),
 };
+
 const other = {
   machineId: "beta",
   sessionId: "019a1234-5678-7abc-8def-fedcba987654",
   runtimeNonce: "b".repeat(32),
 };
+
 const message = {
   id: "c".repeat(32),
   kind: "request" as const,
   content: "Please review this change",
   format: "text" as const,
 };
+
 const binding = { messageId: message.id, sender: peer, recipient: other, scopeId: "team" };
 const admitted = { tag: "admitted", binding, correlation: "none" };
 const denied = { tag: "not_admitted", binding, code: "forbidden" };
 const unknown = { tag: "unknown", binding, code: "unavailable" };
+
 type RenderOptions = { argsComplete?: boolean; isError?: boolean; isPartial?: boolean };
+
 const theme = { fg: (_token: string, value: string) => value };
+
 function result(value: Schema.Json | undefined): RenderPayload {
   return {
     content: [{ type: "text", text: JSON.stringify(value) ?? "" }],
     details: value === undefined ? {} : { value },
   };
 }
+
 function render(
   name: string,
   slot: "call" | "result",
@@ -51,6 +58,7 @@ function render(
   extra: RenderOptions = {},
 ): readonly string[] {
   const renderer = toolPresentation(name);
+
   const context: RenderContext = {
     args,
     expanded,
@@ -58,6 +66,7 @@ function render(
     keyHint: (_key: string, description: string) => `ctrl+o ${description}`,
     ...extra,
   };
+
   const component =
     slot === "call"
       ? renderer.renderCall(args, theme, context)
@@ -67,14 +76,18 @@ function render(
           theme,
           context,
         );
+
   return component.render(width);
 }
+
 function stripStyle(value: string): string {
   return value.replaceAll(new RegExp(`${String.fromCodePoint(27)}\\[[0-9;]*m`, "gu"), "");
 }
+
 function compact(lines: readonly string[]): string {
   return stripStyle(lines.join("")).replaceAll(/\s+/gu, "");
 }
+
 const taken = {
   from: "s-91c0",
   sender: peer,
@@ -84,6 +97,7 @@ const taken = {
   format: "text",
   content: message.content,
 };
+
 type RenderCase = {
   name: string;
   args: Schema.JsonObject;
@@ -91,6 +105,7 @@ type RenderCase = {
   call: string;
   summary: string;
 };
+
 const cases: RenderCase[] = [
   {
     name: "peers_list",
@@ -153,22 +168,27 @@ describe("presentation-only session tool rendering", () => {
     const fixture = toolRecorder();
     registerTools(fixture, () => undefined);
     expect(fixture.tools).toHaveLength(3);
+
     for (const tool of fixture.tools) {
       expect(tool.renderCall).toBe(true);
       expect(tool.renderResult).toBe(true);
+
       const value = {
         tag: "error",
         code: "unavailable",
         note: "Peers is not set up or not running in this session. Ask the user to run `/peers status`.",
       };
+
       const expected = {
         content: [{ type: "text", text: value.note }],
         details: { value },
         isError: true,
       };
+
       const structured = new Map([
         ["peers_list", { structuredContent: { ok: false, code: "unavailable", note: value.note } }],
       ]);
+
       await expect(fixture.run(tool.name, {})).resolves.toStrictEqual({
         ...expected,
         ...structured.get(tool.name),
@@ -184,10 +204,12 @@ describe("presentation-only session tool rendering", () => {
       false,
       width,
     );
+
     const normalized = compact(send);
     expect(normalized).toContain("UNKNOWN");
     expect(normalized).toContain("Donotresendasnew.");
     expect(normalized).not.toContain("Added to peer inbox");
+
     for (const line of send) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
@@ -200,9 +222,11 @@ describe("presentation-only session tool rendering", () => {
           "\n",
         ),
       ).toContain(entry.name);
+
       const partial = render(entry.name, "result", undefined, result(entry.value), false, 80, {
         isPartial: true,
       }).join("\n");
+
       expect(partial).toContain("In progress · outcome not final");
       expect(partial).not.toContain("Published");
       expect(render(entry.name, "result", undefined, undefined).join("\n")).toContain(
@@ -236,6 +260,7 @@ describe("presentation-only session tool rendering", () => {
     expect(render("peers_send", "result", {}, result({})).join("\n")).toContain(
       "Outcome unavailable",
     );
+
     for (const name of ["peers_list", "peers_take", "unknown"]) {
       expect(render(name, "result", {}, result({})).join("\n")).toContain("unavailable");
     }
@@ -243,13 +268,16 @@ describe("presentation-only session tool rendering", () => {
   test("peers_take call summary is inert for any limit value", () => {
     expect(takeCall({}).join("\n")).toContain("up to 4 messages");
     expect(takeCall({ limit: 7 }).join("\n")).toContain("up to 7 messages");
+
     for (const limit of ["\u001b[2J", "\u001b]52;c;x\u0007", "\u0080", "5\u009b31m", "a\nb"]) {
       const lines = takeCall({ limit });
       expect(lines.join("")).toContain("up to ");
+
       for (const line of lines) {
         expect(line).not.toMatch(/\p{Cc}/u);
       }
     }
+
     expect(takeCall({ limit: "a\u001b[2Jb" }).join("\n")).toContain(
       String.raw`up to a\u001b[2Jb messages`,
     );
@@ -261,23 +289,27 @@ describe("presentation-only session tool rendering", () => {
       self: false,
       restarted: false,
     }));
+
     const output = render("peers_list", "result", {}, result({ peers })).join("\n");
     expect(output).toContain("64 peers");
     expect(output).toContain("61 more");
     expect(output).toContain("s-4f2a · label (authored): alpha/admin (you)");
     expect(output).not.toContain("s-4f2a (you)");
+
     const marked = render(
       "peers_list",
       "result",
       {},
       result({ peers: [{ handle: "s-1", self: true, restarted: true }] }),
     ).join("\n");
+
     expect(marked).toContain("s-1 (you) (restarted)");
     expect(marked).not.toContain("label");
   });
   test("expanded output includes full body, sender runtime, IDs and scope", () => {
     const payload = result(cases[2]?.value);
     const rendered = render("peers_take", "result", {}, payload, true, 1000).join("\n");
+
     for (const value of [
       peer.sessionId,
       peer.runtimeNonce,
@@ -288,6 +320,7 @@ describe("presentation-only session tool rendering", () => {
     ]) {
       expect(rendered).toContain(value);
     }
+
     expect(
       render("peers_send", "result", {}, result({ outcome: admitted }), true, 1000).join("\n"),
     ).toContain('"binding"');
@@ -341,18 +374,22 @@ describe("presentation-only session tool rendering", () => {
         const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "control");
         const width = tc.draw(gs.integers({ minValue: 1, maxValue: 100 }), "width");
         const repeats = tc.draw(gs.integers({ minValue: 1, maxValue: 50 }), "length");
+
         const body =
           `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
             repeats,
           );
+
         const args = { to: "s-4f2a", kind: "request", content: body };
         const payload = result({ outcome: admitted, note: body });
         const before = JSON.stringify({ args, payload });
         const rendered: (readonly string[])[] = [];
+
         for (const expanded of [false, true]) {
           for (const slot of ["call", "result"] as const) {
             const lines = render("peers_send", slot, args, payload, expanded, width);
             rendered.push(lines);
+
             for (const line of lines) {
               assert(visibleWidth(line) <= width);
               assert(!stripStyle(line).includes("\u001b"));
@@ -360,6 +397,7 @@ describe("presentation-only session tool rendering", () => {
             }
           }
         }
+
         const [collapsedCall = [], collapsedResult = []] = rendered;
         assert(collapsedCall.length <= 12);
         assert(collapsedResult.length <= 24);
@@ -409,6 +447,7 @@ describe("presentation-only session tool rendering", () => {
     expect(diagnostics(undefined, "configuration or startup failed")).toBe(
       "Session communication: not enabled · configuration or startup failed",
     );
+
     const status = diagnostics(
       {
         enabled: true,
@@ -425,6 +464,7 @@ describe("presentation-only session tool rendering", () => {
       },
       "unused",
     );
+
     expect(status).toContain(`session=${peer.sessionId} nonce=${peer.runtimeNonce}`);
     expect(status).toContain(
       "Inbox: 2 messages / 128 bytes · receipts=3 · operations=1 · relations=1",

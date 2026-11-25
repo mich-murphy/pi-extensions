@@ -16,22 +16,26 @@ describe("gateway trusted catalog", () => {
   });
   test("ships the genuine immutable Nix pin and the published native manifest pin", () => {
     const { nix, native } = gatewayCatalog;
+
     const reviewed = {
       sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
       version: "0.3.0",
       narHash: "sha256-uo2xJEEGUjwBL67STeoPTKdKvJLM+EvbfclNFvM1hPE=",
     };
+
     const published = {
       sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
       version: "0.3.0",
       manifestSha256: "560f0f65028dd4b58a1109aa2e8976ddf2ae57b893ff3cbd1a400fd019c1da02",
     };
+
     expect(nix).toStrictEqual(reviewed);
     expect(native).toStrictEqual(published);
     expect(() => {
       validatePin(reviewed);
       validatePin(published);
     }).not.toThrow();
+
     for (const [platform, arch] of [
       ["darwin", "arm64"],
       ["linux", "arm64"],
@@ -47,6 +51,7 @@ describe("gateway trusted catalog", () => {
       expect(noNix.native).toStrictEqual(published);
       expect(noNix.unavailableReason).toBeUndefined();
     }
+
     for (const nixAvailable of [true, false]) {
       const intel = discoverGateway({ platform: "darwin", arch: "x64", nixAvailable });
       expect(intel.preferred).toBeUndefined();
@@ -56,10 +61,12 @@ describe("gateway trusted catalog", () => {
   });
   test("reports a Nix-only catalog unavailable without usable Nix", () => {
     const nixOnly = { nix: gatewayCatalog.nix, native: null };
+
     const noNix = discoverGateway(
       { platform: "darwin", arch: "arm64", nixAvailable: false },
       nixOnly,
     );
+
     expect(noNix.preferred).toBeUndefined();
     expect(noNix.unavailableReason).toContain("Nix is not installed");
   });
@@ -73,6 +80,7 @@ describe("gateway trusted catalog", () => {
     expect(() => {
       validatePin({ ...pin, narHash: canonical });
     }).not.toThrow();
+
     for (const narHash of [
       "",
       "sha256-abc",
@@ -90,6 +98,7 @@ describe("gateway trusted catalog", () => {
   });
   test("rejects non-semver versions in pins and release tags alike", () => {
     const pin = { sourceRevision: "a".repeat(40), manifestSha256: "b".repeat(64) };
+
     for (const version of [
       "",
       "0.1",
@@ -110,6 +119,7 @@ describe("gateway trusted catalog", () => {
       }).toThrow("Invalid trusted gateway pin");
       expect(() => gatewayReleaseTag(version)).toThrow("Invalid trusted gateway pin");
     }
+
     expect(gatewayReleaseTag("0.1.0")).toBe("pi-gateway-v0.1.0");
     expect(gatewayReleaseTag("1.2.3-rc.1")).toBe("pi-gateway-v1.2.3-rc.1");
   });

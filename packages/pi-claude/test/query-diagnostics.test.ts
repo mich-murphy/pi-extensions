@@ -6,9 +6,11 @@ type ApiErrorFixture = { apiError?: string };
 
 function diagnostic(modelUsage: ModelUsage, apiError?: string) {
   const api: ApiErrorFixture = {};
+
   if (apiError !== undefined) {
     api.apiError = apiError;
   }
+
   return queryDiagnostics({
     outcome: "completed",
     numTurns: 3,
@@ -63,6 +65,7 @@ describe("safe query diagnostics", () => {
         { canonicalModel: "private canonical", inputTokens: index },
       ]),
     );
+
     const result = diagnostic(usage, "private error");
     expect(result.models).toHaveLength(8);
     expect(result.models.map(({ model }) => model)).toStrictEqual(

@@ -35,16 +35,21 @@ const decodeRepair = Schema.decodeUnknownSync(
   }),
   { onExcessProperty: "error" },
 );
+
 type Ledger = ReturnType<typeof decodeRepair>;
+
 const json = (value: Schema.Json): string => `${JSON.stringify(value, null, 2)}\n`;
 
 async function inspectOwned(agentDir: string) {
   const paths = setupPaths(agentDir);
   const metadata = await regularBytes(paths.metadata);
+
   if (metadata === undefined) {
     return undefined;
   }
+
   await ownedDirectory(paths.directory);
+
   const [installed, adapter, gateway, pairing, pending, prepared, reset, repair] =
     await Promise.all(
       [
@@ -58,22 +63,26 @@ async function inspectOwned(agentDir: string) {
         join(paths.directory, "repair.json"),
       ].map(async (path) => regularBytes(path)),
     );
+
   if (pending !== undefined || prepared !== undefined || reset !== undefined) {
     throw new Refusal(
       "a previous setup or reset did not finish",
       "Choose Reset in /peers, then Setup again",
     );
   }
+
   if (installed === undefined || adapter === undefined || gateway === undefined) {
     throw new Refusal(
       "setup files are missing or were edited by hand",
       "Choose Reset in /peers, then Setup again",
     );
   }
+
   const record = decodeManaged(parseJson(metadata));
   const cache = decodeCached(parseJson(installed));
   verifyProjections(paths, record, { adapter, gateway, pairing });
   const ledger = repair === undefined ? undefined : decodeRepair(parseJson(repair));
+
   if (ledger === undefined) {
     if (cache.executable !== record.executable || cache.sha256 !== record.executableSha256) {
       throw new Error("The setup records disagree about the gateway program; files were kept");
@@ -81,6 +90,7 @@ async function inspectOwned(agentDir: string) {
   } else {
     validateLedger(ledger, record, metadata, installed);
   }
+
   return {
     paths,
     metadata,
@@ -90,8 +100,10 @@ async function inspectOwned(agentDir: string) {
     remote: decodeGateway(parseJson(gateway)).remote !== undefined || pairing !== undefined,
   };
 }
+
 async function ownedDirectory(path: string): Promise<void> {
   const directory = await lstat(path);
+
   if (
     !directory.isDirectory() ||
     directory.uid !== process.getuid?.() ||
@@ -101,12 +113,14 @@ async function ownedDirectory(path: string): Promise<void> {
     throw new Error("The pi-peers folder is not private to you, so repair stopped");
   }
 }
+
 function verifyProjections(
   paths: ReturnType<typeof setupPaths>,
   record: ReturnType<typeof decodeManaged>,
   { adapter, gateway, pairing }: { adapter: Buffer; gateway: Buffer; pairing: Buffer | undefined },
 ): void {
   const config = decodeConfiguration(parseJson(adapter));
+
   if (
     record.gatewayPath !== paths.gateway ||
     record.socketPath !== config.socketPath ||
@@ -117,7 +131,9 @@ function verifyProjections(
     throw new Error("The setup files were edited by hand, so repair stopped");
   }
 }
+
 type Owned = NonNullable<Awaited<ReturnType<typeof inspectOwned>>>;
+
 function validateLedger(
   ledger: Ledger,
   record: Owned["record"],
@@ -132,6 +148,7 @@ function validateLedger(
     "gatewayPath",
     "socketPath",
   ] as const;
+
   if (
     !same.every((key) => ledger.nextManaged[key] === record[key]) ||
     ledger.nextManaged.executable !== ledger.nextInstalled.executable ||
@@ -142,15 +159,18 @@ function validateLedger(
     throw new Error("The saved repair record is invalid; files were kept");
   }
 }
+
 async function healthy(owned: Owned): Promise<boolean> {
   try {
     if ((await executableDigest(owned.record.executable)) !== owned.record.executableSha256) {
       return false;
     }
+
     await validateExecutable(
       owned.record.executable,
       owned.remote ? GATEWAY_REMOTE_SETUP_CAPABILITIES : GATEWAY_LOCAL_SETUP_CAPABILITIES,
     );
+
     return true;
   } catch {
     return false;
@@ -174,6 +194,7 @@ async function repairWork(
   step: Step,
 ): Promise<Outcome> {
   step(STEPS[0]);
+
   try {
     await applyRepair(agentDir, owned, backend, (message) => {
       step(message.startsWith("Acquiring") ? STEPS[0] : STEPS[1]);
@@ -181,7 +202,9 @@ async function repairWork(
   } catch (error) {
     return failedWith("Repair failed", error instanceof Error ? error : undefined, INCOMPLETE_NEXT);
   }
+
   step(STEPS[2]);
+
   try {
     await reconnect?.();
   } catch {
@@ -189,6 +212,7 @@ async function repairWork(
       "The gateway did not accept this Pi yet.",
     ]);
   }
+
   return {
     ok: true,
     headline: "✓ Installation repaired",
@@ -211,9 +235,11 @@ export async function repairRoute(
   reconnect?: Reconnect,
 ): Promise<RepairRoute | undefined> {
   const owned = await inspectOwned(agentDir);
+
   if (owned === undefined || (owned.ledger === undefined && (await healthy(owned)))) {
     return undefined;
   }
+
   const route: Acquisition =
     owned.ledger === undefined
       ? await acquisition(owned.remote)
@@ -221,7 +247,9 @@ export async function repairRoute(
           description: `Resume already reviewed owned repair using ${owned.ledger.nextInstalled.executable}, rechecking its recorded SHA256.`,
           backend: { acquire: async () => owned.ledger?.nextInstalled.executable ?? "" },
         };
+
   const { backend } = route;
+
   return {
     blocked: backend === undefined,
     screen: (progress) =>
@@ -255,6 +283,7 @@ export async function repairRoute(
       }),
   };
 }
+
 async function repairLedger(
   owned: Owned,
   backend: SetupBackend,
@@ -263,11 +292,14 @@ async function repairLedger(
   if (owned.ledger !== undefined) {
     return owned.ledger;
   }
+
   const executable = await backend.acquire(
     join(owned.paths.directory, `repair-install-${randomBytes(12).toString("hex")}`),
     progress,
   );
+
   const sha256 = await executableDigest(executable);
+
   return {
     version: 1,
     beforeMetadataSha256: digest(owned.metadata),
@@ -276,6 +308,7 @@ async function repairLedger(
     nextInstalled: { executable, sha256 },
   };
 }
+
 async function applyRepair(
   agentDir: string,
   owned: Owned,
@@ -284,15 +317,18 @@ async function applyRepair(
 ): Promise<void> {
   const ledger = await repairLedger(owned, backend, progress);
   const executable = ledger.nextInstalled.executable;
+
   if ((await executableDigest(executable)) !== ledger.nextInstalled.sha256) {
     throw new Error("The new gateway program changed before it ran; it was not run");
   }
+
   await validateExecutable(
     executable,
     owned.remote ? GATEWAY_REMOTE_SETUP_CAPABILITIES : GATEWAY_LOCAL_SETUP_CAPABILITIES,
   );
   await withSetupLock(owned.paths.lock, executable, async () => {
     const current = await inspectOwned(agentDir);
+
     if (
       current === undefined ||
       digest(current.metadata) !== digest(owned.metadata) ||
@@ -300,10 +336,13 @@ async function applyRepair(
     ) {
       throw SETTINGS_CHANGED();
     }
+
     const journal = join(owned.paths.directory, "repair.json");
+
     if (owned.ledger === undefined) {
       await createPrivate(journal, json(ledger));
     }
+
     if (digest(current.metadata) !== digest(json(ledger.nextManaged))) {
       await replaceOwned(
         owned.paths.metadata,
@@ -311,6 +350,7 @@ async function applyRepair(
         json(ledger.nextManaged),
       );
     }
+
     if (digest(current.installed) !== digest(json(ledger.nextInstalled))) {
       await replaceOwned(
         owned.paths.installed,
@@ -318,6 +358,7 @@ async function applyRepair(
         json(ledger.nextInstalled),
       );
     }
+
     await durableUnlink(journal);
   });
 }

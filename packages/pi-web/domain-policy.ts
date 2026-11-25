@@ -33,12 +33,14 @@ export function checkDomainPolicy(
   if (policy.deny.some((entry) => matchesDomainEntry(hostname, entry))) {
     return Result.fail(new DomainDenied({ hostname }));
   }
+
   if (
     policy.allow.length > 0 &&
     !policy.allow.some((entry) => matchesDomainEntry(hostname, entry))
   ) {
     return Result.fail(new DomainNotAllowed({ hostname }));
   }
+
   return Result.succeed(undefined);
 }
 

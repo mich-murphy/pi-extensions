@@ -11,15 +11,19 @@ async function gone(pattern: string, tries: number): Promise<boolean> {
   if (!running(pattern)) {
     return true;
   }
+
   if (tries === 0) {
     return false;
   }
+
   await delay(100);
+
   return gone(pattern, tries - 1);
 }
 
 async function stopAll(pattern: string): Promise<void> {
   spawnSync("pkill", ["-TERM", "-f", pattern]);
+
   if (!(await gone(pattern, 50))) {
     spawnSync("pkill", ["-KILL", "-f", pattern]);
   }
@@ -28,6 +32,7 @@ async function stopAll(pattern: string): Promise<void> {
 export default function successFixture(root: BombadilRoot): BombadilLaunch {
   const agentWithoutSymlinkedAncestors = realpathSync(root.agent);
   const homeWithoutSymlinkedAncestors = realpathSync(root.home);
+
   return {
     env: {
       HOME: homeWithoutSymlinkedAncestors,

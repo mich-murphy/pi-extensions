@@ -24,12 +24,14 @@ export type MenuHost = {
   readonly keybindings: KeybindingsManager;
   readonly done: () => void;
 };
+
 type Entry = {
   readonly id: string;
   readonly label: string;
   readonly value: string;
   readonly description?: string;
 };
+
 type TextScreen = Extract<Screen, { kind: "text" }>;
 
 const SETTINGS_LIST_OWN_HINT_ROWS = 2;
@@ -55,6 +57,7 @@ export class PeersMenu implements Component, Focusable {
 
   set focused(value: boolean) {
     this.hasFocus = value;
+
     if (this.editor !== undefined) {
       this.editor.input.focused = value;
     }
@@ -68,11 +71,14 @@ export class PeersMenu implements Component, Focusable {
     const { theme } = this.host;
     const screen = this.model.top;
     const border = new DynamicBorder((text) => theme.fg("accent", text)).render(width);
+
     const note =
       screen.kind === "list" && screen.note !== undefined
         ? new Text(theme.fg("muted", screen.note), 1, 0).render(width)
         : [];
+
     const keys = { confirm: this.key("tui.select.confirm"), cancel: this.key("tui.select.cancel") };
+
     return [
       ...border,
       ...new Text(theme.fg("accent", theme.bold(this.model.title())), 1, 0).render(width),
@@ -88,6 +94,7 @@ export class PeersMenu implements Component, Focusable {
   handleInput(data: string): void {
     const screen = this.model.top;
     const keys = this.host.keybindings;
+
     if (keys.matches(data, "tui.select.cancel")) {
       this.model.back();
     } else if (screen.kind === "text") {
@@ -106,6 +113,7 @@ export class PeersMenu implements Component, Focusable {
     ) {
       this.confirm(screen);
     }
+
     this.update();
   }
 
@@ -120,9 +128,11 @@ export class PeersMenu implements Component, Focusable {
 
   private key(action: "tui.select.confirm" | "tui.select.cancel"): string {
     const binding = this.host.keybindings.getKeys(action)[0];
+
     if (binding === "enter") {
       return "Enter";
     }
+
     return binding === "escape" ? "Esc" : (binding ?? "Unbound");
   }
 
@@ -134,11 +144,13 @@ export class PeersMenu implements Component, Focusable {
     if (screen.kind === "list") {
       return screen.rows();
     }
+
     if (screen.kind === "toggle") {
       return screen
         .items()
         .map((item) => ({ id: item.id, label: item.label, value: item.on ? "On" : "Off" }));
     }
+
     return [];
   }
 
@@ -148,6 +160,7 @@ export class PeersMenu implements Component, Focusable {
 
   private page(screen: Screen, direction: -1 | 1): void {
     const count = this.entries(screen).length;
+
     if (count > 0) {
       const next = this.cursor(screen, count) + direction * this.maxRows();
       this.cursors.set(screen, Math.max(0, Math.min(count - 1, next)));
@@ -175,6 +188,7 @@ export class PeersMenu implements Component, Focusable {
   private confirm(screen: Screen): void {
     const entries = this.entries(screen);
     const entry = entries[this.cursor(screen, entries.length)];
+
     if (screen.kind === "outcome") {
       this.model.close();
     } else if (entry !== undefined && screen.kind === "list") {
@@ -186,6 +200,7 @@ export class PeersMenu implements Component, Focusable {
 
   private edit(screen: TextScreen, data: string): void {
     const input = this.input(screen);
+
     if (this.host.keybindings.matches(data, "tui.input.submit")) {
       this.model.submit(input.getValue()).catch(() => undefined);
     } else {
@@ -197,10 +212,12 @@ export class PeersMenu implements Component, Focusable {
     if (this.editor?.screen === screen) {
       return this.editor.input;
     }
+
     const input = new Input();
     input.handleInput(`\u001b[200~${screen.value()}\u001b[201~`);
     input.focused = this.hasFocus;
     this.editor = { screen, input };
+
     return input;
   }
 
@@ -208,8 +225,10 @@ export class PeersMenu implements Component, Focusable {
     if (screen.kind === "list" || screen.kind === "toggle") {
       return this.list(screen, width);
     }
+
     if (screen.kind === "text") {
       const error = this.model.error;
+
       return [
         ...(screen.description === undefined
           ? []
@@ -218,18 +237,23 @@ export class PeersMenu implements Component, Focusable {
         ...(error === undefined ? [] : this.wrap([this.host.theme.fg("error", error)], width)),
       ];
     }
+
     return this.scroll(screen, screen.lines(), width);
   }
 
   private list(screen: Screen, width: number): string[] {
     const entries = this.entries(screen);
+
     const items = entries.map((entry) => {
       const item: SettingItem = { id: entry.id, label: entry.label, currentValue: entry.value };
+
       if (entry.description !== undefined) {
         item.description = truncateToWidth(entry.description, Math.max(1, width - 6), "…");
       }
+
       return item;
     });
+
     const list = new SettingsList(
       items,
       this.maxRows(),
@@ -237,10 +261,13 @@ export class PeersMenu implements Component, Focusable {
       () => undefined,
       () => undefined,
     );
+
     const selected = entries[this.cursor(screen, entries.length)];
+
     if (selected !== undefined) {
       list.selectItem(selected.id);
     }
+
     return list.render(width).slice(0, -SETTINGS_LIST_OWN_HINT_ROWS);
   }
 
@@ -255,12 +282,16 @@ export class PeersMenu implements Component, Focusable {
       lines.map((line) => visibleText(line)),
       width,
     );
+
     const visible = this.reportRows();
+
     if (rows.length <= visible) {
       return rows;
     }
+
     const start = Math.min(this.cursors.get(screen) ?? 0, rows.length - visible);
     this.cursors.set(screen, start);
+
     return [
       ...rows.slice(start, start + visible),
       this.host.theme.fg("dim", `  (${start + 1}–${start + visible} of ${rows.length})`),

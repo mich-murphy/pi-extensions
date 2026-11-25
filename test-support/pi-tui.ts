@@ -22,6 +22,7 @@ export function testTui(rows = 40): TUI {
     setProgress: () => undefined,
     setProgramStatus: () => undefined,
   };
+
   return new TuiMainScreen(terminal);
 }
 

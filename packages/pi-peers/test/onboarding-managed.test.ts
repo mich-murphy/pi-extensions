@@ -9,14 +9,17 @@ import { nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 function demand(mode: "abort" | "deadline") {
   const controller = new AbortController();
+
   const timer =
     mode === "abort"
       ? setTimeout(() => {
           controller.abort();
         }, 50)
       : undefined;
+
   return { controller, timer, deadline: performance.now() + (mode === "deadline" ? 50 : 2000) };
 }
+
 describe("managed startup remains demand-owned across readonly version/filesystem awaits", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   beforeEach(async () => {
@@ -31,12 +34,14 @@ describe("managed startup remains demand-owned across readonly version/filesyste
   test("actual native diagnose reports disabled without starting a gateway or rewriting config", async () => {
     const agent = join(fixture.root, "agent");
     const selected = localPlan(defaultChoices("Diagnose"), setupPaths(agent).socket);
+
     const setup = await applyLocal(
       agent,
       selected,
       { acquire: async () => fixture.executable },
       () => undefined,
     );
+
     const before = await readFile(setup.gatewayPath);
     const entries = await readdir(setupPaths(agent).directory);
     await expect(diagnoseManaged(setup)).resolves.toContain("Remote config snapshot: disabled");
@@ -51,12 +56,14 @@ describe("managed startup remains demand-owned across readonly version/filesyste
   ])("rejects incompatible readonly diagnostic output %j", async (response) => {
     const agent = join(fixture.root, "agent");
     const selected = localPlan(defaultChoices("Diagnose"), setupPaths(agent).socket);
+
     const setup = await applyLocal(
       agent,
       selected,
       { acquire: async () => fixture.executable },
       () => undefined,
     );
+
     const executable = join(fixture.root, "diagnostic-output-fixture");
     await writeFile(
       executable,
@@ -80,16 +87,19 @@ describe("managed startup remains demand-owned across readonly version/filesyste
         { mode: 0o500 },
       );
       const plan = localPlan(defaultChoices("Managed"), setupPaths(agent).socket);
+
       const setup = await applyLocal(
         agent,
         plan,
         { acquire: async () => wrapper },
         () => undefined,
       );
+
       const before = await readdir(setupPaths(agent).directory);
       const gateway = await readFile(setup.gatewayPath);
       const active = demand(mode);
       const started = performance.now();
+
       try {
         await expect(
           managedLauncher(setup)(active.deadline, active.controller.signal),
@@ -97,6 +107,7 @@ describe("managed startup remains demand-owned across readonly version/filesyste
       } finally {
         clearTimeout(active.timer);
       }
+
       expect(performance.now() - started).toBeGreaterThanOrEqual(125);
       expect(existsSync(marker)).toBe(false);
       expect(existsSync(setup.socketPath)).toBe(false);

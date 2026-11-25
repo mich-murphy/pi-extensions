@@ -9,8 +9,11 @@ export type ActivatePlan = (
   setup: ManagedSetup,
   replace?: boolean,
 ) => Promise<void>;
+
 export type Restart = (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+
 export type Reconnect = (fresh?: boolean) => Promise<void>;
+
 export type Acquisition = {
   readonly backend?: SetupBackend;
   readonly description: string;
@@ -26,6 +29,7 @@ export type SetupRoute = {
 };
 
 export type Notice = { readonly message: string; readonly level: "info" | "warning" };
+
 export const NO_CHANGES: Notice = { message: "Cancelled. Nothing was changed.", level: "info" };
 
 export const SETUP_STEPS = [

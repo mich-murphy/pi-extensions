@@ -22,6 +22,7 @@ function menu(rows: number, start?: "setup" | "reset") {
   initTheme();
   setKeybindings(testKeybindings());
   let closed = false;
+
   const draft = {
     mode: "local" as const,
     choices: defaultChoices("Render Host"),
@@ -30,7 +31,9 @@ function menu(rows: number, start?: "setup" | "reset") {
     shared: false,
     remote: remoteDraft(),
   };
+
   const holder: MenuHolder = {};
+
   const model = peersMenu(
     {
       state: () => ({
@@ -66,7 +69,9 @@ function menu(rows: number, start?: "setup" | "reset") {
     undefined,
     start,
   );
+
   holder.model = model;
+
   const component = new PeersMenu(model, {
     tui: testTui(rows),
     theme: testTheme(),
@@ -75,11 +80,13 @@ function menu(rows: number, start?: "setup" | "reset") {
       closed = true;
     },
   });
+
   const press = (...keys: string[]) => {
     for (const key of keys) {
       component.handleInput(key);
     }
   };
+
   return { model, component, press, closed: () => closed };
 }
 
@@ -97,6 +104,7 @@ function contract(lines: readonly string[], width: number, cursors: number) {
   expect(text.at(-2)).toMatch(HINT);
   expect(text.filter((line) => line.startsWith("→ "))).toHaveLength(cursors);
   expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+
   return text;
 }
 

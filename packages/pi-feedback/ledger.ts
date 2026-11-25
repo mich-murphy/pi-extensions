@@ -108,11 +108,17 @@ const LedgerEvent = Schema.Union([
 ]);
 
 export type LedgerEvent = typeof LedgerEvent.Type;
+
 export type RecordEvent = Extract<LedgerEvent, { readonly type: "report" | "signal" }>;
+
 export type VerdictEvent = Extract<LedgerEvent, { readonly type: "verdict" }>;
+
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 export type EventDraft = DistributiveOmit<LedgerEvent, "id" | "at">;
+
 export type LedgerRead = { readonly events: readonly LedgerEvent[]; readonly skipped: number };
+
 export type Clock = { readonly now: () => Date; readonly id: () => string };
 
 const systemClock: Clock = { now: () => new Date(), id: randomUUID };
@@ -128,7 +134,9 @@ function clip(text: string): string {
 }
 
 type FieldValue<Event extends LedgerEvent> = Event extends LedgerEvent ? Event[keyof Event] : never;
+
 type LedgerField = FieldValue<LedgerEvent>;
+
 const isText = Schema.is(Schema.String);
 
 function clean(value: LedgerField): LedgerField {
@@ -141,33 +149,42 @@ export async function appendEvent(
   clock: Clock = systemClock,
 ): Promise<LedgerEvent> {
   const stamped = { ...draft, id: clock.id(), at: clock.now().toISOString() };
+
   const cleaned = Object.fromEntries(
     Object.entries<LedgerField>(stamped).map(([key, value]) => [key, clean(value)]),
   );
+
   const event = Option.getOrUndefined(decodeEvent(cleaned));
+
   if (event === undefined) {
     throw new TypeError(`Not a valid ${draft.type} event for the feedback ledger.`);
   }
+
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   await appendFile(file, `${JSON.stringify(event)}\n`, { mode: 0o600 });
   await chmod(file, 0o600);
+
   return event;
 }
 
 export function parseLedger(text: string): LedgerRead {
   const events: LedgerEvent[] = [];
   let skipped = 0;
+
   for (const line of text.split("\n")) {
     if (line.trim() === "") {
       continue;
     }
+
     const event = Option.getOrUndefined(decodeLine(line));
+
     if (event === undefined) {
       skipped += 1;
     } else {
       events.push(event);
     }
   }
+
   return { events, skipped };
 }
 
@@ -178,6 +195,7 @@ export async function readLedger(file: string): Promise<LedgerRead> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { events: [], skipped: 0 };
     }
+
     throw error;
   }
 }

@@ -44,19 +44,25 @@ class JsonEvidence {
     this.whitespace();
     const start = this.position;
     requireValid(this.text[this.position++] === '"');
+
     while (this.position < this.text.length) {
       const character = this.text[this.position++];
+
       if (character === '"') {
         const value: unknown = JSON.parse(this.text.slice(start, this.position));
+
         if (isString(value) && value.isWellFormed()) {
           return value;
         }
+
         throw new ProtocolError();
       }
+
       if (character === "\\") {
         this.position++;
       }
     }
+
     throw new ProtocolError();
   }
 
@@ -65,6 +71,7 @@ class JsonEvidence {
     this.consume("{");
     const keys = new Set<string>();
     this.whitespace();
+
     if (this.text[this.position] !== "}") {
       do {
         const key = this.string();
@@ -75,6 +82,7 @@ class JsonEvidence {
         this.whitespace();
       } while (this.text[this.position] === "," && ++this.position > 0);
     }
+
     this.consume("}");
     this.onObject?.(path, Buffer.byteLength(this.text.slice(start, this.position), "utf8"));
   }
@@ -83,6 +91,7 @@ class JsonEvidence {
     this.consume("[");
     let count = 0;
     this.whitespace();
+
     if (this.text[this.position] !== "]") {
       do {
         requireValid(++count <= MAX_ARRAY_ITEMS);
@@ -90,6 +99,7 @@ class JsonEvidence {
         this.whitespace();
       } while (this.text[this.position] === "," && ++this.position > 0);
     }
+
     this.consume("]");
   }
 
@@ -97,20 +107,25 @@ class JsonEvidence {
     const remainder = this.text.slice(this.position);
     const token = /^(?:true|false|0|[1-9][0-9]*)/u.exec(remainder)?.[0];
     requireValid(token !== undefined);
+
     if (token === undefined) {
       throw new ProtocolError();
     }
+
     if (token !== "true" && token !== "false") {
       requireValid(Number.isSafeInteger(Number(token)));
     }
+
     this.position += token.length;
   }
 
   private value(parentDepth: number, path: readonly (string | number)[]): void {
     this.whitespace();
     const next = this.text[this.position];
+
     if (next === "{" || next === "[") {
       requireValid(parentDepth < MAX_NESTING_DEPTH);
+
       if (next === "{") {
         this.object(parentDepth + 1, path);
       } else {
@@ -137,6 +152,7 @@ export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): Sc
     requireValid(bytes.length > 0 && bytes.length <= MAX_BODY_BYTES);
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     new JsonEvidence(text, onObject).check();
+
     return decodeObject(JSON.parse(text));
   } catch {
     throw new ProtocolError();

@@ -18,6 +18,7 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
   const answers: (string | undefined)[] = [];
   let idle = true;
   const ui = dialog(answers);
+
   const context: PeersContext = {
     mode: "rpc",
     hasUI: true,
@@ -37,13 +38,17 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
       setStatus: () => undefined,
     },
   };
+
   const sessionId = freshId();
+
   const fixture = extensionFixture({
     appendEntry: (type) => {
       entries.push(type);
     },
   });
+
   communication(fixture.api, testBackend);
+
   return {
     commands: fixture.commands,
     notifications,
@@ -58,10 +63,12 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
       answers.push(...next);
       const start = notifications.length;
       await fixture.command("peers", args, context);
+
       return notifications.slice(start);
     },
     tool: async (name: string, args: ToolArguments) => {
       const result = await fixture.tools.run(name, args);
+
       return result.details.value;
     },
   };
@@ -69,9 +76,11 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
 
 function identity(messages: string[]) {
   const status = messages.find((message) => message.includes("Exact runtime:"));
+
   const groups = status?.match(
     /machine=(?<machineId>[^ ]+) session=(?<sessionId>[^ ]+) nonce=(?<runtimeNonce>[^\n]+)/u,
   )?.groups;
+
   if (
     groups?.machineId === undefined ||
     groups.sessionId === undefined ||
@@ -79,25 +88,33 @@ function identity(messages: string[]) {
   ) {
     throw new Error("Exact runtime identity unavailable");
   }
+
   return {
     machineId: groups.machineId,
     sessionId: groups.sessionId,
     runtimeNonce: groups.runtimeNonce,
   };
 }
+
 async function connected(host: ReturnType<typeof extensionHost>) {
   await nativeUntil(async () => {
     const messages = await host.command("status");
+
     return messages.some((message) => message.includes("Connected as"));
   });
+
   return identity(await host.command("status"));
 }
+
 async function localSetup(host: ReturnType<typeof extensionHost>) {
   await host.command("setup", ["Local only — no remote connections (recommended)", "APPLY"]);
+
   return { peer: await connected(host) };
 }
+
 async function upgrade(host: ReturnType<typeof extensionHost>) {
   const address = await nativeAddress();
+
   return host.command("setup", [
     "Add one remote peer",
     "Trust=Create new pair",

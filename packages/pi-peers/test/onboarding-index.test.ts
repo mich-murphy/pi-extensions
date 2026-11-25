@@ -12,17 +12,21 @@ import { extensionFixture } from "./extension-fixture.js";
 import { nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
+
 type RuntimeObservations = { during: (() => Promise<void>) | undefined; disposed: boolean[] };
+
 const runtimes: RuntimeObservations = {
   during: undefined,
   disposed: [],
 };
+
 async function observedRuntime(...args: Parameters<typeof createAdapterRuntime>): Promise<Runtime> {
   const runtime = await createAdapterRuntime(...args);
   const index = runtimes.disposed.push(false) - 1;
   const during = runtimes.during;
   runtimes.during = undefined;
   await during?.();
+
   return {
     session: runtime.session,
     dispose: async () => {
@@ -36,6 +40,7 @@ type Answer = (
   title: string,
   options: readonly string[],
 ) => string | undefined | Promise<string | undefined>;
+
 type Shown = { readonly title: string; readonly options: readonly string[] };
 
 function rpcHost(acquire: () => Promise<string>, consented: string[]) {
@@ -48,6 +53,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
     observe: { consented: (action) => consented.push(action) },
     runtime: observedRuntime,
   });
+
   const context = (
     answer: Answer,
     shown: Shown[],
@@ -66,6 +72,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
     ui: {
       select: async (title: string, options: string[]) => {
         shown.push({ title, options });
+
         return answer(title, options);
       },
       input: async () => undefined,
@@ -75,6 +82,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
       setStatus: () => undefined,
     },
   });
+
   return {
     notifications,
     event: async (type: "session_start" | "session_shutdown") =>
@@ -91,6 +99,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
     ) => {
       const start = notifications.length;
       await fixture.command("peers", args, context(answer, shown, mode));
+
       return notifications.slice(start);
     },
   };
@@ -98,15 +107,20 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
 
 function staleApply(titles: string[], start: () => Promise<string[]>, ready: Promise<unknown>) {
   let other: Promise<string[]> | undefined;
+
   const answer: Answer = async (title, options) => {
     titles.push(title);
+
     if (other !== undefined || !options.includes("Apply: Ready")) {
       return undefined;
     }
+
     other = start();
     await ready;
+
     return "Apply: Ready";
   };
+
   return { answer, other: async () => other };
 }
 
@@ -114,6 +128,7 @@ const applyOnce: Answer = (_title, options) => {
   if (options.includes("Apply: Ready")) {
     return "Apply: Ready";
   }
+
   return options.includes("Close") ? "Close" : undefined;
 };
 
@@ -134,11 +149,13 @@ describe("registerCommunication: actions while an Apply runs", () => {
     release = () => {
       gate.resolve(undefined);
     };
+
     acquiring = started.promise;
     consented = [];
     host = rpcHost(async () => {
       started.resolve(undefined);
       await gate.promise;
+
       return fixture.executable;
     }, consented);
     await host.event("session_start");
@@ -246,6 +263,7 @@ describe("registerCommunication: commands outside an Apply", () => {
           `/peers ${action} needs an interactive session.`,
         ]);
       }
+
       expect(consented).toStrictEqual([]);
       expect(existsSync(join(fixture.root, "agent"))).toBe(false);
     },

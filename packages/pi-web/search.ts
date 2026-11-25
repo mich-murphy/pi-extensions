@@ -62,9 +62,11 @@ function selectProviderRoute(
   if (override !== undefined) {
     return ProviderRoute.KeylessMcp({ endpoint: override, freeTier: false });
   }
+
   if (Result.isFailure(outcome)) {
     return ProviderRoute.Failed({ error: outcome.failure });
   }
+
   return outcome.success === undefined
     ? ProviderRoute.KeylessMcp({ endpoint: defaultEndpoint, freeTier: true })
     : ProviderRoute.OfficialApi({ apiKey: outcome.success });
@@ -95,6 +97,7 @@ const PROVIDER_BUILDERS: Record<
       settings.endpoints.exa,
       EXA_MCP_DEFAULT_ENDPOINT,
     );
+
     return ProviderRoute.$match(route, {
       Failed: ({ error }) => failedPair("exa", error),
       OfficialApi: ({ apiKey }) => ({
@@ -103,6 +106,7 @@ const PROVIDER_BUILDERS: Record<
       }),
       KeylessMcp: ({ endpoint, freeTier }) => {
         const mcp = mcpFor(endpoint);
+
         return {
           search: onFreeTier(new ExaMcpSearchProvider(mcp), freeTier),
           fetch: new ExaMcpFetchProvider(mcp),
@@ -116,10 +120,12 @@ const PROVIDER_BUILDERS: Record<
       settings.endpoints.parallel,
       PARALLEL_MCP_DEFAULT_ENDPOINT,
     );
+
     return ProviderRoute.$match(route, {
       Failed: ({ error }) => failedPair("parallel", error),
       OfficialApi: ({ apiKey }) => {
         const mcp = mcpFor(PARALLEL_MCP_DEFAULT_ENDPOINT);
+
         return {
           search: new ParallelApiSearchProvider(apiKey, http),
           fetch: new ParallelMcpFetchProvider(mcp, sessionId),
@@ -127,6 +133,7 @@ const PROVIDER_BUILDERS: Record<
       },
       KeylessMcp: ({ endpoint, freeTier }) => {
         const mcp = mcpFor(endpoint);
+
         return {
           search: onFreeTier(new ParallelMcpSearchProvider(mcp, sessionId), freeTier),
           fetch: new ParallelMcpFetchProvider(mcp, sessionId),
@@ -136,9 +143,11 @@ const PROVIDER_BUILDERS: Record<
   },
   brave: ({ snapshot, http }) => {
     const outcome = snapshot.outcomes.brave;
+
     if (Result.isFailure(outcome)) {
       return failedPair("brave", outcome.failure);
     }
+
     return outcome.success === undefined
       ? failedPair("brave", new CredentialFailure({ provider: "brave", reason: "unavailable" }))
       : { search: new BraveApiSearchProvider(outcome.success, http) };
@@ -148,10 +157,12 @@ const PROVIDER_BUILDERS: Record<
 function buildProviderPairs(composition: ProviderComposition): readonly ProviderPair[] {
   const { settings, snapshot } = composition;
   const brave = snapshot.outcomes.brave;
+
   const providers =
     settings.search.defaultProviders && (Result.isFailure(brave) || brave.success !== undefined)
       ? [...settings.search.providers, "brave" as const]
       : settings.search.providers;
+
   return providers.map((name) => PROVIDER_BUILDERS[name](composition));
 }
 
@@ -167,12 +178,14 @@ class ProviderPairs extends Context.Service<
       const settings = yield* WebToolsConfig;
       const http = yield* ProviderHttpClient;
       const mcpClients = yield* McpClients;
+
       const composition = {
         settings,
         http,
         sessionId: randomUUID(),
         mcpFor: mcpClients.forEndpoint,
       };
+
       return ProviderPairs.of({
         forRequest: (snapshot) =>
           buildProviderPairs({
@@ -180,6 +193,7 @@ class ProviderPairs extends Context.Service<
             snapshot,
             mcpFor: (endpoint) => {
               const cached = composition.mcpFor(endpoint);
+
               return { callTool: (name, args) => cached.callTool(name, args, snapshot.secrets) };
             },
           }),
@@ -202,6 +216,7 @@ export class SearchProviders extends Context.Service<
     SearchProviders,
     Effect.gen(function* () {
       const pairs = yield* ProviderPairs;
+
       return SearchProviders.of({
         forRequest: (snapshot) => pairs.forRequest(snapshot).map((pair) => pair.search),
       });
@@ -221,6 +236,7 @@ export class FetchRescueProviders extends Context.Service<
     FetchRescueProviders,
     Effect.gen(function* () {
       const pairs = yield* ProviderPairs;
+
       return FetchRescueProviders.of({
         forRequest: (snapshot) => pairs.forRequest(snapshot).flatMap((pair) => pair.fetch ?? []),
       });
@@ -252,9 +268,11 @@ export class AllProvidersFailed extends Schema.TaggedError<AllProvidersFailed>()
 ) {
   override get message(): string {
     const limited = this.freeTierRateLimited ?? [];
+
     if (limited.length > 0 && limited.length === this.attempts.length) {
       return `Free-tier rate limit on ${limited.join(", ")}. Ask the user to add a key with \`/login pi-web-${limited[0]}\`.`;
     }
+
     return `All search providers failed (${this.attempts.join("; ")})`;
   }
 }
@@ -265,6 +283,7 @@ function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): bo
   if (provider.freeTier !== true) {
     return false;
   }
+
   return Match.value(error).pipe(
     Match.tag("ProviderStatusRejected", ({ status }) => status === 429),
     Match.tag("ProviderToolError", ({ detail }) => RATE_LIMIT_TEXT.test(detail)),
@@ -278,18 +297,23 @@ const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function boundedDetail(detail: string): string {
   const points = [...GRAPHEMES.segment(detail)].map(({ segment }) => segment);
+
   if (points.length <= MAX_PROVIDER_DETAIL) {
     return detail;
   }
+
   const space = points
     .slice(0, MAX_PROVIDER_DETAIL + 1)
     .join("")
     .lastIndexOf(" ");
+
   let cut = space > 0 ? space : points.slice(0, MAX_PROVIDER_DETAIL - 1).join("").length;
   const marker = detail.lastIndexOf(URL_PLACEHOLDER, cut - 1);
+
   if (marker !== -1 && marker + URL_PLACEHOLDER.length > cut) {
     cut = marker > 0 ? marker : URL_PLACEHOLDER.length;
   }
+
   return `${detail
     .slice(0, cut)
     .trimEnd()
@@ -310,10 +334,13 @@ export function searchWithFallback(
   options: { readonly providerOverride?: SearchProviderName | undefined } = {},
 ): Effect.Effect<SearchChainSuccess, SearchChainError> {
   const { providerOverride } = options;
+
   if (providerOverride === undefined) {
     return runChain(providers, input);
   }
+
   const selected = providers.filter((provider) => provider.name === providerOverride);
+
   if (selected.length === 0) {
     return Effect.fail(
       new UnknownProvider({
@@ -322,6 +349,7 @@ export function searchWithFallback(
       }),
     );
   }
+
   return runChain(selected, input);
 }
 
@@ -332,12 +360,15 @@ const runChain = Effect.fnUntraced(function* (
   const failures: string[] = [];
   const freeTierRateLimited: SearchProviderName[] = [];
   const attempted: SearchProviderName[] = [];
+
   for (const provider of providers) {
     attempted.push(provider.name);
     const result = yield* Effect.result(provider.search(input));
+
     if (Result.isSuccess(result)) {
       return { provider: provider.name, attemptedProviders: attempted, results: result.success };
     }
+
     if (isFreeTierRateLimit(provider, result.failure)) {
       freeTierRateLimited.push(provider.name);
       failures.push(
@@ -347,6 +378,7 @@ const runChain = Effect.fnUntraced(function* (
       failures.push(`${provider.name}: ${attemptReason(result.failure)}`);
     }
   }
+
   return yield* new AllProvidersFailed(
     freeTierRateLimited.length === 0
       ? { attempts: failures }

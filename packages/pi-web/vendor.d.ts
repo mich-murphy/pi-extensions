@@ -10,6 +10,7 @@ declare module "html-to-text" {
       options?: { uppercase?: boolean; uppercaseHeaderCells?: boolean };
     }[];
   };
+
   export function compile(options: HtmlToTextOptions): (html: string) => string;
 }
 

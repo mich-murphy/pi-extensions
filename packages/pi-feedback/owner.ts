@@ -41,6 +41,7 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
   const piSessionName = new RegExp(`--${encodedHome}(?:-[^\\s'"\`/]*)?--`, "u");
   const claudeProjectName = new RegExp(`(?<![\\w-])-${encodedHome}`, "u");
   const sessionsDir = join(settings.agentDir, "sessions");
+
   const sessionsDirs = settings.agentDir.startsWith(`${settings.home}/`)
     ? [sessionsDir, `~${sessionsDir.slice(settings.home.length)}`]
     : [sessionsDir];
@@ -49,8 +50,10 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
     if (!isAbsolute(path)) {
       return undefined;
     }
+
     const inside = relative(settings.packagesDir, path);
     const name = inside.split(sep)[0] ?? "";
+
     return inside.startsWith("..") || isAbsolute(inside) || !own.has(name) ? undefined : name;
   };
 
@@ -65,12 +68,15 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
 
   const attribute = (tool: ToolSource | undefined, text: string): Attribution => {
     const registeredBy = tool === undefined ? undefined : packageAt(tool.sourceInfo.path);
+
     if (registeredBy !== undefined) {
       return { owner: registeredBy };
     }
+
     if (claudePath(text)) {
       return { owner: CLAUDE };
     }
+
     return tool?.sourceInfo.source === "builtin" && piPath(text)
       ? { owner: UNATTRIBUTED, evidence: "pi-path" }
       : { owner: UNATTRIBUTED };
@@ -82,13 +88,17 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
   const forReport = (component: string, actual: string): Attribution => {
     const named = component.trim().replace(/^\//u, "");
     const first = named.toLowerCase().split(/[\s/:]+/u)[0] ?? "";
+
     if (own.has(first)) {
       return { owner: first };
     }
+
     const command = sources
       .getCommands()
       .find((candidate) => candidate.name === named || candidate.name === `skill:${named}`);
+
     const commandOwner = command === undefined ? undefined : packageAt(command.sourceInfo.path);
+
     return commandOwner === undefined
       ? attribute(toolNamed(named), actual)
       : { owner: commandOwner };

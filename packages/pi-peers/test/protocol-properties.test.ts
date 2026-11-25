@@ -16,6 +16,7 @@ const adversarial = gs.oneOf(
   gs.sampledFrom(["", ",", "][", '"', "\\", '","', String.raw`\"`, "[", "]", "a", "a,b"]),
   gs.text({ maxSize: 4 }),
 );
+
 const codePoint = gs.oneOf(
   gs.integers({ minValue: 0, maxValue: 0x10_ff_ff }),
   gs.sampledFrom([0, 0x7f, 0xfe_ff, 0xff_ff, 0x1_00_00, 0x10_ff_ff]),
@@ -28,12 +29,14 @@ function toScalar(value: number): number {
 const nonce = "a".repeat(32);
 const rid = "1".repeat(32);
 const peerOf = (machineId: string) => ({ machineId, sessionId: "s", runtimeNonce: nonce });
+
 type Case = { role: BoundaryRole; frame: Schema.JsonObject };
 
 function frameCases(content: string): Case[] {
   const message = { id: "2".repeat(32), kind: "request", format: "text", content };
   const head = { v: 2, rid };
   const work = { kind: "request", origin: peerOf("alpha"), requestId: rid };
+
   const routedBodies = [
     { op: "send", to: peerOf("beta"), scopeId: "team", budgetMs: 15_000, message },
     { op: "state.get", publisher: peerOf("beta"), scopeId: "team", key: "k", expectedRevision: 3 },
@@ -41,12 +44,15 @@ function frameCases(content: string): Case[] {
     { op: "interest.add", publisher: peerOf("beta"), scopeId: "team", work },
     { op: "interest.remove", publisher: peerOf("beta"), scopeId: "team", work },
   ];
+
   const cases: Case[] = [];
+
   const add = (role: BoundaryRole, body: Schema.JsonObject) =>
     cases.push({
       role,
       frame: Object.fromEntries([...Object.entries(head), ...Object.entries(body)]),
     });
+
   add("local-client", {
     op: "register",
     sessionId: "s",
@@ -56,19 +62,24 @@ function frameCases(content: string): Case[] {
   });
   add("local-client", { op: "close" });
   add("remote-link", { op: "ping" });
+
   for (const role of ["local-client", "remote-link"] as const) {
     add(role, { op: "discover", scopeIds: ["team"], watch: true });
     add(role, { op: "unwatch", watchRid: rid });
   }
+
   for (const body of routedBodies) {
     add("local-client", body);
+
     for (const role of ["gateway-forward", "remote-link"] as const) {
       add(role, { ...body, from: peerOf("alpha") });
     }
+
     if (body.op !== "send") {
       add("adapter-delivery", { ...body, from: peerOf("alpha") });
     }
   }
+
   add("adapter-delivery", {
     op: "deliver",
     from: peerOf("alpha"),
@@ -84,6 +95,7 @@ function frameCases(content: string): Case[] {
     outcome: { tag: "admitted", messageId: rid, correlation: "none", durable: false },
   });
   add("local-client", { op: "roster.event", event: { tag: "remove", peer: peerOf("beta") } });
+
   return cases;
 }
 
@@ -93,12 +105,15 @@ const routedOps = new Set(["send", "state.get", "state.list", "interest.add", "i
 function assertRoundtrip({ role, frame }: Case): void {
   assert.deepStrictEqual(decodeFrame(encodeFrame(frame, role), role), frame);
   const op = frame.op;
+
   if (isOp(op) && routedOps.has(op)) {
     const { from, ...without } = frame;
+
     const flipped =
       role === "local-client"
         ? Object.fromEntries([...Object.entries(frame), ["from", peerOf("alpha")]])
         : without;
+
     assert.notEqual(from === undefined, role !== "local-client");
     assert.throws(() => encodeFrame(flipped, role), ProtocolError);
   }
@@ -106,12 +121,14 @@ function assertRoundtrip({ role, frame }: Case): void {
 
 function assertSurrogateRejected(prefix: string, surrogate: number): void {
   const content = `${prefix}${String.fromCodePoint(surrogate)}`;
+
   const send = at(
     frameCases(content).filter(
       (entry) => entry.frame.op === "send" && entry.role === "local-client",
     ),
     0,
   );
+
   assert.throws(() => encodeFrame(send.frame, send.role), ProtocolError);
   const escaped = `\\u${surrogate.toString(16)}`;
   const body = Buffer.from(`{"content":"${prefix}${escaped}"}`, "utf8");
@@ -121,6 +138,7 @@ function assertSurrogateRejected(prefix: string, surrogate: number): void {
 function at<T>(items: readonly T[], index: number): T {
   const value = items[index];
   assert.ok(value !== undefined);
+
   return value;
 }
 
@@ -131,19 +149,24 @@ function deriveSecond(
   if (plan.shift) {
     return shiftBoundary(first, plan.field, plan.cut);
   }
+
   return first.map((value, index) => (plan.reuse[index] === true ? value : at(plan.fresh, index)));
 }
 
 function shiftBoundary(values: readonly string[], field: number, cut: number): string[] {
   const joined = `${at(values, field)},${at(values, field + 1)}`;
+
   const commas = Array.from(joined, (character, index) => (character === "," ? index : -1)).filter(
     (index) => index >= 0,
   );
+
   const comma = at(commas, cut % commas.length);
+
   return values.map((value, index) => {
     if (index === field) {
       return joined.slice(0, comma);
     }
+
     return index === field + 1 ? joined.slice(comma + 1) : value;
   });
 }
@@ -175,6 +198,7 @@ describe("Hegel v16 bounded protocol properties", () => {
         gs.integers({ minValue: 0, maxValue: frameCases("x").length - 1 }),
         "variant",
       );
+
       const points = tc.draw(gs.arrays(codePoint, { maxSize: 64 }), "content");
       const content = `content:${points.map((value) => String.fromCodePoint(toScalar(value))).join("")}`;
       assertRoundtrip(at(frameCases(content), index));
@@ -186,10 +210,12 @@ describe("Hegel v16 bounded protocol properties", () => {
   test("lone surrogates are rejected on encode and decode", () => {
     new Hegel((tc) => {
       const surrogate = tc.draw(gs.integers({ minValue: 0xd8_00, maxValue: 0xdf_ff }), "surrogate");
+
       const prefix = tc.draw(
         gs.text({ maxSize: 8, maxCodepoint: 0x7e, minCodepoint: 0x41, excludeCharacters: "\\" }),
         "prefix",
       );
+
       assertSurrogateRejected(prefix, surrogate);
     })
       .settings(settings)
@@ -225,15 +251,18 @@ describe("Hegel v16 bounded protocol properties", () => {
         gs.arrays(gs.integers({ minValue: 0, maxValue: 255 }), { maxSize: 64 }),
         "content",
       );
+
       const content = `content:${values.map((value) => String.fromCodePoint(value)).join("")}`;
       const literal = { id: "2".repeat(32), kind: "request", format: "text", content };
       const escaped = `"${Array.from(content, (character) => escapedCharacter(character)).join("")}"`;
+
       const reordered = JSON.stringify({
         content,
         format: "text",
         kind: "request",
         id: literal.id,
       }).replace(JSON.stringify(content), escaped);
+
       const decodeMessage = Schema.decodeUnknownSync(Message, { onExcessProperty: "error" });
       assert.equal(
         sameMessage(
@@ -257,6 +286,7 @@ describe("Hegel v16 bounded protocol properties", () => {
         gs.integers({ minValue: 32_765, maxValue: 0xff_ff_ff_ff }),
         "declared-length",
       );
+
       const prefix = Buffer.alloc(4);
       prefix.writeUInt32BE(length);
       assert.throws(() => frameBodyLength(prefix), ProtocolError);
@@ -268,11 +298,13 @@ describe("Hegel v16 bounded protocol properties", () => {
   test("malformed UTF8 cannot be normalized into authored strings", () => {
     new Hegel((tc) => {
       const byte = tc.draw(gs.integers({ minValue: 128, maxValue: 191 }), "continuation-byte");
+
       const body = Buffer.concat([
         Buffer.from('{"content":"'),
         Buffer.from([byte]),
         Buffer.from('"}'),
       ]);
+
       assert.throws(() => decodeJson(body), ProtocolError);
     })
       .settings(settings)

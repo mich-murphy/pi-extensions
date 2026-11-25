@@ -15,6 +15,7 @@ const IMAGE = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
 const NOTICE_LIMIT = 500;
 
 type Block = { type: "text"; text: string } | typeof IMAGE;
+
 type Case = { readonly text: string; readonly expected: SuspiciousOutputKind | undefined };
 
 function prose(length: number): string {
@@ -35,6 +36,7 @@ function drawBinaryCase(tc: TestCase): Case {
   const controls = tc.draw(gs.integers({ minValue: 0, maxValue: 24 }));
   const text = "\0".repeat(controls) + prose(length - controls);
   const flagged = length >= 4096 && controls >= 8 && controls * 500 >= length;
+
   return { text, expected: flagged ? "binary" : undefined };
 }
 
@@ -46,11 +48,14 @@ function drawBase64Case(tc: TestCase): Case {
   const noise = tc.draw(gs.booleans());
   const chunk = tc.draw(gs.arrays(gs.sampledFrom(B64_CHARS), { minSize: 1, maxSize: 9 })).join("");
   let body = chunk.repeat(Math.ceil(run / chunk.length)).slice(0, run - pad);
+
   if (noise) {
     body = `${body.slice(0, 100)}!${body.slice(100)}`;
   }
+
   const text = body + "=".repeat(pad) + space.repeat(spaces);
   const flagged = !noise && run >= 8192 && run >= 19 * spaces;
+
   return { text, expected: flagged ? "base64" : undefined };
 }
 
@@ -62,12 +67,15 @@ function toBlocks(tc: TestCase, text: string, split: boolean): Block[] {
   if (!split) {
     return [{ type: "text", text }];
   }
+
   const lines = text.split("\n");
   const size = tc.draw(gs.integers({ minValue: 1, maxValue: 60 }));
   const blocks: Block[] = [];
+
   for (let index = 0; index < lines.length; index += size) {
     blocks.push({ type: "text", text: lines.slice(index, index + size).join("\n") }, IMAGE);
   }
+
   return blocks;
 }
 
@@ -75,16 +83,20 @@ function noticeOf(content: readonly Block[]): string {
   assert.equal(content.length, 1);
   const [block] = content;
   assert.equal(block?.type, "text");
+
   return block?.type === "text" ? block.text : "";
 }
 
 function assertVerdict(blocks: readonly Block[], found: Case): void {
   const result = sanitizeBashContent(blocks);
   assert.equal(result.detected, found.expected);
+
   if (found.expected === undefined) {
     assert.deepEqual(result.content, blocks);
+
     return;
   }
+
   const notice = noticeOf(result.content);
   assert.ok(notice.length < NOTICE_LIMIT);
   assert.ok(notice.includes(found.expected === "binary" ? "Binary-like" : "Base64-like"));
@@ -108,6 +120,7 @@ const BAD = `${"\0".repeat(20)}${prose(5000)}`;
 const stamp = { toolCallId: "t", isError: false, timestamp: 0 };
 const BAD_BLOCKS: Block[] = [{ type: "text", text: BAD }];
 const SAFE_BLOCKS: Block[] = [{ type: "text", text: prose(5000) }, IMAGE];
+
 const MESSAGE_KINDS: readonly { readonly make: () => Message; readonly flagged: boolean }[] = [
   { make: () => ({ role: "user", content: "hi", timestamp: 0 }), flagged: false },
   {
@@ -131,6 +144,7 @@ const MESSAGE_KINDS: readonly { readonly make: () => Message; readonly flagged: 
 function makeMessage(kind: number): Message {
   const fixture = MESSAGE_KINDS[kind];
   assert.ok(fixture);
+
   return fixture.make();
 }
 
@@ -146,6 +160,7 @@ function assertContext(tc: TestCase): void {
   const input = kinds.map((kind) => makeMessage(kind));
   const output = sanitizeContextMessages(input);
   assert.equal(output.length, input.length);
+
   for (const [index, kind] of kinds.entries()) {
     if (MESSAGE_KINDS[kind]?.flagged === true) {
       assertFlaggedReplaced(input[index], output[index]);
@@ -156,6 +171,7 @@ function assertContext(tc: TestCase): void {
 }
 
 const SEPARATORS = [";", "&&", "|", "\n", " ; ", "\n\n", "||"];
+
 const SUBSTITUTIONS = [
   "$(which x)",
   "$(command\t-v z)",
@@ -165,6 +181,7 @@ const SUBSTITUTIONS = [
   "`which a b`",
   "` command -v y`",
 ];
+
 const GAPS = ["", " ", " -n ", " 2>/dev/null "];
 
 function assertCatDetection(tc: TestCase): void {
@@ -185,19 +202,23 @@ function assertShellData(tc: TestCase): void {
   const data = `${padding} cat ${sub}`;
   const quoted = `'${data.replaceAll("'", `'"'"'`)}'`;
   assert.equal(inspectBashCommand(`printf '%s' ${quoted}`), undefined);
+
   const body = data
     .split("\n")
     .map((line) => `prose ${line}`)
     .join("\n");
+
   assert.equal(inspectBashCommand(`cat <<'END'\n${body}\nEND`), undefined);
   assert.notEqual(inspectBashCommand(`cat <<END\n$(cat ${sub})\nEND`), undefined);
 }
 
 function assertReviewSyntax(tc: TestCase): void {
   const value = tc.draw(gs.integers({ minValue: 0, maxValue: 1000 }));
+
   const delimiter = tc
     .draw(gs.arrays(gs.sampledFrom("ABCDEF".split("")), { minSize: 1, maxSize: 12 }))
     .join("");
+
   const substitution = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
   assert.equal(inspectBashCommand(`cat "$((which + (${value})))"`), undefined);
   assert.notEqual(inspectBashCommand(`echo "$((1 + $(cat ${substitution})))"`), undefined);
@@ -211,6 +232,7 @@ function assertReviewSyntax(tc: TestCase): void {
 function assertNeverThrows(tc: TestCase): void {
   const text = tc.draw(gs.text({ maxSize: 200 }));
   const mixed = tc.draw(gs.arrays(gs.sampledFrom(["cat ", "$(", "`", "which", ")", ";", "\n"])));
+
   for (const command of [text, mixed.join("")]) {
     const verdict = inspectBashCommand(command);
     assert.ok(verdict === undefined || Schema.is(Schema.String)(verdict));

@@ -7,6 +7,7 @@ export function fixture(
   transformBinary: (binary: Buffer) => Buffer = (binary) => binary,
 ) {
   let binary: Buffer = Buffer.alloc(128);
+
   if (target.endsWith("darwin")) {
     binary.writeUInt32LE(0xfe_ed_fa_cf);
     binary.writeUInt32LE(0x1_00_00_0c, 4);
@@ -16,12 +17,15 @@ export function fixture(
     binary.writeUInt16LE(3, 16);
     binary.writeUInt16LE(target.startsWith("aarch64") ? 183 : 62, 18);
   }
+
   binary = transformBinary(binary);
   const metadata = artifactMetadata(target);
+
   const archive = tar([
     ["pi-gateway", binary, 0o755],
     ["release.json", Buffer.from(JSON.stringify(metadata)), 0o644],
   ]);
+
   const record: ArtifactRecord = {
     ...metadata,
     file: `pi-gateway-0.1.0-${target}.tar.gz`,
@@ -30,11 +34,13 @@ export function fixture(
     binarySize: binary.length,
     binarySha256: sha256(binary),
   };
+
   const records = [
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-gnu",
     "x86_64-unknown-linux-gnu",
   ].map((t) => ({ ...record, ...artifactMetadata(t), file: `pi-gateway-0.1.0-${t}.tar.gz` }));
+
   const manifest = Buffer.from(
     JSON.stringify({
       schema: 2,
@@ -44,6 +50,7 @@ export function fixture(
       artifacts: records,
     }),
   );
+
   return {
     binary,
     archive,
@@ -56,6 +63,7 @@ export function fixture(
     },
   };
 }
+
 function artifactMetadata(target: string) {
   return {
     schema: 2,
@@ -78,6 +86,7 @@ function artifactMetadata(target: string) {
 
 export function tar(members: [string, Buffer, number][]): Buffer {
   const parts: Buffer[] = [];
+
   for (const [name, bytes, mode] of members) {
     const header = Buffer.alloc(512);
     header.write(name);
@@ -96,5 +105,6 @@ export function tar(members: [string, Buffer, number][]): Buffer {
     );
     parts.push(header, bytes, Buffer.alloc((512 - (bytes.length % 512)) % 512));
   }
+
   return gzipSync(Buffer.concat([...parts, Buffer.alloc(1024)]));
 }

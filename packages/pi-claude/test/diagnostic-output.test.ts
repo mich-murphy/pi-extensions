@@ -26,10 +26,12 @@ function setTerminalStderr(isTTY: boolean | undefined): void {
 function emitCacheDiagnostics(mode: CacheDiagnosticsMode = "enabled"): void {
   const tracker = Effect.runSync(cacheDiagnosticsTracker(mode));
   assert(tracker !== undefined);
+
   const recordUsage = tracker("claude/sonnet", {
     promptBlocks: [textBlock("stable")],
     cacheBreakpoints: [0],
   });
+
   recordUsage({ input: 100, output: 10, cacheRead: 50, cacheWrite: 0 });
 }
 
@@ -41,6 +43,7 @@ describe("terminal-safe diagnostic output", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+
     if (ttyDescriptor === undefined) {
       Reflect.deleteProperty(stderr, "isTTY");
     } else {
@@ -128,6 +131,7 @@ describe("terminal-safe diagnostic output", () => {
       .trim()
       .split("\n")
       .map((line) => decodeDiagnosticRecord(line));
+
     expect(records).toMatchObject([
       { type: "request" },
       { type: "usage" },

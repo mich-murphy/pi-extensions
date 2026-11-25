@@ -42,11 +42,13 @@ function requirePin(target: string): GatewayReleasePin {
   if (gatewayTarget() !== target) {
     throw new Error(`Host target ${gatewayTarget()} does not match matrix target ${target}`);
   }
+
   if (gatewayCatalog.native === null) {
     throw new Error(
       "Default catalog has no native pin: public native acquisition cannot be verified until the release is published and pinned",
     );
   }
+
   return gatewayCatalog.native;
 }
 
@@ -54,12 +56,16 @@ async function createRoot(runnerTemp: string): Promise<Root> {
   if (!path.isAbsolute(runnerTemp)) {
     throw new Error("--runner-temp must be absolute");
   }
+
   const root = await fs.mkdtemp(path.join(await fs.realpath(runnerTemp), ROOT_PREFIX));
+
   try {
     const stat = await fs.lstat(root, { bigint: true });
+
     if (!isPrivateDirectory(stat, currentUid())) {
       throw new Error("not a private directory");
     }
+
     return { root, dev: stat.dev, ino: stat.ino, uid: currentUid() };
   } catch (error) {
     throw new Error(`Fresh root ${root} not confirmed private; retained`, { cause: error });
@@ -72,6 +78,7 @@ async function requireOwnedExecutable(
   ownedPaths: string[],
 ) {
   const canonical = (await fs.realpath(executable)) === executable;
+
   if (!canonical || !inInstallLayout(executable, installRoot, ownedPaths)) {
     throw new Error(
       `Acquired executable ${executable} is not canonical inside the owned install root`,
@@ -81,6 +88,7 @@ async function requireOwnedExecutable(
 
 function inInstallLayout(executable: string, installRoot: string, ownedPaths: string[]): boolean {
   const inside = (file: string) => path.dirname(file) === installRoot;
+
   return (
     path.basename(executable) === "pi-gateway" &&
     inside(path.dirname(executable)) &&
@@ -91,16 +99,20 @@ function inInstallLayout(executable: string, installRoot: string, ownedPaths: st
 
 async function verifyInstalled(executable: string, pin: GatewayReleasePin, target: string) {
   const binary = await readRegular(executable, MAX_BINARY, "owned");
+
   const manifest = await readRegular(
     path.join(path.dirname(executable), "manifest.json"),
     MAX_JSON,
     "owned",
   );
+
   const { record } = verifyManifest(manifest.bytes, pin, target);
   const binarySha256 = sha256(binary.bytes);
+
   if (binarySha256 !== record.binarySha256 || binary.bytes.length !== record.binarySize) {
     throw new Error("Acquired binary differs from the pinned manifest record");
   }
+
   return {
     binarySha256,
     binarySize: binary.bytes.length,
@@ -114,10 +126,12 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
       env: { HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" },
       stdio: ["ignore", "pipe", "ignore"],
     });
+
     const chunks: Buffer[] = [];
     let size = 0;
     let failure: Error | undefined;
     let abandon: NodeJS.Timeout | undefined;
+
     const stop = (error: Error) => {
       failure ??= error;
       child.kill("SIGKILL");
@@ -127,11 +141,14 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
         reject(new Error("Version probe child did not close after SIGKILL; root retained"));
       }, CLOSE_GRACE_MS);
     };
+
     const deadline = setTimeout(() => {
       stop(new Error("Version probe timed out"));
     }, PROBE_MS);
+
     child.stdout.on("data", (chunk: Buffer) => {
       size += chunk.length;
+
       if (size > MAX_JSON) {
         stop(new Error("Version output exceeds bound"));
       } else {
@@ -149,6 +166,7 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
     child.on("close", (code) => {
       clearTimeout(deadline);
       clearTimeout(abandon);
+
       if (failure !== undefined || code !== 0) {
         reject(failure ?? new Error(`Version probe exited with ${String(code)}`));
       } else {
@@ -160,6 +178,7 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
 
 async function requireEmpty(...dirs: string[]): Promise<void> {
   const entries = await Promise.all(dirs.map(async (dir) => fs.readdir(dir)));
+
   if (entries.some((list) => list.length > 0)) {
     throw new Error("Private HOME or TMPDIR was modified");
   }
@@ -176,11 +195,14 @@ function isSameRootDirectory(stat: BigIntStats, owned: Root): boolean {
 async function removeRoot(owned: Root, runnerTemp: string): Promise<{ removed: string }> {
   const stat = await fs.lstat(owned.root, { bigint: true });
   const parent = await fs.realpath(runnerTemp);
+
   if (!isRootPathIn(owned.root, parent) || !isSameRootDirectory(stat, owned)) {
     throw new Error(`Root ${owned.root} identity, ownership or mode changed; retained`);
   }
+
   await fs.rm(owned.root, { recursive: true });
   await requireAbsent(owned.root);
+
   return { removed: owned.root };
 }
 
@@ -197,10 +219,13 @@ async function verifyInRoot(
     target,
     root: owned.root,
   };
+
   let cleanup: "retained" | "cleanup unconfirmed" | "removed" = "retained";
+
   try {
     await writer.write({ ...base, status: "acquiring" });
     const { home, tmp, installRoot } = await privateProfile(owned.root);
+
     const result = await acquireGateway(
       {
         approved: true,
@@ -213,14 +238,18 @@ async function verifyInRoot(
       },
       { onProgress: (message) => process.stderr.write(`${message}\n`) },
     );
+
     await requireOwnedExecutable(result.executable, installRoot, result.ownedPaths);
     const installed = await verifyInstalled(result.executable, pin, target);
+
     const version = verifyGatewayVersion(
       parseRecordJson(await probeVersion(result.executable, home, tmp)),
       pin.version,
       "Public native",
     );
+
     await requireEmpty(home, tmp);
+
     const verified = {
       ...base,
       status: "verified",
@@ -228,12 +257,14 @@ async function verifyInRoot(
       ...installed,
       gatewayVersion: version,
     };
+
     await writer.write(verified);
     cleanup = "cleanup unconfirmed";
     const removed = await removeRoot(owned, runnerTemp);
     cleanup = "removed";
     const done = { ...verified, status: "cleaned", cleanup: removed };
     await writer.write(done);
+
     return done;
   } catch (error) {
     const failure = new Error(`Root ${owned.root}: ${cleanup}`, { cause: error });
@@ -257,6 +288,7 @@ async function recordFailure(
   cause: unknown,
 ): Promise<void> {
   const error = describeFailure(cause, false);
+
   try {
     await writer.write({ ...base, status: "failed", error });
   } catch (recordError) {
@@ -269,14 +301,17 @@ async function recordFailure(
 async function main(target: string, runnerTemp: string, out: string) {
   const pin = requirePin(target);
   const writer = await createRecord(out);
+
   try {
     let owned: Root;
+
     try {
       owned = await createRoot(runnerTemp);
     } catch (error) {
       await recordFailure(writer, { ...pin, target, retained: "see error" }, error);
       throw error;
     }
+
     return await verifyInRoot(owned, writer, pin, target, runnerTemp);
   } finally {
     await writer.close();
@@ -293,6 +328,7 @@ const { values } = parseArgs({
 
 try {
   const { target, "runner-temp": runnerTemp, out } = values;
+
   if (
     target === undefined ||
     target === "" ||
@@ -303,6 +339,7 @@ try {
   ) {
     throw new Error("Usage: --target T --runner-temp DIR --out RECORD");
   }
+
   const result = await main(target, runnerTemp, path.resolve(out));
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {

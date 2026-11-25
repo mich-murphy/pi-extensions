@@ -7,7 +7,9 @@ const NAMES = {
   current: { config: "pi-peers.json", directory: "pi-peers", socketRoot: "pi-peers" },
   legacy: { config: "session-communication.json", directory: "comms", socketRoot: "comms" },
 } as const;
+
 export type StateSetKind = keyof typeof NAMES;
+
 export type StateSet = {
   readonly kind: StateSetKind;
   readonly config: string;
@@ -17,6 +19,7 @@ export type StateSet = {
 };
 
 export const isMissingFile = Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }));
+
 export const isMissingPath = Schema.is(
   Schema.Struct({ code: Schema.Literals(["ENOENT", "ENOTDIR"]) }),
 );
@@ -24,6 +27,7 @@ export const isMissingPath = Schema.is(
 function present(path: string): boolean {
   try {
     lstatSync(path);
+
     return true;
   } catch (error) {
     return !isMissingPath(error);
@@ -45,9 +49,11 @@ function exists(set: StateSet): boolean {
 export function stateLocations(agentDir: string) {
   const agent = resolve(agentDir);
   const canonical = realpathOrUnresolved(agent);
+
   const locate = (kind: StateSetKind): StateSet => {
     const names = NAMES[kind];
     const directory = join(canonical, names.directory);
+
     return {
       kind,
       config: join(agent, names.config),
@@ -56,10 +62,12 @@ export function stateLocations(agentDir: string) {
       id: createHash("sha256").update(directory).digest("hex").slice(0, 16),
     };
   };
+
   const current = locate("current");
   const legacy = locate("legacy");
   const currentExists = exists(current);
   const legacyExists = exists(legacy);
+
   return {
     active: !currentExists && legacyExists ? legacy : current,
     ignored: currentExists && legacyExists ? legacy : undefined,

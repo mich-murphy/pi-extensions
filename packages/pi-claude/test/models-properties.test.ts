@@ -41,6 +41,7 @@ const KNOWN: readonly (readonly [string, number])[] = [
   ["claude-sonnet-4", 1024],
   ["claude-3-5-haiku", 2048],
 ];
+
 const PROTOTYPE_NAMES = [
   "constructor",
   "toString",
@@ -50,6 +51,7 @@ const PROTOTYPE_NAMES = [
   "isPrototypeOf",
   "toLocaleString",
 ];
+
 const FOREIGN_PREFIXES = ["anthropic/", "claude", "claude//", "openai/", "Claude-SDK/", " claude/"];
 
 function drawKnown(tc: TestCase): readonly [string, number] {
@@ -63,6 +65,7 @@ function drawDate(tc: TestCase): string {
 function assertVariantsAgree(tc: TestCase): void {
   const [id, minimum] = drawKnown(tc);
   const date = drawDate(tc);
+
   for (const variant of [id, `claude/${id}`, `${id}-${date}`, `claude/${id}-${date}`]) {
     assert.equal(minimumCacheableTokensFor(variant), minimum, variant);
   }
@@ -84,6 +87,7 @@ function assertUnknownIsUndefined(tc: TestCase): void {
   const prefix = tc.draw(gs.sampledFrom(FOREIGN_PREFIXES));
   const junk = `zz-${tc.draw(gs.text({ maxSize: 20 }))}`;
   const date = drawDate(tc);
+
   for (const variant of [name, `claude/${name}`, `${name}-${date}`, `${prefix}${id}`, junk]) {
     assert.equal(minimumCacheableTokensFor(variant), undefined, variant);
   }

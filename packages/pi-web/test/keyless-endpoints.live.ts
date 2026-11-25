@@ -10,6 +10,7 @@ import { publicUrl, searchQuery } from "./fakes";
 
 function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpClient {
   const clients = McpClients.layer.pipe(Layer.provide(HttpFetch.layer));
+
   return Effect.runSync(
     Effect.gen(function* () {
       return (yield* McpClients).forEndpoint(endpoint);
@@ -20,6 +21,7 @@ function makeMcp(endpoint: typeof EXA_MCP_DEFAULT_ENDPOINT): McpClient {
 describe("live keyless endpoints", () => {
   test("exa MCP search returns results", async () => {
     const provider = new ExaMcpSearchProvider(makeMcp(EXA_MCP_DEFAULT_ENDPOINT));
+
     const result = await Effect.runPromise(
       Effect.result(
         provider.search({
@@ -28,6 +30,7 @@ describe("live keyless endpoints", () => {
         }),
       ),
     );
+
     assert(Result.isSuccess(result));
     expect(result.success.length).toBeGreaterThan(0);
     expect(result.success[0]?.url).toMatch(/^https?:\/\//u);
@@ -38,6 +41,7 @@ describe("live keyless endpoints", () => {
       makeMcp(PARALLEL_MCP_DEFAULT_ENDPOINT),
       crypto.randomUUID(),
     );
+
     const result = await Effect.runPromise(
       Effect.result(
         provider.search({
@@ -46,15 +50,18 @@ describe("live keyless endpoints", () => {
         }),
       ),
     );
+
     assert(Result.isSuccess(result));
     expect(result.success.length).toBeGreaterThan(0);
   }, 30_000);
 
   test("exa MCP fetch reads a page", async () => {
     const provider = new ExaMcpFetchProvider(makeMcp(EXA_MCP_DEFAULT_ENDPOINT));
+
     const markdown = await Effect.runPromise(
       provider.fetchMarkdown(publicUrl("https://example.com")),
     );
+
     expect(markdown).toContain("Example Domain");
   }, 30_000);
 
@@ -63,9 +70,11 @@ describe("live keyless endpoints", () => {
       makeMcp(PARALLEL_MCP_DEFAULT_ENDPOINT),
       crypto.randomUUID(),
     );
+
     const markdown = await Effect.runPromise(
       provider.fetchMarkdown(publicUrl("https://example.com")),
     );
+
     expect(markdown?.length).toBeGreaterThan(50);
   }, 30_000);
 });

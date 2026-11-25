@@ -11,13 +11,16 @@ import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = 60_000;
 const settings = propertySettings(200);
+
 type Step = { jump: number; event: "none" | "tree" | "shutdown" };
+
 type Plan = { delaysMinutes: number[]; maxAttempts: number; windowMinutes: number };
 
 function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly boolean[]) {
   const out: { gaveUp: boolean; attempt: number; resetsAt: number }[] = [];
   let attempts = 0;
   let first = 0;
+
   for (const [index, now] of times.entries()) {
     attempts = resets[index] === true ? 0 : attempts;
     const attempt = attempts + 1;
@@ -28,12 +31,14 @@ function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly
     out.push({ gaveUp, attempt, resetsAt });
     attempts = gaveUp ? 0 : attempt;
   }
+
   return out;
 }
 
 function setup(transient: Plan) {
   const pi = fakePi("tui", { piRetry: { transient } });
   registerRetry(pi.pi, pi.deps);
+
   return pi;
 }
 
@@ -41,40 +46,51 @@ function failOnce(pi: ReturnType<typeof setup>, at: number): string {
   pi.advanceTo(at);
   const before = pi.notifications.length;
   pi.startRun();
+
   const result = pi.settle("error", [
     userEntry("u"),
     assistantEntry("a", "error", "Connection error."),
   ]);
+
   assert.equal(pi.notifications.length, before + 1);
   const message = pi.notifications[before]?.message ?? "";
   assert.equal(result === undefined, message.includes("persists"), "omit only when scheduled");
+
   return message;
 }
 
 function assertSchedule(plan: Plan, steps: readonly Step[]): void {
   const times: number[] = [];
   let at = 0;
+
   for (const { jump } of steps) {
     at += jump * MINUTE;
     times.push(at);
   }
+
   const pi = setup(plan);
+
   const expected = expectedOutcomes(
     plan,
     times,
     steps.map(({ event }) => event !== "none"),
   );
+
   for (const [index, when] of times.entries()) {
     const event = steps[index]?.event;
+
     if (event === "tree") {
       pi.navigateTree();
     }
+
     if (event === "shutdown") {
       pi.shutdown();
     }
+
     const message = failOnce(pi, when);
     const want = expected[index];
     assert.ok(want);
+
     if (want.gaveUp) {
       assert.equal(
         message,
@@ -101,7 +117,9 @@ function drawPlan(tc: TestCase): Plan {
 }
 
 type SettingsLeaf = number | string | boolean | null | number[];
+
 type FieldName = keyof TransientSettings;
+
 type TestFields = Partial<Record<FieldName, SettingsLeaf>>;
 
 const fieldNames = ["enabled", "delaysMinutes", "maxAttempts", "windowMinutes"] as const;
@@ -134,11 +152,14 @@ function checkValid(result: TransientSettings): void {
 function assertReader(settingsCase: number, fields: TestFields, junkKeys: string[]): void {
   const transient = fields;
   const plain = unpollutedSettings(settingsCase, transient, fields);
+
   const junk = Object.fromEntries(
     junkKeys.map((key) => [key, { maxAttempts: 99, enabled: false }]),
   );
+
   const inherited = { maxAttempts: 3, delaysMinutes: [7], windowMinutes: 9, enabled: false };
   const top = wrap(plain, { piRetry: { transient: inherited } });
+
   const polluted =
     settingsCase === 0
       ? wrap(
@@ -152,9 +173,11 @@ function assertReader(settingsCase: number, fields: TestFields, junkKeys: string
           {},
         )
       : top;
+
   const base = readTransientSettings(plain);
   const result = readTransientSettings(polluted);
   assert.deepEqual(result, base, "junk keys such as __proto__/constructor change nothing");
+
   if (result !== undefined) {
     checkValid(result);
     assert.equal(Object.getPrototypeOf(result), Object.prototype);
@@ -163,11 +186,13 @@ function assertReader(settingsCase: number, fields: TestFields, junkKeys: string
 
 function drawFields(tc: TestCase): TestFields {
   const fields: TestFields = {};
+
   for (const name of fieldNames) {
     if (tc.draw(gs.booleans())) {
       fields[name] = tc.draw(leaf);
     }
   }
+
   return fields;
 }
 
@@ -179,6 +204,7 @@ function unpollutedSettings(
   if (settingsCase === 0) {
     return { piRetry: { transient } };
   }
+
   return settingsCase === 1 ? { piRetry: fields.enabled } : { ...fields };
 }
 
@@ -188,6 +214,7 @@ function wrap<Fields extends RetrySettingsInput | TestFields | { transient: Test
 ): Fields {
   const copy = { ...own };
   Object.setPrototypeOf(copy, proto);
+
   return copy;
 }
 
@@ -195,6 +222,7 @@ describe("transient backoff properties", () => {
   test("schedule matches the independent model", () => {
     new Hegel((tc) => {
       const plan = drawPlan(tc);
+
       const steps = tc.draw(
         gs.arrays(
           gs.record({
@@ -204,6 +232,7 @@ describe("transient backoff properties", () => {
           { minSize: 1, maxSize: 15 },
         ),
       );
+
       assertSchedule(plan, steps);
     })
       .settings(settings)
@@ -214,11 +243,13 @@ describe("transient backoff properties", () => {
     new Hegel((tc) => {
       const fields = drawFields(tc);
       const settingsCase = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
+
       const junk = tc.draw(
         gs.arrays(gs.sampledFrom(["__proto__", "constructor", "prototype", "toString"]), {
           maxSize: 4,
         }),
       );
+
       assertReader(settingsCase, fields, junk);
     })
       .settings(settings)

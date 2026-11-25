@@ -2,12 +2,14 @@ import { describe, expect, test } from "vitest";
 import { validateBoundReply } from "../adapter/replies.js";
 
 const self = { machineId: "local", sessionId: "session", runtimeNonce: "a".repeat(32) };
+
 const request = {
   v: 2,
   op: "gateway.restart",
   rid: "b".repeat(32),
   expectedMachineId: "local",
 } as const;
+
 const reply = {
   v: 2,
   op: "result",

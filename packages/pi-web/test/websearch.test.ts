@@ -75,6 +75,7 @@ describe("websearch tool", () => {
         searchProviders: [failingProvider("exa"), answeringProvider("parallel")],
       }),
     });
+
     const result = await tool.execute("t1", { query: "pi agent" });
 
     expect(result.details.provider).toBe("parallel");
@@ -87,6 +88,7 @@ describe("websearch tool", () => {
     const { client } = fakeMcpClient([
       Result.succeed({ text: ["Title: Broken\nURL: not-a-url\nText: unusable"] }),
     ]);
+
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor(),
@@ -116,6 +118,7 @@ describe("websearch tool", () => {
         ],
       }),
     });
+
     const result = await tool.execute("t1", { query: "pi agent", provider: "brave" });
     expect(result.details.provider).toBe("brave");
     expect(result.details.attemptedProviders).toStrictEqual(["brave"]);
@@ -130,6 +133,7 @@ describe("websearch tool", () => {
         searchProviders: [failingProvider("exa"), failingProvider("parallel")],
       }),
     });
+
     await expect(tool.execute("t1", { query: "pi agent" })).rejects.toThrow(
       "All search providers failed",
     );
@@ -142,6 +146,7 @@ describe("websearch tool", () => {
       search: () =>
         Effect.succeed([{ title: "leak sekrit-key", url: publicUrl("https://example.com/") }]),
     };
+
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor("sekrit-key"),
@@ -151,10 +156,13 @@ describe("websearch tool", () => {
         searchProviders: [leaky],
       }),
     });
+
     const updates: unknown[] = [];
+
     const result = await tool.execute("t1", { query: "find sekrit-key" }, undefined, (update) => {
       updates.push(update);
     });
+
     expect(JSON.stringify({ result, updates })).not.toContain("sekrit-key");
     expect(textOf(result)).toContain("[redacted]");
     expect(result.details.query).toBe("find [redacted]");
@@ -179,16 +187,19 @@ describe("websearch deadline and cancellation", () => {
       transport: "api",
       search: () => Effect.never.pipe(withProviderDeadline(Duration.millis(20))),
     };
+
     const runtime = toolRuntimeWith({
       settings: DEFAULT_SETTINGS,
       searchProviders: [slow],
       testClock: true,
     });
+
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor(),
       runtime,
     });
+
     const outcome = tool.execute("t1", { query: "slow" });
     await settleOnTestClock(runtime, Duration.millis(20), outcome);
     await expect(outcome).rejects.toThrow("All search providers failed (exa: timed out after 1s)");
@@ -199,15 +210,18 @@ describe("websearch deadline and cancellation", () => {
     const controller = new AbortController();
     let fallbackCalls = 0;
     const hanging: SearchProvider = { name: "exa", transport: "api", search: () => Effect.never };
+
     const fallback: SearchProvider = {
       name: "parallel",
       transport: "api",
       search: () =>
         Effect.sync(() => {
           fallbackCalls += 1;
+
           return [];
         }),
     };
+
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor(),
@@ -216,6 +230,7 @@ describe("websearch deadline and cancellation", () => {
         searchProviders: [hanging, fallback],
       }),
     });
+
     const outcome = tool.execute("t1", { query: "q" }, controller.signal);
     setTimeout(() => {
       controller.abort();
@@ -228,6 +243,7 @@ describe("websearch deadline and cancellation", () => {
 describe("websearch call rendering", () => {
   test("redacts configured secrets from the query", () => {
     const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+
     const tool = createWebSearchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor("sekrit-key"),
@@ -236,6 +252,7 @@ describe("websearch call rendering", () => {
         searchProviders: [answeringProvider("exa")],
       }),
     });
+
     const rendered = renderText(tool.renderCall({ query: "find sekrit-key" }, theme));
     expect(rendered).not.toContain("sekrit-key");
     expect(rendered).toContain("[redacted]");
@@ -245,6 +262,7 @@ describe("websearch call rendering", () => {
 describe("websearch result rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
   const tool = toolWith(answeringProvider("exa"));
+
   const details = {
     query: "q",
     maxResults: 8,
@@ -253,6 +271,7 @@ describe("websearch result rendering", () => {
     attemptedProviders: ["exa" as const],
     truncated: false,
   };
+
   const render = (
     result: Parameters<typeof tool.renderResult>[0],
     options: { readonly expanded: boolean; readonly isPartial: boolean },
@@ -279,6 +298,7 @@ describe("websearch result rendering", () => {
       },
       { expanded: true, isPartial: false },
     );
+
     expect(expanded.split("\n")[0]).toBe("✓ 2 results via exa [truncated]");
     expect(expanded).toContain("URL: https://example.com/");
     expect(expanded).toContain("Full output: /tmp/y");

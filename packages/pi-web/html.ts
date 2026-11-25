@@ -60,6 +60,7 @@ const isRemovedElement = compileSelector(`${REMOVAL_SELECTOR}, ${LANDMARK_REMOVA
 const RAW_TEXT_TAGS: ReadonlySet<string> = new Set(["script", "style", "textarea", "title"]);
 const HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 const FALLBACK_CONTENT_TAGS: ReadonlySet<string> = new Set(["article", "main", "section", "div"]);
+
 const EMPTY_CONTAINER_TAGS: ReadonlySet<string> = new Set([
   "div",
   "section",
@@ -67,6 +68,7 @@ const EMPTY_CONTAINER_TAGS: ReadonlySet<string> = new Set([
   "main",
   "span",
 ]);
+
 const TABLE_PART_TAGS: ReadonlySet<string> = new Set(["thead", "tbody", "tfoot", "tr", "td", "th"]);
 const TABLE_HEADING_MARKUP_TAGS: ReadonlySet<string> = new Set(["caption", "thead", "th"]);
 const TABLE_CELL_TAGS: ReadonlySet<string> = new Set(["td", "th"]);
@@ -105,6 +107,7 @@ const CONTENT_SELECTOR_GROUPS: readonly {
 const PREFERRED_CONTENT_SELECTORS: readonly string[] = CONTENT_SELECTOR_GROUPS.flatMap(
   (group) => group.selectors,
 );
+
 const matchPreferredContent = compileSelectorSet(PREFERRED_CONTENT_SELECTORS);
 
 const CONTENT_SELECTOR_BONUSES = CONTENT_SELECTOR_GROUPS.flatMap(({ bonus, selectors }) =>
@@ -166,6 +169,7 @@ const CHUNK_BOUNDARY_TAGS: ReadonlySet<string> = new Set([
 const CHUNK_SENTINEL = "\uE000";
 
 const turndown = createTurndownService();
+
 const compiledHtmlToText = compileHtmlToText({
   baseElements: {
     selectors: ["body", "main", "article", "div"],
@@ -189,6 +193,7 @@ export function sanitizeHtml(
   baseUrl: string,
 ): Result.Result<string, EmptyHtmlDocument> {
   const root = sanitizeToReadableRoot(rawHtml, baseUrl);
+
   return root === undefined
     ? Result.fail(new EmptyHtmlDocument())
     : Result.succeed(`<div>${root.innerHTML}</div>`);
@@ -199,9 +204,11 @@ export function htmlToMarkdown(
   baseUrl: string,
 ): Result.Result<string, HtmlConversionError> {
   const root = sanitizeToReadableRoot(rawHtml, baseUrl);
+
   if (root === undefined) {
     return Result.fail(new EmptyHtmlDocument());
   }
+
   return Result.map(
     convertGuarded(() => convertToMarkdown(root.innerHTML, root)),
     cleanupMarkdown,
@@ -213,9 +220,11 @@ export function htmlToText(
   baseUrl: string,
 ): Result.Result<string, HtmlConversionError> {
   const sanitized = sanitizeHtml(rawHtml, baseUrl);
+
   if (Result.isFailure(sanitized)) {
     return Result.fail(sanitized.failure);
   }
+
   return Result.map(
     convertGuarded(() => compiledHtmlToText(sanitized.success)),
     cleanupText,
@@ -227,18 +236,24 @@ export function htmlToMarkdownWithTextFallback(
   baseUrl: string,
 ): Result.Result<string, HtmlConversionError> {
   const root = sanitizeToReadableRoot(rawHtml, baseUrl);
+
   if (root === undefined) {
     return Result.fail(new EmptyHtmlDocument());
   }
+
   const html = root.innerHTML;
   const markdown = convertGuarded(() => convertToMarkdown(html, root));
+
   if (Result.isFailure(markdown)) {
     return Result.fail(markdown.failure);
   }
+
   const cleaned = cleanupMarkdown(markdown.success);
+
   if (!isPoorMarkdownConversion(cleaned)) {
     return Result.succeed(cleaned);
   }
+
   return Result.map(
     convertGuarded(() => compiledHtmlToText(`<div>${html}</div>`)),
     cleanupText,
@@ -247,12 +262,15 @@ export function htmlToMarkdownWithTextFallback(
 
 function isPoorMarkdownConversion(markdown: string): boolean {
   const rawBlockTags = markdown.match(RAW_HTML_BLOCK_TAG_RE)?.length ?? 0;
+
   if (rawBlockTags >= 6) {
     return true;
   }
+
   if (/^\s*<(?:table|tbody|thead|tfoot|tr|td|th|div|section|article|main)\b/iu.test(markdown)) {
     return true;
   }
+
   return false;
 }
 
@@ -264,42 +282,51 @@ function createTurndownService(): TurndownService {
     codeBlockStyle: "fenced",
     emDelimiter: "*",
   });
+
   service.use(gfm);
   service.addRule("tableWithoutRows", {
     filter: (node) => isTableElement(node) && node.rows.length === 0,
     replacement: (content) => `\n\n${content}\n\n`,
   });
+
   return service;
 }
 
 function parseWithHtmlRoot(rawHtml: string): Document {
   const { document } = parseHTML(rawHtml);
   const rootName = document.documentElement?.localName;
+
   if (rootName === undefined || rootName === "html") {
     return document;
   }
+
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${rawHtml}</body></html>`).document;
 }
 
 function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | undefined {
   const root = extractReadableRoot(parseWithHtmlRoot(rawHtml));
+
   if (root === undefined) {
     return undefined;
   }
+
   const { tables, links } = removeBoilerplate(root);
   flattenLayoutTables(tables, root);
   normalizeBlockLinks(links);
   removeEmptyContainersAndResolveUrls(root, baseUrl);
+
   return root;
 }
 
 function extractReadableRoot(document: Document): Element | undefined {
   const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
+
   for (const element of document.querySelectorAll("*")) {
     if (body === undefined && element.localName === "body") {
       body = element;
     }
+
     matchPreferredContent(element, (index) => {
       buckets[index]?.push(element);
     });
@@ -307,29 +334,36 @@ function extractReadableRoot(document: Document): Element | undefined {
 
   for (const candidates of buckets) {
     const match = pickPreferredCandidate(candidates);
+
     if (match) {
       return match;
     }
   }
 
   const fallbackRoot: Element | null = body ?? document.documentElement;
+
   if (fallbackRoot === null) {
     return undefined;
   }
+
   const { candidates, stats } = measureContent(
     fallbackRoot,
     (element, inTemplateContent) =>
       !inTemplateContent && FALLBACK_CONTENT_TAGS.has(element.localName),
   );
+
   candidates.push(fallbackRoot);
+
   return pickBestCandidate(candidates, stats) ?? fallbackRoot;
 }
 
 function pickPreferredCandidate(candidates: readonly Element[]): Element | undefined {
   const [only] = candidates;
+
   if (only === undefined) {
     return undefined;
   }
+
   if (candidates.length === 1) {
     return !RAW_TEXT_TAGS.has(only.localName) && /\S/u.test(only.textContent ?? "")
       ? only
@@ -339,16 +373,20 @@ function pickPreferredCandidate(candidates: readonly Element[]): Element | undef
   const wanted = new Set(candidates);
   const stats = new Map<Element, ContentStats>();
   let outermost: Element | undefined;
+
   for (const candidate of candidates) {
     if (outermost?.contains(candidate) === true) {
       continue;
     }
+
     outermost = candidate;
     const measured = measureContent(candidate, (element) => wanted.has(element));
+
     for (const [element, elementStats] of measured.stats) {
       stats.set(element, elementStats);
     }
   }
+
   return pickBestCandidate(candidates, stats);
 }
 
@@ -361,10 +399,13 @@ function pickBestCandidate(
 
   for (const candidate of candidates) {
     const candidateStats = stats.get(candidate);
+
     if (!candidateStats) {
       continue;
     }
+
     const score = scoreContentCandidate(candidate, candidateStats);
+
     if (score > bestScore) {
       best = candidate;
       bestScore = score;
@@ -378,7 +419,9 @@ function scoreContentCandidate(element: Element, stats: Readonly<ContentStats>):
   if (RAW_TEXT_TAGS.has(element.localName)) {
     return Number.NEGATIVE_INFINITY;
   }
+
   const textLength = stats.text.trimmedLength();
+
   if (textLength === 0) {
     return Number.NEGATIVE_INFINITY;
   }
@@ -420,6 +463,7 @@ class ContentStats {
   addChild(child: Readonly<ContentStats>): void {
     this.text.append(child.text);
     const name = child.element.localName;
+
     if (name === "a") {
       this.linkTextLength += child.text.trimmedLength();
     } else if (name === "p") {
@@ -431,9 +475,11 @@ class ContentStats {
     } else if (HEADING_TAGS.has(name)) {
       this.headings += 1;
     }
+
     if (child.hidesContent) {
       return;
     }
+
     this.linkTextLength += child.linkTextLength;
     this.paragraphs += child.paragraphs;
     this.listItems += child.listItems;
@@ -446,32 +492,39 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
   const rootStats = new ContentStats(root, false, false);
   const candidates: Element[] = [];
   const stats = new Map([[root, rootStats]]);
+
   const stack: { readonly stats: ContentStats; nextChild: ChildNode | null }[] = [
     { stats: rootStats, nextChild: root.firstChild },
   ];
 
   const openElement = (element: Element, parent: Readonly<ContentStats>): ContentStats => {
     const inTemplateContent = parent.inTemplateContent || parent.hidesContent;
+
     const elementStats = new ContentStats(
       element,
       element.localName === "template",
       inTemplateContent,
     );
+
     if (isCandidate(element, inTemplateContent)) {
       candidates.push(element);
       stats.set(element, elementStats);
     }
+
     return elementStats;
   };
 
   for (let current = stack.at(-1); current !== undefined; current = stack.at(-1)) {
     const node = current.nextChild;
+
     if (node === null) {
       stack.pop();
       stack.at(-1)?.stats.addChild(current.stats);
       continue;
     }
+
     current.nextChild = node.nextSibling;
+
     if (isElementNode(node)) {
       stack.push({ stats: openElement(node, current.stats), nextChild: node.firstChild });
     } else if (
@@ -501,6 +554,7 @@ function removeBoilerplate(root: Element): BoilerplateRemoval {
   const tables: Element[] = [];
   const links: Element[] = [];
   let element = root.firstElementChild;
+
   while (element !== null) {
     if (isRemovedElement(element) || isBoilerplateElement(element)) {
       const next = nextElementAfterSubtree(element, root);
@@ -508,45 +562,59 @@ function removeBoilerplate(root: Element): BoilerplateRemoval {
       element = next;
       continue;
     }
+
     const name = element.localName;
+
     if (name === "table") {
       tables.push(element);
     } else if (name === "a" && element.hasAttribute("href")) {
       links.push(element);
     }
+
     element = element.firstElementChild ?? nextElementAfterSubtree(element, root);
   }
+
   return { tables, links };
 }
 
 function nextElementAfterSubtree(element: Element, root: Element): Element | null {
   let current: Element | null = element;
+
   while (current !== null && current !== root) {
     const sibling: Element | null = current.nextElementSibling;
+
     if (sibling !== null) {
       return sibling;
     }
+
     current = current.parentElement;
   }
+
   return null;
 }
 
 function flattenLayoutTables(tables: readonly Element[], root: Element): void {
   for (let index = tables.length - 1; index >= 0; index -= 1) {
     const table = tables[index];
+
     if (table === undefined) {
       continue;
     }
+
     const profile = inspectTable(table, root);
+
     if (!isLikelyLayoutTable(profile)) {
       continue;
     }
+
     for (let partIndex = profile.ownParts.length - 1; partIndex >= 0; partIndex -= 1) {
       const part = profile.ownParts[partIndex];
+
       if (part !== undefined) {
         replaceTag(part, "div");
       }
     }
+
     replaceTag(table, "div");
   }
 }
@@ -554,10 +622,12 @@ function flattenLayoutTables(tables: readonly Element[], root: Element): void {
 function isLikelyLayoutTable(profile: TableProfile): boolean {
   for (const rule of LAYOUT_TABLE_RULES) {
     const verdict = rule(profile);
+
     if (verdict !== undefined) {
       return verdict === "layout";
     }
   }
+
   return false;
 }
 
@@ -600,16 +670,21 @@ function inspectTable(table: Element, root: Element): TableProfile {
     ownRows: [],
     ownParts: [],
   };
+
   const recordOwnElement = (element: Element): void => {
     const name = element.localName;
+
     if (TABLE_HEADING_MARKUP_TAGS.has(name)) {
       draft.hasHeadingMarkup = true;
     }
+
     if (TABLE_PART_TAGS.has(name)) {
       draft.ownParts.push(element);
     }
+
     if (name === "tr") {
       const cells = childCells(element);
+
       if (cells.length > 0) {
         draft.ownRows.push(cells);
       }
@@ -619,6 +694,7 @@ function inspectTable(table: Element, root: Element): TableProfile {
   };
 
   let element = table.firstElementChild;
+
   while (element !== null) {
     if (element.localName === "table") {
       draft.hasNestedTable = true;
@@ -631,6 +707,7 @@ function inspectTable(table: Element, root: Element): TableProfile {
       element = element.firstElementChild ?? nextElementAfterSubtree(element, table);
     }
   }
+
   return { table, root, ...draft };
 }
 
@@ -644,22 +721,27 @@ type TableProfileDraft = {
 
 function hasDescendant(root: Element, predicate: (element: Element) => boolean): boolean {
   let element = root.firstElementChild;
+
   while (element !== null) {
     if (predicate(element)) {
       return true;
     }
+
     element = element.firstElementChild ?? nextElementAfterSubtree(element, root);
   }
+
   return false;
 }
 
 function childCells(row: Element): Element[] {
   const cells: Element[] = [];
+
   for (let child = row.firstElementChild; child !== null; child = child.nextElementSibling) {
     if (TABLE_CELL_TAGS.has(child.localName)) {
       cells.push(child);
     }
   }
+
   return cells;
 }
 
@@ -669,19 +751,23 @@ function headingMarkupRule({ hasHeadingMarkup }: TableProfile): TableVerdict {
 
 function tableRoleRule({ table }: TableProfile): TableVerdict {
   const role = table.getAttribute("role");
+
   return role === "table" || role === "grid" ? "data" : undefined;
 }
 
 function hackerNewsRule({ table, root }: TableProfile): TableVerdict {
   for (let current: Element | null = table; current !== null; current = current.parentElement) {
     const id = current.getAttribute("id");
+
     if (id === "hnmain" || id === "bigbox") {
       return "layout";
     }
+
     if (current === root) {
       break;
     }
   }
+
   return undefined;
 }
 
@@ -697,40 +783,50 @@ function presentationalAttributeRule({ table }: TableProfile): TableVerdict {
 
 function irregularGridRule({ ownRows }: TableProfile): TableVerdict {
   const widths = new Set(ownRows.map((cells) => cells.length));
+
   return widths.size === 1 && !widths.has(1) ? undefined : "layout";
 }
 
 function linkListRule({ ownRows, ownLinkCount }: TableProfile): TableVerdict {
   const cells = ownRows.flat();
+
   if (ownLinkCount <= cells.length * 0.6) {
     return undefined;
   }
+
   const averageCellTextLength =
     cells.reduce((total, cell) => total + normalizedTextLength(cell.textContent ?? ""), 0) /
     Math.max(1, cells.length);
+
   return averageCellTextLength < 120 ? "layout" : undefined;
 }
 
 function normalizeBlockLinks(links: readonly Element[]): void {
   for (const link of links) {
     const onlyChild = link.firstElementChild;
+
     if (onlyChild === null || onlyChild.nextElementSibling !== null) {
       continue;
     }
+
     if (!HEADING_TAGS.has(onlyChild.localName)) {
       continue;
     }
 
     const replacementLink = link.ownerDocument.createElement("a");
+
     for (const attribute of ["href", "title"] as const) {
       const value = link.getAttribute(attribute);
+
       if (value !== null && value !== "") {
         replacementLink.setAttribute(attribute, value);
       }
     }
+
     while (onlyChild.firstChild) {
       replacementLink.append(onlyChild.firstChild);
     }
+
     onlyChild.append(replacementLink);
     link.replaceWith(onlyChild);
   }
@@ -738,11 +834,14 @@ function normalizeBlockLinks(links: readonly Element[]): void {
 
 function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): void {
   const elements = root.querySelectorAll("*");
+
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index];
+
     if (element === undefined) {
       continue;
     }
+
     if (
       EMPTY_CONTAINER_TAGS.has(element.localName) &&
       element.firstElementChild === null &&
@@ -751,6 +850,7 @@ function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): vo
       element.remove();
       continue;
     }
+
     if (element.hasAttributes()) {
       resolveUrlAttributes(element, baseUrl);
     }
@@ -760,10 +860,13 @@ function removeEmptyContainersAndResolveUrls(root: Element, baseUrl: string): vo
 function resolveUrlAttributes(element: Element, baseUrl: string): void {
   for (const [attribute, resolve] of URL_ATTRIBUTE_RESOLVERS) {
     const value = element.getAttribute(attribute);
+
     if (value === null || value === "") {
       continue;
     }
+
     const resolved = resolve(value, baseUrl);
+
     if (resolved !== undefined && resolved !== "") {
       element.setAttribute(attribute, resolved);
     } else {
@@ -776,7 +879,9 @@ function isBoilerplateElement(element: Element): boolean {
   if (!element.hasAttributes()) {
     return false;
   }
+
   let tokens = "";
+
   for (const value of [
     element.getAttribute("id"),
     element.getAttributeNode("class")?.value,
@@ -787,6 +892,7 @@ function isBoilerplateElement(element: Element): boolean {
       tokens = tokens ? `${tokens} ${value}` : value;
     }
   }
+
   return BOILERPLATE_TOKEN_RE.test(tokens);
 }
 
@@ -809,6 +915,7 @@ function appendDominoChild(parent: Element, child: Node): void {
 function convertToMarkdown(html: string, sanitizedRoot: Element): string {
   const input = `<div>${html}</div>`;
   const chunked = shouldTryChunking(html, sanitizedRoot) ? convertInChunks(input) : undefined;
+
   return chunked ?? turndown.turndown(input);
 }
 
@@ -824,33 +931,44 @@ function convertInChunks(input: string): string | undefined {
   const root = createDocument(`<x-turndown id="turndown-root">${input}</x-turndown>`).querySelector(
     "#turndown-root",
   );
+
   if (root === null) {
     return undefined;
   }
+
   const { levels, container } = wrapperChain(root);
+
   if (!/\S/u.test(container.textContent ?? "")) {
     return undefined;
   }
 
   const chunks = splitIntoChunks(container);
+
   if (chunks.length < 2) {
     return undefined;
   }
+
   detachChildrenLastFirstToAvoidDominoReindexing(container);
 
   let markdown = "";
+
   for (const [index, chunk] of chunks.entries()) {
     const edges = { sentinelBefore: index > 0, sentinelAfter: index < chunks.length - 1 };
     const shell = buildChunkShell(levels, chunk, edges);
+
     if (shell === undefined) {
       return undefined;
     }
+
     const piece = stripChunkSentinels(turndown.turndown(shell), edges);
+
     if (piece === undefined) {
       return undefined;
     }
+
     markdown += piece;
   }
+
   return markdown.replace(/^[\t\r\n]+/u, "").replace(/[\t\r\n\s]+$/u, "");
 }
 
@@ -861,18 +979,23 @@ type ChunkEdges = {
 
 function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefined {
   let text = piece;
+
   if (edges.sentinelBefore) {
     if (!text.startsWith(CHUNK_SENTINEL)) {
       return undefined;
     }
+
     text = text.slice(CHUNK_SENTINEL.length);
   }
+
   if (edges.sentinelAfter) {
     if (!text.endsWith(CHUNK_SENTINEL)) {
       return undefined;
     }
+
     text = trimTrailingNewlines(text.slice(0, -CHUNK_SENTINEL.length));
   }
+
   return text;
 }
 
@@ -884,23 +1007,28 @@ type WrapperChain = {
 function wrapperChain(root: Element): WrapperChain {
   const levels: Element[] = [root];
   let container = root;
+
   for (let wrapper = loneWrapperChild(root); wrapper !== undefined;) {
     levels.push(wrapper);
     container = wrapper;
     wrapper = loneWrapperChild(wrapper);
   }
+
   return { levels, container };
 }
 
 function hasManyChunkableChildren(root: Element): boolean {
   const { container } = wrapperChain(root);
   let count = 0;
+
   for (let child = container.firstElementChild; child !== null; child = child.nextElementSibling) {
     count += 1;
+
     if (count >= TURNDOWN_CHUNK_MIN_CHILDREN) {
       return true;
     }
   }
+
   return false;
 }
 
@@ -910,25 +1038,31 @@ const COLLAPSIBLE_WHITESPACE_RE = /^[ \t\r\n]*$/u;
 
 function loneWrapperChild(container: Element): Element | undefined {
   const wrapper = soleElementChild(container);
+
   if (wrapper === undefined || !WRAPPER_TAGS.has(wrapper.localName)) {
     return undefined;
   }
+
   const classes = wrapper.getAttribute("class");
+
   return classes !== null && GFM_HIGHLIGHT_CLASS_RE.test(classes) ? undefined : wrapper;
 }
 
 function soleElementChild(container: Element): Element | undefined {
   let sole: Element | undefined;
+
   for (let node = container.firstChild; node !== null; node = node.nextSibling) {
     if (isElementNode(node)) {
       if (sole !== undefined) {
         return undefined;
       }
+
       sole = node;
     } else if (!isDroppedByTurndown(node)) {
       return undefined;
     }
   }
+
   return sole;
 }
 
@@ -936,6 +1070,7 @@ function isDroppedByTurndown(node: ChildNode): boolean {
   if (node.nodeType === COMMENT_NODE) {
     return true;
   }
+
   return node.nodeType === TEXT_NODE && COLLAPSIBLE_WHITESPACE_RE.test(node.nodeValue ?? "");
 }
 
@@ -943,6 +1078,7 @@ function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] 
   const chunks: ChildNode[][] = [];
   let current: ChildNode[] = [];
   let size = 0;
+
   for (let node = container.firstChild; node !== null; node = node.nextSibling) {
     if (
       current.length > 0 &&
@@ -954,10 +1090,13 @@ function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] 
       current = [];
       size = 0;
     }
+
     current.push(node);
     size += node.textContent?.length ?? 0;
   }
+
   chunks.push(current);
+
   return chunks;
 }
 
@@ -974,52 +1113,69 @@ function buildChunkShell(
 ): HTMLElement | undefined {
   let top: Element | undefined;
   let parent: Element | undefined;
+
   for (const level of levels) {
     const clone = level.cloneNode(false);
+
     if (!isElementNode(clone)) {
       return undefined;
     }
+
     if (parent !== undefined) {
       appendDominoChild(parent, clone);
     }
+
     top ??= clone;
     parent = clone;
   }
+
   if (top === undefined || parent === undefined) {
     throw new Error("Chunk shell needs at least one level");
   }
+
   const document = parent.ownerDocument;
+
   const sentinel = () => {
     const paragraph = document.createElement("p");
     paragraph.textContent = CHUNK_SENTINEL;
+
     return paragraph;
   };
+
   if (sentinels.sentinelBefore) {
     appendDominoChild(parent, sentinel());
   }
+
   for (const node of chunk) {
     appendDominoChild(parent, node);
   }
+
   if (sentinels.sentinelAfter) {
     appendDominoChild(parent, sentinel());
   }
+
   return isHtmlElement(top) ? top : undefined;
 }
 
 function trimTrailingNewlines(text: string): string {
   let end = text.length;
+
   while (end > 0 && text.codePointAt(end - 1) === 10) {
     end -= 1;
   }
+
   return text.slice(0, end);
 }
 
 function replaceTag(element: Element, tagName: string): Element {
   const replacement = element.ownerDocument.createElement(tagName);
+
   while (element.firstChild) {
     replacement.append(element.firstChild);
   }
+
   element.replaceWith(replacement);
+
   return replacement;
 }
 
@@ -1029,17 +1185,22 @@ function resolveAttributeUrl(
   dataUrls: "allow" | "reject",
 ): string | undefined {
   const trimmed = value?.trim() ?? "";
+
   if (!trimmed) {
     return undefined;
   }
+
   try {
     const resolved = new URL(trimmed, baseUrl);
+
     if (resolved.protocol === "javascript:" || resolved.protocol === "vbscript:") {
       return undefined;
     }
+
     if (resolved.protocol === "data:" && dataUrls === "reject") {
       return undefined;
     }
+
     return resolved.toString();
   } catch {
     return undefined;
@@ -1054,12 +1215,15 @@ function resolveSrcSet(srcset: string, baseUrl: string): string | undefined {
     .map((entry) => {
       const [urlPart, descriptor] = entry.split(/\s+/u, 2);
       const resolved = resolveAttributeUrl(urlPart, baseUrl, "allow");
+
       if (resolved === undefined) {
         return undefined;
       }
+
       return descriptor === undefined ? resolved : `${resolved} ${descriptor}`;
     })
     .filter((entry): entry is string => Boolean(entry));
+
   return candidates.length > 0 ? candidates.join(", ") : undefined;
 }
 

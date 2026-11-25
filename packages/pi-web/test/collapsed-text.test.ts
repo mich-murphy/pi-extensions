@@ -29,9 +29,11 @@ const ALPHABET = [
   "\u3000",
   "\uFEFF",
 ];
+
 const textGenerator = gs
   .arrays(gs.sampledFrom(ALPHABET), { maxSize: 14 })
   .map((parts) => parts.join(""));
+
 const settings = propertySettings(200);
 
 const expectedLength = (text: string) => text.replaceAll(/\s+/gu, " ").trim().length;
@@ -63,16 +65,20 @@ describe("collapsedTextLength", () => {
     new Hegel((tc) => {
       const pieces = tc.draw(gs.arrays(textGenerator, { minSize: 1, maxSize: 4 }), "pieces");
       const combined = new CollapsedTextLength();
+
       for (const piece of pieces) {
         const measure = new CollapsedTextLength();
         measure.appendText(piece);
         combined.append(measure);
       }
+
       expect(combined.trimmedLength()).toBe(expectedLength(pieces.join("")));
       const textual = new CollapsedTextLength();
+
       for (const piece of pieces) {
         textual.appendText(piece);
       }
+
       expect(textual.trimmedLength()).toBe(combined.trimmedLength());
     })
       .settings(settings)

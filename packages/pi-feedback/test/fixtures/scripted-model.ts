@@ -19,10 +19,13 @@ const Script = Schema.Array(
 
 function stepCalls(index: number): readonly ToolCall[] {
   const file = env.PI_FEEDBACK_SCRIPT;
+
   if (file === undefined || file === "") {
     throw new Error("PI_FEEDBACK_SCRIPT is required");
   }
+
   const steps = Schema.decodeUnknownSync(Schema.fromJsonString(Script))(readFileSync(file, "utf8"));
+
   return (steps[index] ?? []).map((call, position) => ({
     type: "toolCall",
     id: `call-${index}-${position}`,
@@ -53,6 +56,7 @@ export default function scriptedModel(pi: ExtensionAPI): void {
       const index = context.messages.filter(({ role }) => role === "assistant").length;
       const toolCalls = stepCalls(index);
       const text = `Step ${index} done.`;
+
       const message: AssistantMessage = {
         role: "assistant",
         content: toolCalls.length > 0 ? [...toolCalls] : [{ type: "text", text }],
@@ -70,21 +74,26 @@ export default function scriptedModel(pi: ExtensionAPI): void {
         stopReason: toolCalls.length > 0 ? "toolUse" : "stop",
         timestamp: Date.now(),
       };
+
       queueMicrotask(() => {
         stream.push({ type: "start", partial: { ...message, content: [] } });
+
         for (const [contentIndex, toolCall] of toolCalls.entries()) {
           const partial = { ...message, content: toolCalls.slice(0, contentIndex + 1) };
           stream.push({ type: "toolcall_start", contentIndex, partial });
           stream.push({ type: "toolcall_end", contentIndex, toolCall, partial });
         }
+
         if (toolCalls.length === 0) {
           stream.push({ type: "text_start", contentIndex: 0, partial: message });
           stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: message });
           stream.push({ type: "text_end", contentIndex: 0, content: text, partial: message });
         }
+
         stream.push({ type: "done", reason: toolCalls.length > 0 ? "toolUse" : "stop", message });
         stream.end(message);
       });
+
       return stream;
     },
   });

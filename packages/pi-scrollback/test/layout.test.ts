@@ -49,13 +49,16 @@ function fixture(firstPrompt = "first prompt") {
     }),
   );
   document.addChild(new UserMessageComponent("second prompt"));
+
   const output = new Text(
     Array.from({ length: 30 }, (_, i) => `second output ${i}`).join("\n"),
     0,
     0,
   );
+
   document.addChild(output);
   const empty = new Container();
+
   const viewport = createChatViewport({
     document,
     pendingMessages: empty,
@@ -64,6 +67,7 @@ function fixture(firstPrompt = "first prompt") {
     footer: empty,
     scrollbar: "hidden",
   });
+
   const { root } = viewport;
   assert(root instanceof VStack);
   const tui = testTui();
@@ -74,8 +78,10 @@ function fixture(firstPrompt = "first prompt") {
   });
   const request = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
   const adapter = createHostAdapter(tui, (text) => text);
+
   const render = (width = 40, height = 12) =>
     renderLayoutFrame(viewport.root, width, height, () => undefined);
+
   return { ...viewport, root, document, output, tui, adapter, render, request };
 }
 
@@ -83,19 +89,25 @@ const plain = (lines: readonly string[]) => lines.map((line) => stripTerminalSeq
 
 function driftedRoot(native: Component, which: "transcript" | "dock", change: StackEntryOptions) {
   const node = getLayoutNode(native);
+
   if (node?.type !== "vstack") {
     throw new Error("test setup: native root is not a vstack");
   }
+
   const target = which === "transcript" ? 0 : 1;
+
   const entries = node.entries.map((entry, index) =>
     index === target ? { ...entry, ...change } : entry,
   );
+
   const layoutNode = () => ({ ...node, entries });
+
   return { root: { render: () => [], [LAYOUT_NODE]: layoutNode }, layoutNode };
 }
 
 function visible(component: Component): boolean | undefined {
   const node = getLayoutNode(component);
+
   return node?.type === "vstack"
     ? node.entries[0]?.visible?.({ width: 40, height: 12 })
     : undefined;
@@ -236,6 +248,7 @@ describe("native chat viewport", () => {
     expect(plain(later.lines)[0]?.trim()).toBe("❯ second prompt");
     const previousFrameCacheForScrollOnlyFrame = later.renderCache;
     f.transcript.scrollTo(8);
+
     const reused = renderLayoutFrame(
       f.root,
       40,
@@ -243,6 +256,7 @@ describe("native chat viewport", () => {
       () => undefined,
       previousFrameCacheForScrollOnlyFrame,
     );
+
     expect(plain(reused.lines)[0]?.trim()).toBe("❯ first prompt");
     f.transcript.scrollTo(40);
     const back = renderLayoutFrame(f.root, 40, 12, () => undefined, reused.renderCache);
@@ -307,6 +321,7 @@ describe("native prompt boundaries and row", () => {
       "\u001b[31m界 é 👩‍💻\u001b[0m\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
       width,
     );
+
     expect(visibleWidth(row)).toBe(width);
     expect(row).not.toContain("\u001b");
   });

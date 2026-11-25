@@ -60,15 +60,20 @@ export class McpClients extends Context.Service<
       Effect.gen(function* () {
         const http = yield* HttpFetch;
         const cache = new Map<PublicHttpUrl, McpClient>();
+
         const forEndpoint = (endpoint: PublicHttpUrl): McpClient => {
           const cached = cache.get(endpoint);
+
           if (cached !== undefined) {
             return cached;
           }
+
           const client = makeSessionPerToolCallMcpHttpClient(http, endpoint, options);
           cache.set(endpoint, client);
+
           return client;
         };
+
         return McpClients.of({ forEndpoint });
       }),
     );
@@ -114,18 +119,22 @@ function makeSessionPerToolCallMcpHttpClient(
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
     });
+
     if (sessionId !== null && sessionId !== "") {
       headers.set("mcp-session-id", sessionId);
     }
+
     const { response, bodyText } = yield* sendProviderRequest(
       http,
       endpoint,
       { method: "POST", headers, body: JSON.stringify(payload) },
       options.maxResponseBytes,
     );
+
     if (response.status < 200 || response.status >= 300) {
       return yield* new ProviderStatusRejected({ status: response.status });
     }
+
     return {
       sessionId: response.headers.get("mcp-session-id"),
       bodyText,
@@ -150,6 +159,7 @@ function makeSessionPerToolCallMcpHttpClient(
       secrets: readonly string[] = [],
     ): Effect.fn.Return<McpToolCallResult, ProviderError> {
       let sessionId: string | null = null;
+
       const session = Effect.gen(function* () {
         const init = yield* post(
           {
@@ -164,6 +174,7 @@ function makeSessionPerToolCallMcpHttpClient(
           },
           null,
         );
+
         ({ sessionId } = init);
 
         yield* post({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId).pipe(
@@ -174,7 +185,9 @@ function makeSessionPerToolCallMcpHttpClient(
           { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } },
           sessionId,
         );
+
         const message = yield* Effect.fromResult(parseMcpMessage(call.bodyText, call.contentType));
+
         return yield* Effect.fromResult(parseMcpToolResult(message, secrets));
       });
 
@@ -210,22 +223,29 @@ export function parseMcpMessage(
   if (contentType.toLowerCase().includes("text/event-stream") || /^data:/mu.test(body)) {
     return parseSseResponse(body);
   }
+
   if (!body.trim()) {
     return Result.fail(new ProviderProtocolInvalid({ reason: "Empty response body" }));
   }
+
   return parseJsonBody(body);
 }
 
 function parseSseResponse(body: string): Result.Result<ProviderJson, ProviderError> {
   const events = parseSseDataLines(body).map((chunk) => parseJsonBody(chunk));
+
   const responses = events.filter(
     (event) => Result.isSuccess(event) && isJsonRpcResponse(event.success),
   );
+
   const last = responses.at(-1);
+
   if (last !== undefined) {
     return last;
   }
+
   const sawInvalidJson = events.some((event) => Result.isFailure(event));
+
   return Result.fail(
     new ProviderProtocolInvalid({
       reason: sawInvalidJson ? "Invalid JSON in SSE stream" : "No JSON-RPC response in SSE stream",
@@ -261,20 +281,27 @@ export function parseMcpToolResult(
   secrets: readonly (string | undefined)[] = [],
 ): Result.Result<McpToolCallResult, ProviderError> {
   const parsed = decodeToolCallResponse(payload);
+
   if (Result.isFailure(parsed)) {
     return Result.fail(new ProviderProtocolInvalid({ reason: "Expected an object payload" }));
   }
+
   const { error, result } = parsed.success;
+
   if (error !== undefined) {
     return Result.fail(new ProviderToolError({ detail: toolErrorDetail(error.message, secrets) }));
   }
+
   if (result === undefined) {
     return Result.fail(new ProviderProtocolInvalid({ reason: "Missing result object" }));
   }
+
   const text = result.content.map((item) => item.text.trim()).filter((item) => item !== "");
+
   if (result.isError) {
     return Result.fail(new ProviderToolError({ detail: toolErrorDetail(text.join(" "), secrets) }));
   }
+
   return Result.succeed({ text, structuredContent: result.structuredContent });
 }
 
@@ -284,6 +311,7 @@ function toolErrorDetail(text: string, secrets: readonly (string | undefined)[])
     .replaceAll(/\p{Cc}|\p{Bidi_Control}/gu, " ")
     .replaceAll(/\s+/gu, " ")
     .trim();
+
   return scrubbed.length <= MAX_TOOL_ERROR_DETAIL
     ? scrubbed
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;
@@ -299,6 +327,7 @@ function parseSseDataLines(input: string): string[] {
       current.push(line.slice(5).trim());
       continue;
     }
+
     if (!line.trim() && current.length > 0) {
       chunks.push(current.join("\n"));
       current = [];

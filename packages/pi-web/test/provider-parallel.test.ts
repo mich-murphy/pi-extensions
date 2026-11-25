@@ -16,6 +16,7 @@ const PAGE = publicUrl("https://example.com/");
 
 function fetchWith(result: McpToolCallResult) {
   const { client } = fakeMcpClient([Result.succeed(result)]);
+
   return new ParallelMcpFetchProvider(client, "s").fetchMarkdown(PAGE);
 }
 
@@ -112,6 +113,7 @@ describe("parallelMcpSearchProvider", () => {
       const { client, calls } = fakeMcpClient([
         Result.succeed({ text: [], structuredContent: RESULTS_PAYLOAD }),
       ]);
+
       const provider = new ParallelMcpSearchProvider(client, "session-abc");
       const result = yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 }));
 
@@ -135,6 +137,7 @@ describe("parallelMcpSearchProvider", () => {
           structuredContent: { results: [...RESULTS_PAYLOAD.results, ...RESULTS_PAYLOAD.results] },
         }),
       ]);
+
       const provider = new ParallelMcpSearchProvider(client, "s");
 
       expect(yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 }))).toStrictEqual(
@@ -153,6 +156,7 @@ describe("parallelApiSearchProvider", () => {
       const { client, requests } = fakeProviderHttp([
         Result.succeed({ bodyText: JSON.stringify(RESULTS_PAYLOAD) }),
       ]);
+
       const provider = new ParallelApiSearchProvider(Redacted.make("test-key"), client);
       const result = yield* Effect.result(provider.search({ query: QUERY, maxResults: 6 }));
 
@@ -175,12 +179,14 @@ describe("parallelApiSearchProvider", () => {
       const { client } = fakeProviderHttp([
         Result.fail(new ProviderTimedOut({ timeoutSeconds: 25 })),
       ]);
+
       const result = yield* Effect.result(
         new ParallelApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,
           maxResults: 5,
         }),
       );
+
       expect(result).toStrictEqual(Result.fail(new ProviderTimedOut({ timeoutSeconds: 25 })));
     }),
   );
@@ -191,6 +197,7 @@ describe("parallelApiSearchProvider", () => {
         Result.succeed({ bodyText: "not json" }),
         Result.succeed({ bodyText: JSON.stringify({ results: {} }) }),
       ]);
+
       const provider = new ParallelApiSearchProvider(Redacted.make("k"), client);
 
       expect(yield* Effect.result(provider.search({ query: QUERY, maxResults: 5 }))).toStrictEqual(
@@ -212,6 +219,7 @@ describe("parallelMcpFetchProvider", () => {
           structuredContent: { results: [{ url: "https://example.com", content: "# Full page" }] },
         }),
       ]);
+
       const provider = new ParallelMcpFetchProvider(client, "session-abc");
       const result = yield* provider.fetchMarkdown(PAGE);
 
@@ -234,6 +242,7 @@ describe("parallelMcpFetchProvider", () => {
           },
         }),
       ]);
+
       const excerpts = yield* new ParallelMcpFetchProvider(excerptsClient, "s").fetchMarkdown(PAGE);
       expect(excerpts).toBe("part one\n\npart two");
 

@@ -19,15 +19,18 @@ const peer = {
   sessionId: "unit",
   runtimeNonce: "1".repeat(32),
 };
+
 const other = {
   machineId: "beta",
   sessionId: "sender",
   runtimeNonce: "2".repeat(32),
 };
+
 const cleanups: (() => Promise<void>)[] = [];
 
 function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
   const sockets = new Set<Socket>();
+
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("close", () => {
@@ -37,10 +40,12 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
     let buffer = Buffer.alloc(0);
     socket.on("data", (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
+
       while (buffer.length >= 4 && buffer.length >= frameBodyLength(buffer.subarray(0, 4)) + 4) {
         const total = frameBodyLength(buffer.subarray(0, 4)) + 4;
         const request = decodeFrame(buffer.subarray(0, total), "local-client");
         buffer = Buffer.from(buffer.subarray(total));
+
         if (
           request.op === "result" ||
           request.op === "roster.event" ||
@@ -48,7 +53,9 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
         ) {
           continue;
         }
+
         log.push(request);
+
         if (request.op === "register") {
           socket.write(
             encodeFrame(
@@ -76,10 +83,12 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
       }
     });
   });
+
   const listening = new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(path, resolve);
   });
+
   return {
     listening,
     send: (frame: Frame) => {
@@ -91,6 +100,7 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
       for (const socket of sockets) {
         socket.destroy();
       }
+
       await new Promise<void>((resolve) => {
         server.close(() => {
           resolve();
@@ -102,6 +112,7 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
 
 async function tool(tools: ReturnType<typeof toolRecorder>, name: string, args: ToolArguments) {
   const result = await tools.run(name, args, new AbortController().signal);
+
   return { value: result.details.value, isError: result.isError === true };
 }
 
@@ -111,6 +122,7 @@ async function setup(grants: readonly string[], managed = true) {
   const log: Request[] = [];
   const state = { server: fakeGateway(path, grants, log) };
   await state.server.listening;
+
   const config: Configuration = {
     machineId: "alpha",
     socketPath: path,
@@ -125,9 +137,11 @@ async function setup(grants: readonly string[], managed = true) {
       { machineId: "beta", scopeId: "extra", permissions: ["discover"] },
     ],
   };
+
   const ensure = vi.fn<EnsureGateway>(async () => ({
     gatewaySha256: "a".repeat(64),
   }));
+
   const session = new AdapterSession(
     config,
     peer,
@@ -136,6 +150,7 @@ async function setup(grants: readonly string[], managed = true) {
     () => undefined,
     managed ? ensure : undefined,
   );
+
   cleanups.push(async () => {
     session.close();
     await state.server.stop();
@@ -145,6 +160,7 @@ async function setup(grants: readonly string[], managed = true) {
   registerTools(tools, () => session);
   await session.start();
   expect(session.client.status().connected).toBe(true);
+
   const outage = async () => {
     await state.server.stop();
     await vi.waitFor(
@@ -160,10 +176,12 @@ async function setup(grants: readonly string[], managed = true) {
       { timeout: 10_000 },
     );
   };
+
   const restore = async (next: readonly string[]) => {
     state.server = fakeGateway(path, next, log);
     await state.server.listening;
   };
+
   return {
     session,
     tools,

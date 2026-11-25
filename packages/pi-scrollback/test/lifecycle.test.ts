@@ -7,7 +7,9 @@ import scrollback from "../index";
 import type { ScrollRegistration } from "../index";
 
 type Handler = Parameters<ScrollRegistration["on"]>[1];
+
 type Context = Parameters<Parameters<ScrollRegistration["on"]>[1]>[1];
+
 initTheme("dark");
 
 function install(
@@ -22,9 +24,11 @@ const layout = Symbol.for("@earendil-works/pi-tui/layout-node");
 describe("extension lifecycle and incompatible hosts", () => {
   test("non-TUI sessions do not install UI; shutdown and repeated start clean up", () => {
     const handlers = new Map<string, Handler>();
+
     const api = {
       on: (name: string, handler: Handler) => handlers.set(name, handler),
     };
+
     scrollback({ ...api, registerCommand: () => undefined });
     const widget = vi.fn<ExtensionUIContext["setWidget"]>();
     const ctx = { mode: "rpc", ui: { setWidget: widget, theme: testTheme() } };
@@ -32,9 +36,11 @@ describe("extension lifecycle and incompatible hosts", () => {
     expect(widget).not.toHaveBeenCalled();
     const tui = testTui();
     const request = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
+
     const setWidget = vi.fn<Context["ui"]["setWidget"]>().mockImplementation((_name, factory) => {
       install(factory, tui);
     });
+
     const interactive = { mode: "tui", ui: { setWidget, theme: testTheme() } };
     handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, interactive);
     handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, interactive);

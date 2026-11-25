@@ -135,19 +135,24 @@ type DataDescriptor = { readonly value?: unknown };
 const isSettingsObject = Schema.is(
   Schema.ObjectKeyword.check(Schema.makeFilter((raw) => !Array.isArray(raw))),
 );
+
 const ownSettingsObject = Schema.Unknown.pipe(
   Schema.decode({
     decode: SchemaGetter.transform((raw) => {
       if (!isSettingsObject(raw)) {
         return raw;
       }
+
       const entries = Object.entries(Object.getOwnPropertyDescriptors(raw));
+
       const fields = Object.fromEntries(
         entries.flatMap(([key, descriptor]: [string, DataDescriptor]) =>
           Object.hasOwn(descriptor, "value") ? [[key, descriptor.value] as const] : [],
         ),
       );
+
       Object.setPrototypeOf(fields, null);
+
       return fields;
     }),
     encode: SchemaGetter.transform((value) => value),
@@ -164,12 +169,15 @@ const readSettingsSections = Schema.decodeUnknownSync(
     ),
   ),
 );
+
 const readRetrySection = Schema.decodeUnknownResult(
   ownSettingsObject.pipe(
     Schema.decodeTo(Schema.Struct({ transient: Schema.optional(Schema.Unknown) })),
   ),
 );
+
 const positive = Schema.Finite.check(Schema.isGreaterThan(0));
+
 const readTransientSection = Schema.decodeUnknownResult(
   ownSettingsObject.pipe(
     Schema.decodeTo(
@@ -192,14 +200,19 @@ export function readTransientSettings(
 ): TransientSettings | undefined {
   const { piRetry, autoResume } = readSettingsSections(settings);
   const section = readRetrySection(piRetry ?? autoResume ?? {});
+
   if (Result.isFailure(section)) {
     return undefined;
   }
+
   const transient = readTransientSection(section.success.transient ?? {});
+
   if (Result.isFailure(transient)) {
     return undefined;
   }
+
   const { enabled, delaysMinutes, maxAttempts, windowMinutes } = transient.success;
+
   return {
     enabled: enabled ?? DEFAULT_TRANSIENT_SETTINGS.enabled,
     delaysMinutes: delaysMinutes ?? DEFAULT_TRANSIENT_SETTINGS.delaysMinutes,
@@ -225,6 +238,7 @@ function failedAttempt(
   const last = event.context.contextEntries.findLast(
     ({ sourceEntry }) => sourceEntry.type === "message" || sourceEntry.type === "custom_message",
   )?.sourceEntry;
+
   return last?.type === "message" &&
     last.message.role === "assistant" &&
     last.message.stopReason === "error"
@@ -255,6 +269,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     if (wait === undefined) {
       return;
     }
+
     const { ctx, stop } = wait;
     wait = undefined;
     stop();
@@ -265,11 +280,14 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     if (wait === undefined || now() < wait.resetsAt || !wait.ctx.isIdle()) {
       return;
     }
+
     const { reason, attempt, resetsAt } = wait;
+
     const content =
       reason === "usage-limit"
         ? `Retried after the usage limit reset at ${formatTime(resetsAt)}`
         : `Retried after a transient provider error (attempt ${String(attempt)})`;
+
     cancel();
     pi.sendMessage({ customType: RETRY_TYPE, content, display: true }, { triggerTurn: true });
   };
@@ -277,6 +295,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   const startWait = (plan: WaitPlan, ctx: RetryContext): void => {
     cancel();
     const time = formatTime(plan.resetsAt);
+
     const [notice, label] =
       plan.reason === "usage-limit"
         ? [
@@ -287,9 +306,11 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
             `Provider error. Pi will retry at ${time} (attempt ${String(plan.attempt)}); \`/retry off\` cancels.`,
             `Provider error · attempt ${String(plan.attempt)}`,
           ];
+
     ctx.ui.notify(notice, "warning");
     ctx.ui.setWidget(RETRY_TYPE, (_tui, theme) => {
       const reason = theme.fg("muted", `${label} · retry at ${time} · `);
+
       return new Text(
         `${theme.fg("warning", "⏸ ")}${reason}${theme.fg("dim", "/retry off to cancel")}`,
         1,
@@ -309,13 +330,16 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
 
   const transientSettings = (ctx: RetryContext): TransientSettings => {
     const settings = readTransientSettings(pi.getSettings());
+
     if (settings !== undefined) {
       return settings;
     }
+
     if (!warnedAboutSettings) {
       warnedAboutSettings = true;
       ctx.ui.notify("Invalid piRetry.transient settings; using the defaults.", "warning");
     }
+
     return DEFAULT_TRANSIENT_SETTINGS;
   };
 
@@ -326,13 +350,18 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   ): BoundaryResult | undefined => {
     if (ctx.mode === "print" || ctx.mode === "json") {
       report(resetsAt, ctx);
+
       return undefined;
     }
+
     const delay = resetsAt - now();
+
     if (!enabled || delay <= 0 || delay > MAX_WAIT_MS) {
       return undefined;
     }
+
     startWait({ resetsAt, reason: "usage-limit", attempt: 0 }, ctx);
+
     return omit(targetId);
   };
 
@@ -347,26 +376,33 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     ) {
       return undefined;
     }
+
     const settings = transientSettings(ctx);
+
     if (!settings.enabled) {
       return undefined;
     }
+
     const current = now();
     const attempt = (streak?.attempts ?? 0) + 1;
     const firstFailureAt = streak?.firstFailureAt ?? current;
     const { delaysMinutes, maxAttempts, windowMinutes } = settings;
     const delayMinutes = delaysMinutes[Math.min(attempt, delaysMinutes.length) - 1] ?? 0;
     const resetsAt = current + delayMinutes * MINUTE_MS;
+
     if (attempt > maxAttempts || resetsAt > firstFailureAt + windowMinutes * MINUTE_MS) {
       streak = undefined;
       ctx.ui.notify(
         `Provider error persists after ${String(attempt - 1)} automatic retries. Send a message to continue.`,
         "warning",
       );
+
       return undefined;
     }
+
     streak = { attempts: attempt, firstFailureAt };
     startWait({ resetsAt, reason: "transient", attempt }, ctx);
+
     return omit(failed.id);
   };
 
@@ -397,17 +433,23 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   pi.on("agent_before_settle", (event, ctx) => {
     const notice = publishedThisTurn;
     publishedThisTurn = undefined;
+
     if (event.outcome === "completed") {
       streak = undefined;
+
       return undefined;
     }
+
     const failed = event.outcome === "error" ? failedAttempt(event) : undefined;
+
     if (failed === undefined) {
       return undefined;
     }
+
     if (notice === undefined) {
       return afterTransientFailure(failed, ctx);
     }
+
     return notice.provider === undefined || sameProvider(notice.provider, failed.message.provider)
       ? afterUsageLimit(notice.resetsAt, failed.id, ctx)
       : undefined;
@@ -417,11 +459,14 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     if (event.source === "extension") {
       return { action: "continue" };
     }
+
     streak = undefined;
+
     if (wait !== undefined) {
       cancel();
       ctx.ui.notify("Retry cancelled: your new prompt takes over.", "info");
     }
+
     return { action: "continue" };
   });
 
@@ -429,6 +474,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     const messages = event.messages.filter(
       (message) => message.role !== "custom" || !MARKER_TYPES.has(message.customType),
     );
+
     return messages.length === event.messages.length ? undefined : { messages };
   });
 
@@ -448,6 +494,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
       enabled: () => enabled,
       apply: (next) => {
         enabled = next;
+
         if (!enabled) {
           cancel();
         }

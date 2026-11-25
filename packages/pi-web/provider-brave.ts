@@ -28,6 +28,7 @@ const BraveResult = Schema.Struct({
 
 function normalizeBraveResult(item: typeof BraveResult.Type): NormalizedSearchResult {
   const publishedAt = item.page_age ?? item.age;
+
   return {
     title: item.title ?? item.url,
     url: item.url,
@@ -71,6 +72,7 @@ export class BraveApiSearchProvider implements SearchProvider {
     ).pipe(
       Effect.flatMap((payload) => {
         const parsed = decodeBraveSearchPayload(payload);
+
         return Result.isSuccess(parsed)
           ? Effect.succeed(
               parsed.success.web.results

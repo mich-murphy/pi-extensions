@@ -37,6 +37,7 @@ const sdkMetadataSchema = Schema.Struct({
   version: Schema.String,
   claudeCodeVersion: Schema.String,
 });
+
 const decodeSdkMetadata = Schema.decodeUnknownSync(sdkMetadataSchema);
 
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
@@ -47,6 +48,7 @@ export async function readJson(url: URL): Promise<Schema.Json> {
 
 export async function readInstalledSdk(): Promise<typeof sdkMetadataSchema.Type> {
   const sdkEntry = import.meta.resolve(AGENT_SDK_PACKAGE);
+
   return decodeSdkMetadata(await readJson(new URL("package.json", sdkEntry)));
 }
 
@@ -55,7 +57,9 @@ export function formatReleaseContract(contract: ReleaseContract): string {
     const json = Array.isArray(value)
       ? `[${value.map((item) => JSON.stringify(item)).join(", ")}]`
       : JSON.stringify(value);
+
     return `  ${JSON.stringify(key)}: ${json}`;
   });
+
   return `{\n${lines.join(",\n")}\n}\n`;
 }

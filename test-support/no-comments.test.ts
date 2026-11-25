@@ -5,6 +5,7 @@ import plugin from "../config/oxlint/no-comments.ts";
 RuleTester.describe = (text, fn) => {
   void describe(text, fn);
 };
+
 RuleTester.it = (text, fn) => {
   void it(text, fn);
 };

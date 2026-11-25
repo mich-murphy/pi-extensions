@@ -25,6 +25,7 @@ describe("parseMcpMessage", () => {
       '{"result":{"structuredContent":{"number":1e999}}}',
       "application/json",
     );
+
     assert(Result.isSuccess(parsed));
     expect(parseMcpToolResult(parsed.success)).toStrictEqual(
       Result.succeed({ text: [], structuredContent: { number: Infinity } }),
@@ -47,6 +48,7 @@ describe("parseMcpMessage", () => {
       '{"jsonrpc":"2.0","method":"notifications/message"}',
       "[1,2]",
     ];
+
     const body = events.map((event) => `event: message\ndata: ${event}\n\n`).join("");
 
     expect(parseMcpMessage(body, "text/event-stream")).toStrictEqual(
@@ -85,6 +87,7 @@ describe("parseMcpToolResult", () => {
         structuredContent: { results: [] },
       },
     });
+
     assert(Result.isSuccess(result));
     expect(result.success.text).toStrictEqual(["hello"]);
     expect(result.success.structuredContent).toStrictEqual({ results: [] });
@@ -121,6 +124,7 @@ describe("parseMcpToolResult", () => {
         ],
       },
     });
+
     expect(result).toStrictEqual(Result.succeed({ text: ["kept"], structuredContent: undefined }));
 
     expect(parseMcpToolResult({ result: { content: "not an array" } })).toStrictEqual(
@@ -159,6 +163,7 @@ function fakeMcpEndpoint(
   otherwise: () => Response,
 ) {
   const requests: RecordedRequest[] = [];
+
   const fetchImpl: typeof fetch = async (_input, init) => {
     const httpMethod = init?.method ?? "GET";
     const rpcMethod = rpcMethodOf(init?.body);
@@ -168,11 +173,14 @@ function fakeMcpEndpoint(
       rpcMethod,
       redirect: init?.redirect,
     });
+
     if (httpMethod === "DELETE") {
       return new Response(null, { status: 200 });
     }
+
     return (replies[rpcMethod ?? ""] ?? otherwise)();
   };
+
   return { fetchImpl, requests };
 }
 
@@ -215,6 +223,7 @@ describe("mcpHttpClient", () => {
           timeoutMs: 5000,
           fetchImpl,
         });
+
         const result = yield* Effect.result(client.callTool("web_search", { objective: "test" }));
 
         assert(Result.isSuccess(result));
@@ -240,21 +249,25 @@ describe("mcpHttpClient", () => {
   it.effect("a reused client opens and closes a distinct session for each tool call", () =>
     Effect.gen(function* () {
       let initialized = 0;
+
       const { fetchImpl, requests } = fakeMcpEndpoint(
         {
           initialize: () => {
             initialized += 1;
+
             return jsonResponse({}, { headers: { "mcp-session-id": `session-${initialized}` } });
           },
           "notifications/initialized": () => new Response(null, { status: 202 }),
         },
         toolCallReply("found it"),
       );
+
       const client = mcpClientWith(ENDPOINT, {
         maxResponseBytes: 1024,
         timeoutMs: 5000,
         fetchImpl,
       });
+
       yield* client.callTool("search", {});
       yield* client.callTool("fetch", {});
       expect(requests.map(({ sessionId }) => sessionId)).toStrictEqual([
@@ -281,6 +294,7 @@ describe("mcpHttpClient", () => {
         timeoutMs: 5000,
         fetchImpl: tooManyRequests,
       });
+
       const result = yield* Effect.result(client.callTool("web_search", {}));
       assert(Result.isFailure(result));
       assert(Predicate.isTagged("ProviderStatusRejected")(result.failure));
@@ -298,11 +312,13 @@ describe("mcpHttpClient", () => {
         },
         toolCallReply("ok"),
       );
+
       const client = mcpClientWith(ENDPOINT, {
         maxResponseBytes: 1024,
         timeoutMs: 5000,
         fetchImpl,
       });
+
       const result = yield* Effect.result(client.callTool("web_search", {}));
       expect(result._tag).toBe("Success");
     }),
@@ -315,6 +331,7 @@ describe("mcpHttpClient", () => {
         timeoutMs: 5000,
         fetchImpl: connectionRefused,
       });
+
       const result = yield* Effect.result(client.callTool("web_search", {}));
       assert(Result.isFailure(result));
       assert(Predicate.isTagged("ProviderRequestFailed")(result.failure));
@@ -328,6 +345,7 @@ function detailOf(payload: ProviderJson, secrets: readonly string[] = []) {
   const result = parseMcpToolResult(payload, secrets);
   assert(Result.isFailure(result));
   assert(Predicate.isTagged("ProviderToolError")(result.failure));
+
   return { detail: result.failure.detail, message: result.failure.message };
 }
 
@@ -349,6 +367,7 @@ describe("provider tool error detail", () => {
         ],
       },
     };
+
     expect(detailOf(payload).detail).toBe("quota exceeded");
   });
 
@@ -362,6 +381,7 @@ describe("provider tool error detail", () => {
         message: "Denied https://user:password@example.com/?token=secret \u001b[2J\u202e retry",
       },
     });
+
     expect(detail).toContain("[URL omitted]");
     expect(detail).not.toMatch(/password|secret|\p{Cc}|\p{Bidi_Control}/u);
     expect(detail).toContain("retry");
@@ -396,7 +416,9 @@ const initializeWithSession = () =>
     { jsonrpc: "2.0", id: 1, result: {} },
     { headers: { "mcp-session-id": "session-9" } },
   );
+
 const initializedAccepted = () => new Response(null, { status: 202 });
+
 const HANDSHAKE = {
   initialize: initializeWithSession,
   "notifications/initialized": initializedAccepted,
@@ -411,9 +433,12 @@ function hangingToolsCall(fetchImpl: typeof fetch, onHang: () => void = () => un
     if (rpcMethodOf(init?.body) !== "tools/call") {
       return fetchImpl(input, init);
     }
+
     onHang();
+
     return Promise.withResolvers<Response>().promise;
   };
+
   return wrapped;
 }
 
@@ -424,11 +449,13 @@ describe("mcpHttpClient session cleanup", () => {
         HANDSHAKE,
         () => new Response("boom", { status: 500 }),
       );
+
       const client = mcpClientWith(ENDPOINT, {
         maxResponseBytes: 1024,
         timeoutMs: 5000,
         fetchImpl,
       });
+
       const result = yield* Effect.result(client.callTool("web_search", {}));
       assert(Result.isFailure(result));
       expect(result.failure.message).toBe("rejected (HTTP 500)");
@@ -447,11 +474,13 @@ describe("mcpHttpClient session cleanup", () => {
     Effect.gen(function* () {
       const { fetchImpl, requests } = fakeMcpEndpoint(HANDSHAKE, toolCallReply("unused"));
       const hanging = hangingToolsCall(fetchImpl);
+
       const client = mcpClientWith(ENDPOINT, {
         maxResponseBytes: 1024,
         timeoutMs: 30,
         fetchImpl: hanging,
       });
+
       const fiber = yield* Effect.forkChild(Effect.result(client.callTool("web_search", {})));
       yield* TestClock.adjust(Duration.millis(30));
       const result = yield* Fiber.join(fiber);
@@ -464,17 +493,21 @@ describe("mcpHttpClient session cleanup", () => {
   test("closes the session when the caller interrupts tools/call", async () => {
     const controller = new AbortController();
     const { fetchImpl, requests } = fakeMcpEndpoint(HANDSHAKE, toolCallReply("unused"));
+
     const hanging = hangingToolsCall(fetchImpl, () => {
       controller.abort();
     });
+
     const client = mcpClientWith(ENDPOINT, {
       maxResponseBytes: 1024,
       timeoutMs: 5000,
       fetchImpl: hanging,
     });
+
     const exit = await Effect.runPromiseExit(client.callTool("web_search", {}), {
       signal: controller.signal,
     });
+
     assert(Exit.isFailure(exit));
     expect(Cause.hasInterrupts(exit.cause)).toBe(true);
     expect(deletes(requests)).toHaveLength(1);
@@ -484,22 +517,27 @@ describe("mcpHttpClient session cleanup", () => {
 describe("credential reflection", () => {
   test("callTool scrubs JSON-RPC and tool errors before excerpt truncation", async () => {
     const secrets = ["prefix", `prefix${"-long".repeat(60)}`, "rotated-key"];
+
     for (const isRpcError of [true, false]) {
       let calls = 0;
+
       const client = mcpClientWith(ENDPOINT, {
         maxResponseBytes: 8192,
         timeoutMs: 5000,
         fetchImpl: async () => {
           calls += 1;
           const text = `${"x".repeat(170)} ${secrets[1]} rotated-key`;
+
           return reflectedMcpResponse(calls, text, isRpcError);
         },
       });
+
       const result = await Effect.runPromise(Effect.result(client.callTool("search", {}, secrets)));
       assert(Result.isFailure(result));
       expect(result.failure._tag).toBe("ProviderToolError");
       expect(result.failure.message).toContain("[redacted]");
       expect(result.failure.message).not.toContain("-long");
+
       for (const secret of secrets) {
         expectNoLeak(result.failure, secret);
       }
@@ -511,5 +549,6 @@ function reflectedMcpResponse(calls: number, text: string, rpc: boolean): Respon
   const payload = rpc
     ? { error: { message: text } }
     : { result: { isError: true, content: [{ type: "text", text }] } };
+
   return new Response(JSON.stringify(calls < 3 ? { result: {} } : payload));
 }

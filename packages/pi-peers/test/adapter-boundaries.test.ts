@@ -13,12 +13,14 @@ describe("adapter configuration and retry boundaries", () => {
   const directories: string[] = [];
   afterEach(async () => {
     vi.useRealTimers();
+
     for (const path of directories.splice(0)) {
       await rm(path, { recursive: true, force: true });
     }
   });
   const sender = { machineId: "alpha", sessionId: "one", runtimeNonce: "1".repeat(32) };
   const recipient = { machineId: "beta", sessionId: "two", runtimeNonce: "2".repeat(32) };
+
   const config = {
     machineId: "alpha",
     socketPath: "/tmp/gateway.sock",
@@ -42,6 +44,7 @@ describe("adapter configuration and retry boundaries", () => {
       ...config,
       policies: [{ ...grant, permissions: ["discover", "push"] }],
     });
+
     const gateway = {
       machineId: "alpha",
       socketPath: "/tmp/gateway.sock",
@@ -52,6 +55,7 @@ describe("adapter configuration and retry boundaries", () => {
         { ...grant, permissions: [], direction: "outgoing" },
       ],
     };
+
     expect(decodeGateway(gateway).policies).toStrictEqual([
       { ...grant, permissions: ["push"], direction: "incoming" },
       { ...grant, permissions: [], direction: "outgoing" },
@@ -111,9 +115,11 @@ describe("adapter configuration and retry boundaries", () => {
       message: { id: "3".repeat(32), kind: "update", content: "content", format: "text" },
       request,
     };
+
     if (signal !== undefined) {
       options.signal = signal;
     }
+
     return options;
   }
 
@@ -170,12 +176,14 @@ describe("adapter configuration and retry boundaries", () => {
 
   test("cancelling backoff preserves possible admission and never launches a later attempt", async () => {
     const abort = new AbortController();
+
     const request = vi.fn<Parameters<typeof sendWithRetries>[0]["request"]>(async () => {
       queueMicrotask(() => {
         abort.abort();
       });
       throw new ConnectionFailure("unavailable", true);
     });
+
     await expect(sendWithRetries(sendOptions(request, abort.signal))).resolves.toMatchObject({
       tag: "unknown",
       code: "cancelled",
@@ -185,11 +193,13 @@ describe("adapter configuration and retry boundaries", () => {
 
   test("retry exhaustion stays bounded and same invocation can recover admitted receipt", async () => {
     vi.useFakeTimers();
+
     const request = vi.fn<Parameters<typeof sendWithRetries>[0]["request"]>(
       async (_rid, _deadline) => {
         throw new ConnectionFailure("unavailable", true);
       },
     );
+
     const result = sendWithRetries({ ...sendOptions(request), delay: fakeDelay });
     await vi.runAllTimersAsync();
     await expect(result).resolves.toMatchObject({ tag: "unknown", code: "unavailable" });
@@ -213,11 +223,13 @@ describe("adapter configuration and retry boundaries", () => {
       ),
     ).rejects.toThrow("opaque");
     const abort = new AbortController();
+
     const waiting = waitFor(
       Promise.withResolvers<never>().promise,
       performance.now() + 1000,
       abort.signal,
     );
+
     abort.abort();
     await expect(waiting).rejects.toMatchObject({ code: "cancelled" });
     await expect(shared).resolves.toBe("ready");

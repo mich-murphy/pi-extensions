@@ -43,6 +43,7 @@ async function postBatch(
 ) {
   const hook: HookCallback | undefined = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
   assert(hook);
+
   const event: PostToolBatchHookInput = {
     session_id: "offline",
     transcript_path: "/dev/null",
@@ -50,6 +51,7 @@ async function postBatch(
     hook_event_name: "PostToolBatch",
     tool_calls: [{ tool_name: `mcp__pi__${name}`, tool_use_id: id, tool_input: input }],
   };
+
   return hook(event, undefined, { signal: new AbortController().signal });
 }
 
@@ -62,15 +64,18 @@ async function* simulatedSdkRejectionNotRealCliPath(
   path: string,
 ): AsyncGenerator {
   let input: string | { readonly path?: string } = {};
+
   if (path === "pre-hook-validation") {
     input = "unparseable input";
   }
+
   if (path === "unhooked-valid") {
     await deliverToolUse(installedHook(params), {
       id: "sibling",
       input: { name: "read", arguments: { path: "fixture" } },
     });
   }
+
   yield {
     type: "assistant",
     message: {
@@ -86,16 +91,19 @@ async function* simulatedSdkRejectionNotRealCliPath(
       ],
     },
   };
+
   if (path === "missing-arguments") {
     const decision = await deliverToolUse(installedHook(params), {
       id: "bad",
       toolName: "mcp__pi__read",
       input,
     });
+
     assert.deepEqual(decision, {
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "defer" },
     });
   }
+
   if (path === "pre-hook-validation") {
     yield {
       type: "user",
@@ -111,6 +119,7 @@ async function* simulatedSdkRejectionNotRealCliPath(
       },
     };
   }
+
   const stopped = await postBatch(params, input, "bad", rejectionToolName(path));
   expect(stopped).toMatchObject({ continue: false });
   yield resultMessage({
@@ -129,6 +138,7 @@ async function* afterBatchStop(
   if (ending === "failed-result") {
     yield resultMessage({ is_error: true });
   }
+
   if (ending === "rejection") {
     throw new Error("private");
   }
@@ -188,6 +198,7 @@ function rejectionText(rejectionKind: ValidationInput["error"], inactive: boolea
 
 async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
   const dir = await mkdtemp(join(tmpdir(), "pi-sdk-offline-recovery-"));
+
   try {
     const session = SessionManager.create(dir, dir);
     let queries = 0;
@@ -195,6 +206,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
     let replacementExecutions = 0;
     let dangerousExecutions = 0;
     const records: CacheDiagnostic[] = [];
+
     const runner = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       cacheDiagnostics: Effect.runSync(
@@ -211,6 +223,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
             usage: { input_tokens: 10 },
           },
         });
+
         if (queries === 1) {
           yield* simulatedSdkRejectionNotRealCliPath(params, path);
         } else if (queries === 2) {
@@ -226,6 +239,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
         }
       },
     });
+
     const tools: AgentTool[] = [
       {
         name: "dangerous",
@@ -234,6 +248,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
         parameters: Type.Object({}),
         async execute() {
           dangerousExecutions += 1;
+
           return { content: [], details: undefined };
         },
       },
@@ -245,6 +260,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
         async execute(_id, args) {
           expect(args).toStrictEqual({ path: "fixture" });
           executions += 1;
+
           return { content: [{ type: "text", text: "fixture" }], details: undefined };
         },
       },
@@ -255,10 +271,12 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
         parameters: Type.Object({ error: Type.String() }),
         async execute() {
           replacementExecutions += 1;
+
           return { content: [], details: undefined };
         },
       },
     ];
+
     const messages = await runAgentLoop(
       [{ role: "user", content: "Read fixture", timestamp: 0 }],
       {
@@ -278,12 +296,15 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
       undefined,
       (model, context, options) => createAgentSdkStream({ model, context, options, run: runner }),
     );
+
     const file = session.getSessionFile();
     assert(file !== undefined);
+
     const persisted = SessionManager.open(file)
       .getEntries()
       .filter((entry) => entry.type === "message")
       .map((entry) => entry.message);
+
     return {
       queries,
       executions,
@@ -316,9 +337,11 @@ describe("Pi-owned validation recovery", () => {
       expect(run.replacementExecutions).toBe(0);
       const queryRecords = run.records.filter(isQueryRecord);
       expect(queryRecords).toHaveLength(3);
+
       for (const record of queryRecords) {
         expect(record).toMatchObject({ query: { modelRequests: 1 } });
       }
+
       const rejection = run.messages.find((message) => isBadResult(message));
       expect(rejection).toMatchObject({
         role: "toolResult",
@@ -344,6 +367,7 @@ describe("Pi-owned validation recovery", () => {
         yield resultMessage({ terminal_reason: "tool_deferred" });
       },
     });
+
     await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([
       { type: "failed", error: { category: "tool-contract" } },
     ]);
@@ -360,6 +384,7 @@ describe("Pi-owned validation recovery", () => {
           yield* afterBatchStop(ending);
         },
       });
+
       await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([
         { type: "failed" },
       ]);
@@ -385,6 +410,7 @@ describe("Pi-owned validation recovery", () => {
         yield resultMessage(ending);
       },
     });
+
     await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([
       { type: "failed" },
     ]);
@@ -413,6 +439,7 @@ describe("Pi-owned validation recovery", () => {
           yield resultMessage({ terminal_reason: terminalReason });
         },
       });
+
       await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([
         { type: "failed" },
       ]);
@@ -434,6 +461,7 @@ describe("Pi-owned validation recovery", () => {
         });
       },
     });
+
     await expect(drain(runner(requestFixture(), sonnet))).resolves.toMatchObject([
       { type: "failed" },
     ]);
@@ -453,6 +481,7 @@ describe("Pi-owned validation recovery", () => {
         ],
       }),
     );
+
     expect([...request.toolNames]).toStrictEqual(["read"]);
     expect(request.toolDescription).not.toContain(VALIDATION_ERROR_TOOL);
     expect(request.toolDescription).not.toContain("private bridge helper");
@@ -460,6 +489,7 @@ describe("Pi-owned validation recovery", () => {
 
   test("message_start request counts deduplicate IDs and do not equate internal results with requests", async () => {
     const records: CacheDiagnostic[] = [];
+
     const runner = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       cacheDiagnostics: Effect.runSync(
@@ -470,12 +500,14 @@ describe("Pi-owned validation recovery", () => {
           type: "message_start",
           message: { id: "private-message-id", usage: { input_tokens: 10 } },
         });
+
         yield started;
         yield started;
         yield { type: "user", message: { content: [{ type: "tool_result", is_error: true }] } };
         yield resultMessage({ num_turns: 2, usage: { input_tokens: 10 } });
       },
     });
+
     await expect(drain(runner(requestFixture(), sonnet))).resolves.toContainEqual({
       type: "done",
       reason: "stop",

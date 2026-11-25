@@ -72,6 +72,7 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
   writeFileSync(join(directory, "behaviour.json"), JSON.stringify(behaviour));
   writeFileSync(path, SCRIPT);
   chmodSync(path, 0o755);
+
   return {
     path,
     directory,
@@ -82,6 +83,7 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
           .filter(Boolean)
           .flatMap((line) => {
             const message = readControlLine(line);
+
             return Option.isSome(message) ? [message.value.request] : [];
           });
       } catch {
@@ -90,12 +92,14 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
     },
     spawnedWith: () => {
       const log = join(directory, "spawned.jsonl");
+
       try {
         return readFileSync(log, "utf8")
           .split("\n")
           .filter(Boolean)
           .map((line): readonly string[] => {
             const args: unknown = JSON.parse(line);
+
             return Array.isArray(args) ? args.map(String) : [];
           });
       } catch {

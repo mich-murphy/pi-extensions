@@ -10,6 +10,7 @@ const piAiExtensionView = new URL(
   "node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/pi-ai-extension-view.js",
   import.meta.url,
 ).pathname;
+
 if (!existsSync(piAiExtensionView)) {
   throw new Error(
     `Pi moved its pi-ai extension view; tests would load a different pi-ai than Pi gives extensions: ${piAiExtensionView}`,

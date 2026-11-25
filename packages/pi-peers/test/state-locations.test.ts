@@ -20,16 +20,19 @@ describe("saved-state set selection", () => {
   const roots: string[] = [];
   afterEach(async () => {
     vi.unstubAllEnvs();
+
     for (const root of roots.splice(0)) {
       await rm(root, { recursive: true, force: true });
     }
   });
+
   const fixture = async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "pp-loc-")));
     roots.push(root);
     vi.stubEnv("HOME", root);
     const agent = join(root, "agent");
     await mkdir(agent);
+
     return { root, agent };
   };
 
@@ -92,6 +95,7 @@ describe("saved-state set selection", () => {
 
   test("the default socket stays within the 100-byte bound for a typical home", async () => {
     const { agent } = await fixture();
+
     const socket = join(
       "/Users/a-typical-user-name",
       ".pi",
@@ -99,6 +103,7 @@ describe("saved-state set selection", () => {
       stateLocations(agent).active.id,
       "s",
     );
+
     expect(Buffer.byteLength(socket)).toBeLessThanOrEqual(100);
   });
 });

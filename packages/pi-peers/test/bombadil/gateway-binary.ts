@@ -16,6 +16,7 @@ export function gatewayBinary(): string {
       `No debug gateway at ${binary}: build it with \`cargo build --locked\` in packages/pi-peers/gateway.`,
     );
   }
+
   return binary;
 }
 

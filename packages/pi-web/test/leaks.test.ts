@@ -16,6 +16,7 @@ describe("expectNoLeak", () => {
       value: "SECRET-hidden",
       enumerable: false,
     });
+
     const nested = { outer: { cause: new Error("x", { cause: new Error("SECRET-deep") }) } };
     expect(observableText(hidden)).toContain("SECRET-hidden");
     expect(observableText(nested)).toContain("SECRET-deep");
@@ -24,6 +25,7 @@ describe("expectNoLeak", () => {
 
   test("passes a value carrying none of the fragments, even with a cycle", () => {
     type Cycle = { self?: Cycle; reason: string };
+
     const value: Cycle = { reason: "invalid" };
     value.self = value;
     expect(() => {
@@ -42,10 +44,13 @@ describe("expectNoLeak", () => {
 
   test("stops descending past the depth limit instead of recursing forever", () => {
     type Chain = { leaf: string } | { next: Chain };
+
     let deep: Chain = { leaf: "SECRET-leaf" };
+
     for (let level = 0; level < 40; level += 1) {
       deep = { next: deep };
     }
+
     expect(() => observableText(deep)).not.toThrow();
   });
 });

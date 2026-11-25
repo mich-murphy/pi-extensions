@@ -50,12 +50,14 @@ describe("caffeinate process adapter", () => {
     async () => {
       const directory = mkdtempSync(join(tmpdir(), "coffee-"));
       const ready = join(directory, "ready");
+
       try {
         const child = spawnNode([
           "-e",
           `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], ""); ${IDLE_FOREVER}`,
           ready,
         ]);
+
         const end = ended(child);
         await vi.waitFor(() => {
           expect(existsSync(ready)).toBe(true);

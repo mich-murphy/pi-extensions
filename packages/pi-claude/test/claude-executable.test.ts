@@ -13,6 +13,7 @@ function file(path: string, mode: number): string {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, "#!/bin/sh\n");
   chmodSync(path, mode);
+
   return path;
 }
 
@@ -53,6 +54,7 @@ describe("resolveClaudeExecutable", () => {
     mkdirSync(join(root, "b", "claude"), { recursive: true });
     const expected = file(join(root, "c", "claude"), 0o755);
     file(join(root, "d", "claude"), 0o755);
+
     const path = ["", join(root, "a"), join(root, "b"), join(root, "c"), join(root, "d")].join(
       delimiter,
     );

@@ -32,6 +32,7 @@ function loadExtension() {
     },
     events: { emit: () => undefined },
   });
+
   return { commands, handlers, providers };
 }
 
@@ -39,6 +40,7 @@ async function notices(command: Command | undefined, args = ""): Promise<string[
   assert(command !== undefined, "test setup: command not registered");
   const texts: string[] = [];
   await command(args, { hasUI: true, ui: { notify: (text) => texts.push(text) } });
+
   return texts;
 }
 
@@ -47,6 +49,7 @@ describe("extension wiring", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+
     for (const directory of scratch.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }

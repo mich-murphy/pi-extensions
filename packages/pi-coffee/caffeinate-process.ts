@@ -9,8 +9,10 @@ function nodeSystemErrorAsFailureOrRethrow(
 ): CaffeinateNotice {
   if (cause instanceof Error && "syscall" in cause && "code" in cause) {
     const error = new CaffeinateProcessError(operation, String(cause.code), cause);
+
     return CaffeinateNotice.failed({ error });
   }
+
   throw cause;
 }
 
@@ -20,10 +22,12 @@ export function caffeinateSpawner(
 ): (args: readonly string[]) => CaffeinateProcess {
   return (args) => {
     let child: ChildProcess;
+
     try {
       child = spawn(command, [...args], { stdio: "ignore" });
     } catch (error) {
       const end = nodeSystemErrorAsFailureOrRethrow("start", error);
+
       return {
         onNotice: (listener) => {
           queueMicrotask(() => {
@@ -33,6 +37,7 @@ export function caffeinateSpawner(
         stop: () => undefined,
       };
     }
+
     child.unref();
 
     return {

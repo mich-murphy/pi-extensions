@@ -18,6 +18,7 @@ function renderProjectContext(
         `<project_instructions path="${path}">\n${content}\n</project_instructions>\n\n`,
     )
     .join("");
+
   return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${instructions}</project_context>\n`;
 }
 
@@ -34,6 +35,7 @@ function skill(name: string, filePath: string): Skill {
 
 const first = skill("deploy", "/work/client-a/.agents/skills/deploy/SKILL.md");
 const second = skill("deploy", "/work/client-b/.agents/skills/deploy/SKILL.md");
+
 const contextFiles = [
   { path: "/work/client-a/AGENTS.md", content: "client a" },
   { path: "/work/client-b/AGENTS.md", content: "client b" },
@@ -67,6 +69,7 @@ describe("hideResources on Pi 0.85 and older", () => {
       contextFiles: [...contextFiles],
       skills: [first, second],
     };
+
     const systemPrompt = `base${renderProjectContext(contextFiles)}${formatSkillsForPrompt([first, second])}\ncwd`;
 
     const result = hideResources(
@@ -91,6 +94,7 @@ describe("hideResources on Pi 0.85 and older", () => {
       contextFiles: contextFiles.slice(0, 1),
       skills: [first],
     };
+
     const systemPrompt = `base${renderProjectContext(contextFiles.slice(0, 1))}${formatSkillsForPrompt([first], "bash")}\ncwd`;
 
     const result = hideResources(

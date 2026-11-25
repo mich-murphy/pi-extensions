@@ -27,17 +27,20 @@ import {
 import type { SdkPromptBlock } from "./fixtures";
 
 const PRIVATE = "SYNTHETIC_PRIVATE_SENTINEL";
+
 const context = contextFixture({
   messages: [{ role: "user", content: "offline fixture" }],
   tools: [
     { name: "read", description: "Read fixture", parameters: { type: "object", properties: {} } },
   ],
 });
+
 const payload = { promptBlocks: [textBlock("replacement")], cacheBreakpoints: [0] };
 
 function terminalOf(events: readonly AssistantMessageEvent[]) {
   const terminal = events.at(-1);
   assert(terminal?.type === "done" || terminal?.type === "error");
+
   return terminal.type === "done" ? terminal.message : terminal.error;
 }
 
@@ -52,8 +55,10 @@ async function turn(
     ...collaborators,
     runSdkQuery: query,
   });
+
   const events = await drain(createAgentSdkStream({ model: sonnet, context, options, run }));
   expect(events.filter((event) => event.type === "done" || event.type === "error")).toHaveLength(1);
+
   return terminalOf(events);
 }
 
@@ -66,6 +71,7 @@ function messagesQuery(...messages: readonly unknown[]): RunSdkQuery {
 function serverNames(options: Parameters<RunSdkQuery>[0]["options"]) {
   return Object.keys(requiredOptions(options).mcpServers ?? {});
 }
+
 const isPayload = Schema.is(
   Schema.Struct({
     promptBlocks: Schema.Array(
@@ -80,15 +86,18 @@ const isPayload = Schema.is(
 
 function requiredOptions(options: Parameters<RunSdkQuery>[0]["options"]) {
   assert(options);
+
   return options;
 }
 
 function sdkErrorDetail(isArray: boolean, detail: string) {
   return isArray ? [detail, 42] : detail;
 }
+
 async function rejectPrivate(): Promise<never> {
   throw new Error(PRIVATE);
 }
+
 function replacementOf(replace: boolean) {
   return replace ? payload : undefined;
 }
@@ -111,8 +120,10 @@ function captureDiagnostics() {
   const lines: string[] = [];
   vi.spyOn(process.stderr, "write").mockImplementation((line) => {
     lines.push(String(line));
+
     return true;
   });
+
   return lines;
 }
 
@@ -129,11 +140,13 @@ describe("public terminal failure privacy", () => {
     async (field, isArray) => {
       const lines = captureDiagnostics();
       const detail = `${PRIVATE}${"arbitrary private text ".repeat(20_000)}`;
+
       const sdkResult = resultMessage({
         is_error: true,
         [field]: sdkErrorDetail(isArray, detail),
         terminal_reason: detail,
       });
+
       const parsed = parseSdkMessage(decodeSdkEvent(sdkResult));
       assert(Result.isSuccess(parsed));
       expect(JSON.stringify(parsed)).not.toContain(PRIVATE);
@@ -168,11 +181,13 @@ describe("public terminal failure privacy", () => {
     "keeps actionable structured result categories: %j",
     async (fields, summary, kind) => {
       const lines = captureDiagnostics();
+
       const message = await turn(
         messagesQuery(
           resultMessage({ is_error: true, errors: [PRIVATE], result: PRIVATE, ...fields }),
         ),
       );
+
       safeError(message, lines);
       expect(message.errorMessage).toContain(summary);
       expect(lines[0]).toContain(`"kind":"${kind}"`);
@@ -188,12 +203,14 @@ describe("public terminal failure privacy", () => {
     [PRIVATE, "did not say why", "provider"],
   ])("keeps typed API categories without copying raw details: %s", async (error, summary, kind) => {
     const lines = captureDiagnostics();
+
     const message = await turn(
       messagesQuery(
         { type: "assistant", error, message: { usage: {} } },
         resultMessage({ is_error: true, errors: [PRIVATE], result: PRIVATE }),
       ),
     );
+
     safeError(message, lines);
     expect(message.errorMessage).toContain(summary);
     expect(lines[0]).toContain(`"kind":"${kind}"`);
@@ -203,6 +220,7 @@ describe("public terminal failure privacy", () => {
     "retains terminal overflow recovery despite generic API error %s",
     async (error) => {
       const lines = captureDiagnostics();
+
       const message = await turn(
         messagesQuery(
           { type: "assistant", error, message: { usage: {} } },
@@ -214,6 +232,7 @@ describe("public terminal failure privacy", () => {
           }),
         ),
       );
+
       safeError(message, lines);
       expect(message.errorMessage).toContain("prompt is too long");
       expect(isContextOverflow(message)).toBe(true);
@@ -230,6 +249,7 @@ describe("public terminal failure privacy", () => {
     ["image_error", "the model or part of the input", "provider"],
   ])("terminal %s remains authoritative over generic API errors", async (reason, summary, kind) => {
     const lines = captureDiagnostics();
+
     const messages = await Promise.all(
       ["unknown", "invalid_request"].map(async (error) =>
         turn(
@@ -240,11 +260,13 @@ describe("public terminal failure privacy", () => {
         ),
       ),
     );
+
     for (const message of messages) {
       safeError(message, lines);
       expect(message.errorMessage).toContain(summary);
       expect(isContextOverflow(message)).toBe(false);
     }
+
     expect(lines).toHaveLength(2);
     expect(lines.every((line) => line.includes(`"kind":"${kind}"`))).toBe(true);
   });
@@ -253,12 +275,14 @@ describe("public terminal failure privacy", () => {
     "authentication %s still outranks terminal overflow",
     async (error) => {
       const lines = captureDiagnostics();
+
       const message = await turn(
         messagesQuery(
           { type: "assistant", error, message: { usage: {} } },
           resultMessage({ is_error: true, terminal_reason: "prompt_too_long", errors: [PRIVATE] }),
         ),
       );
+
       safeError(message, lines);
       expect(message.errorMessage).toContain("sign in");
       expect(isContextOverflow(message)).toBe(false);
@@ -278,30 +302,35 @@ describe("public terminal failure privacy", () => {
 
   test("does not echo an unknown terminal reason with captured calls", async () => {
     const lines = captureDiagnostics();
+
     const message = await turn(async function* (params) {
       await deliverToolUses(installedHook(params), [
         { id: "read", input: { name: "read", arguments: {} } },
       ]);
       yield resultMessage({ terminal_reason: PRIVATE });
     });
+
     safeError(message, lines);
     expect(message.errorMessage).toContain("terminal_reason was unrecognized");
   });
 
   test("does not copy rejected query signal or raw cause into Pi or diagnostics", async () => {
     const lines = captureDiagnostics();
+
     const message = await turn(() => {
       throw Object.assign(new Error(PRIVATE), {
         errorClass: "process_killed_by_signal",
         signal: PRIVATE,
       });
     });
+
     safeError(message, lines);
     expect(message.errorMessage).toContain("unexpected error");
   });
 
   test("unprotected invalid-tool failures do not copy model-supplied names", async () => {
     const lines = captureDiagnostics();
+
     const message = await turn(async function* (params) {
       await deliverToolUses(
         installedHook(params),
@@ -312,6 +341,7 @@ describe("public terminal failure privacy", () => {
       );
       yield resultMessage();
     });
+
     safeError(message, lines);
     expect(message.errorMessage).toContain(
       "Claude's tool call could not be passed back to Pi, so it did not run.",
@@ -328,13 +358,16 @@ describe("public SDK-adapted instrumentation", () => {
     const order: string[] = [];
     let responseCalls = 0;
     const sdkEvents = [{ type: "system", subtype: "init" }, textDelta("hello"), resultMessage()];
+
     const message = await turn(
       async function* () {
         order.push("query");
+
         for (const event of sdkEvents) {
           order.push("yield");
           yield event;
         }
+
         order.push("late");
       },
       {
@@ -356,6 +389,7 @@ describe("public SDK-adapted instrumentation", () => {
         },
       },
     );
+
     expect(order).toStrictEqual([
       "payload",
       "payload-end",
@@ -379,6 +413,7 @@ describe("public SDK-adapted instrumentation", () => {
     async (replace) => {
       const diagnostics: CacheDiagnostic[] = [];
       let wire: SdkPromptBlock[] = [];
+
       const message = await turn(
         async function* ({ prompt, options }) {
           const [sdkPrompt] = await drain(sdkPromptFixture(prompt));
@@ -399,6 +434,7 @@ describe("public SDK-adapted instrumentation", () => {
             assert(isPayload(original));
             expect(Object.keys(original)).toStrictEqual(["promptBlocks", "cacheBreakpoints"]);
             Object.assign(original, payload);
+
             return replacementOf(replace);
           },
         },
@@ -410,6 +446,7 @@ describe("public SDK-adapted instrumentation", () => {
           ),
         },
       );
+
       expect(message.stopReason).toBe("stop");
       expect(wire).toStrictEqual([
         { type: "text", text: "replacement", cache_control: { type: "ephemeral" } },
@@ -473,13 +510,16 @@ describe("public SDK-adapted instrumentation", () => {
     async (replacement) => {
       const lines = captureDiagnostics();
       let started = 0;
+
       const message = await turn(
         (params) => {
           started++;
+
           return messagesQuery(resultMessage())(params);
         },
         { onPayload: () => replacement },
       );
+
       safeError(message, lines);
       expect(message.errorMessage).toContain("returned an invalid request");
       expect(started).toBe(0);
@@ -497,6 +537,7 @@ describe("public SDK-adapted instrumentation", () => {
       const message = await turn(
         async function* () {
           opened = true;
+
           try {
             yield textDelta("not normalized");
             yield resultMessage();
@@ -508,6 +549,7 @@ describe("public SDK-adapted instrumentation", () => {
           ...phaseOptions(phase, rejectPrivate),
         },
       );
+
       safeError(message, lines);
       expect(message.content).toStrictEqual([]);
       expect(opened).toBe(phase === "event");
@@ -522,6 +564,7 @@ describe("public SDK-adapted instrumentation", () => {
       ],
       tools: [],
     });
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
@@ -531,6 +574,7 @@ describe("public SDK-adapted instrumentation", () => {
         yield resultMessage();
       },
     });
+
     const events = await drain(
       createAgentSdkStream({
         model: sonnet,
@@ -539,6 +583,7 @@ describe("public SDK-adapted instrumentation", () => {
         run,
       }),
     );
+
     expect(terminalOf(events).stopReason).toBe("stop");
   });
 
@@ -547,7 +592,9 @@ describe("public SDK-adapted instrumentation", () => {
       promptBlocks: [textBlock("original", [{ data: "fixture", mediaType: "image/png" }])],
       cacheBreakpoints: [0],
     });
+
     const snapshot = structuredClone(original);
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
@@ -560,6 +607,7 @@ describe("public SDK-adapted instrumentation", () => {
         yield resultMessage();
       },
     });
+
     await drain(
       run(original, sonnet, {
         onPayload: (data) => {
@@ -578,6 +626,7 @@ describe("public SDK-adapted instrumentation", () => {
 
   test("a callback failure after tool capture never releases the deferred call", async () => {
     const lines = captureDiagnostics();
+
     const message = await turn(
       async function* (params) {
         await deliverToolUses(installedHook(params), [
@@ -587,6 +636,7 @@ describe("public SDK-adapted instrumentation", () => {
       },
       { onProviderStreamEvent: rejectPrivate },
     );
+
     safeError(message, lines);
     expect(message.content).toStrictEqual([]);
     expect(message.errorMessage).toContain("watches requests");
@@ -595,20 +645,25 @@ describe("public SDK-adapted instrumentation", () => {
   test("abandoning an awaited payload callback starts no SDK query", async () => {
     const entered = Promise.withResolvers<undefined>();
     let opened = 0;
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       runSdkQuery: (params) => {
         opened++;
+
         return messagesQuery(resultMessage())(params);
       },
     });
+
     const iterator = run(buildAgentRequest(context), sonnet, {
       onPayload: async () => {
         entered.resolve(undefined);
+
         return unsettled();
       },
     })[Symbol.asyncIterator]();
+
     const next = iterator.next();
     await entered.promise;
     await iterator.return?.();
@@ -619,11 +674,13 @@ describe("public SDK-adapted instrumentation", () => {
   test("observes a malformed parsed SDK event before provider validation", async () => {
     const raw = { type: "result", is_error: PRIVATE };
     const seen: unknown[] = [];
+
     const message = await turn(messagesQuery(raw), {
       onProviderStreamEvent: async (event) => {
         seen.push(event);
       },
     });
+
     expect(seen).toStrictEqual([raw]);
     expect(message.errorMessage).toContain("Pi could not read (result");
     expect(message.errorMessage).not.toContain(PRIVATE);
@@ -639,14 +696,18 @@ describe("public SDK-adapted instrumentation", () => {
       let opened = false;
       let closed = false;
       let sdkSignal: AbortSignal | undefined;
+
       const wait = async () => {
         entered.resolve(undefined);
+
         return pending.promise;
       };
+
       const result = turn(
         async function* (params) {
           opened = true;
           sdkSignal = params.options?.abortController?.signal;
+
           try {
             yield textDelta("not normalized");
             yield resultMessage();
@@ -659,6 +720,7 @@ describe("public SDK-adapted instrumentation", () => {
           ...phaseOptions(phase, wait),
         },
       );
+
       await entered.promise;
       controller.abort(new Error(PRIVATE));
       const message = await result;
@@ -680,11 +742,13 @@ describe("public SDK-adapted instrumentation", () => {
     const payloadHook = vi.fn<() => void>();
     const eventHook = vi.fn<() => void>();
     const query = vi.fn<RunSdkQuery>(messagesQuery(resultMessage()));
+
     const message = await turn(query, {
       signal: controller.signal,
       onPayload: payloadHook,
       onProviderStreamEvent: eventHook,
     });
+
     expect(message.stopReason).toBe("aborted");
     expect(payloadHook).not.toHaveBeenCalled();
     expect(eventHook).not.toHaveBeenCalled();
@@ -695,11 +759,13 @@ describe("public SDK-adapted instrumentation", () => {
     const entered = Promise.withResolvers<undefined>();
     let closed = 0;
     let sdkSignal: AbortSignal | undefined;
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       sdkEnvironment: { PATH: "/bin" },
       runSdkQuery: (params) => {
         sdkSignal = params.options?.abortController?.signal;
+
         return {
           [Symbol.asyncIterator]: () => ({
             next: async () => ({ done: false, value: textDelta("pending") }),
@@ -711,12 +777,14 @@ describe("public SDK-adapted instrumentation", () => {
         };
       },
     });
+
     const iterator = run(buildAgentRequest(context), sonnet, {
       onProviderStreamEvent: async () => {
         entered.resolve(undefined);
         await unsettled();
       },
     })[Symbol.asyncIterator]();
+
     const next = iterator.next();
     await entered.promise;
     await iterator.return?.();

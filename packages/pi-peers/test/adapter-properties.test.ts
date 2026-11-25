@@ -10,6 +10,7 @@ import type { RenderContext, RenderPayload } from "../adapter/presentation.js";
 
 const settings = propertySettings(200);
 const toolNames = ["peers_list", "peers_send", "peers_take"] as const;
+
 const fieldNames = [
   "message",
   "to",
@@ -47,6 +48,7 @@ const fieldNames = [
   "sender",
   "binding",
 ];
+
 const hostile = [
   "\u001b]52;c;unsafe\u0007",
   "\u001b]0;title\u001b\\",
@@ -59,10 +61,12 @@ const hostile = [
 ];
 
 const bidiCodes = [8234, 8235, 8236, 8237, 8238, 8294, 8295, 8296, 8297];
+
 const bidiControl = new RegExp(
   `[${bidiCodes.map((code) => `\\u${code.toString(16)}`).join("")}]`,
   "u",
 );
+
 function isVisibleTextEscaped(code: number): boolean {
   return (
     code <= 8 ||
@@ -71,8 +75,10 @@ function isVisibleTextEscaped(code: number): boolean {
     bidiCodes.includes(code)
   );
 }
+
 function controlSequence(code: number, kind: number): string {
   const character = String.fromCodePoint(code);
+
   const sequences = [
     character,
     `\u001b]0;${character}\u0007`,
@@ -80,27 +86,35 @@ function controlSequence(code: number, kind: number): string {
     `\u001b[31;1m${character}`,
     `\u009b31m${character}`,
   ];
+
   return sequences[kind] ?? character;
 }
+
 const escapeOrC1 = new RegExp(`[${String.fromCodePoint(27)}\\u0080-\\u009f]`, "u");
+
 const sgrResetAppendedByPiTuiTruncation = new RegExp(
   `${String.fromCodePoint(27)}\\[[0-9;]*m`,
   "gu",
 );
+
 function hasEscapeOrC1(value: string): boolean {
   return escapeOrC1.test(value);
 }
+
 function assertVisibleTextTable(code: number): void {
   const character = String.fromCodePoint(code);
   const output = visibleText(character);
+
   if (isVisibleTextEscaped(code)) {
     assert.equal(output, `\\u${code.toString(16).padStart(4, "0")}`);
   } else {
     assert.equal(output, character);
   }
+
   assert.equal(hasEscapeOrC1(output), false);
   assert.equal(bidiControl.test(output), false);
 }
+
 function assertVisibleTextSequence(code: number, kind: number, prefix: string): void {
   const sequence = controlSequence(code, kind);
   const output = visibleText(sequence);
@@ -108,15 +122,19 @@ function assertVisibleTextSequence(code: number, kind: number, prefix: string): 
   assert.equal(output, Array.from(sequence, (part) => visibleText(part)).join(""));
   assert.equal(visibleText(prefix + sequence), visibleText(prefix) + output);
 }
+
 function pickCode(drawn: number, bidi: number): number {
   return drawn % 3 === 0 ? bidi : drawn;
 }
+
 function assertVisibleTextBidi(code: number, prefix: string): void {
   const output = visibleText(`${prefix}${String.fromCodePoint(code)}${prefix}`);
   assert.equal(bidiControl.test(output), false);
   assert.equal(output.includes(`\\u${code.toString(16)}`), true);
 }
+
 const controlCodes = [...Array.from({ length: 32 }, (_, code) => code), 127, 128, 155, 159];
+
 function baseConfiguration(allowed: boolean) {
   return {
     machineId: "alpha",
@@ -126,9 +144,11 @@ function baseConfiguration(allowed: boolean) {
     policies: [{ machineId: "beta", scopeId: "team", permissions: allowed ? ["push"] : [] }],
   };
 }
+
 function injectControl(allowed: boolean, field: number, injected: string) {
   const config = baseConfiguration(allowed);
   const policy = { machineId: "beta", scopeId: "team", permissions: ["push"] };
+
   const variants = [
     { label: `test${injected}` },
     { socketPath: `/tmp/${injected}.sock` },
@@ -136,8 +156,10 @@ function injectControl(allowed: boolean, field: number, injected: string) {
     { policies: [{ ...policy, machineId: `beta${injected}` }] },
     { policies: [{ ...policy, scopeId: `team${injected}` }] },
   ];
+
   return { ...config, ...variants[field] };
 }
+
 function assertPermissionDecision(allowed: boolean, code: number, kind: number): void {
   const injected = controlSequence(code, kind);
   const config = decodeConfiguration(baseConfiguration(allowed));
@@ -149,12 +171,14 @@ function assertPermissionDecision(allowed: boolean, code: number, kind: number):
   assert.equal(permits(config, "beta", `team${injected}`, "push"), false);
   assert.equal(permits(config, `beta${injected}`, `team${injected}`, "push"), false);
 }
+
 function assertControlNamesRejected(allowed: boolean, code: number, kind: number, field: number) {
   const injected = controlSequence(code, kind);
   assert.throws(() => decodeConfiguration(injectControl(allowed, field, injected)));
 }
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+
 const jsonLeaf = gs.oneOf<Json>(
   gs.just(null),
   gs.booleans(),
@@ -162,6 +186,7 @@ const jsonLeaf = gs.oneOf<Json>(
   gs.text({ maxSize: 40 }),
   gs.sampledFrom(hostile),
 );
+
 const jsonValue = gs.recursive<Json>(
   jsonLeaf,
   (children) =>
@@ -173,6 +198,7 @@ const jsonValue = gs.recursive<Json>(
     ),
   { maxDepth: 5, maxLeaves: 40 },
 );
+
 const hostileToolArguments = gs.sampledFrom(hostile).map((text): Json => ({
   to: { machineId: text, sessionId: text, runtimeNonce: text },
   publisher: { machineId: text, sessionId: text, runtimeNonce: text },
@@ -183,7 +209,9 @@ const hostileToolArguments = gs.sampledFrom(hostile).map((text): Json => ({
   code: text,
   tag: text,
 }));
+
 const argsValue = gs.oneOf<Json>(jsonValue, hostileToolArguments);
+
 function renderLines(
   name: string,
   slot: "call" | "result",
@@ -192,13 +220,16 @@ function renderLines(
   options: { expanded: boolean; isError: boolean; width: number },
 ): readonly string[] {
   const theme = { fg: (_token: string, value: string) => value };
+
   const context: RenderContext = {
     args,
     expanded: options.expanded,
     isError: options.isError,
     keyHint: (_key: string, description: string) => `ctrl+o ${description}`,
   };
+
   const renderer = toolPresentation(name);
+
   const component =
     slot === "call"
       ? renderer.renderCall(args, theme, context)
@@ -208,8 +239,10 @@ function renderLines(
           theme,
           context,
         );
+
   return component.render(options.width);
 }
+
 function assertRenderedBounds(
   name: string,
   args: Json,
@@ -221,9 +254,11 @@ function assertRenderedBounds(
     content: [{ type: "text", text: JSON.stringify(value) }],
     details: { value },
   };
+
   for (const expanded of [false, true]) {
     for (const slot of ["call", "result"] as const) {
       const lines = renderLines(name, slot, args, payload, { expanded, isError, width });
+
       for (const line of lines) {
         assert(visibleWidth(line) <= width, `${name}/${slot} exceeds ${width}: ${line}`);
         assert(

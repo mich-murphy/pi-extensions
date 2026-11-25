@@ -19,24 +19,37 @@ import { USAGE_LIMIT_CHANNEL } from "../../../../packages/shared/usage-limit";
 const { values } = parseArgs({
   options: { package: { type: "string" }, work: { type: "string" } },
 });
+
 assert(values.package !== undefined && values.work !== undefined);
+
 const work = path.resolve(values.work);
+
 assert(/^\/(?:private\/)?tmp\/pi-claude-state-/u.test(work));
+
 assert.equal(process.env.HOME, path.join(work, "home"));
+
 assert.equal(process.env.PI_OFFLINE, "1");
+
 const agentDir = process.env.PI_CODING_AGENT_DIR;
+
 assert(agentDir !== undefined);
+
 const seconds = 1_792_548_000;
+
 type FixtureRateLimit = string | { status: string; resetsAt?: number | string };
+
 const rate = (info: FixtureRateLimit) => ({ type: "rate_limit_event", rate_limit_info: info });
 const rejected = rate({ status: "rejected", resetsAt: seconds });
+
 const result = (fields = {}) => ({
   type: "result",
   is_error: false,
   stop_reason: "end_turn",
   ...fields,
 });
+
 const limit = result({ is_error: true, terminal_reason: "blocking_limit" });
+
 const cases = [
   { name: "rejected-seconds", messages: [rejected, limit], notice: seconds * 1000 },
   { name: "no-reset-next-turn", messages: [limit] },
@@ -92,8 +105,10 @@ const cases = [
   { name: "throwing-listener", messages: [rejected, limit], notice: seconds * 1000 },
   { name: "rejecting-listener", messages: [rejected, limit], notice: seconds * 1000 },
 ];
+
 let current: (typeof cases)[number] | undefined;
 let queries = 0;
+
 globalThis.piUsageLimitBoundary = {
   sdk,
   async *query() {
@@ -102,6 +117,7 @@ globalThis.piUsageLimitBoundary = {
     yield* current.messages;
   },
 };
+
 const jiti = createJiti(import.meta.url, {
   alias: {
     "@anthropic-ai/claude-agent-sdk": fileURLToPath(
@@ -110,16 +126,20 @@ const jiti = createJiti(import.meta.url, {
   },
   moduleCache: false,
 });
+
 const production = await jiti.import<typeof Production>(path.join(values.package, "index.ts"));
+
 const settings = SettingsManager.inMemory({
   retry: { enabled: false },
   compaction: { enabled: false },
   cacheWarming: "off",
 });
+
 let notices: unknown[] = [];
 let order: string[] = [];
 let isolatedErrors = 0;
 const unexpectedErrors: unknown[] = [];
+
 const loader = new DefaultResourceLoader({
   cwd: work,
   agentDir,
@@ -156,15 +176,19 @@ const loader = new DefaultResourceLoader({
     },
   ],
 });
+
 const reports: unknown[] = [];
 let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+
 try {
   await loader.reload();
   assert.deepEqual(loader.getExtensions().errors, []);
+
   const modelRuntime = await ModelRuntime.create({
     authPath: path.join(work, "auth.json"),
     modelsPath: path.join(work, "models.json"),
   });
+
   ({ session } = await createAgentSession({
     cwd: work,
     agentDir,
@@ -189,6 +213,7 @@ try {
   const model = available.find((m) => m.provider === "claude");
   assert(model, "production extension provider not available");
   await session.setModel(model);
+
   for (const entry of cases) {
     current = entry;
     notices = [];
@@ -212,6 +237,7 @@ try {
     );
     reports.push({ case: entry.name, status: "passed", notices, order, queries: queries - before });
   }
+
   assert.deepEqual(unexpectedErrors, []);
   assert.equal(isolatedErrors, 2);
   process.stdout.write(

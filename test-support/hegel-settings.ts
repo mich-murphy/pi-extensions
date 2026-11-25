@@ -6,23 +6,29 @@ const SEED_LIMIT = 2n ** 64n;
 
 function envSeed(): bigint | undefined {
   const raw = process.env.HEGEL_SEED;
+
   if (raw === undefined || raw === "") {
     return undefined;
   }
+
   if (!/^\d+$/u.test(raw) || BigInt(raw) >= SEED_LIMIT) {
     throw new Error(`HEGEL_SEED must be an integer in [0, 2^64), got "${raw}"`);
   }
+
   return BigInt(raw);
 }
 
 function envTestCases(): number | undefined {
   const raw = process.env.HEGEL_TEST_CASES;
+
   if (raw === undefined || raw === "") {
     return undefined;
   }
+
   if (!/^[1-9]\d*$/u.test(raw)) {
     throw new Error(`HEGEL_TEST_CASES must be a positive integer, got "${raw}"`);
   }
+
   return Number(raw);
 }
 
@@ -39,6 +45,7 @@ export function propertySettings(
 
 export function propertyTimeout(baseMs: number, baseCases = 200): number {
   const cases = envTestCases();
+
   return cases === undefined ? baseMs : Math.ceil(baseMs * Math.max(1, cases / baseCases));
 }
 

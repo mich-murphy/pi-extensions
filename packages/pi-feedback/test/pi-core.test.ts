@@ -145,14 +145,17 @@ function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
   const fingerprint = signalFingerprint(fixture.tool, fixture.error);
   const attribution = owners.forSignal(fixture.tool, fixture.error);
   const failing: BatchCall = { id: "f1", name: fixture.tool, args: fixture.args ?? {} };
+
   const ordered = isParallelBatch(
     failing,
     fixture.error,
     [failing, ...(fixture.siblings ?? [])],
     readOnly,
   );
+
   const signals = ["a", "b", "c"].map((session, index): LedgerEvent => {
     type Signal = Extract<LedgerEvent, { type: "signal" }>;
+
     const event: Omit<Signal, "cause" | "evidence"> & {
       cause?: NonNullable<Signal["cause"]>;
       evidence?: NonNullable<Signal["evidence"]>;
@@ -165,14 +168,18 @@ function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
       tool: fixture.tool,
       error: fixture.error,
     };
+
     if (ordered) {
       event.cause = "parallel-batch";
     }
+
     if (attribution.evidence !== undefined) {
       event.evidence = attribution.evidence;
     }
+
     return event;
   });
+
   const verdict: LedgerEvent = {
     type: "verdict",
     ...stamp(start + 3),
@@ -180,16 +187,20 @@ function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
     model: "typesafe/jev-1.14.0",
     ...fixture.scores,
   };
+
   return [...signals, verdict];
 }
 
 describe("Pi core label", () => {
   const events = FIXTURES.flatMap((fixture, index) => eventsFor(fixture, index * 10 + 1));
   const groups = deriveGroups(events);
+
   const expectedPiCore = FIXTURES.flatMap((fixture) =>
     fixture.piCore ? [signalFingerprint(fixture.tool, fixture.error)] : [],
   );
+
   const labelledPiCore = groups.flatMap((group) => (group.piCore ? [group.fingerprint] : []));
+
   const recordsInExcludedGroups = groups.flatMap((group) =>
     group.excluded > 0 ? [group.records] : [],
   );

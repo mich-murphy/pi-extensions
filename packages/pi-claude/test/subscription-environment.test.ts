@@ -67,6 +67,7 @@ describe("subscription environment", () => {
       DISABLE_AUTOUPDATER: "",
       CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "0",
     });
+
     expect(explicit.DISABLE_ERROR_REPORTING).toBe("0");
     expect(explicit.DISABLE_AUTOUPDATER).toBe("");
     expect(explicit.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY).toBe("0");
@@ -89,6 +90,7 @@ describe("subscription environment hardening", () => {
       MCP_TOOL_TIMEOUT: "1",
       ANTHROPIC_BASE_URL: "https://example.invalid",
     });
+
     expect(environment.CLAUDE_CODE_SIMPLE).toBeUndefined();
     expect(environment.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
     expect(environment.MCP_TOOL_TIMEOUT).toBeUndefined();
@@ -101,6 +103,7 @@ describe("subscription environment hardening", () => {
       ENABLE_TOOL_SEARCH: "true",
       DISABLE_AUTO_COMPACT: "0",
     });
+
     expect(environment).toMatchObject({
       CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",

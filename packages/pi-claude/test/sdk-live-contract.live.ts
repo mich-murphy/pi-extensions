@@ -44,17 +44,21 @@ async function collect(
 ): Promise<readonly BridgeEvent[]> {
   const runSdkQuery = options.runSdkQuery ?? query;
   const results: unknown[] = [];
+
   async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
     for await (const message of runSdkQuery(params)) {
       if (isInitMessage(message)) {
         recordClaudeCodeVersion(message);
       }
+
       if (isTerminalResult(message)) {
         results.push(message);
       }
+
       yield message;
     }
   }
+
   const events = await drain(
     createClaudeAgentSdkRunner({ ...options, runSdkQuery: observedQuery })(
       agentRequest,
@@ -62,12 +66,15 @@ async function collect(
       streamOptions,
     ),
   );
+
   if (events.at(-1)?.type === "failed") {
     return events;
   }
+
   expect(results, "each controlled probe must finish in one SDK model round-trip").toMatchObject([
     { num_turns: 1 },
   ]);
+
   return events;
 }
 
@@ -81,12 +88,15 @@ function request(prompt: string, toolNames: readonly string[] = []): AgentReques
     promptBlocks: [textBlock(prompt)],
     tools: toolNames.map((name) => {
       let field = "value";
+
       if (name === "read") {
         field = "path";
       }
+
       if (name === "bash") {
         field = "command";
       }
+
       return {
         name,
         description: `Live ${name} contract`,
@@ -106,6 +116,7 @@ const isTerminalResult = Schema.is(Schema.Struct({ type: Schema.Literal("result"
 const isStopReasonDeferred = Schema.is(
   Schema.Struct({ type: Schema.Literal("result"), stop_reason: Schema.Literal("tool_deferred") }),
 );
+
 const isTerminalReasonDeferred = Schema.is(
   Schema.Struct({
     type: Schema.Literal("result"),
@@ -117,6 +128,7 @@ function deferredResultOf(message: SDKMessage): DeferredResult | undefined {
   if (isStopReasonDeferred(message)) {
     return "stop_reason:tool_deferred";
   }
+
   return isTerminalReasonDeferred(message) ? "terminal_reason:tool_deferred" : undefined;
 }
 
@@ -125,9 +137,11 @@ function observingDefer(observe: (result: DeferredResult) => void): RunSdkQuery 
     for await (const message of query(params)) {
       recordClaudeCodeVersion(message);
       const deferred = deferredResultOf(message);
+
       if (deferred !== undefined) {
         observe(deferred);
       }
+
       yield message;
     }
   };
@@ -145,6 +159,7 @@ const initMessage = Schema.Struct({
   subtype: Schema.Literal("init"),
   claude_code_version: Schema.String,
 });
+
 const isInitMessage = Schema.is(initMessage);
 let observedClaudeCodeVersion: string | undefined;
 
@@ -158,6 +173,7 @@ function usedClaudeCodeVersion(): string {
   if (observedClaudeCodeVersion === undefined) {
     throw new Error("No system/init message observed; cannot attest the Claude Code version");
   }
+
   return observedClaudeCodeVersion;
 }
 
@@ -168,6 +184,7 @@ describe("installed Claude Agent SDK live contract", () => {
 
   test("model metadata resolves selectors and advertises native effort levels without a prompt", async () => {
     const abortController = new AbortController();
+
     const sdkQuery = query({
       prompt: idlePrompt(abortController.signal),
       options: {
@@ -179,7 +196,9 @@ describe("installed Claude Agent SDK live contract", () => {
         tools: [],
       },
     });
+
     let timeout: ReturnType<typeof setTimeout> | undefined;
+
     try {
       const supportedModels = await Promise.race([
         sdkQuery.supportedModels(),
@@ -189,6 +208,7 @@ describe("installed Claude Agent SDK live contract", () => {
           }, 20_000);
         }),
       ]);
+
       assertModelMetadata(supportedModels);
       metadataVerified = true;
     } finally {
@@ -219,6 +239,7 @@ describe("installed Claude Agent SDK live contract", () => {
         }),
       },
     );
+
     expect(events.at(-1)).toMatchObject({
       type: "tool_calls",
       calls: [{ name: "contract_probe", arguments: { value: "CLAUDE_SDK_TOOL_OK" } }],
@@ -229,6 +250,7 @@ describe("installed Claude Agent SDK live contract", () => {
       "Update this project's SDK dependency. First read package.json using the read Pi tool with path package.json. Wait for the tool result before editing or answering.",
       ["read"],
     );
+
     const readEvents = await collect({
       ...codingRequest,
       toolDescription: [
@@ -236,6 +258,7 @@ describe("installed Claude Agent SDK live contract", () => {
         'Available Pi tools: [{"name":"read","description":"Read a file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}]',
       ].join("\n"),
     });
+
     expect(readEvents.at(-1)).toMatchObject({
       type: "tool_calls",
       calls: [{ name: "read", arguments: { path: "package.json" } }],
@@ -243,10 +266,12 @@ describe("installed Claude Agent SDK live contract", () => {
     const legacyHaiku = models.find((entry) => entry.id === "claude-4.5-haiku");
     assert(legacyHaiku !== undefined, "missing legacy Haiku model");
     const command = String.raw`find . -type f \( -name '*.ts' -o -name '*.md' \) -print`;
+
     const bashRequest = request(
       `Request the bash Pi tool exactly once with this exact command: ${JSON.stringify(command)}. Do not execute it or answer with text.`,
       ["bash"],
     );
+
     const bashEvents = await collect(
       {
         ...bashRequest,
@@ -257,6 +282,7 @@ describe("installed Claude Agent SDK live contract", () => {
       {},
       { reasoning: "medium" },
     );
+
     expect(bashEvents.at(-1)).toMatchObject({
       type: "tool_calls",
       calls: [{ name: "bash", arguments: { command } }],
@@ -289,6 +315,7 @@ describe("installed Claude Agent SDK live contract", () => {
       expect(observation.contextWindow, `${entry.id} context window`).toBe(entry.contextWindow);
       expect(observation.maxOutputTokens, `${entry.id} output limit`).toBe(entry.maxTokens);
     }
+
     expect(metadataVerified, "model metadata must also pass in this run").toBe(true);
     verified.add("advertised-models");
   });
@@ -299,6 +326,7 @@ describe("installed Claude Agent SDK live contract", () => {
       "contracts that did not pass in this run",
     ).toStrictEqual([]);
     const installed = await readInstalledSdk();
+
     const attestation = decodeReleaseContract({
       schemaVersion: 1,
       agentSdkVersion: installed.version,
@@ -308,6 +336,7 @@ describe("installed Claude Agent SDK live contract", () => {
       contracts: LIVE_CONTRACTS,
       observedDeferredResult,
     });
+
     await writeFile(RELEASE_CONTRACT_URL, formatReleaseContract(attestation));
   });
 });

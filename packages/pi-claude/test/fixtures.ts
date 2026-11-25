@@ -22,9 +22,11 @@ import type { RunSdkQuery } from "../sdk/runner";
 
 export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const items: T[] = [];
+
   for await (const item of iterable) {
     items.push(item);
   }
+
   return items;
 }
 
@@ -62,6 +64,7 @@ function messageFixture(input: MessageFixture): Message {
       ...input,
     };
   }
+
   return { timestamp: 0, ...input };
 }
 
@@ -81,9 +84,11 @@ export function modelFixture({
   thinkingLevelMap,
 }: ModelFixtureFields): Model<"claude"> {
   const thinking: Pick<Model<"claude">, "thinkingLevelMap"> = {};
+
   if (thinkingLevelMap !== undefined) {
     thinking.thinkingLevelMap = thinkingLevelMap;
   }
+
   return {
     ...thinking,
     id,
@@ -143,12 +148,15 @@ export async function deliverToolUse(
   )(input)
     ? input
     : undefined;
+
   const directName =
     toolName ?? (targeted === undefined ? "mcp__pi__read" : `mcp__pi__${targeted.name}`);
+
   const directInput =
     toolName === undefined && targeted !== undefined && "arguments" in targeted
       ? targeted.arguments
       : input;
+
   const hookInput = {
     session_id: "test-session",
     transcript_path: "/dev/null",
@@ -158,6 +166,7 @@ export async function deliverToolUse(
     tool_use_id: id,
     tool_input: directInput,
   } satisfies PreToolUseHookInput;
+
   return hook(hookInput, id, { signal: new AbortController().signal });
 }
 
@@ -172,9 +181,11 @@ export async function deliverToolUses(
 
 export function installedHook(params: Parameters<RunSdkQuery>[0]): HookCallback {
   const hook = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+
   if (!hook) {
     throw new Error("test setup: PreToolUse hook missing from SDK query options");
   }
+
   return hook;
 }
 
@@ -226,6 +237,7 @@ export function sdkPromptFixture(
   if (Schema.is(Schema.String)(prompt)) {
     throw new TypeError("test setup: expected an async SDK prompt");
   }
+
   return prompt;
 }
 
@@ -251,13 +263,16 @@ export type SdkPromptBlock = typeof sdkPromptBlock.Type;
 
 export function sdkContentRecords(message: SDKUserMessage | undefined): SdkPromptBlock[] {
   const content = message?.message.content;
+
   if (!Schema.is(Schema.Array(Schema.Unknown))(content)) {
     return [];
   }
+
   return content.map((block) => {
     if (!Schema.is(sdkPromptBlock)(block)) {
       throw new Error("test setup: expected a text or image block in the SDK prompt");
     }
+
     return { ...block };
   });
 }

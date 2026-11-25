@@ -40,10 +40,12 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
   maxResponseBytes: number,
 ): Effect.fn.Return<ProviderRawResponse, ProviderRequestFailed | ProviderResponseTooLarge> {
   const { hostname } = new URL(url);
+
   const response = yield* Effect.tryPromise({
     try: async (signal) => http.fetch(url, { ...init, signal, redirect: "manual" }),
     catch: (cause) => new ProviderRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
   });
+
   const body = yield* readResponseBodyWithLimit(response, maxResponseBytes).pipe(
     Effect.catchTags({
       ResponseBodyTooLarge: () => Effect.fail(new ProviderResponseTooLarge()),
@@ -53,6 +55,7 @@ export const sendProviderRequest = Effect.fnUntraced(function* (
         ),
     }),
   );
+
   return { response, bodyText: body.toString("utf8") };
 });
 
@@ -105,9 +108,11 @@ export class ProviderHttpClient extends Context.Service<
             },
             request.maxResponseBytes,
           );
+
           if (response.status < 200 || response.status >= 300) {
             return yield* new ProviderStatusRejected({ status: response.status });
           }
+
           return { bodyText };
         },
         (effect, _method, request) => withProviderDeadline(request.timeout)(effect),
@@ -122,6 +127,7 @@ export class ProviderHttpClient extends Context.Service<
           safeProviderFailure,
         );
       });
+
       const getJson = Effect.fnUntraced(function* (
         request: ProviderHttpRequest,
       ): Effect.fn.Return<ProviderHttpResponse, ProviderError> {
@@ -131,6 +137,7 @@ export class ProviderHttpClient extends Context.Service<
           safeProviderFailure,
         );
       });
+
       return ProviderHttpClient.of({ postJson, getJson });
     }),
   );

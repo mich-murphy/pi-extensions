@@ -29,32 +29,43 @@ const { values } = parseArgs({
     "review-approved": { type: "boolean", default: false },
   },
 });
+
 const offline = values.case === "offline-parser";
+
 assert(offline || values["review-approved"], "review approval required");
+
 assert(
   values.package !== undefined && values.work !== undefined,
   "snapshot package and owned work required",
 );
+
 assert(["missing-arguments", "offline-parser"].includes(values.case));
+
 const packageDir = path.resolve(values.package);
 const work = path.resolve(values.work);
+
 assert(
   work.startsWith("/tmp/pi-claude-state-") || work.startsWith("/private/tmp/pi-claude-state-"),
 );
+
 const load = snapshotLoader(packageDir);
 const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runner.ts");
 const { createAgentSdkStream } = await load<typeof BridgeModule>("bridge.ts");
 const { createCacheDiagnosticTracker } = await load<typeof TrackerModule>("cache-tracker.ts");
 const { models } = await load<typeof ModelsModule>("models.ts");
+
 const {
   validationRecoveryTool,
   blockValidationRecovery,
   decodeValidationInput,
   VALIDATION_ERROR_TOOL,
 } = await load<typeof RecoveryModule>("validation-recovery.ts");
+
 const { safeTerminalReason } = await load<typeof FailureModule>("sdk/result-failure.ts");
 const entry = models.find((candidate) => candidate.id === "claude-4.5-haiku");
+
 assert(entry);
+
 const model = snapshotModel(entry);
 
 type QueryTerminal = {
@@ -66,6 +77,7 @@ type QueryTerminal = {
   stopReason: string;
   numTurns: number;
 };
+
 type QueryReport = {
   query: number;
   outputCeiling: number;
@@ -76,6 +88,7 @@ type QueryReport = {
   preHooks?: number;
   terminal?: QueryTerminal | undefined;
 };
+
 type JourneyReport = {
   case: string;
   faultInjected: boolean;
@@ -88,12 +101,14 @@ type JourneyReport = {
   queries?: number;
   status?: "passed";
 };
+
 type ProbeReport =
   | JourneyReport
   | { status: "failed"; reason: string }
   | ({ transport: string } & ReturnType<
       Awaited<ReturnType<typeof startParserTransport>>["summary"]
     >);
+
 const reports: ProbeReport[] = [];
 const isText = Schema.is(Schema.String);
 const isCorrectedInput = Schema.is(Schema.Struct({ value: Schema.Literal("corrected") }));
@@ -108,6 +123,7 @@ function isTranscriptMessage(message: AgentMessage): message is Message {
 }
 
 let transport: Awaited<ReturnType<typeof startParserTransport>> | undefined;
+
 if (offline) {
   assert(process.env.PI_CLAUDE_SDK_OFFLINE_PARSER === "1");
   assert(process.env.HOME === path.join(work, "home"));
@@ -127,35 +143,44 @@ async function journey() {
   let durableBeforeCorrection = false;
   const records: CacheDiagnostic[] = [];
   const queryReports: QueryReport[] = [];
+
   const report: JourneyReport = {
     case: kind,
     faultInjected: !offline,
     transport: offline ? "offline-synthetic-messages-sse-real-sdk-cli" : "live-subscription",
     queryReports,
   };
+
   reports.push(report);
+
   const persisted = () => {
     const file = session.getSessionFile();
+
     return file === undefined
       ? []
       : SessionManager.open(file)
           .getEntries()
           .flatMap((e) => (e.type === "message" ? [e.message] : []));
   };
+
   function hasError() {
     return persisted().some(
       (m) => m.role === "toolResult" && m.toolName === VALIDATION_ERROR_TOOL && m.isError,
     );
   }
+
   const runSdkQuery: RunSdkQuery = observeQuery;
+
   async function* observeQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator<SDKMessage> {
     queries += 1;
     assert(queries <= 3, "outer query budget exceeded");
+
     if (queries === 2) {
       durableBeforeCorrection = hasError();
       assert(durableBeforeCorrection, "no durable Pi error before correction query");
       assert(executions === 0, "invalid input executed");
     }
+
     const first = queries === 1;
     const seen = new Set<string>();
     let batches = 0;
@@ -166,28 +191,37 @@ async function journey() {
     const pre = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
     const batch = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
     assert(pre && batch);
+
     const preHook: HookCallback = async (input, id, options) => {
       if (input.hook_event_name === "PreToolUse") {
         seen.add(input.tool_use_id);
+
         if (!offline && first && injected === 0 && input.tool_name === "mcp__pi__contract_probe") {
           injected += 1;
+
           return pre({ ...input, tool_input: {} }, id, options);
         }
       }
+
       return pre(input, id, options);
     };
+
     const batchHook: HookCallback = async (input, id, options) => {
       if (input.hook_event_name === "PostToolBatch") {
         batches += 1;
         unhooked += input.tool_calls.filter((call) => !seen.has(call.tool_use_id)).length;
       }
+
       return batch(input, id, options);
     };
+
     const summary: QueryReport = {
       query: queries,
       outputCeiling: 2048,
     };
+
     queryReports.push(summary);
+
     try {
       for await (const message of query({
         ...params,
@@ -203,11 +237,13 @@ async function journey() {
       })) {
         if (message.type === "user") {
           const content = message.message.content;
+
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block.type === "tool_result" && block.is_error === true) {
                 errorResults += 1;
                 const text = isText(block.content) ? block.content : JSON.stringify(block.content);
+
                 if (/JSON.*pars|pars.*JSON|invalid JSON/iu.test(text)) {
                   jsonParseErrors += 1;
                 }
@@ -215,6 +251,7 @@ async function journey() {
             }
           }
         }
+
         if (message.type === "result") {
           const allowedStops = new Set([
             "end_turn",
@@ -223,20 +260,26 @@ async function journey() {
             "max_tokens",
             "model_context_window_exceeded",
           ]);
+
           const mainPrompt =
             message.usage.input_tokens +
             message.usage.cache_read_input_tokens +
             message.usage.cache_creation_input_tokens;
+
           const modelEntries = Object.values(message.modelUsage);
+
           const modelPrompt = modelEntries.reduce(
             (sum, usage) =>
               sum + usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens,
             0,
           );
+
           let stopReason = "absent";
+
           if (message.stop_reason !== null && message.stop_reason !== undefined) {
             stopReason = allowedStops.has(message.stop_reason) ? message.stop_reason : "other";
           }
+
           terminal = {
             mainPrompt,
             modelPrompt,
@@ -247,6 +290,7 @@ async function journey() {
             numTurns: message.num_turns,
           };
         }
+
         Object.assign(summary, {
           batches,
           unhooked,
@@ -268,9 +312,11 @@ async function journey() {
       });
     }
   }
+
   const runnerOptions: Pick<RunnerOptions, "validationRecovery" | "runSdkQuery"> & {
     sdkEnvironment?: NonNullable<RunnerOptions["sdkEnvironment"]>;
   } = { validationRecovery: "pi-tool-loop", runSdkQuery };
+
   if (transport !== undefined) {
     runnerOptions.sdkEnvironment = {
       ...process.env,
@@ -279,12 +325,14 @@ async function journey() {
       ANTHROPIC_AUTH_TOKEN: undefined,
     };
   }
+
   const runner = createClaudeAgentSdkRunner({
     ...runnerOptions,
     cacheDiagnostics: Effect.runSync(
       createCacheDiagnosticTracker((record) => records.push(record)),
     ),
   });
+
   const tools: AgentTool[] = [
     {
       name: "contract_probe",
@@ -296,6 +344,7 @@ async function journey() {
         assert(isCorrectedInput(args), "unexpected probe argument");
         executions += 1;
         assert(executions === 1, "duplicate execution");
+
         return { content: [{ type: "text", text: "RECOVERY_OK" }], details: undefined };
       },
     },
@@ -306,8 +355,10 @@ async function journey() {
       },
     },
   ];
+
   const prompt =
     "Invoke contract_probe with value corrected. If any tool error occurs, correct the call and invoke it again. After RECOVERY_OK reply exactly RECOVERY_OK.";
+
   try {
     const messages = await runAgentLoop(
       [{ role: "user", content: prompt, timestamp: 0 }],
@@ -330,21 +381,26 @@ async function journey() {
       (selected, context, options) =>
         createAgentSdkStream({ model: selected, context, options, run: runner }),
     );
+
     const diagnostics = records.flatMap((r) =>
       r.type === "usage" || r.type === "query" ? [r.query] : [],
     );
+
     report.diagnostics = diagnostics;
     report.executions = executions;
     report.durableBeforeCorrection = durableBeforeCorrection;
     report.injected = injected;
     const last = messages.at(-1);
     const failed = last?.role === "assistant" && ["error", "aborted"].includes(last.stopReason);
+
     if (failed) {
       throw new Error("provider-turn-failed");
     }
+
     assert(
       queryReports.every((r) => {
         const { terminal } = r;
+
         return terminal?.modelCount === 1 && terminal.mainPrompt === terminal.modelPrompt;
       }),
       "query pipeline usage mismatch",
@@ -354,6 +410,7 @@ async function journey() {
       "model request count mismatch",
     );
     assert(injected === (offline ? 0 : 1), "fault injection count mismatch");
+
     if (offline) {
       const first = queryReports[0];
       assert(
@@ -371,6 +428,7 @@ async function journey() {
         "fixture request contract mismatch",
       );
     }
+
     assert(executions === 1 && durableBeforeCorrection && hasError(), "recovery incomplete");
     const history = persisted();
     assert(
@@ -402,7 +460,9 @@ async function journey() {
     );
   }
 }
+
 let exit = 0;
+
 try {
   await journey();
 } catch {
@@ -417,7 +477,9 @@ try {
     await transport.close();
   }
 }
+
 process.stdout.write(
   `${JSON.stringify({ probe: "pi-sdk-validation-recovery", status: exit === 0 ? "passed" : "failed", reports }, null, 2)}\n`,
 );
+
 process.exitCode = exit;

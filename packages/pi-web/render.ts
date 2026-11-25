@@ -17,6 +17,7 @@ export function getTextContent(
   if (!content) {
     return "";
   }
+
   return content
     .filter((item) => isTextContent(item))
     .map((item) => item.text)
@@ -39,12 +40,15 @@ export function appendExpandedPreview(
   const { text, theme, maxLines = 12, maxColumns = 200 } = preview;
   const lines = text.split("\n");
   let output = base;
+
   for (const line of lines.slice(0, maxLines)) {
     output += `\n${theme.fg("dim", displayText(line).slice(0, maxColumns))}`;
   }
+
   if (lines.length > maxLines) {
     output += `\n${theme.fg("muted", "...")}`;
   }
+
   return output;
 }
 
@@ -52,5 +56,6 @@ export function appendExpandHint(base: string, expanded: boolean): string {
   if (expanded) {
     return base;
   }
+
   return `${base} ${keyHint("app.tools.expand", "for details")}`;
 }

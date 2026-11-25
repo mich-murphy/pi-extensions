@@ -11,11 +11,13 @@ function catalog(): ModelInfo[] {
       displayName: entry.name,
       description: "Metadata contract fixture",
     };
+
     if (entry.canonicalModel !== "claude-haiku-4-5") {
       info.supportsAdaptiveThinking = true;
       info.supportsEffort = true;
       info.supportedEffortLevels = ["low", "medium", "high", "xhigh", "max"];
     }
+
     return info;
   });
 }
@@ -23,6 +25,7 @@ function catalog(): ModelInfo[] {
 function rowAt(rows: ModelInfo[], index: number): ModelInfo {
   const row = rows.at(index);
   assert(row !== undefined, "missing fixture row");
+
   return row;
 }
 
@@ -113,6 +116,7 @@ describe("advertised SDK model metadata", () => {
         assertModelMetadata(rows);
       }).toThrow("native thinking metadata");
     }
+
     const rows = catalog();
     fableRow(rows).supportedEffortLevels = ["low", "medium", "high"];
     expect(() => {

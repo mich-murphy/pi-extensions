@@ -51,6 +51,7 @@ export default function webExtension(pi: WebToolsRegistration): void {
   let currentRegistry: ExtensionContext["modelRegistry"] | undefined;
   pi.on("session_start", (_event, ctx) => {
     currentRegistry = ctx.modelRegistry;
+
     try {
       authentication.register(pi, ctx.modelRegistry);
     } catch {
@@ -61,16 +62,20 @@ export default function webExtension(pi: WebToolsRegistration): void {
     }
   });
   const parsed = parseSettings();
+
   const runtime = Result.isSuccess(parsed)
     ? registerConfiguredTools(pi, parsed.success, authentication)
     : undefined;
+
   pi.on("session_shutdown", async () => {
     await runtime?.dispose();
+
     if (currentRegistry !== undefined) {
       authentication.unregister(pi, currentRegistry);
       currentRegistry = undefined;
     }
   });
+
   if (Result.isFailure(parsed)) {
     const { message } = parsed.failure;
     pi.on("session_start", (_event, ctx) => {
@@ -90,14 +95,17 @@ function registerConfiguredTools(
   pi.on("session_start", () => {
     runtime.start();
   });
+
   const composition = {
     redactText: (input: string) => input,
     credentialsForContext: (ctx: Pick<ExtensionContext, "modelRegistry">) =>
       authentication.resolverFor(ctx.modelRegistry),
     runtime,
   };
+
   pi.registerTool(createWebSearchTool({ ...composition, settings: { search: settings.search } }));
   pi.registerTool(createWebFetchTool({ ...composition, settings: { fetch: settings.fetch } }));
+
   return runtime;
 }
 
@@ -105,9 +113,11 @@ function appLayer(settings: WebToolsSettings) {
   const outbound = Layer.mergeAll(HttpFetch.layer, PublicWebTransport.layer, DnsLookup.layer);
   const config = WebToolsConfig.layer(settings);
   const providerDeps = Layer.mergeAll(ProviderHttpClient.layer, McpClients.layer, config);
+
   const providers = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
     Layer.provide(providerDeps),
   );
+
   return Layer.mergeAll(
     providers,
     config,

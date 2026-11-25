@@ -9,11 +9,13 @@ const third = { ...sender, sessionId: "third" };
 const message = { id: "1".repeat(32), kind: "request", format: "text", content: "work" } as const;
 const input = { from: sender, to: peer, scopeId: "team", message };
 const key = scopedMessageKey(sender, peer, "team", message.id);
+
 function harness(limits: Partial<Limits> = {}) {
   let now = 0;
   let authorized = true;
   let available = true;
   const offered: Delivery[] = [];
+
   const state = createState({
     peer,
     scopeIds: ["team", "other"],
@@ -23,11 +25,14 @@ function harness(limits: Partial<Limits> = {}) {
       if (!available) {
         return false;
       }
+
       offered.push(delivery);
+
       return true;
     },
     limits,
   });
+
   return {
     state,
     offered,
@@ -92,6 +97,7 @@ describe("synchronous bounded admission and protected receipts", () => {
     const h = harness();
     const receipt = h.state.admit(input);
     expect(h.state.admit(input)).toStrictEqual(receipt);
+
     const replacement = createState({
       peer: { ...peer, runtimeNonce: "c".repeat(32) },
       scopeIds: ["team"],
@@ -99,6 +105,7 @@ describe("synchronous bounded admission and protected receipts", () => {
       authorize: () => true,
       offer: () => true,
     });
+
     expect(replacement.admit(input)).toMatchObject({ tag: "not_admitted", code: "no_route" });
     expect(replacement.admit({ ...input, to: { ...peer, runtimeNonce: "c".repeat(32) } }).tag).toBe(
       "admitted",
@@ -153,12 +160,14 @@ describe("synchronous bounded admission and protected receipts", () => {
   test("outgoing exact request relations verify replies; known scope/recipient mismatch rejects", () => {
     const h = harness();
     expect(h.state.rememberOutgoing({ to: sender, scopeId: "team", message }).tag).toBe("ok");
+
     const reply = {
       ...message,
       id: "2".repeat(32),
       kind: "reply",
       replyTo: { sender: peer, messageId: message.id },
     } as const;
+
     expect(h.state.admit({ ...input, message: reply })).toMatchObject({
       tag: "admitted",
       correlation: "verified",
@@ -176,12 +185,14 @@ describe("synchronous bounded admission and protected receipts", () => {
   test("expired correlation yields unresolved, retained admitted receipt keeps original classification", () => {
     const h = harness();
     h.state.rememberOutgoing({ to: sender, scopeId: "team", message });
+
     const reply = {
       ...message,
       id: "2".repeat(32),
       kind: "reply",
       replyTo: { sender: peer, messageId: message.id },
     } as const;
+
     const receipt = h.state.admit({ ...input, message: reply });
     h.clock(86_400_000);
     expect(h.state.admit({ ...input, message: reply })).toStrictEqual(receipt);
@@ -193,11 +204,13 @@ describe("synchronous bounded admission and protected receipts", () => {
 
   test("wrong reply target is a typed semantic rejection and work does not verify correlation", () => {
     const h = harness();
+
     const reply = {
       ...message,
       kind: "reply",
       replyTo: { sender: third, messageId: message.id },
     } as const;
+
     expect(h.state.admit({ ...input, message: reply })).toMatchObject({
       tag: "not_admitted",
       code: "invalid_correlation",
@@ -240,6 +253,7 @@ describe("synchronous bounded admission and protected receipts", () => {
     h.state.stats();
     h.clock(99);
     expect(() => h.state.stats()).toThrow(TypeError);
+
     const state = createState({
       peer,
       scopeIds: ["team"],
@@ -247,9 +261,11 @@ describe("synchronous bounded admission and protected receipts", () => {
       authorize: () => true,
       offer: () => {
         state.stats();
+
         return true;
       },
     });
+
     expect(() => state.admit(input)).toThrow("Session state callback re-entry is forbidden");
     expect(state.stats().receipts).toBe(0);
   });

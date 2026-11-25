@@ -29,6 +29,7 @@ export function convertGuarded(convert: () => string): Result.Result<string, Htm
     if (cause instanceof RangeError) {
       return Result.fail(new HtmlConversionFailed({ cause }));
     }
+
     throw cause;
   }
 }

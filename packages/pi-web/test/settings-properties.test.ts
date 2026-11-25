@@ -44,6 +44,7 @@ function checkKeysIgnored(keys: string[], base: Record<string, string>): void {
     [PARALLEL_API_KEY_ENV]: keys[1],
     [BRAVE_API_KEY_ENV]: keys[2],
   };
+
   assert.deepStrictEqual(parseSettings(withKeys), parseSettings(base));
 }
 
@@ -51,6 +52,7 @@ function checkNormalized(entries: [string[], boolean, string][]): void {
   const raw = entries
     .map(([labels, dot, pad]) => `${pad}${labels.join(".")}${dot ? "." : ""}${pad}`)
     .join(",");
+
   const expected = [...new Set(entries.map(([labels]) => labels.join(".").toLowerCase()))];
   const parsed = parseSettings({ [ALLOW_ENV]: raw, [DENY_ENV]: raw });
   assert.ok(Result.isSuccess(parsed));
@@ -62,6 +64,7 @@ function failureMessage(envName: string, value: string): string {
   const parsed = parseSettings({ [envName]: value });
   assert.ok(Result.isFailure(parsed), `${value} must be rejected`);
   assert.ok(parsed.failure instanceof InvalidSetting);
+
   return parsed.failure.message;
 }
 
@@ -75,6 +78,7 @@ function checkMalformed(labels: string[], defect: Defect, neighbour: string, env
 function checkNearest(value: number): void {
   const { min, max } = FETCH_TIMEOUT_SECONDS;
   const clamped = clampInteger(value, FETCH_TIMEOUT_SECONDS);
+
   if (value <= min) {
     assert.equal(clamped, min);
   } else if (value >= max) {

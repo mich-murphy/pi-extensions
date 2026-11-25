@@ -26,10 +26,13 @@ export function onOffCommand<C extends OnOffContext>(options: OnOffOptions<C>): 
       ["on", "off"].flatMap((value) => (value.startsWith(prefix) ? [{ value, label: value }] : [])),
     handler: async (args, ctx) => {
       const choice = args.trim();
+
       if (choice !== "" && choice !== "on" && choice !== "off") {
         ctx.ui.notify(`Usage: /${options.name} [on|off]`, "warning");
+
         return;
       }
+
       const enabled = choice === "" ? !options.enabled() : choice === "on";
       options.apply(enabled, ctx);
       const note = options.note?.(enabled) ?? "";

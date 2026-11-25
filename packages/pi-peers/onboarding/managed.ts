@@ -13,6 +13,7 @@ import { Refusal } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 const execute = promisify(execFile);
+
 export type ManagedSetup = {
   version: 1;
   executable: string;
@@ -23,11 +24,13 @@ export type ManagedSetup = {
   gatewayPath: string;
   socketPath: string;
 };
+
 export type ManagedSnapshot = {
   readonly state: "disabled" | "configured" | "degraded";
   readonly reason?: string;
   readonly text: string;
 };
+
 const isNativeSnapshot = Schema.is(
   Schema.Struct({
     version: Schema.Literal(1),
@@ -44,32 +47,43 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
     maxBuffer: 16_384,
     env: gatewayEnvironment(),
   });
+
   const value = parseJson(stdout);
+
   if (!isNativeSnapshot(value)) {
     throw new Error("Native diagnostic contract mismatch");
   }
+
   const { state, reason } = value.remote;
   const snapshot: Pick<ManagedSnapshot, "state"> & { reason?: string } = { state };
+
   if (reason !== undefined) {
     snapshot.reason = reason;
   }
+
   return {
     ...snapshot,
     text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
   };
 }
+
 export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {
   const snapshot = await managedSnapshot(setup);
+
   return snapshot.text;
 }
+
 export function gatewayEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin", LANG: "C" };
   const home = process.env.HOME;
+
   if (home !== undefined) {
     env.HOME = home;
   }
+
   return env;
 }
+
 export async function validateExecutable(
   executable: string,
   requiredCapabilities: readonly string[] = GATEWAY_LOCAL_SETUP_CAPABILITIES,
@@ -77,13 +91,16 @@ export async function validateExecutable(
   if (!isAbsolute(executable)) {
     throw new Error("Gateway executable must be absolute");
   }
+
   const { stdout } = await execute(executable, ["--version", "--json"], {
     timeout: 5000,
     maxBuffer: 16_384,
     env: gatewayEnvironment(),
   });
+
   const version = decodeRecord(parseJson(stdout));
   const capabilities = version.capabilities;
+
   if (
     version.name === "pi-gateway" &&
     !(Array.isArray(version.wireVersions) && version.wireVersions.includes(GATEWAY_WIRE_VERSION))
@@ -93,6 +110,7 @@ export async function validateExecutable(
       "Run pi update to update the gateway, then choose Setup in /peers",
     );
   }
+
   if (
     version.name !== "pi-gateway" ||
     !Array.isArray(capabilities) ||
@@ -106,17 +124,21 @@ export async function validateExecutable(
     );
   }
 }
+
 async function reachable(path: string, signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = createConnection(path);
+
     const finish = (value: boolean) => {
       socket.destroy();
       signal.removeEventListener("abort", abort);
       resolve(value);
     };
+
     const abort = () => {
       finish(false);
     };
+
     socket.setTimeout(150, () => {
       finish(false);
     });
@@ -127,11 +149,13 @@ async function reachable(path: string, signal: AbortSignal): Promise<boolean> {
       finish(true);
     });
     signal.addEventListener("abort", abort, { once: true });
+
     if (signal.aborted) {
       abort();
     }
   });
 }
+
 export function managedLauncher(
   setup: ManagedSetup,
   reload?: () => Promise<ManagedSetup>,
@@ -141,35 +165,45 @@ export function managedLauncher(
     startupDemand(deadline, signal);
     const connected = await reachable(current.socketPath, signal);
     startupDemand(deadline, signal);
+
     if (connected) {
       return { gatewaySha256: current.gatewaySha256 };
     }
+
     await validateExecutable(current.executable);
     startupDemand(deadline, signal);
     const config = await regularBytes(current.gatewayPath);
+
     if (config === undefined || digest(config) !== current.gatewaySha256) {
       throw new Error("gateway.json changed since setup, so the gateway was not started");
     }
+
     startupDemand(deadline, signal);
     await privateDirectory(dirname(current.gatewayPath));
     startupDemand(deadline, signal);
+
     const log = await open(
       join(dirname(current.gatewayPath), `startup-${randomBytes(12).toString("hex")}.log`),
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
       0o600,
     );
+
     try {
       const logStat = await log.stat();
+
       if (!logStat.isFile() || logStat.uid !== process.getuid?.() || (logStat.mode & 0o077) !== 0) {
         throw new Error("The gateway startup log is not private");
       }
+
       startupDemand(deadline, signal);
+
       const child = spawn(current.executable, ["--managed", "--config", current.gatewayPath], {
         detached: true,
         stdio: ["ignore", log.fd, log.fd],
         env: gatewayEnvironment(),
         cwd: "/",
       });
+
       await new Promise<void>((resolve, reject) => {
         child.once("spawn", resolve);
         child.once("error", reject);
@@ -178,6 +212,7 @@ export function managedLauncher(
     } finally {
       await log.close();
     }
+
     return { gatewaySha256: current.gatewaySha256 };
   };
 }
@@ -197,7 +232,9 @@ export async function requestManagedRestart(
       maxBuffer: 16_384,
       env: gatewayEnvironment(),
     });
+
     const reply = decodeRecord(parseJson(stdout));
+
     return reply.version === 1 && reply.state === "restart-requested"
       ? "acknowledged"
       : "uncertain";

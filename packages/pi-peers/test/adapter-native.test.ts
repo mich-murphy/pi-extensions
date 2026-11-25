@@ -21,6 +21,7 @@ async function stop(child: ChildProcess): Promise<void> {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
     return;
   }
+
   const exited = once(child, "exit");
   child.kill("SIGTERM");
   await exited;
@@ -29,27 +30,34 @@ async function stop(child: ChildProcess): Promise<void> {
 function host() {
   return { isIdle: () => true, ui: { setStatus: () => undefined } };
 }
+
 async function readinessLine(child: ChildProcess, signal: AbortSignal): Promise<string> {
   assert(child.stdout !== null);
   let bytes = Buffer.alloc(0);
+
   while (!bytes.includes(10)) {
     const chunk: unknown[] = await once(child.stdout, "data", { signal });
     assert(Buffer.isBuffer(chunk[0]));
     bytes = Buffer.concat([bytes, chunk[0]]);
     assert(bytes.length <= 4096, "Bounded readiness record");
   }
+
   return bytes.subarray(0, bytes.indexOf(10)).toString("utf8");
 }
+
 function isAdmittedSend(frame: Frame): boolean {
   if (frame.op !== "result" || frame.forOp !== "send") {
     return false;
   }
+
   return frame.outcome.tag === "admitted";
 }
+
 async function receiptLossProxy(config: Configuration, onLoss: () => void) {
   const socketPath = join(config.socketPath, "..", "loss.sock");
   const sockets = new Set<Socket>();
   let lost = false;
+
   const server = createServer((client) => {
     const upstream = createConnection(config.socketPath);
     sockets.add(client);
@@ -68,38 +76,48 @@ async function receiptLossProxy(config: Configuration, onLoss: () => void) {
     });
     client.pipe(upstream);
     let buffer = Buffer.alloc(0);
+
     const forward = (bytes: Buffer) => {
       if (!lost && isAdmittedSend(decodeFrame(bytes, "adapter-delivery"))) {
         lost = true;
         onLoss();
         client.destroy();
         upstream.destroy();
+
         return;
       }
+
       client.write(bytes);
     };
+
     upstream.on("data", (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
+
       while (buffer.length >= 4) {
         const length = frameBodyLength(buffer.subarray(0, 4)) + 4;
+
         if (buffer.length < length) {
           return;
         }
+
         forward(Buffer.from(buffer.subarray(0, length)));
         buffer = Buffer.from(buffer.subarray(length));
       }
     });
   });
+
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(socketPath, resolve);
   });
+
   return {
     config: { ...config, socketPath },
     close: async () => {
       for (const socket of sockets) {
         socket.destroy();
       }
+
       await new Promise<void>((resolve) => {
         server.close(() => {
           resolve();
@@ -108,6 +126,7 @@ async function receiptLossProxy(config: Configuration, onLoss: () => void) {
     },
   };
 }
+
 const gatewayBinary =
   process.env.PI_SESSION_GATEWAY_BINARY ??
   fileURLToPath(new URL("../gateway/target/debug/pi-gateway", import.meta.url));
@@ -128,6 +147,7 @@ async function nativeGateway() {
   await chmod(directory, 0o700);
   const socketPath = join(directory, "gateway.sock");
   const configPath = join(directory, "gateway.json");
+
   const policies = [
     {
       machineId: "alpha",
@@ -135,26 +155,32 @@ async function nativeGateway() {
       permissions: ["discover", "push"] as const,
     },
   ];
+
   await writeFile(
     configPath,
     JSON.stringify({ machineId: "alpha", socketPath, scopeIds: ["team"], policies }),
   );
+
   const child = spawn(gatewayBinary, ["--config", configPath], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, RAYON_NUM_THREADS: "2", OMP_NUM_THREADS: "2" },
   });
+
   assert(child.stdout !== null);
   let diagnostic = "";
   child.stderr?.on("data", (bytes: Buffer) => {
     diagnostic = (diagnostic + bytes.toString("utf8")).slice(-4096);
   });
   const abort = new AbortController();
+
   const timer = setTimeout(() => {
     abort.abort();
   }, 30_000);
+
   child.once("error", () => {
     abort.abort();
   });
+
   try {
     const line = await readinessLine(child, abort.signal);
     const value: unknown = JSON.parse(line);
@@ -169,6 +195,7 @@ async function nativeGateway() {
   } finally {
     clearTimeout(timer);
   }
+
   const config: Configuration = {
     machineId: "alpha",
     socketPath,
@@ -176,6 +203,7 @@ async function nativeGateway() {
     label: "native adapter",
     policies,
   };
+
   return {
     config,
     close: async () => {
@@ -191,12 +219,14 @@ describe("production adapter / native local gateway vertical slice", () => {
     const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: freshId() };
     const receiver = { machineId: "alpha", sessionId: "receiver", runtimeNonce: freshId() };
     const notices: { customType: string; details?: unknown }[] = [];
+
     const left = await createAdapterRuntime(
       gateway.config,
       sender,
       { sendMessage: () => undefined },
       host,
     );
+
     const right = await createAdapterRuntime(
       gateway.config,
       receiver,
@@ -207,6 +237,7 @@ describe("production adapter / native local gateway vertical slice", () => {
       },
       host,
     );
+
     try {
       await Promise.all([left.session.reconnect(), right.session.reconnect()]);
       const roster = await left.session.client.discover(["team"], true);
@@ -216,12 +247,14 @@ describe("production adapter / native local gateway vertical slice", () => {
       expect(roster.outcome.value.peers.map((descriptor) => descriptor.peer)).toContainEqual(
         receiver,
       );
+
       const message: Message = {
         id: freshId(),
         kind: "request",
         content: "Explicitly authored native integration request",
         format: "text",
       };
+
       const admitted = await left.session.send(receiver, "team", message);
       expect(admitted).toStrictEqual({
         tag: "admitted",
@@ -252,10 +285,13 @@ describe("production adapter / native local gateway vertical slice", () => {
       });
       expect(right.session.status().notice).toBe("none");
       expect(right.session.client.status().operations).toBe(0);
+
       const proxy = await receiptLossProxy(gateway.config, () => {
         right.session.close();
       });
+
       const lostSender = { ...sender, sessionId: "lost-sender", runtimeNonce: freshId() };
+
       const uncertain = new GatewayClient({
         config: proxy.config,
         peer: lostSender,
@@ -264,6 +300,7 @@ describe("production adapter / native local gateway vertical slice", () => {
         },
         statusChanged: () => undefined,
       });
+
       try {
         const lostMessage: Message = { ...message, id: freshId(), kind: "update" };
         await expect(uncertain.send(receiver, "team", lostMessage)).resolves.toMatchObject({
@@ -276,6 +313,7 @@ describe("production adapter / native local gateway vertical slice", () => {
         uncertain.close();
         await proxy.close();
       }
+
       await right.dispose();
       await expect(
         left.session.send(receiver, "team", { ...message, id: freshId() }),

@@ -11,6 +11,7 @@ import registerClaudeProvider, { usageLimitPublisher } from "../index";
 function loadExtension() {
   const handlers: Partial<ClaudeHandlers> = {};
   const providers = new Map<string, ProviderConfig>();
+
   const piMock = {
     registerCommand: () => undefined,
     registerTool: () => undefined,
@@ -22,25 +23,31 @@ function loadExtension() {
     },
     events: { emit: () => undefined },
   };
+
   registerClaudeProvider(piMock);
   const noUI = { hasUI: false, ui: { notify: () => undefined } };
+
   const emit = <K extends keyof ClaudeEvents>(
     name: K,
     event: ClaudeEvents[K],
     ctx: Parameters<ClaudeHandlers[K]>[1] = noUI,
   ): ReturnType<ClaudeHandlers[keyof ClaudeHandlers]> => {
     const handler = handlers[name];
+
     if (!handler) {
       throw new Error(`test setup: no ${name} handler registered`);
     }
+
     return handler(event, ctx);
   };
+
   return { providers, emit };
 }
 
 const binaryOutput: Pick<ToolResultEvent, "content">["content"] = [
   { type: "text", text: "\u0000payload".repeat(5000) },
 ];
+
 const quarantineNotice: unknown = expect.stringContaining("Binary-like bash output");
 
 function bashCall(command: string): ToolCallEvent {
@@ -59,6 +66,7 @@ describe("extension entry point", () => {
       "claude-4.5-haiku",
     ]);
     assert(provider?.models !== undefined, "test setup: provider not registered");
+
     for (const model of provider.models) {
       expect(model).not.toHaveProperty("sdkModel");
       expect(model).not.toHaveProperty("canonicalModel");
@@ -70,16 +78,19 @@ describe("recovery hook overhead", () => {
   test("does not read history for ordinary messages or successful reserved results", () => {
     const { emit } = loadExtension();
     let reads = 0;
+
     const ctx = {
       hasUI: false,
       ui: { notify: () => undefined },
       sessionManager: {
         getBranch: () => {
           reads++;
+
           return [];
         },
       },
     };
+
     void emit("message_end", { message: { role: "user", content: "hello", timestamp: 0 } }, ctx);
     void emit(
       "message_end",
@@ -125,6 +136,7 @@ describe("recovery hook overhead", () => {
 describe("usage limit notices", () => {
   test("publishes the reset time on the shared usage-limit channel", () => {
     const emitted: { channel: string; data: unknown }[] = [];
+
     const publish = usageLimitPublisher({
       emit: (channel, data) => {
         emitted.push({ channel, data });
@@ -145,6 +157,7 @@ describe("usage limit notices", () => {
 describe("bash output safety hooks", () => {
   test("adds the bash output rule as a section and keeps other extensions' sections", () => {
     const sections = { "mm-mode": "Router." };
+
     const result = loadExtension().emit("before_agent_start", {
       systemPromptOptions: { sections },
     });
@@ -168,6 +181,7 @@ describe("bash output safety hooks", () => {
 
   test("blocks a bash command that dumps a discovered executable, and nothing else", () => {
     const { emit } = loadExtension();
+
     const refusal: unknown = expect.stringContaining(
       "Blocked, so the command did not run: it may print an executable, or its shell syntax cannot be checked.",
     );
@@ -190,6 +204,7 @@ describe("bash output safety hooks", () => {
   test("quarantines suspicious bash results and warns when a UI is attached", () => {
     const { emit } = loadExtension();
     const notifications: (readonly unknown[])[] = [];
+
     const ui = {
       hasUI: true,
       ui: {
@@ -218,6 +233,7 @@ describe("bash output safety hooks", () => {
 
   test("quarantines suspicious bash results already recorded in the context", () => {
     const user = { role: "user" as const, content: "inspect it", timestamp: 0 };
+
     const recorded = {
       role: "toolResult" as const,
       timestamp: 0,

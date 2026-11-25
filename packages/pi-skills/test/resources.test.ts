@@ -76,6 +76,7 @@ describe("toggleResources", () => {
   test("includes project-scoped skills loaded from a configured non-Pi directory", () => {
     const cwd = "/Users/mm/businesscraft/businesscraft";
     const path = join(cwd, ".claude/skills/businesscraft-design/SKILL.md");
+
     const resources = toggleResourcesFromPrompt({
       cwd,
       skills: [
@@ -102,6 +103,7 @@ describe("toggleResources", () => {
     const cwd = "/Users/mm/businesscraft/businesscraft/web";
     const contributedPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/design/SKILL.md";
     const cliPath = "/Users/mm/businesscraft/businesscraft/.claude/skills/review/SKILL.md";
+
     const resources = toggleResources(
       {
         cwd,
@@ -115,6 +117,7 @@ describe("toggleResources", () => {
 
   test("deduplicates repeated discovery paths", () => {
     const path = join(getAgentDir(), "AGENTS.md");
+
     const resources = toggleResourcesFromPrompt({
       cwd: "/work/project",
       contextFiles: [
@@ -129,6 +132,7 @@ describe("toggleResources", () => {
 
   test("preserves the discovery path when a global instruction is symlinked elsewhere", () => {
     const path = join(getAgentDir(), "AGENTS.md");
+
     const resources = toggleResourcesFromPrompt({
       cwd: "/work/project",
       contextFiles: [{ path, content: "rules" }],
@@ -167,6 +171,7 @@ describe("toggleResources", () => {
 
   test("marks source-authored manual-only skills as read-only", () => {
     const path = join(getAgentDir(), "skills/manual/SKILL.md");
+
     const resources = toggleResourcesFromPrompt({
       cwd: "/work/project",
       skills: [
@@ -188,10 +193,12 @@ describe("toggleResources", () => {
   test("hides project skills by default and lets an override win either way", () => {
     const projectSkill = { kind: "skill", origin: "project" } as const;
     const path = join(getAgentDir(), "AGENTS.md");
+
     const [instruction] = toggleResourcesFromPrompt({
       cwd: "/work/project",
       contextFiles: [{ path, content: "rules" }],
     });
+
     assert(instruction !== undefined, "expected the global instruction");
 
     expect(defaultToggleValue(projectSkill)).toBe("disabled");

@@ -8,6 +8,7 @@ let calls = 0;
 
 function reply(model: Model<Api>, take: boolean): AssistantMessage {
   calls += 1;
+
   return {
     role: "assistant",
     api: model.api,
@@ -41,8 +42,10 @@ function registerProbe(pi: ExtensionAPI): void {
   const seen = new Set<string>();
   let duplicate: string | undefined;
   let final = false;
+
   const text = (): string =>
     `peers-probe taken=${seen.size} dup=${duplicate ?? "none"} final=${final ? "yes" : "no"}`;
+
   pi.on("session_start", (_event, ctx) => {
     ctx.ui.setStatus("peers-probe", text());
   });
@@ -50,10 +53,13 @@ function registerProbe(pi: ExtensionAPI): void {
     if (event.toolName !== "peers_take") {
       return;
     }
+
     const taken = decodeTaken(event.details);
+
     if (Option.isNone(taken)) {
       return;
     }
+
     for (const {
       message: { content },
     } of taken.value.value.messages) {
@@ -61,8 +67,10 @@ function registerProbe(pi: ExtensionAPI): void {
         duplicate ??= seen.has(token) ? token : undefined;
         seen.add(token);
       }
+
       final ||= content.includes(" final ");
     }
+
     ctx.ui.setStatus("peers-probe", text());
   });
 }
@@ -96,6 +104,7 @@ export default function bombadilPeersHarness(pi: ExtensionAPI): void {
         });
         stream.end(message);
       });
+
       return stream;
     },
   });

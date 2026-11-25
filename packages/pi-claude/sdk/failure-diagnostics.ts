@@ -56,6 +56,7 @@ function queryFailureKind({ cause, reason }: SdkQueryError): SdkFailureKind {
   if (Predicate.isTagged("WorkingDirectoryUnavailable")(reason)) {
     return "provider";
   }
+
   return Predicate.isTagged("Cancelled")(reason)
     ? "cancelled"
     : textKind(cause instanceof Error ? cause.message : String(cause));
@@ -84,6 +85,7 @@ function isResultKind(category: string): category is ResultKind {
 
 function resultFailureKind(error: SdkResultError): SdkFailureKind {
   const category = effectiveResultCategory(error.category, error.apiError);
+
   return isResultKind(category) ? category : "provider";
 }
 
@@ -114,18 +116,23 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     kind: failureKind(error),
     errorTag: error._tag,
   };
+
   if (Predicate.isTagged("SdkToolContractError")(error)) {
     diagnostic.toolContract = error.reason;
   }
+
   if (Predicate.isTagged("SdkQueryError")(error)) {
     diagnostic.operation = error.operation;
   }
+
   if (Predicate.isTagged("SdkStreamInterruptedError")(error)) {
     diagnostic.streamInterruption = error.evidence;
   }
+
   if (Predicate.isTagged("SdkResultError")(error) && error.terminalReason !== undefined) {
     diagnostic.terminalReason = safeTerminalReason(error.terminalReason);
   }
+
   return diagnostic;
 }
 

@@ -1,10 +1,12 @@
 import type { RuleTester } from "oxlint/plugins-dev";
 
 type Rule = Parameters<RuleTester["run"]>[1];
+
 type Comment = { type: "Line" | "Block" | "Shebang"; value: string };
 
 const toolDirective =
   /^\s*(?:(?:eslint|oxlint)-(?:disable|enable)(?:-next-line|-line)?\b|@ts-expect-error\b|prettier-ignore\b|oxfmt-ignore\b|fallow-ignore-|(?:v8|c8|istanbul) ignore\b|@vitest-environment\b)/u;
+
 const tripleSlashReference = /^\/\s*<reference\s/u;
 const licenseHeader = /SPDX-License-Identifier:|@license\b|\bCopyright\b/u;
 const bareLink = /^https?:\/\/\S+$/u;
@@ -29,6 +31,7 @@ function isAllowed(comment: Comment): boolean {
   if (comment.type === "Shebang") {
     return true;
   }
+
   return (
     toolDirective.test(comment.value) ||
     tripleSlashReference.test(comment.value) ||

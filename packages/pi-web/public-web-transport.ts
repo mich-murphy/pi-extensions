@@ -46,8 +46,10 @@ async function sendAddressBoundRequest(
   request: AddressBoundRequest,
 ): Promise<Response> {
   assertConnectionTarget(url, addresses);
+
   return new Promise<Response>((resolve, reject) => {
     const send = url.protocol === "https:" ? requestHttps : requestHttp;
+
     const outgoing = send(
       url,
       {
@@ -66,6 +68,7 @@ async function sendAddressBoundRequest(
         }
       },
     );
+
     outgoing.once("error", reject);
     outgoing.end();
   });
@@ -75,8 +78,10 @@ function assertConnectionTarget(url: URL, addresses: readonly ApprovedAddress[])
   if (addresses.length === 0) {
     throw Object.assign(new Error("No approved address is available"), { code: "ENOTFOUND" });
   }
+
   const hostname = url.hostname.replace(/^\[/u, "").replace(/\]$/u, "").toLowerCase();
   const family = isIP(hostname);
+
   if (
     (family === 4 || family === 6) &&
     !addresses.some(
@@ -92,32 +97,42 @@ function assertConnectionTarget(url: URL, addresses: readonly ApprovedAddress[])
 function approvedAddressLookup(addresses: readonly ApprovedAddress[]): LookupFunction {
   return (_hostname, options, callback) => {
     const requestedFamily = options.family === 4 || options.family === 6 ? options.family : 0;
+
     const eligible = addresses.filter(
       (candidate) => requestedFamily === 0 || candidate.family === requestedFamily,
     );
+
     queueMicrotask(() => {
       if (eligible.length === 0) {
         const error = Object.assign(new Error("No approved address is available"), {
           code: "ENOTFOUND",
         });
+
         callback(error, "");
+
         return;
       }
+
       if (options.all === true) {
         callback(
           null,
           eligible.map(({ address, family }) => ({ address, family })),
         );
+
         return;
       }
+
       const first = eligible[0];
+
       if (first === undefined) {
         callback(
           Object.assign(new Error("No approved address is available"), { code: "ENOTFOUND" }),
           "",
         );
+
         return;
       }
+
       callback(null, first.address, first.family);
     });
   };
@@ -127,16 +142,20 @@ function toFetchResponse(incoming: IncomingMessage): Response {
   const headers = responseHeaders(incoming);
   const status = incoming.statusCode ?? 500;
   const bodyForbidden = status === 204 || status === 205 || status === 304;
+
   if (bodyForbidden) {
     incoming.destroy();
+
     return new Response(null, { status, statusText: incoming.statusMessage ?? "", headers });
   }
 
   const decoded = decodedResponseBody(incoming, headers.get("content-encoding"));
+
   if (decoded) {
     headers.delete("content-encoding");
     headers.delete("content-length");
   }
+
   return new Response(webReadable(decoded ?? incoming), {
     status,
     statusText: incoming.statusMessage ?? "",
@@ -146,17 +165,21 @@ function toFetchResponse(incoming: IncomingMessage): Response {
 
 function responseHeaders(incoming: IncomingMessage): Headers {
   const headers = new Headers();
+
   for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
     const name = incoming.rawHeaders[index];
     const value = incoming.rawHeaders[index + 1];
+
     if (name !== undefined && value !== undefined) {
       headers.append(name, value);
     }
   }
+
   return headers;
 }
 
 type CompressionCoding = "gzip" | "deflate" | "br";
+
 type ContentDecodingPlan =
   | { readonly kind: "untouched" }
   | {
@@ -170,7 +193,9 @@ function contentDecodingPlan(contentEncoding: string | null): ContentDecodingPla
       ?.split(",")
       .map((encoding) => encoding.trim().toLowerCase())
       .filter(Boolean) ?? [];
+
   const codings: CompressionCoding[] = [];
+
   for (const encoding of encodings) {
     switch (encoding) {
       case "gzip":
@@ -178,20 +203,25 @@ function contentDecodingPlan(contentEncoding: string | null): ContentDecodingPla
         codings.push("gzip");
         break;
       }
+
       case "deflate":
       case "br": {
         codings.push(encoding);
         break;
       }
+
       case "identity": {
         break;
       }
+
       default: {
         return { kind: "untouched" };
       }
     }
   }
+
   const [firstCoding, ...remainingCodings] = codings;
+
   return firstCoding === undefined
     ? { kind: "untouched" }
     : { kind: "decode", codings: [firstCoding, ...remainingCodings] };
@@ -201,9 +231,11 @@ function decoderFor(encoding: CompressionCoding): Transform {
   if (encoding === "gzip") {
     return createGunzip();
   }
+
   if (encoding === "deflate") {
     return createInflate();
   }
+
   return createBrotliDecompress();
 }
 
@@ -212,16 +244,21 @@ function decodedResponseBody(
   contentEncoding: string | null,
 ): Readable | undefined {
   const plan = contentDecodingPlan(contentEncoding);
+
   if (plan.kind === "untouched") {
     return undefined;
   }
+
   const [firstAppliedCoding, ...laterAppliedCodings] = plan.codings;
   const output = decoderFor(firstAppliedCoding);
+
   const decoders = [
     ...laterAppliedCodings.toReversed().map((coding) => decoderFor(coding)),
     output,
   ];
+
   pipeline([incoming, ...decoders], () => undefined);
+
   return output;
 }
 
@@ -236,12 +273,15 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
       size: (chunk: Uint8Array) => chunk.byteLength,
     },
   });
+
   const reader = converted.getReader();
+
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
         try {
           const chunk = await reader.read();
+
           if (chunk.done) {
             reader.releaseLock();
             controller.close();
@@ -249,6 +289,7 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
             if (!isByteChunk(chunk.value)) {
               throw new TypeError("HTTP response stream supplied a non-byte chunk");
             }
+
             controller.enqueue(chunk.value);
           }
         } catch (cause) {
@@ -257,6 +298,7 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
           } finally {
             reader.releaseLock();
           }
+
           controller.error(cause);
         }
       },

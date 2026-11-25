@@ -7,6 +7,7 @@ import { resolveClaudeExecutable } from "./sdk/claude-executable";
 import { subscriptionEnvironment } from "./sdk/subscription-environment";
 
 const CALENDAR_DATE = String.raw`(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8])))`;
+
 const OFFSET_DATE_TIME = new RegExp(
   String.raw`^${CALENDAR_DATE}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$`,
   "u",
@@ -18,6 +19,7 @@ const usageWindowFields = {
 };
 
 const usageWindowSchema = Schema.Struct(usageWindowFields);
+
 const modelScopedWindowSchema = Schema.Struct({
   ...usageWindowFields,
   display_name: Schema.NonEmptyString,
@@ -98,14 +100,17 @@ async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage> 
   if (signal.aborted) {
     return;
   }
+
   await once(signal, "abort");
 }
 
 function requireClaudeExecutable(): string {
   const executable = resolveClaudeExecutable(process.env);
+
   if (executable === undefined) {
     throw new Error("claude executable not found");
   }
+
   return executable;
 }
 
@@ -124,6 +129,7 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
       skills: [],
     },
   });
+
   return {
     readUsage: async () =>
       decodeUsageResponse(
@@ -172,6 +178,7 @@ function parseUsageResponse(
   }
 
   const limits = parsed.success.rate_limits;
+
   const reportedWindows = [
     { name: "Current session", window: limits?.five_hour },
     { name: "All models weekly", window: limits?.seven_day },
@@ -185,15 +192,21 @@ function parseUsageResponse(
   ].flatMap(({ name, window }) =>
     window ? [{ name, usedPercent: window.utilization, resetsAt: window.resets_at }] : [],
   );
+
   const names = new Set<string>();
+
   const windows = reportedWindows.filter((window) => {
     const name = window.name.toLowerCase();
+
     if (names.has(name)) {
       return false;
     }
+
     names.add(name);
+
     return true;
   });
+
   return Result.succeed({
     subscriptionType: parsed.success.subscription_type,
     rateLimitsAvailable: parsed.success.rate_limits_available,
@@ -206,9 +219,11 @@ export const inspectClaudeUsage = Effect.fn("inspectClaudeUsage")(function* (
   timeout: Duration.Input = "10 seconds",
 ) {
   const queries = yield* ClaudeUsageQueries;
+
   return yield* Effect.acquireUseRelease(
     Effect.suspend(() => {
       const abortController = new AbortController();
+
       return queries
         .start(abortController)
         .pipe(Effect.map((usageQuery) => ({ abortController, usageQuery })));
@@ -247,10 +262,12 @@ function formatResetTime(resetsAt: string | null): string {
   if (resetsAt === null) {
     return "reset time unavailable";
   }
+
   const formatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+
   return `resets ${formatter.format(new Date(resetsAt))}`;
 }
 
@@ -258,6 +275,7 @@ export function formatClaudeUsageStatus(status: ClaudeUsageStatus): string {
   if (!status.rateLimitsAvailable) {
     return "Claude plan usage is unavailable for the current authentication method.";
   }
+
   if (status.windows.length === 0) {
     return "Claude returned no plan usage windows.";
   }
@@ -267,10 +285,13 @@ export function formatClaudeUsageStatus(status: ClaudeUsageStatus): string {
       window.usedPercent === null
         ? "remaining usage unavailable"
         : `${remainingPercent(window.usedPercent)}% remaining`;
+
     return `${window.name}: ${remaining}, ${formatResetTime(window.resetsAt)}`;
   });
+
   if (status.extraUsageEnabled !== null) {
     lines.push(`Extra usage: ${status.extraUsageEnabled ? "enabled" : "disabled"}`);
   }
+
   return lines.join("\n");
 }

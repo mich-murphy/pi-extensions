@@ -50,17 +50,21 @@ export default function scrollback(pi: ScrollRegistration): void {
     if (ctx.mode !== "tui") {
       return;
     }
+
     ctx.ui.setWidget(WIDGET, (tui) => {
       const adapter = createHostAdapter(tui, (text) =>
         ctx.ui.theme.bg("userMessageBg", ctx.ui.theme.fg("muted", text)),
       );
+
       cleanup = adapter.dispose;
+
       return adapter;
     });
   };
 
   pi.on("session_start", (_event, ctx) => {
     dispose();
+
     if (enabled) {
       install(ctx);
     }
@@ -78,8 +82,10 @@ export default function scrollback(pi: ScrollRegistration): void {
         if (next === enabled) {
           return;
         }
+
         enabled = next;
         dispose();
+
         if (enabled) {
           install(ctx);
         } else {

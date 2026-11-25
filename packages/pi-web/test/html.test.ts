@@ -24,6 +24,7 @@ describe("htmlToMarkdown", () => {
       <p>Some <a href="/relative">link</a> text</p>
       <ul><li>one</li><li>two</li></ul>
     </article></body></html>`;
+
     const markdown = htmlToMarkdown(html, "https://example.com/docs/");
     expect(markdown).toContain("# Title");
     expect(markdown).toContain("[link](https://example.com/relative)");
@@ -36,6 +37,7 @@ describe("htmlToMarkdown", () => {
       <article><p>the actual article body text here</p></article>
       <footer>copyright</footer>
     </body></html>`;
+
     const markdown = htmlToMarkdown(html, "https://example.com");
     expect(markdown).toContain("the actual article body text");
     expect(markdown).not.toContain("alert(1)");
@@ -47,6 +49,7 @@ describe("htmlToMarkdown", () => {
       '<html><body><article><p><a href="javascript:alert(1)">x</a></p></article></body></html>',
       "https://example.com",
     );
+
     expect(sanitized).not.toMatch(/javascript:/u);
   });
 });
@@ -57,6 +60,7 @@ describe("htmlToText", () => {
       "<html><body><article><h1>Hi</h1><p>words here</p></article></body></html>",
       "https://example.com",
     );
+
     expect(text).toContain("Hi");
     expect(text).toContain("words here");
     expect(text).not.toContain("<p>");
@@ -87,9 +91,11 @@ describe("htmlToText on input without an html element", () => {
     ["text around inline", "lead <b>middle</b> tail", ["lead", "middle", "tail"], []],
   ])("%s keeps content and leaks no raw text", (_name, input, present, absent) => {
     const text = htmlToText(input, "https://example.com");
+
     for (const word of present) {
       expect(text).toContain(word);
     }
+
     for (const word of absent) {
       expect(text).not.toContain(word);
     }
@@ -137,10 +143,13 @@ describe("readable root extraction", () => {
     .slice(1)
     .flatMap(([laterName, laterTag, laterAttributes], index) => {
       const earlier = preferredRoots[index];
+
       if (earlier === undefined) {
         return [];
       }
+
       const [earlierName, earlierTag, earlierAttributes] = earlier;
+
       return [
         [
           earlierName,
@@ -157,6 +166,7 @@ describe("readable root extraction", () => {
         <${laterTag} ${laterAttributes}><p>later root ${"filler ".repeat(200)}</p></${laterTag}>
         <${earlierTag} ${earlierAttributes}><p>earlier root</p></${earlierTag}>
       </body></html>`;
+
       const text = htmlToText(html, "https://example.com");
       expect(text).toContain("earlier root");
       expect(text).not.toContain("later root");
@@ -172,10 +182,12 @@ describe("readable root extraction", () => {
     "adds the %s bonus to a .markdown-body candidate",
     (_label, attributes, bonus) => {
       const filler = "x".repeat(bonus / 2);
+
       const html = `<html><body>
         <div class="markdown-body"><p>plain candidate ${filler}</p></div>
         <div ${attributes}><p>bonus candidate</p></div>
       </body></html>`;
+
       const text = htmlToText(html, "https://example.com");
       expect(text).toContain("bonus candidate");
       expect(text).not.toContain("plain candidate");
@@ -221,16 +233,19 @@ describe("htmlToMarkdown on large documents", () => {
     const html = `<html><body><article><section>\n${paragraphs
       .map((text) => `<p>${text}</p>`)
       .join("\n")}\n</section></article></body></html>`;
+
     expect(html.length).toBeGreaterThan(128 * 1024);
     expect(htmlToMarkdown(html, "https://example.com")).toBe(paragraphs.join("\n\n"));
   });
 
   test("keeps edge whitespace, preformatted text, and misnested lists across chunk edges", () => {
     const blocks = paragraphs.map((text, index) => edgeCaseBlock(text, index));
+
     const markdown = htmlToMarkdown(
       `<html><body><article>${blocks.map((block) => block.html).join("")}</article></body></html>`,
       "https://example.com",
     );
+
     expect(markdown).toBe(
       blocks
         .map((block) => block.markdown)
@@ -249,6 +264,7 @@ describe("htmlToMarkdown tables", () => {
       </table>`),
       "https://example.com",
     );
+
     expect(markdown).toBe("| Name | Count |\n| --- | --: |\n| apples | 3 |\n| pears | 5 |");
   });
 
@@ -265,6 +281,7 @@ describe("htmlToMarkdown tables", () => {
       inArticle(`<p>before</p>${table}<p>after</p>`),
       "https://example.com",
     );
+
     expect(markdown).toBe(`before\n\n${content}\n\nafter`);
   });
 
@@ -276,6 +293,7 @@ describe("htmlToMarkdown tables", () => {
       </tr></table>`),
       "https://example.com",
     );
+
     expect(markdown).toBe(
       "<table><tbody><tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr></tbody></table>\n\nsidebar",
     );
@@ -287,6 +305,7 @@ describe("htmlToMarkdown tables", () => {
       const html = `<html><body><p>visible</p>
         <${tag} id="content"><table><tr><td><a href="javascript:alert(1)">run</a></td></tr></table></${tag}>
       </body></html>`;
+
       expect(sanitizeHtml(html, "https://example.com")).not.toMatch(/javascript:/u);
       expect(htmlToMarkdown(html, "https://example.com")).toBe("visible");
     },
@@ -295,6 +314,7 @@ describe("htmlToMarkdown tables", () => {
 
 describe("layout table detection", () => {
   const grid = "<tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr>";
+
   const cases: readonly (readonly [string, "data" | "layout", string])[] = [
     ["a caption", "data", `<table border="1"><caption>c</caption>${grid}</table>`],
     ["a thead", "data", `<table border="1"><thead></thead>${grid}</table>`],
@@ -330,6 +350,7 @@ describe("layout table detection", () => {
       `<html><body><article>${table}</article></body></html>`,
       "https://example.com",
     );
+
     expect(sanitized.includes("<table")).toBe(verdict === "data");
   });
 
@@ -338,6 +359,7 @@ describe("layout table detection", () => {
       `<html><body><div id="hnmain"><article><table>${grid}</table></article></div></body></html>`,
       "https://example.com",
     );
+
     expect(sanitized).toBe(`<div><table>${grid}</table></div>`);
   });
 
@@ -346,6 +368,7 @@ describe("layout table detection", () => {
       `<html><body><article><table><tr><td><table>${grid}</table></td><td>side</td></tr></table></article></body></html>`,
       "https://example.com",
     );
+
     expect(sanitized.match(/<table/gu)).toHaveLength(1);
     expect(sanitized).toContain(`<table>${grid}</table>`);
   });
@@ -362,6 +385,7 @@ describe("sanitizeHtml URL attributes", () => {
       </p></article></body></html>`,
       "https://example.com/base/",
     );
+
     expect(sanitized).not.toContain("data:text/html");
     expect(sanitized).toContain('href="https://example.com/docs"');
     expect(sanitized).toContain('src="data:image/png;base64,AAAA"');
@@ -382,12 +406,14 @@ function edgeCaseBlock(text: string, index: number) {
   if (index % 500 === 499) {
     return { html: `<pre>\tcode ${index}</pre>`, markdown: `\tcode ${index}` };
   }
+
   if (index % 700 === 699) {
     return {
       html: `<ol><li><div><li>nested ${index}</li></div></li></ol>`,
       markdown: `2.  nested ${index}`,
     };
   }
+
   return { html: `<p>${text}&nbsp;</p>`, markdown: `${text}\u00A0` };
 }
 
@@ -413,6 +439,7 @@ describe("conversion failures", () => {
     "deep nesting converts or is HtmlConversionFailed, never a thrown error",
     () => {
       const deep = `${"<div>".repeat(3000)}x${"</div>".repeat(3000)}`;
+
       for (const converted of [
         Html.htmlToMarkdown(deep, "https://example.com"),
         Html.htmlToText(deep, "https://example.com"),
@@ -421,6 +448,7 @@ describe("conversion failures", () => {
           onFailure: (failure) => failure._tag,
           onSuccess: () => "Success",
         });
+
         expect(["Success", "HtmlConversionFailed"]).toContain(outcome);
       }
     },

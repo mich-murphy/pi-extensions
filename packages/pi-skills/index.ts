@@ -150,9 +150,11 @@ export function registerPiSkills(
   pi.on("input", (event, ctx) => {
     extension.recordManualSkill(event, ctx);
   });
+
   if (debug !== undefined) {
     pi.on("message_end", (event, ctx) => {
       const record = usageRecord(event.message, ctx.sessionManager.getSessionId());
+
       if (record !== undefined) {
         debug(record);
       }
@@ -166,6 +168,7 @@ export function isSubagentSession(ctx: Pick<GuardContext, "sessionManager">): bo
 
 function parentSessionId(sessionManager: SessionIdentity): string | undefined {
   const parent = sessionManager.getHeader?.()?.parentSession;
+
   return parent !== undefined && parent !== "" && !isAbsolute(parent) && !parent.endsWith(".jsonl")
     ? parent
     : undefined;
@@ -181,10 +184,12 @@ const GIT_TIMEOUT_MS = 5000;
 
 function createFailureReporter(): (ctx: UiContext, failure: string | undefined) => void {
   let lastFailure: string | undefined;
+
   return (ctx, failure) => {
     if (failure !== undefined && failure !== lastFailure) {
       ctx.ui.notify(failure, "error");
     }
+
     lastFailure = failure;
   };
 }
@@ -226,6 +231,7 @@ class PiSkills {
       contributed: result?.skillPaths.length ?? 0,
       durationMs: performance.now() - started,
     });
+
     return result;
   }
 
@@ -234,8 +240,10 @@ class PiSkills {
   ): Promise<{ skillPaths: string[] } | undefined> {
     if (!ctx.isProjectTrusted()) {
       this.contributedSkills = new Set();
+
       return undefined;
     }
+
     const loadedNativeNames = new Set(
       this.pi.getCommands().flatMap((command) => {
         if (
@@ -245,24 +253,31 @@ class PiSkills {
         ) {
           return [];
         }
+
         return [command.name.slice("skill:".length)];
       }),
     );
+
     const skillPaths = [
       ...(await discoverProjectSkillPaths(ctx.cwd, getAgentDir(), loadedNativeNames)),
     ];
+
     this.contributedSkills = new Set(skillPaths.map((path) => resourcePathId(path, ctx.cwd)));
+
     return skillPaths.length > 0 ? { skillPaths } : undefined;
   }
 
   learnSession(sessionManager: SessionIdentity): void {
     const id = sessionManager.getSessionId?.();
+
     if (sessionManager.getHeader !== undefined) {
       this.parentId = parentSessionId(sessionManager);
     }
+
     if (id === undefined || id === this.sessionId) {
       return;
     }
+
     this.forgetSession();
     this.sessionId = id;
     registerSession(id, this.policy);
@@ -282,8 +297,10 @@ class PiSkills {
     const resources = toggleResources(options, this.contributedSkills);
     this.resources = resources;
     const loaded = this.overridesFrom("load", this.store.load(), ctx);
+
     const hidden =
       loaded === undefined ? undefined : this.desiredHidden(disabledIds(loaded, resources));
+
     return "sections" in options
       ? this.filterSections(event, ctx, { hidden, started })
       : this.filterLegacy(event, ctx, hidden);
@@ -297,15 +314,18 @@ class PiSkills {
     const options = event.systemPromptOptions;
     const resources = promptResources(options, this.resources);
     const snapshot = promptSnapshot(ctx.sessionManager.buildSessionProjection(), resources);
+
     const plan = planPrompt({
       ...snapshot,
       resources,
       desiredHidden: run.hidden,
       reader: skillReader(options),
     });
+
     if (plan.hidden.size > 0) {
       hideResources(event, (path) => plan.hidden.has(resourcePathId(path, options.cwd)));
     }
+
     this.debug?.(
       runRecord({
         sessionId: ctx.sessionManager.getSessionId(),
@@ -318,6 +338,7 @@ class PiSkills {
         durationMs: performance.now() - run.started,
       }),
     );
+
     return plan.note === undefined ? undefined : { message: plan.note };
   }
 
@@ -329,18 +350,22 @@ class PiSkills {
     if (hidden === undefined || hidden.size === 0) {
       return undefined;
     }
+
     const result = hideResources(event, (path) =>
       hidden.has(resourcePathId(path, event.systemPromptOptions.cwd)),
     );
+
     if (FilteredPrompt.$is("options-filtered")(result)) {
       return undefined;
     }
+
     this.reportPromptFailure(
       ctx,
       result.unmatched.length > 0
         ? `pi-skills could not hide disabled ${result.unmatched.join(" and ")}: another extension may have changed the prompt.`
         : undefined,
     );
+
     return result.systemPrompt === event.systemPrompt
       ? undefined
       : { systemPrompt: result.systemPrompt };
@@ -353,30 +378,39 @@ class PiSkills {
     this.learnSession(ctx.sessionManager);
     const shell = event.toolName === "bash";
     const paths = shell ? this.subagentShellReads(event, ctx) : this.readPath(event, ctx);
+
     if (paths.length === 0) {
       return undefined;
     }
+
     const matcher = this.guardMatch(ctx);
+
     const blocked = [
       ...new Set(
         paths.flatMap((path) => {
           const match = matcher(path);
+
           return match === undefined ? [] : [match];
         }),
       ),
     ];
+
     if (blocked.length === 0) {
       return undefined;
     }
+
     const names = diagnosticText(blocked.join(", "));
     const it = blocked.length === 1 ? "it" : "them";
+
     if (this.stateUnavailable) {
       const is = blocked.length === 1 ? "is" : "are";
+
       return {
         block: true,
         reason: `pi-skills could not read its settings, so ${names} ${is} blocked for now.${shell ? " This command did not run." : ""} Continue without ${it}; the user has been told.`,
       };
     }
+
     return {
       block: true,
       reason: `${shell ? `This command reads ${names}, which the user disabled in /skills on purpose; it did not run.` : `The user disabled ${names} in /skills on purpose.`} Continue without ${it}, do not retry ${it} with any path or tool, and ask the user to re-enable ${it} only if you need ${it}.`,
@@ -388,10 +422,13 @@ class PiSkills {
     ctx: GuardContext,
   ): void {
     this.learnSession(ctx.sessionManager);
+
     if (event.source === "extension" || isSubagentSession(ctx)) {
       return;
     }
+
     const name = MANUAL_SKILL.exec(event.text.trim())?.groups?.name;
+
     if (name !== undefined) {
       this.manualSkills.add(name);
     }
@@ -400,45 +437,60 @@ class PiSkills {
   async openMenu(args: string, ctx: ToggleCommandContext): Promise<void> {
     if (args.trim()) {
       ctx.ui.notify("Usage: /skills", "error");
+
       return;
     }
+
     if (ctx.mode !== "tui") {
       ctx.ui.notify("`/skills` works only in the interactive TUI.", "error");
+
       return;
     }
+
     const loadedResources = toggleResources(ctx.getSystemPromptOptions(), this.contributedSkills);
+
     const resources = withNestedInstructions(
       loadedResources,
       await this.nestedInstructions(ctx.cwd, loadedResources),
     );
+
     if (resources.length === 0) {
       ctx.ui.notify("No instructions or skills that can be toggled are loaded.", "info");
+
       return;
     }
+
     const loaded = this.overridesFrom("load", this.store.load(), ctx);
+
     if (!loaded) {
       return;
     }
+
     let policy = new ResourcePolicy(loaded);
 
     const resourcesById = new Map<string, ToggleResource>(
       resources.map((resource) => [resource.id, resource]),
     );
+
     await ctx.ui.custom((tui, theme, keybindings, done) =>
       createContextMenu({
         resources,
         policy: () => policy,
         save: (id, value) => {
           const resource = resourcesById.get(id);
+
           if (resource === undefined) {
             return;
           }
+
           const stored = value === defaultToggleValue(resource) ? "default" : value;
+
           const saved = this.overridesFrom(
             "update",
             this.store.set(resource.id, stored, resource.origin),
             ctx,
           );
+
           if (saved !== undefined) {
             policy = new ResourcePolicy(saved);
           }
@@ -463,7 +515,9 @@ class PiSkills {
     if (this.answering) {
       return fallback;
     }
+
     this.answering = true;
+
     try {
       return decide(this.parentPolicy());
     } finally {
@@ -478,6 +532,7 @@ class PiSkills {
     const result = this.store.load();
     const loaded = ctx === undefined ? okValue(result) : this.overridesFrom("load", result, ctx);
     this.stateUnavailable = Result.isFailure(result);
+
     const matcher = disabledResourceMatcher(
       this.resources,
       loaded,
@@ -486,15 +541,18 @@ class PiSkills {
         ? undefined
         : (resource) => {
             const visible = parentVisible(parent, resource);
+
             return visible === undefined ? undefined : !visible;
           },
     );
+
     return (path) => matcher.match(path);
   }
 
   private guardMatch(ctx?: UiContext): (path: string) => string | undefined {
     const parent = this.parentPolicy();
     const own = this.ownMatch(ctx, parent);
+
     return parent === undefined ? own : (path) => parent.match(path) ?? own(path);
   }
 
@@ -505,25 +563,32 @@ class PiSkills {
         ({ kind, label }) =>
           resource.kind === "skill" && kind === "skill" && label === resource.name,
       );
+
     if (own === undefined) {
       return undefined;
     }
+
     if (own.kind === "skill" && this.parentId === undefined && this.manualSkills.has(own.label)) {
       return true;
     }
+
     const loaded = okValue(this.store.load());
+
     return loaded === undefined ? undefined : new ResourcePolicy(loaded).value(own) === "enabled";
   }
 
   private desiredHidden(own: ReadonlySet<ResourcePath>): ReadonlySet<ResourcePath> {
     const parent = this.parentPolicy();
+
     if (parent === undefined) {
       return own;
     }
+
     return new Set(
       this.resources
         .filter((resource) => {
           const visible = parentVisible(parent, resource);
+
           return visible === undefined ? own.has(resource.id) : !visible;
         })
         .map(({ id }) => id),
@@ -547,10 +612,13 @@ class PiSkills {
     loaded: readonly ToggleResource[],
   ): Promise<readonly ToggleResource[]> {
     const root = new RepositoryLocator().worktreeRoot(resourcePathId(cwd, cwd));
+
     if (root === undefined) {
       return [];
     }
+
     let stdout: string;
+
     try {
       const result = await this.pi.exec(
         "git",
@@ -564,14 +632,18 @@ class PiSkills {
         ],
         { timeout: GIT_TIMEOUT_MS },
       );
+
       if (result.code !== 0) {
         return [];
       }
+
       ({ stdout } = result);
     } catch {
       return [];
     }
+
     const known = new Set(loaded.map((resource) => resource.id));
+
     const paths = [
       ...new Set(
         stdout
@@ -580,6 +652,7 @@ class PiSkills {
           .map((path) => resourcePathId(path, root)),
       ),
     ];
+
     return Promise.all(
       paths
         .filter((id) => !known.has(id))
@@ -602,12 +675,15 @@ class PiSkills {
   ): ToggleOverrides | undefined {
     if (Result.isSuccess(result)) {
       this.reportStateFailure(ctx, undefined);
+
       return result.success;
     }
+
     this.reportStateFailure(
       ctx,
       `${result.failure.message}\n${STATE_FAILURE_CONSEQUENCE[operation]}`,
     );
+
     return undefined;
   }
 }
@@ -629,6 +705,7 @@ function disabledIds(
   resources: readonly ToggleResource[],
 ): ReadonlySet<ResourcePath> {
   const policy = new ResourcePolicy(loaded);
+
   return new Set(
     resources.flatMap((resource) => (policy.value(resource) === "disabled" ? [resource.id] : [])),
   );
@@ -641,6 +718,7 @@ function withNestedInstructions(
   const index = loaded.findIndex(
     (resource) => resource.origin === "project" && resource.kind === "skill",
   );
+
   return index === -1
     ? [...loaded, ...nested]
     : [...loaded.slice(0, index), ...nested, ...loaded.slice(index)];

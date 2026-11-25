@@ -14,6 +14,7 @@ describe("safe, actionable web errors", () => {
         status,
         statusText: `https://user:password@example.com/?token=secret\u001b[2J\u202e${"x".repeat(5000)}`,
       });
+
       expect(error._tag).toBe("HttpStatusRejected");
       expect(error.status).toBe(status);
       expect(error.message).toContain(String(status));
@@ -42,6 +43,7 @@ describe("safe, actionable web errors", () => {
     const error = new UnsupportedBinaryContent({
       mime: `application/secret-https://user:password@example.com/\u001b[2J${"x".repeat(5000)}`,
     });
+
     expect(error.message).toBe("Unsupported binary content. Try a more text-oriented URL.");
   });
 

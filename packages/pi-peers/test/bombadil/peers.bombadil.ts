@@ -10,14 +10,18 @@ export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/pro
 
 const TOKEN = /peer-msg-\d+/gu;
 const PROBE = /peers-probe taken=(?<taken>\d+) dup=(?<dup>\S+) final=(?<final>yes|no)/u;
+
 const view = extract((state: State) => {
   const rows = screenRows(state);
   const status = rows.find((row) => row.includes("Session communication:")) ?? null;
+
   const nonce =
     rows.map((row) => /nonce=(?<nonce>[0-9a-f]{32})/u.exec(row)?.groups?.nonce).find(Boolean) ??
     null;
+
   const probe = rows.map((row) => PROBE.exec(row)?.groups).find(Boolean);
   const peerRows = rows.filter((row) => row.includes("peer-msg-") && !PROBE.test(row));
+
   return {
     status,
     nonce,
@@ -30,7 +34,9 @@ const view = extract((state: State) => {
     ).length,
   };
 });
+
 const exitStatus = extract((state: State) => state.exitStatus);
+
 const connectedShown = (): boolean =>
   view.current?.status?.includes("enabled · connected") === true;
 
@@ -49,6 +55,7 @@ export const statusConnected: Formula = always(
 
 export const nonceStable: Formula = always(() => {
   const first = view.current?.nonce ?? null;
+
   return first === null ? true : always(() => [null, first].includes(view.current?.nonce ?? null));
 });
 

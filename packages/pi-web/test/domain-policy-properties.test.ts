@@ -10,37 +10,46 @@ import { parsePublicHttpUrl } from "../types";
 const settings = propertySettings(200);
 
 const LABELS = ["evil", "notevil", "com", "org", "a", "b", "EVIL", "Com"];
+
 const labelsGenerator = (minSize: number, maxSize: number) =>
   gs.arrays(gs.sampledFrom(LABELS), { minSize, maxSize });
 
 function toUrl(labels: readonly string[], trailingDot: boolean) {
   const parsed = parsePublicHttpUrl(`https://${labels.join(".")}${trailingDot ? "." : ""}/x`);
+
   if (Result.isFailure(parsed)) {
     throw new Error("generated url rejected");
   }
+
   return parsed.success;
 }
 
 const lower = (labels: readonly string[]) => labels.map((label) => label.toLowerCase());
+
 function matches(host: readonly string[], entry: readonly string[]): boolean {
   const h = lower(host);
   const e = lower(entry);
+
   return (
     e.length <= h.length && e.every((label, index) => label === h[h.length - e.length + index])
   );
 }
+
 function expectedAllowed(host: readonly string[], allow: string[][], deny: string[][]): boolean {
   if (deny.some((entry) => matches(host, entry))) {
     return false;
   }
+
   return allow.length === 0 || allow.some((entry) => matches(host, entry));
 }
+
 const toPolicy = (allow: string[][], deny: string[][]): DomainPolicy => ({
   allow: allow.map((entry) => entry.join(".").toLowerCase()),
   deny: deny.map((entry) => entry.join(".").toLowerCase()),
 });
 
 type Names = string[][];
+
 const okFor = (url: ReturnType<typeof toUrl>, allow: Names, deny: Names) =>
   Result.isSuccess(checkDomainPolicy(url, toPolicy(allow, deny)));
 
@@ -50,9 +59,11 @@ function checkVerdict(host: string[], allow: Names, deny: Names, dot: boolean): 
 
 function checkMonotonic(host: string[], allow: Names, deny: Names, extra: string[]): void {
   const url = toUrl(host, false);
+
   if (!okFor(url, allow, deny)) {
     assert.equal(okFor(url, allow, [...deny, extra]), false);
   }
+
   if (allow.length > 0 && okFor(url, allow, deny)) {
     assert.equal(okFor(url, [...allow, extra], deny), true);
   }

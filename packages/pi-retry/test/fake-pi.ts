@@ -12,6 +12,7 @@ import type {
 } from "../retry";
 
 type Command = Parameters<RetryRegistration["registerCommand"]>[1];
+
 type Sent = {
   readonly message: Parameters<RetryRegistration["sendMessage"]>[0];
   readonly options: Parameters<RetryRegistration["sendMessage"]>[1];
@@ -63,9 +64,11 @@ export function assistantEntry(
     stopReason,
     timestamp: 0,
   };
+
   if (errorMessage !== undefined) {
     message.errorMessage = errorMessage;
   }
+
   return {
     sourceEntry: { type: "message", id, parentId: null, timestamp: "", message },
     messages: [message],
@@ -74,6 +77,7 @@ export function assistantEntry(
 
 export function userEntry(id: string): ProjectedSessionEntry {
   const message: AgentMessage = { role: "user", content: "go", timestamp: 0 };
+
   return {
     sourceEntry: { type: "message", id, parentId: null, timestamp: "", message },
     messages: [message],
@@ -121,6 +125,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
     events: {
       on: (channel, handler) => {
         channels.set(channel, handler);
+
         return () => channels.delete(channel);
       },
     },
@@ -141,9 +146,11 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
 
   const handler = <K extends keyof RetryHandlers>(name: K): RetryHandlers[K] => {
     const registered = handlers[name];
+
     if (registered === undefined) {
       throw new Error(`test setup: no ${name} handler registered`);
     }
+
     return registered;
   };
 
@@ -153,6 +160,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
       now: () => clock,
       every: (_intervalMs: number, tick: () => void) => {
         timers.add(tick);
+
         return () => {
           timers.delete(tick);
         };
@@ -198,14 +206,18 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
     },
     command: async (args: string) => {
       const command = commands.get("retry");
+
       if (command === undefined) {
         throw new Error("test setup: no retry command registered");
       }
+
       await command.handler(args, ctx);
+
       return command;
     },
     advanceTo: (time: number) => {
       clock = time;
+
       for (const tick of timers) {
         tick();
       }
@@ -218,10 +230,12 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
     },
     widgetText: (key: string) => {
       const widget = widgets.get(key);
+
       return widget === undefined ? undefined : renderText(widget(tui, plainTheme));
     },
     renderMarker: (content: Parameters<MarkerRenderer>[0]["content"], customType = "retry") => {
       const renderer = renderers.get(customType);
+
       return renderer === undefined
         ? undefined
         : renderText(renderer({ content }, renderOptions, plainTheme));

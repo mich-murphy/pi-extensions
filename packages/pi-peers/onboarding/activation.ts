@@ -13,8 +13,10 @@ async function reconnectedOnceWithoutReplay(reconnect: Reconnect | undefined): P
   if (reconnect === undefined) {
     return false;
   }
+
   try {
     await reconnect(true);
+
     return true;
   } catch {
     return false;
@@ -30,6 +32,7 @@ async function activateSaved(
   const restart = await requestManagedRestart(setup);
   step(STEPS[1]);
   const connected = await reconnectedOnceWithoutReplay(reconnect);
+
   if (restart === "acknowledged" && connected) {
     return {
       ok: true,
@@ -41,6 +44,7 @@ async function activateSaved(
       ],
     };
   }
+
   return failed(
     "Activation failed",
     restart === "acknowledged"

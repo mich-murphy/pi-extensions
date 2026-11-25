@@ -19,9 +19,11 @@ describe("normalizeErrorText", () => {
     const first = normalizeErrorText(
       "ENOENT: '/tmp/a/0f1e2d3c-0000-4000-8000-000000000001/z5.png'",
     );
+
     const second = normalizeErrorText(
       "ENOENT: '/tmp/b/9a8b7c6d-0000-4000-8000-000000000002/zr60.png'",
     );
+
     expect(first).toBe(second);
   });
 

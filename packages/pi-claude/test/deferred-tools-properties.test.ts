@@ -19,6 +19,7 @@ const HASHED = /^mcp__pi__pi_[0-9a-f]{48}$/u;
 
 const SEPARATORS = [".", "_", "-", " ", "/", ":", "日", "é", "😀", ""];
 const COMPAT = ["ａ", "Ａ", "ﬁ", "①", "é", "\u0065\u0301", "ǆ", "Ǆ", "İ", "ß", "a", "A", "."];
+
 const VARIANTS: readonly ((name: string) => string)[] = [
   (name) => name.toUpperCase(),
   (name) => name.toLowerCase(),
@@ -26,6 +27,7 @@ const VARIANTS: readonly ((name: string) => string)[] = [
   (name) => name.normalize("NFD"),
   (name) => name.normalize("NFC"),
 ];
+
 const FIXED = [
   "read",
   "a.b",
@@ -47,12 +49,14 @@ const nameGen = gs.oneOf(
   gs.sampledFrom(FIXED),
   gs.composite((tc) => {
     const base = "x".repeat(tc.draw(gs.integers({ minValue: 50, maxValue: 70 })));
+
     return base + tc.draw(gs.sampledFrom(SEPARATORS)) + tc.draw(gs.text({ maxSize: 5 }));
   }),
   gs.arrays(gs.sampledFrom(COMPAT), { minSize: 1, maxSize: 4 }).map((parts) => parts.join("")),
   gs.composite((tc) => {
     const left = tc.draw(gs.text({ minSize: 1, maxSize: 4 }));
     const right = tc.draw(gs.text({ minSize: 1, maxSize: 4 }));
+
     return left + tc.draw(gs.sampledFrom(SEPARATORS)) + right;
   }),
 );
@@ -61,6 +65,7 @@ function drawNames(tc: TestCase): string[] {
   const drawn = tc.draw(gs.arrays(nameGen, { minSize: 1, maxSize: 6 }));
   const picks = tc.draw(gs.arrays(gs.integers({ minValue: 0, maxValue: 4 }), { maxSize: 4 }));
   const variants = picks.map((pick, index) => VARIANTS[pick]?.(drawn[index % drawn.length] ?? "x"));
+
   return [...new Set([...drawn, ...variants])].filter(
     (name): name is string => name !== undefined && name.length > 0,
   );
@@ -78,12 +83,14 @@ function assertDistinctAndWellFormed(names: readonly string[]): void {
   );
   const mapped = catalog.map((entry) => entry.sdkName);
   assert.equal(new Set(mapped).size, names.length, JSON.stringify(names));
+
   for (const [index, sdkName] of mapped.entries()) {
     const name = names[index] ?? "";
     assert.match(sdkName, SDK_NAME);
     assert.ok(sdkName.length <= 64, sdkName);
     assert.ok(sdkName.startsWith(PREFIX), sdkName);
     const expectsPlain = PLAIN.test(name) && !name.startsWith("pi_");
+
     if (expectsPlain) {
       assert.equal(sdkName, PREFIX + name);
     } else {
@@ -95,9 +102,11 @@ function assertDistinctAndWellFormed(names: readonly string[]): void {
 function assertOrderIndependent(names: readonly string[]): void {
   const forward = new Map(compile(names).map((entry) => [entry.declaration.name, entry.sdkName]));
   const again = new Map(compile(names).map((entry) => [entry.declaration.name, entry.sdkName]));
+
   const reversed = new Map(
     compile(names.toReversed()).map((entry) => [entry.declaration.name, entry.sdkName]),
   );
+
   const alone = names.map((name) => compile([name])[0]?.sdkName);
   assert.deepEqual(again, forward);
   assert.deepEqual(reversed, forward);
@@ -110,6 +119,7 @@ function assertOrderIndependent(names: readonly string[]): void {
 function assertRoundTrip(names: readonly string[]): void {
   const catalog = compile(names);
   const capture = createDeferredCallCapture(catalog);
+
   for (const entry of catalog) {
     void deliverToolUse(capture.hook, {
       id: entry.sdkName,
@@ -117,6 +127,7 @@ function assertRoundTrip(names: readonly string[]): void {
       input: { path: "p" },
     });
   }
+
   assert.equal(capture.unexpectedToolCalls, 0);
   assert.deepEqual(
     capture.calls.map((call) => call.name),

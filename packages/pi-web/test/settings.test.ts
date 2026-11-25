@@ -24,6 +24,7 @@ describe("parseSettings", () => {
       [PROVIDERS_ENV]: "parallel, exa",
       [EXA_API_KEY_ENV]: "exa-key",
     });
+
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["parallel", "exa"]);
     expect(settings.success.search.defaultProviders).toBe(false);
@@ -52,6 +53,7 @@ describe("parseSettings", () => {
       [PROVIDERS_ENV]: "exa,brave",
       [EXA_API_KEY_ENV]: "exa-\nkey",
     });
+
     assert(Result.isSuccess(settings));
     expect(settings.success.search.providers).toStrictEqual(["exa", "brave"]);
     expect(settings.success.search.defaultProviders).toBe(false);
@@ -83,6 +85,7 @@ describe("parseSettings", () => {
       PI_WEB_FETCH_ALLOW_DOMAINS: "docs.example.com, Example.org , example.org",
       PI_WEB_FETCH_DENY_DOMAINS: "evil.example",
     });
+
     assert(Result.isSuccess(settings));
     expect(settings.success.fetch.allowDomains).toStrictEqual(["docs.example.com", "example.org"]);
     expect(settings.success.fetch.denyDomains).toStrictEqual(["evil.example"]);

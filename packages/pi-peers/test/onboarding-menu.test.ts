@@ -15,6 +15,7 @@ import type { LocalPlan } from "../onboarding/plan.js";
 import { dialog } from "./onboarding-fixtures.js";
 
 const keys = { confirm: "Enter", cancel: "Esc" };
+
 const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
   mode: "local",
   choices: defaultChoices("Menu Host"),
@@ -28,15 +29,19 @@ const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 function harness(blocked?: string, state = draft()) {
   const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
+
   const options: SetupFormOptions = {
     draft: state,
     details: () => "Account-wide scope\nPeer messages may wake the model",
     apply,
   };
+
   if (blocked !== undefined) {
     options.blocked = blocked;
   }
+
   const form = setupForm(options);
+
   const root: Screen = {
     kind: "list",
     title: "Peers",
@@ -49,9 +54,12 @@ function harness(blocked?: string, state = draft()) {
       },
     ],
   };
+
   const model = new MenuModel(root, { consented });
+
   return { model, apply, consented, form };
 }
+
 const rows = (screen: Screen) => (screen.kind === "list" ? screen.rows() : []);
 
 describe("peers menu model", () => {
@@ -171,6 +179,7 @@ function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shar
   const apply = vi.fn<(plan: LocalPlan) => void>();
   const consented = vi.fn<(action: string) => void>();
   const keep = vi.fn<() => void>();
+
   const formOptions: ManageFormOptions = {
     saved,
     note: "Peers is set up on this computer as saved-host.",
@@ -186,13 +195,17 @@ function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shar
       },
     ],
   };
+
   if (options.fixedMachine !== undefined) {
     formOptions.fixedMachine = options.fixedMachine;
   }
+
   if (options.rebuild !== false) {
     formOptions.rebuild = (choices) => localPlan(choices, "/private/owned/s");
   }
+
   const form = manageForm(formOptions);
+
   const root: Screen = {
     kind: "list",
     title: "Peers",
@@ -205,10 +218,13 @@ function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shar
       },
     ],
   };
+
   const model = new MenuModel(root, { consented });
   model.activate("setup");
+
   return { model, apply, consented, keep, saved };
 }
+
 const row = (screen: Screen, id: string) => rows(screen).find((item) => item.id === id);
 
 describe("Manage form", () => {
@@ -256,6 +272,7 @@ describe("Manage form", () => {
     const { model } = manageHarness({
       fixedMachine: "Can't change here: the pair names it.",
     });
+
     const machine = row(model.top, "machineId");
     expect(machine).toMatchObject({
       value: "saved-host",

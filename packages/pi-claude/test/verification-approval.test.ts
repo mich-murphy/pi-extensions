@@ -11,8 +11,10 @@ describe("verification model-prompt approval gate (offline)", () => {
     { timeout: 30_000 },
     async (action) => {
       const evidence = await mkdtemp("/tmp/pi-sdk-approval-test-");
+
       const run = (operation: string) =>
         spawnSync("python3", [helper, operation, "--evidence", evidence], { encoding: "utf8" });
+
       try {
         expect(run("launch").status).toBe(0);
         const result = run(action);

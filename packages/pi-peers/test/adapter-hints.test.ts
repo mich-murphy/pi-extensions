@@ -3,7 +3,9 @@ import { sendHint } from "../adapter/hints.js";
 import type { SendOutcome } from "../adapter/send.js";
 
 type Refused = Extract<SendOutcome, { tag: "not_admitted" }>;
+
 type Unsure = Extract<SendOutcome, { tag: "unknown" }>;
+
 const refusedCodes = Object.keys({
   forbidden: true,
   unavailable: true,
@@ -17,6 +19,7 @@ const refusedCodes = Object.keys({
   cancelled: true,
   overloaded: true,
 } satisfies Record<Refused["code"], true>);
+
 const unsureCodes = Object.keys({
   unavailable: true,
   protocol_error: true,
@@ -50,6 +53,7 @@ describe("send hints say what happened to the message", () => {
     const safe = refusedCodes.filter((code) =>
       /cannot duplicate/u.test(sendHint({ tag: "not_admitted", code })),
     );
+
     expect(safe).toStrictEqual(["no_route", "link_down", "expired"]);
   });
   test("a link_down refusal names the machine and says the session may still exist", () => {

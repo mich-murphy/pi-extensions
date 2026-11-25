@@ -26,8 +26,10 @@ import {
 const decodeNormalizedOutput = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
 const CAP = 10 * 1024 * 1024;
+
 const PREFIX_NOTE =
   "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false]";
+
 const END_NOTE =
   "[webfetch truncated: reason=download_limit limit_bytes=10485760 bytes_read=10485760 complete=false; end of downloaded content]";
 
@@ -58,13 +60,16 @@ async function project(
   responseTruncated = false,
 ) {
   const page = textResult(text);
+
   const options: ProjectionOptions = {
     store: liveToolOutputStore(),
     secrets,
   };
+
   if (offset !== undefined) {
     options.offset = offset;
   }
+
   return Effect.runPromise(
     projectFetchResult(
       responseTruncated
@@ -113,11 +118,14 @@ describe("webfetch offset paging", () => {
     const small = { text: "small page" };
     await expect(project(small.text, 0)).resolves.toStrictEqual(await project(small.text));
     const large = "line\n".repeat(30_000);
+
     const withPath = async (offset?: number) => {
       const result = await project(large, offset);
       const path = String(result.details.fullOutputPath);
+
       return decodeNormalizedOutput(JSON.stringify(result).replaceAll(path, "PATH"));
     };
+
     await expect(withPath(0)).resolves.toStrictEqual(await withPath());
     expect(JSON.stringify(await project(large))).not.toContain('"offset"');
   });
@@ -169,6 +177,7 @@ describe("webfetch offset paging", () => {
       },
       body: FetchPageBody.Image({ data: Buffer.from([1, 2, 3, 4]) }),
     };
+
     const options = { store: liveToolOutputStore(), secrets: [] };
     await expect(
       Effect.runPromise(projectFetchResult(image, { ...options, offset: 99 })),
@@ -182,9 +191,11 @@ describe("webfetch offset paging", () => {
     const first = textOf(await Effect.runPromise(projectProviderFetchedPage(page, options)));
     expect(first).toMatch(/^\[Direct fetch was blocked/u);
     expect(first).toContain("offset=51200 to continue.]");
+
     const second = await Effect.runPromise(
       projectProviderFetchedPage(page, { ...options, offset: 51_200 }),
     );
+
     expect(textOf(second)).toMatch(
       /^\[Direct fetch was blocked.*\n\nm{8800}\n\n\[Showing bytes 51200–60000 of 60000\]$/su,
     );
@@ -195,6 +206,7 @@ describe("webfetch offset paging", () => {
 describe("webfetch tool offset parameter", () => {
   const SECRET = "sekrit-key";
   const settings = settingsFrom({ EXA_API_KEY: SECRET });
+
   const tool = (text: string) =>
     createWebFetchTool({
       settings,
@@ -211,8 +223,10 @@ describe("webfetch tool offset parameter", () => {
 
   test("accepts non-negative integers only", () => {
     const { parameters } = tool("x");
+
     const check = (offset: string | number) =>
       Value.Check(parameters, { url: "https://example.com", offset });
+
     expect(check(0)).toBe(true);
     expect(check(1234)).toBe(true);
     expect(check(-1)).toBe(false);

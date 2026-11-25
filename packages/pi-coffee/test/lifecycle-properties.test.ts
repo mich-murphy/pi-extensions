@@ -16,6 +16,7 @@ const ACTIONS = [
   "lateExit",
   "lateFail",
 ] as const;
+
 type Action = (typeof ACTIONS)[number];
 
 class Child {
@@ -55,9 +56,11 @@ function setup() {
     spawnCaffeinate: () => {
       const child = new Child();
       children.push(child);
+
       return child;
     },
   });
+
   return { pi, children };
 }
 
@@ -87,8 +90,10 @@ function exitModel(model: Model, action: "exitCurrent" | "failCurrent"): void {
   if (model.heldChildIndex === undefined) {
     return;
   }
+
   model.heldChildIndex = undefined;
   model.notes += 1;
+
   if (action === "exitCurrent" && model.budget > 0) {
     spawn(model, model.budget - 1);
   }
@@ -97,7 +102,9 @@ function exitModel(model: Model, action: "exitCurrent" | "failCurrent"): void {
 function targets(env: ReturnType<typeof setup>, model: Model, pick: number) {
   const current =
     model.heldChildIndex === undefined ? undefined : env.children[model.heldChildIndex];
+
   const released = env.children.filter((child) => child !== current);
+
   return { current, late: released[pick % Math.max(released.length, 1)] };
 }
 
@@ -122,12 +129,14 @@ function apply(
     lateExit: () => late?.exit(),
     lateFail: () => late?.fail(),
   };
+
   run[action]();
 }
 
 function assertLifecycle(actions: readonly { action: Action; pick: number }[]): void {
   const env = setup();
   const model: Model = { heldChildIndex: undefined, budget: 0, spawns: 0, notes: 0 };
+
   for (const { action, pick } of actions) {
     const before = model.notes;
     const target = targets(env, model, pick);
@@ -138,13 +147,16 @@ function assertLifecycle(actions: readonly { action: Action; pick: number }[]): 
     assert.ok(model.notes >= before);
     const live = env.children.filter((child) => child.live);
     assert.ok(live.length <= 1, "at most one live child");
+
     const heldChild =
       model.heldChildIndex === undefined ? undefined : env.children[model.heldChildIndex];
+
     assert.deepEqual(
       live,
       heldChild?.live === true ? [heldChild] : [],
       "live child is the held one",
     );
+
     if (action === "shutdown" || action === "settleIdle") {
       assert.equal(live.length, 0, "no live child after release");
     }
@@ -163,6 +175,7 @@ describe("coffee lifecycle properties", () => {
           { maxSize: 40 },
         ),
       );
+
       assertLifecycle(actions);
     })
       .settings(propertySettings())

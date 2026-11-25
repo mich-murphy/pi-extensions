@@ -10,11 +10,13 @@ import { SdkResultError } from "../sdk/errors";
 import { contextFixture, drain, sonnet } from "./fixtures";
 
 const settings = propertySettings(200);
+
 const context = contextFixture({
   systemPrompt: "s",
   messages: [{ role: "user", content: "Hello" }],
   tools: [],
 });
+
 const TERMINALS: readonly BridgeEvent[] = [
   { type: "done", reason: "stop" },
   { type: "done", reason: "length" },
@@ -39,14 +41,17 @@ function drawUsage(tc: TestCase): TokenUsage {
   const cacheWrite = tokens(tc);
   const split = tc.draw(gs.sampledFrom(["none", "all", "zero"] as const));
   const base = { input: tokens(tc), output: tokens(tc), cacheRead: tokens(tc), cacheWrite };
+
   return split === "none" ? base : { ...base, cacheWrite1h: split === "all" ? cacheWrite : 0 };
 }
 
 function drawEvent(tc: TestCase): BridgeEvent {
   const kind = tc.draw(gs.sampledFrom(["text_delta", "thinking_delta", "usage"] as const));
+
   if (kind === "usage") {
     return { type: "usage", usage: drawUsage(tc) };
   }
+
   return { type: kind, text: tc.draw(gs.sampledFrom(["a", "b", "", "ab"])) };
 }
 
@@ -63,12 +68,15 @@ function checkRun(
   const ends = events.filter((event) => event.type === "done" || event.type === "error");
   assert.equal(ends.length, 1);
   assert.equal(events.at(-1), ends[0]);
+
   const text = message.content
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("");
+
   const thinking = message.content
     .flatMap((block) => (block.type === "thinking" ? [block.thinking] : []))
     .join("");
+
   assert.equal(text, deltas(before, "text_delta"));
   assert.equal(thinking, deltas(before, "thinking_delta"));
   assert.equal(message.stopReason === "toolUse", terminal.type === "tool_calls");
@@ -90,8 +98,10 @@ async function collect(events: readonly BridgeEvent[]) {
   async function* run(): AsyncGenerator<BridgeEvent> {
     yield* events;
   }
+
   const stream = createAgentSdkStream({ model: sonnet, context, options: {}, run });
   const seen = await drain(stream);
+
   return { events: seen, message: await stream.result() };
 }
 
@@ -101,9 +111,11 @@ describe("bridge writer properties", () => {
       const before = tc.draw(gs.arrays(gs.composite(drawEvent), { maxSize: 8 }));
       assert.ok(before.length <= 8);
       const terminal = tc.draw(gs.sampledFrom(TERMINALS));
+
       const after = Array.from({ length: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) }, () =>
         drawEvent(tc),
       );
+
       checkRun(before, terminal, await collect([...before, terminal, ...after]));
     })
       .settings(settings)

@@ -61,24 +61,29 @@ function skill(root: string, name: string, description: string, manual = false):
 
 const fixture: BombadilFixture = (root) => {
   write(join(root.agent, "AGENTS.md"), "# Personal rules for every project\n");
+
   for (const [name, description] of GLOBAL_SKILLS) {
     skill(join(root.agent, "skills"), name, description);
   }
+
   skill(join(root.home, ".agents", "skills"), "home-notes", "Keep notes in the home folder.");
   skill(join(root.agent, "skills"), "zulu-manual", "Run only when asked by name.", true);
 
   write(join(root.root, "CLAUDE.md"), "# Parent folder conventions\n");
   write(join(root.cwd, "AGENTS.md"), "# Working agreement for this repository\n");
   write(join(root.cwd, "docs", "AGENTS.md"), "# Documentation style guide\n");
+
   for (const [directory, name, description] of PROJECT_SKILLS) {
     skill(join(root.cwd, directory), name, description);
   }
+
   const git = (...args: string[]): void => {
     execFileSync("git", ["-C", root.cwd, ...args], {
       stdio: "ignore",
       env: { HOME: root.home, PATH: process.env.PATH ?? "" },
     });
   };
+
   git("init", "--quiet");
   git("add", "AGENTS.md", "docs/AGENTS.md");
 

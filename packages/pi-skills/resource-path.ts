@@ -10,6 +10,7 @@ const ResourcePathSchema = Schema.String.pipe(
   ),
   Schema.brand("ResourcePath"),
 );
+
 const decodeResourcePath = Schema.decodeUnknownOption(ResourcePathSchema);
 
 export type ResourcePath = typeof ResourcePathSchema.Type;
@@ -24,6 +25,7 @@ export function parseResourcePath(path: string): ResourcePath | undefined {
 
 export function pathIsInsideOrEqual(path: string, parent: string): boolean {
   const difference = relative(parent, path);
+
   return (
     difference === "" ||
     (difference !== ".." && !difference.startsWith(`..${sep}`) && !isAbsolute(difference))

@@ -10,6 +10,7 @@ import { installFakeClaude } from "./fake-claude-cli";
 import type { FakeClaude, FakeClaudeBehaviour } from "./fake-claude-cli";
 
 type Notice = { readonly text: string; readonly level: string | undefined };
+
 type CommandOptions = Parameters<ClaudeRegistration["registerCommand"]>[1];
 
 const quietContext: ClaudeContext = { hasUI: false, ui: { notify: () => undefined } };
@@ -25,6 +26,7 @@ function loadExtension() {
   registerClaudeProvider({
     registerCommand: (name, options) => {
       commands.set(name, options.handler);
+
       if (options.getArgumentCompletions !== undefined) {
         completions.set(name, options.getArgumentCompletions);
       }
@@ -36,6 +38,7 @@ function loadExtension() {
     registerProvider: () => undefined,
     events: { emit: () => undefined },
   });
+
   return { commands, completions, handlers };
 }
 
@@ -45,6 +48,7 @@ async function runCommand(args: string, hasUI = true): Promise<Notice[]> {
   assert(command !== undefined, "test setup: /claude is not registered");
   const notices: Notice[] = [];
   await command(args, { hasUI, ui: { notify: (text, level) => notices.push({ text, level }) } });
+
   return notices;
 }
 
@@ -53,6 +57,7 @@ describe("provider commands", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+
     for (const directory of scratch.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -62,6 +67,7 @@ describe("provider commands", () => {
     const claude = installFakeClaude(behaviour);
     scratch.push(claude.directory);
     vi.stubEnv("PI_CLAUDE_PATH", claude.path);
+
     return claude;
   }
 

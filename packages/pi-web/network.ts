@@ -25,6 +25,7 @@ const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind
   ["application/x-javascript", "text"],
   ["application/ecmascript", "text"],
 ]);
+
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const UTF8_LABEL = "utf-8";
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
@@ -147,12 +148,15 @@ export class HttpStatusRejected extends Schema.TaggedError<HttpStatusRejected>()
   override get message(): string {
     const label = this.statusText ? STATUS_CODES[this.status] : undefined;
     const summary = `Request failed (${this.status}${label === undefined ? "" : ` ${label}`})`;
+
     if (this.status === 401) {
       return `${summary}. The site requires authentication; webfetch does not use your browser login. Use a public page; never put credentials in the URL.`;
     }
+
     if (this.status === 404) {
       return `${summary}. The site could not find this page. Check the URL or search for a current source.`;
     }
+
     return summary;
   }
 }
@@ -196,46 +200,60 @@ const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "tim
     ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
     ["ERR_TLS_CERT_SIGNATURE_ALGORITHM_UNSUPPORTED", "tls"],
   ]);
+
 const MAX_CAUSE_DEPTH = 8;
 
 export function sanitizeNetworkFailure(cause: unknown): { readonly code: string } | undefined {
   let current = cause;
+
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
     const decoded = decodeNetworkCause(current);
+
     if (Option.isNone(decoded)) {
       return undefined;
     }
+
     const { code, cause: next } = decoded.value;
+
     if (Schema.is(Schema.String)(code) && networkCodeKind(code)) {
       return { code };
     }
+
     current = next;
   }
+
   return undefined;
 }
 
 export function describeNetworkFailure(cause: unknown, hostname: string): string {
   const code = sanitizeNetworkFailure(cause)?.code;
   const kind = code === undefined ? undefined : networkCodeKind(code);
+
   if (kind === undefined) {
     return `Request to ${hostname} failed`;
   }
+
   switch (kind) {
     case "dns": {
       return `Could not resolve host ${hostname}`;
     }
+
     case "refused": {
       return `Connection refused by ${hostname}`;
     }
+
     case "reset": {
       return `Connection reset by ${hostname}`;
     }
+
     case "timeout": {
       return `Connection to ${hostname} timed out`;
     }
+
     case "tls": {
       return `TLS certificate error for ${hostname} (${code ?? ""})`;
     }
+
     default: {
       return absurd(kind);
     }
@@ -246,9 +264,11 @@ function networkCodeKind(
   code: string,
 ): "dns" | "refused" | "reset" | "timeout" | "tls" | undefined {
   const kind = NETWORK_CODE_KINDS.get(code);
+
   if (kind !== undefined) {
     return kind;
   }
+
   return undefined;
 }
 
@@ -265,15 +285,18 @@ export function parseContentType(contentTypeHeader: string | null | undefined): 
   const mime = mimePart.trim().toLowerCase();
   const charsetMatch = /(?:^|;)\s*charset\s*=\s*['"]?(?<charset>[^;'"]+)/iu.exec(contentType);
   const charset = charsetMatch?.groups?.charset?.trim().toLowerCase();
+
   return { contentType, mime, charset, kind: classifyMimeType(mime) };
 }
 
 export function classifyMimeType(mime: string): ContentKind {
   const normalized = mime.trim().toLowerCase();
   const exactKind = MIME_KINDS.get(normalized);
+
   if (exactKind !== undefined) {
     return exactKind;
   }
+
   if (
     normalized.startsWith("text/") ||
     normalized.endsWith("+xml") ||
@@ -281,6 +304,7 @@ export function classifyMimeType(mime: string): ContentKind {
   ) {
     return "text";
   }
+
   return "binary";
 }
 
@@ -293,6 +317,7 @@ export function decodeTextBuffer(
     new TextDecoder(label).decode(buffer, {
       stream: options.partial === true && label === UTF8_LABEL,
     });
+
   const decodeOrUndefinedForUnknownLabel = (label: string) => {
     try {
       return { text: decode(label), decoder: label };
@@ -300,7 +325,9 @@ export function decodeTextBuffer(
       return undefined;
     }
   };
+
   const normalizedCharset = normalizeCharset(charset);
+
   return (
     (normalizedCharset === undefined
       ? undefined
@@ -315,13 +342,17 @@ function normalizeCharset(charset: string | undefined): string | undefined {
   if (charset === undefined) {
     return undefined;
   }
+
   const normalized = charset.trim().toLowerCase();
+
   if (!normalized) {
     return undefined;
   }
+
   if (normalized === "utf8") {
     return UTF8_LABEL;
   }
+
   return normalized;
 }
 
@@ -354,34 +385,42 @@ function readCapped(
   overflow: "fail" | "truncate",
 ): Effect.Effect<{ readonly body: Buffer; readonly truncated: boolean }, ResponseBodyReadFailed> {
   const { body } = response;
+
   if (body === null) {
     return Effect.succeed({ body: Buffer.alloc(0), truncated: false });
   }
+
   return Effect.acquireUseRelease(
     Effect.sync(() => body.getReader()),
     (reader) =>
       Effect.gen(function* () {
         const chunks: Buffer[] = [];
         let bytes = 0;
+
         while (true) {
           const chunk = yield* Effect.tryPromise({
             try: async () => reader.read(),
             catch: (cause) => new ResponseBodyReadFailed({ cause }),
           });
+
           if (chunk.done) {
             return { body: Buffer.concat(chunks), truncated: false };
           }
+
           const view = Buffer.from(
             chunk.value.buffer,
             chunk.value.byteOffset,
             chunk.value.byteLength,
           );
+
           if (bytes + view.byteLength > maxBytes) {
             if (overflow === "truncate") {
               chunks.push(view.subarray(0, maxBytes - bytes));
             }
+
             return { body: Buffer.concat(chunks), truncated: true };
           }
+
           bytes += view.byteLength;
           chunks.push(view);
         }
@@ -424,6 +463,7 @@ const NON_PUBLIC_RANGES: readonly (readonly [
 ];
 
 const NON_PUBLIC_ADDRESSES = new BlockList();
+
 for (const [network, prefixLength, family] of NON_PUBLIC_RANGES) {
   NON_PUBLIC_ADDRESSES.addSubnet(network, prefixLength, family);
 }
@@ -431,28 +471,36 @@ for (const [network, prefixLength, family] of NON_PUBLIC_RANGES) {
 export function isPrivateOrLocalIp(input: string): boolean {
   const ip = stripIpv6Brackets(input);
   const version = isIP(ip);
+
   if (version === 0) {
     return false;
   }
+
   if (NON_PUBLIC_ADDRESSES.check(ip, version === 4 ? "ipv4" : "ipv6")) {
     return true;
   }
+
   const embedded = version === 6 ? embeddedIpv4(ip) : undefined;
+
   return embedded !== undefined && NON_PUBLIC_ADDRESSES.check(embedded, "ipv4");
 }
 
 function ipv6Groups(ip: string): number[] {
   let text = ip.split("%")[0] ?? ip;
   const tail = /(?<a>\d+)\.(?<b>\d+)\.(?<c>\d+)\.(?<d>\d+)$/u.exec(text)?.groups;
+
   if (tail) {
     const [a = 0, b = 0, c = 0, d = 0] = [tail.a, tail.b, tail.c, tail.d].map(Number);
     text = `${text.slice(0, text.lastIndexOf(":") + 1)}${(a * 256 + b).toString(16)}:${(c * 256 + d).toString(16)}`;
   }
+
   const [head = "", rest] = text.split("::");
   const front = head ? head.split(":") : [];
   const back = rest === undefined || rest === "" ? [] : rest.split(":");
+
   const fill =
     rest === undefined ? [] : Array.from({ length: 8 - front.length - back.length }, () => "0");
+
   return [...front, ...fill, ...back].map((group) => Number.parseInt(group, 16));
 }
 
@@ -460,15 +508,19 @@ function embeddedIpv4(ip: string): string | undefined {
   const g = ipv6Groups(ip);
   const siit = g.slice(0, 4).every((group) => group === 0) && g[4] === 0xff_ff && g[5] === 0;
   let pair: (number | undefined)[] = [];
+
   if (siit) {
     pair = [g[6], g[7]];
   } else if (g[0] === 0x20_02) {
     pair = [g[1], g[2]];
   }
+
   const [high, low] = pair;
+
   if (high === undefined || low === undefined) {
     return undefined;
   }
+
   return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 }
 
@@ -504,11 +556,14 @@ export class DnsLookup extends Context.Service<
     DnsLookup.of({
       lookup: async (hostname) => {
         const records = await dnsLookup(hostname, { all: true, order: "verbatim" });
+
         return records.map((record) => {
           const family = isIP(record.address);
+
           if (family !== 4 && family !== 6) {
             throw new Error("DNS returned a non-IP address");
           }
+
           return { address: record.address, family };
         });
       },
@@ -535,30 +590,37 @@ export class PublicWebClient extends Context.Service<
         PublicWebRequestFailed | PrivateHostBlocked | PrivateIpBlocked
       > => {
         const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
+
         if (hostname === "localhost" || hostname.endsWith(".localhost")) {
           return Effect.fail(new PrivateHostBlocked());
         }
+
         const literalFamily = isIP(hostname);
+
         if (literalFamily === 4 || literalFamily === 6) {
           return isPrivateOrLocalIp(hostname)
             ? Effect.fail(new PrivateIpBlocked())
             : Effect.succeed([{ address: hostname, family: literalFamily }]);
         }
+
         return Effect.gen(function* () {
           const records = yield* Effect.tryPromise({
             try: async () => dns.lookup(hostname),
             catch: (cause) =>
               new PublicWebRequestFailed({ hostname, cause: sanitizeNetworkFailure(cause) }),
           });
+
           if (records.length === 0) {
             return yield* new PublicWebRequestFailed({
               hostname,
               cause: { code: "ENOTFOUND" },
             });
           }
+
           if (records.some((record) => isPrivateOrLocalIp(record.address))) {
             return yield* new PrivateIpBlocked();
           }
+
           return records;
         });
       };
@@ -571,10 +633,12 @@ export class PublicWebClient extends Context.Service<
         if (url.username || url.password) {
           return yield* new UrlCredentialsUnsupported();
         }
+
         yield* Effect.fromResult(checkDomainPolicy(url, request.domainPolicy));
         const hostname = stripIpv6Brackets(url.hostname);
         const literalFamily = isIP(hostname);
         let addresses: readonly ApprovedAddress[];
+
         if (request.blockPrivateHosts) {
           addresses = yield* approvedAddresses(url);
         } else if (literalFamily === 4 || literalFamily === 6) {
@@ -589,12 +653,14 @@ export class PublicWebClient extends Context.Service<
               }),
           });
         }
+
         if (addresses.length === 0) {
           return yield* new PublicWebRequestFailed({
             hostname: url.hostname,
             cause: { code: "ENOTFOUND" },
           });
         }
+
         return yield* Effect.tryPromise({
           try: async (signal) =>
             transport.get(url, addresses, {
@@ -619,13 +685,17 @@ export class PublicWebClient extends Context.Service<
         userAgent: string,
       ): Effect.fn.Return<FetchedResponse, PublicWebError> {
         let currentUrl = new URL(request.url);
+
         for (let redirects = 0; ; redirects += 1) {
           const response = yield* fetchHop(currentUrl, request, userAgent);
+
           if (!REDIRECT_STATUSES.has(response.status)) {
             const finalUrl = currentUrl.toString();
+
             if (isPublicHttpUrl(finalUrl)) {
               return { response, finalUrl };
             }
+
             return yield* new RedirectLocationInvalid();
           }
 
@@ -642,26 +712,34 @@ export class PublicWebClient extends Context.Service<
         request: PublicWebRequest,
       ): Effect.fn.Return<FetchedResponse, PublicWebError> {
         const fetched = yield* fetchWithUserAgent(request, request.userAgent);
+
         if (!isCloudflareChallenge(fetched.response)) {
           return fetched;
         }
+
         yield* cancelBody(fetched.response);
+
         return yield* fetchWithUserAgent(request, request.fallbackUserAgent);
       });
 
       const get = Effect.fnUntraced(
         function* (request: PublicWebRequest): Effect.fn.Return<PublicWebResponse, PublicWebError> {
           const { response, finalUrl } = yield* fetchPastChallenge(request);
+
           const partialAllowed =
             request.allowPartialText === true &&
             isPartialReadable(parseContentType(response.headers.get("content-type")).kind);
+
           const rejection = checkResponseHead(response, request.maxResponseBytes, partialAllowed);
+
           if (rejection !== undefined) {
             yield* cancelBody(response);
+
             return yield* Effect.fail(rejection);
           }
 
           const { hostname } = new URL(finalUrl);
+
           const { body, truncated } = yield* readCapped(
             response,
             request.maxResponseBytes,
@@ -681,6 +759,7 @@ export class PublicWebClient extends Context.Service<
               ),
             ),
           );
+
           const result: Omit<PublicWebResponse, "responseTruncated"> & {
             responseTruncated?: true;
           } = {
@@ -690,9 +769,11 @@ export class PublicWebClient extends Context.Service<
             headers: response.headers,
             body,
           };
+
           if (truncated) {
             result.responseTruncated = true;
           }
+
           return result;
         },
         (effect) =>
@@ -715,19 +796,25 @@ function resolveRedirect(
 ): Effect.Effect<URL, PublicWebError> {
   const { currentUrl, redirects, maxRedirects } = hop;
   const location = response.headers.get("location");
+
   if (location === null || location === "") {
     return Effect.fail(new RedirectLocationMissing());
   }
+
   if (redirects >= maxRedirects) {
     return Effect.fail(new RedirectLimitExceeded({ maxRedirects }));
   }
+
   const nextUrl = parseUrl(location, currentUrl);
+
   if (nextUrl === undefined) {
     return Effect.fail(new RedirectLocationInvalid());
   }
+
   if (!HTTP_PROTOCOLS.has(nextUrl.protocol)) {
     return Effect.fail(new RedirectProtocolUnsupported({ protocol: nextUrl.protocol }));
   }
+
   return Effect.succeed(nextUrl);
 }
 
@@ -751,15 +838,19 @@ function checkResponseHead(
   if (!response.ok) {
     return new HttpStatusRejected({ status: response.status, statusText: response.statusText });
   }
+
   const declaredBytes = parseContentLength(response.headers.get("content-length"));
+
   if (!partialAllowed && Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
     return new ResponseTooLarge({ maxBytes });
   }
+
   return undefined;
 }
 
 function parseContentLength(header: string | null): number {
   const digits = LEADING_DIGITS_RE.exec(header ?? "")?.[0];
+
   return digits === undefined ? Number.NaN : Number(digits);
 }
 
