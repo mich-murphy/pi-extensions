@@ -62,6 +62,7 @@ export class AdapterSession {
       ...(ensureGateway === undefined ? {} : { ensureGateway }),
       incoming: (request) => this.incoming(request),
       linkChanged: () => {
+        this.updateStatus();
         const links = this.client.links();
         for (const listener of this.linkListeners) {
           listener(links);

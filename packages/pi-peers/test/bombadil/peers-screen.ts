@@ -7,7 +7,7 @@ const SHAPE = {
   separator: " › ",
 };
 const FOOTER =
-  /peers (?:✓(?: waiting…)?|● \d+|⋯ setting up|! activation pending|✕ (?:offline|setup failed))/u;
+  /peers (?:✓(?: waiting…)?|● \d+|⋯ setting up|! activation pending|✕ (?:offline|setup failed))(?: ! (?:\S+|\d+ links) down)?/u;
 const REPORT_SCROLL = /^\((?<first>\d+)–\d+ of \d+\)$/u;
 const LIST_SCROLL = /^\(\d+\/\d+\)$/u;
 const CONSENT = /\bconsent:(?<action>\S+)#(?<count>\d+)/u;

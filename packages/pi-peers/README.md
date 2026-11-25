@@ -117,6 +117,7 @@ including when it is connected:
 | `peers ✓` | This session is connected and its inbox is empty. |
 | `peers ● 2` | Connected, with 2 unread peer messages. The agent is woken to read them. |
 | `peers ✓ waiting…` | `peers_take` is waiting for a message. |
+| `peers ✓ ! dev-01 down` | Connected locally, but the link to `dev-01` is down; the gateway keeps retrying. Sends to that machine fail fast with `link_down`. |
 | `peers ! activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them. |
 | `peers ✕ offline` | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`. |
 | `peers ✕ setup failed` | This session couldn't start peers. Run `/peers doctor`. |

@@ -435,6 +435,18 @@ function styled(parts: readonly (readonly [FooterTone, string])[], theme?: Foote
 export function footerLine(state: FooterState, theme?: FooterTheme): string {
   return styled(FOOTER_PARTS[state], theme);
 }
+function downLinks(value: unknown): (readonly [FooterTone, string])[] {
+  const down = items(value)
+    .map((entry) => fields(entry))
+    .filter((link) => link.state === "down" || link.state === "probing")
+    .map((link) => plain(link.machineId, 32))
+    .filter((machine) => machine.length > 0);
+  if (down.length === 0) {
+    return [];
+  }
+  const [only] = down;
+  return [["warning", down.length === 1 ? ` ! ${only} down` : ` ! ${down.length} links down`]];
+}
 function unreadCount(status: Fields): number {
   const count = status.inboxMessages;
   return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : 0;
@@ -453,10 +465,11 @@ export function footerStatus(
   const code = status.status;
   if (code === "connected") {
     const unread = unreadCount(status);
-    if (unread > 0) {
-      return styled([["accent", `● ${unread}`]], theme);
-    }
-    return footerLine(status.waiting === true ? "waiting" : "connected", theme);
+    const base =
+      unread > 0
+        ? [["accent", `● ${unread}`] as const]
+        : FOOTER_PARTS[status.waiting === true ? "waiting" : "connected"];
+    return styled([...base, ...downLinks(status.links)], theme);
   }
   return footerLine(
     code === "activation_pending" || code === "activation_unconfirmed"

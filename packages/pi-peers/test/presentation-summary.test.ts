@@ -65,6 +65,9 @@ function primary(status: unknown, diagnostic: string): string {
   return [summary.headline, ...summary.rows.flat(), summary.next ?? ""].join("\n");
 }
 
+function links(...states: [string, string][]) {
+  return states.map(([machineId, state]) => ({ machineId, state, since: 0 }));
+}
 describe("plain-language status summary", () => {
   test("remote link state appears as one row per machine with its next try", () => {
     const summary = statusSummary(
@@ -163,6 +166,23 @@ describe("plain-language status summary", () => {
     expect(footerStatus({ status: "disconnected", inboxMessages: 3 }, true)).toBe(
       "peers ✕ offline",
     );
+  });
+  test("footer warns about remote links that are not up, and only those", () => {
+    expect(footerStatus({ status: "connected", links: links(["dev-01", "up"]) }, true)).toBe(
+      "peers ✓",
+    );
+    expect(footerStatus({ status: "connected", links: links(["dev-01", "probing"]) }, true)).toBe(
+      "peers ✓ ! dev-01 down",
+    );
+    expect(
+      footerStatus(
+        { status: "connected", inboxMessages: 1, links: links(["a", "down"], ["b", "down"]) },
+        true,
+      ),
+    ).toBe("peers ● 1 ! 2 links down");
+    expect(
+      footerStatus({ status: "connected", links: links(["dev-01\u001b[31m", "down"]) }, true),
+    ).not.toContain("\u001b");
   });
   test("footer colours each part with a theme token", () => {
     const theme = { fg: (tone: string, part: string) => `<${tone}>${part}` };
