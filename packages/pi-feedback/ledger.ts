@@ -27,10 +27,12 @@ const stamp = {
   at: matching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u),
 };
 
+const Owner = matching(/^[a-z0-9][a-z0-9-]{0,63}$/u);
+
 const recorded = {
   ...stamp,
   session: Line,
-  owner: matching(/^[a-z0-9][a-z0-9-]{0,63}$/u),
+  owner: Owner,
   fingerprint: Line,
   model: Schema.optionalKey(Line),
   piVersion: Schema.optionalKey(Line),
@@ -71,6 +73,16 @@ const VerdictEvent = Schema.Struct({
   outsideService: Score,
 });
 
+const SameCauseEvent = Schema.Struct({
+  type: Schema.Literal("same_cause"),
+  ...stamp,
+  owner: Owner,
+  a: Line,
+  b: Line,
+  model: Line,
+  sameCause: Score,
+});
+
 const ResolveEvent = Schema.Struct({
   type: Schema.Literal("resolve"),
   ...stamp,
@@ -90,6 +102,7 @@ const LedgerEvent = Schema.Union([
   ReportEvent,
   SignalEvent,
   VerdictEvent,
+  SameCauseEvent,
   ResolveEvent,
   ReopenEvent,
 ]);

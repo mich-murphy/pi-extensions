@@ -1,5 +1,6 @@
 import type { MessageEndEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+import type { ClassifierRegistry } from "../classify.ts";
 import type {
   FeedbackCommandContext,
   FeedbackContext,
@@ -8,6 +9,7 @@ import type {
   FeedbackTool,
   NoteRenderer,
 } from "../feedback.ts";
+import { noClassifier } from "./fake-classifier.ts";
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
@@ -28,7 +30,11 @@ function renderText(component: Component | undefined): string {
     .trim();
 }
 
-export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
+export function fakePi(
+  packagesDir: string,
+  agentDir = "/home/u/.pi/agent",
+  modelRegistry: ClassifierRegistry = noClassifier,
+) {
   const tools: FeedbackTool[] = [];
   const renderers = new Map<string, NoteRenderer>();
   const commands = new Map<string, Command>();
@@ -92,6 +98,7 @@ export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
   const ctx = (): FeedbackContext => ({
     sessionManager: { getSessionId: () => session },
     model: { provider: "claude", id: "claude-opus-5-5" },
+    modelRegistry,
   });
 
   const commandCtx: FeedbackCommandContext = {

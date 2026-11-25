@@ -1,12 +1,6 @@
+import { THRESHOLDS } from "./jev.ts";
 import type { RecordEvent, VerdictEvent } from "./ledger.ts";
 import { UNATTRIBUTED } from "./owner.ts";
-
-export const THRESHOLDS = {
-  harnessPath: 0.7,
-  pathExisted: 0.7,
-  piCoreOutsideBelow: 0.3,
-  excludedOutsideFrom: 0.9,
-} as const;
 
 const PI_CORE_MIN_SESSIONS = 2;
 
@@ -15,7 +9,7 @@ export type PiCoreCandidate = {
   readonly live: readonly RecordEvent[];
   readonly excluded: readonly RecordEvent[];
   readonly sessions: number;
-  readonly verdict: VerdictEvent | undefined;
+  readonly verdicts: readonly (VerdictEvent | undefined)[];
 };
 
 function isBatchOrdered(record: RecordEvent): boolean {
@@ -46,6 +40,7 @@ export function isPiCore(candidate: PiCoreCandidate): boolean {
     live.every((record) => record.evidence === "pi-path") &&
     ![...live, ...excluded].some((record) => isBatchOrdered(record)) &&
     candidate.sessions >= PI_CORE_MIN_SESSIONS &&
-    verdictPasses(candidate.verdict)
+    candidate.verdicts.length > 0 &&
+    candidate.verdicts.every((verdict) => verdictPasses(verdict))
   );
 }

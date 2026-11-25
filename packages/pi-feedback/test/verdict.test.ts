@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { THRESHOLDS } from "../jev.ts";
 import type { RecordEvent, VerdictEvent } from "../ledger.ts";
-import { isExcluded, isPiCore, THRESHOLDS } from "../verdict.ts";
+import { isExcluded, isPiCore } from "../verdict.ts";
 import type { PiCoreCandidate } from "../verdict.ts";
 
 const verdict: VerdictEvent = {
@@ -37,7 +38,7 @@ const passing: PiCoreCandidate = {
   live: [record("a"), record("b")],
   excluded: [],
   sessions: 2,
-  verdict,
+  verdicts: [verdict],
 };
 
 describe("isPiCore", () => {
@@ -51,15 +52,16 @@ describe("isPiCore", () => {
     ["no live records", { live: [] }],
     ["a record without a Pi path", { live: [record("a"), record("b", { piPath: false })] }],
     ["a batch-ordered record", { excluded: [record("c", { batchOrdered: true })] }],
-    ["no verdict", { verdict: undefined }],
+    ["no verdict", { verdicts: [] }],
+    ["a fingerprint without a verdict", { verdicts: [verdict, undefined] }],
     [
       "a low harness-path score",
-      { verdict: { ...verdict, harnessPath: THRESHOLDS.harnessPath - 0.01 } },
+      { verdicts: [{ ...verdict, harnessPath: THRESHOLDS.harnessPath - 0.01 }] },
     ],
-    ["a low path-existed score", { verdict: { ...verdict, pathExisted: 0.5 } }],
+    ["a low path-existed score", { verdicts: [{ ...verdict, pathExisted: 0.5 }] }],
     [
       "an outside service",
-      { verdict: { ...verdict, outsideService: THRESHOLDS.piCoreOutsideBelow } },
+      { verdicts: [{ ...verdict, outsideService: THRESHOLDS.piCoreOutsideBelow }] },
     ],
   ])("fails with %s", (_name, change) => {
     expect(isPiCore({ ...passing, ...change })).toBe(false);

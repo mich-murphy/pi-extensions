@@ -14,9 +14,11 @@ import { onOffCommand } from "../shared/on-off-command.ts";
 import type { OnOffCommand } from "../shared/on-off-command.ts";
 import { isParallelBatch, isReadOnlyTool } from "./batch.ts";
 import type { BatchCall } from "./batch.ts";
+import { classifyRecord } from "./classify.ts";
+import type { ClassifierRegistry } from "./classify.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
-import type { Clock } from "./ledger.ts";
+import type { Clock, LedgerEvent, RecordEvent } from "./ledger.ts";
 import { createAttribution } from "./owner.ts";
 import type { Attribution, CommandSource, ToolSource } from "./owner.ts";
 
@@ -63,6 +65,7 @@ export type FeedbackResult = {
 export type FeedbackContext = {
   readonly sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId">;
   readonly model: Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id"> | undefined;
+  readonly modelRegistry: ClassifierRegistry;
 };
 
 export type FeedbackCommandContext = {
@@ -129,7 +132,19 @@ export type FeedbackDependencies = {
   readonly home: string;
   readonly piVersion: string;
   readonly clock?: Clock;
+  readonly schedule?: (task: () => Promise<void>) => void;
 };
+
+function serialQueue(): (task: () => Promise<void>) => void {
+  let tail: Promise<void> = Promise.resolve();
+  return (task) => {
+    tail = tail.then(task, task);
+  };
+}
+
+function isRecordEvent(event: LedgerEvent): event is RecordEvent {
+  return event.type === "report" || event.type === "signal";
+}
 
 const decodeNote = Schema.decodeUnknownOption(
   Schema.Struct({ group: Schema.String, owner: Schema.String, summary: Schema.String }),
@@ -210,6 +225,23 @@ export function registerFeedback(
   dependencies: FeedbackDependencies,
 ): void {
   const { ledger, piVersion, clock } = dependencies;
+  const schedule = dependencies.schedule ?? serialQueue();
+  let unclassified = 0;
+
+  const classifyLater = (ctx: FeedbackContext, event: LedgerEvent, input?: unknown): void => {
+    if (!isRecordEvent(event)) {
+      return;
+    }
+    const registry = ctx.modelRegistry;
+    schedule(async () => {
+      try {
+        const outcome = await classifyRecord({ registry, ledger, record: event, input, clock });
+        unclassified += outcome._tag === "classified" ? outcome.failed : 0;
+      } catch {
+        unclassified += 1;
+      }
+    });
+  };
   const owners = createAttribution(pi, dependencies);
   const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
   let batch: readonly BatchCall[] = [];
@@ -257,6 +289,7 @@ export function registerFeedback(
         },
         clock,
       );
+      classifyLater(ctx, event);
       const group = groupId(owner, fingerprint);
       pi.appendEntry(FEEDBACK_NOTE_TYPE, {
         group,
@@ -318,7 +351,7 @@ export function registerFeedback(
     const failing = batch.find((call) => call.id === event.toolCallId);
     const ordered = failing !== undefined && isParallelBatch(failing, error, batch, readOnly);
     try {
-      await appendEvent(
+      const recorded = await appendEvent(
         ledger,
         {
           type: "signal",
@@ -333,6 +366,7 @@ export function registerFeedback(
         },
         clock,
       );
+      classifyLater(ctx, recorded, failing?.args);
     } catch {
       unwritten += 1;
     }
@@ -351,7 +385,7 @@ export function registerFeedback(
         pi.setActiveTools(next ? [...active, FEEDBACK_TOOL] : active);
       },
       note: () =>
-        ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}`,
+        ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}${unclassified > 0 ? ` ${unclassified} classifier calls failed.` : ""}`,
     }),
   );
 }
