@@ -31,14 +31,14 @@ export const GATEWAY_REMOTE_SETUP_CAPABILITIES = [
 
 export const gatewayCatalog: GatewayCatalog = {
   nix: {
-    sourceRevision: "7c0bdcc33ac03ec1a4dd1f3b81078959f78ebf9d",
-    version: "0.2.0",
-    narHash: "sha256-eIUMx5JB9+k1Ld07li4oYo1/rLbo+MVdI0t7azSCvRs=",
+    sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
+    version: "0.3.0",
+    narHash: "sha256-uo2xJEEGUjwBL67STeoPTKdKvJLM+EvbfclNFvM1hPE=",
   },
   native: {
-    sourceRevision: "7c0bdcc33ac03ec1a4dd1f3b81078959f78ebf9d",
-    version: "0.2.0",
-    manifestSha256: "a209cb6ded07de0a50dfdefa313ed1a491e03154b534b2479061f18085060240",
+    sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
+    version: "0.3.0",
+    manifestSha256: "560f0f65028dd4b58a1109aa2e8976ddf2ae57b893ff3cbd1a400fd019c1da02",
   },
 };
 
