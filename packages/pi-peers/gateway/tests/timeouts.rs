@@ -39,7 +39,7 @@ async fn read(stream: &mut UnixStream) -> Value {
 async fn register(stream: &mut UnixStream, session: &str, nonce: u64) -> Value {
     write(
         stream,
-        &json!({"v":1,"op":"register","rid":rid(1),"sessionId":session,"runtimeNonce":rid(nonce),"scopeIds":["team"],"label":session}),
+        &json!({"v":2,"op":"register","rid":rid(1),"sessionId":session,"runtimeNonce":rid(nonce),"scopeIds":["team"],"label":session}),
     )
     .await;
     let response = read(stream).await;
@@ -69,7 +69,8 @@ impl Drop for Fixture {
 }
 
 #[tokio::test(start_paused = true)]
-async fn forwarded_operation_stays_pending_for_fifteen_seconds_then_becomes_unknown() {
+async fn forwarded_operation_stays_pending_for_its_budget_less_the_hop_reserve_then_becomes_unknown()
+ {
     let fixture = Fixture::new();
     let socket = fixture.directory.join("s");
     let config = Config::parse(
@@ -84,31 +85,32 @@ async fn forwarded_operation_stays_pending_for_fifteen_seconds_then_becomes_unkn
     }));
 
     let mut sender = UnixStream::connect(&socket).await.expect("sender socket");
-    let sender_peer = register(&mut sender, "sender", 10).await;
+    let _sender = register(&mut sender, "sender", 10).await;
     let mut receiver = UnixStream::connect(&socket).await.expect("receiver socket");
     let receiver_peer = register(&mut receiver, "receiver", 11).await;
     write(
         &mut sender,
-        &json!({"v":1,"op":"send","rid":rid(2),"to":receiver_peer,"scopeId":"team","message":{"id":rid(500),"kind":"request","content":"hello","format":"text"}}),
+        &json!({"v":2,"op":"send","rid":rid(2),"to":receiver_peer,"scopeId":"team","budgetMs":15000,"message":{"id":rid(500),"kind":"request","content":"hello","format":"text"}}),
     )
     .await;
     // The delivery proves the gateway has accepted the operation; the receiver never answers it.
     assert_eq!(read(&mut receiver).await["op"], "deliver");
 
     assert!(
-        tokio::time::timeout(Duration::from_millis(14_999), read(&mut sender))
+        tokio::time::timeout(Duration::from_millis(14_749), read(&mut sender))
             .await
             .is_err(),
-        "an unanswered operation stays pending until its fifteen-second deadline"
+        "an unanswered operation stays pending until its budget less the hop reserve (14.75 s)"
     );
     let outcome = tokio::time::timeout(Duration::from_millis(2), read(&mut sender))
         .await
-        .expect("the operation must be settled at fifteen seconds");
+        .expect("the operation must be settled when the hop budget is spent");
     assert_eq!(outcome["rid"], rid(2));
     assert_eq!(outcome["outcome"]["tag"], "unknown");
     assert_eq!(outcome["outcome"]["code"], "unavailable");
     assert_eq!(
-        outcome["outcome"]["binding"]["sender"], sender_peer,
+        outcome["outcome"]["messageId"],
+        rid(500),
         "possible admission is reported as unknown, bound to the exact message"
     );
     stop.send(()).expect("gateway still running");

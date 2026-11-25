@@ -138,7 +138,7 @@ fn response(stream: &mut UnixStream) -> Value {
     serde_json::from_slice(&body).expect("response JSON")
 }
 fn registration(session: &str) -> Value {
-    json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":session,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"})
+    json!({"v":2,"op":"register","rid":"00000000000000000000000000000001","sessionId":session,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"})
 }
 fn register(stream: &mut UnixStream, session: &str) {
     request(stream, &registration(session));
@@ -352,7 +352,7 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
     let value: Value = serde_json::from_slice(&output.stdout).expect("version JSON");
     assert_eq!(
         value["wireVersions"],
-        json!([1]),
+        json!([2]),
         "explicit wire compatibility"
     );
     assert_eq!(
@@ -362,8 +362,7 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
             "pairing-v1",
             "gateway-control-v1",
             "setup-lock-v1",
-            "config-generation-v1",
-            "link-state-v1"
+            "config-generation-v1"
         ]),
         "managed contract advertised"
     );
@@ -588,7 +587,7 @@ async fn authenticated_remote_link_does_not_sustain_last_local_disconnect() {
     remote.read_exact(&mut body).await.expect("roster body");
     let roster: Value = serde_json::from_slice(&body).expect("roster JSON");
     assert_eq!(roster["op"], "discover", "authenticated remote activated");
-    let reply = serde_json::to_vec(&json!({"v":1,"op":"result","rid":roster["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[],"watching":true}}})).expect("roster reply");
+    let reply = serde_json::to_vec(&json!({"v":2,"op":"result","rid":roster["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[],"watching":true}}})).expect("roster reply");
     remote
         .write_all(
             &u32::try_from(reply.len())
@@ -871,7 +870,7 @@ fn guarded_registration_binds_loaded_bytes_not_changed_disk_and_has_no_rejection
     }
     request(
         &mut survivor,
-        &json!({"v":1,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":false}),
+        &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":false}),
     );
     let snapshot = response(&mut survivor);
     let peers = snapshot["outcome"]["value"]["peers"]

@@ -140,7 +140,7 @@ fn rid(number: u64) -> String {
 fn register(stream: &mut UnixStream, session: &str, nonce: u64, scopes: &[&str]) -> Value {
     write(
         stream,
-        &json!({"v":1,"op":"register","rid":rid(1),"sessionId":session,"runtimeNonce":rid(nonce),"scopeIds":scopes,"label":session}),
+        &json!({"v":2,"op":"register","rid":rid(1),"sessionId":session,"runtimeNonce":rid(nonce),"scopeIds":scopes,"label":session}),
     );
     let response = read(stream);
     assert_eq!(
@@ -150,7 +150,7 @@ fn register(stream: &mut UnixStream, session: &str, nonce: u64, scopes: &[&str])
     response["outcome"]["value"]["peer"].clone()
 }
 fn request(to: &Value, number: u64) -> Value {
-    json!({"v":1,"op":"send","rid":rid(number),"to":to,"scopeId":"team","message":{"id":rid(500),"kind":"request","content":"hello","format":"text"}})
+    json!({"v":2,"op":"send","rid":rid(number),"to":to,"scopeId":"team","budgetMs":15000,"message":{"id":rid(500),"kind":"request","content":"hello","format":"text"}})
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn local_registration_watch_send_and_exact_receipt() {
     let sender_peer = register(&mut sender, "sender", 10, &["team"]);
     write(
         &mut sender,
-        &json!({"v":1,"op":"discover","rid":rid(2),"scopeIds":["team"],"watch":true}),
+        &json!({"v":2,"op":"discover","rid":rid(2),"scopeIds":["team"],"watch":true}),
     );
     assert_eq!(
         read(&mut sender)["outcome"]["value"]["peers"]
@@ -183,19 +183,19 @@ fn local_registration_watch_send_and_exact_receipt() {
     assert_eq!(delivery["op"], "deliver");
     assert_eq!(delivery["from"], sender_peer);
     assert_ne!(delivery["rid"], rid(3));
-    let binding = json!({"messageId":rid(500),"sender":sender_peer,"recipient":receiver_peer,"scopeId":"team"});
+    let message_id = rid(500);
     write(
         &mut receiver,
-        &json!({"v":1,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":binding,"correlation":"none"}}),
+        &json!({"v":2,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","messageId":message_id,"correlation":"none","durable":false}}),
     );
     let result = read(&mut sender);
     assert_eq!(result["rid"], rid(3));
     assert_eq!(result["forOp"], "send");
     assert_eq!(
         result["outcome"],
-        json!({"tag":"admitted","binding":binding,"correlation":"none"})
+        json!({"tag":"admitted","messageId":message_id,"correlation":"none","durable":false})
     );
-    write(&mut receiver, &json!({"v":1,"op":"close","rid":rid(4)}));
+    write(&mut receiver, &json!({"v":2,"op":"close","rid":rid(4)}));
     assert_eq!(read(&mut receiver)["outcome"]["tag"], "ok");
     assert_eq!(
         read(&mut sender)["event"],
@@ -204,22 +204,48 @@ fn local_registration_watch_send_and_exact_receipt() {
 }
 
 #[test]
+fn a_spent_budget_is_refused_as_expired_and_never_delivered() {
+    let gateway = Gateway::start(&["push"]);
+    let mut sender = gateway.connect();
+    let _sender = register(&mut sender, "sender", 10, &["team"]);
+    let mut receiver = gateway.connect();
+    let target = register(&mut receiver, "receiver", 11, &["team"]);
+    let mut spent = request(&target, 2);
+    spent["budgetMs"] = json!(500);
+    write(&mut sender, &spent);
+    assert_eq!(
+        read(&mut sender)["outcome"],
+        json!({"tag":"not_admitted","messageId":rid(500),"code":"expired"}),
+        "a budget too small to cover this hop and the next is refused here"
+    );
+    let mut fresh = request(&target, 3);
+    fresh["budgetMs"] = json!(60_000);
+    write(&mut sender, &fresh);
+    let delivery = read(&mut receiver);
+    assert_eq!(delivery["op"], "deliver");
+    assert_eq!(
+        delivery["budgetMs"], 14_500,
+        "the next hop gets min(budget, operation timeout) less this hop's reserve"
+    );
+}
+
+#[test]
 fn ambiguous_delivery_and_bound_mismatch_are_unknown_never_gateway_admitted() {
     let gateway = Gateway::start(&["push"]);
     let mut sender = gateway.connect();
-    let sender_peer = register(&mut sender, "sender", 10, &["team"]);
+    let _sender = register(&mut sender, "sender", 10, &["team"]);
     let mut receiver = gateway.connect();
     let target = register(&mut receiver, "receiver", 11, &["team"]);
     write(&mut sender, &request(&target, 2));
     let delivery = read(&mut receiver);
     write(
         &mut receiver,
-        &json!({"v":1,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":{"messageId":rid(501),"sender":sender_peer,"recipient":target,"scopeId":"team"},"correlation":"none"}}),
+        &json!({"v":2,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","messageId":rid(501),"correlation":"none","durable":false}}),
     );
     let result = read(&mut sender);
     assert_eq!(result["outcome"]["tag"], "unknown");
     assert_eq!(result["outcome"]["code"], "protocol_error");
-    assert_eq!(result["outcome"]["binding"]["messageId"], rid(500));
+    assert_eq!(result["outcome"]["messageId"], rid(500));
     write(&mut sender, &request(&target, 3));
     assert_eq!(read(&mut sender)["outcome"]["code"], "no_route");
 }
@@ -232,7 +258,7 @@ fn live_runtime_cannot_be_stolen_and_authorization_does_not_probe_routes() {
     let mut thief = gateway.connect();
     write(
         &mut thief,
-        &json!({"v":1,"op":"register","rid":rid(1),"sessionId":"session","runtimeNonce":rid(10),"scopeIds":["team"],"label":"steal"}),
+        &json!({"v":2,"op":"register","rid":rid(1),"sessionId":"session","runtimeNonce":rid(10),"scopeIds":["team"],"label":"steal"}),
     );
     assert_eq!(read(&mut thief)["outcome"]["code"], "already_registered");
     write(&mut first, &request(&peer, 2));
@@ -263,7 +289,7 @@ fn malformed_prefix_closes_only_affected_client() {
 fn send_to(stream: &mut UnixStream, to: &Value, number: u64) {
     write(
         stream,
-        &json!({"v":1,"op":"send","rid":rid(number),"to":to,"scopeId":"team","message":{"id":rid(1000 + number),"kind":"request","content":"hello","format":"text"}}),
+        &json!({"v":2,"op":"send","rid":rid(number),"to":to,"scopeId":"team","budgetMs":15000,"message":{"id":rid(1000 + number),"kind":"request","content":"hello","format":"text"}}),
     );
 }
 
@@ -292,7 +318,7 @@ fn thirty_local_connections_are_served_and_the_thirty_first_is_closed_until_one_
         "connection 31 is refused with an immediate close"
     );
     let mut leaving = clients.pop().expect("thirty connections");
-    write(&mut leaving, &json!({"v":1,"op":"close","rid":rid(2)}));
+    write(&mut leaving, &json!({"v":2,"op":"close","rid":rid(2)}));
     assert_eq!(read(&mut leaving)["outcome"]["tag"], "ok");
     drop(leaving);
     // The gateway reaps the closed task asynchronously, so poll the observable state (a refused
@@ -304,7 +330,7 @@ fn thirty_local_connections_are_served_and_the_thirty_first_is_closed_until_one_
         // A refused connection is closed by the gateway, so its write may fail as well as its read.
         let registered = try_write(
             &mut again,
-            &json!({"v":1,"op":"register","rid":rid(1),"sessionId":"replacement","runtimeNonce":rid(900),"scopeIds":["team"],"label":"replacement"}),
+            &json!({"v":2,"op":"register","rid":rid(1),"sessionId":"replacement","runtimeNonce":rid(900),"scopeIds":["team"],"label":"replacement"}),
         );
         let mut header = [0_u8; 4];
         if registered.is_ok() && again.read_exact(&mut header).is_ok() {
@@ -339,7 +365,7 @@ fn nine_concurrent_sends_on_one_connection_are_refused_as_overloaded_operations(
     assert_eq!(refused["outcome"]["code"], "overloaded");
     assert_eq!(refused["outcome"]["resource"], "operations");
     assert_eq!(
-        refused["outcome"]["binding"]["messageId"],
+        refused["outcome"]["messageId"],
         rid(1010),
         "the refusal is bound to the refused message"
     );
@@ -350,7 +376,7 @@ fn nine_concurrent_sends_on_one_connection_are_refused_as_overloaded_operations(
     let first = &deliveries[0];
     write(
         &mut receiver,
-        &json!({"v":1,"op":"result","rid":first["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":{"messageId":first["message"]["id"],"sender":first["from"],"recipient":first["to"],"scopeId":"team"},"correlation":"none"}}),
+        &json!({"v":2,"op":"result","rid":first["rid"],"forOp":"deliver","outcome":{"tag":"admitted","messageId":first["message"]["id"],"correlation":"none","durable":false}}),
     );
     assert_eq!(read(&mut sender)["outcome"]["tag"], "admitted");
     send_to(&mut sender, &target, 11);
@@ -362,7 +388,7 @@ fn a_second_concurrent_watch_is_overloaded_until_the_first_is_released() {
     let gateway = Gateway::start(&["discover"]);
     let mut client = gateway.connect();
     register(&mut client, "watcher", 10, &["team"]);
-    let watch = |number: u64| json!({"v":1,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":true});
+    let watch = |number: u64| json!({"v":2,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":true});
     write(&mut client, &watch(2));
     assert_eq!(read(&mut client)["outcome"]["tag"], "ok");
     write(&mut client, &watch(3));
@@ -373,7 +399,7 @@ fn a_second_concurrent_watch_is_overloaded_until_the_first_is_released() {
     assert_eq!(refused["outcome"]["resource"], "watch");
     write(
         &mut client,
-        &json!({"v":1,"op":"unwatch","rid":rid(4),"watchRid":rid(2)}),
+        &json!({"v":2,"op":"unwatch","rid":rid(4),"watchRid":rid(2)}),
     );
     assert_eq!(read(&mut client)["outcome"]["tag"], "ok");
     write(&mut client, &watch(5));
@@ -537,7 +563,7 @@ fn granted(policies: &Value, machine: &str, scope: &str, permission: &str) -> bo
 fn assert_nothing_queued(stream: &mut UnixStream, number: u64) {
     write(
         stream,
-        &json!({"v":1,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":false}),
+        &json!({"v":2,"op":"discover","rid":rid(number),"scopeIds":["team"],"watch":false}),
     );
     let reply = read(stream);
     assert_eq!(
@@ -560,27 +586,26 @@ fn send_and_discover_follow_the_outgoing_grants_exactly(tc: hegel::TestCase) {
         authorized && target == world.receiver_peer && world.receiver_scopes.contains(&scope);
     write(
         &mut world.sender,
-        &json!({"v":1,"op":"send","rid":rid(20),"to":target,"scopeId":scope,"message":{"id":rid(600),"kind":"request","content":"routed","format":"text"}}),
+        &json!({"v":2,"op":"send","rid":rid(20),"to":target,"scopeId":scope,"budgetMs":15000,"message":{"id":rid(600),"kind":"request","content":"routed","format":"text"}}),
     );
-    let binding =
-        json!({"messageId":rid(600),"sender":world.sender_peer,"recipient":target,"scopeId":scope});
+    let message_id = rid(600);
     if delivered {
         let delivery = read(&mut world.receiver);
         assert_eq!(delivery["op"], "deliver");
         assert_eq!(delivery["from"], world.sender_peer);
         write(
             &mut world.receiver,
-            &json!({"v":1,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":binding,"correlation":"none"}}),
+            &json!({"v":2,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","messageId":message_id,"correlation":"none","durable":false}}),
         );
         assert_eq!(
             read(&mut world.sender)["outcome"],
-            json!({"tag":"admitted","binding":binding,"correlation":"none"})
+            json!({"tag":"admitted","messageId":message_id,"correlation":"none","durable":false})
         );
     } else {
         let code = if authorized { "no_route" } else { "forbidden" };
         assert_eq!(
             read(&mut world.sender)["outcome"],
-            json!({"tag":"not_admitted","binding":binding,"code":code}),
+            json!({"tag":"not_admitted","messageId":message_id,"code":code}),
             "an unauthorized send is forbidden before any route lookup; an authorized one without a live member is no_route"
         );
     }
@@ -590,7 +615,7 @@ fn send_and_discover_follow_the_outgoing_grants_exactly(tc: hegel::TestCase) {
     });
     write(
         &mut world.sender,
-        &json!({"v":1,"op":"discover","rid":rid(21),"scopeIds":scopes,"watch":false}),
+        &json!({"v":2,"op":"discover","rid":rid(21),"scopeIds":scopes,"watch":false}),
     );
     assert_eq!(
         read(&mut world.sender)["outcome"]["tag"],
@@ -612,7 +637,7 @@ fn retired_requests_are_refused_alike_whatever_the_grants_and_never_reach_a_sess
         let publisher = draw_target(&tc, &world.receiver_peer);
         let scope = tc.draw(gs::sampled_from(vec!["team", "private", "elsewhere"]));
         let mut request =
-            json!({"v":1,"op":op,"rid":rid(number),"publisher":publisher,"scopeId":scope});
+            json!({"v":2,"op":op,"rid":rid(number),"publisher":publisher,"scopeId":scope});
         if op == "state.get" {
             request["key"] = json!("report");
         } else if op.starts_with("interest.") {
@@ -622,7 +647,7 @@ fn retired_requests_are_refused_alike_whatever_the_grants_and_never_reach_a_sess
         write(&mut world.sender, &request);
         assert_eq!(
             read(&mut world.sender),
-            json!({"v":1,"op":"result","rid":rid(number),"forOp":op,"outcome":{"tag":"error","code":"forbidden"}}),
+            json!({"v":2,"op":"result","rid":rid(number),"forOp":op,"outcome":{"tag":"error","code":"forbidden"}}),
             "the same refusal whatever the grants, scope or target, so it reveals no route"
         );
     }

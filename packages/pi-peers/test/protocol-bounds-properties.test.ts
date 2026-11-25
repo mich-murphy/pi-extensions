@@ -64,11 +64,12 @@ function assertFrameEdge(value: unknown, role: BoundaryRole, expected: boolean):
 
 function sendFrame(contentBytes: number): unknown {
   return {
-    v: 1,
+    v: 2,
     op: "send",
     rid,
     to: { machineId: "beta", sessionId: "s", runtimeNonce: nonce },
     scopeId: "team",
+    budgetMs: 15_000,
     message: {
       id: "2".repeat(32),
       kind: "request",
@@ -89,11 +90,12 @@ function authoredFrame(sizes: {
   wide: boolean;
 }): unknown {
   return {
-    v: 1,
+    v: 2,
     op: "send",
     rid,
     to: { machineId: "beta", sessionId: "s", runtimeNonce: nonce },
     scopeId: "team",
+    budgetMs: 15_000,
     message: {
       id: "2".repeat(32),
       kind: "request",
@@ -124,7 +126,7 @@ function upsertWithDescriptorBytes(size: number): unknown {
   const base = Buffer.byteLength(JSON.stringify(make("s")), "utf8");
   const descriptor = make("s".repeat(1 + size - base));
   assert.equal(Buffer.byteLength(JSON.stringify(descriptor), "utf8"), size);
-  return { v: 1, rid, op: "roster.event", event: { tag: "upsert", peer: descriptor } };
+  return { v: 2, rid, op: "roster.event", event: { tag: "upsert", peer: descriptor } };
 }
 
 function nestedObject(levels: number): Uint8Array {

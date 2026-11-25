@@ -11,6 +11,7 @@ import {
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
   GATEWAY_WIRE_VERSION,
   gatewayCatalog,
+  wireMismatch,
   gatewayTarget,
 } from "../packages/pi-peers/onboarding/catalog.js";
 import {
@@ -188,11 +189,10 @@ function hasRequiredCapabilities(version: Record<string, unknown>): boolean {
 }
 
 function verifyGatewayVersion(version: Record<string, unknown>, expected: string): void {
-  if (
-    !isPinnedGateway(version, expected) ||
-    !speaksWire(version) ||
-    !hasRequiredCapabilities(version)
-  ) {
+  if (isPinnedGateway(version, expected) && !speaksWire(version)) {
+    throw new Error(wireMismatch("Acquired Nix", expected, version.wireVersions));
+  }
+  if (!isPinnedGateway(version, expected) || !hasRequiredCapabilities(version)) {
     throw new Error("Acquired Nix gateway ABI/capability mismatch");
   }
 }

@@ -96,11 +96,18 @@ fn request(stream: &mut UnixStream, body: &Value) -> Value {
         )
         .expect("length");
     stream.write_all(&body).expect("body");
-    let mut length = [0; 4];
-    stream.read_exact(&mut length).expect("response length");
-    let mut body = vec![0; usize::try_from(u32::from_be_bytes(length)).expect("response length")];
-    stream.read_exact(&mut body).expect("response body");
-    serde_json::from_slice(&body).expect("response JSON")
+    loop {
+        let mut length = [0; 4];
+        stream.read_exact(&mut length).expect("response length");
+        let mut body =
+            vec![0; usize::try_from(u32::from_be_bytes(length)).expect("response length")];
+        stream.read_exact(&mut body).expect("response body");
+        let frame: Value = serde_json::from_slice(&body).expect("response JSON");
+        // Every session now gets pushed link.state frames; they are not replies.
+        if frame["op"] != "link.state" {
+            return frame;
+        }
+    }
 }
 fn register(f: &Fixture, name: &str) -> UnixStream {
     let mut stream = UnixStream::connect(f.path(&format!("{name}.sock"))).expect("local socket");
@@ -112,7 +119,7 @@ fn register(f: &Fixture, name: &str) -> UnixStream {
         .expect("write deadline");
     let response = request(
         &mut stream,
-        &json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":name,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"}),
+        &json!({"v":2,"op":"register","rid":"00000000000000000000000000000001","sessionId":name,"runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"Pi"}),
     );
     assert_eq!(response["outcome"]["tag"], "ok", "local registration");
     stream
@@ -148,7 +155,7 @@ fn cli_pair_operates_two_real_gateways_with_mtls_and_readonly_active_floor_diagn
     loop {
         let response = request(
             &mut a,
-            &json!({"v":1,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":false}),
+            &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":false}),
         );
         if response.to_string().contains("\"machineId\":\"beta\"") {
             break;
@@ -365,7 +372,7 @@ async fn authenticated_remote_cannot_request_managed_restart() {
         )
         .await
         .unwrap();
-    let body = serde_json::to_vec(&json!({"v":1,"op":"gateway.restart","rid":"00000000000000000000000000000009","expectedMachineId":"beta"})).unwrap();
+    let body = serde_json::to_vec(&json!({"v":2,"op":"gateway.restart","rid":"00000000000000000000000000000009","expectedMachineId":"beta"})).unwrap();
     tls.write_all(&u32::try_from(body.len()).unwrap().to_be_bytes())
         .await
         .unwrap();

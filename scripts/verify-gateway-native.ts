@@ -17,6 +17,7 @@ import {
   GATEWAY_WIRE_VERSION,
   gatewayCatalog,
   gatewayTarget,
+  wireMismatch,
 } from "../packages/pi-peers/onboarding/catalog.js";
 import type { GatewayReleasePin } from "../packages/pi-peers/onboarding/catalog.js";
 import { createRecord, currentUid, readRegular, requireAbsent } from "./verify-gateway-nix-io.js";
@@ -194,17 +195,27 @@ function isPinnedGateway(version: Record<string, unknown>, expected: string): bo
   return version.name === "pi-gateway" && version.version === expected;
 }
 
+function speaksWire(wireVersions: unknown): boolean {
+  return Array.isArray(wireVersions) && wireVersions.includes(GATEWAY_WIRE_VERSION);
+}
+
 function isAbiCompatible({ wireVersions, capabilities }: Record<string, unknown>): boolean {
-  const speaksWire = Array.isArray(wireVersions) && wireVersions.includes(GATEWAY_WIRE_VERSION);
   return (
-    speaksWire &&
+    speaksWire(wireVersions) &&
     Array.isArray(capabilities) &&
     REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability))
   );
 }
 
+function requireWire(version: Record<string, unknown>, expected: string): void {
+  if (isPinnedGateway(version, expected) && !speaksWire(version.wireVersions)) {
+    throw new Error(wireMismatch("Public native", expected, version.wireVersions));
+  }
+}
+
 function verifyVersion(version: Record<string, unknown>, expected: string) {
   const { name, wireVersions, capabilities } = version;
+  requireWire(version, expected);
   if (!isPinnedGateway(version, expected) || !isAbiCompatible(version)) {
     throw new Error("Public native gateway ABI/capability mismatch");
   }

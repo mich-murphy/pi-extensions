@@ -57,7 +57,7 @@ async function setup() {
   const versionJson = JSON.stringify({
     name: "pi-gateway",
     version: "0.1.0",
-    wireVersions: [1],
+    wireVersions: [2],
     capabilities: ["managed-on-demand-v1"],
   });
   const exec = vi.fn<AcquisitionSeams["exec"]>(async () => versionJson);
@@ -181,6 +181,14 @@ describe("approved gateway acquisition", () => {
     await fs.writeFile(path.join(abandoned, "unknown"), "preserve");
     await acquireGateway(s.plan, s.options);
     await expect(fs.readFile(path.join(abandoned, "unknown"), "utf8")).resolves.toBe("preserve");
+  });
+  test("a gateway that does not speak this wire version is refused as too old, naming both versions", async () => {
+    const s = await setup();
+    s.exec.mockResolvedValue(JSON.stringify({ ...JSON.parse(s.versionJson), wireVersions: [1] }));
+    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(
+      `too old: The gateway ${s.plan.version} (pinned) speaks wire [1]; this adapter needs wire 2.`,
+    );
+    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
   test("fails capability mismatch and cleans only owned version", async () => {
     const s = await setup();

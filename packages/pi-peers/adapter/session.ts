@@ -18,6 +18,7 @@ import type { Configuration } from "./config.js";
 import { Handles, TakenIndex } from "./handles.js";
 import { footerStatus } from "./presentation.js";
 import type { FooterTheme } from "./presentation.js";
+import { SentReceipts } from "./receipts.js";
 import { UnsureSends } from "./retries.js";
 import { freshId } from "./transport.js";
 import type { Reply, Request } from "./transport.js";
@@ -40,6 +41,7 @@ export class AdapterSession {
   readonly taken = new TakenIndex();
   readonly unsure = new UnsureSends();
   readonly aliases = new MessageAliases();
+  readonly receipts = new SentReceipts();
   private readonly inbox: Waiting[] = [];
   private waiter: ((result: Waited) => void) | undefined;
   private readonly abort = new AbortController();
@@ -145,7 +147,7 @@ export class AdapterSession {
         this.signalPump();
       }
       return checkedReply({
-        v: 1,
+        v: 2,
         op: "result",
         rid: request.rid,
         forOp: "deliver",
@@ -157,7 +159,7 @@ export class AdapterSession {
       throw new Error("Unsupported adapter request");
     }
     return checkedReply({
-      v: 1,
+      v: 2,
       op: "result",
       rid: request.rid,
       forOp: retired,
@@ -313,30 +315,29 @@ export class AdapterSession {
     return { messages };
   }
   async send(to: PeerRef, scopeId: string, message: Message, signal?: AbortSignal) {
-    const binding = {
-      messageId: message.id,
-      sender: this.peer,
-      recipient: to,
-      scopeId,
-    };
+    const messageId = message.id;
     if (
       !this.client.effectiveScopes().has(scopeId) ||
       !permits(this.config, to.machineId, scopeId, "push")
     ) {
-      return { tag: "not_admitted", binding, code: "forbidden" } as const;
+      return { tag: "not_admitted", messageId, code: "forbidden" } as const;
     }
     if (message.kind === "request") {
       const relation = this.state.rememberOutgoing({ to, scopeId, message });
       if (relation.tag !== "ok") {
         return {
           tag: "not_admitted",
-          binding,
+          messageId,
           code: relation.code,
           ...(relation.code === "overloaded" ? { resource: relation.resource } : {}),
         };
       }
     }
-    return this.client.send(to, scopeId, message, signal);
+    const outcome = await this.client.send(to, scopeId, message, signal);
+    if (outcome.tag === "admitted") {
+      this.receipts.record(messageId, outcome.durable);
+    }
+    return outcome;
   }
   close(): void {
     this.disposed = true;

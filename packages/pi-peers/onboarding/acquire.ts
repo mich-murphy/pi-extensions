@@ -19,6 +19,7 @@ import {
   gatewayCatalog,
   gatewayTarget,
   validatePin,
+  wireMismatch,
 } from "./catalog.js";
 import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog.js";
 import { foreignFolder, linkedFolder, openFolder, Refusal, sharedFolder } from "./refusal.js";
@@ -524,10 +525,14 @@ async function probeGateway(
   const capabilities = version.capabilities;
   const wires = version.wireVersions;
   if (
+    version.name === "pi-gateway" &&
+    !(Array.isArray(wires) && wires.includes(GATEWAY_WIRE_VERSION))
+  ) {
+    throw new Error(`The gateway program is too old: ${wireMismatch("The", plan.version, wires)}`);
+  }
+  if (
     version.name !== "pi-gateway" ||
     version.version !== plan.version ||
-    !Array.isArray(wires) ||
-    !wires.includes(GATEWAY_WIRE_VERSION) ||
     !Array.isArray(capabilities) ||
     ![GATEWAY_MANAGED_CAPABILITY, ...(plan.requiredCapabilities ?? [])].every((capability) =>
       capabilities.includes(capability),

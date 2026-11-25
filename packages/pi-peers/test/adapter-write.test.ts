@@ -38,7 +38,7 @@ const peer = { machineId: "alpha", sessionId: "sender", runtimeNonce: "1".repeat
 const other = { machineId: "alpha", sessionId: "receiver", runtimeNonce: "2".repeat(32) };
 function retiredRequest(index: number): Request {
   return {
-    v: 1,
+    v: 2,
     op: "state.get",
     rid: index.toString(16).padStart(32, "0"),
     from: peer,
@@ -50,7 +50,7 @@ function retiredRequest(index: number): Request {
 function retiredReply(request: Request): Reply {
   assert(request.op === "state.get");
   return {
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "state.get",
@@ -64,11 +64,12 @@ function deliver(socket: Socket, frame: Frame): void {
 }
 function sending(rid: string): Request {
   return {
-    v: 1,
+    v: 2,
     op: "send",
     rid,
     to: other,
     scopeId: "team",
+    budgetMs: 15_000,
     message: { id: "3".repeat(32), kind: "update", content: "authored", format: "text" },
   };
 }

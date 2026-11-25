@@ -18,17 +18,9 @@ function registration(
     "Registration scope mismatch",
   );
 }
-function sendBinding(request: Extract<Request, { op: "send" }>, reply: Reply, self: PeerRef): void {
+function sendBinding(request: Extract<Request, { op: "send" }>, reply: Reply): void {
   assert(reply.forOp === "send");
-  const binding = reply.outcome.binding;
-  assert(
-    binding.messageId === request.message.id && binding.scopeId === request.scopeId,
-    "Message binding mismatch",
-  );
-  assert(
-    samePeer(binding.sender, self) && samePeer(binding.recipient, request.to),
-    "Peer binding mismatch",
-  );
+  assert(reply.outcome.messageId === request.message.id, "Message binding mismatch");
 }
 function discovery(request: Extract<Request, { op: "discover" }>, reply: Reply): void {
   assert(reply.forOp === "discover");
@@ -51,7 +43,7 @@ export function validateBoundReply(request: Request, reply: Reply, self: PeerRef
       break;
     }
     case "send": {
-      sendBinding(request, reply, self);
+      sendBinding(request, reply);
       break;
     }
     case "discover": {

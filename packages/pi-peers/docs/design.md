@@ -24,6 +24,16 @@ sequenceDiagram
 | `not_admitted` | The attempt is known not to have admitted it. |
 | `unknown` | It may already be admitted. A later rejection does not erase that doubt. |
 
+Protocol v2 receipts carry only what their reader cannot derive: `messageId`, the outcome and, for `admitted`, `correlation` and `durable`. Sender, recipient and scope are known from the retained request, which each hop matches by `rid` before it compares `messageId`. The receiver's dedupe key (sender, recipient, scope, `message.id`) and fingerprint are unchanged, so a repeat still returns the original receipt and changed content still gets `id_conflict`. `durable` is set by the receiving adapter (always `false` until the inbox is durable); the sending adapter stores it per message and never shows it in send results.
+
+## Upgrading from wire v1
+
+Wire v2 refuses every v1 frame with one exception: a local `gateway.restart` request may be `"v":1`, and its acknowledgement echoes that version. `--request-restart` always sends v1, so the same command stops a running 0.2.0 gateway (which speaks only v1) and a 0.3.0 one. The restart is still sent once and never replayed; an uncertain outcome stays uncertain. An adapter whose register is closed unanswered, or answered in a frame it cannot decode, reports "The running gateway is an older version" and points to Setup, which restarts it once. The adapter never restarts the gateway itself.
+
+## Time budgets
+
+`send` and `deliver` carry `budgetMs`, the time left in the sender's 15 s budget, in the frame header and not in the message, so the fingerprint and idempotency are unchanged. Each gateway hop waits min(`budgetMs`, 15 s) less a 250 ms reserve and forwards that wait less another 250 ms, so the next hop always gives up first. A hop that cannot forward a positive budget answers `not_admitted` code `expired` without forwarding: the message was not delivered and sending again cannot duplicate it. Expiries are logged as the coalesced `expired` event, timeouts as `forward_timeout`.
+
 A repeat with the same id and content returns the original receipt without a second enqueue or wake, even when the inbox is full. The same id with different content returns `id_conflict`. A receipt is kept for at least 10 minutes from first admission, and for as long as its payload is still in the inbox. After it expires, a late duplicate can be admitted again, so this is not permanent exactly-once delivery.
 
 ## PeerRef
@@ -68,9 +78,11 @@ Each gateway keeps a circuit breaker for its remote machine.
 - **Open:** when that episode is spent. Sends routed to that machine fail at once with `not_admitted` code `link_down` instead of waiting 15 seconds. One probe is scheduled after 30 s, doubling to 240 s, plus up to a quarter of jitter, so every wait is between 30 s and 5 min. A failed probe reopens it; there is no final state.
 - **Half-open:** one probe in flight. Success closes the breaker and the roster is fetched again. A local session registering in a scope the remote serves brings the next probe forward.
 
-Sessions see `up`, `probing` (an attempt is in flight or due within seconds) or `down` (open, with the next probe time). A gateway pushes a `link.state` frame to a session that registered with `linkEvents: true`: once after registration and then exactly on each change. Only those sessions get `link_down`; others keep `no_route`, so an older adapter never sees a frame or code it does not know. The adapter opts in only when the setup executable reports capability `link-state-v1`.
+Sessions see `up`, `probing` (an attempt is in flight or due within seconds) or `down` (open, with the next probe time). A gateway pushes a `link.state` frame to every registered session: once after registration and then exactly on each change. Every local session gets `link_down` for a machine whose link is down.
 
-The gateway writes coalesced JSON events to stderr, at most one per kind every 30 s with a `suppressed` count: `link_state`, `forward_timeout` and `overloaded`. They carry no payload, path or credential.
+On the link, `send` may name a peer by a small number instead of its full `PeerRef`. Each gateway numbers the peers it exports in the order it sends their roster upserts, and the other side numbers them the same way as it imports them. Numbers are never reused, are capped at 1,024 per direction (later peers travel in full) and die with the link: a new link starts with empty tables, and an unassigned number closes the link.
+
+The gateway writes coalesced JSON events to stderr, at most one per kind every 30 s with a `suppressed` count: `link_state`, `forward_timeout`, `expired` and `overloaded`. They carry no payload, path or credential.
 
 ## Trust model
 

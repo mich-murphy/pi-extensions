@@ -51,7 +51,7 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
           socket.write(
             encodeFrame(
               {
-                v: 1,
+                v: 2,
                 op: "result",
                 rid: request.rid,
                 forOp: "register",
@@ -212,12 +212,13 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
   test("admitted inbox is taken immediately during outage, once, without ensure or network", async () => {
     const fx = await setup(["team"]);
     fx.server().send({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "4".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: {
         id: "3".repeat(32),
         kind: "update",
@@ -246,12 +247,13 @@ describe("managed outage: local tools stay available, remote tools stay fail-clo
   test("manually configured runtime (no ensureGateway): offline local tools work", async () => {
     const fx = await setup(["team"], false);
     fx.server().send({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "6".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: {
         id: "7".repeat(32),
         kind: "update",

@@ -32,21 +32,15 @@ type Case = { role: BoundaryRole; frame: Record<string, unknown> };
 
 function frameCases(content: string): Case[] {
   const message = { id: "2".repeat(32), kind: "request", format: "text", content };
-  const head = { v: 1, rid };
+  const head = { v: 2, rid };
   const work = { kind: "request", origin: peerOf("alpha"), requestId: rid };
   const routedBodies = [
-    { op: "send", to: peerOf("beta"), scopeId: "team", message },
+    { op: "send", to: peerOf("beta"), scopeId: "team", budgetMs: 15_000, message },
     { op: "state.get", publisher: peerOf("beta"), scopeId: "team", key: "k", expectedRevision: 3 },
     { op: "state.list", publisher: peerOf("beta"), scopeId: "team" },
     { op: "interest.add", publisher: peerOf("beta"), scopeId: "team", work },
     { op: "interest.remove", publisher: peerOf("beta"), scopeId: "team", work },
   ];
-  const binding = {
-    messageId: rid,
-    sender: peerOf("alpha"),
-    recipient: peerOf("beta"),
-    scopeId: "team",
-  };
   const cases: Case[] = [];
   const add = (role: BoundaryRole, body: Record<string, unknown>) =>
     cases.push({ role, frame: { ...head, ...body } });
@@ -77,13 +71,14 @@ function frameCases(content: string): Case[] {
     from: peerOf("alpha"),
     to: peerOf("beta"),
     scopeId: "team",
+    budgetMs: 15_000,
     message,
   });
   add("local-client", { op: "result", forOp: "close", outcome: { tag: "ok", value: {} } });
   add("local-client", {
     op: "result",
     forOp: "send",
-    outcome: { tag: "admitted", binding, correlation: "none" },
+    outcome: { tag: "admitted", messageId: rid, correlation: "none", durable: false },
   });
   add("local-client", { op: "roster.event", event: { tag: "remove", peer: peerOf("beta") } });
   return cases;

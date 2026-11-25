@@ -160,7 +160,7 @@ describe("adapter configuration and retry boundaries", () => {
     await expect(
       sendWithRetries(
         sendOptions(async (rid) => ({
-          v: 1,
+          v: 2,
           op: "result",
           rid,
           forOp: "close",

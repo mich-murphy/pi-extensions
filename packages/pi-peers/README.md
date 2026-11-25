@@ -225,7 +225,7 @@ Labels are claims made by the other session and are not verified. Your own sessi
 ## Delivery receipts
 
 - `admitted`: the receiving session's inbox holds the message. It does not mean read, accepted or done.
-- `not_admitted`: the attempt is known not to have been admitted. Code `link_down` means the link to the recipient's machine is down: the session may still exist, and sending again later cannot duplicate the message. `peers_list` marks such peers `(link down)`. Code `no_route` means the runtime is not reachable now; it does not mean its messages were discarded.
+- `not_admitted`: the attempt is known not to have been admitted. Code `link_down` means the link to the recipient's machine is down: the session may still exist, and sending again later cannot duplicate the message. `peers_list` marks such peers `(link down)`. Code `no_route` means the runtime is not reachable now; it does not mean its messages were discarded. Code `expired` means the send ran out of time on the way and was dropped before any inbox; sending again cannot duplicate it.
 - `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message. To try again later, repeat the call unchanged with `retryOf` set to its id. The adapter resends the stored message, with the same id and bytes, to the exact runtime it first went to, and the receiver answers a duplicate with its original receipt. `retryOf` is refused for a message that was delivered or not delivered, for a changed `to`, `kind` or `content`, and after 8 minutes, because receivers keep receipts for 10.
 
 See [design](docs/design.md#receipts-and-idempotency).

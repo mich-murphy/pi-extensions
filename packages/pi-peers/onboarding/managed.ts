@@ -6,7 +6,7 @@ import { createConnection } from "node:net";
 import { isAbsolute, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { EnsureGateway } from "../adapter/client.js";
-import { GATEWAY_LOCAL_SETUP_CAPABILITIES } from "./catalog.js";
+import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_WIRE_VERSION } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
 import { Refusal } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
@@ -78,9 +78,16 @@ export async function validateExecutable(
   const version = decodeRecord(parseJson(stdout));
   const capabilities = version.capabilities;
   if (
+    version.name === "pi-gateway" &&
+    !(Array.isArray(version.wireVersions) && version.wireVersions.includes(GATEWAY_WIRE_VERSION))
+  ) {
+    throw new Refusal(
+      `the gateway program is out of date: it does not speak peers protocol v${String(GATEWAY_WIRE_VERSION)}`,
+      "Run pi update to update the gateway, then choose Setup in /peers",
+    );
+  }
+  if (
     version.name !== "pi-gateway" ||
-    !Array.isArray(version.wireVersions) ||
-    !version.wireVersions.includes(1) ||
     !Array.isArray(capabilities) ||
     !["managed-on-demand-v1", ...requiredCapabilities].every((capability) =>
       capabilities.includes(capability),
@@ -91,37 +98,6 @@ export async function validateExecutable(
       "Run pi update, then choose Setup in /peers",
     );
   }
-}
-const LINK_STATE_CAPABILITY = "link-state-v1";
-const linkCapable = new Map<string, Promise<boolean>>();
-async function reportsLinkState(executable: string, sha256: string): Promise<boolean> {
-  const key = `${executable}\n${sha256}`;
-  let known = linkCapable.get(key);
-  if (known === undefined) {
-    known = execute(executable, ["--version", "--json"], {
-      timeout: 5000,
-      maxBuffer: 16_384,
-      env: gatewayEnvironment(),
-    }).then(
-      ({ stdout }) => {
-        const capabilities = decodeRecord(parseJson(stdout)).capabilities;
-        return Array.isArray(capabilities) && capabilities.includes(LINK_STATE_CAPABILITY);
-      },
-      () => false,
-    );
-    linkCapable.set(key, known);
-  }
-  return known;
-}
-async function withLinkEvents(
-  current: ManagedSetup,
-): Promise<{ gatewaySha256: string; linkEvents?: boolean }> {
-  const linkEvents = await reportsLinkState(current.executable, current.executableSha256).catch(
-    () => false,
-  );
-  return linkEvents
-    ? { gatewaySha256: current.gatewaySha256, linkEvents }
-    : { gatewaySha256: current.gatewaySha256 };
 }
 async function reachable(path: string, signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
@@ -159,7 +135,7 @@ export function managedLauncher(
     const connected = await reachable(current.socketPath, signal);
     startupDemand(deadline, signal);
     if (connected) {
-      return withLinkEvents(current);
+      return { gatewaySha256: current.gatewaySha256 };
     }
     await validateExecutable(current.executable);
     startupDemand(deadline, signal);
@@ -195,7 +171,7 @@ export function managedLauncher(
     } finally {
       await log.close();
     }
-    return withLinkEvents(current);
+    return { gatewaySha256: current.gatewaySha256 };
   };
 }
 

@@ -101,7 +101,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
       : "";
     const output = JSON.stringify({
       name: "pi-gateway",
-      wireVersions: [1],
+      wireVersions: [2],
       capabilities: ["managed-on-demand-v1", ...capabilities],
     });
     await rm(executable, { force: true });

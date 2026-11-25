@@ -69,6 +69,7 @@ pub async fn request_restart(config: &crate::config::Config) -> io::Result<()> {
         let mut nonce = [0; 16];
         ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut nonce).map_err(|_| io::Error::other("restart nonce unavailable"))?;
         let rid = nonce.iter().fold(String::new(), |mut output, byte| { use std::fmt::Write; write!(output,"{byte:02x}").expect("writing to String"); output });
+        // v1 on purpose: a running 0.2.0 gateway accepts only v1, and 0.3.0 accepts v1 for this op alone.
         let body = serde_json::to_vec(&json!({"v":1,"op":"gateway.restart","rid":rid,"expectedMachineId":config.machine_id}))?;
         stream.write_all(&u32::try_from(body.len()).map_err(io::Error::other)?.to_be_bytes()).await?;
         stream.write_all(&body).await?;
@@ -76,8 +77,8 @@ pub async fn request_restart(config: &crate::config::Config) -> io::Result<()> {
         let length = crate::wire::body_length(length.to_be_bytes()).map_err(io::Error::other)?;
         let mut body = vec![0;length];
         stream.read_exact(&mut body).await?;
-        let value = crate::wire::decode_body(&body, crate::wire::Role::LocalClient).map_err(io::Error::other)?;
-        if value != json!({"v":1,"op":"result","rid":rid,"forOp":"gateway.restart","outcome":{"tag":"ok","value":{}}}) { return Err(io::Error::other("restart acknowledgement mismatch; outcome uncertain")); }
+        let value = crate::wire::decode_json(&body, crate::wire::Role::LocalClient).map_err(io::Error::other)?;
+        if ![1, 2].into_iter().any(|version| value == json!({"v":version,"op":"result","rid":rid,"forOp":"gateway.restart","outcome":{"tag":"ok","value":{}}})) { return Err(io::Error::other("restart acknowledgement mismatch; outcome uncertain")); }
         if stream.read(&mut [0;1]).await? != 0 { return Err(io::Error::other("restart did not close; outcome uncertain")); }
         Ok(())
     }).await.map_err(|_| io::Error::new(io::ErrorKind::TimedOut,"restart outcome uncertain; reconnect and inspect, do not blindly retry"))?
