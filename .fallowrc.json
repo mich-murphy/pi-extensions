@@ -42,7 +42,9 @@
   "ignoreExports": [
     // Bombadil reads every export of a specification; Pi and the launcher read the default export
     // of test-only extensions and fixtures.
-    { "file": "packages/*/test/bombadil/*.ts", "exports": ["*"] }
+    { "file": "packages/*/test/bombadil/*.ts", "exports": ["*"] },
+    // Pi loads a test fixture extension with -e and reads its default export.
+    { "file": "packages/*/test/fixtures/*.ts", "exports": ["default"] }
   ],
   "failOnParseError": true,
   "usedClassMembers": [{ "extends": "Error", "members": ["_tag"] }],
