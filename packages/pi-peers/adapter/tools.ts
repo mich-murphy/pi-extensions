@@ -7,6 +7,8 @@ import type { Schema } from "effect";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
+import { refusalText } from "../onboarding/outcome.js";
+import { Refusal } from "../onboarding/refusal.js";
 import { samePeer } from "../protocol/identity.js";
 import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import type { Message } from "../protocol/schema.js";
@@ -185,6 +187,22 @@ function problem(code: string, note?: string): Shown<never> {
   return shownError(failure);
 }
 
+const NOT_CONNECTED =
+  "Peers could not connect in this session. Ask the user to run `/peers status`.";
+
+function unrecovered(error: Error): Shown<never> {
+  if (error instanceof ConnectionFailure) {
+    return problem(error.code);
+  }
+
+  return error instanceof Refusal
+    ? problem(
+        "unavailable",
+        `${refusalText(error, NOT_CONNECTED)} Ask the user to do this; do not retry.`,
+      )
+    : problem("unavailable", NOT_CONNECTED);
+}
+
 async function invoke<Value extends ToolSuccess>(
   getSession: () => ToolSession | undefined,
   run: (session: ToolSession) => Shown<Value> | Promise<Shown<Value>>,
@@ -209,7 +227,11 @@ async function invoke<Value extends ToolSuccess>(
     } else {
       await session.client.recoverForTool();
     }
+  } catch (error) {
+    return output(unrecovered(error instanceof Error ? error : new Error(String(error))));
+  }
 
+  try {
     return output(await run(session));
   } catch (error) {
     return output(problem(error instanceof ConnectionFailure ? error.code : "invalid_input"));
