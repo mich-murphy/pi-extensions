@@ -67,6 +67,7 @@ export type UsageLimitObservation = {
 };
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
+
 type Collaborators = RunnerOptions &
   Required<Pick<RunnerOptions, "runSdkQuery" | "sdkEnvironment" | "createMcpServer">>;
 
@@ -108,6 +109,7 @@ function createQueryCapture(
   const deferred = createDeferredCallCapture(catalog);
   let fallbackCalls = 0;
   let fallbackError: SdkResultError | undefined;
+
   return {
     deferred,
     get fallbackCalls() {
@@ -156,15 +158,20 @@ function reasoningOptions({
   if (!model.reasoning) {
     return {};
   }
+
   const reasoning = options?.reasoning;
+
   if (usesManualThinkingBudget(model)) {
     if (!reasoning) {
       return { thinking: { type: "disabled" } };
     }
+
     const level = reasoning === "xhigh" || reasoning === "max" ? "high" : reasoning;
     const requested = options?.thinkingBudgets?.[level];
+
     const budget =
       requested !== undefined && Number.isFinite(requested) ? requested : thinkingBudgets[level];
+
     return {
       thinking: {
         type: "enabled",
@@ -172,6 +179,7 @@ function reasoningOptions({
       },
     };
   }
+
   return reasoning ? { effort: reasoning === "minimal" ? "low" : reasoning } : {};
 }
 
@@ -203,12 +211,14 @@ function queryParameters(
 ): SdkQueryParameters {
   const { request, model, options: streamOptions } = turn;
   const maxTokens = streamOptions?.maxTokens;
+
   const server = createMcpServer({
     name: "pi",
     version: "0.1.0",
     tools: [],
     alwaysLoad: true,
   });
+
   for (const definition of createDeferredPiTools(catalog, onFallback)) {
     server.instance.registerTool(
       definition.name,
@@ -220,13 +230,16 @@ function queryParameters(
       definition.handler,
     );
   }
+
   const queryEnv: QueryEnvironment = {
     ...env,
     CLAUDE_CODE_MAX_RETRIES: String(claudeCodeRetries(streamOptions?.maxRetries)),
   };
+
   if (maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1) {
     queryEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(Math.floor(maxTokens));
   }
+
   return {
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
@@ -265,8 +278,10 @@ function failedResultEvent(
   if (apiError === undefined) {
     return failed(error);
   }
+
   const exhausted = rejectedWindow && apiError === "rate_limit" && error.category === "provider";
   const category = exhausted ? "usage-limit" : error.category;
+
   return failed(new SdkResultError({ terminalReason: error.terminalReason, category, apiError }));
 }
 
@@ -280,9 +295,11 @@ function terminalEvent(
   if (!result) {
     return failed(new SdkMissingResultError());
   }
+
   if (Predicate.isTagged("failed")(result)) {
     return failedResultEvent(result.error, apiError, rejectedWindow);
   }
+
   if (batchStopped && calls.length === 0) {
     return failed(
       new SdkProtocolError({
@@ -291,18 +308,24 @@ function terminalEvent(
       }),
     );
   }
+
   const deferred =
     result.stopReason === "stop" &&
     (result.terminalReason === "tool_deferred" ||
       (batchStopped && result.terminalReason === "hook_stopped"));
+
   if (deferred && calls.length === 0) {
     const detail = "tool handoff terminal result captured no calls";
+
     return failed(new SdkProtocolError({ messageType: "result", detail }));
   }
+
   if (!deferred && calls.length > 0) {
     const detail = `captured deferred calls but terminal_reason was ${result.terminalReason ?? "missing"}`;
+
     return failed(new SdkProtocolError({ messageType: "result", detail }));
   }
+
   return deferred ? { type: "tool_calls", calls } : { type: "done", reason: result.stopReason };
 }
 
@@ -327,6 +350,7 @@ type RequestStart = Extract<SdkMessage, { type: "usage" }>["modelRequestStart"];
 
 function startsNewRequest(progress: QueryProgress, start: RequestStart): boolean {
   const id = start?.id;
+
   return start !== undefined && (id === undefined || !progress.modelRequestIds.has(id));
 }
 
@@ -337,9 +361,11 @@ function modelRequestProgress(
   const id = start?.id;
   const started = startsNewRequest(progress, start);
   const ids = new Set(progress.modelRequestIds);
+
   if (id !== undefined) {
     ids.add(id);
   }
+
   return { modelRequests: progress.modelRequests + (started ? 1 : 0), modelRequestIds: ids };
 }
 
@@ -350,12 +376,15 @@ function advanceUsage(
   message: Extract<SdkMessage, { type: "usage" }>,
 ): Advanced {
   const usage = applyUsage(progress.usage, message.usage);
+
   const apiError =
     effectiveResultCategory("provider", message.apiError) === "authentication"
       ? message.apiError
       : (progress.apiError ?? message.apiError);
+
   const started = startsNewRequest(progress, message.modelRequestStart);
   const toolUses = message.assistantToolUses ?? 0;
+
   return {
     progress: {
       ...progress,
@@ -377,14 +406,18 @@ function advance(progress: QueryProgress, message: SdkMessage): Advanced {
     case "thinking_delta": {
       return { progress, event: message };
     }
+
     case "usage": {
       return advanceUsage(progress, message);
     }
+
     case "result": {
       if (message.usage === undefined) {
         return { progress: { ...progress, result: message }, event: undefined };
       }
+
       const usage = applyUsage(progress.usage, message.usage, "turn");
+
       const unchanged =
         progress.usage !== undefined &&
         progress.usage.input === usage.input &&
@@ -392,11 +425,13 @@ function advance(progress: QueryProgress, message: SdkMessage): Advanced {
         progress.usage.cacheRead === usage.cacheRead &&
         progress.usage.cacheWrite === usage.cacheWrite &&
         progress.usage.cacheWrite1h === usage.cacheWrite1h;
+
       return {
         progress: { ...progress, usage, result: message },
         event: unchanged ? undefined : { type: "usage", usage },
       };
     }
+
     case "tool_results": {
       return {
         progress: {
@@ -406,6 +441,7 @@ function advance(progress: QueryProgress, message: SdkMessage): Advanced {
         event: undefined,
       };
     }
+
     case "usage_limit": {
       return {
         progress: {
@@ -416,10 +452,12 @@ function advance(progress: QueryProgress, message: SdkMessage): Advanced {
         event: undefined,
       };
     }
+
     case "api_retry":
     case "ignored": {
       return { progress, event: undefined };
     }
+
     default: {
       return absurd(message);
     }
@@ -455,9 +493,11 @@ function interruption(
   if (!progress.requestOpen) {
     return undefined;
   }
+
   if (message.type === "api_retry") {
     return new SdkStreamInterruptedError({ evidence: "api-retry" });
   }
+
   return message.type === "usage" && startsNewRequest(progress, message.modelRequestStart)
     ? new SdkStreamInterruptedError({ evidence: "new-attempt" })
     : undefined;
@@ -475,9 +515,11 @@ function settle(
   if (capture.error) {
     return ended(Result.fail(capture.error), progress);
   }
+
   if (callerSignal?.aborted === true && !Predicate.isTagged("failed")(progress.result?.result)) {
     return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)), progress);
   }
+
   return ended(Result.succeed(progress), progress);
 }
 
@@ -493,6 +535,7 @@ function stopBeforeAdvance(
   if (message.type === "usage_limit" && message.overage && !extraUsage) {
     return new SdkOverageError({ resetsAt: message.overage.resetsAt });
   }
+
   return interruption(progress, message);
 }
 
@@ -505,31 +548,42 @@ function step(
     if (!Result.isResult(item)) {
       return [progress, [settle(capture, progress, callerSignal)]];
     }
+
     if (capture.error) {
       return [progress, [ended(Result.fail(capture.error), progress)]];
     }
+
     if (Result.isFailure(item)) {
       return [progress, [ended(Result.fail(item.failure), progress)]];
     }
+
     const tooOld = tooOldClaudeCode(Option.getOrUndefined(item.success));
+
     if (tooOld !== undefined) {
       const failure = new SdkQueryError({
         operation: "iterate",
         reason: SdkQueryFailureReason.cases.ClaudeCodeTooOld.make({ version: tooOld }),
         cause: new Error("Claude Code is older than the supported minimum"),
       });
+
       return [progress, [ended(Result.fail(failure), progress)]];
     }
+
     const parsed = parseSdkMessage(item.success);
+
     if (Result.isFailure(parsed)) {
       return [progress, [ended(Result.fail(parsed.failure), progress)]];
     }
+
     const stopped = stopBeforeAdvance(progress, parsed.success, extraUsage);
+
     if (stopped !== undefined) {
       return [progress, [ended(Result.fail(stopped), progress)]];
     }
+
     const { progress: next, event } = advance(progress, parsed.success);
     const steps = event ? [QueryStep.event({ event })] : [];
+
     return [next, next.result ? [...steps, settle(capture, next, callerSignal)] : steps];
   };
 }
@@ -541,18 +595,22 @@ function abortOnClose(
   return {
     [Symbol.asyncIterator]: () => {
       let iterator: AsyncIterator<unknown> | undefined;
+
       return {
         next: async () => {
           iterator ??= messages[Symbol.asyncIterator]();
+
           return iterator.next();
         },
         return: async () => {
           abortController.abort();
+
           try {
             await iterator?.return?.();
           } catch {
             return { done: true, value: undefined };
           }
+
           return { done: true, value: undefined };
         },
       };
@@ -572,6 +630,7 @@ function querySteps(
   ).pipe(
     Stream.mapEffect((event) => {
       const onEvent = turn.options?.onProviderStreamEvent;
+
       return (
         onEvent === undefined
           ? Effect.void
@@ -589,6 +648,7 @@ function iterationFailure(capture: QueryCapture, signal: AbortSignal, cause: unk
   if (capture.error) {
     return capture.error;
   }
+
   return signal.aborted
     ? SdkQueryError.cancelled("iterate", cause)
     : SdkQueryError.fromCause("iterate", cause);
@@ -600,10 +660,13 @@ function turnAbortController(
   return Effect.acquireRelease(
     Effect.sync(() => {
       const controller = new AbortController();
+
       const forwardAbort = (): void => {
         controller.abort(signal?.reason);
       };
+
       signal?.addEventListener("abort", forwardAbort, { once: true });
+
       return { controller, forwardAbort };
     }),
     ({ controller, forwardAbort }) =>
@@ -628,6 +691,7 @@ function conclude(
   { selector, modelObserver, usageLimitObserver, recordUsage }: TurnObservers,
 ): BridgeEvent {
   const { usage, observedModel, result, apiError } = progress;
+
   if (result !== undefined && observedModel !== undefined) {
     modelObserver?.({
       selector,
@@ -636,6 +700,7 @@ function conclude(
       maxOutputTokens: maxOutputTokensFor(result.modelUsage, observedModel),
     });
   }
+
   const terminal = Result.isFailure(outcome)
     ? failed(outcome.failure)
     : terminalEvent(
@@ -645,16 +710,20 @@ function conclude(
         capture.deferred.batchStopped,
         progress.usageLimitRejected,
       );
+
   const checkedTerminal =
     terminal.type !== "failed" && progress.modelRequests > 1
       ? failed(new SdkInternalContinuationError())
       : startedApiFailure(terminal, progress);
+
   reportUsageLimit(checkedTerminal, progress.usageLimitResetsAt, usageLimitObserver);
   recordUsage?.(usage, queryUsageMetadata(checkedTerminal, progress, capture));
+
   return checkedTerminal;
 }
 
 type ObservedModelFields = { observedModel?: string };
+
 type QueryResultFields = { numTurns?: number; apiError?: string };
 
 function queryUsageMetadata(
@@ -664,16 +733,21 @@ function queryUsageMetadata(
 ): CacheUsageMetadata {
   const { observedModel, result, apiError } = progress;
   const observed: ObservedModelFields = {};
+
   if (observedModel !== undefined) {
     observed.observedModel = observedModel;
   }
+
   const resultFields: QueryResultFields = {};
+
   if (result?.numTurns !== undefined) {
     resultFields.numTurns = result.numTurns;
   }
+
   if (apiError !== undefined) {
     resultFields.apiError = apiError;
   }
+
   return {
     ...observed,
     query: queryDiagnostics({
@@ -724,9 +798,11 @@ function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
   return Result.try({
     try: () => {
       const cwd = process.cwd();
+
       if (!statSync(cwd).isDirectory()) {
         throw new Error("Session working directory is not a directory");
       }
+
       return cwd;
     },
     catch: (cause) =>
@@ -753,21 +829,28 @@ const runTurn = Effect.fnUntraced(function* (
 ): Effect.fn.Return<Stream.Stream<BridgeEvent>, never, Scope.Scope> {
   const { model, options } = turn;
   const signal = options?.signal;
+
   if (signal?.aborted === true) {
     return Stream.succeed(failed(SdkQueryError.cancelled("start", signal.reason)));
   }
+
   const abortController = yield* turnAbortController(signal);
+
   const applied = yield* Effect.result(
     instrumentRequest(turn.request, model, options, abortController.signal),
   );
+
   if (Result.isFailure(applied)) {
     return Stream.succeed(failed(applied.failure));
   }
+
   if (abortController.signal.aborted) {
     return Stream.succeed(failed(SdkQueryError.cancelled("start", undefined)));
   }
+
   const request = applied.success;
   const appliedTurn = { ...turn, request };
+
   const compiled = Result.try({
     try: () => compileToolCatalog(request.tools),
     catch: (error) =>
@@ -775,14 +858,19 @@ const runTurn = Effect.fnUntraced(function* (
         ? error
         : new SdkToolContractError({ reason: "schema" }),
   });
+
   if (Result.isFailure(compiled)) {
     return Stream.succeed(failed(compiled.failure));
   }
+
   const directory = queryWorkingDirectory();
+
   if (Result.isFailure(directory)) {
     return Stream.succeed(failed(directory.failure));
   }
+
   const executable = claudeExecutable ?? resolveClaudeExecutable(sdkEnvironment);
+
   if (executable === undefined) {
     return Stream.succeed(
       failed(
@@ -794,16 +882,20 @@ const runTurn = Effect.fnUntraced(function* (
       ),
     );
   }
+
   const catalog = compiled.success;
   const capture = createQueryCapture(catalog, abortController, validationRecovery);
+
   const ttl = cacheTtlFor(
     options?.cacheRetention,
     options?.env?.PI_CACHE_RETENTION ?? sdkEnvironment.PI_CACHE_RETENTION,
   );
+
   const recordUsage = cacheDiagnostics?.(`${model.provider}/${model.id}`, request, {
     ttl,
     reasoning: options?.reasoning,
   });
+
   const started = Result.try({
     try: () =>
       runSdkQuery(
@@ -822,12 +914,14 @@ const runTurn = Effect.fnUntraced(function* (
       ),
     catch: (error) => SdkQueryError.fromCause("start", error),
   });
+
   const observers = {
     selector: sdkModelSelectorFor(model.id),
     modelObserver,
     usageLimitObserver,
     recordUsage,
   };
+
   if (Result.isFailure(started)) {
     return Stream.succeed(
       conclude(
@@ -838,6 +932,7 @@ const runTurn = Effect.fnUntraced(function* (
       ),
     );
   }
+
   return querySteps(
     started.success,
     capture,
@@ -861,6 +956,7 @@ export function createClaudeAgentSdkRunner(options: RunnerOptions = {}): AgentSd
     sdkEnvironment: subscriptionEnvironment(),
     ...options,
   };
+
   return (request, model, streamOptions) =>
     Stream.toAsyncIterable(
       Stream.unwrap(runTurn(collaborators, { request, model, options: streamOptions })),

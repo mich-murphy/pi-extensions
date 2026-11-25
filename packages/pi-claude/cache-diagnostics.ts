@@ -11,9 +11,11 @@ export function parseCacheDiagnosticsMode(
   environment: Readonly<Record<string, string | undefined>>,
 ): CacheDiagnosticsMode {
   const file = claudeVariable(environment, "PI_CLAUDE_CACHE_DIAGNOSTICS_FILE");
+
   if (file !== undefined && file.length > 0) {
     return { file };
   }
+
   return claudeVariable(environment, "PI_CLAUDE_CACHE_DIAGNOSTICS") === "1"
     ? "enabled"
     : "disabled";
@@ -33,8 +35,10 @@ export const cacheDiagnosticsTracker = Effect.fnUntraced(function* (
   if (mode === "disabled") {
     return undefined;
   }
+
   return yield* createCacheDiagnosticTracker((diagnostic) => {
     const record = JSON.stringify(diagnostic);
+
     if (mode === "enabled") {
       writeRedirectedDiagnostic(`[claude-cache] ${record}\n`);
     } else {

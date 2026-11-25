@@ -6,9 +6,11 @@ const tail = ". Private dedicated install, no shell profile or OS service regist
 
 describe("setup acquisition review text", () => {
   const { nix, native } = gatewayCatalog;
+
   if (nix === null || native === null) {
     throw new Error("Shipped catalog must pin both routes");
   }
+
   test("a native selection names its manifest pin and no unavailable-fallback clause", () => {
     expect(acquisitionDescription({ method: "native", ...native }, null)).toBe(
       `Acquire ${native.version} from reviewed native source ${native.sourceRevision}, artifact manifest SHA256 ${native.manifestSha256}${tail}`,

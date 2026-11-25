@@ -66,6 +66,7 @@ export function parseParallelResults(
   payload: ProviderJson,
 ): Result.Result<readonly NormalizedSearchResult[], string> {
   const parsed = decodeParallelResultsPayload(payload);
+
   return Result.isSuccess(parsed)
     ? Result.succeed(parsed.success.results.map((item) => normalizeParallelResult(item)))
     : Result.fail("Missing results array");
@@ -79,10 +80,13 @@ export function parseParallelMcpPayload(
   }
 
   const [firstText] = toolResult.text;
+
   if (firstText === undefined) {
     return Result.fail("Missing structured search results");
   }
+
   const payload = parseJsonBody(firstText);
+
   return Result.isSuccess(payload)
     ? parseParallelResults(payload.success)
     : Result.fail("Invalid structured search results");
@@ -168,18 +172,23 @@ export class ParallelMcpFetchProvider implements FetchProvider {
 
 function readParallelFetchResult(call: McpToolCallResult): string | undefined {
   const fromStructured = extractParallelFetchText(call.structuredContent);
+
   if (fromStructured !== undefined && fromStructured !== "") {
     return fromStructured;
   }
 
   const text = call.text.join("\n\n").trim();
+
   if (!text) {
     return undefined;
   }
+
   const payload = parseJsonBody(text);
+
   const fromJson = Result.isSuccess(payload)
     ? extractParallelFetchText(payload.success)
     : undefined;
+
   return fromJson ?? text;
 }
 
@@ -187,6 +196,7 @@ function extractParallelFetchText(payload: ProviderJson | undefined): string | u
   return Option.getOrUndefined(
     Option.map(decodeParallelFetchPayload(payload), (parsed) => {
       const [first] = parsed.results;
+
       return first.content ?? joinExcerpts(first.excerpts);
     }),
   );

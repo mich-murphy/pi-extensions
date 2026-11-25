@@ -31,9 +31,11 @@ function parsed(
     | undefined,
 ): SdkMessage {
   const result = parseSdkMessage(decodeSdkEvent(input));
+
   if (Result.isFailure(result)) {
     throw result.failure;
   }
+
   return result.success;
 }
 
@@ -46,27 +48,34 @@ function protocolError(
     | undefined,
 ): SdkProtocolError {
   const result = parseSdkMessage(decodeSdkEvent(input));
+
   if (Result.isSuccess(result)) {
     throw new Error("test setup: expected a protocol error");
   }
+
   expect(result.failure).toBeInstanceOf(SdkProtocolError);
   expect(result.failure._tag).toBe("SdkProtocolError");
+
   return result.failure;
 }
 
 function turnResult(fields: SdkResultFields) {
   const message = parsed(resultMessage(fields));
+
   if (message.type !== "result") {
     throw new Error("test setup: expected a result message");
   }
+
   return message.result;
 }
 
 function failedResult(fields: SdkResultFields) {
   const result = turnResult({ is_error: true, stop_reason: null, ...fields });
+
   if (!Predicate.isTagged("failed")(result)) {
     throw new Error("test setup: expected a failed result");
   }
+
   return result.error;
 }
 
@@ -138,6 +147,7 @@ describe("SDK stream messages", () => {
         ],
       },
     });
+
     expect(message).toStrictEqual({ type: "usage", usage, assistantToolUses: 2 });
     expect(JSON.stringify(message)).not.toContain("private");
     expect(parsed({ type: "assistant", message: { usage, content: "malformed" } })).toStrictEqual({
@@ -166,7 +176,9 @@ describe("SDK stream messages", () => {
       },
       tool_use_result: { secret: "private output" },
     });
+
     expect(message).toStrictEqual({ type: "tool_results", errorToolResults: 2 });
+
     for (const content of [null, 7, "private text", [{ type: "tool_result", is_error: false }]]) {
       expect(parsed({ type: "user", message: { content } })).toStrictEqual({ type: "ignored" });
     }
@@ -289,6 +301,7 @@ describe("usage accumulation", () => {
       cache_creation_input_tokens: 10,
       cache_creation: { ephemeral_1h_input_tokens: 7, ephemeral_5m_input_tokens: 3 },
     });
+
     expect(split).toStrictEqual({
       input: 0,
       output: 0,
@@ -363,9 +376,11 @@ describe("terminal SDK result", () => {
         },
       },
     });
+
     for (const num_turns of [-1, 1.5, "private", null, Infinity]) {
       expect(parsed(resultMessage({ num_turns }))).not.toHaveProperty("numTurns");
     }
+
     expect(
       parsed(
         resultMessage({
@@ -465,6 +480,7 @@ describe("maxOutputTokensFor", () => {
           modelUsage: { "claude-haiku-4-5": { contextWindow: 200_000, maxOutputTokens } },
         }),
       );
+
       assert(result.type === "result", "test setup: expected a result message");
 
       expect(result.result._tag).toBe("completed");
@@ -497,6 +513,7 @@ describe("maxOutputTokensFor", () => {
         },
       }),
     );
+
     assert(result.type === "result", "test setup: expected a result message");
 
     expect(contextWindowFor(result.modelUsage, "claude-haiku-4-5")).toBe(200_000);
@@ -513,9 +530,11 @@ describe("contextWindowFor", () => {
       },
     }),
   );
+
   if (message.type !== "result") {
     throw new Error("test setup: expected a result message");
   }
+
   const { modelUsage } = message;
 
   test("returns undefined for unknown models", () => {

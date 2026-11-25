@@ -14,7 +14,9 @@ import type {
 import { noClassifier } from "./fake-classifier.ts";
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
+
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
+
 type MessageHandler = (event: Pick<MessageEndEvent, "message">) => void;
 
 function isEndHandler(name: string, _handler: EndHandler | MessageHandler): _handler is EndHandler {
@@ -56,6 +58,7 @@ export function fakePi(
     },
     { name: "outside", sourceInfo: { path: "/elsewhere/pi-web/index.ts", source: "local" } },
   ];
+
   const slashCommands = [
     { name: "skills", sourceInfo: { path: `${packagesDir}/pi-skills/index.ts` } },
     { name: "skill:tidy", sourceInfo: { path: `${agentDir}/skills/tidy/SKILL.md` } },
@@ -112,9 +115,11 @@ export function fakePi(
 
   const tool = (): FeedbackTool => {
     const [first] = tools;
+
     if (first === undefined) {
       throw new Error("test setup: no tool registered");
     }
+
     return first;
   };
 
@@ -152,6 +157,7 @@ export function fakePi(
         stopReason: "toolUse",
         timestamp: 0,
       };
+
       for (const handler of messageHandlers) {
         handler({ message });
       }
@@ -165,6 +171,7 @@ export function fakePi(
         isError: false,
         timestamp: 0,
       };
+
       for (const handler of messageHandlers) {
         handler({ message });
       }
@@ -177,15 +184,18 @@ export function fakePi(
         result: { content: [{ type: "text", text }] },
         isError,
       };
+
       for (const handler of endHandlers) {
         await handler(event, ctx());
       }
     },
     command: async (args: string) => {
       const command = commands.get("feedback");
+
       if (command === undefined) {
         throw new Error("test setup: no /feedback command");
       }
+
       await command.handler(args, commandCtx);
     },
     render: (customType: string, data: JsonValue) =>

@@ -2,8 +2,10 @@ import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adap
 import type { Configuration, Permission } from "../adapter/config.js";
 
 export const permissions: readonly Permission[] = ["discover", "push"];
+
 const consent =
   "Other participating Pi sessions on this OS account, including other projects, can discover this session and send it messages within the reviewed grants. Authorized new messages can wake the model and incur provider usage. Peer content is untrusted. This does not automatically share files or the whole transcript, execute patches, or grant filesystem access.";
+
 const lifetime =
   "The first participating Pi session starts the shared gateway; it exits after the last participant closes. No login/boot auto-start or idle keepalive. Session inboxes are volatile.";
 
@@ -13,6 +15,7 @@ export type LocalChoices = {
   readonly label: string;
   readonly permissions: readonly Permission[];
 };
+
 export type LocalPlan = {
   readonly choices: LocalChoices;
   readonly adapter: Configuration;
@@ -47,16 +50,21 @@ function suggestedMachineId(hostname: string): string {
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/gu, "-")
     .replaceAll(/^-+|-+$/gu, "");
+
   if (value === "") {
     return "machine";
   }
+
   if (!/^[a-z]/u.test(value)) {
     value = `m-${value}`;
   }
+
   return value.slice(0, 32).replace(/-+$/u, "");
 }
+
 export function defaultChoices(hostname: string): LocalChoices {
   const machineId = suggestedMachineId(hostname);
+
   return {
     machineId,
     scopeId: "local",
@@ -69,9 +77,11 @@ export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan 
   if (Buffer.byteLength(socketPath) > SOCKET_PATH_MAX_BYTES) {
     throw new Error(`The socket path is longer than ${SOCKET_PATH_MAX_BYTES} bytes`);
   }
+
   if (new Set(choices.permissions).size !== choices.permissions.length) {
     throw new Error("A permission is listed twice");
   }
+
   const policies =
     choices.permissions.length === 0
       ? []
@@ -82,6 +92,7 @@ export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan 
             permissions: [...choices.permissions],
           },
         ];
+
   const adapter = decodeConfiguration({
     machineId: choices.machineId,
     socketPath,
@@ -89,6 +100,7 @@ export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan 
     label: choices.label,
     policies,
   });
+
   const gateway = {
     machineId: adapter.machineId,
     socketPath: adapter.socketPath,
@@ -99,9 +111,11 @@ export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan 
       direction: "outgoing" as const,
     })),
   };
+
   if (Buffer.byteLength(JSON.stringify(gateway)) > 32_764) {
     throw new Error("Gateway configuration is too large");
   }
+
   return {
     choices: { ...choices, permissions: [...choices.permissions] },
     adapter,

@@ -86,6 +86,7 @@ function toolLoop(steps: number): Step[] {
 function fanOut(turns: number, width: number): Step[] {
   const callIds = (turn: number) =>
     Array.from({ length: width }, (_, index) => `turn-${turn}-call-${index}`);
+
   return Array.from({ length: turns }, (_, turn) => ({
     input:
       turn === 0 ? [user("Read every module")] : callIds(turn - 1).map((id) => toolResult(id, 400)),
@@ -103,10 +104,12 @@ const imageMessage: MessageFixture = {
 
 function requestsFor(steps: readonly Step[]) {
   let history: MessageFixture[] = [];
+
   return steps.map((step) => {
     const messages = [...(step.reset === true ? [] : history), ...step.input];
     history = [...messages, step.reply];
     const context = contextFixture({ systemPrompt: SYSTEM_PROMPT, tools: [readTool], messages });
+
     return { request: buildAgentRequest(context), gapMs: step.gapMs ?? TURN_GAP_MS };
   });
 }
@@ -115,18 +118,22 @@ async function simulate(steps: readonly Step[], retention?: CacheRetention): Pro
   let now = 0;
   const simulator = createCacheSimulator(() => now);
   const runs: Run[] = [];
+
   for (const { request, gapMs } of requestsFor(steps)) {
     now += gapMs;
     runs.push({ request, usage: await simulator.send(request, cacheTtlFor(retention)) });
   }
+
   return runs;
 }
 
 function runAt(runs: readonly Run[], index: number): Run {
   const run = runs[index];
+
   if (run === undefined) {
     throw new RangeError(`test setup: scenario has no request ${index}`);
   }
+
   return run;
 }
 
@@ -283,11 +290,13 @@ const bigBlock = textBlock("x".repeat(8000));
 
 function handRequest(count: number, cacheBreakpoints: readonly number[]): AgentRequest {
   const entries = Array.from({ length: count - 1 }, (_, index) => textBlock(`entry ${index}`));
+
   return requestFixture({ promptBlocks: [bigBlock, ...entries], cacheBreakpoints });
 }
 
 function clockedSimulator() {
   const clock = { now: 0 };
+
   return { clock, simulator: createCacheSimulator(() => clock.now) };
 }
 
@@ -298,11 +307,13 @@ async function readsAt(
   minutes: readonly number[],
 ): Promise<number[]> {
   const reads: number[] = [];
+
   for (const minute of minutes) {
     clock.now = minute * MINUTE_MS;
     const usage = await simulator.send(request, "5m");
     reads.push(usage.read);
   }
+
   return reads;
 }
 

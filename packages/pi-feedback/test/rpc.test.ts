@@ -21,23 +21,27 @@ const FIXTURE = fileURLToPath(new URL("fixtures/scripted-model.ts", import.meta.
 const TIMEOUT = 60_000;
 
 const Manifest = Schema.Struct({ bin: Schema.Struct({ pi: Schema.String }) });
+
 const ClassifierRequest = Schema.Struct({
   model: Schema.String,
   state: Schema.Unknown,
   questions: Schema.Record(Schema.String, Schema.Struct({ type: Schema.String })),
 });
+
 type ClassifierRequest = typeof ClassifierRequest.Type;
 
 function cliPath(): string {
   const manifest = Schema.decodeUnknownSync(Schema.fromJsonString(Manifest))(
     readFileSync(join(PI_PACKAGE, "package.json"), "utf8"),
   );
+
   return join(PI_PACKAGE, manifest.bin.pi);
 }
 
 const SCORES = new Map(
   Object.entries({ harnessPath: 0.2, pathExisted: 0.3, outsideService: 0.05, sameCause: 0.1 }),
 );
+
 const decodeAddress = Schema.decodeUnknownOption(Schema.Struct({ port: Schema.Number }));
 
 async function answer(
@@ -48,10 +52,13 @@ async function answer(
   const parsed = Schema.decodeUnknownSync(Schema.fromJsonString(ClassifierRequest))(
     await text(request),
   );
+
   requests.push(parsed);
+
   const answers = Object.fromEntries(
     Object.keys(parsed.questions).map((id) => [id, { type: "noul", noul: SCORES.get(id) ?? 0 }]),
   );
+
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ answers }));
 }
@@ -66,6 +73,7 @@ async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
+
   return Option.getOrUndefined(decodeAddress(server.address()))?.port ?? 0;
 }
 
@@ -75,15 +83,19 @@ async function ledgerUntil(
 ): Promise<readonly LedgerEvent[]> {
   const deadline = Date.now() + TIMEOUT / 2;
   let events: readonly LedgerEvent[] = [];
+
   while (Date.now() < deadline) {
     ({ events } = await readLedger(file));
+
     if (done(events)) {
       return events;
     }
+
     await new Promise((resolve) => {
       setTimeout(resolve, 100);
     });
   }
+
   return events;
 }
 

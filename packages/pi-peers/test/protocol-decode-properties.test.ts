@@ -9,15 +9,18 @@ import type { BoundaryRole } from "../protocol/wire.js";
 import { decodeFrame, encodeFrame } from "../protocol/wire.js";
 
 const settings = propertySettings(200);
+
 const roles: readonly BoundaryRole[] = [
   "local-client",
   "gateway-forward",
   "adapter-delivery",
   "remote-link",
 ];
+
 const nonce = "a".repeat(32);
 const rid = "1".repeat(32);
 const peer = { machineId: "beta", sessionId: "s", runtimeNonce: nonce };
+
 const validFrames: readonly { role: BoundaryRole; frame: Frame }[] = [
   {
     role: "local-client",
@@ -58,28 +61,35 @@ function withPrefix(body: Uint8Array): Uint8Array {
   const bytes = new Uint8Array(body.length + 4);
   new DataView(bytes.buffer).setUint32(0, body.length, false);
   bytes.set(body, 4);
+
   return bytes;
 }
 
 function assertTotal(bytes: Uint8Array, role: BoundaryRole): void {
   let frame: Frame;
+
   try {
     frame = decodeFrame(bytes, role);
   } catch (error) {
     assert.ok(error instanceof ProtocolError, `non-ProtocolError thrown: ${String(error)}`);
+
     return;
   }
+
   assert.deepStrictEqual(decodeFrame(encodeFrame(frame, role), role), frame);
 }
 
 function assertJsonTotal(bytes: Uint8Array): void {
   let value: unknown;
+
   try {
     value = decodeJson(bytes);
   } catch (error) {
     assert.ok(error instanceof ProtocolError, `non-ProtocolError thrown: ${String(error)}`);
+
     return;
   }
+
   assert.deepStrictEqual(decodeJson(Buffer.from(JSON.stringify(value), "utf8")), value);
 }
 
@@ -92,9 +102,11 @@ function mutated(index: number, edits: readonly (readonly [number, number])[], f
   assert.ok(entry !== undefined);
   const { role, frame } = entry;
   const bytes = Uint8Array.from(encodeFrame(frame, role));
+
   for (const [position, value] of edits) {
     bytes[position % bytes.length] = value;
   }
+
   return { bytes: fixPrefix ? withPrefix(bytes.subarray(4)) : bytes, role };
 }
 
@@ -126,18 +138,22 @@ const utf8Pieces: readonly Uint8Array[] = [
 function assertUtf8Agreement(pieces: readonly Uint8Array[]): void {
   const body = Buffer.concat([Buffer.from('{"a":"'), ...pieces, Buffer.from('"}')]);
   let valid = true;
+
   try {
     new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(body);
   } catch {
     valid = false;
   }
+
   let accepted = true;
+
   try {
     decodeJson(body);
   } catch (error) {
     assert.ok(error instanceof ProtocolError, `non-ProtocolError thrown: ${String(error)}`);
     accepted = false;
   }
+
   assert.equal(accepted, valid);
 }
 
@@ -164,6 +180,7 @@ describe("Hegel decoder totality", () => {
         gs.integers({ minValue: 0, maxValue: validFrames.length - 1 }),
         "frame",
       );
+
       const edits = tc.draw(
         gs.arrays(
           gs.tuples(
@@ -174,6 +191,7 @@ describe("Hegel decoder totality", () => {
         ),
         "edits",
       );
+
       const fix = tc.draw(gs.booleans(), "fix-prefix");
       const role = tc.draw(gs.sampledFrom(roles), "role");
       const sample = mutated(index, edits, fix);
@@ -201,6 +219,7 @@ describe("Hegel decoder totality", () => {
         gs.arrays(gs.sampledFrom(utf8Pieces), { minSize: 1, maxSize: 6 }),
         "pieces",
       );
+
       assertUtf8Agreement(pieces);
     })
       .settings(settings)

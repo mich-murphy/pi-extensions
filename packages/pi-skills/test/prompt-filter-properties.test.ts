@@ -14,6 +14,7 @@ const outside = gs.text({ alphabet: "xy \n", maxSize: 6 });
 
 function skillAt(index: number, description: string): Skill {
   const filePath = `/s/${index}/SKILL.md`;
+
   return {
     name: `skill${index}`,
     description,
@@ -28,10 +29,12 @@ function renderContext(files: readonly ContextFile[]): string {
   if (files.length === 0) {
     return "";
   }
+
   const blocks = files.map(
     ({ path, content }) =>
       `<project_instructions path="${path}">\n${content}\n</project_instructions>\n\n`,
   );
+
   return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${blocks.join("")}</project_context>\n`;
 }
 
@@ -56,6 +59,7 @@ function drawScenario(tc: TestCase): Scenario {
   const skills = descriptions.map((description, index) => skillAt(index, description));
   const paths = [...files.map(({ path }) => path), ...skills.map(({ filePath }) => filePath)];
   const subset = (): Set<string> => new Set(paths.filter(() => tc.draw(gs.booleans())));
+
   return {
     files,
     skills,
@@ -78,6 +82,7 @@ function legacyOptions(files: readonly ContextFile[], skills: readonly Skill[]) 
     skills: [...skills],
     selectedTools: ["read"],
   };
+
   return options;
 }
 
@@ -97,12 +102,15 @@ function legacyPrompt(
 ): string {
   const options = legacyOptions(files, skills);
   const before = structuredClone(options);
+
   const result = hideResources({ systemPrompt, systemPromptOptions: options }, (path) =>
     hidden.has(path),
   );
+
   assert.deepEqual(options, before, "legacy options are not mutated");
   assert.ok(PromptFilterResult.$is("prompt-filtered")(result));
   assert.deepEqual(result.unmatched, []);
+
   return result.systemPrompt;
 }
 
@@ -123,6 +131,7 @@ function assertComposition(scenario: Scenario): void {
   const original = promptOf(scenario, scenario.files, scenario.skills);
   const union = new Set([...scenario.hiddenA, ...scenario.hiddenB]);
   const afterA = shown(scenario, scenario.hiddenA);
+
   const promptA = legacyPrompt(
     scenario,
     original,
@@ -130,6 +139,7 @@ function assertComposition(scenario: Scenario): void {
     scenario.skills,
     scenario.hiddenA,
   );
+
   const stepwise = legacyPrompt(scenario, promptA, afterA.files, afterA.skills, scenario.hiddenB);
   const direct = legacyPrompt(scenario, original, scenario.files, scenario.skills, union);
   assert.equal(stepwise, direct, "hiding A then B equals hiding A∪B");
@@ -140,9 +150,11 @@ function assertModern(scenario: Scenario): void {
     ...legacyOptions(scenario.files, scenario.skills),
     sections: {},
   };
+
   const result = hideResources({ systemPrompt: "kept", systemPromptOptions: options }, (path) =>
     scenario.hiddenA.has(path),
   );
+
   const expected = shown(scenario, scenario.hiddenA);
   assert.deepEqual(result, PromptFilterResult["options-filtered"]());
   assert.deepEqual(options.contextFiles, expected.files);

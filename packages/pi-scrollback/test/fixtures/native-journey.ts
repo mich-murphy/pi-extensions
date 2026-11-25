@@ -16,9 +16,11 @@ const manifest = readManifest(join(host, "package.json"));
 const { bin } = manifest;
 const root = mkdtempSync(join(tmpdir(), "pi-scrollback-native-"));
 const socket = join(root, "tmux.sock");
+
 for (const part of ["home", "agent", "sessions", "cwd", "tmp"]) {
   mkdirSync(join(root, part));
 }
+
 const env = {
   PATH: process.env.PATH,
   HOME: join(root, "home"),
@@ -32,6 +34,7 @@ const env = {
   PI_TELEMETRY: "0",
   PI_TUI_WRITE_LOG: join(root, "terminal-writes.log"),
 };
+
 const settings = {
   theme: "dark",
   quietStartup: true,
@@ -41,7 +44,9 @@ const settings = {
   fullscreenScrollbar: "hidden",
   cacheWarming: "off",
 };
+
 writeFileSync(join(root, "agent/settings.json"), JSON.stringify(settings));
+
 writeFileSync(
   join(root, "agent/keybindings.json"),
   JSON.stringify({
@@ -51,11 +56,14 @@ writeFileSync(
     "tui.altScreen.bottom": "f9",
   }),
 );
+
 const prompts = [
   "OLDER_CONTEXT alpha",
   `LATEST_CONTEXT 漢字 👩‍💻 é ${"narrow Unicode context ".repeat(7)}`,
 ];
+
 const timestamp = 1_700_000_000_000;
+
 const entries: (SessionHeader | SessionMessageEntry)[] = [
   {
     type: "session",
@@ -65,7 +73,9 @@ const entries: (SessionHeader | SessionMessageEntry)[] = [
     cwd: join(root, "cwd"),
   },
 ];
+
 let parentId: string | null = null;
+
 function message(
   value: Omit<UserMessage, "timestamp"> | Omit<AssistantMessage, "timestamp">,
 ): void {
@@ -79,6 +89,7 @@ function message(
   });
   parentId = id;
 }
+
 for (const [turn, prompt] of prompts.entries()) {
   message({ role: "user", content: prompt });
   message({
@@ -107,9 +118,13 @@ for (const [turn, prompt] of prompts.entries()) {
     },
   });
 }
+
 const session = join(root, "sessions/fixture.jsonl");
+
 writeFileSync(session, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+
 const quote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
+
 const baseCommand = [
   process.execPath,
   resolve(host, bin.pi),
@@ -126,68 +141,93 @@ const baseCommand = [
   "--tui-mode",
   "fullscreen",
 ];
+
 const command = [...baseCommand, "--extension", join(repo, "packages/pi-scrollback/index.ts")];
 const tmuxConfig = join(root, "tmux.conf");
+
 writeFileSync(tmuxConfig, "set -g extended-keys on\nset -g extended-keys-format csi-u\n");
+
 const actions: string[][] = [];
+
 function tmux(...args: string[]): string {
   actions.push(args);
+
   return execFileSync("tmux", ["-S", socket, ...args], { env, encoding: "utf8", timeout: 10_000 });
 }
+
 function capture(name: string): string {
   const screen = tmux("capture-pane", "-p", "-t", "journey:0.0");
   writeFileSync(join(root, `${name}.txt`), screen);
   writeFileSync(join(root, `${name}.ansi`), tmux("capture-pane", "-p", "-e", "-t", "journey:0.0"));
+
   return screen;
 }
+
 const WAIT_DEADLINE_MS = 120_000;
 const POLL_MS = 50;
+
 async function eventually(name: string, check: (screen: string) => void): Promise<string> {
   const deadline = Date.now() + WAIT_DEADLINE_MS;
+
   for (;;) {
     const screen = capture(name);
+
     try {
       check(screen);
+
       return screen;
     } catch (error) {
       if (Date.now() >= deadline) {
         throw error;
       }
     }
+
     await delay(POLL_MS);
   }
 }
+
 async function eventuallyMode(expected: string): Promise<void> {
   const deadline = Date.now() + WAIT_DEADLINE_MS;
+
   while (readMode() !== expected) {
     assert.ok(Date.now() < deadline, `settings never recorded tuiMode ${expected}`);
     await delay(POLL_MS);
   }
 }
+
 function key(value: string, repeat = 1): void {
   tmux("send-keys", "-t", "journey:0.0", "-N", String(repeat), value);
 }
+
 function text(value: string): void {
   tmux("send-keys", "-t", "journey:0.0", "-l", value);
 }
+
 const decodeJson = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Json));
 const decodeMode = Schema.decodeUnknownSync(Schema.Struct({ tuiMode: Schema.String }));
 
 function readMode(): string | undefined {
   const decoded = decodeJson(readFileSync(join(root, "agent/settings.json"), "utf8"));
+
   return Result.isSuccess(decoded) ? decodeMode(decoded.success).tuiMode : undefined;
 }
+
 const first = (screen: string): string => screen.split("\n")[0] ?? "";
+
 const sticky = (screen: string, prompt: string): void => {
   assert.match(first(screen), new RegExp(`^❯ ${prompt}`, "u"));
 };
+
 const noSticky = (screen: string): void => {
   assert.doesNotMatch(first(screen), /^❯ /u);
 };
+
 const passed: string[] = [];
 let bottomFirstRow: string;
+
 try {
   process.stdout.write(`Native evidence: ${root}\n`);
+
   async function launch(argv: string[], captureName: string): Promise<string> {
     tmux(
       "-f",
@@ -205,6 +245,7 @@ try {
       argv.map((value) => quote(value)).join(" "),
     );
     let previous: string | undefined;
+
     return eventually(captureName, (screen) => {
       assert.match(screen, /TURN_2_LINE_085/u, "CLI fixture did not appear");
       assert.match(screen, /No models available/u, "CLI startup rows did not appear");
@@ -214,6 +255,7 @@ try {
       assert.ok(unchanged, "screen is still changing");
     });
   }
+
   const baseline = await launch(baseCommand, "baseline-without-extension");
   tmux("kill-session", "-t", "journey");
   const screen = await launch(command, "startup");
@@ -322,6 +364,7 @@ try {
   });
   passed.push("reload reattaches without duplicate context row");
   tmux("resize-window", "-t", "journey:0", "-x", "90", "-y", "28");
+
   async function toggleTuiMode(
     expected: string,
     captureName: string,
@@ -339,11 +382,13 @@ try {
     key("Enter");
     await eventuallyMode(expected);
     key("Escape");
+
     return eventually(captureName, (current) => {
       assert.doesNotMatch(current, /Type to search/u);
       check(current);
     });
   }
+
   await toggleTuiMode("regular", "regular-mode", noSticky);
   await eventuallyMode("regular");
   await toggleTuiMode("fullscreen", "fullscreen-mode", () => undefined);
@@ -383,6 +428,7 @@ try {
   actions.push(["kill-server"]);
   spawnSync("tmux", ["-S", socket, "kill-server"], { env, timeout: 10_000 });
 }
+
 process.stdout.write(
   JSON.stringify(
     {
@@ -395,8 +441,10 @@ process.stdout.write(
     2,
   ),
 );
+
 if (process.env.PI_SCROLL_CONTEXT_KEEP_EVIDENCE === undefined) {
   const removalDeadline = Date.now() + WAIT_DEADLINE_MS;
+
   for (;;) {
     try {
       rmSync(root, { recursive: true, force: true });

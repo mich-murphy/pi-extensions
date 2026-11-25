@@ -25,6 +25,7 @@ describe("braveApiSearchProvider", () => {
           }),
         }),
       ]);
+
       const provider = new BraveApiSearchProvider(Redacted.make("BSA_test"), client);
       const result = yield* Effect.result(provider.search({ query: QUERY, maxResults: 10 }));
 
@@ -49,23 +50,27 @@ describe("braveApiSearchProvider", () => {
       const { client } = fakeProviderHttp([
         Result.fail(new ProviderStatusRejected({ status: 422 })),
       ]);
+
       const result = yield* Effect.result(
         new BraveApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,
           maxResults: 5,
         }),
       );
+
       expect(result).toStrictEqual(Result.fail(new ProviderStatusRejected({ status: 422 })));
 
       const { client: emptyClient } = fakeProviderHttp([
         Result.succeed({ bodyText: JSON.stringify({}) }),
       ]);
+
       const empty = yield* Effect.result(
         new BraveApiSearchProvider(Redacted.make("k"), emptyClient).search({
           query: QUERY,
           maxResults: 5,
         }),
       );
+
       expect(empty).toStrictEqual(
         Result.fail(new ProviderProtocolInvalid({ reason: "Missing web results" })),
       );
@@ -98,6 +103,7 @@ describe("braveApiSearchProvider", () => {
           }),
         }),
       ]);
+
       const result = yield* Effect.result(
         new BraveApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,
@@ -133,6 +139,7 @@ describe("braveApiSearchProvider", () => {
         Result.succeed({ bodyText: JSON.stringify({ web: { results: "nope" } }) }),
         Result.succeed({ bodyText: JSON.stringify({ web: [] }) }),
       ]);
+
       const provider = new BraveApiSearchProvider(Redacted.make("k"), client);
       const search = () => Effect.result(provider.search({ query: QUERY, maxResults: 5 }));
 
@@ -148,9 +155,11 @@ describe("braveApiSearchProvider", () => {
   it.effect("caps results at maxResults", () =>
     Effect.gen(function* () {
       const results = ["a", "b", "c"].map((host) => ({ url: `https://${host}.example` }));
+
       const { client } = fakeProviderHttp([
         Result.succeed({ bodyText: JSON.stringify({ web: { results } }) }),
       ]);
+
       const result = yield* Effect.result(
         new BraveApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,

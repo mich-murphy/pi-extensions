@@ -14,6 +14,7 @@ describe("readable-root measurement", () => {
   test("descendant templates do not contribute paragraph counts or readable-root candidates", () => {
     const templateParagraphs = "<p>x</p>".repeat(20);
     const visibleText = `second candidate ${"x".repeat(50)}`;
+
     const html =
       '<div class="markdown-body">first candidate<template>' +
       `<div class="markdown-body">hidden candidate${templateParagraphs}</div>` +

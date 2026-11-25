@@ -10,18 +10,23 @@ import { composeLabel, connectLabel, parentSessionId, readBranch } from "../adap
 
 const run = promisify(execFile);
 const cleanups: (() => Promise<void>)[] = [];
+
 function runtime(sessionId: string, nonce = "1", machineId = "beta") {
   return { machineId, sessionId, runtimeNonce: nonce.repeat(32) };
 }
+
 function colliding(): [string, string] {
   const seen = new Map<string, string>();
+
   for (let index = 0; ; index += 1) {
     const sessionId = `session-${index}`;
     const handle = sessionHandle("beta", sessionId);
     const earlier = seen.get(handle);
+
     if (earlier !== undefined) {
       return [earlier, sessionId];
     }
+
     seen.set(handle, sessionId);
   }
 }
@@ -48,21 +53,25 @@ describe("session handles", () => {
       { peer: runtime("a"), scopeId: "team" },
       { peer: runtime("b"), scopeId: "team" },
     ]);
+
     const right = new Handles().list([
       { peer: runtime("b"), scopeId: "team" },
       { peer: runtime("a"), scopeId: "team" },
     ]);
+
     expect(left.map((entry) => entry.handle).toSorted()).toStrictEqual(
       right.map((entry) => entry.handle).toSorted(),
     );
   });
   test("a second live runtime of one session gets /2, the bare handle binds the first", () => {
     const handles = new Handles();
+
     const listed = handles.list([
       { peer: runtime("same", "1"), scopeId: "team" },
       { peer: runtime("same", "2"), scopeId: "team" },
       { peer: runtime("same", "3"), scopeId: "team" },
     ]);
+
     const base = sessionHandle("beta", "same");
     expect(listed.map((entry) => entry.handle)).toStrictEqual([base, `${base}/2`, `${base}/3`]);
     expect(handles.resolve(base)?.peer.runtimeNonce).toBe("1".repeat(32));
@@ -136,6 +145,7 @@ describe("own label at connect", () => {
       ...facts,
       sessionName: "a\u001b[31mb‮c\n\td\u009b",
     });
+
     expect(label).toBe("Pi · a [31mb c d · pi-extensions");
     expect(label).not.toMatch(/[\p{Cc}‪-‮⁦-⁩]/u);
   });
@@ -172,6 +182,7 @@ describe("own label at connect", () => {
       "-m",
       "x",
     ]);
+
     const config = {
       machineId: "alpha",
       socketPath: "/tmp/g.sock",
@@ -179,6 +190,7 @@ describe("own label at connect", () => {
       label: "Pi",
       policies: [],
     };
+
     await expect(connectLabel(config, sessions(directory))).resolves.not.toContain("branch");
     await expect(
       connectLabel({ ...config, shareBranch: true }, sessions(directory)),

@@ -8,6 +8,7 @@ function harness(note?: (enabled: boolean) => string) {
   const notices: Notice[] = [];
   const applied: boolean[] = [];
   let state = true;
+
   const options: Omit<OnOffOptions<OnOffContext>, "note"> & {
     note?: (enabled: boolean) => string;
   } = {
@@ -20,13 +21,17 @@ function harness(note?: (enabled: boolean) => string) {
       applied.push(enabled);
     },
   };
+
   if (note !== undefined) {
     options.note = note;
   }
+
   const command = onOffCommand(options);
+
   const ctx = {
     ui: { notify: (message: string, type: "info" | "warning") => notices.push([message, type]) },
   };
+
   return { command, notices, applied, run: async (args: string) => command.handler(args, ctx) };
 }
 
@@ -69,6 +74,7 @@ describe("onOffCommand", () => {
 
   test("applies the new state before showing its confirmation", async () => {
     const order: string[] = [];
+
     const command = onOffCommand({
       name: "demo",
       label: "Demo",
@@ -77,9 +83,11 @@ describe("onOffCommand", () => {
       apply: () => order.push("apply"),
       note: () => {
         order.push("note");
+
         return "";
       },
     });
+
     await command.handler("off", { ui: { notify: () => order.push("notify") } });
     expect(order).toStrictEqual(["apply", "note", "notify"]);
   });

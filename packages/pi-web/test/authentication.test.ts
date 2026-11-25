@@ -19,8 +19,10 @@ async function fixture(key?: string) {
   } = await nativeAuthFixture({
     initial: key === undefined ? {} : { "pi-web-exa": { type: "api_key", key } },
   });
+
   const resolve = async () =>
     Effect.runPromise(Effect.result(controller.resolverFor(registry).resolve("exa")));
+
   return { storage, runtime, registry, controller, pi, resolve };
 }
 
@@ -32,11 +34,13 @@ describe("public native web authentication", () => {
   test("environment fallback, stored precedence, rotation and logout without models", async () => {
     vi.stubEnv("EXA_API_KEY", " \n\t ambient-synthetic \n\t ");
     const { registry, runtime, resolve } = await fixture(" \n\t stored-synthetic \n\t ");
+
     for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
       expect(registry.getAll().filter((model) => model.provider === metadata.id)).toStrictEqual([]);
       expect(registry.getProvider(metadata.id)?.name).toBe(metadata.label);
       expect(registry.getProvider(metadata.id)).toHaveProperty("auth.apiKey.login");
     }
+
     const first = await resolve();
     assert(Result.isSuccess(first));
     assert(first.success !== undefined);
@@ -137,9 +141,11 @@ describe("public native web authentication", () => {
       active.authentication.register(active.pi, active.registry);
     }).toThrow("collision");
     const partial = await nativeAuthFixture({ register: false });
+
     const register = vi.spyOn(partial.pi, "registerProvider").mockImplementationOnce(() => {
       throw new Error("synthetic registration failure");
     });
+
     expect(() => {
       partial.authentication.register(partial.pi, partial.registry);
     }).toThrow("synthetic registration failure");
@@ -147,9 +153,11 @@ describe("public native web authentication", () => {
     expect(() => {
       partial.authentication.register(partial.pi, partial.registry);
     }).toThrow("collision");
+
     const outcome = await Effect.runPromise(
       Effect.result(partial.authentication.resolverFor(partial.registry).resolve("exa")),
     );
+
     assert(Result.isFailure(outcome));
     expect(outcome.failure.reason).toBe("incompatible");
   });
@@ -168,6 +176,7 @@ describe("public native web authentication", () => {
           ctx: {
             env: async () => {
               controller.abort();
+
               return "late-synthetic-key";
             },
             fileExists: async () => false,
@@ -180,14 +189,18 @@ describe("public native web authentication", () => {
 
   test("shutdown unregisters owned providers without removing credentials; reload can register again", async () => {
     const current = await fixture("persisted-synthetic-key");
+
     const cleanup = {
       unregisterProvider: current.registry.unregisterProvider.bind(current.registry),
     };
+
     current.controller.unregister(cleanup, current.registry);
     current.controller.unregister(cleanup, current.registry);
+
     for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
       expect(current.registry.getProvider(metadata.id)).toBeUndefined();
     }
+
     await expect(current.storage.read("pi-web-exa")).resolves.toStrictEqual({
       type: "api_key",
       key: "persisted-synthetic-key",
@@ -236,6 +249,7 @@ describe("public native web authentication", () => {
     vi.stubEnv("PI_WEB_MISSING_HEADER", "");
     const directory = await mkdtemp(join(tmpdir(), "pi-web-auth-models-"));
     const modelsPath = join(directory, "models.json");
+
     const config = {
       providers: {
         "pi-web-exa": {
@@ -245,13 +259,16 @@ describe("public native web authentication", () => {
         },
       },
     };
+
     try {
       await writeFile(modelsPath, JSON.stringify({ providers: {} }));
       const { storage, registry, authentication } = await nativeAuthFixture({ modelsPath });
       await writeFile(modelsPath, JSON.stringify(config));
       await registry.refresh({ allowNetwork: false });
+
       const resolve = async () =>
         Effect.runPromise(Effect.result(authentication.resolverFor(registry).resolve("exa")));
+
       const configured = await resolve();
       assert(Result.isSuccess(configured));
       assert(configured.success !== undefined);
@@ -280,15 +297,19 @@ describe("public native web authentication", () => {
     vi.stubEnv("EXA_API_KEY", "");
     vi.stubEnv("PARALLEL_API_KEY", "");
     vi.stubEnv("BRAVE_API_KEY", "ambient-synthetic");
+
     const parent = await nativeAuthFixture({
       initial: { "pi-web-exa": { type: "api_key", key: "stored-synthetic" } },
     });
+
     const child = await inheritingChild(parent);
     child.authentication.register(child.pi, child.registry);
+
     const resolve = async (owner: typeof parent, provider: SearchProviderName) =>
       Effect.runPromise(
         Effect.result(owner.authentication.resolverFor(owner.registry).resolve(provider)),
       );
+
     for (const owner of [child, parent]) {
       const stored = await resolve(owner, "exa");
       assert(Result.isSuccess(stored));
@@ -300,14 +321,17 @@ describe("public native web authentication", () => {
       expect(Redacted.value(ambient.success)).toBe("ambient-synthetic");
       await expect(resolve(owner, "parallel")).resolves.toStrictEqual(Result.succeed(undefined));
     }
+
     child.authentication.unregister(
       { unregisterProvider: child.registry.unregisterProvider.bind(child.registry) },
       child.registry,
     );
+
     for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
       expect(child.registry.getProvider(metadata.id)).toBeUndefined();
       expect(parent.registry.getRegisteredNativeProvider(metadata.id)?.name).toBe(metadata.label);
     }
+
     const afterChild = await resolve(parent, "exa");
     assert(Result.isSuccess(afterChild));
     assert(afterChild.success !== undefined);
@@ -336,9 +360,11 @@ describe("public native web authentication", () => {
       child.authentication.register(child.pi, child.registry);
     }).toThrow("collision");
     expect(register).not.toHaveBeenCalled();
+
     const outcome = await Effect.runPromise(
       Effect.result(child.authentication.resolverFor(child.registry).resolve("exa")),
     );
+
     assert(Result.isFailure(outcome));
     expect(outcome.failure.reason).toBe("incompatible");
   });

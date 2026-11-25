@@ -49,7 +49,9 @@ const COMMANDS = [
   { value: "reconnect", description: "Retry connecting this Pi" },
   { value: "reset", description: "Disable peers for this agent directory" },
 ] as const;
+
 const ACTIONS: readonly string[] = COMMANDS.map((command) => command.value);
+
 const STATE_VALUES: Record<StatusState, string> = {
   off: "Not set up",
   connected: "Connected",
@@ -57,6 +59,7 @@ const STATE_VALUES: Record<StatusState, string> = {
   unavailable: "Unavailable",
   failed: "Setup failed",
 };
+
 const BUSY = "Peers is busy with another action. Try again when it finishes.";
 const STALE = "This session ended. Start a new Pi session to use the saved settings.";
 const START_TECHNICAL = "This Pi could not start its connection.";
@@ -67,12 +70,14 @@ function reconnectNext(connected: boolean, after: StatusSummary): string {
   if (connected) {
     return after.next ?? "Open another Pi session to collaborate.";
   }
+
   return after.state === "off" && after.next !== undefined
     ? after.next
     : "Run /peers doctor to check the gateway.";
 }
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
+
 type Reconnected = { readonly connected: boolean; readonly technical: readonly string[] };
 
 function doctorLines(report: DoctorReport): string[] {
@@ -101,9 +106,11 @@ export type PeersContext = MenuContext &
       "getCwd" | "getSessionId" | "getSessionName" | "getHeader"
     >;
   };
+
 export type PeersCommand = Omit<RegisteredCommand, "name" | "sourceInfo" | "handler"> & {
   handler: (args: string, context: PeersContext) => Promise<void>;
 };
+
 export type PeersEventPayloads = {
   session_start: { readonly type: "session_start" };
   session_shutdown: { readonly type: "session_shutdown" };
@@ -115,6 +122,7 @@ export type PeersEventPayloads = {
   session_compact: { readonly type: "session_compact" };
   session_compact_failed: Pick<SessionCompactFailedEvent, "aborted" | "type">;
 };
+
 export type PeersEvents = {
   [Name in keyof PeersEventPayloads]: (
     event: PeersEventPayloads[Name],
@@ -123,6 +131,7 @@ export type PeersEvents = {
     ? AgentBeforeSettleEventResult | undefined
     : Promise<void> | void;
 };
+
 export type PeersHost = Pick<ExtensionAPI, "sendMessage" | "registerEntryRenderer"> &
   Partial<Pick<ExtensionAPI, "appendEntry">> &
   ToolHost & {
@@ -158,20 +167,24 @@ export default function registerCommunication(
   let generation = 0;
   let running = 0;
   const busy = (): boolean => running > 0;
+
   const track = async <T>(work: Promise<T>): Promise<T> => {
     running += 1;
+
     try {
       return await work;
     } finally {
       running -= 1;
     }
   };
+
   const ensureCurrent = async (started: number, fresh?: Runtime): Promise<void> => {
     if (generation !== started) {
       await fresh?.dispose();
       throw new NotActive(STALE);
     }
   };
+
   const startRuntime = async (
     ctx: PeersContext,
     config: Configuration,
@@ -181,6 +194,7 @@ export default function registerCommunication(
     current = ctx;
     const label = await connectLabel(config, ctx.sessionManager);
     await ensureCurrent(started);
+
     const runtime = await (testBackend?.runtime ?? createAdapterRuntime)(
       { ...config, label },
       {
@@ -192,24 +206,31 @@ export default function registerCommunication(
       () => current,
       setup === undefined ? undefined : reloadManagedLauncher(getAgentDir(), config, setup),
     );
+
     await ensureCurrent(started, runtime);
     owned = runtime;
+
     return runtime;
   };
+
   const restore = async (ctx: PeersContext, started: number): Promise<void> => {
     const config = await loadConfiguration(getAgentDir());
     await ensureCurrent(started);
+
     if (config === undefined) {
       return;
     }
+
     const managed = await readManaged(getAgentDir(), config);
     await ensureCurrent(started);
     await startRuntime(ctx, config, managed, started);
     diagnostic = "enabled";
   };
+
   registerTools(pi, () => owned?.session);
   pi.registerEntryRenderer("peers-report", (entry, _options, theme) => {
     const outcome = storedOutcome(entry.data);
+
     return outcome === undefined
       ? undefined
       : new Text(
@@ -227,12 +248,14 @@ export default function registerCommunication(
   pi.on("session_start", async (_event, ctx) => {
     current = ctx;
     const started = generation;
+
     try {
       await restore(ctx, started);
     } catch {
       if (generation !== started) {
         return;
       }
+
       diagnostic = "configuration or startup failed";
       ctx.ui.setStatus("peers", footerLine("setup_failed", ctx.ui.theme));
     }
@@ -257,31 +280,38 @@ export default function registerCommunication(
   pi.on("session_compact_failed", (event) => {
     owned?.session.afterCompaction(event.aborted);
   });
+
   const activatePlan = (ctx: PeersContext): ActivatePlan => {
     const started = generation;
+
     return async (plan, setup, replace) => {
       await ensureCurrent(started);
+
       if (owned !== undefined && replace !== true) {
         throw new NotActive(
           "This Pi still uses its earlier connection. Start a new Pi session to use the saved settings.",
         );
       }
+
       if (owned !== undefined) {
         if (!ctx.isIdle()) {
           throw new NotActive(
             "This Pi is busy and was not replaced. Start a new Pi session to use the saved settings.",
           );
         }
+
         const previous = owned;
         owned = undefined;
         await previous.dispose();
         await ensureCurrent(started);
       }
+
       const runtime = await startRuntime(ctx, plan.adapter, setup, started);
       await registered(runtime, started);
       diagnostic = "enabled";
     };
   };
+
   const registered = async (runtime: Runtime, started: number): Promise<void> => {
     try {
       await runtime.session.reconnect();
@@ -289,44 +319,57 @@ export default function registerCommunication(
       await ensureCurrent(started);
       throw new Error(NOT_ACCEPTED);
     }
+
     await ensureCurrent(started);
+
     if (!runtime.session.status().connected) {
       throw new Error(NOT_ACCEPTED);
     }
   };
+
   const ensureRuntime = async (ctx: PeersContext, started: number): Promise<string | undefined> => {
     if (owned !== undefined) {
       return undefined;
     }
+
     try {
       await restore(ctx, started);
+
       return undefined;
     } catch {
       return generation === started ? START_TECHNICAL : STALE_TECHNICAL;
     }
   };
+
   const reconnectCurrent = async (ctx: PeersContext, fresh = false): Promise<Reconnected> => {
     const started = generation;
     const failure = await ensureRuntime(ctx, started);
     const session = owned?.session;
+
     if (failure !== undefined || session === undefined) {
       return { connected: false, technical: failure === undefined ? [] : [failure] };
     }
+
     try {
       await session.reconnect(fresh);
     } catch {
       return { connected: false, technical: [NOT_ACCEPTED] };
     }
+
     if (generation !== started) {
       return { connected: false, technical: [STALE_TECHNICAL] };
     }
+
     return { connected: session.status().connected, technical: [] };
   };
+
   const summary = () => statusSummary(owned?.session.status(), diagnostic);
   const liveLinks = () => owned?.session.linkStates() ?? [];
+
   const reconnectOutcome = async (ctx: PeersContext): Promise<Outcome> => {
     const { connected, technical } = await reconnectCurrent(ctx);
     const after = summary();
+
     return {
       ok: connected,
       headline: connected
@@ -337,16 +380,20 @@ export default function registerCommunication(
       technical: [...technical, ...after.technical],
     };
   };
+
   const disable = async (): Promise<void> => {
     await owned?.dispose();
     owned = undefined;
     diagnostic = "participation disabled";
   };
+
   const footer = (ctx: PeersContext, outcome: Outcome, kind: ActionKind, saved: boolean) => {
     const live = footerStatus(owned?.session.status(), owned !== undefined, ctx.ui.theme);
+
     if (kind === "reconnect" && live === undefined) {
       return;
     }
+
     if (live !== undefined || outcome.ok || kind !== "setup" || !saved) {
       ctx.ui.setStatus("peers", live);
     } else {
@@ -359,6 +406,7 @@ export default function registerCommunication(
       );
     }
   };
+
   const report = (
     ctx: PeersContext,
     outcome: Outcome,
@@ -368,18 +416,23 @@ export default function registerCommunication(
   ): void => {
     footer(ctx, outcome, kind, saved);
     pi.appendEntry?.("peers-report", outcome);
+
     if (hidden || ctx.mode !== "tui") {
       ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
     }
   };
+
   const reconnectGuarded = (ctx: PeersContext) => async (fresh?: boolean) => {
     const result = await reconnectCurrent(ctx, fresh);
+
     if (!result.connected) {
       throw new Error(NOT_ACCEPTED);
     }
   };
+
   const load = async (ctx: PeersContext): Promise<RootState> => {
     const agentDir = getAgentDir();
+
     const [setup, checks, resettable] = await Promise.all([
       prepareSetup(agentDir, activatePlan(ctx), testBackend, reconnectGuarded(ctx)),
       doctorReport(agentDir, { inMenu: true, liveLinks: liveLinks() }).then(doctorLines, () => [
@@ -387,7 +440,9 @@ export default function registerCommunication(
       ]),
       hasResetTarget(agentDir).catch(() => true),
     ]);
+
     const status = statusSummary(owned?.session.status(), diagnostic, { inMenu: true });
+
     return {
       status: { value: STATE_VALUES[status.state], lines: statusText(status).split("\n") },
       doctor: checks,
@@ -396,8 +451,10 @@ export default function registerCommunication(
       busy: busy(),
     };
   };
+
   const openMenu = async (ctx: PeersContext, start?: "setup" | "reset"): Promise<void> => {
     const opened = generation;
+
     let state: RootState = {
       status: { value: "", lines: ["Checking…"] },
       doctor: ["Checking…"],
@@ -405,16 +462,21 @@ export default function registerCommunication(
       resettable: undefined,
       busy: busy(),
     };
+
     const loading = load(ctx);
     const tui = ctx.mode === "tui" && ctx.ui.custom !== undefined;
+
     if (!tui) {
       state = await loading;
     }
+
     const holder: MenuHolder = {};
+
     const reload = async (): Promise<void> => {
       state = await load(ctx);
       holder.model?.refresh();
     };
+
     holder.model = peersMenu(
       {
         state: () => ({ ...state, busy: busy() }),
@@ -424,16 +486,20 @@ export default function registerCommunication(
           if (kind === "setup") {
             ctx.ui.setStatus("peers", footerLine("setting_up", ctx.ui.theme));
           }
+
           track(done).catch(() => undefined);
         },
         finished: (outcome, hidden, kind) => {
           if (generation !== opened) {
             return;
           }
+
           report(ctx, outcome, hidden, kind, state.setup.configured || outcome.ok);
+
           if (ctx.mode !== "tui") {
             holder.model?.close();
           }
+
           reload().catch(() => undefined);
         },
         guard: { canAct: () => !busy(), busy: BUSY },
@@ -442,16 +508,21 @@ export default function registerCommunication(
       tui ? undefined : start,
     );
     const model = holder.model;
+
     if (tui) {
       const shown = async (): Promise<void> => {
         state = await loading;
+
         if (start !== undefined && model.depth === 0 && !model.closed) {
           model.activate(start);
         }
+
         model.refresh();
       };
+
       shown().catch(() => undefined);
     }
+
     await runMenu(
       ctx,
       model,
@@ -463,23 +534,30 @@ export default function registerCommunication(
         : undefined,
     );
   };
+
   const menuCommand = async (action: string, ctx: PeersContext): Promise<void> => {
     if (!attended(ctx)) {
       ctx.ui.notify(
         action === "" ? statusText(summary()) : `/peers ${action} needs an interactive session.`,
         action === "" ? "info" : "warning",
       );
+
       return;
     }
+
     try {
       if (action !== "" && busy()) {
         ctx.ui.notify(BUSY, "warning");
+
         return;
       }
+
       if (action === "reset" && !(await hasResetTarget(getAgentDir()).catch(() => true))) {
         ctx.ui.notify(NOTHING_TO_RESET, "info");
+
         return;
       }
+
       await openMenu(ctx, action === "setup" || action === "reset" ? action : undefined);
     } catch (error) {
       ctx.ui.notify(
@@ -491,40 +569,53 @@ export default function registerCommunication(
       );
     }
   };
+
   pi.registerCommand("peers", {
     description: "Peers menu: status, setup, doctor, reconnect, reset",
     getArgumentCompletions: (prefix) => {
       const items = COMMANDS.flatMap(({ value, description }) =>
         value.startsWith(prefix) ? [{ value, label: value, description }] : [],
       );
+
       return items.length === 0 ? null : items;
     },
     handler: async (args, ctx) => {
       const action = args.trim();
+
       if (action !== "" && !ACTIONS.includes(action)) {
         ctx.ui.notify(`Unknown /peers action. Usage: /peers [${ACTIONS.join("|")}]`, "warning");
+
         return;
       }
+
       if (action === "" || action === "setup" || action === "reset") {
         await menuCommand(action, ctx);
+
         return;
       }
+
       if (action === "doctor") {
         ctx.ui.notify(
           `${await doctor(getAgentDir(), { liveLinks: liveLinks() })}\nLive: ${summary().headline}`,
           "info",
         );
+
         return;
       }
+
       if (action === "reconnect") {
         if (busy()) {
           ctx.ui.notify(BUSY, "warning");
+
           return;
         }
+
         const outcome = await track(reconnectOutcome(ctx));
         ctx.ui.notify(outcomeText(outcome), outcomeLevel(outcome));
+
         return;
       }
+
       ctx.ui.notify(statusText(summary()), "info");
     },
   });

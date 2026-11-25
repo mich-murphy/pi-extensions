@@ -83,6 +83,7 @@ export type ProviderError =
 
 function lowerInitial(text: string): string {
   const second = text.charAt(1);
+
   return second !== "" && second === second.toUpperCase() && second !== second.toLowerCase()
     ? text
     : text.charAt(0).toLowerCase() + text.slice(1);
@@ -100,6 +101,7 @@ export const ProviderJson: Schema.Codec<ProviderJson> = Schema.suspend(() =>
     Schema.Record(Schema.String, ProviderJson),
   ]),
 );
+
 const decodeJsonBody = Schema.decodeUnknownResult(Schema.fromJsonString(ProviderJson));
 
 export function parseJsonBody(
@@ -115,6 +117,7 @@ export function lenientArray<S extends Schema.Constraint & Schema.ConstraintDeco
   item: S,
 ) {
   const decodeItem = Schema.decodeUnknownOption(item);
+
   return Schema.Array(Schema.Unknown).pipe(
     Schema.decodeTo(Schema.Array(Schema.toType(item)), {
       decode: SchemaGetter.transform((items: readonly unknown[]) =>
@@ -130,6 +133,7 @@ export function orFallback<S extends Schema.Constraint & Schema.ConstraintDecode
   fallback: S["Type"],
 ) {
   const decode = Schema.decodeUnknownOption(schema);
+
   return Schema.optionalKey(Schema.Unknown).pipe(
     Schema.decodeTo(Schema.toType(schema), {
       decode: SchemaGetter.transformOptional((input: Option.Option<unknown>) =>
@@ -160,6 +164,7 @@ export const publicHttpUrlSchema = Schema.String.pipe(
     {
       decode: SchemaGetter.transform((value: string) => {
         const parsed = parsePublicHttpUrl(value);
+
         return Result.isSuccess(parsed) ? parsed.success : value;
       }),
       encode: SchemaGetter.passthrough(),

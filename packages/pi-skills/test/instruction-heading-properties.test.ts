@@ -43,6 +43,7 @@ describe("instruction heading properties", () => {
           gs.text({ alphabet: "#=- \t\r\n`~<!>ab.md", maxSize: 60 }),
           "content",
         );
+
         assertWellFormed(instructionHeading(content, path));
       },
     );

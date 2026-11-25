@@ -12,9 +12,11 @@ const FAILURES = new Map([
 async function untilAborted(signal: AbortSignal | undefined): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 15_000);
+
     if (signal?.aborted === true) {
       resolve();
     }
+
     signal?.addEventListener("abort", () => {
       resolve();
     });
@@ -44,9 +46,11 @@ function fixtureMessage(
     },
     stopReason: failure === undefined ? "stop" : "error",
   };
+
   if (failure !== undefined) {
     message.errorMessage = FAILURES.get(failure) ?? "Synthetic terminal failure";
   }
+
   return message;
 }
 
@@ -89,42 +93,55 @@ export default function synthetic(pi: ExtensionAPI): void {
         const scenario = env.RESUME_SCENARIO ?? "limit";
         const at = Date.now();
         let resetsAt = at + 2000;
+
         if (scenario === "past") {
           resetsAt = at - 1000;
         }
+
         if (scenario === "far") {
           resetsAt = at + 18_060_000;
         }
+
         const payload = { index, at, resetsAt, scenario, messages: context.messages };
         await options?.onPayload?.(payload, model);
         const record = env.RESUME_RECORD;
+
         if (record === undefined || record === "") {
           throw new Error("RESUME_RECORD is required");
         }
+
         appendFileSync(record, `${JSON.stringify(payload)}\n`);
         const first = index === 1;
         const unlimited = ["error", "plain", "transient", "aborted"];
+
         if (first && !unlimited.includes(scenario)) {
           let publishedReset: number | "tomorrow" = resetsAt;
+
           if (scenario === "invalid") {
             publishedReset = "tomorrow";
           }
+
           if (scenario === "nan") {
             publishedReset = Number.NaN;
           }
+
           if (scenario === "date") {
             publishedReset = 9e15;
           }
+
           const notice = {
             provider: scenario === "mismatch" ? "unrelated-provider" : "resume-fixture",
             resetsAt: publishedReset,
           };
+
           pi.events.emit("usage-limit", scenario === "missing" ? {} : notice);
         }
+
         const failed = first && scenario !== "plain" && scenario !== "success";
         const text = failed ? "FAILED_ATTEMPT_SENTINEL" : `FIXTURE_OK_${index}`;
         const message = fixtureMessage(model, at, text, failed ? scenario : undefined);
         stream.push({ type: "start", partial: { ...message, stopReason: "pending", content: [] } });
+
         if (failed && scenario === "aborted") {
           await untilAborted(options?.signal);
           stream.push({
@@ -140,8 +157,10 @@ export default function synthetic(pi: ExtensionAPI): void {
           stream.push({ type: "text_end", contentIndex: 0, content: text, partial: message });
           stream.push({ type: "done", reason: "stop", message });
         }
+
         stream.end();
       })();
+
       return stream;
     },
   });

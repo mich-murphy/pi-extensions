@@ -49,6 +49,7 @@ const TERMINAL_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type
   ["budget_exhausted", "budget-limit"],
   ["structured_output_retry_exhausted", "output-limit"],
 ]);
+
 const TERMINAL_REASONS = new Set([
   ...TERMINAL_CATEGORIES.keys(),
   "model_error",
@@ -60,6 +61,7 @@ const TERMINAL_REASONS = new Set([
   "completed",
   "turn_setup_failed",
 ]);
+
 const API_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type> = new Map([
   ["authentication_failed", "authentication"],
   ["oauth_org_not_allowed", "authentication"],
@@ -75,6 +77,7 @@ const API_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type> = n
   ["max_output_tokens", "output-limit"],
   ["cloud_credential_error", "authentication"],
 ]);
+
 const SUBTYPE_CATEGORIES: ReadonlyMap<string, typeof ResultFailureCategory.Type> = new Map([
   ["error_max_turns", "turn-limit"],
   ["error_max_budget_usd", "budget-limit"],
@@ -105,9 +108,11 @@ export function effectiveResultCategory(
   apiError: string | undefined,
 ): typeof ResultFailureCategory.Type {
   const apiCategory = API_CATEGORIES.get(apiError ?? "");
+
   if (apiCategory === "authentication" || category === "provider") {
     return apiCategory ?? category;
   }
+
   return category;
 }
 

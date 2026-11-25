@@ -27,6 +27,7 @@ function sourceOf(headers: string) {
 
 function fetchBody(body: ProviderJson) {
   const { client } = fakeProviderHttp([Result.succeed({ bodyText: JSON.stringify(body) })]);
+
   return new ExaApiFetchProvider(Redacted.make("k"), client).fetchMarkdown(PAGE);
 }
 
@@ -66,6 +67,7 @@ describe("parseExaSearchText", () => {
     const parsed = parseExaSearchText(
       "Title: Broken\nURL: notaurl\nText: x\n\nTitle: Good\nURL: https://ok.example\nText: y",
     );
+
     expect(parsed.results).toHaveLength(1);
     expect(parsed.discardedSections).toBe(1);
   });
@@ -85,6 +87,7 @@ describe("parseExaSearchText", () => {
         "Text: body",
       ].join("\n"),
     ).results;
+
     expect(result?.title).toBe("Second");
     expect(result?.url).toBe("https://second.example/");
     expect(result?.publishedAt).toBe("2026-02-02");
@@ -106,6 +109,7 @@ describe("parseExaSearchText", () => {
         "Text: body",
       ].join("\n"),
     ).results;
+
     expect(result?.publishedAt).toBe("2026-02-02");
     expect(result?.score).toBe(0.75);
   });
@@ -121,6 +125,7 @@ describe("parseExaSearchText", () => {
     const [result] = parseExaSearchText(
       "Title: Page\nURL: https://a.example\nText: intro\nAuthor: Quoted\nScore: 9",
     ).results;
+
     expect(result?.source).toBeUndefined();
     expect(result?.score).toBeUndefined();
     expect(result?.snippet).toBe("intro\nAuthor: Quoted\nScore: 9");
@@ -130,11 +135,13 @@ describe("parseExaSearchText", () => {
     const [result] = parseExaSearchText(
       "Title: Pi Agent\nURL: https://a.example\nText: Pi Agent\n\npi agent\nActual body.\nPi Agent",
     ).results;
+
     expect(result?.snippet).toBe("Actual body.\nPi Agent");
 
     const [titleOnly] = parseExaSearchText(
       "Title: Pi Agent\nURL: https://a.example\nText: Pi Agent",
     ).results;
+
     expect(titleOnly?.snippet).toBe("Pi Agent");
   });
 });
@@ -166,6 +173,7 @@ describe("exaMcpSearchProvider", () => {
           }),
           Result.succeed({ text: ["No results found for this query"] }),
         ]);
+
         const provider = new ExaMcpSearchProvider(client);
 
         expect(
@@ -213,6 +221,7 @@ describe("exaApiSearchProvider", () => {
           }),
         }),
       ]);
+
       const provider = new ExaApiSearchProvider(Redacted.make("test-key"), client);
       const result = yield* Effect.result(provider.search({ query: QUERY, maxResults: 8 }));
 
@@ -240,17 +249,20 @@ describe("exaApiSearchProvider", () => {
       const { client } = fakeProviderHttp([
         Result.fail(new ProviderStatusRejected({ status: 401 })),
       ]);
+
       const provider = new ExaApiSearchProvider(Redacted.make("test-key"), client);
       const result = yield* Effect.result(provider.search({ query: QUERY, maxResults: 8 }));
       expect(result).toStrictEqual(Result.fail(new ProviderStatusRejected({ status: 401 })));
 
       const { client: badJson } = fakeProviderHttp([Result.succeed({ bodyText: "not json" })]);
+
       const badResult = yield* Effect.result(
         new ExaApiSearchProvider(Redacted.make("k"), badJson).search({
           query: QUERY,
           maxResults: 8,
         }),
       );
+
       expect(badResult).toStrictEqual(
         Result.fail(new ProviderProtocolInvalid({ reason: "Invalid JSON response" })),
       );
@@ -259,10 +271,13 @@ describe("exaApiSearchProvider", () => {
         Result.succeed({ bodyText: JSON.stringify({}) }),
         Result.succeed({ bodyText: JSON.stringify({ results: { url: "https://a.example" } }) }),
       ]);
+
       const missingProvider = new ExaApiSearchProvider(Redacted.make("k"), missing);
+
       const missingResults = Result.fail(
         new ProviderProtocolInvalid({ reason: "Missing results array" }),
       );
+
       expect(
         yield* Effect.result(missingProvider.search({ query: QUERY, maxResults: 8 })),
       ).toStrictEqual(missingResults);
@@ -301,6 +316,7 @@ describe("exaApiSearchProvider", () => {
           }),
         }),
       ]);
+
       const result = yield* Effect.result(
         new ExaApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,
@@ -334,9 +350,11 @@ describe("exaApiSearchProvider", () => {
   it.effect("caps results at maxResults", () =>
     Effect.gen(function* () {
       const results = ["a", "b", "c"].map((host) => ({ url: `https://${host}.example` }));
+
       const { client } = fakeProviderHttp([
         Result.succeed({ bodyText: JSON.stringify({ results }) }),
       ]);
+
       const result = yield* Effect.result(
         new ExaApiSearchProvider(Redacted.make("k"), client).search({
           query: QUERY,
@@ -372,6 +390,7 @@ describe("exaMcpFetchProvider", () => {
       const { client: failing } = fakeMcpClient([
         Result.fail(new ProviderToolError({ detail: "boom" })),
       ]);
+
       const failed = yield* new ExaMcpFetchProvider(failing).fetchMarkdown(PAGE);
       expect(failed).toBeUndefined();
     }),
@@ -388,6 +407,7 @@ describe("exaApiFetchProvider", () => {
           }),
         }),
       ]);
+
       const provider = new ExaApiFetchProvider(Redacted.make("test-key"), client);
       const result = yield* provider.fetchMarkdown(PAGE);
 
@@ -407,6 +427,7 @@ describe("exaApiFetchProvider", () => {
         Result.succeed({ bodyText: "not json" }),
         Result.fail(new ProviderTimedOut({ timeoutSeconds: 25 })),
       ]);
+
       const provider = new ExaApiFetchProvider(Redacted.make("k"), client);
       expect(yield* provider.fetchMarkdown(PAGE)).toBeUndefined();
       expect(yield* provider.fetchMarkdown(PAGE)).toBeUndefined();

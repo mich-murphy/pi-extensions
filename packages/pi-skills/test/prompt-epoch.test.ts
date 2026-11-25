@@ -12,10 +12,12 @@ import { resourcePathId } from "../resource-path";
 import { noteView, renderToggleNote, TOGGLE_NOTE_TYPE } from "../toggle-note";
 
 const cwd = "/work";
+
 const REVERT_NOTE = [
   "The user changed /skills. This note supersedes earlier /skills notes.",
   "The system prompt's skills and project instructions apply as listed.",
 ].join("\n");
+
 const skillA: PromptResource = {
   id: resourcePathId("/s/a & <b>/SKILL.md", cwd),
   kind: "skill",
@@ -23,6 +25,7 @@ const skillA: PromptResource = {
   name: "alpha",
   body: 'Alpha\'s "skill"',
 };
+
 const skillB: PromptResource = {
   id: resourcePathId("/s/b/SKILL.md", cwd),
   kind: "skill",
@@ -30,6 +33,7 @@ const skillB: PromptResource = {
   name: "beta",
   body: "Beta",
 };
+
 const rules: PromptResource = {
   id: resourcePathId("/work/AGENTS.md", cwd),
   kind: "instruction",
@@ -37,6 +41,7 @@ const rules: PromptResource = {
   name: "/work/AGENTS.md",
   body: "Be careful",
 };
+
 const resources = [skillA, skillB, rules];
 
 function skill(resource: PromptResource): Skill {
@@ -56,9 +61,11 @@ function head(skills: readonly PromptResource[], withRules = true) {
   const sections: FixtureSections = {
     skills: formatSkillsForPrompt(skills.map((resource) => skill(resource))).trim(),
   };
+
   if (withRules) {
     sections.project_context = `<project_instructions path="${rules.path}">\nx\n</project_instructions>`;
   }
+
   return { role: "system", content: "", sections, timestamp: 1 };
 }
 
@@ -66,25 +73,31 @@ const assistant = { role: "assistant", provider: "p", model: "m" };
 const model = { provider: "p", id: "m" };
 const badNote = { role: "custom", customType: TOGGLE_NOTE_TYPE, details: 1 };
 const otherNote = { role: "custom", customType: "other", details: {} };
+
 function usageOf(input: number, cacheRead: number) {
   const message = {
     ...assistant,
     usage: { input, output: 5, cacheRead, cacheWrite: 0 },
   };
+
   return message;
 }
+
 type Item = { readonly role: string };
+
 const switchTo = (provider: string, modelId: string) => ({
   role: "model_change",
   provider,
   modelId,
 });
+
 const entryOf = (item: Item) => ({
   sourceEntry:
     item.role === "model_change"
       ? { ...item, type: "model_change" }
       : { type: "message", message: item },
 });
+
 const snap = (items: readonly Item[]) =>
   promptSnapshot(
     {
@@ -93,9 +106,11 @@ const snap = (items: readonly Item[]) =>
     },
     resources,
   );
+
 const view = (messages: readonly { role: string }[]) => [
   ...modelView(messages, snap(messages).sections, resources),
 ];
+
 const frozen = (messages: readonly { role: string }[], hidden?: readonly string[]) =>
   planPrompt({
     ...snap(messages),
@@ -104,11 +119,13 @@ const frozen = (messages: readonly { role: string }[], hidden?: readonly string[
     desiredHidden:
       hidden === undefined ? undefined : new Set(hidden.map((id) => resourcePathId(id, cwd))),
   });
+
 const note = (visible: readonly string[]) => ({
   role: "custom",
   customType: TOGGLE_NOTE_TYPE,
   details: { version: 1, visible },
 });
+
 const legacyNote = (visible: readonly string[]) => ({
   ...note(visible),
   customType: "pi-skill-toggle",
@@ -137,6 +154,7 @@ describe("prompt view", () => {
         { id: rules.id, editability: "editable" },
       ],
     );
+
     expect(listed.map(({ id }) => id)).toStrictEqual([rules.id, skillA.id]);
   });
 });
@@ -169,8 +187,10 @@ describe("epoch and model view", () => {
   test("reads the compaction checkpoint at index 0 and kept entries", () => {
     const checkpoint = { sourceEntry: { type: "compaction" } };
     const messages = [head([skillA]), { role: "compactionSummary" }, assistant];
+
     const epoch = (entries: readonly { sourceEntry: { type: string } }[]) =>
       promptSnapshot({ messages, entries }, resources).epoch;
+
     expect(epoch([checkpoint, entryOf(assistant)])).toBe("frozen");
     expect(epoch([checkpoint, entryOf(assistant), entryOf(switchTo("q", "m"))])).toBe(
       "model-change",
@@ -192,6 +212,7 @@ describe("epoch and model view", () => {
       content: "",
       sections: { skills: head([skillA, skillB]).sections.skills },
     };
+
     expect(view([head([skillA]), note([skillA.id]), patch])).toStrictEqual([skillA.id, skillB.id]);
   });
 
@@ -207,6 +228,7 @@ describe("epoch and model view", () => {
       content: "",
       sections: { skills: head([skillB]).sections.skills },
     };
+
     expect(view([head([skillA])])).toStrictEqual([skillA.id, rules.id]);
     expect(view([head([skillA]), patch])).toStrictEqual([skillB.id, rules.id]);
     expect(view([head([skillA]), note([skillB.id])])).toStrictEqual([skillB.id]);
@@ -256,6 +278,7 @@ describe("planPrompt", () => {
       reader: "read",
       desiredHidden: new Set([skillA.id]),
     });
+
     expect([...plan.hidden]).toStrictEqual([skillA.id]);
     expect(plan.note?.details.visible).toStrictEqual([skillB.id, rules.id].toSorted());
     expect(plan.note?.content).toBe(REVERT_NOTE);
@@ -286,8 +309,10 @@ describe("standalone toggle notes", () => {
       "Disabled skills (do not load unless the user invokes /skill:<name>): alpha",
     );
     const firstMessage = { role: "custom", customType: TOGGLE_NOTE_TYPE, details: first?.details };
+
     const second = planFor([head([skillA, skillB]), firstMessage, assistant], [skillA.id, rules.id])
       .note?.content;
+
     expect(second).toBe(
       [
         "The user changed /skills. This note supersedes earlier /skills notes and overrides the skills and project instructions listed in the system prompt.",
@@ -305,9 +330,11 @@ describe("standalone toggle notes", () => {
 
   test("enabled skills use Pi's guidance for the run's reader", () => {
     const readers = ["read", "bash", "indirect"] as const;
+
     for (const reader of readers) {
       expect(enabled(reader)).toContain(formatSkillsForPrompt([skill(skillB)], reader).trim());
     }
+
     expect(new Set(readers.map((reader) => enabled(reader))).size).toBe(readers.length);
   });
 
@@ -345,6 +372,7 @@ describe("cache debug", () => {
     const directory = mkdtempSync(join(tmpdir(), "pi-skills-debug-"));
     const stdout = vi.spyOn(process.stdout, "write");
     const stderr = vi.spyOn(process.stderr, "write");
+
     try {
       const path = join(directory, "log.jsonl");
       cacheDebugSink(path)?.({ type: "discover", contributed: 1, cwd: "/project", durationMs: 1 });
@@ -352,9 +380,11 @@ describe("cache debug", () => {
         type: "discover",
         contributed: 1,
       });
+
       const failing = cacheDebugSink(path, () => {
         throw new Error("disk full");
       });
+
       expect(() =>
         failing?.({ type: "discover", contributed: 0, cwd: "/project", durationMs: 1 }),
       ).not.toThrow();
@@ -372,6 +402,7 @@ describe("cache debug", () => {
     const snapshot = snap(messages);
     const plan = planPrompt({ ...snapshot, resources, desiredHidden: undefined, reader: "read" });
     const secret = "secret instruction body";
+
     const record = JSON.stringify(
       runRecord({
         sessionId: "s",
@@ -388,6 +419,7 @@ describe("cache debug", () => {
         durationMs: 1,
       }),
     );
+
     expect(record).toContain(rules.id);
     expect(record).not.toContain(secret);
   });
@@ -397,6 +429,7 @@ describe("cache debug", () => {
     const snapshot = snap(messages);
     const desiredHidden = new Set([skillA.id]);
     const plan = planPrompt({ ...snapshot, resources, desiredHidden, reader: "read" });
+
     const record = runRecord({
       sessionId: "s",
       model,
@@ -407,6 +440,7 @@ describe("cache debug", () => {
       options: { cwd, skills: [skill(skillA)], contextFiles: [] },
       durationMs: 1,
     });
+
     expect(record).toMatchObject({
       type: "run",
       model: "p/m",

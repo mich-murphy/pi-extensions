@@ -19,7 +19,9 @@ type RecordOptions = { readonly piPath?: boolean; readonly batchOrdered?: boolea
 
 function record(session: string, options: RecordOptions = {}): RecordEvent {
   const { piPath = true, batchOrdered = false } = options;
+
   type Signal = Extract<RecordEvent, { type: "signal" }>;
+
   const event: Omit<Signal, "evidence" | "cause"> & {
     evidence?: NonNullable<Signal["evidence"]>;
     cause?: NonNullable<Signal["cause"]>;
@@ -33,12 +35,15 @@ function record(session: string, options: RecordOptions = {}): RecordEvent {
     tool: "bash",
     error: "ls: unrecognized option",
   };
+
   if (piPath) {
     event.evidence = "pi-path";
   }
+
   if (batchOrdered) {
     event.cause = "parallel-batch";
   }
+
   return event;
 }
 

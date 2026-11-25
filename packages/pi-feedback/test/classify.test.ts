@@ -21,6 +21,7 @@ function asSignal(event: LedgerEvent): RecordEvent {
   if (event.type !== "signal") {
     throw new Error("test setup: not a signal");
   }
+
   return event;
 }
 
@@ -39,6 +40,7 @@ describe("classifyRecord", () => {
 
   async function seed(events: readonly LedgerEvent[]): Promise<void> {
     const clock = fakeClock(1000);
+
     for (const event of events) {
       const { id: _id, at: _at, ...draft } = event;
       await appendEvent(ledger, draft, clock);
@@ -47,18 +49,21 @@ describe("classifyRecord", () => {
 
   async function stored(type: LedgerEvent["type"]): Promise<LedgerEvent[]> {
     const { events } = await readLedger(ledger);
+
     return events.filter((event) => event.type === type);
   }
 
   test("stores one verdict per fingerprint from the pinned model", async () => {
     const classifier = fakeClassifier(answerWith(0.1));
     const record = asSignal(signal({ n: 1, session: "a" }));
+
     const outcome = await classifyRecord({
       registry: classifier.registry,
       ledger,
       record,
       input: { path: "/tmp/a" },
     });
+
     expect(outcome).toStrictEqual(ClassifyOutcome.classified({ calls: 1, failed: 0 }));
     expect(classifier.calls.map((call) => call.model)).toStrictEqual([JEV_MODEL_ID]);
     expect(classifier.calls[0]?.context.state).toStrictEqual({
@@ -218,9 +223,11 @@ describe("classifyRecord", () => {
 
   test("classifies an unattributed failure that names a Pi path", async () => {
     const classifier = fakeClassifier(answerWith(0.1));
+
     const record = asSignal(
       signal({ n: 1, session: "a", owner: "unattributed", evidence: "pi-path" }),
     );
+
     await expect(
       classifyRecord({ registry: classifier.registry, ledger, record }),
     ).resolves.toStrictEqual(ClassifyOutcome.classified({ calls: 1, failed: 0 }));

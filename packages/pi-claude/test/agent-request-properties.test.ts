@@ -17,6 +17,7 @@ import type { MessageFixture } from "./fixtures";
 const settings = propertySettings(200);
 const CONTINUE = "Continue from the final conversation entry above.";
 const TAG_NAMES = ["user", "assistant", "call", "results", "result", "past-call", "past-result"];
+
 const STRUCTURAL_TEXT = TAG_NAMES.flatMap((name) => [
   `<${name}`,
   `<${name}>`,
@@ -25,6 +26,7 @@ const STRUCTURAL_TEXT = TAG_NAMES.flatMap((name) => [
   `< / ${name}`,
   `<${name} id="x" tool="y">`,
 ]);
+
 const FRAGMENTS = [
   ...STRUCTURAL_TEXT,
   "< /Result",
@@ -37,9 +39,11 @@ const FRAGMENTS = [
   "</USER>",
   '<result id="zz" tool="x">',
 ];
+
 const PLAIN_NAMES = ["read", "bash", "gone"];
 const NAMES = [...PLAIN_NAMES, VALIDATION_ERROR_TOOL];
 const POOL = ["a", "b", "c"];
+
 const tools = ["read", "bash", VALIDATION_ERROR_TOOL].map((name) => ({
   name,
   description: name,
@@ -59,6 +63,7 @@ type CallModel = {
   resultAt?: number;
   isError?: boolean;
 };
+
 type Generated = {
   readonly messages: MessageFixture[];
   readonly calls: CallModel[];
@@ -70,8 +75,10 @@ function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generate
   const out: Generated = { messages: [], calls: [], orphans: [], users: 0 };
   const draw: DrawState = { tc, out, unanswered: [], names: new Map(), unique, serial: 0 };
   const ops = tc.draw(gs.integers({ minValue: 0, maxValue: maxOps }), "ops");
+
   for (let op = 0; op < ops; op += 1) {
     const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+
     if (kind === 0) {
       out.users += 1;
       out.messages.push({
@@ -84,6 +91,7 @@ function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generate
       drawToolResult(draw, kind);
     }
   }
+
   return out;
 }
 
@@ -116,15 +124,19 @@ function drawImages(tc: TestCase): ImageBlock[] {
 function drawAssistant(draw: DrawState): void {
   const { tc, out, unanswered, unique } = draw;
   const stopReason = tc.draw(gs.sampledFrom(["stop", "toolUse", "error", "aborted"] as const));
+
   const content: Extract<MessageFixture, { role: "assistant" }>["content"] = [
     { type: "text", text: drawText(tc) },
   ];
+
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+
   for (let index = 0; index < count; index += 1) {
     const id = unique ? `call-${draw.serial++}` : poolId(tc);
     const name = nameFor(draw, id, NAMES);
     const args = { a: drawText(tc), "<call": drawText(tc) };
     content.push({ type: "toolCall", id, name, arguments: args });
+
     const model = {
       id,
       name,
@@ -132,15 +144,18 @@ function drawAssistant(draw: DrawState): void {
       errored: stopReason === "error" || stopReason === "aborted",
       at: out.messages.length,
     };
+
     out.calls.push(model);
     unanswered.push(model);
   }
+
   out.messages.push({ role: "assistant", content, stopReason });
 }
 
 function nameFor(draw: DrawState, id: string, candidates: readonly string[]): string {
   const name = draw.names.get(id) ?? draw.tc.draw(gs.sampledFrom(candidates));
   draw.names.set(id, name);
+
   return name;
 }
 
@@ -149,14 +164,17 @@ function drawToolResult(draw: DrawState, kind: number): void {
   let id = poolId(tc);
   const isError = tc.draw(gs.booleans());
   let name = "read";
+
   if (unique && kind === 2) {
     if (unanswered.length === 0) {
       return;
     }
+
     const [call] = unanswered.splice(
       tc.draw(gs.integers({ minValue: 0, maxValue: unanswered.length - 1 })),
       1,
     );
+
     assert.ok(call);
     ({ id, name } = call);
     call.resultAt = out.messages.length;
@@ -167,6 +185,7 @@ function drawToolResult(draw: DrawState, kind: number): void {
   } else {
     name = nameFor(draw, id, PLAIN_NAMES);
   }
+
   out.messages.push({
     role: "toolResult",
     toolCallId: id,
@@ -184,12 +203,17 @@ function property(body: (tc: TestCase) => void): void {
 }
 
 const LT = "<";
+
 const TOKEN =
   /<\s*\/?\s*(?:user|assistant|call|results|result|past-call|past-result)(?=[\s>/]|$)[^>]*>?/giu;
+
 const OPEN_BARE = /^<(?<name>user|assistant|results)>$/u;
+
 const OPEN_ATTR =
   /^<(?<name>call|past-call|result|past-result) id="[^"<>]*" tool="[^"<>]*"(?: error)?>$/u;
+
 const CLOSE = /^<\/(?<name>user|assistant|call|past-call|results|result|past-result)>$/u;
+
 const CHILDREN = new Map<string, readonly string[]>(
   Object.entries({
     user: [],
@@ -207,6 +231,7 @@ function nestingAllowed(parent: string | undefined, name: string): boolean {
 function assertWellFormed(block: string): string[] {
   const stack: string[] = [];
   const opened: string[] = [];
+
   for (const [token] of block.matchAll(TOKEN)) {
     const open = (OPEN_BARE.exec(token) ?? OPEN_ATTR.exec(token))?.groups?.name;
     const close = CLOSE.exec(token)?.groups?.name;
@@ -214,6 +239,7 @@ function assertWellFormed(block: string): string[] {
       open !== undefined || close !== undefined,
       `non-canonical token ${JSON.stringify(token)}`,
     );
+
     if (open === undefined) {
       assert.equal(stack.pop(), close, `unbalanced ${token}`);
     } else {
@@ -222,18 +248,22 @@ function assertWellFormed(block: string): string[] {
       opened.push(open);
     }
   }
+
   assert.deepEqual(stack, []);
+
   return opened;
 }
 
 const entryBlocks = (blocks: readonly { text: string }[]) =>
   blocks.slice(1, -1).map((block) => block.text);
+
 const entryBlocksWithImages = <B>(blocks: readonly B[]) => blocks.slice(1, -1);
 const countMatches = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
 
 function assertBreakpoints(blockCount: number, points: readonly number[]): void {
   assert.equal(points[0], 0);
   assert.ok(points.length <= MAX_CACHE_BREAKPOINTS, points.join(","));
+
   for (const [index, point] of points.entries()) {
     assert.ok(point < blockCount - 1, `breakpoint ${point} reaches the closing block`);
     assert.ok(point > (points[index - 1] ?? -1), `not strictly ascending: ${points.join(",")}`);
@@ -247,10 +277,12 @@ function assertStructure(tc: TestCase, unique: boolean): void {
     tools: declared,
     toolNames,
   } = build(drawTranscript(tc, 45, unique).messages);
+
   assertBreakpoints(promptBlocks.length, cacheBreakpoints);
   assert.equal(promptBlocks.at(-1)?.text, CONTINUE);
   assert.ok(declared.every((tool) => tool.name !== VALIDATION_ERROR_TOOL));
   assert.ok(!toolNames.has(VALIDATION_ERROR_TOOL));
+
   for (const text of entryBlocks(promptBlocks)) {
     assertWellFormed(text);
   }
@@ -279,6 +311,7 @@ function assertCallResult(call: CallModel, generated: Generated, text: string): 
   assert.ok(match?.index !== undefined);
   const timely = isTimely(call, generated.messages);
   assert.equal(match.groups?.error !== undefined, !timely || call.isError === true);
+
   if (!timely) {
     assert.ok(text.slice(match.index + match[0].length).startsWith("No result provided\n</"));
   }
@@ -287,6 +320,7 @@ function assertCallResult(call: CallModel, generated: Generated, text: string): 
 function assertResults(tc: TestCase): void {
   const generated = drawTranscript(tc, 14, true);
   const text = entryBlocks(build(generated.messages).promptBlocks).join("\n");
+
   for (const call of generated.calls) {
     if (call.errored || call.name === VALIDATION_ERROR_TOOL) {
       const seen = countMatches(text, new RegExp(String.raw`id="${call.id}"`, "gu"));
@@ -295,6 +329,7 @@ function assertResults(tc: TestCase): void {
       assertCallResult(call, generated, text);
     }
   }
+
   for (const id of generated.orphans) {
     assert.equal(countMatches(text, resultTag(id)), 1);
   }
@@ -304,6 +339,7 @@ function assertPrefixStable(tc: TestCase): void {
   const { messages } = drawTranscript(tc, 14, tc.draw(gs.booleans(), "unique"));
   let previous = entryBlocksWithImages(build([]).promptBlocks);
   const preamble = build([]).promptBlocks[0];
+
   for (let length = 1; length <= messages.length; length += 1) {
     const request = build(messages.slice(0, length));
     const current = entryBlocksWithImages(request.promptBlocks);
@@ -321,6 +357,7 @@ function assertPrefixStable(tc: TestCase): void {
 function assertLongBreakpoints(tc: TestCase): void {
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 70 }), "entries");
   const messages: MessageFixture[] = [];
+
   for (let index = 0; index < count; index += 1) {
     messages.push(
       tc.draw(gs.booleans())
@@ -328,6 +365,7 @@ function assertLongBreakpoints(tc: TestCase): void {
         : { role: "user", content: `u${index}` },
     );
   }
+
   const { promptBlocks, cacheBreakpoints } = build(messages);
   assertBreakpoints(promptBlocks.length, cacheBreakpoints);
 }
@@ -338,6 +376,7 @@ function assertHostileAttributes(tc: TestCase): void {
   const id = tc.draw(gs.sampledFrom(HOSTILE), "id");
   const name = tc.draw(gs.sampledFrom(HOSTILE), "name");
   const mimeType = tc.draw(gs.sampledFrom(HOSTILE), "mime");
+
   const blocks = entryBlocks(
     build([
       { role: "user", content: "go" },
@@ -351,6 +390,7 @@ function assertHostileAttributes(tc: TestCase): void {
       },
     ]).promptBlocks,
   );
+
   const opened = blocks.flatMap((block) => assertWellFormed(block));
   assert.deepEqual(opened, ["user", "assistant", "past-call", "results", "past-result"]);
 }
@@ -358,9 +398,11 @@ function assertHostileAttributes(tc: TestCase): void {
 function assertCallRoundtrip(call: CallModel, lines: readonly string[]): void {
   const line = lines.find((candidate) => candidate.includes(`id="${call.id}" tool=`));
   assert.ok(line !== undefined, `no call line for ${call.id}`);
+
   const parsed = /^<(?<tag>call|past-call) id="[^"]*" tool="[^"]*">(?<args>.*)<\/\k<tag>>$/u.exec(
     line,
   );
+
   assert.ok(parsed?.groups?.args !== undefined, `unparseable call line ${line}`);
   assert.deepEqual(JSON.parse(parsed.groups.args), call.args);
 }
@@ -370,11 +412,14 @@ function assertEscaping(tc: TestCase): void {
   const blocks = entryBlocks(build(generated.messages).promptBlocks);
   const opened = blocks.flatMap((block) => assertWellFormed(block));
   assert.equal(opened.filter((name) => name === "user").length, generated.users);
+
   const valid = generated.calls.filter(
     (call) => !call.errored && call.name !== VALIDATION_ERROR_TOOL,
   );
+
   assert.equal(opened.filter((name) => name.endsWith("call")).length, valid.length);
   const lines = blocks.join("\n").split("\n");
+
   for (const call of valid) {
     assertCallRoundtrip(call, lines);
   }

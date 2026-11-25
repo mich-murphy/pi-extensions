@@ -36,12 +36,14 @@ describe("bounded authenticated artifacts", () => {
     ["manifest source differing from pin", { sourceRevision: "b".repeat(40) }, {}],
   ])("rejects %s even with a matching trusted digest", (_name, manifestChange, pinChange) => {
     const f = fixture();
+
     const manifest = Buffer.from(
       JSON.stringify({
         ...Object.fromEntries(Object.entries(jsonObject(parseJson(f.manifest)))),
         ...manifestChange,
       }),
     );
+
     const pin = { ...f.pin, ...pinChange, manifestSha256: sha256(manifest) };
     expect(() => verifyManifest(manifest, pin, f.record.target)).toThrow("wrong name or version");
   });
@@ -58,10 +60,12 @@ describe("bounded authenticated artifacts", () => {
   });
   test.each(["../pi-gateway", "/pi-gateway", "extra"])("rejects unsafe member %s", (name) => {
     const f = fixture();
+
     const archive = tar([
       [name, f.binary, 0o755],
       ["release.json", Buffer.from("{}"), 0o644],
     ]);
+
     expect(() =>
       verifyArtifact(archive, { ...f.record, size: archive.length, sha256: sha256(archive) }),
     ).toThrow("Unsafe");
@@ -87,10 +91,12 @@ describe("bounded authenticated artifacts", () => {
     "rejects %s",
     (_name, members, message) => {
       const f = fixture();
+
       const contents: Record<"binary" | "emptyObject", Buffer> = {
         binary: f.binary,
         emptyObject: Buffer.from("{}"),
       };
+
       const archive = tar(members.map(([name, content, mode]) => [name, contents[content], mode]));
       expect(() =>
         verifyArtifact(archive, { ...f.record, size: archive.length, sha256: sha256(archive) }),
@@ -115,8 +121,10 @@ describe("bounded authenticated artifacts", () => {
   test("accepts an authenticated ELF executable as well as a shared-object executable", () => {
     const f = fixture("x86_64-unknown-linux-gnu", (binary) => {
       binary.writeUInt16LE(2, 16);
+
       return binary;
     });
+
     expect(verifyArtifact(f.archive, f.record)).toStrictEqual(f.binary);
   });
   test.each([
@@ -125,6 +133,7 @@ describe("bounded authenticated artifacts", () => {
       "magic",
       (binary: Buffer) => {
         binary[0] = 0;
+
         return binary;
       },
     ],
@@ -132,6 +141,7 @@ describe("bounded authenticated artifacts", () => {
       "32-bit class",
       (binary: Buffer) => {
         binary[4] = 1;
+
         return binary;
       },
     ],
@@ -139,6 +149,7 @@ describe("bounded authenticated artifacts", () => {
       "big-endian encoding",
       (binary: Buffer) => {
         binary[5] = 2;
+
         return binary;
       },
     ],
@@ -146,6 +157,7 @@ describe("bounded authenticated artifacts", () => {
       "wrong architecture",
       (binary: Buffer) => {
         binary.writeUInt16LE(183, 18);
+
         return binary;
       },
     ],
@@ -153,6 +165,7 @@ describe("bounded authenticated artifacts", () => {
       "non-executable type",
       (binary: Buffer) => {
         binary.writeUInt16LE(1, 16);
+
         return binary;
       },
     ],
@@ -168,6 +181,7 @@ describe("bounded authenticated artifacts", () => {
     ["requiredLibgcc", null],
   ])("rejects embedded Linux %s differing from the authenticated manifest", (key, value) => {
     const f = fixture("aarch64-unknown-linux-gnu");
+
     const {
       file: _file,
       size: _size,
@@ -176,6 +190,7 @@ describe("bounded authenticated artifacts", () => {
       binarySha256: _binaryHash,
       ...metadata
     } = f.record;
+
     const archive = tar([
       ["pi-gateway", f.binary, 0o755],
       [
@@ -192,16 +207,19 @@ describe("bounded authenticated artifacts", () => {
         0o644,
       ],
     ]);
+
     const record = { ...f.record, size: archive.length, sha256: sha256(archive) };
     const trusted = verifyManifest(f.manifest, f.pin, record.target).manifest;
     const index = trusted.artifacts.findIndex((item) => item.target === record.target);
     trusted.artifacts[index] = record;
     const manifest = Buffer.from(JSON.stringify(trusted));
+
     const verified: VerifiedManifest = verifyManifest(
       manifest,
       { ...f.pin, manifestSha256: sha256(manifest) },
       record.target,
     );
+
     expect(() => verifyArtifact(archive, verified.record)).toThrow("Embedded metadata mismatch");
   });
 });

@@ -21,6 +21,7 @@ function versionSources(
 
 const inspectWith = (reads: ClaudeSdkVersionReads) =>
   inspectClaudeSdkVersions().pipe(Effect.provide(ClaudeSdkVersionSources.fromReads(reads)));
+
 const failureOf = (reads: ClaudeSdkVersionReads) => Effect.flip(inspectWith(reads));
 
 function installedVersionFailing(cause: unknown): ClaudeSdkVersionReads {
@@ -103,6 +104,7 @@ describe("claude SDK version status", () => {
       const timedOut = yield* failureOf(
         installedVersionFailing(Object.assign(new Error("killed"), { killed: true })),
       );
+
       const failed = yield* failureOf(installedVersionFailing(new Error("exit 1: secret")));
 
       expect(timedOut.message).toBe(
@@ -115,6 +117,7 @@ describe("claude SDK version status", () => {
   it.effect("does not echo secrets or controls from unexpected version output", () =>
     Effect.gen(function* () {
       const longLine = `secret-token\u001b[31m ${"x".repeat(200)}`;
+
       const error = yield* failureOf(
         versionSources("0.3.227", "2.1.227", `${longLine}\nsecond line`),
       );
@@ -134,6 +137,7 @@ describe("claude SDK version status", () => {
           throw new Error("EACCES");
         },
       });
+
       const malformed = yield* failureOf({
         ...versionSources("", "", ""),
         readSdkPackageMetadata: async () => "{not json",

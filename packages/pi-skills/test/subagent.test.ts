@@ -38,7 +38,9 @@ function mutableStore(entries: Readonly<Record<string, ToggleValue>> = {}) {
   let current = new Map(
     Object.entries(entries).map(([path, value]) => [resourcePathId(path, "/"), value]),
   );
+
   let failing = false;
+
   const store: ToggleStateStore = {
     load: () =>
       failing
@@ -48,6 +50,7 @@ function mutableStore(entries: Readonly<Record<string, ToggleValue>> = {}) {
         : Result.succeed({ files: current, repositories: new Map() }),
     set: () => Result.succeed({ files: current, repositories: new Map() }),
   };
+
   return {
     store,
     set(path: string, value: ToggleValue) {
@@ -75,17 +78,20 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
   );
   let id = options.id;
   let projection: SessionProjection = { messages: [], entries: [] };
+
   const sessionManager = {
     getSessionId: () => id,
     getHeader: () => (options.parent === undefined ? {} : { parentSession: options.parent }),
     buildSessionProjection: () => projection,
   };
+
   const ctx = {
     cwd: options.cwd,
     ui: { notify: () => undefined },
     model: undefined,
     sessionManager,
   };
+
   return {
     start() {
       handlers.session_start?.({ type: "session_start", reason: "startup" }, ctx);
@@ -108,6 +114,7 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
         sections: { skills: string };
         timestamp: number;
       };
+
       projection = { messages: [head, { role: "assistant" }], entries: [] };
     },
     run(skills: readonly Skill[]) {
@@ -117,10 +124,12 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
         contextFiles: [],
         skills: [...skills],
       };
+
       const result = handlers.before_agent_start?.(
         { systemPrompt: "rendered by Pi", systemPromptOptions },
         ctx,
       );
+
       return { result, visible: systemPromptOptions.skills.map(({ name }) => name) };
     },
     read(path: string) {
@@ -185,6 +194,7 @@ describe("session registry", () => {
         throw new Error("broken");
       }
     }
+
     Reflect.set(globalThis, REGISTRY, new Broken());
     expect(() => {
       registerSession(PARENT, policy);
@@ -200,7 +210,9 @@ describe("session registry", () => {
       ["v2", { ...policy, version: 2 }],
       ["no-match", { version: 1, desiredVisible: () => true }],
     ]);
+
     Reflect.set(globalThis, REGISTRY, map);
+
     for (const id of map.keys()) {
       expect(sessionPolicy(String(id))).toBeUndefined();
     }
@@ -229,6 +241,7 @@ function family(parentStore: ToggleStateStore, childStore = mutableStore().store
   parent.run([research, parentDeploy]);
   const child = session(childStore, { id: CHILD, cwd: "/work/child", parent: PARENT });
   child.start();
+
   return { parent, child };
 }
 
@@ -304,11 +317,13 @@ describe("subagents follow the parent", () => {
   test("a grandchild follows the root session through its parent", () => {
     const { parent, child } = family(mutableStore({ [parentDeploy.filePath]: "enabled" }).store);
     child.run([childDeploy]);
+
     const grandchild = session(mutableStore().store, {
       id: GRANDCHILD,
       cwd: "/work/grandchild",
       parent: CHILD,
     });
+
     grandchild.start();
     const deploy = skill("/work/grandchild/.agents/skills/deploy/SKILL.md", "deploy", "project");
 

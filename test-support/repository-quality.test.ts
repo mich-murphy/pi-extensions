@@ -24,37 +24,45 @@ const runner = resolve(checkout, "scripts/repository-quality.ts");
 
 function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), "repository quality-"));
+
   function git(...args: string[]) {
     const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
+
     return result.stdout;
   }
+
   function write(path: string, content: string) {
     const full = resolve(root, path);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
   }
+
   function run(mode: string, cwd = root, env = process.env) {
     const localRunner = resolve(cwd, ".repository-quality-runner.ts");
     copyFileSync(runner, localRunner);
+
     return spawnSync(process.execPath, ["--experimental-strip-types", localRunner, mode], {
       cwd,
       env,
       encoding: "utf8",
     });
   }
+
   git("init", "--quiet");
   git("config", "user.email", "fixture@example.invalid");
   git("config", "user.name", "Offline fixture");
   git("config", "core.hooksPath", "/dev/null");
   write(".gitignore", "node_modules/\n.repository-quality-runner.ts\n");
   mkdirSync(resolve(root, "node_modules/.bin"), { recursive: true });
+
   for (const tool of ["oxfmt", "oxlint"]) {
     symlinkSync(
       resolve(checkout, "node_modules/.bin", tool),
       resolve(root, "node_modules/.bin", tool),
     );
   }
+
   symlinkSync(
     resolve(checkout, "node_modules/markdownlint-cli2"),
     resolve(root, "node_modules/markdownlint-cli2"),
@@ -65,6 +73,7 @@ function fixture() {
     resolve(root, "config/markdownlint-cli2.yaml"),
   );
   copyFileSync(resolve(checkout, ".oxfmtrc.json"), resolve(root, ".oxfmtrc.json"));
+
   return {
     root,
     git,
@@ -88,6 +97,7 @@ function assertFailure(result: ReturnType<ReturnType<typeof fixture>["run"]>) {
 
 await test("clean clone, dirty local artifacts, staged and tracked violations use the same scope", () => {
   const f = fixture();
+
   try {
     f.write("good.json", "{}\n");
     f.write("README.md", "# Fixture\n\nValid text.\n");
@@ -99,6 +109,7 @@ await test("clean clone, dirty local artifacts, staged and tracked violations us
     f.git("commit", "--quiet", "-m", "fixture");
     assertSuccess(f.run("format-check"));
     assertSuccess(f.run("markdownlint"));
+
     for (const dir of [
       ".agents/tasks",
       ".direnv/cache",
@@ -109,6 +120,7 @@ await test("clean clone, dirty local artifacts, staged and tracked violations us
       f.write(`${dir}/bad.json`, "{bad JSON");
       f.write(`${dir}/bad.md`, "# Bad\n\nhttp://bare.example\n");
     }
+
     assertSuccess(f.run("format-check"));
     assertSuccess(f.run("markdownlint"));
     f.write("good.json", '{"bad":1}');
@@ -142,6 +154,7 @@ await test("clean clone, dirty local artifacts, staged and tracked violations us
 
 await test("literal filenames, unstaged/staged deletions and linked worktrees", () => {
   const f = fixture();
+
   try {
     for (const name of [
       "space name.json",
@@ -154,13 +167,16 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
     ]) {
       f.write(name, "{}\n");
     }
+
     for (const name of ["space name.md", "line\nbreak.md", "[bracket].md", "!bang.md"]) {
       f.write(name, "# Good\n");
     }
+
     f.git("add", ".");
     f.git("commit", "--quiet", "-m", "fixture");
     assertSuccess(f.run("format-check"));
     assertSuccess(f.run("markdownlint"));
+
     for (const name of [
       "[bracket].json",
       "line\nbreak.json",
@@ -173,6 +189,7 @@ await test("literal filenames, unstaged/staged deletions and linked worktrees", 
       assertFailure(f.run("format-check"));
       f.write(name, "{}\n");
     }
+
     unlinkSync(resolve(f.root, "[bracket].json"));
     f.git("rm", "--", "space name.json");
     assertSuccess(f.run("format-check"));
@@ -193,6 +210,7 @@ await Promise.all(
     test(`${mode} refuses symlink ancestors without reading or changing outside files`, () => {
       const f = fixture();
       const outside = mkdtempSync(resolve(tmpdir(), "repository-quality-outside-"));
+
       try {
         f.write("tracked/file.json", "{}\n");
         f.git("add", "tracked/file.json");
@@ -221,6 +239,7 @@ await Promise.all(
 await test("deleted ancestor paths and canonical checkout root aliases remain supported", () => {
   const f = fixture();
   const aliases = mkdtempSync(resolve(tmpdir(), "repository-quality-alias-"));
+
   try {
     f.write("tracked/nested/file.json", "{}\n");
     f.write("normal/file.json", "{}\n");
@@ -240,6 +259,7 @@ await test("deleted ancestor paths and canonical checkout root aliases remain su
 
 await test("symlink ancestors pointing inside the checkout are also refused", () => {
   const f = fixture();
+
   try {
     f.write("tracked/file.json", "{}\n");
     f.write("actual/file.json", "{}\n");
@@ -256,6 +276,7 @@ await test("symlink ancestors pointing inside the checkout are also refused", ()
 
 await test("indexed symlinks cannot become selected regular files through working-copy replacement", () => {
   const f = fixture();
+
   try {
     f.write("target.json", "{}\n");
     symlinkSync("target.json", resolve(f.root, "linked.json"));
@@ -272,6 +293,7 @@ await test("indexed symlinks cannot become selected regular files through workin
 
 await test("empty index never falls back to directory scanning; missing tools and Git fail closed", () => {
   const f = fixture();
+
   try {
     f.write("bad.json", "{bad");
     f.write("bad.md", "# Bad\n\nhttp://bare.example\n");
@@ -302,10 +324,12 @@ await test("empty index never falls back to directory scanning; missing tools an
 
 await test("tool exit status and signal are not masked; batches stop at first failure", () => {
   const f = fixture();
+
   try {
     for (let n = 0; n < 130; n++) {
       f.write(`source-${n}.json`, "{}\n");
     }
+
     f.git("add", ".");
     const tool = resolve(f.root, "node_modules/.bin/oxfmt");
     unlinkSync(tool);
@@ -325,10 +349,12 @@ await test("tool exit status and signal are not masked; batches stop at first fa
       `#!${process.execPath}\nimport { appendFileSync } from 'node:fs';\nappendFileSync(process.env.TOOL_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');\n`,
     );
     assertSuccess(f.run("format-check", f.root, { ...process.env, TOOL_LOG: log }));
+
     const batches = readFileSync(log, "utf8")
       .trim()
       .split("\n")
       .map((line) => parseBatch(line));
+
     assert.equal(batches.length, 3);
     assert.deepEqual(
       batches.map((batch) => batch.slice(0, 2)),
@@ -342,9 +368,11 @@ await test("tool exit status and signal are not masked; batches stop at first fa
     assert.equal(new Set(paths).size, 132);
     assert.ok(paths.includes("./.oxfmtrc.json"));
     assert.ok(paths.includes("./config/markdownlint-cli2.yaml"));
+
     for (let n = 0; n < 130; n++) {
       assert.ok(paths.includes(`./source-${n}.json`));
     }
+
     writeFileSync(tool, `#!${process.execPath}\nprocess.kill(process.pid, 'SIGTERM');\n`);
     const interrupted = f.run("format-check");
     assertFailure(interrupted);

@@ -15,9 +15,11 @@ function systemError(code: string): Error {
 
 function childSubscribedViaOnceExit(subscriptions: readonly unknown[]): ChildProcess {
   const child = subscriptions.at(-1);
+
   if (!(child instanceof ChildProcess)) {
     throw new TypeError("test setup: the adapter did not subscribe to a child process");
   }
+
   return child;
 }
 
@@ -31,10 +33,12 @@ describe("caffeinate child errors", () => {
   test("keeps reporting every error: a second one must not crash Pi as unhandled", async () => {
     const subscribe = vi.spyOn(ChildProcess.prototype, "once");
     const ends: CaffeinateNotice[] = [];
+
     const adapter = caffeinateSpawner(
       process.execPath,
       KILL_GRACE_MS,
     )(["-e", "setInterval(() => {}, 1000)"]);
+
     adapter.onNotice((end) => ends.push(end));
     const child = childSubscribedViaOnceExit(subscribe.mock.contexts);
     subscribe.mockRestore();
@@ -51,13 +55,16 @@ describe("caffeinate child errors", () => {
   test("stop after exit signals nothing, so a reused PID is never hit", async () => {
     const subscribe = vi.spyOn(ChildProcess.prototype, "once");
     const adapter = caffeinateSpawner(process.execPath, KILL_GRACE_MS)(["-e", "process.exit(0)"]);
+
     const exited = new Promise((resolve) => {
       adapter.onNotice(resolve);
     });
+
     const child = childSubscribedViaOnceExit(subscribe.mock.contexts);
     subscribe.mockRestore();
     await exited;
     const kill = vi.spyOn(child, "kill");
+
     try {
       adapter.stop();
       await delay(KILL_GRACE_MS * 3);

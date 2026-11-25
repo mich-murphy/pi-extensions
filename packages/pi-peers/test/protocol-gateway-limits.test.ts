@@ -9,9 +9,11 @@ function rustConstant(name: string): number {
   const match = new RegExp(String.raw`const ${name}: usize = (?<value>[\d_]+);`, "u").exec(
     gatewayWire,
   );
+
   if (match?.groups?.value === undefined) {
     throw new Error(`gateway/src/wire.rs no longer declares ${name}`);
   }
+
   return Number(match.groups.value.replaceAll("_", ""));
 }
 

@@ -24,6 +24,7 @@ export function sharedFolder(folder: string): UnsafeFolder {
     `Run chmod go-w ${folder}, then try again`,
   );
 }
+
 export function linkedFolder(folder: string): UnsafeFolder {
   return new UnsafeFolder(
     folder,
@@ -31,6 +32,7 @@ export function linkedFolder(folder: string): UnsafeFolder {
     "Use a Pi agent folder whose path has no links",
   );
 }
+
 export function foreignFolder(folder: string): UnsafeFolder {
   return new UnsafeFolder(
     folder,
@@ -38,6 +40,7 @@ export function foreignFolder(folder: string): UnsafeFolder {
     "Use a Pi agent folder inside your own home",
   );
 }
+
 export function openFolder(folder: string): UnsafeFolder {
   return new UnsafeFolder(
     folder,
@@ -48,5 +51,6 @@ export function openFolder(folder: string): UnsafeFolder {
 
 export const SETTINGS_CHANGED = (): Refusal =>
   new Refusal("the saved settings changed", "Open /peers again to review them");
+
 export const SETUP_BUSY = (): Refusal =>
   new Refusal("another Pi is changing the setup", "Wait for it to finish, then try again");

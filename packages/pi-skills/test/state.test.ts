@@ -33,16 +33,20 @@ function testContext() {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-"));
   temporaryDirectories.push(directory);
   const statePath = join(directory, "state", "pi-skills.json");
+
   const writeState = (state: StateDocument): void => {
     mkdirSync(dirname(statePath), { recursive: true });
     writeFileSync(statePath, Schema.is(Schema.String)(state) ? state : JSON.stringify(state));
   };
+
   const resourceFile = (name: string): ResourcePath => {
     const path = join(directory, name, "SKILL.md");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, name);
+
     return resourcePathId(path, directory);
   };
+
   return { directory, statePath, writeState, resourceFile, store: new ToggleStateFile(statePath) };
 }
 
@@ -50,6 +54,7 @@ function overrides(result: ToggleStateResult): ToggleOverrides["files"] {
   if (Result.isFailure(result)) {
     throw new Error(result.failure.message, { cause: result.failure });
   }
+
   return result.success.files;
 }
 
@@ -57,6 +62,7 @@ function failureOrValue(result: ToggleStateResult): ToggleOverrides {
   if (Result.isFailure(result)) {
     throw new Error(result.failure.message, { cause: result.failure });
   }
+
   return result.success;
 }
 
@@ -64,6 +70,7 @@ function failureOf(result: ToggleStateResult): ToggleStateError {
   if (Result.isSuccess(result)) {
     throw new Error("expected the state operation to fail");
   }
+
   return result.failure;
 }
 
@@ -289,8 +296,10 @@ describe("toggleStateFile", () => {
 
   test("tells the user exactly what is wrong with the file", () => {
     const context = testContext();
+
     const messageFor = (state: StateDocument): string => {
       context.writeState(state);
+
       return failureOf(context.store.load()).message;
     };
 

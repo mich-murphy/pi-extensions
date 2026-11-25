@@ -19,11 +19,13 @@ export class CredentialFailure extends Schema.TaggedError<CredentialFailure>()(
       incompatible:
         "pi-web's login is missing or was replaced. Ask the user to check extensions, then `/reload`.",
     };
+
     return `credential ${this.reason}: ${advice[this.reason]}`;
   }
 }
 
 export type CredentialOutcome = Result.Result<Redacted.Redacted | undefined, CredentialFailure>;
+
 export type CredentialSnapshot = {
   readonly outcomes: Readonly<Record<SearchProviderName, CredentialOutcome>>;
   readonly secrets: readonly string[];
@@ -33,16 +35,20 @@ function validateCredential(provider: SearchProviderName, value: string | undefi
   if (value === undefined) {
     return Effect.succeed(undefined);
   }
+
   if (!Schema.is(Schema.String)(value)) {
     return Effect.fail(new CredentialFailure({ provider, reason: "invalid" }));
   }
+
   const trimmed = value.trim();
+
   if (
     trimmed === "" ||
     trimmed.split("").some((character) => character < " " || character === "\u007f")
   ) {
     return Effect.fail(new CredentialFailure({ provider, reason: "invalid" }));
   }
+
   return Effect.succeed(Redacted.make(trimmed));
 }
 
@@ -83,19 +89,24 @@ export function resolveCredentialSnapshot(
 ): Effect.Effect<CredentialSnapshot, never, CredentialResolver> {
   return Effect.gen(function* () {
     const resolver = yield* CredentialResolver;
+
     const outcomes: Record<SearchProviderName, CredentialOutcome> = {
       exa: Result.succeed(undefined),
       parallel: Result.succeed(undefined),
       brave: Result.succeed(undefined),
     };
+
     const secrets: string[] = [];
+
     for (const provider of new Set(names)) {
       const outcome = yield* Effect.result(resolver.resolve(provider));
       outcomes[provider] = outcome;
+
       if (Result.isSuccess(outcome) && outcome.success !== undefined) {
         secrets.push(Redacted.value(outcome.success));
       }
     }
+
     return { outcomes, secrets };
   });
 }

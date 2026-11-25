@@ -38,25 +38,32 @@ function harness(
   } = {},
 ) {
   const lookups: string[] = [];
+
   const connections: { readonly url: string; readonly addresses: readonly ApprovedAddress[] }[] =
     [];
+
   const transport: PublicWebTransport["Service"] = {
     get: async (url, addresses) => {
       connections.push({ url: url.toString(), addresses });
+
       return (options.respond ?? html)(url);
     },
   };
+
   const client = publicWebClientOverTransport({
     transport,
     lookup: async (hostname) => {
       lookups.push(hostname);
+
       return (options.dns ?? (() => [PUBLIC_V4]))(hostname, lookups.length);
     },
   });
+
   const settings = settingsFrom();
   const runtime = toolRuntimeWith({ settings, fetchPage: fetchPageWith(client) });
   toDispose.push(runtime);
   const tool = createWebFetchTool({ settings, runtime, redactText: (input) => input });
+
   return { tool, lookups, connections };
 }
 
@@ -125,6 +132,7 @@ describe("webfetch SSRF boundary", () => {
         dns: answerBy({ "internal.example": LOOPBACK }),
         respond: redirectFrom("front.example", 302, "http://internal.example/"),
       });
+
       await expect(tool.execute("t1", { url: "http://front.example/" })).rejects.toThrow(
         "Blocked private or local IP",
       );
@@ -140,6 +148,7 @@ describe("webfetch SSRF boundary", () => {
         PUBLIC_V4,
         { address: "2606:2800:220:1::1", family: 6 },
       ];
+
       const { tool, lookups, connections } = harness({ dns: () => answer });
       const result = await tool.execute("t1", { url: "http://example.com/page" });
       expect(textOf(result)).toContain("Public page text.");
@@ -156,10 +165,12 @@ describe("webfetch SSRF boundary", () => {
 
     test("every redirect hop validates and pins its own addresses", async () => {
       const second: readonly ApprovedAddress[] = [{ address: "151.101.1.69", family: 4 }];
+
       const { tool, lookups, connections } = harness({
         dns: answerBy({ "b.example": second }),
         respond: redirectFrom("a.example", 301, "http://b.example/final"),
       });
+
       await tool.execute("t1", { url: "http://a.example/" });
       expect(lookups).toStrictEqual(["a.example", "b.example"]);
       expect(connections).toStrictEqual([

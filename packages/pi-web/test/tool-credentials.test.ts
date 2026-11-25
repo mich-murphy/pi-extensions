@@ -29,16 +29,19 @@ describe("credential wait lifecycle", () => {
     async ({ environment, url, message }) => {
       let resolutions = 0;
       const settings = settingsFrom(environment);
+
       const runtime = toolRuntimeWith({
         settings,
         credentials: CredentialResolver.of({
           resolve: () =>
             Effect.sync(() => {
               resolutions += 1;
+
               return Redacted.make("unresolved-synthetic-key");
             }),
         }),
       });
+
       const tool = createWebFetchTool({ settings, runtime, redactText: (input) => input });
       const outcome = tool.execute("invalid", { url });
       await expect(outcome).rejects.toThrow(message);
@@ -50,29 +53,36 @@ describe("credential wait lifecycle", () => {
   test("webfetch never resolves the Brave credential, which only search can use", async () => {
     const resolved: string[] = [];
     const settings = settingsFrom();
+
     const credentials = CredentialResolver.of({
       resolve: (provider) =>
         Effect.sync(() => {
           resolved.push(provider);
+
           return undefined;
         }),
     });
+
     const fetchRuntime = toolRuntimeWith({
       settings,
       credentials,
       fetchPage: FetchPage.of({ fetch: () => Effect.fail(new PrivateIpBlocked()) }),
     });
+
     const searchRuntime = toolRuntimeWith({ settings, credentials, searchProviders: [] });
+
     const fetchTool = createWebFetchTool({
       settings,
       runtime: fetchRuntime,
       redactText: (input) => input,
     });
+
     const searchTool = createWebSearchTool({
       settings,
       runtime: searchRuntime,
       redactText: (input) => input,
     });
+
     await fetchTool.execute("fetch", { url: "https://example.com/" }).catch(errorMessage);
     expect(resolved).toStrictEqual(["exa", "parallel"]);
     resolved.length = 0;
@@ -87,6 +97,7 @@ describe("credential wait lifecycle", () => {
     let resolverAborted = false;
     let transportCalls = 0;
     const settings = settingsFrom({ PI_WEB_PROVIDERS: "exa" });
+
     const credentials = CredentialResolver.of({
       resolve: (provider) =>
         Effect.tryPromise({
@@ -99,11 +110,13 @@ describe("credential wait lifecycle", () => {
               { once: true },
             );
             started.resolve(undefined);
+
             return resolved.promise;
           },
           catch: () => new CredentialFailure({ provider, reason: "resolution" }),
         }),
     });
+
     const runtime = toolRuntimeWith({
       settings,
       credentials,
@@ -114,18 +127,22 @@ describe("credential wait lifecycle", () => {
           search: () =>
             Effect.sync(() => {
               transportCalls += 1;
+
               return [];
             }),
         },
       ],
     });
+
     const tool = createWebSearchTool({ settings, runtime, redactText: (input) => input });
     const updates: unknown[] = [];
+
     const outcome = tool
       .execute("pending", { query: "query" }, undefined, (update) => {
         updates.push(update);
       })
       .catch(errorMessage);
+
     await started.promise;
     await runtime.dispose();
     await expect(outcome).resolves.toBe("Web search cancelled");

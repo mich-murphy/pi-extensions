@@ -39,6 +39,7 @@ import {
 import { expectNoLeak } from "./leaks";
 
 const DEFAULT_SETTINGS = settingsFrom();
+
 const FETCH_OPTIONS = {
   maxRedirects: 5,
   maxResponseBytes: 1024 * 1024,
@@ -51,12 +52,14 @@ function fakeFetchProvider(
   markdown: string | undefined,
 ): FetchProvider & { readonly calls: readonly string[] } {
   const calls: string[] = [];
+
   return {
     name,
     calls,
     fetchMarkdown: (url) =>
       Effect.sync(() => {
         calls.push(url);
+
         return markdown;
       }),
   };
@@ -76,6 +79,7 @@ function makeTool(
   providers: readonly FetchProvider[],
 ) {
   const settings = settingsFrom(env);
+
   return createWebFetchTool({
     settings,
     redactText: redactorFor("sekrit-key"),
@@ -92,17 +96,20 @@ function inputErrorFor(url: string): string {
   const parsed = parseWebFetchParams({ url }, DEFAULT_SETTINGS);
   assert(Result.isFailure(parsed));
   expect(parsed.failure).toBeInstanceOf(InvalidFetchUrlInput);
+
   return parsed.failure.message;
 }
 
 function timeoutFor(timeout: number): number {
   const parsed = parseWebFetchParams({ url: "https://example.com", timeout }, DEFAULT_SETTINGS);
   assert(Result.isSuccess(parsed));
+
   return parsed.success.timeoutSeconds;
 }
 
 async function fetchShort(contentType: string) {
   const page = fetchPageFor(Result.succeed(textWebResponse("<p>hi</p>", contentType)));
+
   return Effect.runPromise(
     Effect.result(
       page.fetch({ url: publicUrl("https://short.example"), format: "markdown" }, FETCH_OPTIONS),
@@ -149,6 +156,7 @@ describe("isRescueEligible", () => {
         isRescueEligible(Result.fail(new HttpStatusRejected({ status, statusText: "" }))),
       ).toBe(true);
     }
+
     expect(
       isRescueEligible(Result.fail(new HttpStatusRejected({ status: 500, statusText: "" }))),
     ).toBe(false);
@@ -159,6 +167,7 @@ describe("isRescueEligible", () => {
     const thinShell = fetchPageFor(
       Result.succeed(textWebResponse('<html><body><div id="app"></div></body></html>')),
     );
+
     const thin = await Effect.runPromise(
       Effect.result(
         thinShell.fetch(
@@ -167,10 +176,12 @@ describe("isRescueEligible", () => {
         ),
       ),
     );
+
     expect(isRescueEligible(thin)).toBe(true);
 
     const substantial = "substantial content ".repeat(40);
     const realPage = fetchPageFor(Result.succeed(articleResponse(substantial)));
+
     const real = await Effect.runPromise(
       Effect.result(
         realPage.fetch(
@@ -179,6 +190,7 @@ describe("isRescueEligible", () => {
         ),
       ),
     );
+
     expect(isRescueEligible(real)).toBe(false);
   });
 
@@ -192,6 +204,7 @@ describe("isRescueEligible", () => {
 describe("webfetch call rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
   const fetchPage = fetchPageFor(Result.succeed(textWebResponse("x")));
+
   const tool = createWebFetchTool({
     settings: DEFAULT_SETTINGS,
     redactText: redactorFor("sekrit-key"),
@@ -203,6 +216,7 @@ describe("webfetch call rendering", () => {
       { url: "https://user:pass@example.com/x", format: "text" },
       theme,
     );
+
     const rendered = renderText(component);
     expect(rendered).toContain("webfetch");
     expect(rendered).not.toContain("pass");
@@ -213,6 +227,7 @@ describe("webfetch call rendering", () => {
     const rendered = renderText(
       tool.renderCall({ url: "https://example.com/?key=sekrit-key" }, theme),
     );
+
     expect(rendered).not.toContain("sekrit-key");
     expect(rendered).toContain("[redacted]");
   });
@@ -221,6 +236,7 @@ describe("webfetch call rendering", () => {
 describe("webfetch result rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
   const tool = makeTool({}, Result.succeed(textWebResponse("x")), []);
+
   const meta = {
     requestedUrl: "https://example.com",
     finalUrl: "https://example.com/final",
@@ -230,6 +246,7 @@ describe("webfetch result rendering", () => {
     contentType: "text/html",
     bytes: 2048,
   };
+
   const render = (
     result: Parameters<typeof tool.renderResult>[0],
     options: { readonly expanded: boolean; readonly isPartial: boolean },
@@ -253,6 +270,7 @@ describe("webfetch result rendering", () => {
       },
       { expanded: true, isPartial: false },
     );
+
     expect(expanded.split("\n")).toStrictEqual([
       "✓ Fetched (text/html) 2.0KB [via exa] [truncated]",
       "page body",
@@ -268,6 +286,7 @@ describe("webfetch result rendering", () => {
       },
       { expanded: true, isPartial: false },
     );
+
     expect(expanded.split("\n")).toStrictEqual([
       "✓ Fetched (image/png) 2.0KB [image]",
       "Image URL: https://example.com/final",
@@ -290,6 +309,7 @@ describe("webfetch tool", () => {
 
   test("rescues bot-blocked pages through the provider chain and flags it", async () => {
     const provider = fakeFetchProvider("exa", "# Rescued content\n\nThis came from the provider.");
+
     const tool = makeTool(
       {},
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
@@ -310,6 +330,7 @@ describe("webfetch tool", () => {
 
   test("rescues JS-only HTML shells", async () => {
     const provider = fakeFetchProvider("parallel", "# Rendered by the provider");
+
     const tool = makeTool(
       {},
       Result.succeed(textWebResponse('<html><body><div id="app"></div></body></html>')),
@@ -335,6 +356,7 @@ describe("webfetch tool", () => {
 
   test("does not rescue when PI_WEB_FETCH_RESCUE=off", async () => {
     const provider = fakeFetchProvider("exa", "# Rescued");
+
     const tool = makeTool(
       { PI_WEB_FETCH_RESCUE: "off" },
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
@@ -349,6 +371,7 @@ describe("webfetch tool", () => {
 
   test("does not rescue non-markdown formats", async () => {
     const provider = fakeFetchProvider("exa", "# Rescued");
+
     const tool = makeTool(
       {},
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
@@ -373,6 +396,7 @@ describe("webfetch tool", () => {
 
   test("redacts configured secrets from fetched content", async () => {
     const provider = fakeFetchProvider("exa", "leaked sekrit-key in page");
+
     const tool = makeTool(
       {},
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "" })),
@@ -382,12 +406,14 @@ describe("webfetch tool", () => {
     const result = await tool.execute("t1", {
       url: "https://blocked.example/page?key=sekrit-key",
     });
+
     expect(JSON.stringify(result)).not.toContain("sekrit-key");
     expect(textOf(result)).toContain("[redacted]");
   });
 
   test("redacts the request's resolved key from a failure message on its own", async () => {
     const settings = settingsFrom();
+
     const tool = createWebFetchTool({
       settings,
       redactText: (input) => input,
@@ -403,6 +429,7 @@ describe("webfetch tool", () => {
     const failure = await tool
       .execute("t1", { url: "https://echo.example/" })
       .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
     assert(failure instanceof Error);
     expect(failure.message).toBe("Request failed (500 Internal Server Error)");
     expectNoLeak(failure, "sekrit-key");
@@ -411,6 +438,7 @@ describe("webfetch tool", () => {
   test("redacts image progress and metadata without changing the image payload", async () => {
     const raw = Buffer.from("raw-image-payload", "utf8");
     const settings = settingsFrom();
+
     const fetchPage = FetchPage.of({
       fetch: (input) =>
         Effect.succeed({
@@ -427,12 +455,15 @@ describe("webfetch tool", () => {
           body: FetchPageBody.Image({ data: raw }),
         }),
     });
+
     const tool = createWebFetchTool({
       settings,
       redactText: redactorFor("sekrit-key"),
       runtime: toolRuntimeWith({ settings, secret: "sekrit-key", fetchPage }),
     });
+
     const updates: unknown[] = [];
+
     const result = await tool.execute(
       "t1",
       { url: "https://images.example/p.png?token=sekrit-key" },
@@ -456,6 +487,7 @@ describe("webfetch tool", () => {
       Result.succeed(textWebResponse("x")),
       [],
     );
+
     await expect(tool.execute("t1", { url: "https://sub.evil.example/page" })).rejects.toThrow(
       "denied",
     );
@@ -467,9 +499,11 @@ describe("webfetch tool", () => {
       Result.succeed(textWebResponse("x")),
       [],
     );
+
     const failure = await tool
       .execute("t1", { url: "https://secret-token.evil.example/page" })
       .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
     assert(failure instanceof Error);
     expect(failure.message).not.toContain("secret-token");
     expect(failure.message).not.toContain("evil.example");
@@ -477,11 +511,13 @@ describe("webfetch tool", () => {
 
   test("enforces the domain allow policy", async () => {
     const allowedContent = "allowed content ".repeat(40);
+
     const tool = makeTool(
       { PI_WEB_FETCH_ALLOW_DOMAINS: "docs.example.com" },
       Result.succeed(articleResponse(allowedContent)),
       [],
     );
+
     await expect(tool.execute("t1", { url: "https://other.example" })).rejects.toThrow(
       "not in the webfetch allowed domains",
     );
@@ -491,11 +527,13 @@ describe("webfetch tool", () => {
 
   test("disables provider rescue while domain restrictions are configured", async () => {
     const provider = fakeFetchProvider("exa", "# Must not be requested");
+
     const tool = makeTool(
       { PI_WEB_FETCH_ALLOW_DOMAINS: "allowed.example" },
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
       [provider],
     );
+
     await expect(tool.execute("t1", { url: "https://allowed.example/page" })).rejects.toThrow(
       "Request failed (403 Forbidden)",
     );
@@ -562,11 +600,13 @@ describe("webfetch deadline and cancellation", () => {
       fetchPage: fetchPageWith(hangingWeb),
       testClock: true,
     });
+
     const tool = createWebFetchTool({
       settings: DEFAULT_SETTINGS,
       redactText: redactorFor(),
       runtime,
     });
+
     const outcome = tool.execute("t1", { url: "https://slow.example", timeout: 1 });
     await settleOnTestClock(runtime, Duration.seconds(1), outcome);
     await expect(outcome).rejects.toThrow("Web fetch timed out after 1s");
@@ -575,11 +615,13 @@ describe("webfetch deadline and cancellation", () => {
 
   test("a caller abort reports a cancellation", async () => {
     const controller = new AbortController();
+
     const outcome = hangingTool().execute(
       "t1",
       { url: "https://slow.example", timeout: 60 },
       controller.signal,
     );
+
     setTimeout(() => {
       controller.abort();
     }, 10);
@@ -592,9 +634,11 @@ describe("webfetch rescue chain", () => {
     const { client: failingMcp, calls: failingCalls } = fakeMcpClient([
       Result.fail(new ProviderStatusRejected({ status: 500 })),
     ]);
+
     const empty = fakeFetchProvider("parallel", undefined);
     const answering = fakeFetchProvider("exa", "# Third time lucky");
     const never = fakeFetchProvider("parallel", "# Not reached");
+
     const tool = makeTool(
       {},
       Result.fail(new HttpStatusRejected({ status: 429, statusText: "" })),
@@ -614,11 +658,13 @@ describe("webfetch rescue chain", () => {
     const { client: failingMcp } = fakeMcpClient([
       Result.fail(new ProviderStatusRejected({ status: 500 })),
     ]);
+
     const tool = makeTool(
       {},
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
       [new ExaMcpFetchProvider(failingMcp)],
     );
+
     await expect(tool.execute("t1", { url: "https://blocked.example" })).rejects.toThrow(
       "Request failed (403 Forbidden)",
     );

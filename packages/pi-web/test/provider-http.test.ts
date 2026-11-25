@@ -19,9 +19,11 @@ async function startLocalServer(
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
+
   if (!Schema.is(Schema.Struct({ port: Schema.Number }))(address)) {
     throw new Error("Test HTTP server did not expose a TCP address");
   }
+
   return {
     url: `http://127.0.0.1:${address.port}`,
     close: async () =>
@@ -29,8 +31,10 @@ async function startLocalServer(
         server.close((error) => {
           if (error) {
             reject(error);
+
             return;
           }
+
           resolve();
         });
       }),
@@ -45,14 +49,17 @@ type SeenRequest = {
 
 function recordingFetch(reply: () => Response) {
   const seen: SeenRequest[] = [];
+
   const fetchImpl: typeof fetch = async (_input, init) => {
     seen.push({
       method: init?.method,
       body: init?.body,
       contentType: new Headers(init?.headers).get("content-type"),
     });
+
     return reply();
   };
+
   return { fetchImpl, seen };
 }
 
@@ -102,11 +109,14 @@ describe("fetchProviderHttpClient", () => {
 
   test("rejects cross-origin redirects without forwarding provider key headers", async () => {
     let destinationRequests = 0;
+
     const destination = await startLocalServer((_request, response) => {
       destinationRequests += 1;
       response.end("must not be reached");
     });
+
     const sourceHeaders: string[] = [];
+
     const source = await startLocalServer((incoming, response) => {
       sourceHeaders.push(
         `${String(incoming.headers["x-api-key"])}|${String(incoming.headers["x-subscription-token"])}`,
@@ -117,11 +127,13 @@ describe("fetchProviderHttpClient", () => {
 
     try {
       const client = providerHttpWith(globalThis.fetch);
+
       const providerKeys = [
         { name: "x-api-key", value: "exa-fake-key" },
         { name: "x-api-key", value: "parallel-fake-key" },
         { name: "x-subscription-token", value: "brave-fake-key" },
       ] as const;
+
       for (const key of providerKeys) {
         const result = await Effect.runPromise(
           Effect.result(
@@ -134,6 +146,7 @@ describe("fetchProviderHttpClient", () => {
             }),
           ),
         );
+
         assert(Result.isFailure(result));
         expect(result.failure._tag).toBe("ProviderStatusRejected");
       }
@@ -161,6 +174,7 @@ describe("fetchProviderHttpClient", () => {
       const failed = providerHttpWith(async () => {
         throw new Error("dns");
       });
+
       const failedResult = yield* Effect.result(failed.getJson(request));
       assert(Result.isFailure(failedResult));
       expect(failedResult.failure._tag).toBe("ProviderRequestFailed");
@@ -176,13 +190,17 @@ describe("fetchProviderHttpClient", () => {
   it.effect("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", () =>
     Effect.gen(function* () {
       const inits: (RequestInit | undefined)[] = [];
+
       const client = providerHttpWith(async (_input, init) => {
         inits.push(init);
+
         return neverResponds();
       });
+
       const fiber = yield* Effect.forkChild(
         Effect.result(client.getJson({ ...request, timeout: Duration.millis(20) })),
       );
+
       yield* TestClock.adjust(Duration.millis(20));
       const result = yield* Fiber.join(fiber);
       assert(Result.isFailure(result));

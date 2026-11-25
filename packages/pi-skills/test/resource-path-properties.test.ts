@@ -9,12 +9,14 @@ const segment = gs.oneOf(
   gs.text({ alphabet: "abc.", minSize: 1, maxSize: 3 }).map((text) => `s${text}`),
   gs.just("..foo"),
 );
+
 const segments = gs.arrays(segment, { maxSize: 4 });
 const absolute = gs.text({ alphabet: "/.ab", maxSize: 12 }).map((text) => `/${text}`);
 
 function assertContainment(parent: string, first: string[], second: string[]): void {
   const middle = join(parent, ...first);
   const leaf = join(middle, ...second);
+
   for (const [path, of] of [
     [parent, parent],
     [middle, parent],
@@ -23,6 +25,7 @@ function assertContainment(parent: string, first: string[], second: string[]): v
   ] as const) {
     assert.ok(pathIsInsideOrEqual(path, of), `${path} inside ${of}`);
   }
+
   if (first.length > 0) {
     assert.ok(!pathIsInsideOrEqual(parent, middle), "a parent is not inside its child");
   }

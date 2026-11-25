@@ -17,6 +17,7 @@ const settings = propertySettings(200);
 function drawEvents(tc: TestCase): LedgerEvent[] {
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 14 }), "count");
   const events: LedgerEvent[] = [];
+
   for (let n = 1; n <= count; n += 1) {
     const owner = tc.draw(gs.sampledFrom([...OWNERS]), "owner");
     const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
@@ -24,6 +25,7 @@ function drawEvents(tc: TestCase): LedgerEvent[] {
     const fixtureIndex = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }), "shape");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
+
     const make = [
       () => signal(options),
       () => signal(options),
@@ -32,9 +34,11 @@ function drawEvents(tc: TestCase): LedgerEvent[] {
       () => resolveEvent(n, group),
       () => reopenEvent(n, group),
     ][fixtureIndex];
+
     assert.ok(make !== undefined);
     events.push(make());
   }
+
   return events;
 }
 

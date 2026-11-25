@@ -24,64 +24,89 @@ import {
 } from "./onboarding-fixtures.js";
 
 type Profile = { agent: string; client?: GatewayClient };
+
 type Pairing = ReturnType<typeof decodePairing>;
+
 const isString = Schema.is(Schema.String);
 const isNumberPair = Schema.is(Schema.Tuple([Schema.Number]));
+
 const field = (pair: Pairing, key: string): string => {
   const value = pair.output[key];
+
   if (!isString(value)) {
     throw new TypeError(`Missing public ${key}`);
   }
+
   return value;
 };
+
 const client = (profile: Profile): GatewayClient => {
   if (profile.client === undefined) {
     throw new Error("Native fixture was not activated");
   }
+
   return profile.client;
 };
+
 const pairing = async (profile: Profile) =>
   decodePairing(
     parseJson(await readFile(join(setupPaths(profile.agent).directory, "pairing.json"))),
   );
+
 const gateway = async (profile: Profile) =>
   decodeGateway(parseJson(await readFile(setupPaths(profile.agent).gateway)));
+
 async function remoteMaterial(profile: Profile) {
   const value = await gateway(profile);
+
   if (value.remote === undefined) {
     throw new Error("Remote missing");
   }
+
   return value.remote;
 }
+
 async function floor(profile: Profile): Promise<string> {
   const value = await remoteMaterial(profile);
+
   return value.revocationState;
 }
+
 async function sameEpoch(profiles: Profile[], value: number): Promise<boolean> {
   const epochs = await Promise.all(profiles.map(async (profile) => epoch(profile)));
+
   return epochs.every((actual) => actual === value);
 }
+
 function firstPath(paths: readonly string[]): string {
   const value = paths[0];
+
   if (value === undefined) {
     throw new Error("Credential path missing");
   }
+
   return value;
 }
+
 async function epoch(profile: Profile): Promise<number> {
   const record = decodeRecord(parseJson(await readFile(await floor(profile))));
+
   if (!Array.isArray(record.issuers)) {
     throw new TypeError("Floor issuers missing");
   }
+
   const issuer = decodeRecord(record.issuers[0]);
+
   if (!isNumberPair(issuer.number)) {
     throw new Error("Unexpected fixture CRL epoch");
   }
+
   return issuer.number[0];
 }
 
 async function socketChanged(path: string, previous: string | undefined): Promise<boolean> {
   const current = await nativeIncarnation(path);
+
   return current !== undefined && current !== previous;
 }
 
@@ -89,9 +114,11 @@ function freshPeer(current: ReturnType<typeof peerRefs>, previous: ReturnType<ty
   const peer = current.find(
     (candidate) => !previous.some((old) => old.runtimeNonce === candidate.runtimeNonce),
   );
+
   if (peer === undefined) {
     throw new Error("Fresh guarded Pi missing");
   }
+
   return peer;
 }
 
@@ -103,6 +130,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
   let creator: Profile;
   let joiner: Profile;
   let address: string;
+
   async function command(profile: Profile, answers: string[]) {
     await setupCommand(
       profile.agent,
@@ -111,6 +139,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
         if (profile.client !== undefined) {
           throw new Error("Maintenance unexpectedly replaced runtime");
         }
+
         profile.client = new GatewayClient({
           config: plan.adapter,
           peer: {
@@ -135,6 +164,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       },
     );
   }
+
   async function linked() {
     const cp = await pairing(creator);
     const jp = await pairing(joiner);
@@ -156,6 +186,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       hasPeer(await client(creator).discover(["local"], false), "join-peer"),
     );
   }
+
   beforeEach(async () => {
     fixture = await nativeFixture();
     vi.stubEnv("HOME", fixture.root);
@@ -187,6 +218,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     for (const profile of profiles) {
       profile.client?.close();
     }
+
     await nativeUntil(async () =>
       profiles.every((profile) => !existsSync(setupPaths(profile.agent).socket)),
     );
@@ -195,9 +227,11 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
   });
   test("native diagnostics distinguish configured from degraded credentials without changing live floors", async () => {
     await nativeUntil(async () => (await epoch(creator)) === 1);
+
     const config = decodeConfiguration(
       parseJson(await readFile(setupPaths(creator.agent).adapter)),
     );
+
     const setup = await requiredManaged(creator, config);
     const material = await remoteMaterial(creator);
     const path = material.revocationState;
@@ -294,6 +328,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     const wrong = join(fixture.root, "wrong-target-offer.json");
     await writeFile(wrong, JSON.stringify({ ...offer, peerMachineId: "another-local" }));
     const paths = setupPaths(joiner.agent);
+
     const owned = [
       paths.adapter,
       paths.metadata,
@@ -301,8 +336,10 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       join(paths.directory, "pairing.json"),
       await floor(joiner),
     ];
+
     const before = await Promise.all(owned.map(async (path) => readFile(path)));
     const entries = await readdir(paths.directory);
+
     const ctx = dialog([
       "Re-pair with new root",
       "Trust=Join a pair",
@@ -312,6 +349,7 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       `Address=${address}`,
       "APPLY",
     ]);
+
     await setupCommand(
       joiner.agent,
       ctx,
@@ -355,12 +393,14 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     );
     const newRoster = peerRefs(await client(fresh).discover(["local"], false));
     const target = freshPeer(newRoster, oldRoster);
+
     const sent = await client(joiner).send(target, "local", {
       id: freshId(),
       kind: "update",
       content: "old-root must not reach new Pi",
       format: "text",
     });
+
     expect(sent).toMatchObject({ tag: "not_admitted", code: "link_down" });
     expect(client(fresh).status().connected).toBe(true);
     oldClient.close();
@@ -395,14 +435,17 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
     expect(client(external).status().connected).toBe(true);
   });
 });
+
 function peerRefs(reply: Awaited<ReturnType<GatewayClient["discover"]>>) {
   if (reply.outcome.tag !== "ok" || !("peers" in reply.outcome.value)) {
     throw new Error("Native discovery unavailable");
   }
+
   return reply.outcome.value.peers
     .map((entry) => entry.peer)
     .toSorted((a, b) => a.machineId.localeCompare(b.machineId));
 }
+
 function hasPeer(
   reply: Awaited<ReturnType<GatewayClient["discover"]>>,
   machineId: string,
@@ -412,8 +455,10 @@ function hasPeer(
 
 async function requiredManaged(profile: Profile, config: ReturnType<typeof decodeConfiguration>) {
   const result = await readManaged(profile.agent, config);
+
   if (result === undefined) {
     throw new Error("Expected owned fixture metadata");
   }
+
   return result;
 }

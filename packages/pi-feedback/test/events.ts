@@ -11,6 +11,7 @@ function eventAt(n: number): string {
 export function fakeClock(start = 1): Clock {
   let next = start;
   let tick = start;
+
   return {
     id: () => eventId(next++),
     now: () => new Date(eventAt(tick++)),
@@ -37,6 +38,7 @@ export function signal({
   cause,
 }: SignalOptions): LedgerEvent {
   type Signal = Extract<LedgerEvent, { type: "signal" }>;
+
   const event: Omit<Signal, "evidence" | "cause"> & {
     evidence?: NonNullable<Signal["evidence"]>;
     cause?: NonNullable<Signal["cause"]>;
@@ -50,12 +52,15 @@ export function signal({
     tool: "read",
     error,
   };
+
   if (evidence !== undefined) {
     event.evidence = evidence;
   }
+
   if (cause !== undefined) {
     event.cause = cause;
   }
+
   return event;
 }
 

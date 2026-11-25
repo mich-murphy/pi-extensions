@@ -16,9 +16,11 @@ export type CommandRunner<R> = {
 
 export function createCommandRunner<R>(layer: Layer.Layer<R>): CommandRunner<R> {
   let runtime: ManagedRuntime.ManagedRuntime<R, never> | undefined;
+
   return {
     report: async (program, render) => {
       runtime ??= ManagedRuntime.make(layer);
+
       const exit = await runtime.runPromiseExit(
         program.pipe(
           Effect.match({
@@ -27,12 +29,15 @@ export function createCommandRunner<R>(layer: Layer.Layer<R>): CommandRunner<R> 
           }),
         ),
       );
+
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
+
       if (Cause.hasInterruptsOnly(exit.cause)) {
         return undefined;
       }
+
       throw Cause.squash(exit.cause);
     },
     dispose: async () => {

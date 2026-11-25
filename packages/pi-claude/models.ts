@@ -133,20 +133,25 @@ const otherCacheMinimums = new Map(
 
 export function minimumCacheableTokensFor(modelId: string): number | undefined {
   const id = undatedModelId(modelId.replace(/^claude(?:-sdk)?\//u, ""));
+
   const registered = models.find(
     (model) => model.id === id || model.sdkModel === id || model.canonicalModel === id,
   );
+
   return registered?.minimumCacheableTokens ?? otherCacheMinimums.get(id);
 }
 
 export function formatModelStatus(observed: ReadonlyMap<string, string>): string {
   const lines = models.map((model) => {
     const seen = observed.get(model.sdkModel);
+
     const mismatch =
       seen !== undefined && undatedModelId(seen) !== model.canonicalModel
         ? ` (expected ${model.canonicalModel})`
         : "";
+
     return `  ${model.id} → ${model.sdkModel} → ${seen ?? "not observed yet"}${mismatch}`;
   });
+
   return ["Models:", ...lines].join("\n");
 }

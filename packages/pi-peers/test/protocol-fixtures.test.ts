@@ -21,23 +21,29 @@ const fixtureSchema = Schema.Struct({
     }),
   ),
 });
+
 const manifest: unknown = JSON.parse(
   readFileSync(new URL("../fixtures/manifest.json", import.meta.url), "utf8"),
 );
+
 const fixtures = Schema.decodeUnknownSync(fixtureSchema)(manifest).cases;
+
 function bytes(file: string): Uint8Array {
   return Buffer.from(
     readFileSync(new URL(`../fixtures/${file}`, import.meta.url), "utf8").trim(),
     "hex",
   );
 }
+
 const accepted = fixtures.flatMap((fixture) =>
   fixture.expected.tag === "accepted" ? [{ ...fixture, value: fixture.expected.value }] : [],
 );
+
 const rejected = fixtures.filter((fixture) => fixture.expected.tag === "rejected");
 
 function decodeFixture(fixture: (typeof fixtures)[number]) {
   const raw = bytes(fixture.hexFile);
+
   return fixture.boundary === "json" ? decodeJson(raw) : decodeFrame(raw, fixture.role);
 }
 

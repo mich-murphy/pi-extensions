@@ -9,14 +9,17 @@ export default function bombadilSuccessHarness(pi: ExtensionAPI): void {
     {
       acquire: async (directory, progress) => {
         const source = process.env.PEERS_TEST_GATEWAY;
+
         if (source === undefined || source === "") {
           throw new Error("PEERS_TEST_GATEWAY is not set; run through setup-success.fixture.ts");
         }
+
         await mkdir(directory, { mode: 0o700 });
         const copyKeepsRecordedSha256WhenCargoRebuilds = join(directory, "pi-gateway");
         await copyFile(source, copyKeepsRecordedSha256WhenCargoRebuilds);
         await chmod(copyKeepsRecordedSha256WhenCargoRebuilds, 0o500);
         progress("Copied the local debug gateway");
+
         return copyKeepsRecordedSha256WhenCargoRebuilds;
       },
     },

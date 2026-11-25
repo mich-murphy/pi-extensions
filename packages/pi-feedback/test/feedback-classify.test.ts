@@ -48,12 +48,14 @@ describe("harness feedback classification", () => {
         tasks.push(task());
       },
     });
+
     return { pi, classifier };
   }
 
   async function settled() {
     await Promise.all(tasks);
     const { events } = await readLedger(ledger);
+
     return events;
   }
 
@@ -105,6 +107,7 @@ describe("harness feedback classification", () => {
     const { pi } = setup(() => {
       throw new Error("boom");
     });
+
     await pi.end("webfetch", true, "Request failed (500).");
     await settled();
     await pi.command("on");

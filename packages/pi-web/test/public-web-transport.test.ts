@@ -16,6 +16,7 @@ import { parsePublicHttpUrl } from "../types";
 function parsePublicUrl(input: string) {
   const parsed = parsePublicHttpUrl(input);
   assert(Result.isSuccess(parsed));
+
   return parsed.success;
 }
 
@@ -41,11 +42,13 @@ function uninitializedDeferred(): never {
 
 function undefinedDeferred() {
   let resolvePromise: () => void = uninitializedDeferred;
+
   const promise = new Promise<undefined>((resolve) => {
     resolvePromise = () => {
       resolve(undefined);
     };
   });
+
   return { promise, resolve: resolvePromise };
 }
 
@@ -58,9 +61,11 @@ async function withLocalServer<A>(
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
+
   try {
     const address = server.address();
     assert(Schema.is(Schema.Struct({ port: Schema.Number }))(address));
+
     return await run(address.port);
   } finally {
     server.closeAllConnections();
@@ -68,8 +73,10 @@ async function withLocalServer<A>(
       server.close((error) => {
         if (error) {
           reject(error);
+
           return;
         }
+
         resolve();
       });
     });
@@ -87,10 +94,12 @@ describe("PublicWebTransport", () => {
       },
       async (port) => {
         const url = new URL(`http://does-not-resolve.invalid:${port}/page`);
+
         const response = await transportService().get(url, [{ address: "127.0.0.1", family: 4 }], {
           headers: { Accept: "text/plain" },
           signal: new AbortController().signal,
         });
+
         await expect(response.text()).resolves.toBe("address-bound");
         expect(seenHosts).toStrictEqual([`does-not-resolve.invalid:${port}`]);
       },
@@ -138,8 +147,10 @@ describe("PublicWebTransport", () => {
             [{ address: "127.0.0.1", family: 4 }],
             { headers: {}, signal: new AbortController().signal },
           );
+
           await expect(response.text()).resolves.toBe("owned");
         }
+
         expect(sockets.size).toBe(2);
       },
     );
@@ -162,6 +173,7 @@ describe("PublicWebTransport", () => {
             signal: new AbortController().signal,
           },
         );
+
         expect(response.status).toBe(205);
         expect(response.body).toBeNull();
         await expect(connectionClosed.promise).resolves.toBeUndefined();
@@ -187,6 +199,7 @@ describe("PublicWebTransport", () => {
             signal: new AbortController().signal,
           },
         );
+
         expect(response.headers.get("content-encoding")).toBeNull();
         expect(response.headers.get("content-length")).toBeNull();
         const body = await Effect.runPromise(Effect.result(readResponseBodyWithLimit(response, 8)));
@@ -201,11 +214,14 @@ describe("PublicWebTransport", () => {
     const decodedSize = 8 * 1024 * 1024;
     const connectionClosed = undefinedDeferred();
     let unhandled = 0;
+
     const onUnhandled = () => {
       unhandled += 1;
     };
+
     process.on("unhandledRejection", onUnhandled);
     process.on("uncaughtException", onUnhandled);
+
     try {
       await withLocalServer(
         (request, response) => {
@@ -225,9 +241,11 @@ describe("PublicWebTransport", () => {
               ),
             ),
           );
+
           const result = await Effect.runPromise(
             Effect.gen(function* () {
               const client = yield* PublicWebClient;
+
               return yield* Effect.result(
                 client.get({
                   url: parsePublicUrl(`http://big-gzip.invalid:${port}/`),
@@ -243,6 +261,7 @@ describe("PublicWebTransport", () => {
               );
             }).pipe(Effect.provide(layer)),
           );
+
           assert(Result.isSuccess(result));
           expect(result.success.body.byteLength).toBe(cap);
           expect(result.success.body.toString("utf8", 0, 16)).toBe("0123456789abcdef");
@@ -255,6 +274,7 @@ describe("PublicWebTransport", () => {
       process.off("unhandledRejection", onUnhandled);
       process.off("uncaughtException", onUnhandled);
     }
+
     expect(unhandled).toBe(0);
   });
 
@@ -326,6 +346,7 @@ describe("PublicWebTransport", () => {
             [{ address: "127.0.0.1", family: 4 }],
             { headers: {}, signal: new AbortController().signal },
           );
+
           expect(response.headers.get("content-encoding")).toBe(encoding);
           expect(response.headers.get("content-length")).toBe(String(opaque.byteLength));
           expect(new Uint8Array(await response.arrayBuffer())).toStrictEqual(
@@ -349,6 +370,7 @@ describe("PublicWebTransport", () => {
           [{ address: "127.0.0.1", family: 4 }],
           { headers: {}, signal: new AbortController().signal },
         );
+
         await expect(response.text()).rejects.toThrow("aborted");
       },
     );
@@ -368,6 +390,7 @@ describe("PublicWebTransport", () => {
           [{ address: "127.0.0.1", family: 4 }],
           { headers: {}, signal: new AbortController().signal },
         );
+
         assert(response.body !== null);
         const reader = response.body.getReader();
         const first = await reader.read();
@@ -394,6 +417,7 @@ describe("PublicWebTransport", () => {
           [{ address: "127.0.0.1", family: 4 }],
           { headers: {}, signal: new AbortController().signal },
         );
+
         assert(response.body !== null);
         const reader = response.body.getReader();
         const pendingRead = reader.read();
@@ -425,9 +449,11 @@ describe("PublicWebTransport", () => {
             signal: new AbortController().signal,
           },
         );
+
         const body = await Effect.runPromise(
           Effect.result(readResponseBodyWithLimit(response, 1024)),
         );
+
         expect(body).toStrictEqual(
           Result.fail(new ResponseBodyReadFailed({ cause: expect.any(Error) })),
         );

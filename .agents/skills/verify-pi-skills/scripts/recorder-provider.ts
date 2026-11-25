@@ -25,6 +25,7 @@ function textOf(content: UserMessage["content"]): string {
 function markedLines(text: string, marker: string): string[] {
   return text.split("\n").flatMap((line) => {
     const at = line.indexOf(marker);
+
     return at === -1 ? [] : [line.slice(at + marker.length).trim()];
   });
 }
@@ -45,23 +46,31 @@ function scriptedCalls(
   messages: readonly TranscriptContext["messages"][number][],
 ): readonly ScriptedCall[] {
   let lastAssistant = -1;
+
   for (const [position, { role }] of messages.entries()) {
     if (role === "assistant") {
       lastAssistant = position;
     }
   }
+
   const pending = messages.slice(lastAssistant + 1);
+
   if (pending.some(({ role }) => role === "toolResult")) {
     return [];
   }
+
   const text = pending
     .flatMap((message) => (message.role === "user" ? [textOf(message.content)] : []))
     .join("\n");
+
   const spawn = text.indexOf(SPAWN_CHILD);
+
   if (spawn === -1) {
     return fileAndShellCalls(text);
   }
+
   const task = text.slice(spawn + SPAWN_CHILD.length).trim();
+
   return [
     {
       name: "subagent",
@@ -73,6 +82,7 @@ function scriptedCalls(
     },
   ];
 }
+
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 function recorderModel(id: string, name: string, midConvo: boolean) {
@@ -86,9 +96,11 @@ function recorderModel(id: string, name: string, midConvo: boolean) {
     contextWindow: 200_000,
     maxTokens: 8192,
   };
+
   if (midConvo) {
     model.compat = { supportsMidConvoSystemMessages: true };
   }
+
   return model;
 }
 
@@ -116,20 +128,25 @@ export default function registerRecorder(pi: ExtensionAPI): void {
           compat: model.compat ?? null,
           messages: context.messages,
         };
+
         const replaced = await options?.onPayload?.(payload, model);
         const file = env.PI_SKILL_TOGGLE_RECORDER_FILE;
+
         if (file !== undefined && file !== "") {
           appendFileSync(file, `${JSON.stringify(replaced === undefined ? payload : replaced)}\n`);
         }
+
         const calls = scriptedCalls(context.messages);
         const text = `Recorded request ${index}.`;
         const input = Math.ceil(JSON.stringify(context.messages).length / 4);
+
         const toolCalls = calls.map((call, position): ToolCall => ({
           type: "toolCall",
           id: `call-${index}-${position}`,
           name: call.name,
           arguments: call.arguments,
         }));
+
         const message: AssistantMessage = {
           role: "assistant",
           content: toolCalls.length > 0 ? toolCalls : [{ type: "text", text }],
@@ -147,18 +164,23 @@ export default function registerRecorder(pi: ExtensionAPI): void {
           stopReason: toolCalls.length > 0 ? "toolUse" : "stop",
           timestamp: Date.now(),
         };
+
         const partial: AssistantMessage = { ...message, content: [], stopReason: "pending" };
         stream.push({ type: "start", partial });
+
         if (toolCalls.length > 0) {
           for (const [contentIndex, toolCall] of toolCalls.entries()) {
             const sofar = { ...partial, content: toolCalls.slice(0, contentIndex + 1) };
             stream.push({ type: "toolcall_start", contentIndex, partial: sofar });
             stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: sofar });
           }
+
           stream.push({ type: "done", reason: "toolUse", message });
           stream.end(message);
+
           return;
         }
+
         const done: AssistantMessage = { ...partial, content: [{ type: "text", text }] };
         stream.push({ type: "text_start", contentIndex: 0, partial: done });
         stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: done });
@@ -166,6 +188,7 @@ export default function registerRecorder(pi: ExtensionAPI): void {
         stream.push({ type: "done", reason: "stop", message });
         stream.end(message);
       })();
+
       return stream;
     },
   });

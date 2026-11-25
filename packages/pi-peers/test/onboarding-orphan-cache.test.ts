@@ -16,6 +16,7 @@ import type { ActivatePlan } from "../onboarding/upgrade.js";
 import { builtGateway, dialog, nativeFixture, noPins } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
+
 describe("orphan installation recovery with actual native flock", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let agent: string;
@@ -29,8 +30,10 @@ describe("orphan installation recovery with actual native flock", () => {
     await rm(fixture.root, { recursive: true, force: true });
   });
   const plan = () => localPlan(defaultChoices("Orphan"), setupPaths(agent).socket);
+
   async function orphan(reset: boolean, tamper: boolean) {
     const paths = setupPaths(agent);
+
     if (reset) {
       await applyLocal(agent, plan(), { acquire: async () => fixture.executable }, () => undefined);
       await resetLocal(agent);
@@ -45,9 +48,11 @@ describe("orphan installation recovery with actual native flock", () => {
         { mode: 0o600 },
       );
     }
+
     const installed = await readFile(paths.installed);
     await rm(fixture.executable);
     const marker = join(fixture.root, "NEVER-EXECUTE");
+
     if (tamper) {
       await writeFile(
         fixture.executable,
@@ -55,11 +60,14 @@ describe("orphan installation recovery with actual native flock", () => {
         { mode: 0o500 },
       );
     }
+
     const replacement = join(fixture.root, "verified-new");
     await copyFile(builtGateway, replacement);
     await chmod(replacement, 0o500);
+
     return { paths, installed, marker, replacement };
   }
+
   test.each([
     [true, false],
     [true, true],
@@ -107,8 +115,10 @@ describe("orphan installation recovery with actual native flock", () => {
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
     await expect(readFile(paths.installed)).resolves.toStrictEqual(installed);
   });
+
   async function driftCase(drift: string) {
     const state = await orphan(false, true);
+
     const paths = {
       ...state.paths,
       pairing: join(state.paths.directory, "pairing.json"),
@@ -116,23 +126,30 @@ describe("orphan installation recovery with actual native flock", () => {
       reset: join(state.paths.directory, "reset.json"),
       target: fixture.executable,
     };
+
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => {
       const path = Object.entries(paths).find(([name]) => name === drift)?.[1];
+
       if (path === undefined) {
         throw new Error("Invalid test drift");
       }
+
       if (drift === "target") {
         await rm(path);
       }
+
       await writeFile(path, "external", { mode: 0o500 });
+
       return state.replacement;
     });
+
     return {
       ...state,
       acquire,
       expectedInstalled: drift === "installed" ? Buffer.from("external") : state.installed,
     };
   }
+
   test.each([
     "installed",
     "metadata",
@@ -162,10 +179,12 @@ describe("orphan installation recovery with actual native flock", () => {
   test("valid cache-only interrupted bootstrap reuses its verified helper without acquisition", async () => {
     const paths = setupPaths(agent);
     await mkdir(paths.directory, { recursive: true, mode: 0o700 });
+
     const installed = JSON.stringify({
       executable: fixture.executable,
       sha256: await executableDigest(fixture.executable),
     });
+
     await writeFile(paths.installed, installed, { mode: 0o600 });
     await expect(reusableExecutable(agent)).resolves.toBe(fixture.executable);
     const acquire = vi.fn<SetupBackend["acquire"]>();

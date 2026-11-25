@@ -25,6 +25,7 @@ export class OutputStoreError extends Schema.TaggedError<OutputStoreError>()("Ou
 }) {
   get reason(): string {
     const description = FS_ERROR_DESCRIPTIONS.get(this.code);
+
     return description === undefined ? this.code : `${description} (${this.code})`;
   }
 
@@ -45,6 +46,7 @@ export const writeTempTextFile = Effect.fnUntraced(function* (
   yield* attempt("write", outputPath, async () =>
     writeFile(outputPath, content, { encoding: "utf8", mode: 0o600 }),
   );
+
   return outputPath;
 });
 

@@ -19,27 +19,36 @@ const metadataFields = [
   "socketPath",
   "unknownField",
 ] as const;
+
 type PairMutation = "replace" | "remove";
+
 async function snapshot(agent: string) {
   const paths = setupPaths(agent);
   const entries = await readdir(paths.directory);
   const files = [paths.adapter, ...entries.map((name) => join(paths.directory, name))];
+
   const state = await Promise.all(
     files.map(async (path) => {
       const bytes = await readFile(path);
       const stat = await lstat(path, { bigint: true });
+
       return { path, bytes, mtimeNs: stat.mtimeNs, ino: stat.ino };
     }),
   );
+
   return { entries, state };
 }
+
 async function changePair(path: string, mutation: PairMutation) {
   if (mutation === "remove") {
     await rm(path);
+
     return;
   }
+
   await writeFile(path, '{"external":"changed public pairing"}');
 }
+
 function changedMetadata(
   previous: ManagedSetup,
   field: (typeof metadataFields)[number],
@@ -56,8 +65,10 @@ function changedMetadata(
     socketPath: join(root, "external.sock"),
     unknownField: "not owned",
   };
+
   return { ...previous, [field]: replacement[field] };
 }
+
 describe("reviewed maintenance refuses metadata/pairing drift before mutation", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let agent: string;
@@ -70,17 +81,21 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
     vi.unstubAllEnvs();
     await rm(fixture.root, { recursive: true, force: true });
   });
+
   async function reviewed(withPairing: boolean) {
     const plan = localPlan(defaultChoices("Maintenance"), setupPaths(agent).socket);
+
     const prepare = withPairing
       ? async () => {
           await createPrivate(
             join(setupPaths(agent).directory, "pairing.json"),
             '{"public":"reviewed fixture"}',
           );
+
           return plan;
         }
       : undefined;
+
     const previous = await applyLocal(
       agent,
       plan,
@@ -88,8 +103,10 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
       () => undefined,
       prepare,
     );
+
     return { plan, previous };
   }
+
   test.each(metadataFields)(
     "changed metadata scalar/schema %s is retained with zero projection/journal writes",
     async (field) => {
@@ -123,6 +140,7 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
   test("a saved adapter that still grants read and interest saves the same plan without them", async () => {
     const { plan, previous } = await reviewed(false);
     const paths = setupPaths(agent);
+
     const legacy = `${JSON.stringify(
       {
         ...plan.adapter,
@@ -134,6 +152,7 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
       null,
       2,
     )}\n`;
+
     const current = { ...previous, adapterSha256: digest(legacy) };
     await writeFile(paths.adapter, legacy);
     await writeFile(paths.metadata, `${JSON.stringify(current, null, 2)}\n`);

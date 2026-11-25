@@ -72,6 +72,7 @@ export function parseWebSearchParams(
   settings: Pick<WebToolsSettings, "search">,
 ): Result.Result<WebSearchParams, WebSearchInputError> {
   const query = parseSearchQuery(params.query);
+
   if (Result.isFailure(query)) {
     return Result.fail(new EmptySearchQueryInput());
   }
@@ -80,6 +81,7 @@ export function parseWebSearchParams(
     params.maxResults ?? settings.search.defaultMaxResults,
     SEARCH_MAX_RESULTS,
   );
+
   return Result.succeed(
     params.provider === undefined
       ? { query: query.success, maxResults }
@@ -110,11 +112,13 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       context?: ToolCredentialContext,
     ) {
       const parsed = parseWebSearchParams(params, composition.settings);
+
       if (Result.isFailure(parsed)) {
         throw new Error(composition.redactText(parsed.failure.message));
       }
 
       const redactor = createRequestRedactor(composition.redactText);
+
       const program = runWebSearch(parsed.success, (snapshot) => {
         redactor.capture(snapshot);
         const { query, maxResults } = parsed.success;
@@ -129,20 +133,26 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
           },
         });
       });
+
       const exit = await composition.runtime.runExit(
         withToolCredentials(program, composition, context),
         signal,
       );
+
       if (Exit.isSuccess(exit)) {
         return exit.value;
       }
+
       if (Cause.hasInterrupts(exit.cause)) {
         throw new Error("Web search cancelled");
       }
+
       const failure = Cause.findError(exit.cause);
+
       if (Result.isSuccess(failure)) {
         throw new Error(redactor.redactText(renderWebSearchFailure(failure.success)));
       }
+
       throw new Error("Web search failed unexpectedly (a pi-web bug). Ask the user to report it.");
     },
 
@@ -152,9 +162,11 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
     ) {
       let text = theme.fg("toolTitle", theme.bold("websearch "));
       text += theme.fg("accent", composition.redactText(displayText(args.query)));
+
       if (args.provider) {
         text += theme.fg("muted", ` (${args.provider})`);
       }
+
       return new Text(text, 0, 0);
     },
 
@@ -170,6 +182,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Searching..."), 0, 0);
       }
+
       if (result.isError === true) {
         return new Text(
           theme.fg(
@@ -186,12 +199,15 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
       const { details } = result;
       const count = details?.resultCount ?? 0;
       let text = theme.fg("success", `✓ ${count} result${count === 1 ? "" : "s"}`);
+
       if (details?.provider) {
         text += theme.fg("muted", ` via ${details.provider}`);
       }
+
       if (details?.truncated === true) {
         text += theme.fg("warning", " [truncated]");
       }
+
       text = appendExpandHint(text, options.expanded);
 
       if (options.expanded) {
@@ -201,6 +217,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
           maxLines: 20,
           maxColumns: 220,
         });
+
         if (details?.fullOutputPath !== undefined && details.fullOutputPath !== "") {
           text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
         }
@@ -231,16 +248,20 @@ const runWebSearch = Effect.fnUntraced(function* (
   const config = yield* WebToolsConfig;
   const store = yield* ToolOutputStore;
   const { query, maxResults, provider } = input;
+
   const snapshot = yield* resolveCredentialSnapshot(
     credentialNames(config, provider === undefined ? {} : { providerOverride: provider }),
   );
+
   onCredentials(snapshot);
   yield* validateExplicitBrave(config, snapshot, provider);
+
   const outcome = yield* searchWithFallback(
     providers.forRequest(snapshot),
     { query, maxResults },
     { providerOverride: provider },
   );
+
   return yield* projectSearchResults(
     {
       query,

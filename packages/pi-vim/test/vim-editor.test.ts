@@ -28,6 +28,7 @@ function legacyNormalMode(text: string): CustomEditor {
   const editor = createEditor();
   editor.setText(text);
   editor.handleInput("\u001B");
+
   return editor;
 }
 
@@ -46,6 +47,7 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
     editor.setText(text);
     editor.handleInput(keyboard.escape);
     typeKeys(editor, keys);
+
     return editor;
   }
 
@@ -276,8 +278,10 @@ describe("vimEditor inside Pi", () => {
     const claimed: string[] = [];
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
+
       return true;
     };
+
     const inputs = [
       "\u001B[27;3;113~",
       "\u001B[27;5;113~",
@@ -305,16 +309,20 @@ describe("vimEditor inside Pi", () => {
       "tui.editor.deleteToLineEnd": "ctrl+a",
       "tui.editor.undo": "ctrl+z",
     });
+
     setKeybindings(configured);
     const editor = legacyNormalMode("one two");
 
     for (const key of "0xD") {
       editor.handleInput(key);
     }
+
     expect(editor.getText()).toBe("");
+
     for (const key of "uu") {
       editor.handleInput(key);
     }
+
     expect(editor.getText()).toBe("one two");
     expect(getKeybindings()).toBe(configured);
   });
@@ -324,6 +332,7 @@ describe("vimEditor inside Pi", () => {
     const claimed: string[] = [];
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
+
       return true;
     };
 
@@ -346,6 +355,7 @@ describe("vimEditor inside Pi", () => {
       }),
       applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
     };
+
     const editor = createEditor();
     editor.setAutocompleteProvider(provider);
     editor.handleInput("/");
@@ -362,6 +372,7 @@ describe("vimEditor inside Pi", () => {
 
   test("Kitty Ctrl+[ closes autocomplete and enters Normal mode without shortcuts", async () => {
     setKittyProtocolActive(true);
+
     const provider: AutocompleteProvider = {
       getSuggestions: async () => ({
         items: [{ value: "/model", label: "model" }],
@@ -369,6 +380,7 @@ describe("vimEditor inside Pi", () => {
       }),
       applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
     };
+
     const editor = createEditor();
     const claimed: string[] = [];
     editor.setAutocompleteProvider(provider);
@@ -378,6 +390,7 @@ describe("vimEditor inside Pi", () => {
     });
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
+
       return true;
     };
 

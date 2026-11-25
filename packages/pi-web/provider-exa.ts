@@ -29,6 +29,7 @@ export type ExaTextResults = {
 
 export function parseExaSearchText(input: string): ExaTextResults {
   const trimmed = input.replaceAll("\r\n", "\n").trim();
+
   if (!trimmed || isExplicitNoResultsText(trimmed)) {
     return { results: [], discardedSections: 0 };
   }
@@ -39,10 +40,12 @@ export function parseExaSearchText(input: string): ExaTextResults {
 
   for (const section of sections) {
     const parsed = parseSearchSection(section);
+
     if (!parsed) {
       discardedSections += 1;
       continue;
     }
+
     results.push(parsed);
   }
 
@@ -62,9 +65,11 @@ function splitSearchSections(input: string): string[] {
       sawUrlOrText = false;
       continue;
     }
+
     if (line.startsWith("URL: ") || line.startsWith("Text:") || line.startsWith("Highlights:")) {
       sawUrlOrText = true;
     }
+
     current.push(line);
   }
 
@@ -105,28 +110,36 @@ const EXA_LAST_USABLE_HEADER_RULES: readonly LastUsableHeaderRule[] = [
 
 function parseSearchSection(section: string): NormalizedSearchResult | undefined {
   const lines = section.split("\n");
+
   const snippetStart = lines.findIndex(
     (line) => line.startsWith("Text:") || line.startsWith("Highlights:"),
   );
+
   const headerLines = snippetStart === -1 ? lines : lines.slice(0, snippetStart);
   const snippetLines = snippetStart === -1 ? [] : lines.slice(snippetStart);
   const headers = readLastUsableSectionHeaders(headerLines);
 
   const url = headers.url;
+
   if (url === undefined) {
     return undefined;
   }
+
   const parsedUrl = parsePublicHttpUrl(url);
+
   if (Result.isFailure(parsedUrl)) {
     return undefined;
   }
 
   const [firstSnippetLine = "", ...restSnippetLines] = snippetLines;
+
   const snippetText = [
     firstSnippetLine.slice(firstSnippetLine.indexOf(":") + 1).trim(),
     ...restSnippetLines,
   ].join("\n");
+
   const title = headers.title ?? "";
+
   return {
     title: title || parsedUrl.success,
     url: parsedUrl.success,
@@ -146,26 +159,33 @@ function readLastUsableSectionHeaders(lines: readonly string[]): ExaSectionHeade
     author: undefined,
     score: undefined,
   };
+
   for (const line of lines) {
     const rule = EXA_LAST_USABLE_HEADER_RULES.find((candidate) =>
       line.startsWith(candidate.prefix),
     );
+
     if (rule === undefined) {
       continue;
     }
+
     const raw = line.slice(rule.prefix.length);
+
     if (rule.field === "score") {
       const value = rule.normalize(raw);
+
       if (value !== undefined) {
         headers.score = value;
       }
     } else {
       const value = rule.normalize(raw);
+
       if (value !== undefined) {
         headers[rule.field] = value;
       }
     }
   }
+
   return headers;
 }
 
@@ -175,6 +195,7 @@ function normalizeNonEmpty(value: string): string | undefined {
 
 function normalizeScore(value: string): number | undefined {
   const score = Number.parseFloat(value);
+
   return Number.isFinite(score) ? score : undefined;
 }
 
@@ -186,30 +207,38 @@ function summarizeSnippet(text: string, title: string): string | undefined {
     .replaceAll(/\n{3,}/gu, "\n\n")
     .replaceAll(/[ \t]+/gu, " ")
     .trim();
+
   if (!collapsed) {
     return undefined;
   }
 
   let snippet = collapsed;
+
   if (title) {
     snippet = stripRepeatedLeadingTitle(snippet, title);
   }
+
   if (!snippet) {
     snippet = collapsed;
   }
+
   if (snippet.length <= 280) {
     return snippet;
   }
+
   return `${snippet.slice(0, 277).trimEnd()}...`;
 }
 
 function stripRepeatedLeadingTitle(snippet: string, title: string): string {
   const normalizedTitle = title.trim().toLowerCase();
   const lines = snippet.split("\n");
+
   const bodyStart = lines.findIndex((line) => {
     const trimmed = line.trim();
+
     return trimmed.length > 0 && trimmed.toLowerCase() !== normalizedTitle;
   });
+
   return bodyStart === -1 ? "" : lines.slice(bodyStart).join("\n").trim();
 }
 
@@ -224,17 +253,21 @@ const PLACEHOLDER_METADATA_VALUES: ReadonlySet<string> = new Set([
 
 function normalizeMetadataValue(value: string): string | undefined {
   const normalized = value.trim();
+
   if (!normalized || PLACEHOLDER_METADATA_VALUES.has(normalized.toLowerCase())) {
     return undefined;
   }
+
   return normalized;
 }
 
 function isExplicitNoResultsText(text: string): boolean {
   const normalized = text.trim().toLowerCase();
+
   if (!normalized) {
     return true;
   }
+
   return normalized.startsWith("no results found") || normalized.includes("no relevant results");
 }
 
@@ -254,11 +287,13 @@ export class ExaMcpSearchProvider implements SearchProvider {
       .pipe(
         Effect.flatMap((call) => {
           const parsed = parseExaSearchText(call.text.join("\n\n"));
+
           if (parsed.results.length === 0 && parsed.discardedSections > 0) {
             return Effect.fail(
               new ProviderProtocolInvalid({ reason: "No usable Exa search sections" }),
             );
           }
+
           return Effect.succeed(parsed.results.slice(0, input.maxResults));
         }),
       );
@@ -324,6 +359,7 @@ export class ExaApiSearchProvider implements SearchProvider {
     ).pipe(
       Effect.flatMap((payload) => {
         const parsed = decodeExaApiSearchPayload(payload);
+
         return Result.isSuccess(parsed)
           ? Effect.succeed(
               parsed.success.results

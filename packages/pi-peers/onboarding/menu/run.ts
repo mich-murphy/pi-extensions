@@ -17,7 +17,9 @@ export async function runMenu(
     model.close();
     model.refresh();
   };
+
   ctx.signal?.addEventListener("abort", abort, { once: true });
+
   try {
     if (ctx.mode === "tui" && ctx.ui.custom !== undefined) {
       await ctx.ui.custom<undefined>(
@@ -38,6 +40,7 @@ export async function runMenu(
   } finally {
     ctx.signal?.removeEventListener("abort", abort);
   }
+
   if (ctx.mode !== "tui" && !model.acted) {
     cancelled?.();
   }

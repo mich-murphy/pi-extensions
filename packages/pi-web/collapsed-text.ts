@@ -2,9 +2,11 @@ function isWhitespaceCodeUnit(codeUnit: number): boolean {
   if (codeUnit <= 32) {
     return codeUnit === 32 || (codeUnit >= 9 && codeUnit <= 13);
   }
+
   if (codeUnit < 160) {
     return false;
   }
+
   return (
     codeUnit === 160 ||
     codeUnit === 5760 ||
@@ -43,9 +45,11 @@ export class CollapsedTextLength {
     if (next.#length === 0) {
       return;
     }
+
     if (this.#length === 0) {
       this.#leadingSpace = next.#leadingSpace;
     }
+
     this.#length += next.#length - (this.#trailingSpace && next.#leadingSpace ? 1 : 0);
     this.#trailingSpace = next.#trailingSpace;
   }
@@ -54,6 +58,7 @@ export class CollapsedTextLength {
     if (this.#length === 1 && this.#leadingSpace) {
       return 0;
     }
+
     return this.#length - (this.#leadingSpace ? 1 : 0) - (this.#trailingSpace ? 1 : 0);
   }
 }
@@ -61,5 +66,6 @@ export class CollapsedTextLength {
 export function normalizedTextLength(text: string): number {
   const measure = new CollapsedTextLength();
   measure.appendText(text);
+
   return measure.trimmedLength();
 }

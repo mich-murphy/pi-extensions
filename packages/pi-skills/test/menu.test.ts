@@ -26,6 +26,7 @@ function resource(
 ): ToggleResource {
   const base = origin === "global" ? getAgentDir() : "/repo";
   const path = kind === "skill" ? join(base, "skills", name, "SKILL.md") : join(base, name);
+
   return {
     id: resourcePathId(path, base),
     kind,
@@ -51,11 +52,13 @@ function menu(
   const files = new Map<ToggleResource["id"], ToggleValue>(disabled.map((r) => [r.id, "disabled"]));
   const writes: (readonly [string, ToggleValue])[] = [];
   let closed = false;
+
   const component = createContextMenu({
     resources,
     policy: () => new ResourcePolicy({ files, repositories: new Map() }),
     save: (id, value) => {
       const row = resources.find((r) => r.id === id);
+
       if (row !== undefined) {
         files.set(row.id, value);
         writes.push([id, value]);
@@ -68,19 +71,23 @@ function menu(
       closed = true;
     },
   });
+
   const text = (width = 120) =>
     component
       .render(width)
       .map((line) => stripVTControlCharacters(line))
       .join("\n");
+
   const press = (...inputs: readonly string[]) => {
     for (const data of inputs) {
       component.handleInput?.(data);
     }
   };
+
   const open = (index: number) => {
     press(...Array.from({ length: index }, () => DOWN), ENTER);
   };
+
   return { component, text, press, open, writes, closed: () => closed };
 }
 
@@ -129,15 +136,19 @@ describe("context menu", () => {
   test("quotes actual skill descriptions inline and keeps source text secondary", () => {
     const dialog = menu([globalSkill]);
     dialog.open(1);
+
     const row = dialog
       .text()
       .split("\n")
       .find((line) => line.includes("research"));
+
     expect(row).toMatch(/research\s+On\s+“Research primary sources\.”/u);
     expect(dialog.text().split("Research primary sources.")).toHaveLength(2);
+
     const styled = dialog.component
       .render(120)
       .find((line) => line.includes("Research primary sources."));
+
     expect(styled).toContain(testTheme().fg("muted", "“Research primary sources.”"));
   });
 
@@ -171,6 +182,7 @@ describe("context menu", () => {
     const resources = Array.from({ length: 30 }, (_, i) =>
       resource(`skill-${String(i).padStart(2, "0")}`, "skill", "global"),
     );
+
     const dialog = menu(resources);
     dialog.open(1);
     dialog.press("\u001b[6~");
@@ -188,6 +200,7 @@ describe("context menu", () => {
     const resources = Array.from({ length: 30 }, (_, i) =>
       resource(`skill-${String(i).padStart(2, "0")}`, "skill", "global"),
     );
+
     for (const rows of [15, 20, 24, 27, 40]) {
       const dialog = menu(resources, [], testKeybindings(), rows);
       dialog.open(1);
@@ -202,11 +215,13 @@ describe("context menu", () => {
       "global",
       "\u001b[31mExact source wording across a long description with 界 and accents é.\u001b[0m",
     );
+
     const dialog = menu([skill]);
     dialog.open(1);
     const text = dialog.text(60);
     expect(text).toContain("On");
     expect(text).toMatch(/“Exact source.*…”/u);
+
     for (const width of [1, 8, 20, 40, 60, 120]) {
       expect(dialog.component.render(width).every((line) => visibleWidth(line) <= width)).toBe(
         true,
@@ -216,12 +231,14 @@ describe("context menu", () => {
 
   test("gives a long skill name and state priority over its description", () => {
     const name = "a-long-skill-name-that-still-fits-at-sixty";
+
     const skill = resource(
       name,
       "skill",
       "global",
       "This is source metadata, not part of the name.",
     );
+
     const dialog = menu([skill]);
     dialog.open(1);
     expect(dialog.text(60)).toContain(name);
@@ -235,6 +252,7 @@ describe("context menu", () => {
       "tui.select.confirm": ["ctrl+y"],
       "tui.select.cancel": ["ctrl+x"],
     });
+
     setKeybindings(keys);
     const dialog = menu([globalSkill], [], keys);
     expect(dialog.text()).toContain("ctrl+y open · ctrl+x close");

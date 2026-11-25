@@ -32,6 +32,7 @@ type Inspection =
       readonly path: string;
       readonly config: Configuration;
     };
+
 const baseline = {
   machineId: "machine",
   socketPath: "/tmp/pi-peers.sock",
@@ -39,65 +40,85 @@ const baseline = {
   label: "Pi",
   policies: [],
 };
+
 const keys = Object.keys(baseline);
 const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
 const isJsonObject = Schema.is(Schema.JsonObject);
 const isNumber = Schema.is(Schema.Number);
+
 export function invalidFields(value: Schema.Json): string[] {
   if (!isJsonObject(value)) {
     return ["root (expected an object)"];
   }
+
   const fields: string[] = [];
+
   for (const key of keys) {
     try {
       const field = value[key];
+
       if (field === undefined) {
         fields.push(key);
         continue;
       }
+
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
       fields.push(key);
     }
   }
+
   for (const key of optionalKeys.filter((name) => Object.hasOwn(value, name))) {
     const field = value[key];
+
     if (field === undefined) {
       continue;
     }
+
     try {
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
       fields.push(key);
     }
   }
+
   if (Object.keys(value).some((key) => !keys.includes(key) && !optionalKeys.includes(key))) {
     fields.push("unknown keys (remove unsupported fields)");
   }
+
   return fields;
 }
 
 async function inspectConfiguration(agentDir: string): Promise<Inspection> {
   const path = stateLocations(agentDir).active.config;
+
   try {
     const target = await stat(path);
+
     if (target.isFile() && target.size > 32_768) {
       return { kind: "too-large", path };
     }
+
     const bytes = await regularBytes(path, true);
+
     if (bytes === undefined) {
       return { kind: "missing", path };
     }
+
     let value: Schema.Json;
+
     try {
       value = parseJson(bytes);
     } catch {
       return { kind: "invalid-json", path };
     }
+
     const fields = invalidFields(value);
+
     if (fields.length > 0) {
       return { kind: "invalid-fields", path, fields };
     }
+
     return { kind: "valid", path, config: decodeConfiguration(value) };
   } catch (error) {
     return {
@@ -108,35 +129,45 @@ async function inspectConfiguration(agentDir: string): Promise<Inspection> {
 }
 
 export type DoctorLevel = "ok" | "warn" | "error";
+
 export type DoctorRow = {
   readonly label: string;
   readonly value: string;
   readonly level: DoctorLevel;
 };
+
 export type DoctorReport = {
   readonly ok: boolean;
   readonly rows: DoctorRow[];
   readonly next?: string;
   readonly technical: string[];
 };
+
 type Check = { readonly row?: DoctorRow; readonly detail: string };
+
 function line(label: string, value: string, level: DoctorLevel = "ok"): DoctorRow {
   return { label, value, level };
 }
+
 export type DoctorOptions = {
   readonly inMenu?: boolean;
   readonly liveLinks?: readonly { readonly machineId: string; readonly state: string }[];
 };
+
 function liveLinkText(options: DoctorOptions): string | undefined {
   const links = options.liveLinks;
+
   if (links === undefined || links.length === 0) {
     return undefined;
   }
+
   return `Live link: ${links.map((link) => `${visibleText(link.machineId)} ${visibleText(link.state)}`).join(", ")} (from this session)`;
 }
+
 function setupStep(options: DoctorOptions): string {
   return options.inMenu === true ? "Choose Setup" : "Run /peers setup";
 }
+
 function setupClause(options: DoctorOptions): string {
   return options.inMenu === true ? "choose Setup" : "run /peers setup";
 }
@@ -151,6 +182,7 @@ export async function doctorReport(
   const path = visibleText(inspection.path);
   const technical = [`User-agent config: ${path}`, ...stateSetLines(active, ignored)];
   const rows: DoctorRow[] = [];
+
   switch (inspection.kind) {
     case "missing": {
       rows.push(line("Config file", `Not found at ${path}. ${SETUP} to create it.`, "warn"));
@@ -159,6 +191,7 @@ export async function doctorReport(
       );
       break;
     }
+
     case "unreadable": {
       rows.push(
         line(
@@ -172,6 +205,7 @@ export async function doctorReport(
       );
       break;
     }
+
     case "too-large": {
       rows.push(
         line(
@@ -185,6 +219,7 @@ export async function doctorReport(
       );
       break;
     }
+
     case "invalid-json": {
       rows.push(
         line(
@@ -198,6 +233,7 @@ export async function doctorReport(
       );
       break;
     }
+
     case "invalid-fields": {
       rows.push(
         line(
@@ -212,6 +248,7 @@ export async function doctorReport(
       );
       break;
     }
+
     case "valid": {
       rows.push(line("Config file", path));
       const valid = await describeValid(inspection.config, agentDir, options);
@@ -220,9 +257,11 @@ export async function doctorReport(
       break;
     }
   }
+
   rows.push(stateSetRow(active, ignored));
   const ok = rows.every((row) => row.level !== "error");
   const clean = rows.every((row) => row.level === "ok");
+
   return {
     ok,
     rows,
@@ -234,11 +273,14 @@ export async function doctorReport(
 }
 
 const MARK: Record<DoctorLevel, string> = { ok: "✓", warn: "!", error: "✗" };
+
 export function doctorRowText(row: DoctorRow): string {
   return `${MARK[row.level]} ${row.label}: ${row.value}`;
 }
+
 export async function doctor(agentDir: string, options: DoctorOptions = {}): Promise<string> {
   const report = await doctorReport(agentDir, options);
+
   return [
     "Peers doctor (read-only)",
     ...report.rows.map((row) => doctorRowText(row)),
@@ -257,6 +299,7 @@ function stateSetRow(active: StateSet, ignored: StateSet | undefined): DoctorRow
       "warn",
     );
   }
+
   return ignored === undefined
     ? line("Saved files", "Current (pi-peers.json)")
     : line(
@@ -273,6 +316,7 @@ function stateSetLines(active: StateSet, ignored: StateSet | undefined): string[
       "To migrate: run /peers reset, move the legacy config and directory aside yourself (the directory keeps credentials and revocation records), then /peers setup writes pi-peers.json, pi-peers/ and ~/.pi/pi-peers.",
     ];
   }
+
   return [
     "State set: current (pi-peers.json, pi-peers/, ~/.pi/pi-peers).",
     ...(ignored === undefined
@@ -286,6 +330,7 @@ function stateSetLines(active: StateSet, ignored: StateSet | undefined): string[
 async function socketCheck(socketPath: string): Promise<Check> {
   try {
     const entry = await lstat(socketPath);
+
     return entry.isSocket()
       ? {
           row: line("Gateway", "Socket found. Run /peers status to see the live connection."),
@@ -323,21 +368,26 @@ async function describeValid(
     `Socket: ${visibleText(config.socketPath)}`,
     `Requested scopes: ${config.scopeIds.map((scope) => visibleText(scope)).join(", ")}`,
   ];
+
   const rows = [
     line("Machine", visibleText(config.machineId)),
     line("Scopes", config.scopeIds.map((scope) => visibleText(scope)).join(", ")),
   ];
+
   const socket = await socketCheck(config.socketPath);
   technical.push(socket.detail);
   const actions: readonly Permission[] = ["discover", "push"];
+
   const missing = config.scopeIds.filter(
     (scope) => !actions.every((action) => permits(config, config.machineId, scope, action)),
   );
+
   if (missing.length > 0) {
     technical.push(
       "Some actions are off for this machine; this may be intentional. Doctor never widens them.",
     );
   }
+
   const remote = await remoteCheck(agentDir, options);
   const pairing = await pairingCheck(agentDir, options);
   technical.push(
@@ -345,6 +395,7 @@ async function describeValid(
     pairing.detail,
     "Reconnect keeps this session's state and does not reread pi-peers.json. /reload loads changed settings but clears this session's inbox and receipts.",
   );
+
   return {
     rows: [
       ...rows,
@@ -365,8 +416,10 @@ async function describeValid(
 
 async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promise<Check> {
   const SETUP = setupStep(options);
+
   try {
     const config = await loadConfiguration(agentDir);
+
     if (config === undefined) {
       return {
         row: line("Remote link", `No saved settings to check. ${SETUP} first.`, "warn"),
@@ -374,7 +427,9 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
           "Remote config snapshot: pi-peers.json is missing; a running session may still use it.",
       };
     }
+
     const setup = await readManaged(agentDir, config);
+
     if (setup === undefined) {
       return {
         row: line("Remote link", "Not managed by setup (you run the gateway yourself)"),
@@ -382,12 +437,16 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
           "Remote config snapshot: you run the gateway yourself, so doctor does not check it.",
       };
     }
+
     const { state, text: detail } = await managedSnapshot(setup);
+
     if (state === "disabled") {
       return { row: line("Remote link", "None (this machine only)"), detail };
     }
+
     if (state === "configured") {
       const live = liveLinkText(options);
+
       return {
         row: line(
           "Remote link",
@@ -401,6 +460,7 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
         detail,
       };
     }
+
     return {
       row: line(
         "Remote link",
@@ -423,34 +483,43 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
 }
 
 const WEEK = 7 * 86_400_000;
+
 async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<Check> {
   const SETUP = setupStep(options);
+
   try {
     const { setupPaths } = await import("./backend.js");
     const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
+
     if (bytes === undefined) {
       return { detail: "Pair expiry: no pairing saved by setup." };
     }
+
     const value = decodePairing(parseJson(bytes));
+
     const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
       isNumber(value.inspection?.[key]) ? [[key, value.inspection[key]] as const] : [],
     );
+
     if (deadlines.length === 0) {
       return {
         row: line("Pairing", "No expiry dates saved yet"),
         detail: "Pair expiry: no saved expiry dates yet (pairing pending).",
       };
     }
+
     const now = Date.now();
     const detail = `Pair expiry (saved native inspection): ${deadlines.map(([key, time]) => `${key} ${new Date(time * 1000).toISOString()}${time * 1000 - now <= WEEK ? " — renew or re-pair now" : ""}`).join("; ")}. Use /peers setup to renew or import; old revocation records are kept.`;
     const earliest = Math.min(...deadlines.map(([, time]) => time * 1000));
     const date = new Date(earliest).toISOString().slice(0, 10);
+
     if (earliest <= now) {
       return {
         row: line("Pairing", `Expired on ${date}. ${SETUP} to renew or pair again.`, "error"),
         detail,
       };
     }
+
     return {
       row:
         earliest - now <= WEEK

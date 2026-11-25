@@ -52,11 +52,13 @@ describe("ledger", () => {
 
   test("redacts and clips text before writing", async () => {
     const secret = `sk-ant-${"a".repeat(32)}`;
+
     const event = await appendEvent(
       file,
       { ...draft, error: `${secret} ${"x".repeat(FIELD_LIMIT * 2)}` },
       fakeClock(),
     );
+
     const written = readFileSync(file, "utf8");
     expect(written).not.toContain(secret);
     expect(written).toContain(REDACTED);
@@ -83,9 +85,11 @@ describe("ledger", () => {
 
   test("skips lines it cannot read and counts them", () => {
     const good = signal({ n: 1, session: "s" });
+
     const text = ["{not json", JSON.stringify(good), "", JSON.stringify({ type: "other" })].join(
       "\n",
     );
+
     expect(parseLedger(text)).toStrictEqual({ events: [good], skipped: 2 });
   });
 

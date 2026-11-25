@@ -67,6 +67,7 @@ function clip(text: string, limit: number): string {
 
 function probability(result: ClassifierResult | undefined, id: string): number | undefined {
   const answer = result?.answers[id];
+
   return answer?.type === "bool" ? answer.probability : undefined;
 }
 
@@ -74,6 +75,7 @@ function scoresOf(result: ClassifierResult | undefined): Scores | undefined {
   const harnessPath = probability(result, "harnessPath");
   const pathExisted = probability(result, "pathExisted");
   const outsideService = probability(result, "outsideService");
+
   return harnessPath === undefined || pathExisted === undefined || outsideService === undefined
     ? undefined
     : { harnessPath, pathExisted, outsideService };
@@ -87,6 +89,7 @@ function sideOf(record: RecordEvent): JsonObject {
 
 function inputText(input: JsonObject | undefined): JsonObject {
   const text = input === undefined ? undefined : JSON.stringify(input);
+
   return text === undefined ? {} : { input: clip(redact(text), INPUT_LIMIT) };
 }
 
@@ -96,6 +99,7 @@ function pairKey(a: string, b: string): string {
 
 function needsClassifying(record: RecordEvent): boolean {
   const batchOrdered = record.type === "signal" && record.cause === "parallel-batch";
+
   return !batchOrdered && (record.owner !== UNATTRIBUTED || record.evidence === "pi-path");
 }
 
@@ -105,16 +109,20 @@ async function verdictFor(
   ask: Asker,
 ): Promise<Scores | undefined> {
   const { record } = job;
+
   const stored = events.find(
     (event): event is VerdictEvent =>
       event.type === "verdict" && event.fingerprint === record.fingerprint,
   );
+
   if (stored !== undefined) {
     return stored;
   }
+
   const scores = scoresOf(
     await ask({ ...sideOf(record), ...inputText(job.input) }, RECORD_QUESTIONS),
   );
+
   if (scores !== undefined) {
     await appendEvent(
       job.ledger,
@@ -122,6 +130,7 @@ async function verdictFor(
       job.clock,
     );
   }
+
   return scores;
 }
 
@@ -133,12 +142,15 @@ function comparisonsFor(record: RecordEvent, events: readonly LedgerEvent[]): Re
         : [],
     ),
   );
+
   const latest = new Map<string, RecordEvent>();
+
   for (const event of events) {
     if ((event.type === "report" || event.type === "signal") && event.owner === record.owner) {
       latest.set(event.fingerprint, event);
     }
   }
+
   return deriveGroups(events)
     .filter(
       (group) =>
@@ -150,6 +162,7 @@ function comparisonsFor(record: RecordEvent, events: readonly LedgerEvent[]): Re
     )
     .flatMap((group) => {
       const example = latest.get(group.fingerprint);
+
       return example === undefined ? [] : [example];
     })
     .slice(0, MAX_MERGE_COMPARISONS);
@@ -157,10 +170,12 @@ function comparisonsFor(record: RecordEvent, events: readonly LedgerEvent[]): Re
 
 async function compare(job: ClassifyJob, other: RecordEvent, ask: Asker): Promise<void> {
   const { record } = job;
+
   const sameCause = probability(
     await ask({ a: sideOf(record), b: sideOf(other) }, SAME_CAUSE_QUESTION),
     "sameCause",
   );
+
   if (sameCause !== undefined) {
     await appendEvent(
       job.ledger,
@@ -179,31 +194,42 @@ async function compare(job: ClassifyJob, other: RecordEvent, ask: Asker): Promis
 
 export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome> {
   const { record, registry } = job;
+
   if (!needsClassifying(record)) {
     return ClassifyOutcome.skipped();
   }
+
   const catalog = registry.getModelOfType("classifier", JEV_PROVIDER, JEV_CATALOG_ID);
+
   if (catalog === undefined || !registry.getProviderAuthStatus(JEV_PROVIDER).configured) {
     return ClassifyOutcome.unavailable();
   }
+
   const model = { ...catalog, id: JEV_MODEL_ID };
   let calls = 0;
   let failed = 0;
+
   const ask: Asker = async (state, questions) => {
     calls += 1;
     const result = await registry.classify(model, { state, questions });
+
     if (result.stopReason !== "stop") {
       failed += 1;
+
       return undefined;
     }
+
     return result;
   };
+
   const { events } = await readLedger(job.ledger);
   const scores = await verdictFor(job, events, ask);
+
   if (scores === undefined || scores.outsideService < THRESHOLDS.excludedOutsideFrom) {
     await Promise.all(
       comparisonsFor(record, events).map(async (other) => compare(job, other, ask)),
     );
   }
+
   return ClassifyOutcome.classified({ calls, failed });
 }

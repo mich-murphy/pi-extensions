@@ -35,10 +35,13 @@ function textResult(text: string): FetchPageResult {
 }
 
 const PIECES = ["abc", "é", "😀", "日本語", "\r\n", "", "line with spaces"];
+
 const baseText = gs
   .arrays(gs.sampledFrom(PIECES), { minSize: 1, maxSize: 6 })
   .map((parts) => parts.join(""));
+
 const LONG_LINE = "é".repeat(30_000);
+
 const pagedText = gs.composite((tc) => {
   const lines = tc.draw(gs.arrays(baseText, { minSize: 1, maxSize: 20 }), "lines");
   const repeat = tc.draw(gs.integers({ minValue: 1, maxValue: 150 }), "repeat");
@@ -46,6 +49,7 @@ const pagedText = gs.composite((tc) => {
   const body = Array.from({ length: repeat }, () => lines.join("\n")).join("\n");
   const manyLines = tc.draw(gs.weightedBooleans(0.8), "manyLines");
   const filler = manyLines ? "ab\n".repeat(2100) : "";
+
   return `${filler}${longLine ? `${LONG_LINE}\n${body}` : body}`;
 });
 
@@ -57,15 +61,18 @@ function run(text: string, offset: number) {
 
 function boundaryAtOrAfter(bytes: Buffer, offset: number): number {
   let at = Math.min(offset, bytes.length);
+
   while (at < bytes.length && ((bytes[at] ?? 0) & 0xc0) === 0x80) {
     at += 1;
   }
+
   return at;
 }
 
 function shownText(result: ReturnType<typeof run>): string {
   const [first] = result.content;
   assert.ok(first?.type === "text");
+
   return first.text;
 }
 
@@ -73,6 +80,7 @@ const decodeContent = Schema.decodeUnknownSync(Schema.Struct({ content: Schema.S
 
 function structuredBytes(result: ReturnType<typeof run>): number {
   const { content } = decodeContent(result.structuredContent);
+
   return Buffer.byteLength(content);
 }
 
@@ -84,21 +92,25 @@ function checkPaging(text: string, startAt: number): void {
   let offset = firstOffset;
   let expectedStart = first;
   let finished = false;
+
   for (let page = 0; page < 40 && !finished; page += 1) {
     const result = run(text, offset);
     assert.ok(structuredBytes(result) <= STRUCTURED_OUTPUT_MAX_BYTES);
     const shown = shownText(result);
+
     if (result.details.truncated !== true) {
       collected.push(Buffer.from(all.subarray(expectedStart)));
       assert.ok(shown.startsWith(all.subarray(expectedStart).toString("utf8")));
       finished = true;
       continue;
     }
+
     const to = checkWindow(shown, all, expectedStart, collected);
     expectedStart = to;
     offset = to;
     finished = to >= all.length;
   }
+
   assert.ok(finished, "paging did not finish within the page cap");
   assert.ok(Buffer.concat(collected).equals(all.subarray(first)), "no gap and no overlap");
 }
@@ -117,6 +129,7 @@ function checkWindow(shown: string, all: Buffer, expectedStart: number, collecte
   const skipped = to - from - bodyBytes.length;
   assert.ok(skipped === 0 || (skipped === 1 && all[from + bodyBytes.length] === 0x0a));
   collected.push(bodyBytes, all.subarray(from + bodyBytes.length, to));
+
   return to;
 }
 
@@ -131,10 +144,12 @@ describe("webfetch paging properties", () => {
     assertHegel(settings, (tc) => {
       const text = tc.draw(pagedText, "text");
       const total = Buffer.byteLength(text);
+
       const startAt = tc.draw(
         gs.oneOf(gs.just(0), gs.integers({ minValue: 0, maxValue: total })),
         "start",
       );
+
       checkPaging(text, startAt);
     });
   });
@@ -155,11 +170,14 @@ const SAFE = ["ab", "axb", "aab", "zz", "hello", "é😀"];
 function checkRedaction(parts: string[], secrets: string[]): void {
   const input = parts.join("");
   const output = redactSecrets(input, secrets);
+
   for (const secret of secrets) {
     assert.ok(!output.includes(secret), `secret ${JSON.stringify(secret)} survived`);
   }
+
   assert.equal(redactSecrets(input, []), input);
   assert.equal(redactSecrets(input, [undefined, ""]), input);
+
   for (const secret of secrets) {
     assert.equal(redactSecrets(secret, secrets), "[redacted]");
   }
@@ -211,6 +229,7 @@ describe("redactSecrets properties", () => {
 });
 
 const PASSWORD = "s3cretpw";
+
 const urlParts = gs.tuples(
   gs.sampledFrom(["http", "https", "HTTPS", "ftp", "file"]),
   gs.sampledFrom(["", `user:${PASSWORD}@`, "u@"]),
@@ -230,6 +249,7 @@ const urlParts = gs.tuples(
 function checkUrl([scheme, userinfo, host, path]: [string, string, string, string]): void {
   const input = `${scheme}://${userinfo}${host}${path}`;
   const parsed = parsePublicHttpUrl(input);
+
   if (Result.isSuccess(parsed)) {
     const url = new URL(parsed.success);
     assert.ok(url.protocol === "http:" || url.protocol === "https:", url.protocol);
@@ -238,8 +258,10 @@ function checkUrl([scheme, userinfo, host, path]: [string, string, string, strin
     const again = parsePublicHttpUrl(parsed.success);
     assert.ok(Result.isSuccess(again));
     assert.equal(again.success, parsed.success);
+
     return;
   }
+
   assert.ok(!observableText(parsed.failure).includes(PASSWORD));
   assert.ok(!parsed.failure._tag.includes(PASSWORD));
   assert.ok(!String(Object.values(parsed.failure)).includes(PASSWORD));

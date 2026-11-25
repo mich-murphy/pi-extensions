@@ -19,22 +19,28 @@ const escapeDouble = (char: string): string => ('$`"\\'.includes(char) ? `\\${ch
 function encodeChunk(chunk: readonly string[], scheme: number): string {
   const safe = chunk.every((char) => SAFE.test(char));
   const escaped = chunk.map((char) => escapeBackslash(char));
+
   switch (scheme) {
     case 0: {
       return safe ? chunk.join("") : escaped.join("");
     }
+
     case 1: {
       return escaped.join("\\\n");
     }
+
     case 2: {
       return chunk.includes("'") ? escaped.join("") : `'${chunk.join("")}'`;
     }
+
     case 3: {
       return `"${chunk.map((char) => escapeDouble(char)).join("")}"`;
     }
+
     case 4: {
       return `"${chunk.map((char) => escapeDouble(char)).join("\\\n")}"`;
     }
+
     default: {
       return safe ? chunk.join("\\\n") : escaped.join("");
     }
@@ -48,12 +54,14 @@ const quoted = gs.composite((tc): Quoted => {
   const rest = tc.draw(gs.text({ alphabet: "abc/. *?[{}~$`'\"\\#;&|<>()=,", maxSize: 8 }));
   const chars = (first + rest).split("");
   let source = "";
+
   for (let index = 0; index < chars.length;) {
     const size = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
     const scheme = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }));
     source += encodeChunk(chars.slice(index, index + size), scheme);
     index += size;
   }
+
   return { word: chars.join(""), source };
 });
 
@@ -63,30 +71,39 @@ function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
   return gs.composite((tc): Braced => {
     const text = (): Braced => {
       const value = tc.draw(gs.text({ alphabet: "abc", maxSize: 2 }));
+
       return { source: value, words: [value] };
     };
+
     const group = (): Braced => {
       const kind = tc.draw(gs.integers({ minValue: 0, maxValue: depth > 0 ? 2 : 1 }));
+
       if (kind === 0) {
         return sequence(tc);
       }
+
       const size = tc.draw(gs.integers({ minValue: 2, maxValue: 3 }));
+
       const options = Array.from({ length: size }, () =>
         kind === 1 ? text() : tc.draw(braced(depth - 1)),
       );
+
       return {
         source: `{${options.map((option) => option.source).join(",")}}`,
         words: options.flatMap((option) => option.words),
       };
     };
+
     const parts = [text(), group(), text(), ...(tc.draw(gs.booleans()) ? [group()] : [])];
     let joined: Braced = { source: "", words: [""] };
+
     for (const part of parts) {
       joined = {
         source: joined.source + part.source,
         words: joined.words.flatMap((head) => part.words.map((tail) => head + tail)),
       };
     }
+
     return joined;
   });
 }
@@ -96,19 +113,24 @@ function sequence(tc: TestCase): Braced {
   const from = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
   const to = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
   const step = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
+
   const render = (value: number): string =>
     letters ? String.fromCodePoint(97 + value) : `${value}`;
+
   const words: string[] = [];
   const direction = to < from ? -step : step;
+
   for (let value = from; direction > 0 ? value <= to : value >= to; value += direction) {
     words.push(render(value));
   }
+
   return { source: `{${render(from)}..${render(to)}..${step}}`, words };
 }
 
 const directory = gs.text({ alphabet: "abcdefg", minSize: 1, maxSize: 4 });
 const plain = gs.text({ alphabet: "abc.", maxSize: 4 });
 const SHELL_NOISE = "cat ab'\"\\$`(){}<>|&;#~*?[]\n-=!,.";
+
 const TOKENS = [
   "cat",
   "bash -c",
@@ -181,6 +203,7 @@ describe("pathsReadByCommand properties", () => {
           ),
           "source",
         );
+
         for (const path of pathsReadByCommand(source, cwd)) {
           assert.ok(isAbsolute(path), path);
           assert.equal(resolve(path), path);
@@ -294,10 +317,12 @@ describe("pathsReadByCommand properties", () => {
     assertProperty("shell-reads", "words with an unknown expansion never produce a path", (tc) => {
       const before = tc.draw(plain, "before");
       const after = tc.draw(plain, "after");
+
       const special = tc.draw(
         gs.sampledFrom(["*", "?", "[ab]", "$V", "${V}", "$(echo x)", "`echo x`"]),
         "special",
       );
+
       assert.deepEqual(reads(`cat ${before}${special}${after}`), []);
       assert.deepEqual(reads(`cat ~user/${after}`), []);
       assert.deepEqual(reads(`cat ~${before}x`), []);
@@ -364,9 +389,11 @@ describe("pathsReadByCommand properties", () => {
       (tc) => {
         const tree = tc.draw(braced(2), "tree");
         tc.assume(tree.words.length <= 256);
+
         const expected = [
           ...new Set(tree.words.filter((word) => word !== "").map((word) => resolve(cwd, word))),
         ].toSorted();
+
         assert.deepEqual(reads(`cat ${tree.source}`), expected, tree.source);
         assert.deepEqual(reads(`cat "${tree.source}"`), [resolve(cwd, tree.source)]);
         assert.deepEqual(reads(`cat '${tree.source}'`), [resolve(cwd, tree.source)]);
@@ -398,6 +425,7 @@ describe("pathsReadByCommand properties", () => {
         gs.sampledFrom(["echo", "ls", "git", "wc", "stat", "test", "true", "printf", "find", "cp"]),
         "name",
       );
+
       const args = tc.draw(gs.arrays(quoted, { maxSize: 4 }), "args");
       assert.deepEqual(reads(`${name} ${args.map((arg) => arg.source).join(" ")}`), []);
     });

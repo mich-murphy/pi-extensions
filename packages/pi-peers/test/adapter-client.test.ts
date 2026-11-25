@@ -29,16 +29,23 @@ const peer = {
   sessionId: "unit",
   runtimeNonce: "1".repeat(32),
 };
+
 const other = {
   machineId: "beta",
   sessionId: "sender",
   runtimeNonce: "2".repeat(32),
 };
+
 const cleanups: (() => Promise<void>)[] = [];
+
 type SentNotice = Parameters<ExtensionAPI["sendMessage"]>;
+
 type SessionHolder = { session?: AdapterSession };
+
 type Reply = Extract<Frame, { op: "result" }>;
+
 type Request = Exclude<Frame, { op: "result" | "roster.event" | "link.state" }>;
+
 async function gateway(
   handler: (request: Request, socket: Socket) => Reply | undefined,
   holdRegistration = false,
@@ -48,6 +55,7 @@ async function gateway(
   let connections = 0;
   const requests: Request[] = [];
   const replies: Reply[] = [];
+
   const server = createServer((socket) => {
     connections += 1;
     sockets.add(socket);
@@ -57,19 +65,24 @@ async function gateway(
     let buffer = Buffer.alloc(0);
     socket.on("data", (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
+
       while (buffer.length >= 4 && buffer.length >= frameBodyLength(buffer.subarray(0, 4)) + 4) {
         const total = frameBodyLength(buffer.subarray(0, 4)) + 4;
         const request = decodeFrame(buffer.subarray(0, total), "local-client");
         buffer = Buffer.from(buffer.subarray(total));
+
         if (request.op === "result") {
           replies.push(request);
           continue;
         }
+
         if (request.op === "roster.event" || request.op === "link.state") {
           continue;
         }
+
         requests.push(request);
         let reply: Reply | undefined;
+
         if (request.op === "register" && !holdRegistration) {
           reply = {
             v: 2,
@@ -91,12 +104,14 @@ async function gateway(
         } else {
           reply = handler(request, socket);
         }
+
         if (reply !== undefined) {
           socket.write(encodeFrame(reply, "adapter-delivery"));
         }
       }
     });
   });
+
   const socketPath = join(directory, "gateway.sock");
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -106,6 +121,7 @@ async function gateway(
     for (const socket of sockets) {
       socket.destroy();
     }
+
     await new Promise<void>((resolve) => {
       server.close(() => {
         resolve();
@@ -113,6 +129,7 @@ async function gateway(
     });
     await rm(directory, { recursive: true, force: true });
   });
+
   const config: Configuration = {
     machineId: "alpha",
     socketPath,
@@ -126,6 +143,7 @@ async function gateway(
       },
     ],
   };
+
   return {
     config,
     connections: () => connections,
@@ -148,6 +166,7 @@ async function gateway(
     },
   };
 }
+
 function authored(id = "3".repeat(32)): Message {
   return {
     id,
@@ -159,15 +178,20 @@ function authored(id = "3".repeat(32)): Message {
 
 function lostThenDenied() {
   let sends = 0;
+
   return (request: Request, socket: Socket): Reply | undefined => {
     if (request.op !== "send") {
       return undefined;
     }
+
     sends += 1;
+
     if (sends === 1) {
       socket.destroy();
+
       return undefined;
     }
+
     return {
       v: 2,
       op: "result",
@@ -181,10 +205,12 @@ function lostThenDenied() {
     };
   };
 }
+
 function misbound(request: Request): Reply | undefined {
   if (request.op !== "send") {
     return undefined;
   }
+
   return {
     v: 2,
     op: "result",
@@ -198,10 +224,12 @@ function misbound(request: Request): Reply | undefined {
     },
   };
 }
+
 function discoveryReply(request: Request): Reply | undefined {
   if (request.op !== "discover") {
     return undefined;
   }
+
   return {
     v: 2,
     op: "result",
@@ -216,6 +244,7 @@ function discoveryReply(request: Request): Reply | undefined {
     },
   };
 }
+
 function releaseRegistration(fixture: Awaited<ReturnType<typeof gateway>>): void {
   const request = fixture.requests.find((item) => item.op === "register");
   assert(request?.op === "register");
@@ -227,6 +256,7 @@ function releaseRegistration(fixture: Awaited<ReturnType<typeof gateway>>): void
     outcome: { tag: "ok", value: { peer, scopeIds: ["team"] } },
   });
 }
+
 async function resultOf<A>(promise: Promise<A>): Promise<A | string> {
   try {
     return await promise;
@@ -234,6 +264,7 @@ async function resultOf<A>(promise: Promise<A>): Promise<A | string> {
     return error instanceof Error ? error.message : "failure";
   }
 }
+
 function makeClient(config: Configuration): GatewayClient {
   return new GatewayClient({
     config,
@@ -249,6 +280,7 @@ function unroutedGateway(request: Request): Reply | undefined {
   if (request.op !== "send") {
     return toolGateway(request);
   }
+
   return {
     v: 2,
     op: "result",
@@ -257,6 +289,7 @@ function unroutedGateway(request: Request): Reply | undefined {
     outcome: { tag: "not_admitted", messageId: request.message.id, code: "no_route" },
   };
 }
+
 function toolGateway(request: Request): Reply | undefined {
   if (request.op === "send") {
     return {
@@ -272,14 +305,17 @@ function toolGateway(request: Request): Reply | undefined {
       },
     };
   }
+
   return discoveryReply(request);
 }
+
 async function executeTool(
   fixture: ReturnType<typeof toolRecorder>,
   name: string,
   args: ToolArguments,
 ): Promise<ToolValue> {
   const result = await fixture.run(name, args);
+
   return result.details.value;
 }
 
@@ -291,6 +327,7 @@ async function acceptedProbe(fixture: Awaited<ReturnType<typeof gateway>>): Prom
   });
   await expect.poll(() => fixture.connections()).toBeGreaterThan(before);
 }
+
 async function flaggedResult(
   fixture: ReturnType<typeof toolRecorder>,
   name: string,
@@ -298,6 +335,7 @@ async function flaggedResult(
 ) {
   const result = await fixture.run(name, args);
   const { value } = result.details;
+
   return {
     isError: result.isError === true,
     value,
@@ -312,10 +350,12 @@ function restoreAgentDir(previous: string | undefined): void {
     process.env.PI_CODING_AGENT_DIR = previous;
   }
 }
+
 function extensionHost(select: PeersContext["ui"]["select"] = async () => undefined) {
   const fixture = extensionFixture();
   const notifications: string[] = [];
   const statuses: (string | undefined)[] = [];
+
   const context: PeersContext = {
     mode: "rpc",
     hasUI: true,
@@ -338,7 +378,9 @@ function extensionHost(select: PeersContext["ui"]["select"] = async () => undefi
       },
     },
   };
+
   sessionCommunication(fixture.api);
+
   return {
     notifications,
     statuses,
@@ -353,13 +395,17 @@ function extensionHost(select: PeersContext["ui"]["select"] = async () => undefi
 
 function registerHash(request: Request) {
   assert.equal(request.op, "register");
+
   if (request.op !== "register") {
     throw new Error("Expected register");
   }
+
   return request.expectedConfigSha256;
 }
+
 function mismatchReply(request: Request): Reply {
   assert.equal(request.op, "register");
+
   return {
     v: 2,
     op: "result",
@@ -368,10 +414,12 @@ function mismatchReply(request: Request): Reply {
     outcome: { tag: "error", code: "config_mismatch" },
   };
 }
+
 function generationReply(request: Request): Reply {
   if (request.op !== "register") {
     throw new Error("Expected register");
   }
+
   return request.expectedConfigSha256 === "a".repeat(64)
     ? mismatchReply(request)
     : {
@@ -382,12 +430,15 @@ function generationReply(request: Request): Reply {
         outcome: { tag: "ok", value: { peer, scopeIds: request.scopeIds } },
       };
 }
+
 function olderGatewayClose(request: Request, socket: Socket) {
   assert.equal(request.op, "register");
   assert.equal(registerHash(request), "a".repeat(64));
   socket.destroy();
+
   return undefined;
 }
+
 function generationEnsure(hashes: string[]) {
   return vi.fn<NonNullable<ConstructorParameters<typeof GatewayClient>[0]["ensureGateway"]>>(
     async () => ({ gatewaySha256: hashes.shift() ?? "a".repeat(64) }),
@@ -397,9 +448,11 @@ function generationEnsure(hashes: string[]) {
 async function expectFailure<Value>(pending: Promise<Value>, message: string): Promise<void> {
   await expect(pending).rejects.toThrow(message);
 }
+
 async function expectPossibleFailure<Value>(pending: Promise<Value>): Promise<void> {
   await expect(pending).rejects.toMatchObject({ possible: true });
 }
+
 function holdRegister(
   first: () => void,
   second: (value: { request: Request; socket: Socket }) => void,
@@ -410,14 +463,17 @@ function holdRegister(
     } else {
       second({ request, socket });
     }
+
     return undefined;
   };
 }
+
 function signalDiscover(received: () => void) {
   return (request: Request): undefined => {
     if (request.op === "discover") {
       received();
     }
+
     return undefined;
   };
 }
@@ -436,19 +492,23 @@ const olderGatewayAnswers = {
         outcome: { tag: "error", code: "forbidden" },
       }),
     );
+
     const prefix = Buffer.alloc(4);
     prefix.writeUInt32BE(body.length);
     socket.write(Buffer.concat([prefix, body]));
   },
 };
+
 describe("an older gateway still running", () => {
   test.each(Object.entries(olderGatewayAnswers))(
     "a register it %s says the gateway is older and to restart it with Setup",
     async (_name, answer) => {
       const fixture = await gateway((request, socket) => {
         answer(request, socket);
+
         return undefined;
       }, true);
+
       const session = new AdapterSession(
         fixture.config,
         peer,
@@ -456,6 +516,7 @@ describe("an older gateway still running", () => {
         () => undefined,
         () => undefined,
       );
+
       cleanups.push(async () => {
         session.close();
       });
@@ -489,6 +550,7 @@ describe("public adapter transport and notice accounting", () => {
     "a supplied ensure returning malformed snapshot (%s) fails before any connection or register",
     async (_label, value) => {
       const fixture = await gateway(() => undefined);
+
       const client = new GatewayClient({
         config: fixture.config,
         peer,
@@ -498,6 +560,7 @@ describe("public adapter transport and notice accounting", () => {
         },
         statusChanged: () => undefined,
       });
+
       try {
         await expect(client.reconnect()).rejects.toThrow("protocol_error");
         expect(fixture.connections()).toBe(0);
@@ -516,13 +579,16 @@ describe("public adapter transport and notice accounting", () => {
     const fixture = await gateway(() => undefined);
     const entered = Promise.withResolvers<undefined>();
     const release = Promise.withResolvers<{ gatewaySha256: string }>();
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
       .mockImplementation(async () => {
         entered.resolve(undefined);
+
         return release.promise;
       });
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -531,15 +597,19 @@ describe("public adapter transport and notice accounting", () => {
       () => undefined,
       ensureGateway,
     );
+
     try {
       await session.reconnect();
       const state = session.state;
       expect(session.status().connected).toBe(true);
       let completed = false;
+
       const fresh = session.reconnect(true).then(() => {
         completed = true;
+
         return undefined;
       });
+
       await entered.promise;
       const concurrent = [session.reconnect(), session.reconnect(), session.reconnect()];
       expect(completed).toBe(false);
@@ -566,14 +636,17 @@ describe("public adapter transport and notice accounting", () => {
     const firstFresh = Promise.withResolvers<{ gatewaySha256: string }>();
     const secondFresh = Promise.withResolvers<{ gatewaySha256: string }>();
     const entered = Promise.withResolvers<undefined>();
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
       .mockImplementationOnce(async () => firstFresh.promise)
       .mockImplementation(async () => {
         entered.resolve(undefined);
+
         return secondFresh.promise;
       });
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -583,14 +656,18 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await client.reconnect();
       const superseded = expectFailure(client.reconnect(undefined, true), "cancelled");
       let completed = false;
+
       const latest = client.reconnect(undefined, true).then(() => {
         completed = true;
+
         return undefined;
       });
+
       await entered.promise;
       await superseded;
       firstFresh.resolve({ gatewaySha256: "b".repeat(64) });
@@ -615,11 +692,14 @@ describe("public adapter transport and notice accounting", () => {
       .fn<(request: Request) => Reply | undefined>()
       .mockImplementationOnce(generationReply)
       .mockImplementation(mismatchReply);
+
     const fixture = await gateway(reply, true);
+
     const ensureGateway = generationEnsure([
       "b".repeat(64),
       ...Array.from({ length: 6 }, () => "a".repeat(64)),
     ]);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -629,6 +709,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await client.reconnect();
       await expect(client.reconnect(undefined, true)).rejects.toThrow("unavailable");
@@ -651,14 +732,18 @@ describe("public adapter transport and notice accounting", () => {
     const old = Promise.withResolvers<{ gatewaySha256: string }>();
     const next = Promise.withResolvers<{ gatewaySha256: string }>();
     const entered = Promise.withResolvers<undefined>();
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockImplementationOnce(async () => old.promise)
       .mockImplementation(async () => {
         entered.resolve(undefined);
+
         return next.promise;
       });
+
     const statusChanged = vi.fn<() => void>();
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -668,6 +753,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged,
     });
+
     try {
       const prior = expectFailure(client.reconnect(), "cancelled");
       const fresh = client.reconnect(undefined, true);
@@ -678,6 +764,7 @@ describe("public adapter transport and notice accounting", () => {
         setImmediate(resolve);
       });
       expect(statusChanged).toHaveBeenCalledTimes(1);
+
       const tool = client.request({
         v: 2,
         op: "discover",
@@ -685,6 +772,7 @@ describe("public adapter transport and notice accounting", () => {
         scopeIds: ["team"],
         watch: false,
       });
+
       const toolResult = expectFailure(tool, "cancelled");
       next.resolve({ gatewaySha256: "b".repeat(64) });
       await fresh;
@@ -704,13 +792,16 @@ describe("public adapter transport and notice accounting", () => {
   test("fresh reconnect cancels a pending register and stale disconnect/finally cannot disturb its successor", async () => {
     const first = Promise.withResolvers<undefined>();
     const second = Promise.withResolvers<{ request: Request; socket: Socket }>();
+
     const fixture = await gateway(
       holdRegister(() => {
         first.resolve(undefined);
       }, second.resolve),
       true,
     );
+
     const ensureGateway = generationEnsure(["a".repeat(64), "b".repeat(64)]);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -720,6 +811,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       const prior = expectFailure(client.reconnect(), "cancelled");
       await first.promise;
@@ -746,15 +838,19 @@ describe("public adapter transport and notice accounting", () => {
     "old discover failure (watch=%s) cannot clear a new generation's watch/cache",
     async (watch) => {
       const entered = Promise.withResolvers<undefined>();
+
       const handler = vi
         .fn<(request: Request) => Reply | undefined>()
         .mockImplementationOnce(() => {
           entered.resolve(undefined);
+
           return undefined;
         })
         .mockImplementation(discoveryReply);
+
       const fixture = await gateway(handler);
       const ensureGateway = generationEnsure(["a".repeat(64), "b".repeat(64)]);
+
       const client = new GatewayClient({
         config: fixture.config,
         peer,
@@ -764,6 +860,7 @@ describe("public adapter transport and notice accounting", () => {
         },
         statusChanged: () => undefined,
       });
+
       try {
         await client.reconnect();
         const old = expectFailure(client.discover(["team"], watch), "cancelled");
@@ -790,11 +887,14 @@ describe("public adapter transport and notice accounting", () => {
   test("a fresh fence publishes only disconnected: the old transport's synchronous disconnect callback is already stale", async () => {
     const fixture = await gateway(() => undefined);
     const held = Promise.withResolvers<{ gatewaySha256: string }>();
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
       .mockImplementation(async () => held.promise);
+
     const published: string[] = [];
+
     const client: GatewayClient = new GatewayClient({
       config: fixture.config,
       peer,
@@ -806,6 +906,7 @@ describe("public adapter transport and notice accounting", () => {
         published.push(client.status().status);
       },
     });
+
     try {
       await client.reconnect();
       published.length = 0;
@@ -821,9 +922,11 @@ describe("public adapter transport and notice accounting", () => {
     const directory = await mkdtemp(join(tmpdir(), "psc-quote-"));
     const previous = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = directory;
+
     const host = extensionHost(async () => {
       throw new Error("EACCES: permission denied, open '/private/secret/pi-peers.json'");
     });
+
     cleanups.push(async () => {
       restoreAgentDir(previous);
       await rm(directory, { recursive: true, force: true });
@@ -838,6 +941,7 @@ describe("public adapter transport and notice accounting", () => {
     const pending = Promise.withResolvers<{ gatewaySha256: string }>();
     const ensureGateway = vi.fn<EnsureGateway>(async () => pending.promise);
     const statusChanged = vi.fn<() => void>();
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -847,6 +951,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged,
     });
+
     const result = expectFailure(client.reconnect(), "cancelled");
     client.close();
     const notifications = statusChanged.mock.calls.length;
@@ -860,14 +965,17 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("fresh metadata refusal disconnects old trust and does not replay uncertain application work", async () => {
     const received = Promise.withResolvers<undefined>();
+
     const fixture = await gateway(
       signalDiscover(() => {
         received.resolve(undefined);
       }),
     );
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockResolvedValue({ gatewaySha256: "a".repeat(64) });
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -877,8 +985,10 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await client.reconnect();
+
       const work = expectPossibleFailure(
         client.request({
           v: 2,
@@ -888,6 +998,7 @@ describe("public adapter transport and notice accounting", () => {
           watch: false,
         }),
       );
+
       await received.promise;
       ensureGateway.mockRejectedValue(new Error("narrowed grants incompatible"));
       await expect(client.reconnect(undefined, true)).rejects.toThrow(
@@ -907,6 +1018,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("manual registration omits a generation fingerprint", async () => {
     const fixture = await gateway(() => undefined);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -915,6 +1027,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await client.reconnect();
       expect(fixture.requests).toHaveLength(1);
@@ -927,6 +1040,7 @@ describe("public adapter transport and notice accounting", () => {
     const hashes = ["a".repeat(64), "b".repeat(64)];
     const fixture = await gateway(generationReply, true);
     const ensureGateway = generationEnsure(hashes);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -936,6 +1050,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await client.reconnect();
       expect(ensureGateway).toHaveBeenCalledTimes(2);
@@ -952,6 +1067,7 @@ describe("public adapter transport and notice accounting", () => {
   test("generation mismatch exhausts one bounded episode with distinct pending status and no control replay", async () => {
     const fixture = await gateway(mismatchReply, true);
     const ensureGateway = generationEnsure(["a".repeat(64)]);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -961,6 +1077,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await expect(client.reconnect()).rejects.toThrow("unavailable");
       expect(ensureGateway).toHaveBeenCalledTimes(6);
@@ -979,6 +1096,7 @@ describe("public adapter transport and notice accounting", () => {
   test("an older gateway closing guarded register is reported as outdated and never triggers unguarded fallback or passive control", async () => {
     const fixture = await gateway(olderGatewayClose, true);
     const ensureGateway = generationEnsure(["a".repeat(64)]);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -988,6 +1106,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     try {
       await expect(client.reconnect()).rejects.toThrow("unavailable");
       expect(ensureGateway).toHaveBeenCalledTimes(6);
@@ -1101,12 +1220,14 @@ describe("public adapter transport and notice accounting", () => {
       tag: "error",
       code: "unavailable",
     });
+
     const owned = await createAdapterRuntime(
       fixture.config,
       peer,
       { sendMessage: () => undefined },
       () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
     );
+
     cleanups.push(async () => {
       await owned.dispose();
     });
@@ -1143,12 +1264,14 @@ describe("public adapter transport and notice accounting", () => {
   test("a tool call on a closed client reports a cancelled request", async () => {
     const fixture = await gateway(toolGateway);
     const tools = toolRecorder();
+
     const owned = await createAdapterRuntime(
       fixture.config,
       peer,
       { sendMessage: () => undefined },
       () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
     );
+
     cleanups.push(async () => {
       await owned.dispose();
     });
@@ -1163,23 +1286,27 @@ describe("public adapter transport and notice accounting", () => {
   test("a send the gateway could not route is flagged as an error and says resending cannot duplicate it", async () => {
     const fixture = await gateway(unroutedGateway);
     const tools = toolRecorder();
+
     const owned = await createAdapterRuntime(
       fixture.config,
       peer,
       { sendMessage: () => undefined },
       () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
     );
+
     cleanups.push(async () => {
       await owned.dispose();
     });
     registerTools(tools, () => owned.session);
     await expect.poll(() => owned.session.client.status().connected).toBe(true);
     await executeTool(tools, "peers_list", {});
+
     const result = await flaggedResult(tools, "peers_send", {
       to: sessionHandle(other.machineId, other.sessionId),
       kind: "request",
       content: "hi",
     });
+
     expect(result).toMatchObject({
       isError: true,
       value: { outcome: { tag: "not_admitted", code: "no_route" } },
@@ -1193,6 +1320,7 @@ describe("public adapter transport and notice accounting", () => {
       client.close();
     });
     const abort = new AbortController();
+
     const first = resultOf(
       client.request(
         {
@@ -1205,7 +1333,9 @@ describe("public adapter transport and notice accounting", () => {
         abort.signal,
       ),
     );
+
     await expect.poll(() => fixture.requests.length).toBe(1);
+
     const second = resultOf(
       client.request({
         v: 2,
@@ -1215,6 +1345,7 @@ describe("public adapter transport and notice accounting", () => {
         watch: false,
       }),
     );
+
     abort.abort();
     releaseRegistration(fixture);
     await expect(first).resolves.toContain("cancelled");
@@ -1229,6 +1360,7 @@ describe("public adapter transport and notice accounting", () => {
     cleanups.push(async () => {
       client.close();
     });
+
     const first = resultOf(
       client.request({
         v: 2,
@@ -1238,7 +1370,9 @@ describe("public adapter transport and notice accounting", () => {
         watch: false,
       }),
     );
+
     await expect.poll(() => fixture.requests.length).toBe(1);
+
     const short = resultOf(
       client.request(
         {
@@ -1252,6 +1386,7 @@ describe("public adapter transport and notice accounting", () => {
         performance.now() + 20,
       ),
     );
+
     const shortOutcome = await short;
     releaseRegistration(fixture);
     await first;
@@ -1294,6 +1429,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("keeps message identity and uncertainty when a lost receipt is followed by denial", async () => {
     const fixture = await gateway(lostThenDenied());
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -1302,6 +1438,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     cleanups.push(async () => {
       client.close();
     });
@@ -1314,6 +1451,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("rejects a misbound admitted receipt without retrying malformed protocol", async () => {
     const fixture = await gateway(misbound);
+
     const client = new GatewayClient({
       config: fixture.config,
       peer,
@@ -1322,6 +1460,7 @@ describe("public adapter transport and notice accounting", () => {
       },
       statusChanged: () => undefined,
     });
+
     cleanups.push(async () => {
       client.close();
     });
@@ -1334,6 +1473,7 @@ describe("public adapter transport and notice accounting", () => {
     const notices: SentNotice[0][] = [];
     const wakes: SentNotice[1][] = [];
     let idle = false;
+
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1348,6 +1488,7 @@ describe("public adapter transport and notice accounting", () => {
         session.pumpIdle();
       },
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1421,6 +1562,7 @@ describe("public adapter transport and notice accounting", () => {
   test("an unobserved wake notice is never replayed when more messages arrive", async () => {
     const fixture = await gateway(() => undefined);
     const notices: SentNotice[0][] = [];
+
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1434,10 +1576,12 @@ describe("public adapter transport and notice accounting", () => {
         session.pumpIdle();
       },
     );
+
     cleanups.push(async () => {
       session.close();
     });
     await session.start();
+
     for (const [rid, id] of [
       ["4", "6"],
       ["5", "7"],
@@ -1453,6 +1597,7 @@ describe("public adapter transport and notice accounting", () => {
         message: authored(id.repeat(32)),
       });
     }
+
     await expect.poll(() => session.state.stats().inboxMessages).toBe(2);
     expect(notices).toHaveLength(1);
     expect(session.status().notice).toBe("submitted_unobserved");
@@ -1461,6 +1606,7 @@ describe("public adapter transport and notice accounting", () => {
     const fixture = await gateway(() => undefined);
     const notices: SentNotice[0][] = [];
     let idle = false;
+
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1474,10 +1620,12 @@ describe("public adapter transport and notice accounting", () => {
         session.pumpIdle();
       },
     );
+
     cleanups.push(async () => {
       session.close();
     });
     await session.start();
+
     const deliver = (rid: string, id: string) => {
       fixture.sendFrame({
         v: 2,
@@ -1490,6 +1638,7 @@ describe("public adapter transport and notice accounting", () => {
         message: authored(id.repeat(32)),
       });
     };
+
     deliver("4", "a");
     deliver("5", "b");
     await expect.poll(() => session.state.stats().inboxMessages).toBe(2);
@@ -1506,6 +1655,7 @@ describe("public adapter transport and notice accounting", () => {
   test("the footer follows unread mail and waits: ● on arrival, ✓ after take, waiting… while waiting", async () => {
     const fixture = await gateway(() => undefined);
     const footers: (string | undefined)[] = [];
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1520,6 +1670,7 @@ describe("public adapter transport and notice accounting", () => {
       }),
       () => undefined,
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1544,6 +1695,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a wait returns on the first admission, allows one waiter, and ends on timeout or abort", async () => {
     const fixture = await gateway(() => undefined);
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1551,6 +1703,7 @@ describe("public adapter transport and notice accounting", () => {
       () => ({ isIdle: () => false, ui: { setStatus: () => undefined } }),
       () => undefined,
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1574,6 +1727,7 @@ describe("public adapter transport and notice accounting", () => {
     });
     await expect(waiting).resolves.toBe("message");
     await expect(session.waitForMessage(60)).resolves.toBe("message");
+
     const closing = new AdapterSession(
       fixture.config,
       { ...peer, runtimeNonce: "9".repeat(32) },
@@ -1581,6 +1735,7 @@ describe("public adapter transport and notice accounting", () => {
       () => undefined,
       () => undefined,
     );
+
     await expect(closing.waitForMessage(60)).resolves.toBe("disconnected");
     closing.close();
     await expect(closing.waitForMessage(60)).resolves.toBe("closed");
@@ -1588,6 +1743,7 @@ describe("public adapter transport and notice accounting", () => {
   test("the wake notice names the sender but never carries the message body", async () => {
     const fixture = await gateway(() => undefined);
     const notices: SentNotice[0][] = [];
+
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1601,6 +1757,7 @@ describe("public adapter transport and notice accounting", () => {
         session.pumpIdle();
       },
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1623,9 +1780,11 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("sessions track pushed link state and notify listeners only on change", async () => {
     const fixture = await gateway(() => undefined);
+
     const ensureGateway = vi
       .fn<EnsureGateway>()
       .mockResolvedValue({ gatewaySha256: "a".repeat(64) });
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1634,24 +1793,29 @@ describe("public adapter transport and notice accounting", () => {
       () => undefined,
       ensureGateway,
     );
+
     cleanups.push(async () => {
       session.close();
     });
     const seen: string[] = [];
+
     const stop = session.onLinkChange((links) => {
       seen.push(links.map((link) => `${link.machineId}:${link.state}`).join(","));
     });
+
     await session.reconnect();
     const register = fixture.requests[0];
     assert(register?.op === "register");
     expect(register).not.toHaveProperty("linkEvents");
     const base = { v: 2, op: "link.state", rid: register.rid, machineId: "beta" } as const;
+
     const down = {
       ...base,
       state: "down",
       since: 1_700_000_000_000,
       nextProbe: 1_700_000_030_000,
     } as const;
+
     fixture.sendFrame(down);
     await vi.waitFor(() => {
       expect(session.linkStates()).toStrictEqual([
@@ -1680,6 +1844,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a link state for another registration closes the connection", async () => {
     const fixture = await gateway(() => undefined);
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1688,6 +1853,7 @@ describe("public adapter transport and notice accounting", () => {
       () => undefined,
       vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64) }),
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1707,6 +1873,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a wait ends as disconnected when the gateway connection drops", async () => {
     const fixture = await gateway(() => undefined);
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1714,6 +1881,7 @@ describe("public adapter transport and notice accounting", () => {
       () => ({ isIdle: () => false, ui: { setStatus: () => undefined } }),
       () => undefined,
     );
+
     cleanups.push(async () => {
       session.close();
     });
@@ -1822,6 +1990,7 @@ describe("public adapter transport and notice accounting", () => {
   test("transport bounds pending slots, aborts waits, discards stale results and fails malformed frames", async () => {
     const fixture = await gateway(() => undefined, true);
     const disconnected: string[] = [];
+
     const connection = await connectTransport({
       socketPath: fixture.config.socketPath,
       deadline: performance.now() + 60_000,
@@ -1834,10 +2003,12 @@ describe("public adapter transport and notice accounting", () => {
       },
       validateReply: () => undefined,
     });
+
     cleanups.push(async () => {
       connection.close();
     });
     const abort = new AbortController();
+
     const pending = Array.from({ length: 8 }, async (_, index) =>
       resultOf(
         connection.request(
@@ -1853,6 +2024,7 @@ describe("public adapter transport and notice accounting", () => {
         ),
       ),
     );
+
     expect(connection.pendingCount()).toBe(8);
     await expect(
       connection.request({ v: 2, op: "close", rid: "a".repeat(32) }, performance.now() + 60_000),
@@ -1873,10 +2045,12 @@ describe("public adapter transport and notice accounting", () => {
       connection.request({ v: 2, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
     ).rejects.toMatchObject({ code: "unavailable" });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+
     try {
       const unanswered = connection
         .request({ v: 2, op: "close", rid: "b".repeat(32) }, performance.now() + 10)
         .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
       await expect
         .poll(() => fixture.requests.some((item) => item.rid === "b".repeat(32)))
         .toBe(true);
@@ -1891,6 +2065,7 @@ describe("public adapter transport and notice accounting", () => {
     } finally {
       vi.useRealTimers();
     }
+
     fixture.sendFrame({
       v: 2,
       op: "result",
@@ -1907,6 +2082,7 @@ describe("public adapter transport and notice accounting", () => {
   test("adapter answers forwarded state and interest requests with forbidden, without wakes", async () => {
     const fixture = await gateway(() => undefined);
     const notices: SentNotice[0][] = [];
+
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1918,6 +2094,7 @@ describe("public adapter transport and notice accounting", () => {
       () => ({ isIdle: () => true, ui: { setStatus: () => undefined } }),
       () => undefined,
     );
+
     cleanups.push(async () => {
       session.close();
     });

@@ -50,7 +50,9 @@ const READ_PACKAGE = { name: "read", arguments: { path: "package.json" } };
 const INVALID_CALL = { name: "pi_call", arguments: {} };
 
 type FallbackEnding = "clean-result" | "clean-eof" | "rejection";
+
 type QueryFailure = "start" | "iterate" | "protocol" | "missing-result";
+
 type WorkingDirectoryFailure = "deleted" | "not-directory" | "cwd-throws";
 
 function unavailableWorkingDirectory(scenario: WorkingDirectoryFailure, cwd: string): () => string {
@@ -60,10 +62,12 @@ function unavailableWorkingDirectory(scenario: WorkingDirectoryFailure, cwd: str
     mkdirSync(cwd);
     rmSync(cwd, { recursive: true });
   }
+
   return () => {
     if (scenario === "cwd-throws") {
       throw Object.assign(new Error(`uv_cwd ENOENT ${cwd}`), { code: "ENOENT" });
     }
+
     return cwd;
   };
 }
@@ -72,6 +76,7 @@ async function* fallbackEnding(ending: FallbackEnding, params: SdkQueryParameter
   if (ending === "clean-result") {
     yield DEFERRED;
   }
+
   if (ending === "rejection") {
     params.options?.abortController?.signal.throwIfAborted();
   }
@@ -82,13 +87,16 @@ function failingQuery(failure: QueryFailure): RunSdkQuery {
     if (failure === "start") {
       throw new Error("private start error");
     }
+
     return (async function* () {
       if (failure === "iterate") {
         throw new Error("private iteration error");
       }
+
       if (failure === "protocol") {
         yield streamEvent({ type: "message_delta", usage: { input_tokens: "private usage" } });
       }
+
       if (failure === "missing-result") {
         yield { type: "system", private: "ignored" };
       }
@@ -125,9 +133,11 @@ function queryWith(toolInputs: readonly unknown[], ...messages: readonly unknown
 function failureOf(events: readonly BridgeEvent[]) {
   expect(events).toHaveLength(1);
   const [event] = events;
+
   if (event?.type !== "failed") {
     throw new Error("test setup: expected one failed event");
   }
+
   return event.error;
 }
 
@@ -154,24 +164,30 @@ async function capturedParameters(
   options: SimpleStreamOptions = {},
 ): Promise<SdkQueryParameters> {
   const captured: SdkQueryParameters[] = [];
+
   const runner = createClaudeAgentSdkRunner({
     claudeExecutable: "/usr/bin/claude",
     sdkEnvironment: { PATH: "/bin" },
     runSdkQuery: (params) => {
       captured.push(params);
+
       return queryWith([])(params);
     },
   });
+
   await drain(runner(request, model, options));
   const [params] = captured;
+
   if (!params) {
     throw new Error("test setup: SDK query was not started");
   }
+
   return params;
 }
 
 async function selectorFor(model: Model<"claude">): Promise<string | undefined> {
   const { options } = await capturedParameters(requestFixture(), model);
+
   return options?.model;
 }
 
@@ -180,6 +196,7 @@ async function effortFor(id: string, reasoning: SimpleStreamOptions["reasoning"]
   const probe = modelFixture({ id, reasoning: entry?.reasoning ?? false });
   const stream = reasoning === undefined ? {} : { reasoning };
   const { options } = await capturedParameters(requestFixture(), probe, stream);
+
   return options && "effort" in options ? options.effort : "omitted";
 }
 
@@ -195,11 +212,13 @@ async function runWithHistory(history: readonly MessageFixture[]): Promise<Bridg
 
 async function observeModels(...messages: readonly unknown[]) {
   const observations: ModelObservation[] = [];
+
   const events = await runTurn(queryWith([], ...messages), requestFixture(), {
     modelObserver: (observation) => {
       observations.push(observation);
     },
   });
+
   return { events, observations };
 }
 
@@ -227,6 +246,7 @@ async function diagnoseQuery(runSdkQuery: RunSdkQuery): Promise<CacheDiagnostic[
       }),
     ),
   });
+
   return diagnostics;
 }
 
@@ -284,6 +304,7 @@ describe("SDK query parameters", () => {
   test("maps Pi reasoning levels to SDK effort, and omits effort for Haiku 4.5 and for unset reasoning", async () => {
     const levels = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
     const efforts = ["low", "low", "medium", "high", "xhigh", "max"];
+
     const reasoningModels = [
       "claude-5.5-sonnet",
       "claude-5.5-opus",
@@ -341,6 +362,7 @@ describe("SDK query parameters", () => {
         modelFixture({ id, reasoning: true }),
         { reasoning: "low" },
       );
+
       expect(options?.thinking).toStrictEqual({ type: "enabled", budgetTokens: 2048 });
       expect(options?.effort).toBeUndefined();
     },
@@ -360,6 +382,7 @@ describe("SDK query parameters", () => {
       { ...modelFixture({ id: "claude-4.5-haiku", reasoning: true }), maxTokens: 32_000 },
       { reasoning: "low", thinkingBudgets: { low: budget } },
     );
+
     expect(options?.thinking).toStrictEqual({ type: "enabled", budgetTokens: expected });
     expect(options?.effort).toBeUndefined();
   });
@@ -370,6 +393,7 @@ describe("SDK query parameters", () => {
       modelFixture({ id: "custom", reasoning: false }),
       { reasoning: "high" },
     );
+
     expect(options?.thinking).toBeUndefined();
     expect(options?.effort).toBeUndefined();
   });
@@ -421,6 +445,7 @@ describe("turn streaming", () => {
 
   test("clears per-call cache splits from cumulative diagnostics and Pi usage when terminal split is absent", async () => {
     const diagnostics: CacheDiagnostic[] = [];
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       runSdkQuery: queryWith(
@@ -455,6 +480,7 @@ describe("turn streaming", () => {
         createCacheDiagnosticTracker((record) => diagnostics.push(record)),
       ),
     });
+
     const events = await drain(
       createAgentSdkStream({
         model: sonnet,
@@ -463,6 +489,7 @@ describe("turn streaming", () => {
         run,
       }),
     );
+
     const terminal = events.at(-1);
     assert(terminal?.type === "error");
     expect(terminal.error.usage).toMatchObject({ input: 30, cacheWrite: 10 });
@@ -509,6 +536,7 @@ describe("turn streaming", () => {
 
   test("does not repeat terminal usage that matches the last streamed totals", async () => {
     const finalUsage = { input_tokens: 8, output_tokens: 3 };
+
     const events = await runTurn(
       queryWith(
         [],
@@ -603,6 +631,7 @@ describe("turn streaming", () => {
 describe("model observation", () => {
   test("reports the first main-loop model and its limits from a completed turn", async () => {
     const usage = { input_tokens: 1, output_tokens: 1 };
+
     const { events, observations } = await observeModels(
       streamEvent({ type: "message_start", message: { model: "claude-sonnet-5-5", usage } }),
       { type: "assistant", message: { model: "claude-haiku-4-5-20251001", usage } },
@@ -643,11 +672,13 @@ describe("model observation", () => {
 
 async function observeUsageLimits(...messages: readonly unknown[]) {
   const observations: UsageLimitObservation[] = [];
+
   const events = await runTurn(queryWith([], ...messages), requestFixture(), {
     usageLimitObserver: (observation) => {
       observations.push(observation);
     },
   });
+
   return { events, observations };
 }
 
@@ -668,9 +699,11 @@ async function* usageLimitEnding(
   if (ending === "iterate") {
     throw new Error("private iteration failure");
   }
+
   if (ending === "protocol") {
     yield { type: "result" };
   }
+
   if (ending === "cancelled") {
     controller.abort();
   }
@@ -741,6 +774,7 @@ describe("usage limit observation", () => {
       { type: "assistant", message: { usage: {} }, error: apiError },
       resultMessage({ is_error: true, terminal_reason: terminalReason }),
     );
+
     expect(observations).toHaveLength(Number(notify));
     expect(observations.every(({ resetsAt }) => resetsAt === 1_792_548_000_000)).toBe(true);
   });
@@ -750,6 +784,7 @@ describe("usage limit observation", () => {
     async (ending) => {
       const observations: UsageLimitObservation[] = [];
       const controller = new AbortController();
+
       const events = await runTurn(
         async function* () {
           yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
@@ -763,6 +798,7 @@ describe("usage limit observation", () => {
           },
         },
       );
+
       expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
       expect(observations).toStrictEqual([]);
     },
@@ -788,6 +824,7 @@ describe("usage limit observation", () => {
       rateLimitEvent(info),
       usageLimitResult,
     );
+
     expect(observations).toStrictEqual([]);
   });
 
@@ -799,9 +836,11 @@ describe("usage limit observation", () => {
     async (_name, usageLimitObserver) => {
       let closed = false;
       let signal: AbortSignal | undefined;
+
       const events = await runTurn(
         (params) => {
           signal = params.options?.abortController?.signal;
+
           return (async function* () {
             try {
               yield rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 });
@@ -817,6 +856,7 @@ describe("usage limit observation", () => {
           usageLimitObserver,
         },
       );
+
       expectResultFailure(failureOf(events), { category: "usage-limit" });
       expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
       expect(closed).toBe(true);
@@ -826,10 +866,12 @@ describe("usage limit observation", () => {
 
   test("notifies before yielding the failure and does not retain reset times across queries", async () => {
     const order: string[] = [];
+
     const queries = [
       [rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }), usageLimitResult],
       [usageLimitResult],
     ];
+
     const runner = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       async *runSdkQuery() {
@@ -841,6 +883,7 @@ describe("usage limit observation", () => {
         order.push("notice");
       },
     });
+
     for (let turn = 0; turn < 2; turn += 1) {
       for await (const event of runner(requestFixture(), sonnet)) {
         order.push(event.type);
@@ -856,6 +899,7 @@ describe("deferred tool calls", () => {
     "fails closed and aborts if the SDK executes the MCP fallback (%s)",
     async (ending) => {
       let fallback: (() => Promise<void>) | undefined;
+
       const createMcpServer: typeof createSdkMcpServer = (options) => {
         const server = createSdkMcpServer(options);
         const register = server.instance.registerTool.bind(server.instance);
@@ -873,10 +917,13 @@ describe("deferred tool calls", () => {
               },
             );
           };
+
           return register(name, config, handler);
         };
+
         return server;
       };
+
       const records: CacheDiagnostic[] = [];
       {
         const events = await runTurn(
@@ -895,6 +942,7 @@ describe("deferred tool calls", () => {
             ),
           },
         );
+
         expectResultFailure(failureOf(events), {
           terminalReason: "tool_deferred_unavailable",
           category: "tool-contract",
@@ -909,6 +957,7 @@ describe("deferred tool calls", () => {
 
   test("keeps fallback contract failure ahead of pending correction calls", async () => {
     let fallback: (() => Promise<void>) | undefined;
+
     const events = await runTurn(
       async function* (params) {
         await deliverToolUses(
@@ -938,12 +987,15 @@ describe("deferred tool calls", () => {
                 },
               );
             };
+
             return register(name, config, handler);
           };
+
           return server;
         },
       },
     );
+
     expect(failureOf(events)._tag).toBe("SdkResultError");
   });
 
@@ -1018,6 +1070,7 @@ describe("deferred tool calls", () => {
       yield { type: "system" };
       throw new Error("private failure");
     });
+
     expect(failureOf(events)._tag).toBe("SdkQueryError");
   });
 
@@ -1047,10 +1100,13 @@ describe("turn failures", () => {
     async (scenario) => {
       const root = mkdtempSync(join(tmpdir(), "pi-sdk-cwd-"));
       const cwd = join(root, "private-worktree");
+
       const spy = vi
         .spyOn(process, "cwd")
         .mockImplementation(unavailableWorkingDirectory(scenario, cwd));
+
       const query = vi.fn<RunSdkQuery>(queryWith([], resultMessage()));
+
       try {
         const error = failureOf(await runTurn(query));
         expect(query).not.toHaveBeenCalled();
@@ -1121,6 +1177,7 @@ describe("turn failures", () => {
       message: { model: "claude-sonnet", usage: { input_tokens: 1, output_tokens: 0 } },
       error: "authentication_failed",
     };
+
     const failedResult = resultMessage({
       is_error: true,
       stop_reason: null,
@@ -1153,6 +1210,7 @@ describe("turn failures", () => {
         resultMessage({ is_error: true }),
       ),
     );
+
     const terminal = events.at(-1);
     assert(terminal?.type === "failed");
     expect(terminal.error.message).toContain("could not verify your account");
@@ -1203,6 +1261,7 @@ describe("SDK query cancellation", () => {
     const events = await runTurn(
       (params) => {
         queryStarted = true;
+
         return queryWith([])(params);
       },
       requestFixture(),
@@ -1215,6 +1274,7 @@ describe("SDK query cancellation", () => {
 
   test("reports caller cancellation when the SDK returns a clean result after being aborted", async () => {
     const controller = new AbortController();
+
     const events = await runTurn(
       async function* fakeQuery() {
         controller.abort("cancelled before terminal result");
@@ -1233,6 +1293,7 @@ describe("SDK query cancellation", () => {
 
   test("reports cancellation, not a missing result, on clean aborted EOF", async () => {
     const controller = new AbortController();
+
     const events = await runTurn(
       async function* fakeQuery() {
         controller.abort("private reason");
@@ -1241,6 +1302,7 @@ describe("SDK query cancellation", () => {
       requestFixture(),
       { signal: controller.signal },
     );
+
     expectQueryFailure(
       failureOf(events.slice(1)),
       "iterate",
@@ -1250,6 +1312,7 @@ describe("SDK query cancellation", () => {
 
   test("keeps an explicit failed terminal result ahead of caller cancellation", async () => {
     const controller = new AbortController();
+
     const events = await runTurn(
       async function* fakeQuery() {
         controller.abort("private reason");
@@ -1258,11 +1321,13 @@ describe("SDK query cancellation", () => {
       requestFixture(),
       { signal: controller.signal },
     );
+
     expectResultFailure(failureOf(events), { category: "usage-limit" });
   });
 
   test("keeps cancellation ahead of pending correction calls", async () => {
     const controller = new AbortController();
+
     const events = await runTurn(
       async function* fakeQuery(params) {
         await deliverToolUses(
@@ -1281,10 +1346,13 @@ describe("SDK query cancellation", () => {
 
   test("forwards cancellation during iteration and ends Pi with one aborted event", async () => {
     let markTextYielded: (() => void) | undefined;
+
     const textYielded = new Promise<void>((resolve) => {
       markTextYielded = resolve;
     });
+
     let sdkSignal: AbortSignal | undefined;
+
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
       runSdkQuery: async function* runSdkQuery(params) {
@@ -1297,15 +1365,19 @@ describe("SDK query cancellation", () => {
         signal.throwIfAborted();
       },
     });
+
     const controller = new AbortController();
+
     const context = contextFixture({
       systemPrompt: "Be concise.",
       messages: [{ role: "user", content: "Hello" }],
       tools: [],
     });
+
     const eventsPromise = drain(
       createAgentSdkStream({ model: sonnet, context, options: { signal: controller.signal }, run }),
     );
+
     await textYielded;
     const cancellationReason = new Error("cancelled by test");
 
@@ -1400,6 +1472,7 @@ describe("cache diagnostics", () => {
         },
       });
     });
+
     expect(diagnostics.at(-1)).toMatchObject({
       type: "usage",
       input: 20,
@@ -1441,6 +1514,7 @@ describe("cache diagnostics", () => {
       yield usage;
       throw new Error("private iteration error");
     });
+
     expect(diagnostics.at(-1)).toMatchObject({
       type: "usage",
       input: 5,
@@ -1465,6 +1539,7 @@ describe("cache diagnostics", () => {
         usage: { input_tokens: 12 },
       }),
     );
+
     expect(diagnostics.at(-1)).toMatchObject({
       type: "usage",
       input: 12,
@@ -1522,6 +1597,7 @@ describe("prompt cache settings", () => {
         promptBlocks: [textBlock("a"), textBlock("b")],
         cacheBreakpoints: [0, 1],
       });
+
       const { prompt } = await capturedParameters(request, sonnet, retention);
 
       const [message] = await drain(sdkPromptFixture(prompt));
@@ -1553,6 +1629,7 @@ function failedOf(events: readonly BridgeEvent[]) {
   expect(failed).toHaveLength(1);
   const [event] = failed;
   assert(event?.type === "failed");
+
   return event.error;
 }
 
@@ -1564,6 +1641,7 @@ describe("rate-limit classification", () => {
       rateLimitError,
       resultMessage({ is_error: true }),
     );
+
     const error = failedOf(events);
     assert(Predicate.isTagged("SdkResultError")(error));
     expect(error).toMatchObject({ apiError: "rate_limit" });
@@ -1578,6 +1656,7 @@ describe("rate-limit classification", () => {
       rateLimitError,
       resultMessage({ is_error: true }),
     );
+
     const error = failedOf(events);
     assert(Predicate.isTagged("SdkResultError")(error));
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
@@ -1590,6 +1669,7 @@ describe("rate-limit classification", () => {
       rateLimitError,
       resultMessage({ is_error: true }),
     );
+
     expect(failedOf(events)).toMatchObject({ category: "usage-limit" });
     expect(observations).toStrictEqual([]);
   });
@@ -1600,6 +1680,7 @@ describe("rate-limit classification", () => {
       rateLimitError,
       resultMessage({ is_error: true }),
     );
+
     const error = failedOf(events);
     assert(Predicate.isTagged("SdkResultError")(error));
     expect(error).toMatchObject({ category: "usage-limit", apiError: "rate_limit" });

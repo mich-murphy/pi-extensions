@@ -4,5 +4,6 @@ export function timeoutOverTenfold(timeoutMs: number, slowestObservedMs: number)
       `timeout ${timeoutMs} ms is under ten times the slowest observed run of ${slowestObservedMs} ms`,
     );
   }
+
   return timeoutMs;
 }

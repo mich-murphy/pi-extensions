@@ -24,7 +24,9 @@ import type { AuthStorageData } from "./native-auth-fixture";
 
 const cleanup: (() => Promise<void>)[] = [];
 const pageUrl = "https://example.com/page";
+
 type SearchRequest = { query: string; provider?: SearchProviderName };
+
 const searchPayload = (text: string) => ({
   results: [{ title: text, url: pageUrl, text, excerpts: [text] }],
   web: { results: [{ title: text, url: pageUrl, description: text }] },
@@ -44,20 +46,24 @@ async function tools(
   const native = await nativeAuthFixture(options.initial ? { initial: options.initial } : {});
   const settings = settingsFrom(options.settings);
   const requests: ProviderHttpRequest[] = [];
+
   const calls: {
     endpoint: string;
     name: string;
     args: Parameters<McpClient["callTool"]>[1];
     secrets: readonly string[];
   }[] = [];
+
   const respond = (request: ProviderHttpRequest) =>
     Effect.suspend(() => {
       requests.push(request);
+
       return (
         options.http?.(request) ??
         Effect.succeed({ bodyText: JSON.stringify(searchPayload("answer")) })
       );
     });
+
   const ports = Layer.mergeAll(
     WebToolsConfig.layer(settings),
     Layer.succeed(
@@ -71,6 +77,7 @@ async function tools(
           callTool: (name, args, secrets = []) =>
             Effect.suspend(() => {
               calls.push({ endpoint, name, args, secrets });
+
               return (
                 options.mcp?.(name, args) ??
                 Effect.succeed({
@@ -89,6 +96,7 @@ async function tools(
       }),
     ),
   );
+
   const runtime = createToolRuntime(
     Layer.mergeAll(
       Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(Layer.provide(ports)),
@@ -115,7 +123,9 @@ async function tools(
       ),
     ),
   );
+
   cleanup.push(async () => runtime.dispose());
+
   const composition = {
     settings,
     runtime,
@@ -123,25 +133,33 @@ async function tools(
     credentialsForContext: (ctx: { modelRegistry: typeof native.registry }) =>
       native.authentication.resolverFor(ctx.modelRegistry),
   };
+
   const search = createWebSearchTool(composition);
   const fetch = createWebFetchTool(composition);
   const context = { modelRegistry: native.registry };
+
   const login = async (provider: keyof typeof WEB_AUTH_PROVIDERS, key: string) =>
     native.runtime.login(WEB_AUTH_PROVIDERS[provider].id, "api_key", {
       prompt: async () => key,
       notify: () => undefined,
     });
+
   const logout = async (provider: keyof typeof WEB_AUTH_PROVIDERS) =>
     native.runtime.logout(WEB_AUTH_PROVIDERS[provider].id);
+
   const runSearch = async (provider?: SearchProviderName) => {
     const params: SearchRequest = { query: "query" };
+
     if (provider) {
       params.provider = provider;
     }
+
     return search.execute("search", params, undefined, undefined, context);
   };
+
   const runFetch = async () =>
     fetch.execute("fetch", { url: pageUrl }, undefined, undefined, context);
+
   return {
     ...native,
     runtime,
@@ -166,6 +184,7 @@ describe("native-auth integration", () => {
     for (const variable of ["EXA_API_KEY", "PARALLEL_API_KEY", "BRAVE_API_KEY"]) {
       vi.stubEnv(variable, "");
     }
+
     clearApiKeyCache();
   });
   afterEach(async () => {
@@ -179,10 +198,12 @@ describe("native-auth integration", () => {
       const absent = await tools({ settings: { PI_WEB_PROVIDERS: "brave" } });
       await expect(absent.runSearch("brave")).rejects.toThrow("credential unavailable");
       expect(absent.requests).toHaveLength(0);
+
       const t = await tools({
         initial: { "pi-web-brave": { type: "api_key", key: "stored-brave" } },
         mcp: () => Effect.fail(new ProviderProtocolInvalid({ reason: "synthetic unavailable" })),
       });
+
       const result = await t.runSearch();
       expect(result.details.attemptedProviders).toStrictEqual(["exa", "parallel", "brave"]);
       expect(result.details.provider).toBe("brave");
@@ -194,14 +215,17 @@ describe("native-auth integration", () => {
       vi.stubEnv("PARALLEL_API_KEY", "ambient-parallel");
       vi.stubEnv("BRAVE_API_KEY", "ambient-brave");
       const t = await tools();
+
       for (const provider of ["exa", "parallel", "brave"] as const) {
         await t.runSearch(provider);
       }
+
       expect(t.requests.map((request) => request.headers)).toStrictEqual([
         expect.objectContaining({ "x-api-key": "ambient-exa" }),
         expect.objectContaining({ "x-api-key": "ambient-parallel" }),
         expect.objectContaining({ "x-subscription-token": "ambient-brave" }),
       ]);
+
       for (const provider of ["exa", "parallel", "brave"] as const) {
         await t.login(provider, `stored-${provider}`);
         await t.runSearch(provider);
@@ -214,6 +238,7 @@ describe("native-auth integration", () => {
         assert(ambientRequest !== undefined);
         expect(Object.values(ambientRequest.headers)).toContain(`ambient-${provider}`);
       }
+
       expect(t.calls).toHaveLength(0);
     });
 
@@ -243,9 +268,11 @@ describe("native-auth integration", () => {
       "$provider command failure $key never downgrades to MCP or ambient credentials",
       async ({ provider, key }) => {
         vi.stubEnv(WEB_AUTH_PROVIDERS[provider].env, "ambient-not-a-fallback");
+
         const t = await tools({
           initial: { [WEB_AUTH_PROVIDERS[provider].id]: { type: "api_key", key } },
         });
+
         await expect(t.runSearch(provider)).rejects.toThrow("credential");
         expect(t.calls).toHaveLength(0);
         expect(t.requests).toHaveLength(0);
@@ -264,6 +291,7 @@ describe("native-auth integration", () => {
           "pi-web-brave": { type: "api_key", key: "!exit 7" },
         },
       });
+
       const read = vi.spyOn(t.registry, "getProviderAuth");
       await t.runSearch("exa");
       await t.runSearch("parallel");
@@ -286,6 +314,7 @@ describe("native-auth integration", () => {
             }),
           }),
       });
+
       await t.login("exa", "rescue-exa");
       expect(textOf(await t.runFetch())).toContain("rescued contents");
       expect(t.requests[0]?.url).toBe("https://api.exa.ai/contents");
@@ -335,26 +364,32 @@ describe("native-auth integration", () => {
       },
     ])("rotation with reversed completion when $name", async ({ cancel, expected }) => {
       const arrivals = [deferred<undefined>(), deferred<undefined>()] as const;
+
       const responses = [
         deferred<ProviderHttpResponse>(),
         deferred<ProviderHttpResponse>(),
       ] as const;
+
       let index = 0;
+
       const t = await tools({
         http: () => {
           const current = index++;
           arrivals[current]?.resolve(undefined);
           const response = responses[current];
           assert(response !== undefined);
+
           return Effect.tryPromise({
             try: async () => response.promise,
             catch: () => new ProviderProtocolInvalid({ reason: "synthetic failure" }),
           });
         },
       });
+
       await t.login("exa", "old-synthetic-key");
       const updates: unknown[] = [];
       const controller = new AbortController();
+
       const old = t.search.execute(
         "old",
         { query: "old-synthetic-key", provider: "exa" },
@@ -364,9 +399,11 @@ describe("native-auth integration", () => {
         },
         t.context,
       );
+
       const oldOutcome = old.then((result) => result.details.query, errorMessage);
       await arrivals[0].promise;
       await t.login("exa", "new-synthetic-key");
+
       const newer = t.search.execute(
         "new",
         { query: "new-synthetic-key", provider: "exa" },
@@ -376,6 +413,7 @@ describe("native-auth integration", () => {
         },
         t.context,
       );
+
       await arrivals[1].promise;
       cancel(controller);
       responses[1].resolve({ bodyText: JSON.stringify(searchPayload("new-synthetic-key")) });
@@ -394,6 +432,7 @@ describe("native-auth integration", () => {
 
     test("reflected credentials are redacted from fetch details, progress, content and spill files", async () => {
       const secret = "spill-synthetic-key";
+
       const t = await tools({
         settings: { PI_WEB_PROVIDERS: "exa" },
         http: () =>
@@ -403,8 +442,10 @@ describe("native-auth integration", () => {
             }),
           }),
       });
+
       await t.login("exa", secret);
       const updates: unknown[] = [];
+
       const result = await t.fetch.execute(
         "spill",
         { url: pageUrl },
@@ -414,6 +455,7 @@ describe("native-auth integration", () => {
         },
         t.context,
       );
+
       expect(JSON.stringify({ result, updates })).not.toContain(secret);
       expect(result.details.truncated).toBe(true);
       const path = result.details.fullOutputPath;
@@ -431,10 +473,13 @@ describe("native-auth integration", () => {
             new ProviderToolError({ detail: `reflected ${request.headers["x-api-key"]}` }),
           ),
       });
+
       await t.login("exa", "error-synthetic-key");
+
       const failure = await t
         .runSearch("exa")
         .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
       assert(failure instanceof Error);
       expect(failure.message).toContain("reported an error: reflected [redacted]");
       expectNoLeak(failure, "error-synthetic-key");
@@ -452,12 +497,15 @@ describe("native-auth integration", () => {
 
     test("session disposal interrupts in-flight provider I/O and rejects late tool calls", async () => {
       const entered = deferred<undefined>();
+
       const t = await tools({
         http: () => {
           entered.resolve(undefined);
+
           return Effect.never;
         },
       });
+
       await t.login("exa", "dispose-key");
       const pending = t.runSearch("exa");
       const outcome = pending.catch(errorMessage);

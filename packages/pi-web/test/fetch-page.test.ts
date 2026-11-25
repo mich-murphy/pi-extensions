@@ -5,6 +5,7 @@ import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse, fetchPageWith } from "./fakes";
 
 const URL = "https://example.com/page";
+
 const OPTIONS = {
   maxRedirects: 5,
   maxResponseBytes: 1024 * 1024,
@@ -22,7 +23,9 @@ describe("fetchPage", () => {
           ),
         ),
       );
+
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS),
       );
@@ -47,6 +50,7 @@ describe("fetchPage", () => {
   it.effect("returns raster images inline", () =>
     Effect.gen(function* () {
       const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
       const { client } = fakePublicWeb(
         Result.succeed({
           requestedUrl: publicUrl(URL),
@@ -56,7 +60,9 @@ describe("fetchPage", () => {
           body: png,
         }),
       );
+
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS),
       );
@@ -72,7 +78,9 @@ describe("fetchPage", () => {
       const { client } = fakePublicWeb(
         Result.succeed(textWebResponse(String.raw`PK\u0003\u0004`, "application/zip")),
       );
+
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS),
       );
@@ -87,6 +95,7 @@ describe("fetchPage", () => {
     Effect.gen(function* () {
       const { client } = fakePublicWeb(Result.succeed(textWebResponse("?", "")));
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS),
       );
@@ -105,7 +114,9 @@ describe("fetchPage", () => {
       const { client } = fakePublicWeb(
         Result.succeed(textWebResponse("plain words", "text/plain")),
       );
+
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
@@ -128,9 +139,11 @@ describe("fetchPage oversized pages", () => {
       const { client, requests } = fakePublicWeb(
         Result.succeed(partial(Buffer.from("plain words"), "text/plain")),
       );
+
       const result = yield* Effect.result(
         fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
+
       assert(Result.isSuccess(result));
       expect(requests[0]?.allowPartialText).toBe(true);
       expect(result.success.meta.responseTruncated).toBe(true);
@@ -141,9 +154,11 @@ describe("fetchPage oversized pages", () => {
     Effect.gen(function* () {
       const cut = Buffer.from("abé").subarray(0, 3);
       const { client } = fakePublicWeb(Result.succeed(partial(cut, "text/plain; charset=utf-8")));
+
       const result = yield* Effect.result(
         fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
+
       assert(Result.isSuccess(result));
       assert(FetchPageBody.$is("Text")(result.success.body));
       expect(result.success.body.text).toBe("ab");
@@ -158,9 +173,11 @@ describe("fetchPage oversized pages", () => {
           body: Buffer.from([0x61, 0xc3]),
         }),
       );
+
       const result = yield* Effect.result(
         fetchPageWith(client).fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );
+
       assert(Result.isSuccess(result));
       assert(FetchPageBody.$is("Text")(result.success.body));
       expect(result.success.body.text).toBe("a\uFFFD");
@@ -173,6 +190,7 @@ describe("fetchPage conversion failures", () => {
     Effect.gen(function* () {
       const { client } = fakePublicWeb(Result.succeed(textWebResponse("   <!-- nothing -->  ")));
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "markdown" }, OPTIONS),
       );
@@ -187,6 +205,7 @@ describe("fetchPage conversion failures", () => {
       const deep = `${"<div>".repeat(5000)}x${"</div>".repeat(5000)}`;
       const { client } = fakePublicWeb(Result.succeed(textWebResponse(deep)));
       const page = fetchPageWith(client);
+
       const result = yield* Effect.result(
         page.fetch({ url: publicUrl(URL), format: "text" }, OPTIONS),
       );

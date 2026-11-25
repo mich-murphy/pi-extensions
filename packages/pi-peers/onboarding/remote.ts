@@ -25,6 +25,7 @@ export type RemoteIntent = {
     floorMode: "new" | "existing";
   };
 };
+
 const MACHINE = /^[a-z][a-z0-9-]{0,31}$/u;
 const ADDRESS = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u;
 
@@ -33,9 +34,11 @@ export function machineError(value: string): string | undefined {
     ? undefined
     : "Use lowercase letters, digits and dashes, starting with a letter (at most 32).";
 }
+
 export function addressError(value: string): string | undefined {
   const match = ADDRESS.exec(value);
   const port = Number(match?.groups?.port);
+
   return match !== null &&
     isIP(match.groups?.ipv6 ?? match.groups?.ipv4 ?? "") !== 0 &&
     port >= 1 &&
@@ -43,11 +46,13 @@ export function addressError(value: string): string | undefined {
     ? undefined
     : "Use an IP address and port, like 192.168.1.20:7443 or [fe80::1]:7443.";
 }
+
 export function sha256Error(value: string): string | undefined {
   return /^[a-f0-9]{64}$/u.test(value)
     ? undefined
     : "Use the full SHA256: 64 lowercase hex characters.";
 }
+
 export function pathError(value: string): string | undefined {
   return isAbsolute(value) ? undefined : "Use an absolute path, starting with /.";
 }
@@ -60,26 +65,35 @@ const validOfferNames = Schema.is(
 );
 
 export type OfferPreview = { readonly peerMachineId: string; readonly localMachineId: string };
+
 export async function readOffer(path: string): Promise<OfferPreview | string> {
   const invalid = pathError(path);
+
   if (invalid !== undefined) {
     return invalid;
   }
+
   let offer: Schema.JsonObject;
+
   try {
     const bytes = await regularBytes(path, true);
+
     if (bytes === undefined) {
       return "No file at that path.";
     }
+
     offer = decodeRecord(parseJson(bytes));
   } catch {
     return "That file could not be read as a public offer.";
   }
+
   if (!validOfferNames(offer)) {
     return "That offer has invalid machine names.";
   }
+
   return { peerMachineId: offer.machineId, localMachineId: offer.peerMachineId };
 }
+
 export function remoteReview(intent: RemoteIntent, directory: string): string {
   return [
     `Remote: ${intent.kind}; one exact peer ${intent.peerMachineId}; ${intent.endpoint.mode} ${intent.endpoint.address}.`,
@@ -91,6 +105,7 @@ export function remoteReview(intent: RemoteIntent, directory: string): string {
     "Local connected does not mean remote linked. New pairs may remain pending public exchange; no handshake/readiness claim is made from config alone.",
   ].join("\n");
 }
+
 function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
   if (intent.peerMachineId === plan.adapter.machineId) {
     throw new Refusal(
@@ -98,11 +113,13 @@ function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
       "Give one of them a different machine name",
     );
   }
+
   const grant = {
     machineId: intent.peerMachineId,
     scopeId: plan.choices.scopeId,
     permissions: [...plan.choices.permissions],
   };
+
   return {
     ...plan,
     adapter: {
@@ -126,14 +143,17 @@ function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
     },
   };
 }
+
 export function keptPair(
   plan: LocalPlan,
   intent: RemoteIntent,
   remote: LocalPlan["gateway"]["remote"],
 ): LocalPlan {
   const granted = grantedPlan(plan, intent);
+
   return remote === undefined ? granted : { ...granted, gateway: { ...granted.gateway, remote } };
 }
+
 export function configured(
   plan: LocalPlan,
   intent: RemoteIntent,
@@ -148,7 +168,9 @@ export function configured(
       "Check the certificate files, then try again",
     );
   }
+
   const granted = grantedPlan(plan, intent);
+
   return {
     ...granted,
     gateway: {
@@ -166,6 +188,7 @@ export function configured(
     },
   };
 }
+
 export async function prepareRemote(
   executable: string,
   directory: string,
@@ -176,6 +199,7 @@ export async function prepareRemote(
   const runtimeDir = join(directory, "pair");
   let material: Credentials | undefined;
   let output: Schema.JsonObject = {};
+
   if (intent.kind === "create") {
     output = await pairAction(executable, directory, "create", {
       issuerDir: join(directory, "issuer"),
@@ -199,9 +223,11 @@ export async function prepareRemote(
       confirmedRootSha256: intent.confirmedRootSha256,
     });
   }
+
   const inspection = await pairAction(executable, directory, "inspect", {
     runtimeDir,
   });
+
   await createPrivate(
     join(directory, "pairing.json"),
     JSON.stringify({
@@ -213,6 +239,7 @@ export async function prepareRemote(
       inspection,
     }),
   );
+
   return material === undefined
     ? grantedPlan(
         {

@@ -22,6 +22,7 @@ export async function saveOwnedPlan(
     const adapter = await regularBytes(paths.adapter);
     const gateway = await regularBytes(paths.gateway);
     const pairing = await regularBytes(join(paths.directory, "pairing.json"));
+
     if (
       metadata === undefined ||
       adapter === undefined ||
@@ -32,12 +33,16 @@ export async function saveOwnedPlan(
     ) {
       throw SETTINGS_CHANGED();
     }
+
     const current = decodeManaged(parseJson(metadata));
+
     if (!sameManaged(current, previous)) {
       throw SETTINGS_CHANGED();
     }
+
     const nextAdapter = `${JSON.stringify(plan.adapter, null, 2)}\n`;
     const nextGateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;
+
     if (
       !allowAdapterChange &&
       !isDeepStrictEqual(decodeConfiguration(parseJson(adapter)), plan.adapter)
@@ -46,10 +51,13 @@ export async function saveOwnedPlan(
         "This change would also change this Pi's peer permissions, so nothing was saved.",
       );
     }
+
     const next = { ...previous };
+
     if (pairingContent !== undefined) {
       next.pairingSha256 = digest(pairingContent);
     }
+
     next.adapterSha256 = digest(nextAdapter);
     next.gatewaySha256 = digest(nextGateway);
     await createPrivate(
@@ -61,6 +69,7 @@ export async function saveOwnedPlan(
         previousGatewaySha256: previous.gatewaySha256,
       }),
     );
+
     if (pairingContent !== undefined) {
       if (previous.pairingSha256 === undefined) {
         await createPrivate(join(paths.directory, "pairing.json"), pairingContent);
@@ -72,6 +81,7 @@ export async function saveOwnedPlan(
         );
       }
     }
+
     await replaceOwned(paths.gateway, previous.gatewaySha256, nextGateway);
     await replaceOwned(paths.adapter, previous.adapterSha256, nextAdapter);
     await replaceOwned(paths.metadata, digest(metadata), `${JSON.stringify(next, null, 2)}\n`);
@@ -90,5 +100,6 @@ function sameManaged(current: ManagedSetup, previous: ManagedSetup): boolean {
     "gatewayPath",
     "socketPath",
   ] as const;
+
   return fields.every((field) => current[field] === previous[field]);
 }

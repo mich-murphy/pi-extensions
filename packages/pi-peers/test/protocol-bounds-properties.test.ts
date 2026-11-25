@@ -30,9 +30,11 @@ const edge = gs.integers({ minValue: -3, maxValue: 3 });
 function accepts(run: () => void): boolean {
   try {
     run();
+
     return true;
   } catch (error) {
     assert.ok(error instanceof ProtocolError, `non-ProtocolError thrown: ${String(error)}`);
+
     return false;
   }
 }
@@ -41,6 +43,7 @@ function withPrefix(body: Uint8Array): Uint8Array {
   const bytes = new Uint8Array(body.length + 4);
   new DataView(bytes.buffer).setUint32(0, body.length, false);
   bytes.set(body, 4);
+
   return bytes;
 }
 
@@ -122,6 +125,7 @@ function upsertWithDescriptorBytes(size: number) {
   const base = Buffer.byteLength(JSON.stringify(make("s")), "utf8");
   const descriptor = make("s".repeat(1 + size - base));
   assert.equal(Buffer.byteLength(JSON.stringify(descriptor), "utf8"), size);
+
   return { v: 2, rid, op: "roster.event", event: { tag: "upsert", peer: descriptor } };
 }
 
@@ -140,11 +144,13 @@ function paddedBody(size: number): Uint8Array {
 function prefixOf(length: number): Uint8Array {
   const prefix = new Uint8Array(4);
   new DataView(prefix.buffer).setUint32(0, length, false);
+
   return prefix;
 }
 
 function oncePerKey(): (key: string, check: () => void) => void {
   const seen = new Set<string>();
+
   return (key, check) => {
     if (!seen.has(key)) {
       seen.add(key);

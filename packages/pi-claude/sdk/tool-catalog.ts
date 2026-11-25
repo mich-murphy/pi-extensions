@@ -33,6 +33,7 @@ function schemaObject(value: Schema.Json): Schema.JsonObject {
   if (isJsonArray(value) || !Schema.is(Schema.ObjectKeyword)(value)) {
     throw new SdkToolContractError({ reason: "schema" });
   }
+
   return value;
 }
 
@@ -49,18 +50,23 @@ function schemaChildren(key: string, value: Schema.Json): readonly Schema.Json[]
     case "properties": {
       return schemaEntries(schemaObject(value)).map(([, child]) => child);
     }
+
     case "items": {
       return [value];
     }
+
     case "additionalProperties": {
       return Schema.is(Schema.Boolean)(value) ? [] : [value];
     }
+
     case "anyOf": {
       if (!isJsonArray(value)) {
         throw new SdkToolContractError({ reason: "schema" });
       }
+
       return value;
     }
+
     default: {
       return [];
     }
@@ -72,6 +78,7 @@ function assertSupported(schema: Schema.JsonObject): void {
     if (!keywords.has(key)) {
       throw new SdkToolContractError({ reason: "schema" });
     }
+
     for (const child of schemaChildren(key, value)) {
       assertSupported(schemaObject(child));
     }
@@ -94,24 +101,30 @@ function normalizeSchema(record: Schema.JsonObject): Schema.JsonObject {
             ),
           ];
         }
+
         if (key === "anyOf" && isJsonArray(child)) {
           return [key, child.map((schema) => normalizeSchema(schemaObject(schema)))];
         }
+
         if (
           key === "items" ||
           (key === "additionalProperties" && Schema.is(Schema.ObjectKeyword)(child))
         ) {
           return [key, normalizeSchema(schemaObject(child))];
         }
+
         return [key, child];
       }),
   );
+
   if (normalized.type === "object" && !("additionalProperties" in normalized)) {
     normalized.additionalProperties = {};
   }
+
   if (normalized.additionalProperties === true) {
     normalized.additionalProperties = {};
   }
+
   if (
     normalized.type !== undefined &&
     isJsonArray(normalized.type) &&
@@ -120,13 +133,16 @@ function normalizeSchema(record: Schema.JsonObject): Schema.JsonObject {
     normalized.anyOf = normalized.type.map((type) => normalizeSchema({ type }));
     delete normalized.type;
   }
+
   if (normalized.type === "integer") {
     if (normalized.multipleOf !== undefined && normalized.multipleOf !== 1) {
       throw new SdkToolContractError({ reason: "schema" });
     }
+
     normalized.type = "number";
     normalized.multipleOf = 1;
   }
+
   return normalized;
 }
 
@@ -134,9 +150,11 @@ function sortJson(input: Schema.Json): Schema.Json {
   if (isJsonArray(input)) {
     return input.map((child) => sortJson(child));
   }
+
   if (!Schema.is(Schema.ObjectKeyword)(input)) {
     return input;
   }
+
   return Object.fromEntries(
     Object.entries(input)
       .toSorted(([left], [right]) => left.localeCompare(right))
@@ -170,19 +188,25 @@ export function sdkToolName(piName: string): string {
 
 export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool[] {
   const seen = new Set<string>();
+
   return tools.map((declaration) => {
     const name = declaration.name;
     const mcpName = mcpToolName(name);
+
     if (name.length === 0 || seen.has(mcpName)) {
       throw new SdkToolContractError({ reason: "naming" });
     }
+
     seen.add(mcpName);
+
     try {
       const source = readSchemaObject(structuredClone(declaration.parameters));
       assertSupported(source);
+
       const schema = z.fromJSONSchema(
         z.record(z.string(), z.json()).parse(normalizeSchema(source)),
       );
+
       if (
         !(schema instanceof z.ZodObject) ||
         canonical(source) !==
@@ -190,6 +214,7 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
       ) {
         throw new SdkToolContractError({ reason: "schema" });
       }
+
       return { declaration, mcpName, sdkName: sdkToolName(name), schema };
     } catch {
       if (!reportedDegraded.has(name)) {
@@ -198,6 +223,7 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
           `[claude-tool-schema] unsupported schema, using permissive: ${JSON.stringify(name)}\n`,
         );
       }
+
       return {
         declaration,
         mcpName,

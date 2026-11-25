@@ -19,6 +19,7 @@ type View = {
   readonly text: string;
   readonly lineCount: number;
 };
+
 type Guard = (view: View) => boolean;
 
 type Action = { readonly input: string; readonly when: Guard; readonly repeats: boolean };
@@ -53,6 +54,7 @@ const ACTIONS = {
   undo: once("\u001F"),
   clamp: once("\u001B[D", (view) => view.col > 0 && !inLine(view)),
 } satisfies Record<string, Action>;
+
 type ActionName = keyof typeof ACTIONS;
 
 const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
@@ -66,12 +68,15 @@ const insert = (...steps: readonly ActionName[]): Command => ({
   mode: "insert",
   steps: () => steps,
 });
+
 const normal = (...steps: readonly ActionName[]): Command => ({
   mode: "normal",
   steps: () => steps,
 });
+
 const innerWord: Command["steps"] = (view) =>
   onBlank(view) ? [] : ["wordRight", "wordLeft", "deleteWord"];
+
 const wholeLine: Command["steps"] = (view) => [
   "lineStart",
   "deleteToLineEnd",
@@ -122,6 +127,7 @@ function modeLabel(state: VimState): string {
   if (state.mode === "insert") {
     return " INSERT ";
   }
+
   return state.pending === "" ? " NORMAL " : ` NORMAL ${state.pending} `;
 }
 
@@ -129,29 +135,38 @@ const MAX_UNICODE_CODE_POINT = 1_114_111;
 
 function decodeXtermPrintable(data: string): string | undefined {
   const prefix = "\u001B[27;";
+
   if (!data.startsWith(prefix)) {
     return undefined;
   }
+
   const match = /^(?<modifier>1|2);(?<codePoint>[1-9]\d*)~$/u.exec(data.slice(prefix.length));
   const codePoint = Number(match?.groups?.codePoint);
+
   if (!match || !Number.isSafeInteger(codePoint) || codePoint > MAX_UNICODE_CODE_POINT) {
     return undefined;
   }
+
   const text = String.fromCodePoint(codePoint);
+
   return /^\P{C}$/u.test(text) ? text : undefined;
 }
 
 function printableText(data: string): string | undefined {
   const decoded = decodeKittyPrintable(data) ?? decodeXtermPrintable(data);
+
   if (decoded !== undefined) {
     return decoded;
   }
+
   const code = data.codePointAt(0);
+
   return code !== undefined && code >= 0x20 && code !== 0x7f ? data : undefined;
 }
 
 function isOneCodePoint(text: string): boolean {
   const code = text.codePointAt(0);
+
   return code !== undefined && String.fromCodePoint(code).length === text.length;
 }
 
@@ -161,14 +176,18 @@ class VimEditor extends CustomEditor {
   override handleInput(data: string): void {
     if (matchesKey(data, "escape") || matchesKey(data, "ctrl+[")) {
       this.handleEscape(data);
+
       return;
     }
+
     if (this.vimState.mode === "insert") {
       super.handleInput(data);
+
       return;
     }
 
     const text = printableText(data);
+
     if (text !== undefined && isOneCodePoint(text)) {
       this.handleSequence(this.vimState.pending + text);
     } else if (text !== undefined || this.vimState.pending !== "") {
@@ -182,43 +201,54 @@ class VimEditor extends CustomEditor {
     const lines = super.render(width);
     const lastLine = lines.at(-1);
     const label = modeLabel(this.vimState);
+
     if (lastLine === undefined || this.isShowingAutocomplete() || width < label.length) {
       return lines;
     }
 
     lines[lines.length - 1] =
       truncateToWidth(lastLine, width - label.length, "") + this.borderColor(label);
+
     return lines;
   }
 
   private handleEscape(data: string): void {
     if (this.vimState.mode === "normal" && this.vimState.pending === "") {
       super.handleInput(data);
+
       return;
     }
+
     if (this.vimState.mode === "insert") {
       if (this.isShowingAutocomplete()) {
         this.performInput("\u001B");
       }
+
       this.perform("left");
     }
+
     this.vimState = NORMAL;
   }
 
   private handleSequence(sequence: string): void {
     const command = COMMANDS.get(sequence);
+
     if (command === undefined) {
       this.vimState = { mode: "normal", pending: PENDING_SEQUENCES.has(sequence) ? sequence : "" };
+
       return;
     }
 
     for (const step of command.steps(this.view())) {
       this.perform(step);
     }
+
     if (command.mode === "insert") {
       this.vimState = INSERT;
+
       return;
     }
+
     this.vimState = NORMAL;
     this.perform("clamp");
   }
@@ -226,6 +256,7 @@ class VimEditor extends CustomEditor {
   private passToPi(data: string): void {
     const hadText = this.getText().length > 0;
     super.handleInput(data);
+
     if (hadText && this.getText().length === 0) {
       this.vimState = INSERT;
     } else {
@@ -235,12 +266,15 @@ class VimEditor extends CustomEditor {
 
   private perform(name: ActionName): void {
     const { input, when, repeats } = ACTIONS[name];
+
     for (let view = this.view(); when(view);) {
       this.performInput(input);
       const next = this.view();
+
       if (!repeats || (next.line === view.line && next.col === view.col)) {
         return;
       }
+
       view = next;
     }
   }
@@ -248,6 +282,7 @@ class VimEditor extends CustomEditor {
   private performInput(input: string): void {
     const configured = getKeybindings();
     setKeybindings(DEFAULT_KEYBINDINGS);
+
     try {
       Editor.prototype.handleInput.call(this, input);
     } finally {
@@ -258,6 +293,7 @@ class VimEditor extends CustomEditor {
   private view(): View {
     const { line, col } = this.getCursor();
     const lines = this.getLines();
+
     return { line, col, text: lines[line] ?? "", lineCount: lines.length };
   }
 }
@@ -291,6 +327,7 @@ export default function vimMode(pi: VimRegistration): void {
     if (ctx.mode !== "tui" || !enabled) {
       return;
     }
+
     ctx.ui.setEditorComponent(vimEditor);
   });
 
@@ -303,6 +340,7 @@ export default function vimMode(pi: VimRegistration): void {
       enabled: () => enabled,
       apply: (next, ctx) => {
         enabled = next;
+
         if (ctx.mode === "tui") {
           ctx.ui.setEditorComponent(enabled ? vimEditor : undefined);
         }

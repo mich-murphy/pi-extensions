@@ -9,6 +9,7 @@ import { syncDirectory } from "../onboarding/files.js";
 const run = promisify(execFile);
 const repository = path.resolve(import.meta.dirname, "../../..");
 const filesSource = path.resolve(import.meta.dirname, "../onboarding/files.ts");
+
 const childScript = `
 import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url);
@@ -20,10 +21,13 @@ try {
   console.log(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
 }
 `;
+
 const roots: string[] = [];
+
 async function fixtureRoot(): Promise<string> {
   const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "pi-files-test-"));
   roots.push(root);
+
   return root;
 }
 
@@ -53,11 +57,13 @@ describe("syncDirectory", () => {
     const root = await fixtureRoot();
     const fifo = path.join(root, "fifo");
     await run("/usr/bin/mkfifo", ["-m", "600", fifo], { timeout: 5000 });
+
     const { stdout } = await run(
       process.execPath,
       ["--input-type=module", "-e", childScript, filesSource, fifo],
       { cwd: repository, timeout: 15_000, killSignal: "SIGKILL", maxBuffer: 65_536 },
     );
+
     expect(JSON.parse(stdout)).toStrictEqual({ error: "Expected directory" });
     const stat = await fs.lstat(fifo);
     expect(stat.isFIFO()).toBe(true);

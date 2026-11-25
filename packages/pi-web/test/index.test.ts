@@ -32,12 +32,14 @@ describe("webExtension", () => {
     expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();
     await emit("session_start");
     await emit("session_start");
+
     for (const { id } of Object.values(WEB_AUTH_PROVIDERS)) {
       expect(registry.getProvider(id)).toHaveProperty("auth.apiKey.login");
       expect(registry.getModelsOfType("chat", id)).toStrictEqual([]);
       expect(registry.getModelsOfType("image", id)).toStrictEqual([]);
       expect(registry.getModelsOfType("classifier", id)).toStrictEqual([]);
     }
+
     expect(notifications).toStrictEqual([]);
     await emit("session_shutdown");
     expect(registry.getProvider(WEB_AUTH_PROVIDERS.exa.id)).toBeUndefined();

@@ -6,6 +6,7 @@ export type LinkState = {
   readonly since: number;
   readonly nextProbe?: number;
 };
+
 function same(left: LinkState | undefined, right: LinkState): boolean {
   return (
     left !== undefined &&
@@ -14,6 +15,7 @@ function same(left: LinkState | undefined, right: LinkState): boolean {
     left.nextProbe === right.nextProbe
   );
 }
+
 export class LinkTable {
   private readonly entries = new Map<string, LinkState>();
   apply(frame: Omit<LinkFrame, "v" | "op" | "rid">): boolean {
@@ -22,16 +24,20 @@ export class LinkTable {
       state: frame.state,
       since: frame.since,
     };
+
     if (frame.nextProbe !== undefined) {
       next.nextProbe = frame.nextProbe;
     }
+
     const changed = !same(this.entries.get(frame.machineId), next);
     this.entries.set(frame.machineId, next);
+
     return changed;
   }
   clear(): boolean {
     const changed = this.entries.size > 0;
     this.entries.clear();
+
     return changed;
   }
   list(): readonly LinkState[] {
@@ -39,6 +45,7 @@ export class LinkTable {
   }
   down(machineId: string): boolean {
     const known = this.entries.get(machineId);
+
     return known !== undefined && known.state !== "up";
   }
 }

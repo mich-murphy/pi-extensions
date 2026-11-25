@@ -94,12 +94,16 @@ class AssistantMessageWriter {
     switch (event.type) {
       case "text_delta": {
         this.append("text", event.text);
+
         return false;
       }
+
       case "thinking_delta": {
         this.append("thinking", event.text);
+
         return false;
       }
+
       case "usage": {
         const { input, output, cacheRead, cacheWrite, cacheWrite1h } = event.usage;
         const totalTokens = input + output + cacheRead + cacheWrite;
@@ -108,12 +112,16 @@ class AssistantMessageWriter {
           { input, output, cacheRead, cacheWrite, totalTokens },
           cacheWrite1h === undefined ? {} : { cacheWrite1h },
         );
+
         if (cacheWrite1h === undefined) {
           delete this.output.usage.cacheWrite1h;
         }
+
         calculateCost(this.model, this.output.usage);
+
         return false;
       }
+
       case "done": {
         if (event.reason === "stop" && this.endsWithPrintedCall()) {
           this.appendToolCall({
@@ -122,22 +130,31 @@ class AssistantMessageWriter {
             arguments: { error: "printed_tool_call" },
           });
           this.finish("toolUse");
+
           return true;
         }
+
         this.finish(event.reason);
+
         return true;
       }
+
       case "tool_calls": {
         for (const call of event.calls) {
           this.appendToolCall(call);
         }
+
         this.finish("toolUse");
+
         return true;
       }
+
       case "failed": {
         this.fail(event.error);
+
         return true;
       }
+
       default: {
         return absurd(event);
       }
@@ -151,6 +168,7 @@ class AssistantMessageWriter {
           return;
         }
       }
+
       this.fail(new SdkProviderDefect({ reason: "no-terminal-event" }));
     } catch (cause) {
       this.fail(new SdkProviderDefect({ reason: "run-rejected", cause }));
@@ -165,8 +183,10 @@ class AssistantMessageWriter {
     if (this.ended) {
       return;
     }
+
     this.ended = true;
     this.output.stopReason = this.signal?.aborted === true ? "aborted" : "error";
+
     try {
       this.closeOpenBlock();
       this.output.errorMessage = formatSdkRunError(error);
@@ -174,6 +194,7 @@ class AssistantMessageWriter {
     } finally {
       this.stream.end(this.output);
     }
+
     try {
       writeSdkFailureDiagnostic(error);
     } catch {
@@ -183,6 +204,7 @@ class AssistantMessageWriter {
 
   private endsWithPrintedCall(): boolean {
     const last = this.output.content.at(-1);
+
     return last?.type === "text" && endsWithPrintedToolCall(last.text);
   }
 
@@ -201,11 +223,13 @@ class AssistantMessageWriter {
         partial: this.output,
       });
     }
+
     if (this.open.type === "text") {
       this.open.text += delta;
     } else {
       this.open.thinking += delta;
     }
+
     this.stream.push({
       type: `${kind}_delta`,
       contentIndex: this.lastIndex,
@@ -216,9 +240,11 @@ class AssistantMessageWriter {
 
   private closeOpenBlock(): void {
     const block = this.open;
+
     if (!block) {
       return;
     }
+
     this.open = undefined;
     this.stream.push({
       type: `${block.type}_end`,
@@ -240,6 +266,7 @@ class AssistantMessageWriter {
   private finish(reason: "stop" | "length" | "toolUse"): void {
     this.ended = true;
     this.output.stopReason = reason;
+
     try {
       this.closeOpenBlock();
       this.stream.push({ type: "done", reason, message: this.output });
@@ -268,5 +295,6 @@ export function createAgentSdkStream({
     .catch((cause: unknown) => {
       writer.abandon(cause);
     });
+
   return writer.stream;
 }

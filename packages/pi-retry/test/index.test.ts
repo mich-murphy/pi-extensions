@@ -31,12 +31,14 @@ describe("extension factory", () => {
     vi.useFakeTimers({ now: 0 });
     const pi = fakePi();
     piRetry(pi.pi);
+
     const schedule = () => {
       pi.startRun();
       pi.publish(USAGE_LIMIT_CHANNEL, { resetsAt: 2 * CHECK_INTERVAL_MS });
       pi.settle("error", [assistantEntry("a1", "error")]);
       expect(vi.getTimerCount()).toBe(1);
     };
+
     schedule();
     pi.navigateTree();
     expect(vi.getTimerCount()).toBe(0);

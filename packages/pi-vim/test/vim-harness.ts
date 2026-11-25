@@ -12,6 +12,7 @@ import vimMode from "../index";
 import type { VimRegistration } from "../index";
 
 const identity = (text: string): string => text;
+
 export const theme: EditorTheme = {
   borderColor: identity,
   selectList: {
@@ -24,7 +25,9 @@ export const theme: EditorTheme = {
 };
 
 type SessionStartHandler = Parameters<VimRegistration["on"]>[1];
+
 export type VimCommand = Parameters<VimRegistration["registerCommand"]>[1];
+
 export type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditorComponent"]>[0]>;
 
 export type Notice = { readonly message: string; readonly type: string | undefined };
@@ -40,6 +43,7 @@ export type VimSession = {
 export function loadVim(mode: ExtensionContext["mode"]): VimSession {
   let sessionStart: SessionStartHandler | undefined;
   let command: VimCommand | undefined;
+
   const piDouble: VimRegistration = {
     on(event, handler): void {
       if (event === "session_start") {
@@ -52,16 +56,20 @@ export function loadVim(mode: ExtensionContext["mode"]): VimSession {
       }
     },
   };
+
   vimMode(piDouble);
+
   if (!sessionStart) {
     throw new Error("Vim extension did not register session_start");
   }
+
   if (!command) {
     throw new Error("Vim extension did not register /vim");
   }
 
   const editors: (EditorFactory | undefined)[] = [];
   const notices: Notice[] = [];
+
   const contextDouble = {
     mode,
     ui: {
@@ -73,8 +81,10 @@ export function loadVim(mode: ExtensionContext["mode"]): VimSession {
       },
     },
   };
+
   const start = sessionStart;
   const registered = command;
+
   return {
     editors,
     notices,
@@ -89,11 +99,13 @@ export function loadVim(mode: ExtensionContext["mode"]): VimSession {
 export function installedEditorFactory(mode: ExtensionContext["mode"]): EditorFactory | undefined {
   const session = loadVim(mode);
   session.startSession();
+
   return session.editors.at(-1);
 }
 
 export function createEditor(): CustomEditor {
   const editorFactory = installedEditorFactory("tui");
+
   if (!editorFactory) {
     throw new Error("Vim extension did not install an editor factory");
   }
@@ -101,9 +113,11 @@ export function createEditor(): CustomEditor {
   const tuiDouble = testTui();
   const tuiKeybindings = testKeybindings();
   const editor = editorFactory(tuiDouble, theme, tuiKeybindings);
+
   if (!(editor instanceof CustomEditor)) {
     throw new TypeError("Vim factory returned an unsupported editor");
   }
+
   return editor;
 }
 
@@ -119,6 +133,7 @@ const SHIFTED_SYMBOL_BASE_KEYS: ReadonlyMap<string, string> = new Map([["$", "4"
 export function kittyPress(key: string): string {
   const base = SHIFTED_SYMBOL_BASE_KEYS.get(key) ?? key.toLowerCase();
   const code = key.codePointAt(0);
+
   return base === key ? `\u001B[${code}u` : `\u001B[${base.codePointAt(0)}:${code};2u`;
 }
 

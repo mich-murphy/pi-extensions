@@ -25,6 +25,7 @@ export function gateText<T>(gate: Gate<T>): string {
   if (gate.kind === "ready") {
     return "Ready";
   }
+
   return gate.kind === "unchanged" ? "No changes" : `${PREFIX[gate.kind]}: ${gate.reason}`;
 }
 
@@ -60,6 +61,7 @@ export type TextField = {
 
 export function textField(field: TextField): Row {
   const current = field.get();
+
   return {
     id: field.id,
     label: field.label,
@@ -85,9 +87,11 @@ export function validated(
 ): (value: string) => Saved {
   return (value) => {
     const error = validate(value);
+
     if (error === undefined) {
       set(value);
     }
+
     return error === undefined ? undefined : { error };
   };
 }
@@ -106,6 +110,7 @@ export function cycleField<T extends string>(field: CycleField<T>): Row {
     0,
     field.options.findIndex(([value]) => value === field.get()),
   );
+
   return {
     id: field.id,
     label: field.label,
@@ -115,6 +120,7 @@ export function cycleField<T extends string>(field: CycleField<T>): Row {
       kind: "cycle",
       next: () => {
         const next = field.options[(index + 1) % field.options.length];
+
         if (next !== undefined) {
           field.set(next[0]);
         }
@@ -135,15 +141,19 @@ export type ConsentSpec<T> = {
 
 function gateDescription<T>(spec: ConsentSpec<T>): string {
   const { gate } = spec;
+
   if (gate.kind === "ready") {
     return spec.description;
   }
+
   if (gate.kind === "missing") {
     return `Fill in ${gate.reason} above first.`;
   }
+
   if (gate.kind === "blocked") {
     return spec.blockedHelp ?? "This can't run here; the reason is shown.";
   }
+
   return gate.kind === "unchanged"
     ? "Change a setting above first."
     : "Fix the setting shown above first.";
@@ -151,6 +161,7 @@ function gateDescription<T>(spec: ConsentSpec<T>): string {
 
 export function consentRow<T>(spec: ConsentSpec<T>): Row {
   const { gate } = spec;
+
   return {
     id: spec.id ?? "apply",
     label: spec.label,
@@ -173,6 +184,7 @@ export function missingField(
   fields: readonly (readonly [label: string, value: string])[],
 ): Gate<never> | undefined {
   const absent = fields.find(([, value]) => value === "")?.[0];
+
   return absent === undefined ? undefined : { kind: "missing", reason: absent };
 }
 
@@ -187,10 +199,13 @@ export type ActionForm<T> = {
 
 export function actionForm<T>(form: ActionForm<T>): Screen {
   type Heading = Pick<Extract<Screen, { kind: "list" }>, "kind" | "title"> & { note?: string };
+
   const heading: Heading = { kind: "list", title: form.title };
+
   if (form.note !== undefined) {
     heading.note = form.note;
   }
+
   return {
     ...heading,
     rows: () => [

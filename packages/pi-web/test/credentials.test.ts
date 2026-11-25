@@ -10,11 +10,13 @@ const credentialEffect = Effect.gen(function* () {
 describe("credential boundary", () => {
   test("snapshots trim keys, deduplicate requests and leave unrequested providers absent", async () => {
     const calls: string[] = [];
+
     const snapshot = await Effect.runPromise(
       resolveCredentialSnapshot(["exa", "exa", "brave"]).pipe(
         Effect.provide(
           CredentialResolver.layerWith(async (name) => {
             calls.push(name);
+
             return { exa: " \n\t synthetic-key \n\t ", brave: undefined, parallel: undefined }[
               name
             ];
@@ -22,6 +24,7 @@ describe("credential boundary", () => {
         ),
       ),
     );
+
     expect(calls).toStrictEqual(["exa", "brave"]);
     expect(snapshot.secrets).toStrictEqual(["synthetic-key"]);
     expect(snapshot.outcomes.parallel).toStrictEqual(Result.succeed(undefined));
@@ -39,6 +42,7 @@ describe("credential boundary", () => {
           Effect.provide(CredentialResolver.layerWith(async () => key)),
         ),
       );
+
       assert(Result.isFailure(result));
       expect(result.failure.reason).toBe("invalid");
       expect(result.failure.message).toBe(
@@ -54,6 +58,7 @@ describe("credential boundary", () => {
         credentialEffect.pipe(Effect.provide(CredentialResolver.layerWith(async () => undefined))),
       ),
     ).resolves.toBeUndefined();
+
     for (const layer of [
       CredentialResolver.unavailableLayer,
       CredentialResolver.layerWith(async () => {
@@ -68,13 +73,16 @@ describe("credential boundary", () => {
 
   test("captured failure telemetry retains neither rejected values nor raw causes", async () => {
     const messages: string[] = [];
+
     const logger = Logger.make((options) => {
       messages.push(observableText(decodeInspectable(options.message)));
     });
+
     const program = Effect.gen(function* () {
       const result = yield* Effect.result(credentialEffect);
       yield* Effect.logError(result);
     });
+
     await Effect.runPromise(
       program.pipe(
         Effect.provide(
@@ -92,30 +100,37 @@ describe("credential boundary", () => {
 
   test("deadline aborts the promise; interruption stays interruption", async () => {
     let signal: AbortSignal | undefined;
+
     const layer = CredentialResolver.layerWith(async (_, supplied) => {
       signal = supplied;
+
       return Promise.withResolvers<never>().promise;
     }, "10 millis");
+
     const result = await Effect.runPromise(
       Effect.result(credentialEffect).pipe(Effect.provide(layer)),
     );
+
     assert(Result.isFailure(result));
     expect(result.failure.reason).toBe("timeout");
     expect(signal?.aborted).toBe(true);
     const controller = new AbortController();
     const resolverStarted = Promise.withResolvers<undefined>();
+
     const running = Effect.runPromiseExit(
       credentialEffect.pipe(
         Effect.provide(
           CredentialResolver.layerWith(async (_, supplied) => {
             signal = supplied;
             resolverStarted.resolve(undefined);
+
             return Promise.withResolvers<never>().promise;
           }),
         ),
       ),
       { signal: controller.signal },
     );
+
     await resolverStarted.promise;
     controller.abort();
     const exit = await running;

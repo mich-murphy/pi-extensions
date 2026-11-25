@@ -6,6 +6,7 @@ import type { BombadilFixture } from "../../../../test-support/bombadil.ts";
 import { PROMPTS, replyText } from "./scroll-prompts.ts";
 
 const TIMESTAMP = 1_700_000_000_000;
+
 const USAGE = {
   input: 0,
   output: 0,
@@ -17,10 +18,13 @@ const USAGE = {
 
 function sessionLines(cwd: string): string[] {
   const time = new Date(TIMESTAMP).toISOString();
+
   const entries: (SessionHeader | SessionMessageEntry)[] = [
     { type: "session", version: 3, id: "scroll-bombadil", timestamp: time, cwd },
   ];
+
   let parentId: string | null = null;
+
   const message = (
     value: Omit<UserMessage, "timestamp"> | Omit<AssistantMessage, "timestamp">,
   ): void => {
@@ -34,6 +38,7 @@ function sessionLines(cwd: string): string[] {
     });
     parentId = id;
   };
+
   for (const [index, prompt] of PROMPTS.entries()) {
     message({ role: "user", content: prompt });
     message({
@@ -46,6 +51,7 @@ function sessionLines(cwd: string): string[] {
       usage: USAGE,
     });
   }
+
   return entries.map((entry) => JSON.stringify(entry));
 }
 
@@ -63,6 +69,8 @@ const fixture: BombadilFixture = (root) => {
       "tui.altScreen.halfPageDown": "f11",
     }),
   );
+
   return { session, settings: { tuiMode: "fullscreen", fullscreenScrollbar: "hidden" } };
 };
+
 export default fixture;

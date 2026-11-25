@@ -21,6 +21,7 @@ import type {
 
 const settings = propertySettings(200);
 const MODELS = ["claude/sonnet", "claude/claude-haiku-4-5", "other"] as const;
+
 const MINIMUMS = new Map(
   Object.entries({
     "claude/sonnet": 512,
@@ -28,7 +29,9 @@ const MINIMUMS = new Map(
     other: undefined,
   }),
 );
+
 const TTL_MS = { none: 0, "5m": 300_000, "1h": 3_600_000 } as const;
+
 type Ttl = keyof typeof TTL_MS;
 
 type Req = {
@@ -38,6 +41,7 @@ type Req = {
   readonly ttl: Ttl | undefined;
   readonly blocks: readonly PromptBlock[];
 };
+
 type Pending = {
   readonly turn: number;
   readonly model: string;
@@ -45,6 +49,7 @@ type Pending = {
   readonly change: CacheRequestDiagnostic["prefixChange"];
   readonly gap: number | undefined;
 };
+
 type Machine = {
   readonly tracker: CacheDiagnosticTracker;
   readonly clock: ManualClock;
@@ -60,6 +65,7 @@ type ManualClock = { time: number };
 
 function manualClockService(state: ManualClock): Clock.Clock {
   const nanos = () => BigInt(state.time) * 1_000_000n;
+
   return {
     currentTimeMillisUnsafe: () => state.time,
     currentTimeMillis: Effect.sync(() => state.time),
@@ -74,12 +80,14 @@ function manualClockService(state: ManualClock): Clock.Clock {
 function createMachine(): Machine {
   const events: CacheDiagnostic[] = [];
   const clock: ManualClock = { time: 0 };
+
   const tracker = Effect.runSync(
     createCacheDiagnosticTracker((event) => {
       events.push(event);
       throw new Error("sink failure");
     }).pipe(Effect.provideService(Clock.Clock, manualClockService(clock))),
   );
+
   return {
     tracker,
     clock,
@@ -94,18 +102,21 @@ function createMachine(): Machine {
 
 function previousOf(machine: Machine): Req {
   assert.ok(machine.previous);
+
   return machine.previous;
 }
 
 function lastRequest(machine: Machine): CacheRequestDiagnostic {
   const event = machine.events.at(-1);
   assert.ok(event?.type === "request");
+
   return event;
 }
 
 function drawBlock(tc: TestCase): PromptBlock {
   const text = tc.draw(gs.arrays(gs.sampledFrom(["a", "b"]), { maxSize: 2 })).join("");
   const images = tc.draw(gs.arrays(gs.sampledFrom(["x", "yy"]), { maxSize: 1 }));
+
   return { text, images: images.map((data) => ({ data, mediaType: "image/png" })) };
 }
 
@@ -138,9 +149,11 @@ function sameBlock(left: PromptBlock | undefined, right: PromptBlock | undefined
 
 function commonPrefix(previous: Req | undefined, blocks: readonly PromptBlock[]): number {
   let count = 0;
+
   while (count < blocks.length && sameBlock(blocks[count], previous?.blocks[count])) {
     count += 1;
   }
+
   return count;
 }
 
@@ -163,21 +176,27 @@ function expectedChange(
   if (previous === undefined) {
     return "first";
   }
+
   if (previous.model !== req.model) {
     return "model-changed";
   }
+
   if (previous.reasoning !== req.reasoning) {
     return "reasoning-changed";
   }
+
   if (previous.tools !== req.tools) {
     return "tools-changed";
   }
+
   if (common === req.blocks.length) {
     return "appended";
   }
+
   if (common === 0) {
     return "system-changed";
   }
+
   return common >= previous.blocks.length - 1 ? "appended" : "history-rewritten";
 }
 
@@ -185,19 +204,24 @@ type CacheSettings = { ttl?: Ttl; reasoning?: string | undefined };
 
 function submit(machine: Machine, req: Req): void {
   const before = machine.events.length;
+
   const requestInput: Pick<
     Parameters<CacheDiagnosticTracker>[1],
     "promptBlocks" | "cacheBreakpoints"
   > & {
     toolDescription?: string;
   } = { promptBlocks: req.blocks, cacheBreakpoints: [] };
+
   if (req.tools !== undefined) {
     requestInput.toolDescription = req.tools;
   }
+
   const cacheSettings: CacheSettings = {};
+
   if (req.ttl !== undefined) {
     cacheSettings.ttl = req.ttl;
   }
+
   cacheSettings.reasoning = req.reasoning;
   const recorder = machine.tracker(req.model, requestInput, cacheSettings);
   assert.equal(machine.events.length, before + 1);
@@ -246,21 +270,26 @@ function expectedCauses(
   if (pending.ttl === "none") {
     return ["caching-disabled"];
   }
+
   if (belowMinimum(pending, usage, prompt)) {
     return ["below-minimum"];
   }
+
   if (pending.change === "first") {
     return ["first"];
   }
+
   if ((pending.gap ?? 0) > TTL_MS[pending.ttl]) {
     return ["ttl-expired"];
   }
+
   return pending.change === "appended" ? ["lookback", undefined] : ["prefix-changed"];
 }
 
 function belowMinimum(pending: Pending, usage: TokenUsage, prompt: number): boolean {
   const minimum = MINIMUMS.get(pending.model);
   const cold = usage.cacheRead === 0 && usage.cacheWrite === 0;
+
   return minimum !== undefined && prompt > 0 && prompt < minimum && cold;
 }
 
@@ -271,10 +300,13 @@ function checkUsage(usage: TokenUsage, pending: Pending, event: CacheUsageDiagno
   assert.ok(event.cacheReadPercent >= 0 && event.cacheReadPercent <= 100);
   assert.equal(event.minimumCacheableTokens, MINIMUMS.get(pending.model));
   const low = prompt === 0 || usage.cacheRead * 2 < prompt;
+
   if (prompt === 0) {
     assert.equal(event.cacheReadPercent, 0);
   }
+
   assert.equal(event.possibleCollapse, prompt >= 20_000 && low);
+
   if (low) {
     assert.ok(expectedCauses(pending, usage, prompt).includes(event.likelyMissCause));
   } else {
@@ -313,6 +345,7 @@ function ensureRequest(tc: TestCase, machine: Machine): Req {
   if (machine.previous === undefined) {
     submit(machine, drawRequest(tc));
   }
+
   return previousOf(machine);
 }
 
@@ -320,7 +353,9 @@ function rewriteBlocks(tc: TestCase, previous: Req): readonly PromptBlock[] {
   if (previous.blocks.length === 0) {
     return [drawBlock(tc)];
   }
+
   const at = tc.draw(gs.integers({ minValue: 0, maxValue: previous.blocks.length - 1 }));
+
   return previous.blocks.map((block, index) => (index === at ? drawBlock(tc) : block));
 }
 
@@ -355,6 +390,7 @@ const machineSpec: stateful.StateMachine<Machine> = {
       if (machine.pending.length === 0) {
         submit(machine, drawRequest(tc));
       }
+
       const index = tc.draw(gs.integers({ minValue: 0, maxValue: machine.pending.length - 1 }));
       const boundary = tc.draw(gs.booleans(), "boundary");
       report(

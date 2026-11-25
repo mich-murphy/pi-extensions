@@ -63,6 +63,7 @@ async function ownedTemp(prefix: string): Promise<string> {
   const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)));
   temps.push(dir);
   created.push(dir);
+
   return dir;
 }
 
@@ -70,6 +71,7 @@ async function ownedRun() {
   const runnerTemp = await ownedTemp("nix-cli-test-");
   const root = await fs.mkdtemp(path.join(runnerTemp, "gateway-nix-"));
   const stat = await fs.lstat(root, { bigint: true });
+
   const identity = {
     root,
     dev: String(stat.dev),
@@ -77,6 +79,7 @@ async function ownedRun() {
     uid: process.getuid?.(),
     nonce: randomBytes(16).toString("hex"),
   };
+
   const marker = path.join(root, "owner.json");
   await fs.writeFile(marker, JSON.stringify(identity), { flag: "wx", mode: 0o400 });
   const record = path.join(runnerTemp, "record.json");
@@ -90,6 +93,7 @@ async function ownedRun() {
   const extracted = path.join(work, "extracted.json");
   await fs.writeFile(extracted, JSON.stringify({ binarySha256: sha256(native) }));
   const common = ["--record", record, "--runner-temp", runnerTemp];
+
   return { runnerTemp, root, marker, record, fixture, extracted, work, native, common };
 }
 
@@ -130,6 +134,7 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Pr
   expect(outcome.stderr).toContain(root);
   const entries = await fs.readdir(root);
   expect(entries.toSorted()).toStrictEqual(["owner.json"]);
+
   return out;
 }
 
@@ -181,6 +186,7 @@ describe("verify-gateway-nix consumer CLI", () => {
 
   afterAll(() => {
     const leaked = created.filter((dir) => existsSync(dir));
+
     if (leaked.length > 0) {
       throw new Error(`Temp directories left behind: ${leaked.join(", ")}`);
     }
@@ -235,6 +241,7 @@ describe("verify-gateway-nix consumer CLI", () => {
       const run = await ownedRun();
       const alias = path.join(run.runnerTemp, "alias");
       await fs.symlink(run.work, alias);
+
       const outcome = await cli([
         "install-fixture",
         ...run.common,
@@ -243,6 +250,7 @@ describe("verify-gateway-nix consumer CLI", () => {
         "--fixture",
         path.join(alias, "pi-gateway"),
       ]);
+
       refused(outcome, /Fixture directory is not canonical/u);
       await expect(fs.readFile(run.fixture)).resolves.toStrictEqual(run.native);
     });
@@ -318,6 +326,7 @@ describe("verify-gateway-nix consumer CLI", () => {
       "rewrites at position 0 and refuses a %s replacement without touching it",
       async (kind, foreignUnchanged) => {
         const dir = await ownedTemp("nix-writer-");
+
         const { stdout } = await promisify(execFile)(
           process.execPath,
           [
@@ -337,6 +346,7 @@ describe("verify-gateway-nix consumer CLI", () => {
             maxBuffer: 1_048_576,
           },
         );
+
         const report = jsonObject(parseJson(stdout));
 
         expect(report.contents).toStrictEqual(PREPARING.map((record) => serialized(record)));

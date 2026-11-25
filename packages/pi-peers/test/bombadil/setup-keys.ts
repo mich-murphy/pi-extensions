@@ -19,6 +19,7 @@ export const UP = "\u001B[A";
 export const DOWN = "\u001B[B";
 const SETTING_UP = "peers ⋯ setting up";
 const CONNECTED = "peers ✓";
+
 const CONSENT_ROWS = new Set([
   "Apply",
   "Restart and activate",
@@ -27,7 +28,9 @@ const CONSENT_ROWS = new Set([
   "Import bundle",
   "Turn off peers",
 ]);
+
 const NOT_READY = /^(?:No changes|Missing: |Invalid: |Blocked: )/u;
+
 const ROOT_OUTCOMES = new Map([
   ["Peers › Reconnect › Result", /^(?:✓ Reconnected — |✗ Reconnect failed: |✗ Failed: )/u],
   ["Peers › Reset › Result", /^(?:✓ Peers turned off|✗ Reset failed: |✗ Failed: )/u],
@@ -39,6 +42,7 @@ export type Screen = PeersView & {
 
 export function readScreen(state: State): Screen {
   const rows = screenRows(state).map((row) => row.trim());
+
   return {
     ...readPeers(rows, state.grid.size.rows),
     connectedShown: rows.some((row) => row.includes("Connected as ")),
@@ -52,20 +56,25 @@ export const lastKey = extract((state: State) => typedText(state));
 
 export const menuOpen = (): boolean =>
   screenNow()?.titleShown === true || screenNow()?.hintShown === true;
+
 export const idle = (): boolean => !menuOpen();
 const editing = (): boolean => ui.current?.kind === "editor";
 const working = (): boolean => ui.current?.kind === "progress";
 let outcomeSeenOnce = false;
+
 const outcomeSeen = extract((state: State) => {
   outcomeSeenOnce ||= readScreen(state).outcome !== null;
+
   return outcomeSeenOnce;
 });
+
 const PROGRESS_ESCAPE = 3;
 const hideable = (): boolean => working() && (outcomeSeen.current ?? false);
 
 export const key = (text: string): ActionTemplate => ({
   TypeText: { CharSet: CharSet.fromLiterals(text) },
 });
+
 export const command = (suffix: string): ActionTemplate => ({
   TypeText: { Regexp: `${String.raw`\x15/peers`}${suffix}` },
 });
@@ -121,12 +130,15 @@ export const resize = actions(() => [
 
 export const towardApply = actions((): ActionTemplate[] => {
   const shown = screenNow();
+
   if (shown?.titleShown !== true) {
     return [];
   }
+
   if (shown.kind === "root") {
     return [key(shown.selected === "Setup" ? ENTER : DOWN)];
   }
+
   return shown.kind === "list" ? towardConsent(shown.rows, shown.selected) : [];
 });
 
@@ -136,21 +148,27 @@ function readyConsent(rows: readonly ListRow[]): string | undefined {
 
 function towardConsent(rows: readonly ListRow[], selected: string | null): ActionTemplate[] {
   const target = readyConsent(rows);
+
   if (target === undefined) {
     return rows.some((row) => CONSENT_ROWS.has(row.label)) ? [] : [key(UP)];
   }
+
   if (selected === target) {
     return [key(ENTER)];
   }
+
   const labels = rows.map((row) => row.label);
+
   return [key(labels.indexOf(target) < labels.indexOf(selected ?? "") ? UP : DOWN)];
 }
 
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
 
 let probeSeenOnce = false;
+
 const probeSeen = extract((state: State) => {
   probeSeenOnce ||= readScreen(state).probe !== null;
+
   return probeSeenOnce;
 });
 
@@ -178,9 +196,11 @@ export const escapeGoesBack: Formula = escapeLandsOn(
     if (before.kind === null || before.path === null || before.depth === 0) {
       return undefined;
     }
+
     if (before.kind === "progress") {
       return [null, "Peers"];
     }
+
     return before.kind === "outcome" ? ["Peers"] : [before.path.slice(0, -1).join(" › ")];
   },
 );
@@ -193,9 +213,11 @@ export const escapeClosesRoot: Formula = escapeLandsOn(
 
 export const hintMatchesDepth: Formula = always(() => {
   const shown = screenNow();
+
   if (shown?.titleShown !== true || !shown.hintShown) {
     return true;
   }
+
   return shown.kind !== null && (shown.depth === 0) === (shown.esc === "close");
 });
 
@@ -208,6 +230,7 @@ export const oneSelected: Formula = oneHighlight(
 
 export const noCursorInViews: Formula = always(() => {
   const view = ui.current;
+
   return (
     !(view?.kind === "report" || view?.kind === "progress" || view?.kind === "outcome") ||
     view.cursors === 0
@@ -216,15 +239,18 @@ export const noCursorInViews: Formula = always(() => {
 
 export const outcomeReadable: Formula = always(() => {
   const view = ui.current;
+
   if (view?.kind !== "outcome" || view.headline === null) {
     return true;
   }
+
   return view.outcome !== null && view.nextFollows !== false;
 });
 
 export const rootOutcomesMatch: Formula = always(() => {
   const view = ui.current;
   const expected = ROOT_OUTCOMES.get(view?.title ?? "");
+
   return (
     view?.kind !== "outcome" ||
     view.headline === null ||
@@ -235,10 +261,13 @@ export const rootOutcomesMatch: Formula = always(() => {
 
 export const applyHasOutcome: Formula = always(() => {
   const view = ui.current;
+
   if (view?.kind !== "progress") {
     return true;
   }
+
   const before = view.reports ?? 0;
+
   return eventually(
     () => ui.current?.kind === "outcome" || (ui.current?.reports ?? 0) > before,
   ).within(60, "seconds");
@@ -246,6 +275,7 @@ export const applyHasOutcome: Formula = always(() => {
 
 export const footerAgrees: Formula = always(() => {
   const view = ui.current;
+
   if (view?.kind === "progress") {
     return next(
       () =>
@@ -254,10 +284,13 @@ export const footerAgrees: Formula = always(() => {
         eventually(() => ui.current?.footer !== SETTING_UP).within(60, "seconds"),
     );
   }
+
   if (view?.kind !== "outcome" || view.headline === null) {
     return true;
   }
+
   const connected = view.headline.startsWith("✓ Peers set up");
+
   return eventually(() =>
     connected ? ui.current?.footer === CONNECTED : ui.current?.footer !== SETTING_UP,
   ).within(10, "seconds");
@@ -276,6 +309,7 @@ export const submenuReached: Formula = eventually(() => (ui.current?.depth ?? -1
 export const backTaken: Formula = eventually(() => {
   const shown = screenNow();
   const depth = shown?.titleShown === true ? shown.depth : -1;
+
   return depth >= 1
     ? next(() => lastKey.current === ESCAPE && ui.current?.depth === depth - 1)
     : false;

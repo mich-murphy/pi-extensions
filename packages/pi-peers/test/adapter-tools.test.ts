@@ -13,7 +13,9 @@ import { toolRecorder } from "./adapter-tool-fixture.js";
 const self = { machineId: "alpha", sessionId: "me", runtimeNonce: "a".repeat(32) };
 const beta = { machineId: "beta", sessionId: "them", runtimeNonce: "b".repeat(32) };
 const restarted = { ...beta, runtimeNonce: "c".repeat(32) };
+
 type Incoming = { from: PeerRef; to: PeerRef; scopeId: string; message: Message };
+
 type Sent = { to: PeerRef; scopeId: string; message: Message };
 
 function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
@@ -24,9 +26,11 @@ function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
     scopeIds: ["team"],
     policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
   };
+
   if (maxWaitSeconds !== undefined) {
     config.maxWaitSeconds = maxWaitSeconds;
   }
+
   return config;
 }
 
@@ -40,11 +44,13 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
   const inbox: Incoming[] = [];
   const taken = new TakenIndex();
   const down = new Set<string>();
+
   const session: ToolSession = {
     peer: self,
     config: fixtureConfig(maxWaitSeconds),
     waitForMessage: async (seconds: number) => {
       waits.push(seconds);
+
       return waited;
     },
     handles: new Handles(),
@@ -67,21 +73,26 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     send: async (to, scopeId, message) => {
       sent.push({ to, scopeId, message });
       const tag = outcomes.shift() ?? "admitted";
+
       return tag === "admitted"
         ? { tag, messageId: message.id, correlation: "none", durable: false }
         : { tag, messageId: message.id, code: "unavailable" };
     },
     take: () => {
       const messages = inbox.splice(0);
+
       for (const delivery of messages) {
         taken.record(delivery.message.id, { peer: delivery.from, scopeId: delivery.scopeId });
       }
+
       return { messages };
     },
   };
+
   const tools = toolRecorder();
   registerTools(tools, () => session);
   const call = async (name: string, args: ToolArguments = {}) => tools.run(name, args);
+
   return {
     call,
     sent,
@@ -106,14 +117,18 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     },
   };
 }
+
 async function listedFixture() {
   const fx = fixture([{ peer: beta, label: "Beta" }]);
   await fx.call("peers_list");
+
   return fx;
 }
+
 function textOf(result: ToolResult): string {
   return result.content[0]?.text ?? "";
 }
+
 const handle = sessionHandle("beta", "them");
 const mine = sessionHandle("alpha", "me");
 
@@ -123,6 +138,7 @@ describe("peers_list", () => {
       { peer: self, label: "Pi · repo" },
       { peer: beta, label: "Pi (you)" },
     ]);
+
     const result = await fx.call("peers_list");
     expect(result.structuredContent).toStrictEqual({
       ok: true,
@@ -148,6 +164,7 @@ describe("peers_list", () => {
       { peer: self, label: "Me" },
       { peer: beta, label: "Pi" },
     ]);
+
     fx.setLinkDown("beta", true);
     fx.setLinkDown("alpha", true);
     const down = await fx.call("peers_list");
@@ -189,6 +206,7 @@ describe("peers_send", () => {
       kind: "update",
       content: "x",
     });
+
     expect(result).toMatchObject({
       isError: true,
       content: [{ text: "Unknown handle; call peers_list." }],
@@ -207,21 +225,25 @@ describe("peers_send", () => {
   });
   test("limits dropped from the schema are still enforced in code", async () => {
     const fx = await listedFixture();
+
     const large = await fx.call("peers_send", {
       to: handle,
       kind: "update",
       content: "é".repeat(12_289),
     });
+
     expect(large).toMatchObject({
       isError: true,
       details: { value: { code: "delivery_too_large" } },
     });
+
     const scoped = await fx.call("peers_send", {
       to: handle,
       kind: "update",
       content: "x",
       scope: "bad scope",
     });
+
     expect(scoped).toMatchObject({ isError: true, details: { value: { code: "invalid_input" } } });
     expect(fx.sent).toHaveLength(0);
   });
@@ -243,12 +265,14 @@ describe("peers_send", () => {
   test("replyTo resolves sender and scope from taken messages; unknown ids are refused", async () => {
     const fx = fixture([{ peer: beta, label: "Pi" }]);
     await fx.call("peers_list");
+
     const unknown = await fx.call("peers_send", {
       to: handle,
       kind: "reply",
       content: "x",
       replyTo: "d".repeat(32),
     });
+
     expect(unknown.content[0]?.text).toBe(
       "replyTo does not match a message you took; check its id.",
     );
@@ -268,12 +292,14 @@ describe("peers_send", () => {
     expect(fx.sent[0]?.message.replyTo).toStrictEqual({ sender: beta, messageId: "e".repeat(32) });
     fx.setRoster([{ peer: restarted, label: "Pi" }]);
     await fx.call("peers_list");
+
     const stale = await fx.call("peers_send", {
       to: handle,
       kind: "reply",
       content: "late",
       replyTo: "e".repeat(32),
     });
+
     expect(stale.isError).toBe(true);
     expect(stale.content[0]?.text).toContain("has restarted");
     expect(fx.sent).toHaveLength(1);
@@ -321,6 +347,7 @@ describe("peers_take", () => {
     expect(fx.sent[0]?.to).toStrictEqual(beta);
   });
 });
+
 describe("peers_take waitSeconds", () => {
   test("waits only when asked, capped by maxWaitSeconds, and says how long it waited", async () => {
     const fx = fixture([], 60);
@@ -358,6 +385,7 @@ describe("peers_take waitSeconds", () => {
     expect(textOf(result)).toBe(`from ${handle} · update · id m-1111\ndone`);
   });
 });
+
 describe("peers_send retryOf", () => {
   const args = { to: handle, kind: "update", content: "hello" };
   test("resends an unsure message with the same id and bytes to the same runtime", async () => {

@@ -16,12 +16,14 @@ import type { ReportedUsage } from "../sdk/messages";
 import { resultMessage } from "./fixtures";
 
 const settings = propertySettings(200);
+
 const COUNT_KEYS = [
   ["input_tokens", "input"],
   ["output_tokens", "output"],
   ["cache_read_input_tokens", "cacheRead"],
   ["cache_creation_input_tokens", "cacheWrite"],
 ] as const;
+
 const INVALID_LIMITS = [null, 0, -1, 1.5, "64000", Number.NaN, Number.POSITIVE_INFINITY];
 
 const count = gs.optional(gs.integers({ minValue: 0, maxValue: 6 }));
@@ -41,6 +43,7 @@ function drawReport(tc: TestCase): ReportedUsage {
       })),
     ),
   );
+
   return {
     cache_creation: creation,
     input_tokens: tc.draw(maybeCount),
@@ -60,13 +63,16 @@ function creationOf(
 function assertUsageFold(tc: TestCase): void {
   const reports = tc.draw(gs.arrays(gs.composite(drawReport), { maxSize: 6 }));
   let folded: ReturnType<typeof applyUsage> | undefined;
+
   for (const report of reports) {
     folded = applyUsage(folded, report);
   }
+
   for (const [key, field] of COUNT_KEYS) {
     const expected = lastReported(reports.map((report) => report[key])) ?? 0;
     assert.equal(folded?.[field] ?? 0, expected, field);
   }
+
   const one = lastReported(reports.map((r) => creationOf(r, "ephemeral_1h_input_tokens")));
   const five = lastReported(reports.map((r) => creationOf(r, "ephemeral_5m_input_tokens")));
   assert.equal(folded?.cacheWrite1h, one);
@@ -103,13 +109,17 @@ function limitsFor(
       }),
     ),
   );
+
   if (Result.isFailure(parsed)) {
     throw parsed.failure;
   }
+
   assert.equal(parsed.success.type, "result");
+
   if (parsed.success.type !== "result") {
     throw new Error("unreachable");
   }
+
   return parsed.success.modelUsage;
 }
 
@@ -130,6 +140,7 @@ function assertLimitLookup(tc: TestCase): void {
   const modelUsage = limitsFor(context, output, base, key);
   const other = tc.draw(gs.booleans());
   const modelUsage2 = other ? modelUsage : limitsFor(context, output, base, key);
+
   for (const model of [base, `${base}-${date}`, `${base}-20251001`]) {
     assert.equal(contextWindowFor(modelUsage2, model), validLimit(context), model);
     assert.equal(maxOutputTokensFor(modelUsage2, "claude-other-1"), validLimit(output));

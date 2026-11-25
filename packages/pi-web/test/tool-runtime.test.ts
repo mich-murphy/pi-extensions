@@ -6,13 +6,16 @@ class Counter extends Context.Service<Counter, { readonly build: number }>()("te
 
 function countingLayer() {
   const state = { builds: 0 };
+
   const layer = Layer.effect(
     Counter,
     Effect.sync(() => {
       state.builds += 1;
+
       return Counter.of({ build: state.builds });
     }),
   );
+
   return { state, layer };
 }
 
@@ -73,20 +76,24 @@ describe("createToolRuntime", () => {
     let disposalStarted = Promise.withResolvers<undefined>();
     let disposalGate = Promise.withResolvers<undefined>();
     let builds = 0;
+
     const layer = Layer.effect(
       Counter,
       Effect.acquireRelease(
         Effect.sync(() => {
           builds += 1;
+
           return Counter.of({ build: builds });
         }),
         () =>
           Effect.promise(async () => {
             disposalStarted.resolve(undefined);
+
             return disposalGate.promise;
           }),
       ),
     );
+
     const runtime = createToolRuntime(layer);
     await expect(runtime.runExit(readBuild)).resolves.toStrictEqual(Exit.succeed(1));
     const disposing = runtime.dispose();

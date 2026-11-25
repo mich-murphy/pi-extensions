@@ -7,15 +7,19 @@ import { doctor, doctorReport, doctorRowText } from "../onboarding/doctor.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 
 const directories: string[] = [];
+
 async function fixture(content?: string) {
   const directory = await mkdtemp(join(tmpdir(), "pi-peers-doctor-"));
   directories.push(directory);
   const path = join(directory, "pi-peers.json");
+
   if (content !== undefined) {
     await writeFile(path, content);
   }
+
   return { directory, path };
 }
+
 describe("read-only doctor", () => {
   afterEach(async () => {
     await Promise.all(
@@ -42,6 +46,7 @@ describe("read-only doctor", () => {
       policies: [],
       secretUnknown: "private-value",
     });
+
     const { directory, path } = await fixture(content);
     const result = await doctor(directory);
     expect(result).toContain("machineId, socketPath, scopeIds, label, unknown keys");
@@ -70,6 +75,7 @@ describe("read-only doctor", () => {
   });
   test("the shared adapter/doctor socket limit is 100 UTF-8 bytes", async () => {
     const { directory, path } = await fixture();
+
     const config = {
       machineId: "host",
       socketPath: `/${"a".repeat(99)}`,
@@ -77,6 +83,7 @@ describe("read-only doctor", () => {
       label: "Pi",
       policies: [],
     };
+
     await writeFile(path, JSON.stringify(config));
     await expect(doctor(directory)).resolves.toContain("Configuration: valid");
     await writeFile(path, JSON.stringify({ ...config, socketPath: `/${"é".repeat(50)}` }));
@@ -120,6 +127,7 @@ describe("read-only doctor", () => {
 
 const internal =
   /nonce|generation|receipt|operation|relation|guarded|registration|\bCAS\b|ledger|floor|projection|snapshot/iu;
+
 function valid(directory: string): string {
   return JSON.stringify({
     machineId: "host",
@@ -135,6 +143,7 @@ function valid(directory: string): string {
     ],
   });
 }
+
 describe("plain-language doctor report", () => {
   afterEach(async () => {
     await Promise.all(
@@ -143,6 +152,7 @@ describe("plain-language doctor report", () => {
         .map(async (directory) => rm(directory, { recursive: true, force: true })),
     );
   });
+
   const writers = {
     missing: async () => undefined,
     "invalid JSON": async (_directory, path) => writeFile(path, "{"),
@@ -151,6 +161,7 @@ describe("plain-language doctor report", () => {
     oversized: async (_directory, path) => writeFile(path, "x".repeat(32_769)),
     valid: async (directory, path) => writeFile(path, valid(directory)),
   } satisfies Record<string, (directory: string, path: string) => Promise<void>>;
+
   test.each(Object.entries(writers))(
     "%s: rows are plain, problems say what to do, details stay technical",
     async (_name, write) => {
@@ -158,13 +169,16 @@ describe("plain-language doctor report", () => {
       await write(directory, path);
       const report = await doctorReport(directory);
       expect(report.rows.length).toBeGreaterThan(0);
+
       for (const row of report.rows) {
         expect(`${row.label} ${row.value}`).not.toMatch(internal);
       }
+
       for (const row of report.rows.filter((entry) => entry.level !== "ok")) {
         expect(row.value).toMatch(/\/peers|Fix|Check|Move|Shrink/u);
         expect(row.value.split(/[.!?](?:\s|$)/u).filter(Boolean).length).toBeLessThanOrEqual(3);
       }
+
       expect(report.next).toBeDefined();
       expect(report.next).not.toMatch(internal);
       expect(report.technical.length).toBeGreaterThan(0);
@@ -197,10 +211,13 @@ describe("plain-language doctor report", () => {
     const { directory } = await fixture();
     const menu = await doctorReport(directory, { inMenu: true });
     const notify = await doctorReport(directory);
+
     const config = (report: typeof menu) =>
       report.rows.filter((row) => row.label === "Config file").map((row) => row.value);
+
     expect(config(menu).join("\n")).toContain("Choose Setup to create it.");
     expect(config(notify).join("\n")).toContain("Run /peers setup to create it.");
+
     for (const row of menu.rows) {
       expect(row.value).not.toContain("/peers setup");
       expect(row.value).not.toContain("Open /peers");
@@ -219,6 +236,7 @@ describe("plain-language doctor report", () => {
     const { directory } = await fixture();
     const report = await doctorReport(directory);
     const text = await doctor(directory);
+
     for (const row of report.rows) {
       expect(text).toContain(doctorRowText(row));
     }

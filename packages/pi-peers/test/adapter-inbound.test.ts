@@ -20,30 +20,39 @@ function rosterRemoval(sessionIdLength: number): Uint8Array {
       },
     },
   };
+
   return encodeFrame(frame, "adapter-delivery");
 }
+
 function framesTotalling(total: number): Uint8Array[] {
   const smallest = rosterRemoval(1).length;
   const largest = rosterRemoval(256).length;
   const frames: Uint8Array[] = [];
   let remaining = total;
+
   while (remaining > 0) {
     let size = largest;
+
     if (remaining <= largest) {
       size = remaining;
     } else if (remaining - largest < smallest) {
       size = remaining - smallest;
     }
+
     frames.push(rosterRemoval(size - smallest + 1));
     remaining -= size;
   }
+
   expect(frames.reduce((sum, frame) => sum + frame.length, 0)).toBe(total);
+
   return frames;
 }
+
 async function fixture() {
   const socket = new Socket();
   const disconnected: string[] = [];
   const events: Frame[] = [];
+
   const connecting = connectTransport(
     {
       socketPath: "/unused/inbound-seam.sock",
@@ -61,9 +70,11 @@ async function fixture() {
     },
     () => socket,
   );
+
   socket.emit("connect");
   const connection = await connecting;
   const receive = (bytes: Uint8Array) => socket.emit("data", Buffer.from(bytes));
+
   return { socket, connection, disconnected, events, receive };
 }
 

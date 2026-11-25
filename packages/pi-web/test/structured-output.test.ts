@@ -60,6 +60,7 @@ function searchTool(snippet: string) {
         },
       ]),
   };
+
   return createWebSearchTool({
     settings: SETTINGS,
     redactText: redactorFor(SECRET),
@@ -117,6 +118,7 @@ describe("webfetch structuredContent", () => {
         ),
       ),
     );
+
     assert(Result.isSuccess(projected));
 
     const { structuredContent } = projected.success;
@@ -133,6 +135,7 @@ describe("webfetch structuredContent", () => {
       name: "exa",
       fetchMarkdown: () => Effect.succeed("# Rescued content"),
     };
+
     const result = await fetchTool(
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
       [provider],
@@ -151,6 +154,7 @@ describe("webfetch structuredContent", () => {
 
   test("a single-line body over the model limit keeps its full content and a spill path", async () => {
     const body = jsonBody(200_000);
+
     const result = await fetchTool(Result.succeed(plainResponse(body))).execute("t", {
       url: "https://example.com/page",
     });
@@ -166,6 +170,7 @@ describe("webfetch structuredContent", () => {
 
   test("a body over 1 MiB is cut at 1 MiB and flagged truncated", async () => {
     const body = jsonBody(STRUCTURED_OUTPUT_MAX_BYTES + 1000);
+
     const result = await fetchTool(Result.succeed(plainResponse(body))).execute("t", {
       url: "https://example.com/page",
     });
@@ -179,6 +184,7 @@ describe("webfetch structuredContent", () => {
 
   test("never splits a multibyte character at the limit", async () => {
     const body = `x${"é".repeat(STRUCTURED_OUTPUT_MAX_BYTES)}`;
+
     const result = await fetchTool(Result.succeed(plainResponse(body))).execute("t", {
       url: "https://example.com/page",
     });
@@ -208,6 +214,7 @@ describe("webfetch structuredContent", () => {
       name: "exa",
       fetchMarkdown: () => Effect.succeed(`leaked ${SECRET}`),
     };
+
     const result = await fetchTool(
       Result.fail(new HttpStatusRejected({ status: 403, statusText: "Forbidden" })),
       [provider],
@@ -233,6 +240,7 @@ describe("webfetch oversized page", () => {
     const result = await fetchTool(Result.succeed(oversized(""))).execute("t", {
       url: "https://example.com/page",
     });
+
     expect(textOf(result).startsWith(`${NOTICE}\n\n`)).toBe(true);
     expect(result.details.truncated).toBe(true);
     expect(result.details.responseTruncated).toBe(true);
@@ -248,9 +256,11 @@ describe("webfetch oversized page", () => {
 
   test("a single-line oversized page keeps its start between the notice and the line-1 notice", async () => {
     const line = "abcdefgh".repeat(131_072);
+
     const result = await fetchTool(
       Result.succeed({ ...plainResponse(line), responseTruncated: true }),
     ).execute("t", { url: "https://example.com/page" });
+
     const text = textOf(result);
     expect(text.startsWith(`${NOTICE}\n\n`)).toBe(true);
     expect(text.slice(NOTICE.length + 2).startsWith("abcdefgh")).toBe(true);
@@ -268,6 +278,7 @@ describe("webfetch oversized page", () => {
     const result = await fetchTool(Result.succeed(plainResponse("hello"))).execute("t", {
       url: "https://example.com/page",
     });
+
     expect(result.structuredContent).not.toHaveProperty("response_truncated");
     expect(result.structuredContent).not.toHaveProperty("download_limit_bytes");
     expect(result.details.downloadLimitBytes).toBeUndefined();
@@ -282,6 +293,7 @@ describe("webfetch oversized page", () => {
         responseTruncated: true,
       }),
     ).execute("t", { url: "https://example.com/page" });
+
     expect(JSON.stringify(result)).not.toContain(SECRET);
   });
 });

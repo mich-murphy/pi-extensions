@@ -22,6 +22,7 @@ const jevLatest: ClassifierModel<ClassifierApi> = {
 
 export function fakeClassifier(answer: FakeAnswer, configured = true) {
   const calls: { model: string; context: ClassifierContext }[] = [];
+
   const registry: ClassifierRegistry = {
     getProviderAuthStatus: () => ({ configured }),
     getModelOfType: (_type, provider, modelId) =>
@@ -29,12 +30,14 @@ export function fakeClassifier(answer: FakeAnswer, configured = true) {
     classify: async (model, context) => {
       calls.push({ model: model.id, context });
       const given = answer(context);
+
       const base = {
         api: model.api,
         provider: model.provider,
         model: model.id,
         timestamp: 0,
       };
+
       const result: ClassifierResult =
         given === "error"
           ? { ...base, answers: {}, stopReason: "error", errorMessage: "fake failure" }
@@ -48,9 +51,11 @@ export function fakeClassifier(answer: FakeAnswer, configured = true) {
               ),
               stopReason: "stop",
             };
+
       return result;
     },
   };
+
   return { registry, calls };
 }
 

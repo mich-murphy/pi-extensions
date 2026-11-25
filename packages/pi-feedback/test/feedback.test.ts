@@ -20,6 +20,7 @@ const PACKAGES = "/repo/packages";
 
 async function ledgerEvents(file: string) {
   const read = await readLedger(file);
+
   return read.events;
 }
 
@@ -65,9 +66,11 @@ describe("harness feedback extension", () => {
     const [tool] = pi.tools;
     expect(tool?.name).toBe(FEEDBACK_TOOL);
     expect(pi.active()).toContain(FEEDBACK_TOOL);
+
     const unnamed = pi.tools
       .flatMap((registered) => registered.promptGuidelines)
       .filter((guideline) => !guideline.includes(FEEDBACK_TOOL));
+
     expect(unnamed).toStrictEqual([]);
   });
 
@@ -119,6 +122,7 @@ describe("harness feedback extension", () => {
     for (let n = 0; n < REPORTS_PER_SESSION; n += 1) {
       await pi.call({ ...params, summary: `report ${n}` });
     }
+
     const over = await pi.call({ ...params, summary: "one more" });
     expect(over.details).toStrictEqual({ status: "limit" });
     await expect(ledgerEvents(ledger)).resolves.toHaveLength(REPORTS_PER_SESSION);

@@ -10,12 +10,14 @@ import type { SdkPromptBlock } from "./fixtures";
 
 function withoutCacheMetadata(block: SdkPromptBlock) {
   const { cache_control: _cacheControl, ...content } = block;
+
   return content;
 }
 
 describe("cache diagnostics", () => {
   test("reports a byte-identical common prefix for long transcripts containing images without logging content", async () => {
     const longOutput = "stable build output\n".repeat(5000);
+
     const base = contextFixture({
       systemPrompt: "stable system",
       tools: [],
@@ -36,13 +38,16 @@ describe("cache diagnostics", () => {
         },
       ],
     });
+
     const grown = contextFixture({
       ...base,
       messages: [...base.messages, { role: "user", content: "continue" }],
     });
+
     const first = buildAgentRequest(base);
     const second = buildAgentRequest(grown);
     const events: CacheDiagnostic[] = [];
+
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
         events.push(event);
@@ -67,9 +72,11 @@ describe("cache diagnostics", () => {
     const secondWire = await drain(buildPromptStream(second.promptBlocks, second.cacheBreakpoints));
     const firstContent = sdkContentRecords(firstWire[0]);
     const secondContent = sdkContentRecords(secondWire[0]);
+
     const sharedPrefix = secondContent
       .slice(0, firstContent.length - 1)
       .map((block) => withoutCacheMetadata(block));
+
     expect(sharedPrefix).toStrictEqual(
       firstContent.slice(0, -1).map((block) => withoutCacheMetadata(block)),
     );
@@ -77,11 +84,13 @@ describe("cache diagnostics", () => {
 
   test("fingerprints equal prompts equally and a changed block differently", () => {
     const events: CacheDiagnostic[] = [];
+
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
         events.push(event);
       }),
     );
+
     const prompt = {
       promptBlocks: [textBlock("stable"), textBlock("first")],
       cacheBreakpoints: [0],
@@ -108,19 +117,24 @@ describe("cache diagnostics", () => {
   it.effect("classifies prefix changes and the likely cause of a low cache read", () =>
     Effect.gen(function* () {
       const events: CacheDiagnostic[] = [];
+
       const tracker = yield* createCacheDiagnosticTracker((event) => {
         events.push(event);
       });
+
       const base = {
         promptBlocks: [textBlock("system"), textBlock("x".repeat(8000)), textBlock("continue")],
         cacheBreakpoints: [0, 1],
         toolDescription: "tools",
       };
+
       const otherTools = { ...base, toolDescription: "other tools" };
+
       const otherSystem = {
         ...otherTools,
         promptBlocks: [textBlock("changed"), ...base.promptBlocks.slice(1)],
       };
+
       const miss = { input: 3000, output: 1, cacheRead: 0, cacheWrite: 0 };
 
       tracker("claude/sonnet", base)(miss);
@@ -177,11 +191,13 @@ describe("cache diagnostics", () => {
     "uses the model minimum for %s with %i prompt tokens",
     (model, input, minimum, cause) => {
       const events: CacheDiagnostic[] = [];
+
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
           events.push(event);
         }),
       );
+
       tracker(model, { promptBlocks: [textBlock("not a token estimate")], cacheBreakpoints: [0] })({
         input,
         output: 1,
@@ -193,6 +209,7 @@ describe("cache diagnostics", () => {
         promptTokens: input,
         likelyMissCause: cause,
       });
+
       for (const event of events) {
         assert(event.type !== "query");
         expect(event.minimumCacheableTokens).toBe(minimum);
@@ -209,11 +226,13 @@ describe("cache diagnostics", () => {
     "prefers observed model %s over the requested moving alias",
     (observedModel, minimum, cause) => {
       const events: CacheDiagnostic[] = [];
+
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
           events.push(event);
         }),
       );
+
       tracker("claude/haiku", { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [0] })(
         { input: 1000, output: 1, cacheRead: 0, cacheWrite: 0 },
         { observedModel },
@@ -235,11 +254,13 @@ describe("cache diagnostics", () => {
     "does not infer below-minimum from zero usage or contradict actual cache activity: %j",
     (usage) => {
       const events: CacheDiagnostic[] = [];
+
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
           events.push(event);
         }),
       );
+
       tracker("claude/claude-4.5-haiku", {
         promptBlocks: [textBlock("prompt")],
         cacheBreakpoints: [0],
@@ -250,11 +271,13 @@ describe("cache diagnostics", () => {
 
   test("disabled caching takes precedence over the model minimum", () => {
     const events: CacheDiagnostic[] = [];
+
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
         events.push(event);
       }),
     );
+
     tracker(
       "claude/claude-4.5-haiku",
       { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [] },
@@ -265,11 +288,13 @@ describe("cache diagnostics", () => {
 
   test("captures each turn's model even if final usage arrives after a later request", () => {
     const events: CacheDiagnostic[] = [];
+
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
         events.push(event);
       }),
     );
+
     const prompt = { promptBlocks: [textBlock("prompt")], cacheBreakpoints: [0] };
     const first = tracker("claude/claude-4.5-haiku", prompt);
     const second = tracker("claude/claude-5.5-haiku", prompt);
@@ -292,11 +317,13 @@ describe("cache diagnostics", () => {
 
   test("attributes a low read to the lookback window when no breakpoint reaches the previous write", () => {
     const events: CacheDiagnostic[] = [];
+
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
         events.push(event);
       }),
     );
+
     const entries = Array.from({ length: 30 }, (_, index) => textBlock(`entry ${index}`));
     tracker("m", { promptBlocks: [textBlock("system"), textBlock("tail")], cacheBreakpoints: [1] });
     tracker("m", {
@@ -320,13 +347,16 @@ describe("query diagnostic records", () => {
     unexpectedToolCalls: 0,
     fallbackCalls: 0,
   };
+
   test("correlates no-usage outcomes with their request and does not invent zero counts", () => {
     const records: CacheDiagnostic[] = [];
     const tracker = Effect.runSync(createCacheDiagnosticTracker((record) => records.push(record)));
+
     const record = tracker("sonnet", {
       promptBlocks: [textBlock("fixture")],
       cacheBreakpoints: [],
     });
+
     record(undefined, { query });
     expect(records.at(-1)).toStrictEqual({ type: "query", turn: 1, query });
     expect(records.at(-1)).not.toHaveProperty("input");
@@ -339,11 +369,13 @@ describe("query diagnostic records", () => {
         throw new Error("private sink error");
       }),
     );
+
     expect(() => {
       const record = tracker("sonnet", {
         promptBlocks: [textBlock("fixture")],
         cacheBreakpoints: [],
       });
+
       record({ input: 5, output: 1, cacheRead: 0, cacheWrite: 0 }, { query });
       record(undefined, { query });
     }).not.toThrow();

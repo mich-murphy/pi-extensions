@@ -34,6 +34,7 @@ export class ResourcePolicy {
 
   override(path: ResourcePath, origin?: ToggleResource["origin"]): ToggleValue | undefined {
     const location = this.location(path, origin);
+
     return location === undefined
       ? this.overrides.files.get(path)
       : this.overrides.repositories.get(location.repository)?.get(location.path);
@@ -42,6 +43,7 @@ export class ResourcePolicy {
   sameResource(left: string, right: ResourcePath, origin: ToggleResource["origin"]): boolean {
     const a = this.location(left, origin);
     const b = this.location(right, origin);
+
     return a !== undefined && b !== undefined
       ? a.repository === b.repository && a.path === b.path
       : left === right;
@@ -55,9 +57,11 @@ export class ResourcePolicy {
     if (origin === "global" || isGlobalResourcePath(path)) {
       return undefined;
     }
+
     if (!this.locations.has(path)) {
       this.locations.set(path, this.locator.locate(path));
     }
+
     return this.locations.get(path);
   }
 
@@ -94,13 +98,17 @@ export function toggleResources(
   const globalSkillRoots = [join(agentDirectory, "skills"), join(homedir(), ".agents", "skills")];
 
   const locator = new RepositoryLocator();
+
   const instructions = (options.contextFiles ?? []).flatMap<ToggleResource>((file) => {
     const id = resourcePathId(file.path, cwd);
     const origin = instructionOrigin({ parent: dirname(id), agentDirectory, cwd });
+
     if (!origin) {
       return [];
     }
+
     const location = origin === "project" ? locator.locate(id) : undefined;
+
     return [
       {
         id,
@@ -112,18 +120,22 @@ export function toggleResources(
       },
     ];
   });
+
   const skills = (options.skills ?? [])
     .flatMap<ToggleResource>((skill) => {
       const id = resourcePathId(skill.filePath, cwd);
+
       const origin = skillOrigin({
         sourceInfo: skill.sourceInfo,
         id,
         globalSkillRoots,
         contributedSkills,
       });
+
       if (!origin) {
         return [];
       }
+
       return [
         {
           id,
@@ -140,12 +152,15 @@ export function toggleResources(
     );
 
   const unique = new Map<ResourcePath, ToggleResource>();
+
   for (const resource of [...instructions, ...skills]) {
     if (!unique.has(resource.id)) {
       unique.set(resource.id, resource);
     }
   }
+
   const resources = [...unique.values()];
+
   return (["global", "project"] as const).flatMap((origin) =>
     resources.filter((resource) => resource.origin === origin),
   );
@@ -163,6 +178,7 @@ function instructionOrigin({
   if (parent === agentDirectory) {
     return "global";
   }
+
   return pathIsInsideOrEqual(cwd, parent) ? "project" : undefined;
 }
 
@@ -180,19 +196,24 @@ function skillOrigin({
   if (sourceInfo.origin !== "top-level") {
     return undefined;
   }
+
   switch (sourceInfo.scope) {
     case "user": {
       return globalSkillRoots.some((root) => pathIsInsideOrEqual(id, root)) ? "global" : undefined;
     }
+
     case "project": {
       return "project";
     }
+
     case "temporary": {
       return contributedSkills.has(id) ? "project" : undefined;
     }
+
     default: {
       const _exhaustive: never = sourceInfo.scope;
       void _exhaustive;
+
       return undefined;
     }
   }

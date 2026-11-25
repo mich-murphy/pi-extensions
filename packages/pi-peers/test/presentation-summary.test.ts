@@ -12,8 +12,10 @@ import { footerStatus, statusSummary, statusText } from "../adapter/presentation
 import type { StatusSnapshot } from "../adapter/presentation.js";
 
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
+
 const internal =
   /nonce|generation|receipt|operation|relation|guarded|registration|\bCAS\b|ledger|floor|projection/iu;
+
 const controlCodes = new Set([
   ...Array.from({ length: 9 }, (_, code) => code),
   ...Array.from({ length: 21 }, (_, index) => index + 11),
@@ -28,48 +30,61 @@ const controlCodes = new Set([
   8296,
   8297,
 ]);
+
 function hasControl(value: string): boolean {
   for (const character of value) {
     if (controlCodes.has(character.codePointAt(0) ?? 0)) {
       return true;
     }
   }
+
   return false;
 }
+
 const hostile = gs.oneOf(
   gs.text({ maxSize: 40 }),
   gs.sampledFrom(["\u001b[31mx", "\u009b1m", "‮evil", "nonce", "generation", "ledger"]),
 );
+
 function drawStatus(tc: TestCase) {
   const status = tc.draw(
     gs.sampledFrom(["connected", "activation_pending", "activation_unconfirmed", "x"]),
     "status",
   );
+
   const machine = tc.draw(gs.sampledFrom(["dev-01", "alpha", "\u001b]0;t\u0007"]), "machine");
   const scope = tc.draw(hostile, "scope");
   const enabled = tc.draw(gs.booleans(), "enabled");
   const present = tc.draw(gs.booleans(), "present");
+
   const value = present
     ? { enabled, status, peer: { ...peer, machineId: machine }, scopes: [scope] }
     : undefined;
+
   return { value, authored: [scope, machine] };
 }
+
 function assertPlain(text: string, authored: string[]): void {
   assert.equal(hasControl(text), false, `control character in ${JSON.stringify(text)}`);
   let own = text;
+
   for (const part of authored.filter((entry) => entry !== "")) {
     own = own.replaceAll(part, "");
   }
+
   assert.equal(internal.test(own), false, `internal term in ${JSON.stringify(own)}`);
 }
+
 function primary(status: StatusSnapshot | undefined, diagnostic: string): string {
   const summary = statusSummary(status, diagnostic);
+
   return [summary.headline, ...summary.rows.flat(), summary.next ?? ""].join("\n");
 }
 
 function links(...states: [string, LinkState["state"]][]) {
   return states.map(([machineId, state]) => ({ machineId, state, since: 0 }));
 }
+
 describe("plain-language status summary", () => {
   test("remote link state appears as one row per machine with its next try", () => {
     const summary = statusSummary(
@@ -91,6 +106,7 @@ describe("plain-language status summary", () => {
       },
       "enabled",
     );
+
     expect(summary.rows).toContainEqual(["Link to laptop", "Up (since 09:00:00 UTC)"]);
     expect(summary.rows).toContainEqual([
       "Link to dev-01",
@@ -103,6 +119,7 @@ describe("plain-language status summary", () => {
       { enabled: true, status: "connected", peer, scopes: ["local"], inboxMessages: 2 },
       "enabled",
     );
+
     expect(summary.state).toBe("connected");
     expect(summary.headline).toBe("Connected as dev-01 · scope local");
     expect(summary.rows.map(([label]) => label)).toStrictEqual([

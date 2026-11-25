@@ -17,6 +17,7 @@ export function withSafeSpan<A, E, R>(
         Effect.gen(function* () {
           const exit = yield* Effect.exit(restore(operation));
           original = exit;
+
           if (Exit.isFailure(exit)) {
             if (Cause.hasInterrupts(exit.cause)) {
               return yield* Effect.failCause(
@@ -27,17 +28,22 @@ export function withSafeSpan<A, E, R>(
                 ),
               );
             }
+
             const error = Cause.findErrorOption(exit.cause);
+
             return yield* Effect.fail(
               Option.isSome(error) ? summarizeFailure(error.value) : "Operation failed",
             );
           }
+
           return undefined;
         }).pipe(Effect.withSpan(name)),
       );
+
       if (original === undefined) {
         return yield* Effect.die(new Error("Traced operation did not produce an exit"));
       }
+
       return yield* original;
     }),
   );

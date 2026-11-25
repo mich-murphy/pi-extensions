@@ -49,6 +49,7 @@ const isString = Schema.is(Schema.String);
 function publicFacts(available: Schema.JsonObject): [string, string][] {
   return PUBLIC.flatMap(([key, label]): [string, string][] => {
     const value = available[key];
+
     return isString(value) ? [[label, visibleText(value)]] : [];
   });
 }
@@ -86,6 +87,7 @@ function exchangeLines(pairing: Pairing): string[] {
 
 export async function readPairing(agentDir: string): Promise<Pairing | undefined> {
   const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
+
   return bytes === undefined ? undefined : decodePairing(parseJson(bytes));
 }
 
@@ -103,17 +105,23 @@ export async function loadedPair(
   reconnect: Reconnect | undefined,
 ): Promise<PairContext | undefined> {
   const pairing = await readPairing(agentDir);
+
   if (pairing === undefined) {
     return undefined;
   }
+
   const config = await loadConfiguration(agentDir);
+
   if (config === undefined) {
     return undefined;
   }
+
   const setup = await readManaged(agentDir, config);
+
   if (setup === undefined) {
     return undefined;
   }
+
   return { agentDir, reconnect, paths: setupPaths(agentDir), config, setup, pairing };
 }
 
@@ -127,9 +135,11 @@ const STEPS = [
 
 async function gatewayPlan(context: PairContext): Promise<LocalPlan> {
   const gatewayBytes = await regularBytes(context.paths.gateway);
+
   if (gatewayBytes === undefined) {
     throw new Error("gateway.json is missing from the setup folder");
   }
+
   return currentPlan(context.config, gatewayBytes);
 }
 
@@ -139,11 +149,13 @@ async function restartAndReconnect(
 ): Promise<"acknowledged" | "uncertain"> {
   let restart = await requestManagedRestart(context.setup);
   step(STEPS[2]);
+
   try {
     await context.reconnect?.(true);
   } catch {
     restart = "uncertain";
   }
+
   return restart;
 }
 
@@ -152,11 +164,13 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
   const { operation, input } = action;
   step(STEPS[0]);
   let output: Schema.JsonObject;
+
   try {
     const prepared =
       operation === "import"
         ? { ...input, floorMode: await importFloor(pairing.runtimeDir) }
         : input;
+
     output = await pairAction(setup.executable, paths.directory, operation, prepared);
   } catch {
     return failed(
@@ -165,8 +179,10 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
       "Check the file paths and fingerprint, then try again.",
     );
   }
+
   const facts = publicFacts(output);
   const technical = [`Pair ${operation} output (public files only): ${JSON.stringify(output)}`];
+
   if (operation === "export") {
     return {
       ok: true,
@@ -176,7 +192,9 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
       technical,
     };
   }
+
   let saved = false;
+
   try {
     const imported =
       operation === "import"
@@ -187,11 +205,14 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
             confirmedRootSha256: output.rootSha256,
             floorMode: "existing",
           });
+
     step(STEPS[1]);
     const old = await gatewayPlan(context);
+
     const inspection = await pairAction(setup.executable, paths.directory, "inspect", {
       runtimeDir: pairing.runtimeDir,
     });
+
     await saveOwnedPlan(
       agentDir,
       setup,
@@ -200,6 +221,7 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
     );
     saved = true;
     const restart = await restartAndReconnect(context, step);
+
     if (restart === "uncertain") {
       return pendingOutcome(`Pairing ${operation} saved`, SAVED_NEXT, [
         ...technical,
@@ -219,6 +241,7 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
           facts,
         };
   }
+
   return {
     ok: true,
     headline: `✓ Pairing ${operation} done`,
@@ -233,6 +256,7 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
 
 function maintenanceDetails(context: PairContext, operation: PairOperation): string[] {
   const activates = operation !== "export";
+
   return withTechnical(
     [
       activates
@@ -283,14 +307,17 @@ function maintenanceForm(context: PairContext, progress: Progress, form: Mainten
       },
     }),
   };
+
   if (form.rows !== undefined) {
     options.rows = form.rows;
   }
+
   return actionForm(options);
 }
 
 function importForm(context: PairContext, progress: Progress): Screen {
   const draft = { path: "", sha: "" };
+
   return maintenanceForm(context, progress, {
     title: "Import",
     note: "Import the public bundle the other computer sent. Confirm its root SHA256 with them separately.",
@@ -342,6 +369,7 @@ function importForm(context: PairContext, progress: Progress): Screen {
 function requestForm(context: PairContext, progress: Progress, initial: boolean): Screen {
   const draft = { path: "", sha: "" };
   const operation = initial ? "issue" : "renew";
+
   return maintenanceForm(context, progress, {
     title: initial ? "Issue" : "Renew",
     note: initial
@@ -395,6 +423,7 @@ function requestForm(context: PairContext, progress: Progress, initial: boolean)
 function revokeForm(context: PairContext, progress: Progress): Screen {
   const peer = context.pairing.intent.peerMachineId;
   const draft = { machine: peer };
+
   return maintenanceForm(context, progress, {
     title: "Revoke",
     note: "Revoke every certificate issued to the peer. If a root or account was compromised, re-pair both computers instead.",
@@ -416,9 +445,11 @@ function revokeForm(context: PairContext, progress: Progress): Screen {
       if (draft.machine === context.config.machineId) {
         return { kind: "invalid", reason: "to replace this computer's keys, re-pair instead" };
       }
+
       if (draft.machine !== peer) {
         return { kind: "invalid", reason: `choose the paired peer ${visibleText(peer)}` };
       }
+
       return {
         kind: "ready",
         value: {
@@ -478,13 +509,16 @@ async function rePairWork(
   const old = await gatewayPlan(context);
   const next = await prepareRemote(setup.executable, directory, old, intent);
   const manifest = await regularBytes(join(directory, "pairing.json"));
+
   if (manifest === undefined) {
     throw new Error("The pairing step did not write pairing.json");
   }
+
   step(REPAIR_STEPS[1]);
   await saveOwnedPlan(agentDir, setup, next, manifest.toString("utf8"));
   const restart = await restartAndReconnect(context, step);
   const pairing = decodePairing(parseJson(manifest));
+
   return {
     ok: true,
     headline: `✓ New pair staged with ${visibleText(intent.peerMachineId)}`,
@@ -500,22 +534,27 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
   const { pairing, paths, config } = context;
   const peer = pairing.intent.peerMachineId;
   const root = oldRoot(pairing);
+
   const options: Omit<RemoteOptions, "oldRoot"> & { oldRoot?: string } = {
     kinds: ["create", "join"],
     peer,
   };
+
   if (root !== undefined) {
     options.oldRoot = root;
   }
+
   const draft = remoteDraft();
   draft.peer = peer;
   const directory = join(paths.directory, `re-pair-${randomBytes(12).toString("hex")}`);
+
   return actionForm({
     title: "Re-pair",
     note: "Replace this pair's trust with a new root. Both computers re-pair; old keys and revocation records are kept.",
     rows: () => remoteRows(draft, options),
     details: () => {
       const gate = remoteGate(draft, config.machineId, options);
+
       return withTechnical(
         [
           "Creates or joins a new pair for the same two computers, saves it, restarts the shared gateway once and reconnects this Pi.",
@@ -545,6 +584,7 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
 
 function oldRoot(pairing: Pairing): string | undefined {
   const root = pairing.output.rootSha256;
+
   return isString(root)
     ? root
     : (pairing.intent.confirmedRootSha256 ?? pairing.intent.existing?.confirmedRootSha256);
@@ -569,6 +609,7 @@ function renewalLines(pairing: Pairing): string[] {
 
 export function pairRows(context: PairContext, progress: Progress): Row[] {
   const { pairing } = context;
+
   return [
     opener(
       "instructions",
@@ -597,13 +638,16 @@ export function pairRows(context: PairContext, progress: Progress): Row[] {
 
 export function savedChoices(config: Configuration): LocalChoices {
   const scopeId = config.scopeIds[0];
+
   if (scopeId === undefined) {
     throw new Error("pi-peers.json lists no scope");
   }
+
   const permissions =
     config.policies.find(
       (grant) => grant.machineId === config.machineId && grant.scopeId === scopeId,
     )?.permissions ?? [];
+
   return { machineId: config.machineId, scopeId, label: config.label, permissions };
 }
 
@@ -617,8 +661,10 @@ export function currentPlan(config: Configuration, gatewayBytes: Buffer): LocalP
 
 async function importFloor(runtimeDir: string): Promise<"existing" | "new"> {
   const runtimeBytes = await regularBytes(join(runtimeDir, "runtime.json"));
+
   if (runtimeBytes === undefined) {
     throw new Error("The saved pairing files are missing; nothing was recreated");
   }
+
   return decodeRecord(parseJson(runtimeBytes)).installed === true ? "existing" : "new";
 }

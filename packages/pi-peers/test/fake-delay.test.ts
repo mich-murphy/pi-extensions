@@ -10,18 +10,24 @@ describe("fakeDelay", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const abort = new AbortController();
     let real = false;
+
     const pending = timersPromisesDelay(10_000, undefined, { signal: abort.signal }).then(
       () => {
         real = true;
+
         return undefined;
       },
       () => undefined,
     );
+
     let fake = false;
+
     const injected = fakeDelay(10_000).then(() => {
       fake = true;
+
       return undefined;
     });
+
     await vi.advanceTimersByTimeAsync(10_000);
     expect(fake).toBe(true);
     expect(real).toBe(false);

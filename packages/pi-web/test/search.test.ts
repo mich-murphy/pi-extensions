@@ -65,19 +65,23 @@ function buildChains(
   mcpClients: ReturnType<typeof recordingMcpClients> = recordingMcpClients(),
 ) {
   const http = fakeProviderHttp([]);
+
   const dependencies = Layer.mergeAll(
     WebToolsConfig.layer(settingsFrom(env)),
     Layer.succeed(ProviderHttpClient, http.client),
     mcpClients.layer,
   );
+
   const chains = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
     Layer.provide(dependencies),
   );
+
   return Effect.runSync(
     Effect.gen(function* () {
       const search = yield* SearchProviders;
       const fetch = yield* FetchRescueProviders;
       const snapshot = credentialSnapshotFrom(env);
+
       return {
         search: search.forRequest(snapshot),
         fetch: fetch.forRequest(snapshot),
@@ -96,6 +100,7 @@ describe("searchWithFallback", () => {
         failingProvider(UNAVAILABLE, "exa"),
         failingProvider(UNAVAILABLE, "parallel"),
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -130,7 +135,9 @@ describe("searchWithFallback", () => {
         new ProviderToolError({ detail: "" }),
         new ProviderToolError({ detail: "quota exceeded" }),
       ];
+
       const providers = errors.map((error) => failingProvider(error));
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -153,23 +160,28 @@ describe("searchWithFallback", () => {
   it.effect("tries providers in order, stopping at the first success", () =>
     Effect.gen(function* () {
       const order: string[] = [];
+
       const tracked = (provider: SearchProvider): SearchProvider => ({
         ...provider,
         search: (input) =>
           Effect.suspend(() => {
             order.push(provider.name);
+
             return provider.search(input);
           }),
       });
+
       const providers = [
         tracked(failingProvider(new ProviderStatusRejected({ status: 500 }), "brave")),
         tracked(failingProvider(new ProviderTimedOut({ timeoutSeconds: 3 }), "exa")),
         tracked(answeringProvider("parallel")),
         tracked(answeringProvider("brave")),
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
+
       assert(Result.isSuccess(result));
       expect(result.success.provider).toBe("parallel");
       expect(order).toStrictEqual(["brave", "exa", "parallel"]);
@@ -180,6 +192,7 @@ describe("searchWithFallback", () => {
   it.effect("honors the provider override and rejects unknown providers", () =>
     Effect.gen(function* () {
       const providers = [failingProvider(UNAVAILABLE, "exa"), answeringProvider("parallel")];
+
       const overridden = yield* Effect.result(
         searchWithFallback(
           providers,
@@ -187,6 +200,7 @@ describe("searchWithFallback", () => {
           { providerOverride: "parallel" },
         ),
       );
+
       assert(Result.isSuccess(overridden));
       expect(overridden.success.provider).toBe("parallel");
 
@@ -197,6 +211,7 @@ describe("searchWithFallback", () => {
           { providerOverride: "brave" },
         ),
       );
+
       expect(unknown).toStrictEqual(
         Result.fail(new UnknownProvider({ provider: "brave", available: ["exa", "parallel"] })),
       );
@@ -224,6 +239,7 @@ describe("buildSearchProviders", () => {
       PARALLEL_API_KEY: "parallel-key",
       BRAVE_API_KEY: "brave-key",
     };
+
     const providers = buildChains(env).search;
     expect(providers.map((p) => [p.name, p.transport])).toStrictEqual([
       ["exa", "api"],
@@ -237,6 +253,7 @@ describe("buildSearchProviders", () => {
       EXA_API_KEY: "exa-key",
       PI_WEB_EXA_ENDPOINT: "https://search.internal.example/mcp",
     };
+
     const providers = buildChains(env).search;
     expect(providers.map((p) => [p.name, p.transport])).toStrictEqual([
       ["exa", "mcp"],
@@ -269,6 +286,7 @@ describe("free-tier rate limits", () => {
         freeTierProvider(EXA_LIMIT, "exa"),
         freeTierProvider(new ProviderStatusRejected({ status: 429 }), "parallel"),
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -291,6 +309,7 @@ describe("free-tier rate limits", () => {
         freeTierProvider(EXA_LIMIT, "exa"),
         failingProvider(new ProviderTimedOut({ timeoutSeconds: 25 }), "parallel"),
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -308,6 +327,7 @@ describe("free-tier rate limits", () => {
         failingProvider(new ProviderStatusRejected({ status: 429 }), "exa"),
         { ...failingProvider(EXA_LIMIT, "parallel"), transport: "mcp" as const },
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -328,6 +348,7 @@ describe("free-tier rate limits", () => {
         freeTierProvider(EXA_LIMIT, "exa"),
         freeTierProvider(new ProviderStatusRejected({ status: 429 }), "parallel"),
       ];
+
       const result = yield* Effect.result(
         searchWithFallback(
           providers,
@@ -346,6 +367,7 @@ describe("free-tier rate limits", () => {
   it.effect("does not call other free-tier failures a rate limit", () =>
     Effect.gen(function* () {
       const providers = [freeTierProvider(new ProviderStatusRejected({ status: 503 }), "exa")];
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 8 }),
       );
@@ -361,10 +383,12 @@ function attemptFor(error: ProviderError): Effect.Effect<string> {
     const result = yield* Effect.result(
       searchWithFallback([failingProvider(error)], { query: QUERY, maxResults: 8 }),
     );
+
     assert(Result.isFailure(result));
     assert(Predicate.isTagged("AllProvidersFailed")(result.failure));
     const [attempt] = result.failure.attempts;
     assert(attempt !== undefined);
+
     return attempt;
   });
 }
@@ -428,7 +452,9 @@ describe("provider route isolation", () => {
         PI_WEB_EXA_ENDPOINT: "https://override.example/mcp",
         PI_WEB_PARALLEL_ENDPOINT: "https://override.example/mcp",
       };
+
       const outbound: { url: string; headers: Headers; body: string }[] = [];
+
       const fetchImpl: typeof fetch = async (input, init) => {
         const url = input instanceof Request ? input.url : String(input);
         outbound.push({
@@ -436,6 +462,7 @@ describe("provider route isolation", () => {
           headers: new Headers(init?.headers),
           body: Schema.is(Schema.String)(init?.body) ? init.body : "",
         });
+
         return new Response(
           JSON.stringify({ result: { content: [], structuredContent: { results: [] } } }),
           {
@@ -443,7 +470,9 @@ describe("provider route isolation", () => {
           },
         );
       };
+
       const http = fakeProviderHttp([]);
+
       const dependencies = Layer.mergeAll(
         WebToolsConfig.layer(settingsFrom(env)),
         Layer.succeed(ProviderHttpClient, http.client),
@@ -451,9 +480,11 @@ describe("provider route isolation", () => {
           Layer.provide(Layer.succeed(HttpFetch, { fetch: fetchImpl })),
         ),
       );
+
       const chains = Layer.mergeAll(SearchProviders.layer, FetchRescueProviders.layer).pipe(
         Layer.provide(dependencies),
       );
+
       yield* Effect.gen(function* () {
         const searchService = yield* SearchProviders;
         const rescueService = yield* FetchRescueProviders;
@@ -465,34 +496,43 @@ describe("provider route isolation", () => {
           ["brave", "api"],
         ]);
         expect(rescue.map(({ name }) => name)).toStrictEqual(["parallel", "exa"]);
+
         for (const provider of search.filter(({ name }) => name !== "brave")) {
           yield* provider.search({ query: QUERY, maxResults: 1 });
         }
+
         for (const provider of rescue) {
           yield* provider.fetchMarkdown(publicUrl("https://page.example/"));
         }
+
         const rotated = credentialSnapshotFrom({
           ...env,
           EXA_API_KEY: "next-exa",
           PARALLEL_API_KEY: "next-parallel",
         });
+
         for (const provider of searchService
           .forRequest(rotated)
           .filter(({ name }) => name !== "brave")) {
           yield* provider.search({ query: QUERY, maxResults: 1 });
         }
+
         for (const provider of rescueService.forRequest(credentialSnapshotFrom({}))) {
           yield* provider.fetchMarkdown(publicUrl("https://page.example/"));
         }
       }).pipe(Effect.provide(chains));
       expect(http.requests).toStrictEqual([]);
       expect(outbound).toHaveLength(24);
+
       const parallelSessionIds = outbound.flatMap(({ body }) => {
         const match = /"session_id":"(?<sessionId>[^"]+)"/u.exec(body);
+
         return match?.groups?.sessionId ?? [];
       });
+
       expect(parallelSessionIds).toHaveLength(4);
       expect(new Set(parallelSessionIds).size).toBe(1);
+
       for (const request of outbound) {
         expect(request.url).toBe("https://override.example/mcp");
         expect(request.headers.has("authorization")).toBe(false);
@@ -509,6 +549,7 @@ describe("buildFetchProviders", () => {
       PI_WEB_PROVIDERS: "parallel,exa,brave",
       BRAVE_API_KEY: "brave-key",
     };
+
     const providers = buildChains(env).fetch;
     expect(providers.map((p) => p.name)).toStrictEqual(["parallel", "exa"]);
   });
@@ -532,6 +573,7 @@ describe("buildFetchProviders", () => {
       PI_WEB_EXA_ENDPOINT: "https://exa.internal.example/mcp",
       PI_WEB_PARALLEL_ENDPOINT: "https://parallel.internal.example/mcp",
     };
+
     const mcpClients = recordingMcpClients();
     const { endpoints } = mcpClients;
     const [exa, parallel] = buildChains(env, mcpClients).fetch;
@@ -552,8 +594,10 @@ describe("request-time routing", () => {
     const absent = credentialSnapshotFrom({});
     const old = credentialSnapshotFrom({ BRAVE_API_KEY: "old-key" });
     const next = credentialSnapshotFrom({ BRAVE_API_KEY: "new-key" });
+
     const names = (snapshot: CredentialSnapshot) =>
       searchService.forRequest(snapshot).map((p) => p.name);
+
     expect(names(absent)).toStrictEqual(["exa", "parallel"]);
     const oldProviders = searchService.forRequest(old);
     expect(names(next)).toStrictEqual(["exa", "parallel", "brave"]);
@@ -571,20 +615,25 @@ describe("request-time routing", () => {
       const mcp = recordingMcpClients();
       const { searchService, fetchService, http } = buildChains({}, mcp);
       mcp.endpoints.length = 0;
+
       const snapshot: CredentialSnapshot = {
         outcomes: { exa: failure("exa"), parallel: failure("parallel"), brave: failure("brave") },
         secrets: [],
       };
+
       const providers = searchService.forRequest(snapshot);
       expect(providers.map((p) => p.name)).toStrictEqual(["exa", "parallel", "brave"]);
       expect(fetchService.forRequest(snapshot)).toStrictEqual([]);
+
       const result = yield* Effect.result(
         searchWithFallback(providers, { query: QUERY, maxResults: 1 }),
       );
+
       assert(Result.isFailure(result));
       expect(result.failure.message).toContain("brave: credential resolution");
       expect(mcp.endpoints).toStrictEqual([]);
       expect(http.requests).toStrictEqual([]);
+
       const overridden = yield* Effect.result(
         searchWithFallback(
           providers,
@@ -592,6 +641,7 @@ describe("request-time routing", () => {
           { providerOverride: "brave" },
         ),
       );
+
       assert(Result.isFailure(overridden));
       expect(overridden.failure).toBeInstanceOf(AllProvidersFailed);
     }),
@@ -601,9 +651,11 @@ describe("request-time routing", () => {
     Effect.gen(function* () {
       const { search } = buildChains({ PI_WEB_PROVIDERS: "brave,parallel" });
       expect(search.map((p) => p.name)).toStrictEqual(["brave", "parallel"]);
+
       const result = yield* Effect.result(
         searchWithFallback(search, { query: QUERY, maxResults: 1 }, { providerOverride: "brave" }),
       );
+
       assert(Result.isFailure(result));
       expect(result.failure.message).toContain("brave: credential unavailable");
     }),
@@ -614,9 +666,11 @@ describe("request-time routing", () => {
       const { searchService, http } = buildChains({ PI_WEB_PROVIDERS: "brave" });
       const old = searchService.forRequest(credentialSnapshotFrom({ BRAVE_API_KEY: "old-key" }));
       const next = searchService.forRequest(credentialSnapshotFrom({ BRAVE_API_KEY: "next-key" }));
+
       for (const provider of [...next, ...old]) {
         yield* Effect.result(provider.search({ query: QUERY, maxResults: 1 }));
       }
+
       expect(
         http.requests.map((request) => request.headers?.["x-subscription-token"]),
       ).toStrictEqual(["next-key", "old-key"]);
@@ -628,6 +682,7 @@ describe("request-time routing", () => {
       PI_WEB_EXA_ENDPOINT: "https://override.example/exa",
       PI_WEB_PARALLEL_ENDPOINT: "https://override.example/parallel",
     });
+
     const snapshot: CredentialSnapshot = {
       outcomes: {
         ...credentialSnapshotFrom({}).outcomes,
@@ -638,6 +693,7 @@ describe("request-time routing", () => {
       },
       secrets: [],
     };
+
     expect(searchService.forRequest(snapshot).map((p) => p.transport)).toStrictEqual([
       "mcp",
       "mcp",

@@ -80,7 +80,9 @@ export function normalizeValidationResult(
   ) {
     return undefined;
   }
+
   const assistant = history.findLast((entry) => entry.role === "assistant");
+
   if (
     assistant?.role !== "assistant" ||
     !isClaudeProvider(assistant.provider) ||
@@ -88,9 +90,11 @@ export function normalizeValidationResult(
   ) {
     return undefined;
   }
+
   const call = assistant.content.find(
     (block) => block.type === "toolCall" && block.id === message.toolCallId,
   );
+
   if (
     call?.type !== "toolCall" ||
     call.name !== VALIDATION_ERROR_TOOL ||
@@ -98,18 +102,24 @@ export function normalizeValidationResult(
   ) {
     return undefined;
   }
+
   const input = Option.getOrUndefined(decodeValidationInput(call.arguments));
+
   if (input === undefined) {
     return undefined;
   }
+
   const reason = validationRecoveryReason(input);
+
   const text =
     message.content.length === 1 && message.content[0]?.type === "text"
       ? message.content[0].text
       : undefined;
+
   if (text !== `Tool ${VALIDATION_ERROR_TOOL} not found` && text !== reason) {
     return undefined;
   }
+
   return {
     message: {
       ...message,

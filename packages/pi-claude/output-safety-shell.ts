@@ -1,11 +1,15 @@
 type Word = { text: string; discovered: boolean; quoted: boolean };
+
 type Heredoc = { delimiter: string; quoted: boolean; tabs: boolean };
+
 type Scope = { discovered: boolean; blocked: boolean };
 
 const WORD_END = /[\s;&|()<>]/u;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
 const GROUP_PREFIXES = new Set(["!", "if", "then", "elif", "else", "do", "while", "until"]);
+
 type WrapperOptions = { flags: readonly string[]; values: readonly string[] };
+
 const WRAPPERS = new Map<string, WrapperOptions>(
   Object.entries({
     command: { flags: ["-p"], values: [] },
@@ -27,24 +31,33 @@ function assignment(word: Word | undefined): boolean {
 
 function wrapperEnd(words: readonly Word[], start: number, name: string): number {
   const options = WRAPPERS.get(name);
+
   if (!options) {
     return start;
   }
+
   let offset = start + 1;
+
   while (offset < words.length) {
     const text = words[offset]?.text ?? "";
+
     if (text === "--") {
       return offset + 1;
     }
+
     if (!text.startsWith("-") || text === "-") {
       break;
     }
+
     const width = optionWidth(words, offset, name, options);
+
     if (width === 0) {
       return start;
     }
+
     offset += width;
   }
+
   return offset;
 }
 
@@ -55,50 +68,64 @@ function optionWidth(
   options: WrapperOptions,
 ): number {
   const text = words[offset]?.text ?? "";
+
   if (options.flags.includes(text) || (name === "env" && text.startsWith("--unset="))) {
     return 1;
   }
+
   return options.values.includes(text) && words[offset + 1] !== undefined ? 2 : 0;
 }
 
 function commandWords(words: readonly Word[]): readonly Word[] {
   let offset = 0;
   let shellPrefixes = true;
+
   while (offset < words.length) {
     const word = words[offset];
     const text = word?.text ?? "";
+
     if (shellPrefixes && (GROUP_PREFIXES.has(text) || assignment(word))) {
       offset += 1;
       continue;
     }
+
     shellPrefixes &&= text === "time" && word?.quoted === false;
     const name = wrapperName(text);
     const end = wrapperEnd(words, offset, name);
+
     if (end === offset) {
       break;
     }
+
     offset = end;
+
     if (name === "env") {
       while (assignment(words[offset])) {
         offset += 1;
       }
     }
   }
+
   return words.slice(offset);
 }
 
 function isDiscovery(words: readonly Word[]): boolean {
   const name = words[0]?.text.split("/").at(-1);
+
   if (name === "which") {
     return true;
   }
+
   if (words[0]?.text !== "command") {
     return false;
   }
+
   let offset = 1;
+
   while (words[offset]?.text === "-p") {
     offset += 1;
   }
+
   return words[offset]?.text === "-v";
 }
 
@@ -118,12 +145,15 @@ class ShellScan {
     if (depth > MAX_SHELL_NESTING_DEPTH_BEFORE_REFUSING) {
       this.blocked = true;
       this.position = this.source.length;
+
       return { discovered: false, blocked: true };
     }
+
     let words: Word[] = [];
     let discovered = false;
     const heredocs: Heredoc[] = [];
     const inputs: Word[] = [];
+
     const finish = () => {
       const executable = commandWords(words);
       const name = executable[0]?.text.split("/").at(-1);
@@ -133,12 +163,15 @@ class ShellScan {
       words = [];
       inputs.length = 0;
     };
+
     while (this.position < this.source.length) {
       const character = this.source[this.position] ?? "";
+
       if (stop && character === stop) {
         this.position += 1;
         break;
       }
+
       if (character === "\n") {
         finish();
         this.position += 1;
@@ -155,12 +188,15 @@ class ShellScan {
         continue;
       } else {
         const word = this.word(depth, false, stop);
+
         if (!this.reservedBrace(word, words)) {
           words.push(word);
         }
       }
     }
+
     finish();
+
     return { discovered, blocked: this.blocked };
   }
 
@@ -180,10 +216,13 @@ class ShellScan {
   ): boolean {
     FILE_DESCRIPTOR.lastIndex = this.position;
     const descriptor = FILE_DESCRIPTOR.exec(this.source);
+
     if (descriptor) {
       this.position += descriptor[0].length;
+
       return this.skipToken(this.source[this.position] ?? "", heredocs, inputs, depth);
     }
+
     if (/\s/u.test(character)) {
       this.position += 1;
     } else if (character === "#") {
@@ -195,12 +234,14 @@ class ShellScan {
       heredocs.push(this.heredocDelimiter(depth));
     } else if ("<>".includes(character)) {
       const target = this.redirect(depth);
+
       if (character === "<") {
         inputs.push(target);
       }
     } else {
       return false;
     }
+
     return true;
   }
 
@@ -218,14 +259,18 @@ class ShellScan {
   private word(depth: number, delimiter = false, stop = ""): Word {
     const result: Word = { text: "", discovered: false, quoted: false };
     let quote = "";
+
     while (this.position < this.source.length) {
       const character = this.source[this.position] ?? "";
+
       if (!quote && (WORD_END.test(character) || (stop && character === stop))) {
         break;
       }
+
       this.position += 1;
       quote = this.piece(character, quote, result, delimiter, depth);
     }
+
     return result;
   }
 
@@ -244,18 +289,24 @@ class ShellScan {
     ) {
       result.quoted = true;
       result.text += this.dollarDelimiter();
+
       return "";
     }
+
     if (delimiter && !quote && this.isExpansion(character)) {
       this.blocked = true;
     }
+
     if (character === quote) {
       return "";
     }
+
     if (!quote && (character === "'" || character === '"')) {
       result.quoted = true;
+
       return character;
     }
+
     if (character === "\\" && quote !== "'") {
       result.quoted ||= this.source[this.position] !== "\n";
       result.text += this.escape(quote);
@@ -266,6 +317,7 @@ class ShellScan {
     } else {
       result.text += character;
     }
+
     return quote;
   }
 
@@ -274,47 +326,62 @@ class ShellScan {
     this.position += 1;
     this.blocked ||= quote === '"';
     let text = "";
+
     while (this.position < this.source.length) {
       const character = this.source[this.position] ?? "";
       this.position += 1;
+
       if (character === quote) {
         return text;
       }
+
       if (character === "\\") {
         this.blocked = true;
       }
+
       text += character;
     }
+
     this.blocked = true;
+
     return text;
   }
 
   private escape(quote: string): string {
     const next = this.source[this.position] ?? "";
+
     if (quote === '"' && !'$`"\\\n'.includes(next)) {
       return "\\";
     }
+
     this.position += 1;
+
     return next === "\n" ? "" : next;
   }
 
   private heredocDelimiter(depth: number): Heredoc {
     this.position += 2;
     const tabs = this.source[this.position] === "-";
+
     if (tabs) {
       this.position += 1;
     }
+
     this.skipSpace();
     const delimiter = this.word(depth, true);
+
     return { delimiter: delimiter.text, quoted: delimiter.quoted, tabs };
   }
 
   private redirect(depth: number): Word {
     this.position += 1;
+
     while ("<>&|".includes(this.source[this.position] ?? "\0")) {
       this.position += 1;
     }
+
     this.skipSpace();
+
     return this.word(depth);
   }
 
@@ -325,11 +392,14 @@ class ShellScan {
   private expansion(character: string, depth: number): Scope {
     if (character === "$") {
       this.position += 1;
+
       if (this.source[this.position] === "(") {
         this.position += 1;
+
         return this.arithmetic(depth + 1);
       }
     }
+
     return this.scan(character === "`" ? "`" : ")", depth + 1);
   }
 
@@ -337,13 +407,17 @@ class ShellScan {
     if (depth > MAX_SHELL_NESTING_DEPTH_BEFORE_REFUSING) {
       this.blocked = true;
       this.position = this.source.length;
+
       return { discovered: false, blocked: true };
     }
+
     let parentheses = 0;
     let discovered = false;
+
     while (this.position < this.source.length) {
       const character = this.source[this.position] ?? "";
       this.position += 1;
+
       if (character === "\\") {
         this.position += 1;
       } else if (this.isExpansion(character)) {
@@ -356,15 +430,18 @@ class ShellScan {
           this.position += 1;
           break;
         }
+
         parentheses -= 1;
       }
     }
+
     return { discovered, blocked: this.blocked };
   }
 
   private readHeredocs(heredocs: Heredoc[], depth: number): void {
     for (const heredoc of heredocs.splice(0)) {
       const body = this.heredocBody(heredoc);
+
       if (!heredoc.quoted) {
         this.heredocExpansions(body, depth);
       }
@@ -376,13 +453,16 @@ class ShellScan {
     const next = end < 0 ? this.source.length : end + 1;
     const line = this.source.slice(this.position, end < 0 ? next : end);
     this.position = next;
+
     return line;
   }
 
   private heredocBody(heredoc: Heredoc): string {
     const lines: string[] = [];
+
     while (this.position < this.source.length) {
       let line = this.line();
+
       while (
         !heredoc.quoted &&
         /(?:^|[^\\])(?:\\\\)*\\$/u.test(line) &&
@@ -390,26 +470,33 @@ class ShellScan {
       ) {
         line = line.slice(0, -1) + this.line();
       }
+
       const stripped = heredoc.tabs ? line.replace(/^\t+/u, "") : line;
+
       if (stripped === heredoc.delimiter) {
         break;
       }
+
       lines.push(stripped);
     }
+
     return lines.join("\n");
   }
 
   private heredocExpansions(body: string, depth: number): void {
     const scanner = new ShellScan(body);
+
     while (scanner.position < body.length) {
       const character = body[scanner.position] ?? "";
       scanner.position += 1;
+
       if (character === "\\" && /[$`\\\n]/u.test(body[scanner.position] ?? "")) {
         scanner.position += 1;
       } else if (scanner.isExpansion(character)) {
         scanner.expansion(character, depth);
       }
     }
+
     this.blocked ||= scanner.blocked;
   }
 }

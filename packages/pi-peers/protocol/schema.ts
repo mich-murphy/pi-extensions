@@ -5,10 +5,12 @@ export const MAX_AUTHORED_BYTES = 24_576;
 function noControls(value: string): boolean {
   for (const character of value) {
     const code = character.codePointAt(0) ?? 0;
+
     if (code <= 31 || (code >= 127 && code <= 159)) {
       return false;
     }
   }
+
   return true;
 }
 
@@ -27,16 +29,19 @@ function text(maximum: number, controls = true) {
 const randomId = Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/u));
 const machineId = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,31}$/u));
 const key = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/u));
+
 const natural = Schema.Number.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(0),
   Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
   Schema.makeFilter<number>((value) => !Object.is(value, -0)),
 );
+
 const revision = natural;
 export const MAX_BUDGET_MS = 60_000;
 const budgetMs = natural.check(Schema.isLessThanOrEqualTo(MAX_BUDGET_MS));
 const label = text(128, false);
+
 const scopeIds = (maximum: number) =>
   Schema.Array(key).check(
     Schema.makeFilter<readonly string[]>(
@@ -44,6 +49,7 @@ const scopeIds = (maximum: number) =>
         values.length > 0 && values.length <= maximum && new Set(values).size === values.length,
     ),
   );
+
 const boundedArray = <S extends Schema.Constraint>(item: S, maximum: number) =>
   Schema.Array(item).check(
     Schema.makeFilter<readonly S["Type"][]>((values) => values.length <= maximum),
@@ -54,11 +60,14 @@ const Peer = Schema.Struct({
   sessionId: text(256, false),
   runtimeNonce: randomId,
 });
+
 export type PeerRef = typeof Peer.Type;
+
 const work = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("request"), origin: Peer, requestId: randomId }),
   Schema.Struct({ kind: Schema.Literal("publication"), publisher: Peer, key }),
 ]);
+
 const status = Schema.Literals([
   "accepted",
   "declined",
@@ -70,7 +79,9 @@ const status = Schema.Literals([
   "failed",
   "cancelled",
 ]);
+
 const format = Schema.Literals(["text", "markdown", "git-diff", "git-format-patch"]);
+
 const refs = boundedArray(
   Schema.Union([
     Schema.Struct({ kind: Schema.Literal("publication"), publisher: Peer, key, revision }),
@@ -83,11 +94,13 @@ const refs = boundedArray(
   ]),
   8,
 );
+
 const reportFields = {
   work: Schema.optionalKey(work),
   status: Schema.optionalKey(status),
   refs: Schema.optionalKey(refs),
 };
+
 export const Message = Schema.Struct({
   id: randomId,
   kind: Schema.Literals(["request", "reply", "update"]),
@@ -102,6 +115,7 @@ export const Message = Schema.Struct({
       (message.kind !== "request" || message.status === undefined),
   ),
 );
+
 export type Message = typeof Message.Type;
 
 const descriptor = Schema.Struct({ peer: Peer, label, scopeIds: scopeIds(4) });
@@ -171,8 +185,10 @@ const resource = Schema.Literals([
   "buffers",
   "watch",
 ]);
+
 const baseCodes = ["forbidden", "unavailable"] as const;
 const routedCodes = [...baseCodes, "no_route"] as const;
+
 const deliveryCodes = [
   ...routedCodes,
   "id_conflict",
@@ -180,14 +196,18 @@ const deliveryCodes = [
   "delivery_too_large",
   "expired",
 ] as const;
+
 const sendCodes = [...deliveryCodes, "protocol_error", "cancelled"] as const;
+
 function failure<const C extends readonly string[]>(codes: C) {
   return Schema.Union([
     Schema.Struct({ tag: Schema.Literal("error"), code: Schema.Literals(codes) }),
     Schema.Struct({ tag: Schema.Literal("error"), code: Schema.Literal("overloaded"), resource }),
   ]);
 }
+
 export const retiredOps = ["state.get", "state.list", "interest.add", "interest.remove"] as const;
+
 function refused<const O extends string>(op: O) {
   return Schema.Struct({
     ...head,
@@ -196,6 +216,7 @@ function refused<const O extends string>(op: O) {
     outcome: failure(routedCodes),
   });
 }
+
 function result<
   const O extends string,
   S extends Schema.Constraint,
@@ -208,18 +229,21 @@ function result<
     outcome: Schema.Union([Schema.Struct({ tag: Schema.Literal("ok"), value }), failure(codes)]),
   });
 }
+
 const admittedOutcome = Schema.Struct({
   tag: Schema.Literal("admitted"),
   messageId: randomId,
   correlation: Schema.Literals(["none", "verified", "unresolved"]),
   durable: Schema.Boolean,
 });
+
 const overloadedOutcome = Schema.Struct({
   tag: Schema.Literal("not_admitted"),
   messageId: randomId,
   code: Schema.Literal("overloaded"),
   resource,
 });
+
 const deliveryOutcome = Schema.Union([
   admittedOutcome,
   overloadedOutcome,
@@ -229,6 +253,7 @@ const deliveryOutcome = Schema.Union([
     code: Schema.Literals(deliveryCodes),
   }),
 ]);
+
 const sendOutcome = Schema.Union([
   admittedOutcome,
   overloadedOutcome,
@@ -243,6 +268,7 @@ const sendOutcome = Schema.Union([
     code: Schema.Literals(["unavailable", "protocol_error", "cancelled"]),
   }),
 ]);
+
 const results = [
   result("register", Schema.Struct({ peer: Peer, scopeIds: scopeIds(4) }), [
     ...baseCodes,
@@ -273,6 +299,7 @@ const results = [
     outcome: deliveryOutcome,
   }),
 ] as const;
+
 const event = Schema.Struct({
   ...head,
   op: Schema.Literal("roster.event"),
@@ -285,7 +312,9 @@ const event = Schema.Struct({
     }),
   ]),
 });
+
 const linkStates = ["up", "down", "probing"] as const;
+
 const linkState = Schema.Struct({
   ...head,
   op: Schema.Literal("link.state"),
@@ -294,6 +323,9 @@ const linkState = Schema.Struct({
   since: natural,
   nextProbe: Schema.optionalKey(natural),
 });
+
 export const Frame = Schema.Union([...requests, ...results, event, linkState]);
+
 export type Frame = typeof Frame.Type;
+
 export type WorkRef = typeof work.Type;

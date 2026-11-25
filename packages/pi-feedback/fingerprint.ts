@@ -14,9 +14,11 @@ const NORMALIZERS: readonly (readonly [RegExp, string])[] = [
 
 export function normalizeErrorText(text: string): string {
   let current = text;
+
   for (const [pattern, replacement] of NORMALIZERS) {
     current = current.replaceAll(pattern, replacement);
   }
+
   return current.trim();
 }
 

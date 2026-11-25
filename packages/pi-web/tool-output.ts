@@ -47,17 +47,21 @@ export function redactSecrets(input: string, secrets: readonly (string | undefin
   const unique = [
     ...new Set(secrets.filter((secret): secret is string => secret !== undefined && secret !== "")),
   ];
+
   if (unique.length === 0) {
     return input;
   }
+
   const pattern = unique
     .toSorted((a, b) => b.length - a.length)
     .map((secret) => secret.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
     .join("|");
+
   return input.replaceAll(new RegExp(pattern, "gu"), () => "[redacted]");
 }
 
 export type PiTextContent = { readonly type: "text"; readonly text: string };
+
 export type PiImageContent = {
   readonly type: "image";
   readonly data: string;
@@ -119,21 +123,27 @@ type LimitedText = {
 
 function limitUtf8Bytes(text: string, maxBytes: number): LimitedText {
   const bytes = Buffer.from(text, "utf8");
+
   if (bytes.length <= maxBytes) {
     return { content: text, truncated: false, bytes: bytes.length };
   }
+
   let end = maxBytes;
+
   while (end > 0 && ((bytes.at(end) ?? 0) & 0xc0) === 0x80) {
     end -= 1;
   }
+
   return { content: bytes.subarray(0, end).toString("utf8"), truncated: true, bytes: end };
 }
 
 function characterBoundaryAtOrAfter(bytes: Buffer, offset: number): number {
   let start = Math.min(offset, bytes.length);
+
   while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) {
     start += 1;
   }
+
   return start;
 }
 
@@ -172,17 +182,22 @@ function fetchTextStructure(page: FetchTextPage): StructureOutput {
     const all = Buffer.from(page.text, "utf8");
     const start = page.offset > 0 ? characterBoundaryAtOrAfter(all, page.offset) : 0;
     const pastEnd = page.offset > 0 && start >= all.length;
+
     const { content, truncated, bytes } = limitUtf8Bytes(
       start === 0 ? page.text : all.subarray(start).toString("utf8"),
       STRUCTURED_OUTPUT_MAX_BYTES,
     );
+
     const location: Pick<FetchTextOutput, "url" | "status" | "mime_type"> = { url: page.url };
+
     if (page.status !== undefined) {
       location.status = page.status;
     }
+
     if (page.mimeType !== undefined) {
       location.mime_type = page.mimeType;
     }
+
     const result: FetchTextOutput = {
       ...location,
       format: page.format,
@@ -190,22 +205,28 @@ function fetchTextStructure(page: FetchTextPage): StructureOutput {
       content,
       truncated: truncated || page.responseTruncated === true,
     };
+
     if (page.responseTruncated === true) {
       result.response_truncated = true;
       result.download_limit_bytes = page.bytes;
     }
+
     if (fullOutputPath !== undefined) {
       result.full_output_path = fullOutputPath;
     }
+
     if (page.via !== undefined) {
       result.via = page.via;
     }
+
     if (page.offset > 0) {
       result.offset = pastEnd ? page.offset : start;
     }
+
     if (truncated) {
       result.next_offset = start + bytes;
     }
+
     return result;
   };
 }
@@ -219,22 +240,29 @@ export function formatSearchResults(
   }
 
   const lines = [`Search results for: ${query}`, ""];
+
   for (const [index, result] of results.entries()) {
     lines.push(`${index + 1}. ${result.title}`, `   URL: ${result.url}`);
+
     if (result.publishedAt !== undefined && result.publishedAt !== "") {
       lines.push(`   Published: ${result.publishedAt}`);
     }
+
     if (result.source !== undefined && result.source !== "") {
       lines.push(`   Source: ${result.source}`);
     }
+
     if (Schema.is(Schema.Number)(result.score)) {
       lines.push(`   Score: ${result.score}`);
     }
+
     if (result.snippet !== undefined && result.snippet !== "") {
       lines.push(`   Snippet: ${result.snippet}`);
     }
+
     lines.push("");
   }
+
   return lines.join("\n").trimEnd();
 }
 
@@ -259,6 +287,7 @@ export function projectFetchResult(
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const { meta, body } = result;
   const offset = options.offset ?? 0;
+
   const safeMeta = {
     ...meta,
     requestedUrl: redactSecrets(meta.requestedUrl, options.secrets),
@@ -266,15 +295,19 @@ export function projectFetchResult(
     mime: redactSecrets(meta.mime, options.secrets),
     contentType: redactSecrets(meta.contentType, options.secrets),
   };
+
   if (meta.charset !== undefined) {
     safeMeta.charset = redactSecrets(meta.charset, options.secrets);
   }
+
   if (FetchPageBody.$is("Image")(body)) {
     const note = redactSecrets(
       `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
       options.secrets,
     );
+
     const data = body.data.toString("base64");
+
     return Effect.succeed({
       content: [
         { type: "text", text: note },
@@ -302,6 +335,7 @@ function projectFetchedText(
   offset: number,
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
   const responseTruncated = meta.responseTruncated === true;
+
   const page: FetchTextPage = {
     url: details.finalUrl,
     format: meta.format,
@@ -311,6 +345,7 @@ function projectFetchedText(
     status: meta.status,
     mimeType: details.mime,
   };
+
   const output: TextOutputOptions<WebFetchDetails> = {
     prefix: responseTruncated ? `${responseTruncatedNotice(meta.bytes)}\n\n` : "",
     output: text,
@@ -320,11 +355,14 @@ function projectFetchedText(
     store,
     tempPrefix: "pi-webfetch-",
   };
+
   if (responseTruncated) {
     output.endNote = responseTruncatedEnd(meta.bytes);
     page.responseTruncated = true;
   }
+
   const projected = projectTextOutput(output);
+
   return responseTruncated
     ? projected.pipe(
         Effect.map((projectedResult) => ({
@@ -361,6 +399,7 @@ export function projectProviderFetchedPage(
   const requestedUrl = redactSecrets(page.url, options.secrets);
   const bytes = Buffer.byteLength(page.markdown, "utf8");
   const via = redactSecrets(page.provider, options.secrets);
+
   return projectTextOutput<WebFetchDetails>({
     prefix: redactSecrets(`${note}\n\n`, options.secrets),
     output: redactSecrets(page.markdown, options.secrets),
@@ -411,6 +450,7 @@ function searchStructure(
   secrets: readonly (string | undefined)[],
 ): JsonValue {
   const redact = (input: string) => redactSecrets(input, secrets);
+
   return {
     query: redact(search.query),
     provider: redact(search.details.provider),
@@ -432,18 +472,23 @@ function searchEntry(
   redact: (input: string) => string,
 ): StructuredSearchEntry {
   const entry: StructuredSearchEntry = { title: redact(result.title), url: redact(result.url) };
+
   if (result.snippet !== undefined) {
     entry.snippet = redact(result.snippet);
   }
+
   if (result.publishedAt !== undefined) {
     entry.published_at = redact(result.publishedAt);
   }
+
   if (result.source !== undefined) {
     entry.source = redact(result.source);
   }
+
   if (result.score !== undefined) {
     entry.score = result.score;
   }
+
   return entry;
 }
 
@@ -453,9 +498,11 @@ function endLine(endNote: string | undefined): string {
 
 function untruncatedRange(start: number, total: number, endNote: string | undefined): string {
   const range = start === 0 ? "" : `Showing bytes ${start}–${total} of ${total}`;
+
   if (endNote === undefined) {
     return range === "" ? "" : `\n\n[${range}]`;
   }
+
   return range === "" ? `\n\n${endNote}` : `\n\n[${range}]\n${endNote}`;
 }
 
@@ -473,6 +520,7 @@ function truncatedWindow(
     const lineEnd = window.indexOf("\n");
     const lineSize = Buffer.byteLength(lineEnd === -1 ? window : window.slice(0, lineEnd), "utf8");
     const shown = limitUtf8Bytes(window, DEFAULT_MAX_BYTES);
+
     return {
       shownText: shown.content,
       shownBytes: shown.bytes,
@@ -481,8 +529,10 @@ function truncatedWindow(
         ` showing its first ${formatSize(shown.bytes)} of ${formatSize(truncation.totalBytes)} total.`,
     };
   }
+
   const omittedLines = truncation.totalLines - truncation.outputLines;
   const omittedBytes = truncation.totalBytes - truncation.outputBytes;
+
   return {
     shownText: truncation.content,
     shownBytes: truncation.outputBytes + 1,
@@ -520,6 +570,7 @@ function projectTextOutput<Details>({
   const bytes = Buffer.from(output, "utf8");
   const total = bytes.length;
   const start = offset > 0 ? characterBoundaryAtOrAfter(bytes, offset) : 0;
+
   if (offset > 0 && start >= total) {
     return Effect.succeed({
       content: [
@@ -534,6 +585,7 @@ function projectTextOutput<Details>({
   }
 
   const window = start === 0 ? output : bytes.subarray(start).toString("utf8");
+
   const truncation = truncateHead(window, {
     maxBytes: DEFAULT_MAX_BYTES,
     maxLines: DEFAULT_MAX_LINES,
@@ -541,6 +593,7 @@ function projectTextOutput<Details>({
 
   if (!truncation.truncated) {
     const range = untruncatedRange(start, total, endNote);
+
     return Effect.succeed({
       content: [{ type: "text", text: `${prefix}${truncation.content}${range}` }],
       details: { ...details, truncated: false },
@@ -556,6 +609,7 @@ function projectTextOutput<Details>({
       const resume = next < total ? `. Call webfetch again with offset=${next} to continue.` : "";
       const tail = next < total ? "" : endLine(endNote);
       const notice = `${summary} Showing bytes ${start}–${next} of ${total}. ${saved}${resume}]${tail}`;
+
       return {
         content: [{ type: "text", text: `${prefix}${shownText}\n\n${notice}` }],
         details: { ...details, truncated: true, fullOutputPath },

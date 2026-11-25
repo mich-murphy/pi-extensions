@@ -22,6 +22,7 @@ export function skillReader(
   const selected = options.selectedTools ?? DEFAULT_TOOLS;
   const hidden = new Set(options.hiddenTools);
   const declared = new Set(selected.filter((name) => !hidden.has(name)));
+
   return READERS.find((tool) => declared.has(tool)) ?? "indirect";
 }
 
@@ -46,6 +47,7 @@ export function promptResources(
   const editable = new Set(
     resources.flatMap(({ editability, id }) => (editability === "editable" ? [id] : [])),
   );
+
   const entries: readonly PromptResource[] = [
     ...(options.contextFiles ?? []).map<PromptResource>((file) => ({
       id: resourcePathId(file.path, options.cwd),
@@ -62,12 +64,15 @@ export function promptResources(
       body: skill.description,
     })),
   ];
+
   const unique = new Map<ResourcePath, PromptResource>();
+
   for (const entry of entries) {
     if (editable.has(entry.id) && !unique.has(entry.id)) {
       unique.set(entry.id, entry);
     }
   }
+
   return [...unique.values()];
 }
 

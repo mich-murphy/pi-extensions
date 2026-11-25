@@ -95,6 +95,7 @@ describe("claude SDK failure diagnostics", () => {
       "iterate",
       new Error("getaddrinfo ENOTFOUND secret.internal.example"),
     );
+
     const lines: string[] = [];
 
     writeSdkFailureDiagnostic(error, (line) => {
@@ -113,6 +114,7 @@ describe("claude SDK failure diagnostics", () => {
       category: "provider",
       apiError: "authentication_failed",
     });
+
     expect(formatSdkRunError(error)).toBe(
       "Claude could not verify your account or cloud credentials. Run `claude auth login` to sign in.",
     );
@@ -192,6 +194,7 @@ describe("claude SDK failure diagnostics", () => {
       reason: SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
       cause: new Error("ENOENT /secret/network/timeout/worktree"),
     });
+
     const message = formatSdkRunError(error);
     expect(message).toContain("Restart Pi from an existing folder");
     expect(message).not.toContain("/secret");
@@ -255,6 +258,7 @@ describe("Pi retry compatibility", () => {
       ...failedAssistant("provider"),
       errorMessage: formatSdkRunError(new SdkStreamInterruptedError({ evidence: "api-retry" })),
     };
+
     expect(isRetryableAssistantError(message)).toBe(true);
     expect(isContextOverflow(message, 200_000)).toBe(false);
   });

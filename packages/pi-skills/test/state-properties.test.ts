@@ -29,7 +29,9 @@ const ERROR_TAGS = new Set([
   "ToggleStateTooNew",
   "ToggleStateMalformed",
 ]);
+
 const KEYS = ["__proto__", "version", "files", "repositories", "overrides", "resources", "enabled"];
+
 const PATHS = [
   "/a/b",
   "/a/b/",
@@ -42,6 +44,7 @@ const PATHS = [
   "__proto__",
   "/a\0b",
 ];
+
 const RELATIVE = [
   "x/SKILL.md",
   "x/",
@@ -55,6 +58,7 @@ const RELATIVE = [
   "a\0b",
   "__proto__",
 ];
+
 const VERSIONS = [-1, 0, 3, 4, 5, 6, 7, 8, 1.5, 7.5, "7", null, true];
 const TOGGLES = ["enabled", "disabled", "default", "", 1];
 
@@ -92,11 +96,14 @@ const toggleish = gs.oneOf<unknown>(
   entryJson,
   pairs(gs.sampledFrom(KEYS), entryJson),
 );
+
 const fileish = gs.oneOf<unknown>(entryJson, pairs(gs.sampledFrom(PATHS), toggleish));
+
 const repositoryish = gs.oneOf<unknown>(
   entryJson,
   pairs(gs.sampledFrom(PATHS), pairs(gs.sampledFrom(RELATIVE), toggleish)),
 );
+
 const documentLike = gs.composite((tc) => ({
   version: tc.draw(gs.sampledFrom<unknown>(VERSIONS)),
   files: tc.draw(fileish),
@@ -104,6 +111,7 @@ const documentLike = gs.composite((tc) => ({
   overrides: tc.draw(fileish),
   resources: tc.draw(fileish),
 }));
+
 const document = gs.oneOf<unknown>(json, documentLike);
 
 const stats = { ok: 0, err: 0 };
@@ -114,6 +122,7 @@ function isToggleValue(value: string): boolean {
 
 function inTemporaryDirectory(run: (directory: string) => void): void {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-props-"));
+
   try {
     run(directory);
   } finally {
@@ -125,16 +134,21 @@ function assertWellFormed(result: ToggleStateResult): void {
   if (Result.isFailure(result)) {
     stats.err += 1;
     assert.ok(ERROR_TAGS.has(result.failure._tag), result.failure._tag);
+
     return;
   }
+
   stats.ok += 1;
+
   for (const [path, value] of result.success.files) {
     assertAbsoluteNormalized(path);
     assert.ok(!path.includes("\0"), path);
     assert.ok(isToggleValue(value), value);
   }
+
   for (const [repository, entries] of result.success.repositories) {
     assertAbsoluteNormalized(repository);
+
     for (const [path, value] of entries) {
       assertRelativeEntry(path);
       assert.ok(isToggleValue(value), value);
@@ -162,12 +176,14 @@ function withLoader(run: (load: Loader) => void): void {
     const path = join(directory, "state.json");
     run((content) => {
       writeFileSync(path, content);
+
       return new ToggleStateFile(path).load();
     });
   });
 }
 
 type Action = "enabled" | "disabled" | "default" | "toggle-file" | "probe";
+
 const ACTIONS: readonly Action[] = ["enabled", "disabled", "default", "toggle-file", "probe"];
 const SLOTS = 4;
 
@@ -190,12 +206,15 @@ function inRepository(fixture: Fixture, path: string): boolean {
 
 function assertLoads(fixture: Fixture, model: ReadonlyMap<ResourcePath, ToggleValue>): void {
   const files = new Map([...model].filter(([path]) => !inRepository(fixture, path)));
+
   const entries = new Map(
     [...model].flatMap<[string, ToggleValue]>(([path, value]) =>
       inRepository(fixture, path) ? [[relative(fixture.root, path), value]] : [],
     ),
   );
+
   const repositories = entries.size === 0 ? new Map() : new Map([[fixture.repository, entries]]);
+
   for (const store of [fixture.store, new ToggleStateFile(fixture.statePath)]) {
     const loaded = store.load();
     assert.ok(Result.isSuccess(loaded));
@@ -214,11 +233,13 @@ function prune(fixture: Fixture): void {
 
 function applySet(fixture: Fixture, path: ResourcePath, value: ToggleValue | "default"): void {
   prune(fixture);
+
   if (value === "default") {
     fixture.model.delete(path);
   } else {
     fixture.model.set(path, value);
   }
+
   const result = fixture.store.set(path, value);
   assert.ok(Result.isSuccess(result));
   assertLoads(fixture, fixture.model);
@@ -228,15 +249,18 @@ function probe(fixture: Fixture, path: ResourcePath): void {
   const stale = [...fixture.model.keys()].some(
     (key) => !inRepository(fixture, key) && !existsSync(key),
   );
+
   if (fixture.model.has(path) || stale) {
     return;
   }
+
   const before = snapshot(fixture.statePath);
   assert.ok(Result.isSuccess(fixture.store.set(path, "enabled")));
   assertLoads(fixture, new Map([...fixture.model, [path, "enabled"]]));
   assert.ok(Result.isSuccess(fixture.store.set(path, "default")));
   assertLoads(fixture, fixture.model);
   const after = snapshot(fixture.statePath);
+
   if (before === undefined) {
     assert.deepEqual(JSON.parse(after ?? ""), { version: 7, files: {}, repositories: {} });
   } else {
@@ -254,17 +278,21 @@ function withWorkspace(run: (workspace: Workspace) => void): void {
   inTemporaryDirectory((directory) => {
     const root = join(directory, "checkout");
     mkdirSync(join(root, ".git"), { recursive: true });
+
     const paths = Array.from({ length: SLOTS }, (_, index) => {
       const file = join(index < 2 ? directory : root, `r${index}`, "SKILL.md");
       mkdirSync(dirname(file), { recursive: true });
+
       return resourcePathId(file, directory);
     });
+
     run({ statePath: join(directory, "state", "pi-skills.json"), root, paths });
   });
 }
 
 function resetWorkspace(workspace: Workspace): void {
   rmSync(workspace.statePath, { force: true });
+
   for (const [index, path] of workspace.paths.entries()) {
     writeFileSync(path, `r${index}`);
   }
@@ -273,6 +301,7 @@ function resetWorkspace(workspace: Workspace): void {
 function assertSequence(workspace: Workspace, steps: readonly (readonly [number, Action])[]): void {
   resetWorkspace(workspace);
   const { statePath, root, paths } = workspace;
+
   const fixture: Fixture = {
     statePath,
     store: new ToggleStateFile(statePath),
@@ -281,7 +310,9 @@ function assertSequence(workspace: Workspace, steps: readonly (readonly [number,
     root,
     model: new Map(),
   };
+
   assertLoads(fixture, new Map());
+
   for (const [slot, action] of steps) {
     const path = paths[slot];
     assert.ok(path);

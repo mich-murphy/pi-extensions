@@ -18,6 +18,7 @@ import { assertProperty } from "./hegel-property";
 import { timeoutOverTenfold } from "./test-timeouts";
 
 const cwd = "/work";
+
 const MODELS = [
   { provider: "p", id: "m" },
   { provider: "p", id: "n" },
@@ -44,6 +45,7 @@ type World = {
 
 function resourceAt(index: number, isSkill: boolean): PromptResource {
   const path = isSkill ? `/s/${index} & <b>/SKILL.md` : `/work/${index}/AGENTS.md`;
+
   return {
     id: resourcePathId(path, cwd),
     kind: isSkill ? "skill" : "instruction",
@@ -70,6 +72,7 @@ function renderSection(
   visible: ReadonlySet<string>,
 ): string {
   const shown = resources.filter((resource) => resource.kind === kind && visible.has(resource.id));
+
   return kind === "skill"
     ? formatSkillsForPrompt(shown.map((resource) => skillOf(resource))).trim()
     : shown
@@ -83,11 +86,13 @@ function systemMessage(
   kinds: ReadonlySet<string>,
 ): Item {
   const sections: Record<string, string> = {};
+
   for (const kind of ["skill", "instruction"] as const) {
     if (kinds.has(kind)) {
       sections[RESOURCE_SECTIONS[kind]] = renderSection(kind, resources, visible);
     }
   }
+
   return { role: "system", content: "", sections, timestamp: 1 };
 }
 
@@ -136,19 +141,24 @@ function assertPlan(world: World, snapshot: PromptSnapshot, plan: PromptPlan): v
     assert.deepEqual([...(recorded ?? [])].toSorted(), [...plan.note.details.visible]);
     assert.deepEqual([...plan.note.details.visible], [...desired].toSorted());
   }
+
   if (snapshot.epoch === "initial") {
     assert.equal(plan.note, undefined);
   }
+
   if (snapshot.epoch === "frozen") {
     assertFrozen(world, snapshot, plan, desired);
   }
+
   if (snapshot.epoch === "model-change") {
     const patched = patchedKinds(world, snapshot);
+
     const converged = world.resources.every(
       (resource) =>
         (patched.has(resource.kind) ? true : snapshot.view.has(resource.id)) ===
           desired.has(resource.id) || patched.has(resource.kind),
     );
+
     assert.equal(plan.note === undefined, converged, "model-change note only for unpatched kinds");
   }
 }
@@ -160,10 +170,12 @@ function assertFrozen(
   desired: ReadonlySet<string>,
 ): void {
   const { resources } = world;
+
   for (const resource of resources) {
     const listed = isInPrompt(snapshot.sections, resource);
     assert.equal(plan.hidden.has(resource.id), !listed, "a frozen prompt keeps its sections");
   }
+
   const listedNow = (resource: PromptResource): boolean => isInPrompt(snapshot.sections, resource);
   assert.deepEqual(
     ids(plan.changes.enabled),
@@ -179,6 +191,7 @@ function assertFrozen(
 
 function patchedKinds(world: World, snapshot: PromptSnapshot): Set<string> {
   const desired = desiredVisible(world);
+
   return new Set(
     world.resources
       .filter((resource) => isInPrompt(snapshot.sections, resource) !== desired.has(resource.id))
@@ -191,14 +204,17 @@ function respond(world: World): void {
   const plan = planOf(world, snapshot);
   assertPlan(world, snapshot, plan);
   const desired = desiredVisible(world);
+
   if (snapshot.epoch === "initial") {
     world.items.push(systemMessage(world.resources, desired, new Set(["skill", "instruction"])));
   } else if (snapshot.epoch === "model-change") {
     world.items.push(systemMessage(world.resources, desired, patchedKinds(world, snapshot)));
   }
+
   if (plan.note !== undefined) {
     world.items.push({ role: "custom", ...plan.note });
   }
+
   const model = MODELS[world.selected] ?? MODELS[0];
   world.items.push({ role: "assistant", provider: model.provider, model: model.id });
 
@@ -213,6 +229,7 @@ const machine: stateful.StateMachine<World> = {
     toggle: (tc, world) => {
       tc.assume(world.resources.length > 0);
       const id = tc.draw(gs.sampledFrom(world.resources.map((resource) => resource.id)));
+
       if (!world.hidden.delete(id)) {
         world.hidden.add(id);
       }
@@ -243,6 +260,7 @@ const machine: stateful.StateMachine<World> = {
 function newWorld(tc: TestCase): World {
   const count = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
   const kinds = Array.from({ length: count }, () => tc.draw(gs.booleans()));
+
   return {
     resources: kinds.map((isSkill, index) => resourceAt(index, isSkill)),
     hidden: new Set(),

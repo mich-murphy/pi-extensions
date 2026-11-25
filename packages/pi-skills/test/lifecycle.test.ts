@@ -21,6 +21,7 @@ import type { ToggleStateResult, ToggleStateStore } from "../state";
 
 const cwd = "/work/project";
 const skillPath = join(getAgentDir(), "skills/research/SKILL.md");
+
 const research: Skill = {
   name: "research",
   description: "Research primary sources",
@@ -29,7 +30,9 @@ const research: Skill = {
   sourceInfo: { path: skillPath, source: "local", scope: "user", origin: "top-level" },
   disableModelInvocation: false,
 };
+
 const projectPath = "/work/project/.agents/skills/deploy/SKILL.md";
+
 const deploy: Skill = {
   ...research,
   name: "deploy",
@@ -37,6 +40,7 @@ const deploy: Skill = {
   baseDir: dirname(projectPath),
   sourceInfo: { path: projectPath, source: "local", scope: "project", origin: "top-level" },
 };
+
 const options: BuildSystemPromptOptions = { cwd, skills: [research] };
 
 const temporaryDirectories: string[] = [];
@@ -50,12 +54,15 @@ async function selectFirstDialogItem(
 ): Promise<readonly string[]> {
   initTheme();
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
+
   for (let index = 0; index < group; index += 1) {
     component.handleInput?.("\u001b[B");
   }
+
   component.handleInput?.("\r");
   component.handleInput?.(" ");
   component.invalidate();
+
   return component.render(width);
 }
 
@@ -67,16 +74,21 @@ async function driveDialog(
 ): Promise<{ readonly closed: boolean; readonly rendered: readonly string[] }> {
   initTheme();
   let closed = false;
+
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
     closed = true;
   });
+
   for (let index = 0; index < group; index += 1) {
     component.handleInput?.("\u001b[B");
   }
+
   component.handleInput?.("\r");
+
   for (const key of keys) {
     component.handleInput?.(key);
   }
+
   return { closed, rendered: component.render(width) };
 }
 
@@ -105,11 +117,13 @@ function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleS
   readonly writes: (readonly [string, ToggleValue | "default"])[];
 } {
   const writes: (readonly [string, ToggleValue | "default"])[] = [];
+
   return {
     writes,
     load: () => Result.succeed(overrides(entries)),
     set: (id, value) => {
       writes.push([id, value]);
+
       return Result.succeed(overrides(entries));
     },
   };
@@ -130,6 +144,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
   const handlers: Partial<ToggleHandlers> = {};
   const commands = new Map<string, CommandOptions>();
   const notifications: string[] = [];
+
   const piMock = {
     on<K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) {
       handlers[name] = handler;
@@ -140,7 +155,9 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
     getCommands: () => [],
     exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
   };
+
   let projectTrusted = true;
+
   const ctx = {
     cwd: projectDirectory,
     model: undefined,
@@ -153,7 +170,9 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
       notify: (message: string) => notifications.push(message),
     },
   };
+
   registerPiSkills(piMock, store);
+
   const emit = async (
     ...args: ["resources_discover"] | ["before_agent_start", PromptFilterEvent]
   ) => {
@@ -163,8 +182,10 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
         ctx,
       );
     }
+
     return handlers.before_agent_start?.(args[1], ctx);
   };
+
   const runCommand = async (
     args: string,
     commandOptions: {
@@ -174,9 +195,11 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
     } = {},
   ): Promise<void> => {
     const command = commands.get("skills");
+
     if (!command) {
       throw new Error("skills command was not registered");
     }
+
     const commandContext = {
       cwd: projectDirectory,
       mode: commandOptions.mode ?? "tui",
@@ -186,8 +209,10 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
         custom: commandOptions.custom ?? (async () => undefined),
       },
     };
+
     await command.handler(args, commandContext);
   };
+
   return {
     commands,
     emit,
@@ -205,6 +230,7 @@ function projectWithSkill() {
   const path = join(directory, ".claude", "skills", "design", "SKILL.md");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, "---\nname: design\ndescription: design description\n---\n");
+
   const skill: Skill = {
     ...research,
     name: "design",
@@ -212,12 +238,14 @@ function projectWithSkill() {
     baseDir: dirname(path),
     sourceInfo: { path, source: "extension:index", scope: "temporary", origin: "top-level" },
   };
+
   return { directory, skill };
 }
 
 describe("extension lifecycle", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -228,17 +256,20 @@ describe("extension lifecycle", () => {
     temporaryDirectories.push(agentDirectory);
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
     const path = join(agentDirectory, "skills", "research", "SKILL.md");
+
     const skill: Skill = {
       ...research,
       filePath: path,
       baseDir: dirname(path),
       sourceInfo: { ...research.sourceInfo, path },
     };
+
     writeFileSync(
       join(agentDirectory, "pi-skills.json"),
       JSON.stringify({ version: 6, overrides: { [path]: "disabled" } }),
     );
     const handlers: Partial<ToggleHandlers> = {};
+
     const piMock = {
       registerCommand: () => undefined,
       on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
@@ -247,6 +278,7 @@ describe("extension lifecycle", () => {
       getCommands: () => [],
       exec: async () => ({ stdout: "", stderr: "", code: 1, killed: false, truncated: false }),
     };
+
     piSkills(piMock);
 
     const result = handlers.before_agent_start?.(
@@ -339,6 +371,7 @@ describe("extension lifecycle", () => {
 
   test("restores the row and reports once when persistence fails", async () => {
     let rendered: readonly string[] = [];
+
     const testHarness = harness({
       load: () => Result.succeed(overrides({ [skillPath]: "disabled" })),
       set: () => failure("update"),
@@ -383,10 +416,12 @@ describe("extension lifecycle", () => {
 
   test("contributes trusted project skills and hides them until enabled", async () => {
     const project = projectWithSkill();
+
     const event = {
       systemPrompt: `base${formatSkillsForPrompt([project.skill])}`,
       systemPromptOptions: { cwd: project.directory, skills: [project.skill] },
     };
+
     const hidden = harness(storeWith(), project.directory);
     const enabled = harness(storeWith({ [project.skill.filePath]: "enabled" }), project.directory);
 
@@ -452,12 +487,14 @@ describe("extension lifecycle", () => {
 
   test("does not apply stale state to package or other excluded resources", async () => {
     const packagePath = "/packages/research/SKILL.md";
+
     const packageSkill: Skill = {
       ...research,
       filePath: packagePath,
       baseDir: "/packages/research",
       sourceInfo: { path: packagePath, source: "npm:example", scope: "user", origin: "package" },
     };
+
     const testHarness = harness(storeWith({ [packagePath]: "disabled" }));
 
     const result = await testHarness.emit("before_agent_start", {
@@ -486,6 +523,7 @@ describe("extension lifecycle", () => {
       },
       set: () => failure("update"),
     });
+
     const event = {
       systemPrompt: `base${formatSkillsForPrompt([research])}`,
       systemPromptOptions: options,
@@ -498,6 +536,7 @@ describe("extension lifecycle", () => {
   test("leaves the prompt unchanged, reports a state failure once, and again after it recovers", async () => {
     let result: ReturnType<ToggleStateStore["load"]> = failure("load");
     const testHarness = harness({ load: () => result, set: () => failure("update") });
+
     const event = {
       systemPrompt: `base${formatSkillsForPrompt([research])}`,
       systemPromptOptions: options,
@@ -537,6 +576,7 @@ describe("extension lifecycle", () => {
   test("the menu shows one accurate key hint and keeps other list hints", async () => {
     const many = Array.from({ length: 25 }, (_, index): Skill => {
       const path = join(getAgentDir(), `skills/hint-${String(index).padStart(2, "0")}/SKILL.md`);
+
       return {
         ...research,
         name: `hint-${index}`,
@@ -545,6 +585,7 @@ describe("extension lifecycle", () => {
         sourceInfo: { ...research.sourceInfo, path },
       };
     });
+
     const screens: (readonly [string, readonly string[], string])[] = [];
 
     for (const [name, keys, hint] of [
@@ -557,15 +598,20 @@ describe("extension lifecycle", () => {
         promptOptions: { cwd, skills: many },
         custom: async (factory) => {
           initTheme();
+
           const component = await factory(testTui(), testTheme(), testKeybindings(), () => {
             throw new Error("menu closed unexpectedly");
           });
+
           component.handleInput?.(DOWN);
           component.handleInput?.("\r");
+
           for (const key of keys) {
             component.handleInput?.(key);
           }
+
           screens.push([name, component.render(120), hint]);
+
           for (const width of [1, 8, 20, 40, 60, 120]) {
             const lines = component.render(width);
             expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
@@ -586,6 +632,7 @@ describe("extension lifecycle", () => {
         stale: false,
       });
     }
+
     const byName = new Map(screens.map(([name, rendered]) => [name, plain(rendered).join("\n")]));
     expect(byName.get("open")).toContain("  (1/25)");
     expect(byName.get("cleared")).toContain("  (1/25)");
@@ -616,6 +663,7 @@ describe("extension lifecycle", () => {
 
   test("a failed save restores every row to the persisted policy", async () => {
     let rendered: readonly string[] = [];
+
     const testHarness = harness({
       load: () => Result.succeed(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
       set: () => failure("update"),
@@ -640,6 +688,7 @@ describe("extension lifecycle", () => {
     mkdirSync(join(home, ".git"));
     vi.stubEnv("HOME", home);
     const homePath = join(home, ".agents", "skills", "notes", "SKILL.md");
+
     const homeSkill: Skill = {
       ...research,
       name: "notes",
@@ -647,12 +696,15 @@ describe("extension lifecycle", () => {
       baseDir: dirname(homePath),
       sourceInfo: { path: homePath, source: "local", scope: "project", origin: "top-level" },
     };
+
     const repo = projectWithSkill();
     mkdirSync(join(repo.directory, ".git"));
+
     const repoSkill: Skill = {
       ...repo.skill,
       sourceInfo: { ...repo.skill.sourceInfo, scope: "project" },
     };
+
     const descriptions: string[] = [];
 
     for (const skill of [homeSkill, repoSkill]) {

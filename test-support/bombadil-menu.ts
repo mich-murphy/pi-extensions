@@ -35,11 +35,13 @@ function titleFields(
 ): Pick<MenuView, "title" | "path" | "depth" | "titleShown"> {
   const title = top >= 0 ? (rows[top] ?? null) : null;
   const path = title === null ? null : title.split(separator);
+
   return { title, path, depth: path === null ? -1 : path.length - 1, titleShown: top >= 0 };
 }
 
 function selectedLabel(body: readonly string[]): string | null {
   const cursorRow = body.find((row) => row.startsWith("→ "));
+
   return cursorRow === undefined ? null : (cursorRow.slice(2).split(/\s{2,}/u)[0] ?? null);
 }
 
@@ -49,6 +51,7 @@ function hintFields(
   pattern: RegExp,
 ): Pick<MenuView, "hint" | "hintGroups" | "hintShown" | "bottomShown"> {
   const row = hint >= 0 ? (rows[hint] ?? null) : null;
+
   return {
     hint: row,
     hintGroups: { ...pattern.exec(row ?? "")?.groups },
@@ -61,6 +64,7 @@ export function readMenu(rows: readonly string[], layout: MenuLayout): MenuView 
   const top = rows.findIndex((row) => layout.title.test(row));
   const hint = rows.findIndex((row, index) => index > top && layout.hint.test(row));
   const body = top >= 0 && hint > top ? rows.slice(top + 1, hint) : [];
+
   return {
     ...titleFields(rows, top, layout.separator),
     ...hintFields(rows, hint, layout.hint),

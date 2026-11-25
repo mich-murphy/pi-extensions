@@ -19,12 +19,14 @@ const NOTICE = { provider: "claude", resetsAt: RESETS_AT };
 function harness(mode: ExtensionContext["mode"] = "tui") {
   const pi = fakePi(mode);
   registerRetry(pi.pi, pi.deps);
+
   return pi;
 }
 
 function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: TestUsageNotice = NOTICE) {
   pi.startRun();
   pi.publish(USAGE_LIMIT_CHANNEL, notice);
+
   return pi.settle("error", [userEntry("u1"), assistantEntry("a1", "error")]);
 }
 
@@ -378,6 +380,7 @@ describe("print and JSON modes", () => {
 describe("malformed reset dates", () => {
   test.each(["print", "json"] as const)("rejects invalid dates in %s mode", (mode) => {
     const pi = harness(mode);
+
     for (const resetsAt of [
       Number.NaN,
       Infinity,
@@ -388,6 +391,7 @@ describe("malformed reset dates", () => {
     ]) {
       expect(failOnUsageLimit(pi, { resetsAt })).toBeUndefined();
     }
+
     expect(pi.timerCount()).toBe(0);
     expect(pi.notifications).toStrictEqual([]);
     expect(pi.stderr).toStrictEqual([]);

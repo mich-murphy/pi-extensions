@@ -35,8 +35,10 @@ class BlockedSocket extends Socket {
     callback(error);
   }
 }
+
 const peer = { machineId: "alpha", sessionId: "sender", runtimeNonce: "1".repeat(32) };
 const other = { machineId: "alpha", sessionId: "receiver", runtimeNonce: "2".repeat(32) };
+
 function retiredRequest(index: number): Request {
   return {
     v: 2,
@@ -48,8 +50,10 @@ function retiredRequest(index: number): Request {
     key: "report",
   };
 }
+
 function retiredReply(request: Request): Reply {
   assert(request.op === "state.get");
+
   return {
     v: 2,
     op: "result",
@@ -58,11 +62,14 @@ function retiredReply(request: Request): Reply {
     outcome: { tag: "error", code: "forbidden" },
   };
 }
+
 const replyBytes = encodeFrame(retiredReply(retiredRequest(0)), "adapter-delivery").length;
 const repliesUnderCap = Math.floor(CONTROL_WRITE_BYTES / replyBytes);
+
 function deliver(socket: Socket, frame: Frame): void {
   socket.emit("data", Buffer.from(encodeFrame(frame, "adapter-delivery")));
 }
+
 function sending(rid: string): Request {
   return {
     v: 2,
@@ -74,9 +81,11 @@ function sending(rid: string): Request {
     message: { id: "3".repeat(32), kind: "update", content: "authored", format: "text" },
   };
 }
+
 async function fixture() {
   const socket = new BlockedSocket();
   const disconnected: string[] = [];
+
   const connecting = connectTransport(
     {
       socketPath: "/unused/callback-seam.sock",
@@ -90,8 +99,10 @@ async function fixture() {
     },
     () => socket,
   );
+
   socket.emit("connect");
   const connection = await connecting;
+
   return { socket, connection, disconnected };
 }
 
@@ -116,6 +127,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("newly queued traffic cannot slide the oldest blocked write's deadline or erase admission uncertainty", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { socket, connection, disconnected } = await fixture();
+
     const outcome = sendWithRetries({
       sender: peer,
       recipient: other,
@@ -124,6 +136,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
       request: async (rid, deadline) => connection.request(sending(rid), deadline),
       delay: fakeDelay,
     });
+
     await vi.advanceTimersByTimeAsync(4000);
     deliver(socket, retiredRequest(2));
     await vi.advanceTimersByTimeAsync(999);
@@ -136,9 +149,11 @@ describe("bounded transport write completion and absolute progress deadlines", (
   });
   test("control flooding hits its independent 32KiB ceiling, far below total connection capacity", async () => {
     const { socket, connection, disconnected } = await fixture();
+
     for (let index = 1; index <= repliesUnderCap; index += 1) {
       deliver(socket, retiredRequest(index));
     }
+
     expect(socket.writableLength).toBeLessThanOrEqual(CONTROL_WRITE_BYTES);
     expect(disconnected).toStrictEqual([]);
     deliver(socket, retiredRequest(repliesUnderCap + 1));
@@ -166,10 +181,12 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("completing the oldest write re-arms the timer for the next-oldest write's original deadline, not the newest's", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { socket, connection, disconnected } = await fixture();
+
     const queue = async (index: number) =>
       connection
         .request(sending(index.toString(16).padStart(32, "0")), performance.now() + 15_000)
         .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
     const queued = [queue(1)];
     await vi.advanceTimersByTimeAsync(1000);
     queued.push(queue(2));
@@ -187,9 +204,11 @@ describe("bounded transport write completion and absolute progress deadlines", (
   test("caller cancellation retires pending requests but cannot free still-blocked ordinary byte charges", async () => {
     const { socket, connection, disconnected } = await fixture();
     const abort = new AbortController();
+
     const requests = Array.from({ length: 8 }, async (_, index) => {
       const request = sending(index.toString(16).padStart(32, "0"));
       assert(request.op === "send");
+
       return connection
         .request(
           { ...request, message: { ...request.message, content: "x".repeat(24_000) } },
@@ -198,12 +217,14 @@ describe("bounded transport write completion and absolute progress deadlines", (
         )
         .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     });
+
     abort.abort();
     await expect(Promise.all(requests)).resolves.toHaveLength(8);
     expect(connection.pendingCount()).toBe(0);
     const ninth = sending("a".repeat(32));
     assert(ninth.op === "send");
     const nextAbort = new AbortController();
+
     const ninthWait = connection
       .request(
         { ...ninth, message: { ...ninth.message, content: "x".repeat(24_000) } },
@@ -211,6 +232,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
         nextAbort.signal,
       )
       .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
+
     nextAbort.abort();
     await expect(ninthWait).resolves.toMatchObject({ code: "cancelled", possible: true });
     await expect(

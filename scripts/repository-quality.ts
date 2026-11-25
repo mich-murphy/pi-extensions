@@ -36,12 +36,15 @@ const tools = new Map(
 function git(args: string[], cwd: string): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   const advice = "Git query failed; run from a Git checkout with a readable index.";
+
   if (result.error !== undefined) {
     throw new Error(`${advice} ${result.error.message}`);
   }
+
   if (result.status !== 0) {
     throw new Error(`${advice} ${result.stderr.trim()}`);
   }
+
   return result.stdout;
 }
 
@@ -61,23 +64,29 @@ function checkedStat(root: string, path: string, component: string, stats: PathS
   if (!stats.has(component)) {
     stats.set(component, indexedStat(root, component));
   }
+
   const stat = stats.get(component);
+
   if (stat?.isSymbolicLink() === true) {
     rejectSymlink(path, component);
   }
+
   return stat;
 }
 
 function existingFile(root: string, path: string, stats: PathStats): boolean {
   const components: string[] = [];
   let stat: ReturnType<typeof indexedStat>;
+
   for (const part of path.split("/")) {
     components.push(part);
     stat = checkedStat(root, path, components.join("/"), stats);
+
     if (stat === undefined) {
       return false;
     }
   }
+
   return stat?.isFile() ?? false;
 }
 
@@ -88,6 +97,7 @@ function indexedEntry(entry: string) {
 function indexedFiles(root: string, extension: RegExp): string[] {
   const indexed = git(["ls-files", "--cached", "--stage", "-z"], root);
   const stats: PathStats = new Map();
+
   const files = indexed
     .split("\0")
     .filter(Boolean)
@@ -98,8 +108,10 @@ function indexedFiles(root: string, extension: RegExp): string[] {
       if (symlink) {
         rejectSymlink(path, path);
       }
+
       return path;
     });
+
   return [...new Set(files)];
 }
 
@@ -109,16 +121,19 @@ function completedStatus(result: ReturnType<typeof spawnSync>, tool: Tool): numb
       `${tool.name} was interrupted (${result.signal ?? "unknown termination"}); rerun the check when ready.`,
     );
   }
+
   return result.status;
 }
 
 function toolStatus(result: ReturnType<typeof spawnSync>, tool: Tool): number {
   const status = completedStatus(result, tool);
+
   if (status !== 0) {
     process.stderr.write(
       `repository-quality: ${tool.name} failed (exit ${status}); fix the diagnostics above and rerun npm run ${tool.retry}.\n`,
     );
   }
+
   return status;
 }
 
@@ -126,8 +141,10 @@ function toolExecutable(root: string, tool: Tool): string {
   if (tool.name !== "markdownlint-cli2") {
     return resolve(root, "node_modules", ".bin", tool.name);
   }
+
   try {
     const entry = fileURLToPath(import.meta.resolve("markdownlint-cli2"));
+
     return resolve(dirname(entry), "markdownlint-cli2-bin.mjs");
   } catch (error) {
     throw new Error(`Unable to locate markdownlint-cli2; run npm ci and retry.`, { cause: error });
@@ -136,13 +153,16 @@ function toolExecutable(root: string, tool: Tool): string {
 
 function runBatch(root: string, tool: Tool, files: string[]): number {
   const paths = files.map((path) => `${tool.pathPrefix}${path}`);
+
   const result = spawnSync(toolExecutable(root, tool), [...tool.options, ...paths], {
     cwd: root,
     stdio: "inherit",
   });
+
   if (result.error !== undefined) {
     throw new Error(`Unable to start ${tool.name}; run npm ci and retry. ${result.error.message}`);
   }
+
   return toolStatus(result, tool);
 }
 
@@ -151,24 +171,30 @@ const MAX_PATHS_PER_TOOL_RUN = 64;
 function runBatches(root: string, tool: Tool, files: string[]): number {
   for (let start = 0; start < files.length; start += MAX_PATHS_PER_TOOL_RUN) {
     const status = runBatch(root, tool, files.slice(start, start + MAX_PATHS_PER_TOOL_RUN));
+
     if (status !== 0) {
       return status;
     }
   }
+
   return 0;
 }
 
 function run(mode: string): number {
   const extension = extensions.get(mode);
   const tool = tools.get(mode);
+
   if (extension === undefined || tool === undefined) {
     throw new Error("Choose format, format-check, lint or markdownlint.");
   }
+
   const root = git(["rev-parse", "--show-toplevel"], process.cwd()).replace(/\n$/u, "");
   const files = indexedFiles(root, extension);
+
   if (files.length === 0) {
     process.stdout.write(`repository-quality: no indexed files for ${mode}; nothing to check.\n`);
   }
+
   return runBatches(root, tool, files);
 }
 

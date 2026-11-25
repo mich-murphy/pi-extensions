@@ -34,6 +34,7 @@ describe("merging groups", () => {
       newer,
       sameCause(3, "read: newer", "read: older", THRESHOLDS.sameCause),
     ]);
+
     expect(groups).toMatchObject([
       {
         id: groupId("pi-claude", "read: older"),
@@ -52,6 +53,7 @@ describe("merging groups", () => {
       newer,
       sameCause(3, "read: newer", "read: older", THRESHOLDS.sameCause - 0.01),
     ]);
+
     expect(groups.map((group) => group.fingerprint).toSorted()).toStrictEqual([
       "read: newer",
       "read: older",
@@ -64,6 +66,7 @@ describe("merging groups", () => {
       signal({ n: 2, session: "b", owner: "pi-web", fingerprint: "read: newer" }),
       sameCause(3, "read: newer", "read: older", 0.99),
     ]);
+
     expect(groups).toHaveLength(2);
   });
 
@@ -75,6 +78,7 @@ describe("merging groups", () => {
       sameCause(6, "read: third", "read: newer", 0.9),
       sameCause(7, "read: newer", "read: older", 0.9),
     ]);
+
     expect(groups).toMatchObject([{ fingerprint: "read: older", records: 3, sessions: 3 }]);
   });
 
@@ -85,7 +89,9 @@ describe("merging groups", () => {
       sameCause(3, "read: older", "read: newer", 0.9),
       resolveEvent(4, groupId("pi-claude", "read: newer")),
     ]);
+
     expect(groups).toMatchObject([{ status: "resolved", records: 0 }]);
+
     const reopened = deriveGroups([
       older,
       newer,
@@ -93,6 +99,7 @@ describe("merging groups", () => {
       resolveEvent(4, groupId("pi-claude", "read: newer")),
       reopenEvent(5, groupId("pi-claude", "read: older")),
     ]);
+
     expect(reopened).toMatchObject([{ status: "reopened" }]);
   });
 
@@ -104,12 +111,14 @@ describe("merging groups", () => {
   test("needs every merged fingerprint's verdict to pass for Pi core", () => {
     const piPath = { owner: "unattributed", evidence: "pi-path" } as const;
     const passing = { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 };
+
     const events = [
       signal({ n: 1, session: "a", fingerprint: "bash: one", ...piPath }),
       signal({ n: 2, session: "b", fingerprint: "bash: two", ...piPath }),
       sameCause(3, "bash: one", "bash: two", 0.9, "unattributed"),
       verdictEvent(4, "bash: one", passing),
     ];
+
     expect(deriveGroups(events)).toMatchObject([{ piCore: false }]);
     expect(deriveGroups([...events, verdictEvent(5, "bash: two", passing)])).toMatchObject([
       { piCore: true, ready: false },

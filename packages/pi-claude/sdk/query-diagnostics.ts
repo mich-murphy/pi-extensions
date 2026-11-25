@@ -29,12 +29,14 @@ export type QueryDiagnostics = {
 };
 
 const MAX_MODEL_ENTRIES = 8;
+
 const PUBLIC_MODELS = new Set(
   models.flatMap(({ id, sdkModel, canonicalModel }) => [id, sdkModel, canonicalModel]),
 );
 
 function publicModel(name: string): string | undefined {
   const undated = undatedModelId(name);
+
   return PUBLIC_MODELS.has(undated) ? undated : undefined;
 }
 
@@ -50,29 +52,38 @@ function modelDiagnostic(
   index: number,
 ): QueryModelDiagnostic {
   const diagnostic: ModelDiagnostic = { model: publicModel(key) ?? `unknown-${index + 1}` };
+
   const canonicalModel =
     usage.canonicalModel === undefined ? undefined : publicModel(usage.canonicalModel);
+
   if (canonicalModel !== undefined) {
     diagnostic.canonicalModel = canonicalModel;
   }
+
   const input = safeCount(usage.inputTokens);
   const cacheRead = safeCount(usage.cacheReadInputTokens);
   const cacheWrite = safeCount(usage.cacheCreationInputTokens);
+
   if (input !== undefined) {
     diagnostic.input = input;
   }
+
   if (cacheRead !== undefined) {
     diagnostic.cacheRead = cacheRead;
   }
+
   if (cacheWrite !== undefined) {
     diagnostic.cacheWrite = cacheWrite;
   }
+
   if (input !== undefined && cacheRead !== undefined && cacheWrite !== undefined) {
     const promptTokens = safeCount(input + cacheRead + cacheWrite);
+
     if (promptTokens !== undefined) {
       diagnostic.promptTokens = promptTokens;
     }
   }
+
   return diagnostic;
 }
 
@@ -87,9 +98,11 @@ export function queryDiagnostics(
   const entries = Object.entries(modelUsage);
   const safeError = safeApiError(apiError);
   const report: ApiErrorDiagnostic = {};
+
   if (safeError !== undefined) {
     report.apiError = safeError;
   }
+
   return {
     ...counters,
     ...report,

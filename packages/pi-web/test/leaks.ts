@@ -8,15 +8,19 @@ const Scalars = Schema.Union([Schema.String, Schema.Number, Schema.BigInt, Schem
 const OtherScalars = Schema.Union([Schema.Symbol, Schema.Null, Schema.Undefined]);
 const Reference = Schema.ObjectKeyword;
 const inspectable = Schema.Union([Scalars, OtherScalars, Reference]);
+
 type Inspectable = typeof inspectable.Type;
+
 type Reference = typeof Reference.Type;
 
 export const decodeInspectable = Schema.decodeUnknownSync(inspectable);
 const isInspectable = Schema.is(inspectable);
 const isScalar = Schema.is(Scalars);
+
 const isReference = Schema.is(
   Reference.pipe(Schema.check(Schema.makeFilter((value) => !Predicate.isFunction(value)))),
 );
+
 const isMap = Schema.is(Schema.instanceOf(Map<Inspectable, Inspectable>));
 const isSet = Schema.is(Schema.instanceOf(Set<Inspectable>));
 
@@ -40,8 +44,10 @@ function collectOwnProperties(value: Reference, walk: Walk, depth: number): void
   for (const key of Reflect.ownKeys(value)) {
     walk.out.push(String(key));
     const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+
     if (descriptor !== undefined && "value" in descriptor) {
       const child: unknown = descriptor.value;
+
       if (isInspectable(child)) {
         collect(child, walk, depth + 1);
       }
@@ -56,11 +62,14 @@ function alreadyVisitedOrTooDeep(value: Reference, walk: Walk, depth: number): b
 function collect(value: Inspectable, walk: Walk, depth: number): void {
   if (isScalar(value)) {
     walk.out.push(String(value));
+
     return;
   }
+
   if (!isReference(value) || alreadyVisitedOrTooDeep(value, walk, depth)) {
     return;
   }
+
   walk.seen.add(value);
   collectError(value, walk.out);
   collectEntries(value, walk, depth);
@@ -71,6 +80,7 @@ export function observableText(value: ReturnType<typeof decodeInspectable>): str
   const out: string[] = [];
   collect(value, { seen: new Set(), out }, 0);
   out.push(inspect(value, { depth: null, showHidden: true }));
+
   return out.join("\n");
 }
 
@@ -79,6 +89,7 @@ export function expectNoLeak(
   ...fragments: readonly string[]
 ): void {
   const text = observableText(value);
+
   for (const fragment of fragments) {
     expect(text, `leaked ${JSON.stringify(fragment)}`).not.toContain(fragment);
   }

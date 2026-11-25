@@ -49,11 +49,13 @@ function validateField(field: Field, value: string): string | undefined {
       ? undefined
       : "Use lowercase letters, digits and dashes, starting with a letter (at most 32).";
   }
+
   if (field === "scopeId") {
     return /^[A-Za-z0-9_-]{1,64}$/u.test(value)
       ? undefined
       : "Use 1–64 letters, digits, dashes or underscores.";
   }
+
   return value !== "" &&
     Buffer.byteLength(value) <= 128 &&
     visibleText(value) === value &&
@@ -72,11 +74,13 @@ function validateSocket(value: string): string | undefined {
 }
 
 const labels: Record<Field, string> = { machineId: "Machine", scopeId: "Scope", label: "Label" };
+
 const descriptions: Record<Field, string> = {
   machineId: "How other sessions name this computer. Lowercase letters, digits and dashes.",
   scopeId: "Sessions only see peers in the same scope. It covers every project on this account.",
   label: "The name other sessions see for this Pi.",
 };
+
 const PERMISSION_TEXT: Record<(typeof permissions)[number], string> = {
   discover: "See that this session exists",
   push: "Send messages to this session (can wake the model at provider cost)",
@@ -96,13 +100,17 @@ function localGate(
   if (socketRequired && socket === "") {
     return { kind: "missing", reason: "Socket" };
   }
+
   const invalid = invalidField(choices);
+
   if (invalid !== undefined) {
     return { kind: "invalid", reason: `check ${labels[invalid]}` };
   }
+
   if (socketRequired && validateSocket(socket) !== undefined) {
     return { kind: "invalid", reason: "check Socket" };
   }
+
   try {
     return { kind: "ready", value: localPlan(choices, socket) };
   } catch {
@@ -116,31 +124,41 @@ export function applyState(
   remoteBlocked?: string,
 ): Gate<SetupChoice> {
   const reason = draft.mode === "remote" ? remoteBlocked : blocked;
+
   if (reason !== undefined) {
     return { kind: "blocked", reason };
   }
+
   const local = localGate(draft.choices, draft.socket, draft.socketRequired);
+
   const remote =
     draft.mode === "remote" ? remoteGate(draft.remote, draft.choices.machineId) : undefined;
+
   if (local.kind === "missing") {
     return local;
   }
+
   if (remote?.kind === "missing") {
     return remote;
   }
+
   if (local.kind !== "ready") {
     return local;
   }
+
   if (remote !== undefined && remote.kind !== "ready") {
     return remote;
   }
+
   const choice: Omit<SetupChoice, "remote"> & { remote?: RemoteIntent } = {
     plan: local.value,
     shared: draft.shared,
   };
+
   if (remote?.kind === "ready") {
     choice.remote = remote.value;
   }
+
   return { kind: "ready", value: choice };
 }
 
@@ -197,12 +215,15 @@ function permissionsRow(
         toggle: (id) => {
           const current = choices().permissions;
           const on = new Set(current.filter((item) => item !== id));
+
           if (!current.some((item) => item === id)) {
             const added = permissions.find((item) => item === id);
+
             if (added !== undefined) {
               on.add(added);
             }
           }
+
           set({ ...choices(), permissions: permissions.filter((item) => on.has(item)) });
         },
       }),
@@ -214,6 +235,7 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
   if (!draft.socketRequired) {
     return [];
   }
+
   return [
     textField({
       id: "socket",
@@ -223,10 +245,13 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
       get: () => draft.socket,
       save: async (value) => {
         const error = validateSocket(value);
+
         if (error !== undefined) {
           return { error };
         }
+
         const shared = (await probe?.(value)) ?? false;
+
         return {
           apply: () => {
             draft.shared = shared;
@@ -241,11 +266,14 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
 function applyRows(options: Readonly<SetupFormOptions>): Row[] {
   const { draft } = options;
   const state = applyState(draft, options.blocked, options.remoteBlocked);
+
   const details = (): string[] => {
     if (state.kind === "ready") {
       return options.details(state.value).split("\n");
     }
+
     const local = localGate(draft.choices, draft.socket, draft.socketRequired);
+
     return [
       `Apply is not ready: ${gateText(state)}`,
       ...(local.kind === "ready"
@@ -253,6 +281,7 @@ function applyRows(options: Readonly<SetupFormOptions>): Row[] {
         : []),
     ];
   };
+
   return [
     detailsRow(details),
     consentRow({
@@ -273,9 +302,11 @@ function applyRows(options: Readonly<SetupFormOptions>): Row[] {
 export function setupForm(options: Readonly<SetupFormOptions>): Screen {
   const { draft } = options;
   const choices = (): LocalChoices => draft.choices;
+
   const set = (next: LocalChoices): void => {
     draft.choices = next;
   };
+
   return {
     kind: "list",
     title: "Setup",
@@ -327,16 +358,20 @@ export function editState(
   if (sameChoices(saved, edited)) {
     return { kind: "unchanged" };
   }
+
   const invalid = invalidField(edited);
+
   if (invalid !== undefined) {
     return { kind: "invalid", reason: `check ${labels[invalid]}` };
   }
+
   if (rebuild === undefined) {
     return {
       kind: "blocked",
       reason: "settings were edited by hand — change pi-peers.json by hand or Reset",
     };
   }
+
   try {
     return { kind: "ready", value: rebuild(edited) };
   } catch {
@@ -361,10 +396,13 @@ export type ManageFormOptions = {
 export function manageForm(options: Readonly<ManageFormOptions>): Screen {
   const draft = { choices: options.saved };
   const choices = (): LocalChoices => draft.choices;
+
   const set = (next: LocalChoices): void => {
     draft.choices = next;
   };
+
   const { fixedMachine, peer } = options;
+
   const fixed = (field: Field, reason: string | undefined): Row[] =>
     reason === undefined
       ? localRows(choices, set, [field])
@@ -377,13 +415,16 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
             activation: { kind: "none" },
           },
         ];
+
   const grants = peer === undefined ? "" : ` ${peerGrantText(peer)}`;
+
   return {
     kind: "list",
     title: "Setup",
     note: options.note,
     rows: () => {
       const state = editState(options.saved, draft.choices, options.rebuild);
+
       return [
         ...fixed("machineId", fixedMachine),
         ...fixed("scopeId", peer === undefined ? undefined : FIXED_SCOPE),

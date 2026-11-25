@@ -2,6 +2,7 @@ import { weighted } from "@antithesishq/bombadil/terminal";
 import { commands, menuKeys, resize, towardApply } from "./setup-keys.ts";
 
 export { noReplacementChars } from "@antithesishq/bombadil/terminal/defaults/properties";
+
 export {
   applyHasOutcome,
   applyReached,

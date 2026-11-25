@@ -18,26 +18,33 @@ const CONNECTION_ERROR = "Connection error.";
 function harness(mode: ExtensionContext["mode"] = "tui", settings: RetrySettingsInput = {}) {
   const pi = fakePi(mode, settings);
   registerRetry(pi.pi, pi.deps);
+
   return pi;
 }
 
 function fail(pi: ReturnType<typeof harness>, errorMessage = CONNECTION_ERROR, id = "a1") {
   pi.startRun();
+
   return pi.settle("error", [userEntry("u1"), assistantEntry(id, "error", errorMessage)]);
 }
 
 function failAndResume(pi: ReturnType<typeof harness>, clock: { now: number }): number | undefined {
   const sentBefore = pi.sent.length;
+
   if (fail(pi) === undefined) {
     return undefined;
   }
+
   for (let minute = 1; minute <= 60; minute += 1) {
     pi.advanceTo(clock.now + minute * MINUTE);
+
     if (pi.sent.length > sentBefore) {
       clock.now += minute * MINUTE;
+
       return minute;
     }
   }
+
   throw new Error("wait never resumed");
 }
 

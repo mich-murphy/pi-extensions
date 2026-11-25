@@ -14,6 +14,7 @@ function definitions(): Map<string, Definition> {
     },
     () => undefined,
   );
+
   return tools;
 }
 
@@ -34,18 +35,22 @@ describe.each(["peers_send", "peers_take"])("%s codemode note", (name) => {
 
   test("leaves the description unchanged when codemode is not declared", () => {
     const tools = definitions();
+
     const changes = tools
       .get(name)
       ?.prepareLoadout?.(loadoutOf("peers_list", "peers_send", "peers_take"));
+
     expect(changes).toBeUndefined();
   });
 
   test("tells the model to call it directly when codemode is declared", () => {
     const tools = definitions();
     const original = descriptionOf(tools, name);
+
     const changes = tools
       .get(name)
       ?.prepareLoadout?.(loadoutOf("peers_list", "peers_send", "peers_take", "codemode"));
+
     expect(changes).toStrictEqual({ descriptions: { [name]: `${original} ${note}` } });
   });
 });

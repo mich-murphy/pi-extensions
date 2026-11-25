@@ -19,6 +19,7 @@ const SPARE = "spare";
 const DECOY = { relative: null };
 const EXTRAS = [{}, { name: "x" }, { mtime: 1 }];
 const BAD_KEYS = ["rel", "a/b", "", "./x", "~", "/a\0b"];
+
 const BAD_LEGACY = [
   null,
   5,
@@ -31,6 +32,7 @@ const BAD_LEGACY = [
   { Enabled: true },
   [true],
 ];
+
 const BAD_TOGGLES = [
   null,
   true,
@@ -43,16 +45,21 @@ const BAD_TOGGLES = [
   { enabled: true },
   ["enabled"],
 ];
+
 const BAD_CONTAINERS = [null, 5, "x", true, [], undefined];
 const BAD_VERSIONS = ["7", "4", null, true, [], {}];
 const BAD_DOCUMENTS = [null, 5, "x", true, []];
 
 type JsonValue = typeof Schema.Json.Type;
+
 type JsonObject = typeof Schema.JsonObject.Type;
+
 type FixtureExtra = { name?: string; mtime?: number };
 
 type Choice = "absent" | ToggleValue;
+
 type Version = 4 | 5 | 6;
+
 type Fixture = { readonly statePath: string; readonly skill: (name: string) => string };
 
 const BODIES: readonly JsonObject[] = [{}, { resources: 5 }, { overrides: DECOY }];
@@ -62,6 +69,7 @@ function badValues(version: Version): gs.PrintableGenerator<JsonValue> {
 }
 
 const versions = gs.sampledFrom<Version>([4, 5, 6]);
+
 const choices = gs.arrays(gs.sampledFrom<Choice>(["absent", "enabled", "disabled"]), {
   minSize: NAMES.length,
   maxSize: NAMES.length,
@@ -69,12 +77,15 @@ const choices = gs.arrays(gs.sampledFrom<Choice>(["absent", "enabled", "disabled
 
 function withFixture(run: (fixture: Fixture) => void): void {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-migration-"));
+
   try {
     const skill = (name: string): string => join(directory, name, "SKILL.md");
+
     for (const name of [...NAMES, SPARE]) {
       mkdirSync(join(directory, name), { recursive: true });
       writeFileSync(skill(name), name);
     }
+
     run({ statePath: join(directory, "state.json"), skill });
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -83,6 +94,7 @@ function withFixture(run: (fixture: Fixture) => void): void {
 
 function load(fixture: Fixture, document: JsonValue): ToggleStateResult {
   writeFileSync(fixture.statePath, JSON.stringify(document));
+
   return new ToggleStateFile(fixture.statePath).load();
 }
 
@@ -98,11 +110,13 @@ function legacyEntry(version: Version, value: ToggleValue, extra: FixtureExtra) 
 
 function expectedToggles(fixture: Fixture, picks: readonly Choice[]): Map<string, ToggleValue> {
   const expected = new Map<string, ToggleValue>();
+
   for (const [index, pick] of picks.entries()) {
     if (pick !== "absent") {
       expected.set(fixture.skill(NAMES[index] ?? ""), pick);
     }
   }
+
   return expected;
 }
 
@@ -113,11 +127,13 @@ function validEntries(
   extra: FixtureExtra,
 ) {
   const entries = new Map<string, JsonValue>();
+
   for (const [index, pick] of picks.entries()) {
     if (pick !== "absent") {
       entries.set(fixture.skill(NAMES[index] ?? ""), legacyEntry(version, pick, extra));
     }
   }
+
   return Object.fromEntries(entries);
 }
 

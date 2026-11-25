@@ -13,6 +13,7 @@ import type { Configuration } from "../adapter/config.js";
 import { invalidFields } from "../onboarding/doctor.js";
 
 type Field = { required: boolean; valid: readonly Schema.Json[]; invalid: readonly Schema.Json[] };
+
 const fields = {
   machineId: { required: true, valid: ["host", "a-1"], invalid: ["Host", "", 3] },
   socketPath: {
@@ -56,31 +57,39 @@ const fields = {
 function accepted(value: Schema.Json): boolean {
   try {
     decodeConfiguration(value);
+
     return true;
   } catch {
     return false;
   }
 }
+
 function assertDoctorMatchesAdapter(tc: TestCase): void {
   const value: Record<string, Schema.Json> = {};
   const expected: string[] = [];
+
   for (const [name, field] of Object.entries<Field>(fields)) {
     const choice = tc.draw(gs.sampledFrom(["absent", "valid", "invalid"] as const), name);
+
     if (choice === "absent") {
       expected.push(...(field.required ? [name] : []));
       continue;
     }
+
     value[name] = tc.draw(
       gs.sampledFrom(choice === "valid" ? field.valid : field.invalid),
       `${name} value`,
     );
     expected.push(...(choice === "invalid" ? [name] : []));
   }
+
   const stray = tc.draw(gs.optional(gs.sampledFrom(["watch", "publications", "extra"])), "stray");
+
   if (stray !== null) {
     value[stray] = true;
     expected.push("unknown");
   }
+
   const reported = invalidFields(value);
   assert.equal(
     reported.length === 0,

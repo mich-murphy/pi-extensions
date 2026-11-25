@@ -56,6 +56,7 @@ const FORCED_VARIABLES: Readonly<Record<string, string>> = Object.fromEntries(
 
 const DEFAULT_ENTRYPOINT = "pi-claude";
 const ENTRYPOINT_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+
 const IMPERSONATED_ENTRYPOINTS: ReadonlySet<string> = new Set([
   "cli",
   "mcp",
@@ -78,6 +79,7 @@ function entrypointLabel(override: string | undefined): string {
   ) {
     return DEFAULT_ENTRYPOINT;
   }
+
   return override;
 }
 
@@ -95,11 +97,13 @@ export function subscriptionEnvironment(
       ([name]) => !NON_SUBSCRIPTION_AUTH_VARIABLES.has(name) && !STRIPPED_VARIABLES.has(name),
     ),
   );
+
   Object.assign(environment, FORCED_VARIABLES);
   environment.CLAUDE_CODE_ENTRYPOINT = entrypointLabel(
     claudeVariable(source, "PI_CLAUDE_ENTRYPOINT"),
   );
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "pi-coding-agent-provider/0.1.0";
+
   for (const [name, value] of Object.entries(BACKGROUND_TRAFFIC_PINS)) {
     environment[name] ??= value;
   }
@@ -107,6 +111,7 @@ export function subscriptionEnvironment(
   if (claudeVariable(source, "PI_CLAUDE_CLI_CACHE") === "1") {
     return environment;
   }
+
   environment.DISABLE_PROMPT_CACHING = "1";
 
   const betas = new Set([
@@ -116,7 +121,9 @@ export function subscriptionEnvironment(
       .filter(Boolean),
     EXTENDED_CACHE_TTL_BETA,
   ]);
+
   environment.ANTHROPIC_BETAS = [...betas].join(",");
+
   return environment;
 }
 

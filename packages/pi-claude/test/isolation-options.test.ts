@@ -25,6 +25,7 @@ async function startedWith(
   request = requestFixture(),
 ): Promise<SdkQueryParameters> {
   const captured: SdkQueryParameters[] = [];
+
   const runner = createClaudeAgentSdkRunner({
     ...collaborators,
     runSdkQuery: async function* capture(params) {
@@ -32,9 +33,11 @@ async function startedWith(
       yield resultMessage();
     },
   });
+
   await drain(runner(request, sonnet, streamOptions));
   const [params] = captured;
   assert(params !== undefined, "test setup: SDK query was not started");
+
   return params;
 }
 
@@ -44,6 +47,7 @@ function installedClaude(): string {
   const path = join(directory, "claude");
   writeFileSync(path, "#!/bin/sh\n");
   chmodSync(path, 0o755);
+
   return path;
 }
 
@@ -89,6 +93,7 @@ describe("options handed to the Agent SDK", () => {
 
   test("resolves Claude Code from PI_CLAUDE_PATH when none is injected", async () => {
     const executable = installedClaude();
+
     const { options } = await startedWith({
       sdkEnvironment: { PATH: "/bin", PI_CLAUDE_PATH: executable },
     });
@@ -112,7 +117,9 @@ describe("PI_CACHE_RETENTION", () => {
       streamOptions,
       request,
     );
+
     const [message] = await drain(sdkPromptFixture(prompt));
+
     return sdkContentRecords(message).map((block) => block.cache_control);
   }
 

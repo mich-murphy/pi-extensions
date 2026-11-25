@@ -35,15 +35,18 @@ import {
 
 async function runSessionRecovery() {
   const dir = await mkdtemp(join(tmpdir(), "sdk-recovery-session-"));
+
   const settingsManager = SettingsManager.inMemory({
     retry: { enabled: false },
     compaction: { enabled: false },
   });
+
   const counts = { queries: 0, executions: 0, rejectedExecutions: 0 };
   const manager = SessionManager.create(dir, dir);
   const runner = recoveryRunner(manager, counts);
   const resourceLoader = recoveryResources(dir, settingsManager, runner, counts);
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+
   try {
     await resourceLoader.reload();
     ({ session } = await createAgentSession({
@@ -60,6 +63,7 @@ async function runSessionRecovery() {
     expect(counts.queries).toBe(3);
     expect(counts.executions).toBe(1);
     expect(counts.rejectedExecutions).toBe(0);
+
     const corrected = SessionManager.open(sessionFile(manager))
       .getEntries()
       .find(
@@ -68,6 +72,7 @@ async function runSessionRecovery() {
           entry.message.role === "toolResult" &&
           entry.message.toolCallId === "corrected",
       );
+
     expect(corrected).toMatchObject({
       type: "message",
       message: { role: "toolResult", toolCallId: "corrected", isError: false },
@@ -93,9 +98,11 @@ function checkNegativeResults() {
       [assistant],
     ),
   ).toBeUndefined();
+
   const result = normalizeValidationResult({ ...message, details: { retained: true } }, [
     assistant,
   ]);
+
   expect(result?.message).toStrictEqual({
     ...message,
     details: { retained: true },
@@ -107,6 +114,7 @@ async function runContinuationRejection() {
   let executions = 0;
   const counts = { queries: 0 };
   const runner = continuationRunner(counts);
+
   const messages = await runAgentLoop(
     [{ role: "user", content: "Use probe", timestamp: 0 }],
     {
@@ -119,6 +127,7 @@ async function runContinuationRejection() {
           parameters: Type.Object({}),
           async execute() {
             executions++;
+
             return { content: [], details: undefined };
           },
         },
@@ -139,6 +148,7 @@ async function runContinuationRejection() {
     undefined,
     (model, context, options) => createAgentSdkStream({ model, context, options, run: runner }),
   );
+
   expect(counts.queries).toBe(1);
   expect(executions).toBe(0);
   const failure = messages.findLast((message) => message.role === "assistant");
@@ -155,6 +165,7 @@ async function runContinuationRejection() {
 function sessionFile(manager: SessionManager): string {
   const file = manager.getSessionFile();
   assert(file !== undefined);
+
   return file;
 }
 
@@ -172,6 +183,7 @@ async function verifyPersistedRejection(
   prompt: Parameters<RunSdkQuery>[0]["prompt"],
 ) {
   const reopened = SessionManager.open(sessionFile(manager));
+
   const rejected = reopened
     .getEntries()
     .find(
@@ -180,6 +192,7 @@ async function verifyPersistedRejection(
         entry.message.role === "toolResult" &&
         entry.message.toolCallId === "bad",
     );
+
   expect(rejected).toMatchObject({
     type: "message",
     message: {
@@ -203,6 +216,7 @@ const rejectedMessage = {
   isError: true,
   content: [{ type: "text" as const, text: `Tool ${VALIDATION_ERROR_TOOL} not found` }],
 };
+
 const syntheticAssistant = {
   role: "assistant" as const,
   ...sonnet,
@@ -234,8 +248,10 @@ function continuationRunner(counts: { queries: number }) {
     claudeExecutable: "/usr/bin/claude",
     async *runSdkQuery(params) {
       counts.queries++;
+
       for (const id of ["one", "two"]) {
         yield streamEvent({ type: "message_start", message: { id, usage: { input_tokens: 1 } } });
+
         if (id === "one") {
           yield streamEvent({
             type: "message_delta",
@@ -244,6 +260,7 @@ function continuationRunner(counts: { queries: number }) {
           });
         }
       }
+
       await deliverToolUse(installedHook(params), {
         id: "effect",
         toolName: "mcp__pi__probe",
@@ -255,6 +272,7 @@ function continuationRunner(counts: { queries: number }) {
 }
 
 type Counts = { queries: number; executions: number; rejectedExecutions: number };
+
 function recoveryRunner(manager: SessionManager, counts: Counts) {
   return createClaudeAgentSdkRunner({
     claudeExecutable: "/usr/bin/claude",
@@ -265,6 +283,7 @@ function recoveryRunner(manager: SessionManager, counts: Counts) {
         type: "message_start",
         message: { id: `query-${counts.queries}`, usage: { input_tokens: 1 } },
       });
+
       if (counts.queries === 1) {
         await deliverToolUse(installedHook(params), { id: "bad", toolName: "Bash", input: {} });
         yield resultMessage({ terminal_reason: "tool_deferred" });
@@ -284,6 +303,7 @@ function recoveryRunner(manager: SessionManager, counts: Counts) {
     },
   });
 }
+
 function recoveryResources(
   dir: string,
   settingsManager: SettingsManager,
@@ -305,6 +325,7 @@ function recoveryResources(
     ],
   });
 }
+
 function registerRecoveryFixture(pi: ExtensionAPI, runner: AgentSdkRun, counts: Counts) {
   registerClaudeProvider(pi);
   pi.registerTool({
@@ -314,6 +335,7 @@ function registerRecoveryFixture(pi: ExtensionAPI, runner: AgentSdkRun, counts: 
     parameters: Type.Object({}),
     async execute() {
       counts.executions++;
+
       return { content: [{ type: "text", text: "ok" }], details: undefined };
     },
   });
@@ -324,6 +346,7 @@ function registerRecoveryFixture(pi: ExtensionAPI, runner: AgentSdkRun, counts: 
     parameters: Type.Object({}),
     async execute() {
       counts.rejectedExecutions++;
+
       return { content: [], details: undefined };
     },
   });

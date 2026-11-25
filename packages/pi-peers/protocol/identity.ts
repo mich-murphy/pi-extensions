@@ -35,6 +35,7 @@ export function stableValue(value: Schema.Json): Schema.Json {
   if (isJsonArray(value)) {
     return value.map((item) => stableValue(item));
   }
+
   if (isJsonObject(value)) {
     return Object.fromEntries(
       Object.entries(value)
@@ -42,6 +43,7 @@ export function stableValue(value: Schema.Json): Schema.Json {
         .map(([name, child]) => [name, stableValue(child)]),
     );
   }
+
   return value;
 }
 

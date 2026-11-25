@@ -10,14 +10,19 @@ export type PublicHttpUrl = typeof NormalizedPublicHttpUrl.Type;
 export type SearchQuery = string & { readonly __brand: "SearchQuery" };
 
 export type WebFetchFormat = "markdown" | "text" | "html";
+
 export type SearchProviderName = "exa" | "parallel" | "brave";
+
 export type ContentKind = "html" | "text" | "raster-image" | "svg" | "binary";
 
 const EmptyUrl = Schema.TaggedStruct("EmptyUrl", {});
+
 const UnsupportedUrlProtocol = Schema.TaggedStruct("UnsupportedUrlProtocol", {
   protocol: Schema.optionalKey(Schema.String),
 });
+
 const InvalidUrl = Schema.TaggedStruct("InvalidUrl", { input: Schema.Redacted(Schema.String) });
+
 const UrlCredentialsUnsupported = Schema.TaggedStruct("UrlCredentialsUnsupported", {
   url: Schema.Redacted(Schema.String),
 });
@@ -28,6 +33,7 @@ export const ParsePublicHttpUrlError = Schema.Union([
   InvalidUrl,
   UrlCredentialsUnsupported,
 ]);
+
 export type ParsePublicHttpUrlError = typeof ParsePublicHttpUrlError.Type;
 
 const EmptySearchQuery = Schema.TaggedStruct("EmptySearchQuery", {});
@@ -75,6 +81,7 @@ export function parsePublicHttpUrl(
   input: string,
 ): Result.Result<PublicHttpUrl, ParsePublicHttpUrlError> {
   const trimmed = input.trim();
+
   if (!trimmed) {
     return Result.fail(EmptyUrl.make({}));
   }
@@ -82,14 +89,17 @@ export function parsePublicHttpUrl(
   const schemeMatch = /^(?<scheme>[a-z][a-z0-9+.-]*):/iu.exec(trimmed);
   const protocol = schemeMatch?.groups?.scheme?.toLowerCase();
   const normalized = trimmed.toLowerCase();
+
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
     if (protocol !== undefined) {
       return Result.fail(UnsupportedUrlProtocol.make({ protocol: `${protocol}:` }));
     }
+
     return Result.fail(UnsupportedUrlProtocol.make({}));
   }
 
   let url: URL;
+
   try {
     url = new URL(trimmed);
   } catch {
@@ -107,6 +117,7 @@ export const isPublicHttpUrl = Schema.is(
   NormalizedPublicHttpUrl.check(
     Schema.makeFilter((value) => {
       const parsed = parsePublicHttpUrl(value);
+
       return Result.isSuccess(parsed) && parsed.success === value;
     }),
   ),
@@ -114,6 +125,7 @@ export const isPublicHttpUrl = Schema.is(
 
 export function parseSearchQuery(input: string): Result.Result<SearchQuery, ParseSearchQueryError> {
   const query = input.trim();
+
   return isSearchQuery(query) ? Result.succeed(query) : Result.fail(EmptySearchQuery.make({}));
 }
 
@@ -126,15 +138,18 @@ const REDACTED_DISPLAY = "<redacted>";
 export function redactUrlCredentialsForDisplay(input: string | undefined): string {
   const raw = String(input);
   const trimmed = raw.trim();
+
   if (!trimmed) {
     return raw;
   }
 
   try {
     const url = new URL(trimmed);
+
     if (url.username || url.password) {
       return REDACTED_DISPLAY;
     }
+
     return url.toString();
   } catch {
     return looksLikeCredentialedAbsoluteUrl(trimmed) ? REDACTED_DISPLAY : raw;

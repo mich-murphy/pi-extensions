@@ -7,6 +7,7 @@ type CapturedTool = Pick<PeerTool, "name" | "execute"> & {
 
 export function toolRecorder() {
   const tools: CapturedTool[] = [];
+
   const registerTool: ToolHost["registerTool"] = (tool) => {
     tools.push({
       name: tool.name,
@@ -15,14 +16,17 @@ export function toolRecorder() {
       renderResult: tool.renderResult !== undefined,
     });
   };
+
   return {
     registerTool,
     tools,
     run: async (name: string, args: ToolArguments, signal?: AbortSignal) => {
       const tool = tools.find((entry) => entry.name === name);
+
       if (tool === undefined) {
         throw new Error(`Unregistered fixture tool: ${name}`);
       }
+
       return tool.execute("fixture", args, signal);
     },
   };

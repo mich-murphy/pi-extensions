@@ -73,13 +73,16 @@ describe("compileSelector", () => {
 describe("compileSelectorSet", () => {
   test("reports every matching list once, as linkedom's matches would", () => {
     const match = compileSelectorSet(SELECTORS);
+
     const reportedFor = (element: Element) => {
       const reported: number[] = [];
       match(element, (index) => {
         reported.push(index);
       });
+
       return [element.outerHTML, reported.toSorted((a, b) => a - b)];
     };
+
     expect(elements().map((element) => reportedFor(element))).toStrictEqual(
       elements().map((element) => [element.outerHTML, matchingSelectorIndexes(element)]),
     );

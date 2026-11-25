@@ -27,7 +27,9 @@ import { modelFixture } from "./fixtures";
 export const offlineContractPath = fileURLToPath(import.meta.url);
 
 const scenarioSchema = z.enum(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"]);
+
 type Scenario = z.infer<typeof scenarioSchema>;
+
 type Proof = {
   readonly scenario: Scenario;
   readonly session: SessionManager;
@@ -43,6 +45,7 @@ type Proof = {
   reservedExecutions: number;
   durableBeforeCorrection: boolean;
 };
+
 type StreamEventFields = {
   readonly index?: number;
   readonly message?: Schema.JsonObject;
@@ -50,6 +53,7 @@ type StreamEventFields = {
   readonly delta?: Schema.JsonObject;
   readonly usage?: Schema.JsonObject;
 };
+
 type Emit = (type: string, data: StreamEventFields) => void;
 
 function isMessage(message: AgentMessage): message is Message {
@@ -59,6 +63,7 @@ function isMessage(message: AgentMessage): message is Message {
 function persisted(session: SessionManager): Message[] {
   const file = session.getSessionFile();
   assert(file !== undefined);
+
   return SessionManager.open(file)
     .getEntries()
     .flatMap((entry) =>
@@ -91,6 +96,7 @@ function assertAdvertised(chunks: readonly Buffer[]): void {
     })
     .loose()
     .parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+
   const advertised = payload.tools.find((tool) => tool.name === "mcp__pi__probe");
   assert(advertised !== undefined);
   assert.deepEqual(advertised.input_schema.properties.value, { type: "string" });
@@ -102,14 +108,17 @@ function fixtureInput(scenario: Scenario, request: number, index: number): strin
   if (request === 1 && scenario === "malformed") {
     return '{"value":INVALID_JSON}';
   }
+
   if (request === 1 && scenario === "schema") {
     return "{}";
   }
+
   return JSON.stringify({ value: recovering(scenario) ? "corrected" : `sibling-${index}` });
 }
 
 function emitCalls(emit: Emit, proof: Proof): void {
   const count = proof.scenario === "siblings" ? 2 : 1;
+
   for (let index = 0; index < count; index += 1) {
     emit("content_block_start", {
       index,
@@ -145,6 +154,7 @@ function emitResponse(emit: Emit, proof: Proof): void {
     },
   });
   const callTurn = proof.requests === 1 || (recovering(proof.scenario) && proof.requests === 2);
+
   if (callTurn) {
     emitCalls(emit, proof);
   } else {
@@ -152,10 +162,13 @@ function emitResponse(emit: Emit, proof: Proof): void {
     emit("content_block_delta", { index: 0, delta: { type: "text_delta", text: "OFFLINE_OK" } });
     emit("content_block_stop", { index: 0 });
   }
+
   let stopReason = callTurn ? "tool_use" : "end_turn";
+
   if (proof.scenario === "invalid-terminal") {
     stopReason = "max_tokens";
   }
+
   emit("message_delta", {
     delta: { stop_reason: stopReason, stop_sequence: null },
     usage: { output_tokens: 20 },
@@ -170,6 +183,7 @@ async function startTransport(proof: Proof) {
     request.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
       chunks.push(chunk);
+
       if (bytes > 1_048_576) {
         request.destroy();
       }
@@ -183,8 +197,10 @@ async function startTransport(proof: Proof) {
         proof.requests >= 3
       ) {
         response.writeHead(400).end();
+
         return;
       }
+
       assertAdvertised(chunks);
       proof.requests += 1;
       response.writeHead(200, { "content-type": "text/event-stream" });
@@ -194,6 +210,7 @@ async function startTransport(proof: Proof) {
       response.end();
     });
   });
+
   server.requestTimeout = 5000;
   server.headersTimeout = 5000;
   await new Promise<void>((resolve) => {
@@ -201,6 +218,7 @@ async function startTransport(proof: Proof) {
   });
   const address = server.address();
   assert(address !== null && !Schema.is(Schema.String)(address));
+
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     async close() {
@@ -222,6 +240,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
   const pre = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
   const batch = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
   assert(pre && batch);
+
   return {
     PreToolUse: [
       {
@@ -229,6 +248,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
         hooks: [
           async (...args: Parameters<typeof pre>) => {
             proof.preHooks += 1;
+
             return pre(...args);
           },
         ],
@@ -240,6 +260,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
         hooks: [
           async (...args: Parameters<typeof batch>) => {
             proof.batches += 1;
+
             return batch(...args);
           },
         ],
@@ -252,13 +273,17 @@ function terminalFixture(message: SDKMessage, proof: Proof) {
   if (message.type !== "result") {
     return message;
   }
+
   if (proof.scenario === "cancelled") {
     proof.controller.abort();
   }
+
   if (proof.scenario === "invalid-terminal") {
     const invalid = { ...message, stop_reason: "max_tokens", terminal_reason: "completed" };
+
     return invalid;
   }
+
   return message;
 }
 
@@ -266,6 +291,7 @@ function observedQuery(proof: Proof): RunSdkQuery {
   return async function* (params) {
     proof.queries += 1;
     assert(proof.queries <= 3);
+
     if (recovering(proof.scenario) && proof.queries === 2) {
       proof.durableBeforeCorrection = persisted(proof.session).some(
         (message) =>
@@ -276,6 +302,7 @@ function observedQuery(proof: Proof): RunSdkQuery {
       assert(proof.durableBeforeCorrection);
       assert.equal(proof.executions.length, 0);
     }
+
     for await (const message of query({
       ...params,
       options: { ...params.options, hooks: observeHooks(params, proof) },
@@ -294,6 +321,7 @@ function toolsFor(proof: Proof): AgentTool[] {
       parameters: Type.Object({ value: Type.String() }),
       async execute(_id, input) {
         proof.executions.push(z.object({ value: z.string() }).parse(input).value);
+
         return { content: [{ type: "text", text: "OFFLINE_OK" }], details: undefined };
       },
     },
@@ -323,9 +351,11 @@ function observedStream(proof: Proof, run: AgentSdkRun): StreamFn {
             content.type === "toolCall" ? [content.name] : [],
           );
         }
+
         yield event;
       }
     };
+
     return stream;
   };
 }
@@ -334,6 +364,7 @@ function assertRecovery(proof: Proof): void {
   assert.deepEqual(proof.executions, ["corrected"]);
   assert(proof.durableBeforeCorrection);
   assert.deepEqual(proof.released[0], [VALIDATION_ERROR_TOOL]);
+
   const firstError = persisted(proof.session).find(
     (message) =>
       message.role === "assistant" &&
@@ -341,6 +372,7 @@ function assertRecovery(proof: Proof): void {
         (content) => content.type === "toolCall" && content.name === VALIDATION_ERROR_TOOL,
       ),
   );
+
   assert(firstError?.role === "assistant");
   const call = firstError.content.find((content) => content.type === "toolCall");
   assert(call?.type === "toolCall");
@@ -355,6 +387,7 @@ function assertProof(proof: Proof): void {
   assert(proof.terminals.length > 0 && proof.terminals.every((count) => count === 1));
   assert.equal(proof.fallbackCalls, 0);
   assert.equal(proof.reservedExecutions, 0);
+
   if (proof.scenario === "siblings") {
     assert.deepEqual(proof.executions.toSorted(), ["sibling-0", "sibling-1"]);
     assert.equal(proof.preHooks, 2);
@@ -377,6 +410,7 @@ function persistEvent(session: SessionManager, event: AgentEvent): void {
 
 async function runContract(): Promise<void> {
   const home = z.string().includes("pi-sdk-contract-").parse(process.env.HOME);
+
   const proof: Proof = {
     scenario: scenarioSchema.parse(process.env.PI_SDK_OFFLINE_CASE),
     session: SessionManager.create(home, home),
@@ -392,7 +426,9 @@ async function runContract(): Promise<void> {
     reservedExecutions: 0,
     durableBeforeCorrection: false,
   };
+
   const transport = await startTransport(proof);
+
   const run = createClaudeAgentSdkRunner({
     claudeExecutable: testClaudeExecutable(),
     validationRecovery: "pi-tool-loop",
@@ -414,9 +450,11 @@ async function runContract(): Promise<void> {
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     },
   });
+
   const timer = setTimeout(() => {
     proof.controller.abort();
   }, 30_000);
+
   try {
     await runAgentLoop(
       [{ role: "user", content: "Offline fixture", timestamp: 0 }],

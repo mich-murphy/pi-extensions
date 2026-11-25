@@ -13,6 +13,7 @@ import { unsettled } from "./fixtures";
 
 const withStart = (start: StartClaudeUsageQuery, timeout?: number) =>
   inspectClaudeUsage(timeout).pipe(Effect.provide(ClaudeUsageQueries.fromStart(start)));
+
 const failureOf = (start: StartClaudeUsageQuery, timeout?: number) =>
   Effect.flip(withStart(start, timeout));
 
@@ -21,9 +22,11 @@ const afterAdvancing = Effect.fnUntraced(function* <A, E>(
   steps: readonly Duration.Input[],
 ) {
   const fiber = yield* Effect.forkChild(effect);
+
   for (const step of steps) {
     yield* TestClock.adjust(step);
   }
+
   return yield* Fiber.join(fiber);
 });
 
@@ -138,12 +141,14 @@ describe("claude SDK usage", () => {
       const startup = yield* failureOf(() => {
         throw new Error("spawn failed");
       });
+
       const read = yield* failureOf(() => ({
         readUsage: async () => {
           throw new Error("request failed");
         },
         close: async () => undefined,
       }));
+
       const close = yield* failureOf(() => ({
         readUsage: async () => decodeUsageResponse(usageResponse),
         close: async () => {
@@ -228,8 +233,10 @@ describe("claude SDK usage", () => {
   it.effect("aborts the idle SDK query after reading usage", () =>
     Effect.gen(function* () {
       let observedSignal: AbortSignal | undefined;
+
       const start: StartClaudeUsageQuery = (abortController) => {
         observedSignal = abortController.signal;
+
         return usageQuery(usageResponse);
       };
 

@@ -28,7 +28,9 @@ const WRAPPERS = [
   "/usr/bin/nohup --",
   "time -p",
 ];
+
 const DISCOVERY = ['"$(which node)"', '"$(command -v node)"', "`which node`"];
+
 const UNSUPPORTED = [
   "command -v",
   "command -V",
@@ -141,6 +143,7 @@ describe("explicit executable wrapper semantics", () => {
           maxSize: 3,
         }),
       );
+
       const prefix = wrappers.join(tc.draw(gs.sampledFrom([" ", "\t", "  "])));
       const discovery = tc.draw(gs.sampledFrom(DISCOVERY));
       expect(inspectBashCommand(`${prefix} cat ${discovery}`)).toBeDefined();

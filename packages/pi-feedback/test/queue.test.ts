@@ -12,6 +12,7 @@ describe("deriveGroups", () => {
       signal({ n: 2, session: "b" }),
       signal({ n: 3, session: "a", owner: "pi-core" }),
     ]);
+
     expect(groups.map((group) => [group.owner, group.records, group.sessions])).toStrictEqual([
       ["pi-claude", 2, 2],
       ["pi-core", 1, 1],
@@ -31,6 +32,7 @@ describe("deriveGroups", () => {
       signal({ n: 2, session: "b", owner }),
       signal({ n: 3, session: "c", owner }),
     ]);
+
     expect(groups[0]?.ready).toBe(false);
   });
 
@@ -41,6 +43,7 @@ describe("deriveGroups", () => {
       report({ n: 3, session: "a", impact: "blocked" }),
       report({ n: 4, session: "b" }),
     ]);
+
     expect(groups.map((group) => [group.fingerprint, group.rank, group.blocked])).toStrictEqual([
       ["pi-claude/workaround", 8, true],
       ["read: ENOENT", 4, false],
@@ -55,6 +58,7 @@ describe("deriveGroups", () => {
       signal({ n: 4, session: "a" }),
       signal({ n: 5, session: "b" }),
     ]);
+
     expect(groups.map((group) => group.owner)).toStrictEqual(["pi-claude", "pi-core"]);
   });
 
@@ -64,6 +68,7 @@ describe("deriveGroups", () => {
       signal({ n: 2, session: "b" }),
       resolveEvent(3, claudeGroup),
     ]);
+
     expect(resolved[0]).toMatchObject({ status: "resolved", records: 0, ready: false, rank: 0 });
     expect(resolved[0]?.resolution).toStrictEqual({
       commit: "abc1234",
@@ -76,6 +81,7 @@ describe("deriveGroups", () => {
       resolveEvent(2, claudeGroup),
       signal({ n: 3, session: "c" }),
     ]);
+
     expect(reopened[0]).toMatchObject({ status: "reopened", records: 1, sessions: 1 });
   });
 
@@ -85,6 +91,7 @@ describe("deriveGroups", () => {
       resolveEvent(2, claudeGroup),
       reopenEvent(3, claudeGroup),
     ]);
+
     expect(groups[0]?.status).toBe("reopened");
   });
 
@@ -109,6 +116,7 @@ describe("deriveGroups", () => {
       signal({ n: 1, session: "a", error: "first" }),
       signal({ n: 2, session: "b", error: `latest\n${"y".repeat(200)}` }),
     ]);
+
     expect(groups[0]?.example.startsWith("latest y")).toBe(true);
     expect(groups[0]?.example).toHaveLength(80);
   });

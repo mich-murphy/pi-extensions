@@ -44,6 +44,7 @@ function contentTokens(block: Omit<CacheContentBlock, "cache_control">): number 
   if (block.type === "image") {
     return IMAGE_TOKENS;
   }
+
   return block.text === undefined ? 0 : estimateTextTokens(block.text);
 }
 
@@ -51,6 +52,7 @@ function breakpointTtlMs(cacheControl: SdkPromptBlock["cache_control"]): number 
   if (cacheControl === undefined) {
     return undefined;
   }
+
   return cacheControl.ttl === "1h" ? ONE_HOUR_MS : FIVE_MINUTES_MS;
 }
 
@@ -58,24 +60,29 @@ async function wireBlocks(request: AgentRequest, ttl: CacheTtl): Promise<WireBlo
   const [message] = await drain(
     buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
   );
+
   const content: CacheContentBlock[] = [
     { type: "tools", text: request.toolDescription },
     { type: "system", text: request.systemPrompt },
     ...sdkContentRecords(message),
   ];
+
   const blocks: WireBlock[] = [];
   let key = "";
   let end = 0;
+
   for (const { cache_control: cacheControl, ...block } of content) {
     key = createHash("sha256").update(key).update(JSON.stringify(block)).digest("hex");
     end += contentTokens(block);
     blocks.push({ index: blocks.length, key, end, ttlMs: breakpointTtlMs(cacheControl) });
   }
+
   return blocks;
 }
 
 function liveEntry(store: CacheStore, key: string, now: number): CacheEntry | undefined {
   const entry = store.get(key);
+
   return entry !== undefined && entry.expiresAt > now ? entry : undefined;
 }
 
@@ -86,12 +93,15 @@ function longestHit(
   now: number,
 ) {
   const earliest = Math.max(0, breakpoint.index - CACHE_LOOKBACK_BLOCKS + 1);
+
   for (const block of blocks.slice(earliest, breakpoint.index + 1).toReversed()) {
     const entry = liveEntry(store, block.key, now);
+
     if (entry !== undefined) {
       return { block, entry };
     }
   }
+
   return undefined;
 }
 
@@ -102,24 +112,29 @@ function readCached(
   now: number,
 ): number {
   let read = 0;
+
   for (const breakpoint of breakpoints) {
     const hit = longestHit(store, blocks, breakpoint, now);
+
     if (hit !== undefined) {
       store.set(hit.block.key, { ...hit.entry, expiresAt: now + hit.entry.ttlMs });
       read = Math.max(read, hit.block.end);
     }
   }
+
   return read;
 }
 
 function writeUncached(store: CacheStore, breakpoints: readonly Breakpoint[], now: number): number {
   let furthest = 0;
+
   for (const { key, end, ttlMs } of breakpoints) {
     if (end >= MINIMUM_CACHEABLE_TOKENS && liveEntry(store, key, now) === undefined) {
       store.set(key, { expiresAt: now + ttlMs, ttlMs });
       furthest = Math.max(furthest, end);
     }
   }
+
   return furthest;
 }
 
@@ -129,17 +144,21 @@ export type CacheSimulator = {
 
 export function createCacheSimulator(clock: () => number): CacheSimulator {
   const store: CacheStore = new Map();
+
   return {
     send: async (request, ttl) => {
       const now = clock();
       const blocks = await wireBlocks(request, ttl);
       const breakpoints = blocks.filter((block): block is Breakpoint => block.ttlMs !== undefined);
+
       if (breakpoints.length > MAX_CACHE_BREAKPOINTS) {
         throw new RangeError(`Anthropic rejects ${breakpoints.length} cache breakpoints`);
       }
+
       const read = readCached(store, blocks, breakpoints, now);
       const write = Math.max(0, writeUncached(store, breakpoints, now) - read);
       const total = blocks.at(-1)?.end ?? 0;
+
       return { read, write, uncached: total - read - write };
     },
   };
@@ -147,5 +166,6 @@ export function createCacheSimulator(clock: () => number): CacheSimulator {
 
 export function readShare({ read, write, uncached }: CacheUsage): number {
   const total = read + write + uncached;
+
   return total === 0 ? 0 : read / total;
 }

@@ -7,6 +7,7 @@ import type { Gate } from "./forms.js";
 import type { Row } from "./model.js";
 
 export type Kind = RemoteIntent["kind"];
+
 export type CredentialKey =
   | "rootCertificate"
   | "certificate"
@@ -93,9 +94,11 @@ function offerRows(draft: RemoteDraft, options: RemoteOptions): Row[] {
       get: () => draft.offerPath,
       save: async (value) => {
         const offer = await readOffer(value);
+
         if (isMessage(offer)) {
           return { error: offer };
         }
+
         return {
           apply: () => {
             draft.offerPath = value;
@@ -147,6 +150,7 @@ function peerRow(draft: RemoteDraft, options: RemoteOptions): Row {
       activation: { kind: "none" },
     };
   }
+
   return textField({
     id: "peer",
     label: "Peer machine",
@@ -164,6 +168,7 @@ function peerRow(draft: RemoteDraft, options: RemoteOptions): Row {
 
 export function remoteRows(draft: RemoteDraft, options: RemoteOptions = {}): Row[] {
   const kinds = KINDS.filter(([kind]) => options.kinds?.includes(kind) ?? true);
+
   return [
     cycleField({
       id: "trust",
@@ -224,11 +229,13 @@ function missing(draft: RemoteDraft): string | undefined {
         ]
       : []),
   ];
+
   return required.find(([, value]) => value === "")?.[0];
 }
 
 function intentOf(draft: RemoteDraft): RemoteIntent {
   const endpoint = { mode: draft.mode, address: draft.address };
+
   if (draft.kind === "join" && draft.offer !== undefined) {
     return {
       kind: "join",
@@ -239,7 +246,9 @@ function intentOf(draft: RemoteDraft): RemoteIntent {
       confirmedRootSha256: draft.rootSha256,
     };
   }
+
   const intent: RemoteIntent = { kind: draft.kind, peerMachineId: draft.peer, endpoint };
+
   if (draft.kind === "existing") {
     intent.existing = {
       ...draft.paths,
@@ -247,6 +256,7 @@ function intentOf(draft: RemoteDraft): RemoteIntent {
       floorMode: draft.floor,
     };
   }
+
   return intent;
 }
 
@@ -256,27 +266,35 @@ export function remoteGate(
   options: RemoteOptions = {},
 ): Gate<RemoteIntent> {
   const absent = missing(draft);
+
   if (absent !== undefined) {
     return { kind: "missing", reason: absent };
   }
+
   if (options.kinds !== undefined && !options.kinds.includes(draft.kind)) {
     return { kind: "invalid", reason: "choose a new pair here" };
   }
+
   const intent = intentOf(draft);
+
   if (intent.localMachineId !== undefined && intent.localMachineId !== machine) {
     return {
       kind: "invalid",
       reason: `the offer is for ${visibleText(intent.localMachineId)}, not this computer`,
     };
   }
+
   if (intent.peerMachineId === machine) {
     return { kind: "invalid", reason: "the peer must be another computer" };
   }
+
   if (options.peer !== undefined && intent.peerMachineId !== options.peer) {
     return { kind: "invalid", reason: `re-pairing keeps peer ${visibleText(options.peer)}` };
   }
+
   if (options.oldRoot !== undefined && intent.confirmedRootSha256 === options.oldRoot) {
     return { kind: "invalid", reason: "use the new root, not the old one" };
   }
+
   return { kind: "ready", value: intent };
 }

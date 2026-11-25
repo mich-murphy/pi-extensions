@@ -13,19 +13,24 @@ function retryAllowedAt(elapsed: number): boolean {
   const unsure = new UnsureSends(() => now);
   unsure.record({ handle: "s-0000", to: receiver, scopeId: "team", message });
   now = elapsed;
+
   return unsure.lookup(message.id)?.expired === false;
 }
+
 function lastRetryMoment(): number {
   let low = 0;
   let high = 24 * 60 * 60 * 1000;
+
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
+
     if (retryAllowedAt(middle)) {
       low = middle;
     } else {
       high = middle - 1;
     }
   }
+
   return low;
 }
 
@@ -35,6 +40,7 @@ describe("retryOf window", () => {
     expect(retryAllowedAt(last + 1)).toBe(false);
     let now = 0;
     const offered: unknown[] = [];
+
     const state = createState({
       peer: receiver,
       scopeIds: ["team"],
@@ -42,9 +48,11 @@ describe("retryOf window", () => {
       authorize: () => true,
       offer: (delivery) => {
         offered.push(delivery);
+
         return true;
       },
     });
+
     const receipt = state.admit(input);
     state.retire(scopedMessageKey(sender, receiver, "team", message.id));
     now = last;

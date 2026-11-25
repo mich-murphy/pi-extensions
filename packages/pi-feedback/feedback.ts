@@ -140,6 +140,7 @@ export type FeedbackDependencies = {
 
 function serialQueue(): (task: () => Promise<void>) => void {
   let tail: Promise<void> = Promise.resolve();
+
   return (task) => {
     tail = tail.then(task, task);
   };
@@ -158,9 +159,11 @@ function result(text: string, details: FeedbackDetails, isError = false): Feedba
     content: [{ type: "text", text }],
     details,
   };
+
   if (isError) {
     response.isError = isError;
   }
+
   return response;
 }
 
@@ -176,17 +179,22 @@ export const errorText = flow(
 
 function recordProvenance(ctx: FeedbackContext, piVersion: string, attribution: Attribution) {
   type RecordEvidence = { evidence?: NonNullable<Attribution["evidence"]> };
+
   const evidence: RecordEvidence = {};
+
   if (attribution.evidence !== undefined) {
     evidence.evidence = attribution.evidence;
   }
+
   const provenance: typeof evidence & { piVersion: string; model?: string } = {
     ...evidence,
     piVersion,
   };
+
   if (ctx.model !== undefined) {
     provenance.model = `${ctx.model.provider}/${ctx.model.id}`;
   }
+
   return provenance;
 }
 
@@ -197,6 +205,7 @@ function reportDraft(
   record: Pick<RecordEvent, "session" | "fingerprint"> & { attribution: Attribution },
 ): EventDraft {
   type ReportDraft = Extract<EventDraft, { type: "report" }>;
+
   const report: Omit<ReportDraft, "workaround" | "impact"> & { workaround?: string } = {
     type: "report",
     session: record.session,
@@ -208,9 +217,11 @@ function reportDraft(
     expected: params.expected,
     actual: params.actual,
   };
+
   if (params.workaround !== undefined) {
     report.workaround = params.workaround;
   }
+
   return {
     ...report,
     impact: params.impact,
@@ -225,7 +236,9 @@ function signalDraft(
   failure: { tool: string; error: string; ordered: boolean },
 ): EventDraft {
   type SignalDraft = Extract<EventDraft, { type: "signal" }>;
+
   const { tool, error, ordered } = failure;
+
   const signal: Omit<SignalDraft, "cause"> & { cause?: NonNullable<SignalDraft["cause"]> } = {
     type: "signal",
     session: ctx.sessionManager.getSessionId(),
@@ -234,9 +247,11 @@ function signalDraft(
     tool,
     error,
   };
+
   if (ordered) {
     signal.cause = "parallel-batch";
   }
+
   return { ...signal, ...recordProvenance(ctx, piVersion, attribution) };
 }
 
@@ -244,6 +259,7 @@ function toolCallsOf(message: MessageEndEvent["message"]): readonly BatchCall[] 
   if (message.role !== "assistant") {
     return undefined;
   }
+
   return message.content.flatMap((part) =>
     part.type === "toolCall" ? [{ id: part.id, name: part.name, args: part.arguments }] : [],
   );
@@ -269,6 +285,7 @@ export function registerFeedback(
     if (!isRecordEvent(event)) {
       return;
     }
+
     const registry = ctx.modelRegistry;
     schedule(async () => {
       try {
@@ -279,6 +296,7 @@ export function registerFeedback(
       }
     });
   };
+
   const owners = createAttribution(pi, dependencies);
   const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
   let batch: readonly BatchCall[] = [];
@@ -292,26 +310,31 @@ export function registerFeedback(
     const key = `${fingerprint}\n${params.summary.trim().toLowerCase()}`;
     const filed = filedBySession.get(session) ?? new Set<string>();
     filedBySession.set(session, filed);
+
     if (filed.has(key)) {
       return result("Already recorded in this session; nothing new was written.", {
         status: "duplicate",
       });
     }
+
     if (filed.size >= REPORTS_PER_SESSION) {
       return result(
         `This session has already filed ${REPORTS_PER_SESSION} reports; nothing was recorded.`,
         { status: "limit" },
       );
     }
+
     const attribution = owners.forReport(params.component, params.actual);
     const { owner } = attribution;
     filed.add(key);
+
     try {
       const event = await appendEvent(
         ledger,
         reportDraft(ctx, piVersion, params, { session, fingerprint, attribution }),
         clock,
       );
+
       classifyLater(ctx, event);
       const group = groupId(owner, fingerprint);
       pi.appendEntry(FEEDBACK_NOTE_TYPE, {
@@ -319,6 +342,7 @@ export function registerFeedback(
         owner,
         summary: event.type === "report" ? event.summary : params.summary,
       });
+
       return result(`Recorded in group ${group} (owner ${owner}). Carry on with the task.`, {
         status: "recorded",
         group,
@@ -327,6 +351,7 @@ export function registerFeedback(
     } catch (error) {
       filed.delete(key);
       const reason = error instanceof Error ? error.message : String(error);
+
       return result(`Could not record the feedback: ${reason}`, { status: "failed" }, true);
     }
   };
@@ -358,6 +383,7 @@ export function registerFeedback(
 
   pi.registerEntryRenderer(FEEDBACK_NOTE_TYPE, (entry, _options, theme) => {
     const note = Option.getOrUndefined(decodeNote(entry.data));
+
     return note === undefined ? undefined : renderNote(note, theme);
   });
 
@@ -369,16 +395,19 @@ export function registerFeedback(
     if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL) {
       return;
     }
+
     const error = errorText(event.result);
     const attribution = owners.forSignal(event.toolName, error);
     const failing = batch.find((call) => call.id === event.toolCallId);
     const ordered = failing !== undefined && isParallelBatch(failing, error, batch, readOnly);
+
     try {
       const recorded = await appendEvent(
         ledger,
         signalDraft(ctx, piVersion, attribution, { tool: event.toolName, error, ordered }),
         clock,
       );
+
       classifyLater(ctx, recorded, failing?.args);
     } catch {
       unwritten += 1;

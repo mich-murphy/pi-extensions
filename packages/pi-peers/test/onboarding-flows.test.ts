@@ -37,10 +37,13 @@ function form(state: SetupDraft, remoteBlocked?: string) {
   const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
   const options: SetupFormOptions = { draft: state, details: () => "details", apply };
+
   if (remoteBlocked !== undefined) {
     options.remoteBlocked = remoteBlocked;
   }
+
   const screen = setupForm(options);
+
   const menuRoot: Screen = {
     kind: "list",
     title: "Peers",
@@ -53,12 +56,16 @@ function form(state: SetupDraft, remoteBlocked?: string) {
       },
     ],
   };
+
   const model = new MenuModel(menuRoot, { consented });
   model.activate("setup");
+
   return { model, apply, consented };
 }
+
 const applyRow = (model: MenuModel): Row | undefined =>
   model.top.kind === "list" ? model.top.rows().find((row) => row.id === "apply") : undefined;
+
 const openers = (model: MenuModel): string[] =>
   model.top.kind === "list"
     ? model.top
@@ -72,6 +79,7 @@ describe("remote rows in the setup form", () => {
     const { model, apply, consented } = form(
       draft({ remote: { ...draft().remote, peer: "menu-host" } }),
     );
+
     expect(applyRow(model)?.value).toBe("Invalid: the peer must be another computer");
     expect(applyRow(model)?.activation.kind).toBe("none");
     model.activate("apply");
@@ -98,6 +106,7 @@ describe("remote rows in the setup form", () => {
   });
   test("a join offer names this machine in fresh setup, and is refused for another machine", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pc-offer-"));
+
     try {
       const offer = join(directory, "offer.json");
       await writeFile(offer, JSON.stringify({ machineId: "peer-a", peerMachineId: "elsewhere" }));
@@ -125,6 +134,7 @@ describe("remote rows in the setup form", () => {
   });
   test("re-pair must not reuse the old root", () => {
     const oldRoot = "a".repeat(64);
+
     const joined = {
       ...remoteDraft(),
       kind: "join" as const,
@@ -133,6 +143,7 @@ describe("remote rows in the setup form", () => {
       offer: { peerMachineId: "peer-a", localMachineId: "menu-host" },
       rootSha256: oldRoot,
     };
+
     expect(remoteGate(joined, "menu-host", { oldRoot })).toStrictEqual({
       kind: "invalid",
       reason: "use the new root, not the old one",
@@ -154,6 +165,7 @@ describe("remote rows in the setup form", () => {
   test("back pops exactly one level from every row of the remote form", () => {
     for (const kind of ["create", "join", "existing"] as const) {
       const { model } = form(draft({ remote: { ...remoteDraft(), kind } }));
+
       for (const id of openers(model)) {
         model.activate(id);
         expect(model.depth).toBe(2);
@@ -174,6 +186,7 @@ describe("remote rows in the setup form", () => {
 function screenModel(top: Screen): MenuModel {
   const model = new MenuModel({ kind: "list", title: "Peers", rows: () => [] });
   model.push(top);
+
   return model;
 }
 
@@ -227,9 +240,11 @@ describe("progress and stored outcomes", () => {
   });
   test("a report that fails after the UI is gone never becomes an unhandled rejection", async () => {
     const model = screenModel({ kind: "report", title: "x", lines: () => [] });
+
     const finished = vi.fn<(outcome: Outcome, hidden: boolean) => void>(() => {
       throw new Error("UI gone at shutdown");
     });
+
     await expect(
       runWithProgress(
         model,
@@ -257,9 +272,11 @@ describe("progress and stored outcomes", () => {
     expect(outcome.headline).toBe("✗ Setup failed: /home/dev/scratch is writable by other users");
     expect(outcome.next).toBe("Run chmod go-w /home/dev/scratch, then try again.");
     expect(outcome.technical).toStrictEqual([]);
+
     const repaired = await attempt("Repair failed", INCOMPLETE_NEXT, async () => {
       throw refusal;
     });
+
     expect(repaired.headline).toBe("✗ Repair failed: /home/dev/scratch is writable by other users");
     expect(
       failedWith("Setup failed", new Error("Pairing manifest missing"), INCOMPLETE_NEXT),
@@ -278,12 +295,14 @@ describe("progress and stored outcomes", () => {
     expect(storedOutcome({ ok: "yes", headline: "x", facts: [] })).toBeUndefined();
     expect(storedOutcome(null)).toBeUndefined();
     const facts = Array.from({ length: 40 }, (_, index) => [`Fact${index}`, "v".repeat(500)]);
+
     const stored = storedOutcome({
       ok: false,
       headline: "✗ Bad\u001b[31m\nsecond line",
       facts: [...facts, [1, 2]],
       technical: ["a", 5],
     });
+
     expect(stored?.facts).toHaveLength(12);
     expect(stored?.facts[0]?.[1].length).toBeLessThanOrEqual(160);
     expect(stored?.headline).toBe(String.raw`✗ Bad\u001b[31m second line`);
@@ -296,6 +315,7 @@ describe("progress and stored outcomes", () => {
 
 function root(busy: { value: boolean }) {
   const events: string[] = [];
+
   const state = (): RootState => ({
     status: { value: "Connected", lines: ["Connected"] },
     doctor: ["✓ ok"],
@@ -309,10 +329,13 @@ function root(busy: { value: boolean }) {
     resettable: true,
     busy: busy.value,
   });
+
   const outcome = (name: string) => async (): Promise<Outcome> => {
     events.push(`effect:${name}`);
+
     return { ok: true, headline: `✓ ${name}`, facts: [] };
   };
+
   const model = peersMenu(
     {
       state,
@@ -327,6 +350,7 @@ function root(busy: { value: boolean }) {
     },
     { consented: (action) => events.push(`consent:${action}`) },
   );
+
   return { model, events };
 }
 
@@ -335,6 +359,7 @@ async function settled(screen: Screen): Promise<void> {
     await screen.done;
   }
 }
+
 function listRows(screen: Screen): readonly Row[] {
   return screen.kind === "list" ? screen.rows() : [];
 }
@@ -377,6 +402,7 @@ describe("unreadable setup files", () => {
   test("a corrupt install record blocks Setup without quoting it", async () => {
     const agent = await mkdtemp(join(tmpdir(), "pc-corrupt-"));
     const secret = "SECRET-TOKEN-4f2a";
+
     try {
       const { mkdir } = await import("node:fs/promises");
       await mkdir(join(agent, "pi-peers"), { mode: 0o700 });
@@ -385,10 +411,12 @@ describe("unreadable setup files", () => {
       });
       const ctx = dialog([undefined, undefined, undefined]);
       await setupCommand(agent, ctx, vi.fn(), undefined, undefined, noPins);
+
       const shown = JSON.stringify([
         vi.mocked(ctx.ui.select).mock.calls,
         vi.mocked(ctx.ui.notify).mock.calls,
       ]);
+
       expect(shown).toContain("saved files are unreadable");
       expect(shown).not.toContain(secret);
     } finally {
@@ -410,9 +438,11 @@ const fixDraft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 function rowOf(model: MenuModel, id: string): Row {
   const row =
     model.top.kind === "list" ? model.top.rows().find((item) => item.id === id) : undefined;
+
   if (row === undefined) {
     throw new Error(`No row ${id}`);
   }
+
   return row;
 }
 
@@ -420,6 +450,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
   test("the socket probe settles after Esc and the draft is unchanged", async () => {
     const probed = Promise.withResolvers<boolean>();
     const state = fixDraft();
+
     const model = screenModel(
       setupForm({
         draft: state,
@@ -428,6 +459,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
         probe: async () => probed.promise,
       }),
     );
+
     model.activate("socket");
     const saving = model.submit("/private/owned/s");
     expect(model.busy).toBe(true);
@@ -438,6 +470,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
   });
   test("a save that settles while its editor is open commits", async () => {
     const state = fixDraft();
+
     const model = screenModel(
       setupForm({
         draft: state,
@@ -446,6 +479,7 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
         probe: async () => true,
       }),
     );
+
     model.activate("socket");
     await model.submit("/private/owned/s");
     expect([state.socket, state.shared, model.title()]).toStrictEqual([
@@ -479,6 +513,7 @@ describe("F8: report lines are made visible in both drivers", () => {
   test("TUI scroll", () => {
     initTheme();
     setKeybindings(testKeybindings());
+
     const text = new PeersMenu(screenModel(top), {
       tui: testTui(20),
       theme: testTheme(),
@@ -487,6 +522,7 @@ describe("F8: report lines are made visible in both drivers", () => {
     })
       .render(80)
       .join("\n");
+
     expect(text).toContain(String.raw`path /x\u0007y`);
     expect(text).not.toContain("\u0007");
   });
@@ -501,6 +537,7 @@ describe("F9: RPC context and no-op feedback", () => {
         apply: vi.fn<(choice: SetupChoice) => void>(),
       }),
     );
+
     model.activate("label");
     const ctx = dialog([undefined, undefined, undefined]);
     await driveRpc(model, ctx);
@@ -516,6 +553,7 @@ describe("F9: RPC context and no-op feedback", () => {
         apply: vi.fn<(choice: SetupChoice) => void>(),
       }),
     );
+
     model.activate("apply");
     expect(model.error).toBe("Fill in Socket above first.");
     model.activate("label");
@@ -526,6 +564,7 @@ describe("F9: RPC context and no-op feedback", () => {
 function fixRoot(resettable: boolean | undefined, setup: Screen) {
   const started: ActionKind[] = [];
   const consented: string[] = [];
+
   const state = (): RootState => ({
     status: { value: "Connected", lines: [] },
     doctor: [],
@@ -542,12 +581,14 @@ function fixRoot(resettable: boolean | undefined, setup: Screen) {
           undefined,
           "reconnect",
         );
+
         return setup;
       },
     },
     resettable,
     busy: false,
   });
+
   const model = peersMenu(
     {
       state,
@@ -558,6 +599,7 @@ function fixRoot(resettable: boolean | undefined, setup: Screen) {
     },
     { consented: (action) => consented.push(action) },
   );
+
   return { model, started, consented };
 }
 
@@ -582,6 +624,7 @@ describe("F3: a consent row captured before another action started runs nothing"
     let busy = false;
     const consented: string[] = [];
     const effects: string[] = [];
+
     const model = peersMenu(
       {
         state: () => ({
@@ -598,10 +641,12 @@ describe("F3: a consent row captured before another action started runs nothing"
         }),
         reset: async () => {
           effects.push("reset");
+
           return { ok: true, headline: "✓", facts: [] };
         },
         reconnect: async () => {
           effects.push("reconnect");
+
           return { ok: true, headline: "✓", facts: [] };
         },
         started: vi.fn<() => void>(),
@@ -610,6 +655,7 @@ describe("F3: a consent row captured before another action started runs nothing"
       },
       { consented: (action) => consented.push(action) },
     );
+
     const reconnect = rowOf(model, "reconnect");
     model.activate("reset");
     const disable = rowOf(model, "disable");

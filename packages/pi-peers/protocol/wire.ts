@@ -6,18 +6,24 @@ import { Frame, MAX_AUTHORED_BYTES, retiredOps } from "./schema.js";
 export const MAX_DESCRIPTOR_BYTES = 512;
 
 export type BoundaryRole = "local-client" | "gateway-forward" | "adapter-delivery" | "remote-link";
+
 const routed = new Set(["send", ...retiredOps]);
+
 type Descriptor = Extract<Frame, { op: "roster.event" }>["event"] & { tag: "upsert" };
+
 const decode = Schema.decodeUnknownSync(Frame, { onExcessProperty: "error" });
 
 export function frameBodyLength(prefix: Uint8Array): number {
   if (prefix.length !== 4) {
     throw new ProtocolError();
   }
+
   const length = new DataView(prefix.buffer, prefix.byteOffset, 4).getUint32(0, false);
+
   if (length < 1 || length > MAX_BODY_BYTES) {
     throw new ProtocolError();
   }
+
   return length;
 }
 
@@ -39,6 +45,7 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   if (frame.op === "link.state" && role !== "adapter-delivery") {
     throw new ProtocolError();
   }
+
   if (
     frame.op === "result" &&
     "code" in frame.outcome &&
@@ -48,17 +55,22 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   ) {
     throw new ProtocolError();
   }
+
   if (frame.op === "result" && frame.forOp === "gateway.restart" && role !== "local-client") {
     throw new ProtocolError();
   }
+
   if (frame.op === "result" || frame.op === "roster.event" || frame.op === "link.state") {
     return;
   }
+
   if (!roleOperations[role].has(frame.op)) {
     throw new ProtocolError();
   }
+
   if (routed.has(frame.op)) {
     const from = "from" in frame ? frame.from : undefined;
+
     if ((role === "local-client") !== (from === undefined)) {
       throw new ProtocolError();
     }
@@ -70,17 +82,21 @@ const isNumber = Schema.is(Schema.Number);
 const isObject = Schema.is(Schema.JsonObject);
 const isArray = Schema.is(Schema.Array(Schema.Json));
 const authoredFields = new Set(["content", "label", "locator"]);
+
 function authoredBytes(value: Schema.Json): number {
   if (!isObject(value) && !isArray(value)) {
     return 0;
   }
+
   let total = 0;
+
   for (const [name, child] of Object.entries(value)) {
     total +=
       authoredFields.has(name) && isString(child)
         ? Buffer.byteLength(child, "utf8")
         : authoredBytes(child);
   }
+
   return total;
 }
 
@@ -88,12 +104,14 @@ function checkDescriptorBounds(frame: Frame): void {
   if (frame.op === "roster.event" && frame.event.tag === "upsert") {
     checkDescriptor(frame.event.peer);
   }
+
   if (frame.op === "result" && frame.forOp === "discover" && frame.outcome.tag === "ok") {
     for (const descriptor of frame.outcome.value.peers) {
       checkDescriptor(descriptor);
     }
   }
 }
+
 function checkDescriptor(value: Descriptor["peer"]): void {
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_DESCRIPTOR_BYTES) {
     throw new ProtocolError();
@@ -106,9 +124,11 @@ export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
     decodeJson(Buffer.from(JSON.stringify(frame), "utf8"));
     checkRole(frame, role);
     checkDescriptorBounds(frame);
+
     if (authoredBytes(frame) > MAX_AUTHORED_BYTES) {
       throw new ProtocolError();
     }
+
     return frame;
   } catch {
     throw new ProtocolError();
@@ -118,10 +138,12 @@ export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
 function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
   let eventBytes = 0;
   let snapshotOverflow = false;
+
   const inspect: ObjectBytesVisitor = (path, byteLength) => {
     if (path.length === 2 && path[0] === "event" && path[1] === "peer") {
       eventBytes = byteLength;
     }
+
     if (
       path.length === 4 &&
       path[0] === "outcome" &&
@@ -133,7 +155,9 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
       snapshotOverflow = true;
     }
   };
+
   const frame = validateFrame(decodeJson(bytes, inspect), role);
+
   if (
     snapshotOverflow ||
     (frame.op === "roster.event" &&
@@ -142,14 +166,17 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
   ) {
     throw new ProtocolError();
   }
+
   return frame;
 }
 
 export function decodeFrame(bytes: Uint8Array, role: BoundaryRole): Frame {
   const length = frameBodyLength(bytes.subarray(0, 4));
+
   if (bytes.length !== length + 4) {
     throw new ProtocolError();
   }
+
   return decodeBody(bytes.subarray(4), role);
 }
 
@@ -160,5 +187,6 @@ export function encodeFrame(value: Schema.Json, role: BoundaryRole): Uint8Array 
   const bytes = new Uint8Array(body.length + 4);
   new DataView(bytes.buffer).setUint32(0, body.length, false);
   bytes.set(body, 4);
+
   return bytes;
 }

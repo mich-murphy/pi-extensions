@@ -13,6 +13,7 @@ import type { GatewayCatalog } from "../onboarding/catalog.js";
 const run = promisify(execFile);
 const repository = path.resolve(import.meta.dirname, "../../..");
 const setupSource = path.resolve(import.meta.dirname, "../onboarding/setup.ts");
+
 const childScript = `
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
@@ -107,11 +108,13 @@ function hostExpectation(version: string, supported: boolean) {
     warning: supported ? "Setup failed" : "Setup unavailable",
   };
 }
+
 async function entriesIfPresent(directory: string): Promise<string[]> {
   return existsSync(directory) ? fs.readdir(directory) : [];
 }
 
 const unsupportedArch = process.platform === "darwin" ? "x64" : "ia32";
+
 const hostCases = [
   {
     name: "on the real host",
@@ -144,16 +147,19 @@ describe("setupCommand trusted catalog injection", () => {
       roots.push(root);
       await fs.chmod(root, 0o700);
       const agent = path.join(root, "agent");
+
       const pin = {
         sourceRevision: "0123456789abcdef0123456789abcdef01234567",
         version: "0.1.0",
         manifestSha256: "c".repeat(64),
       };
+
       const catalog: GatewayCatalog = { nix: null, native: pin };
       expect(gatewayCatalog.native?.sourceRevision).not.toBe(pin.sourceRevision);
       expect(gatewayCatalog.native?.manifestSha256).not.toBe(pin.manifestSha256);
       expect(gatewayTarget(process.platform, arch) !== undefined).toBe(supported);
       const sentinel = `catalog-injection-fence-${randomBytes(12).toString("hex")}`;
+
       const { stdout } = await run(
         process.execPath,
         [
@@ -174,6 +180,7 @@ describe("setupCommand trusted catalog injection", () => {
           maxBuffer: 1_048_576,
         },
       );
+
       const record = childRecord(stdout);
       const expected = hostExpectation(pin.version, supported);
       expect(record.denied).toStrictEqual([]);
@@ -188,9 +195,11 @@ describe("setupCommand trusted catalog injection", () => {
       expect(existsSync(comms)).toBe(expected.supported);
       const entries = await entriesIfPresent(comms);
       expect(entries.filter((name) => !name.startsWith("install-"))).toStrictEqual([]);
+
       const installed = await Promise.all(
         entries.map(async (name) => fs.readdir(path.join(comms, name))),
       );
+
       expect(installed.flat()).toStrictEqual([]);
       expect(existsSync(path.join(agent, "pi-peers.json"))).toBe(false);
     },

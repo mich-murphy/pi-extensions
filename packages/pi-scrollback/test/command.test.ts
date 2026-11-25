@@ -6,7 +6,9 @@ import scrollback from "../index";
 import type { ScrollRegistration } from "../index";
 
 type Command = Parameters<ScrollRegistration["registerCommand"]>[1];
+
 type Handler = Parameters<ScrollRegistration["on"]>[1];
+
 type CommandContext = Parameters<Command["handler"]>[1];
 
 initTheme("dark");
@@ -25,6 +27,7 @@ function setup(mode = "tui") {
       commands.set(name, options);
     },
   });
+
   const setWidget = vi.fn<CommandContext["ui"]["setWidget"]>((_key, content) => {
     if (content !== undefined) {
       const tui = testTui();
@@ -33,12 +36,15 @@ function setup(mode = "tui") {
       adapters.push({ renders });
     }
   });
+
   const notify = vi.fn<CommandContext["ui"]["notify"]>();
   const ctx: CommandContext = { mode, ui: { setWidget, notify, theme: testTheme() } };
   const command = commands.get("scrollback");
+
   if (command === undefined) {
     throw new Error("/scrollback is not registered");
   }
+
   return {
     adapters,
     ctx,

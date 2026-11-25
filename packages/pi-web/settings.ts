@@ -8,11 +8,13 @@ export const WEB_FETCH_FORMATS = [
   "text",
   "html",
 ] as const satisfies readonly WebFetchFormat[];
+
 export const SEARCH_PROVIDERS = [
   "exa",
   "parallel",
   "brave",
 ] as const satisfies readonly SearchProviderName[];
+
 const SEARCH_PROVIDER_NAMES: ReadonlySet<string> = new Set(SEARCH_PROVIDERS);
 
 export const FETCH_TIMEOUT_SECONDS = { default: 30, min: 1, max: 120 } as const;
@@ -26,6 +28,7 @@ function builtInEndpoint(url: string): PublicHttpUrl {
   if (!isPublicHttpUrl(url)) {
     throw new Error(`Built-in endpoint is not a public HTTP(S) URL: ${url}`);
   }
+
   return url;
 }
 
@@ -57,9 +60,11 @@ const RENAMED_SETTINGS = [
 
 function withLegacySettings(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const resolved = { ...environment };
+
   for (const name of RENAMED_SETTINGS) {
     resolved[name] = environment[name] ?? environment[name.replace(/^PI_WEB_/u, "PI_WEB_TOOLS_")];
   }
+
   return resolved;
 }
 
@@ -104,6 +109,7 @@ export function clampInteger(
   if (!Number.isFinite(value)) {
     return bounds.default;
   }
+
   return Math.max(bounds.min, Math.min(bounds.max, Math.round(value)));
 }
 
@@ -115,13 +121,17 @@ function parseOnOff(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
   }
+
   const normalized = value.trim().toLowerCase();
+
   if (normalized === "on") {
     return true;
   }
+
   if (normalized === "off") {
     return false;
   }
+
   return fallback;
 }
 
@@ -133,22 +143,27 @@ function parseProviderList(
   }
 
   const providers = new Set<SearchProviderName>();
+
   for (const entry of value.split(",")) {
     const normalized = entry.trim().toLowerCase();
+
     if (!normalized) {
       continue;
     }
+
     if (!isSearchProviderName(normalized)) {
       return invalid(
         `\`${PROVIDERS_ENV}\` has unknown provider "${normalized}"; use ${SEARCH_PROVIDERS.join(", ")}.`,
       );
     }
+
     providers.add(normalized);
   }
 
   if (providers.size === 0) {
     return invalid(`\`${PROVIDERS_ENV}\` is empty. Name a provider or unset it.`);
   }
+
   return Result.succeed([...providers]);
 }
 
@@ -159,10 +174,13 @@ function parseEndpointOverride(
   if (value === undefined || !value.trim()) {
     return Result.succeed(undefined);
   }
+
   const parsed = parsePublicHttpUrl(value);
+
   if (Result.isFailure(parsed)) {
     return invalid(`\`${envName}\` must be a public http(s) URL without credentials.`);
   }
+
   return Result.succeed(parsed.success);
 }
 
@@ -183,20 +201,27 @@ function parseDomainList(
   if (value === undefined) {
     return Result.succeed([]);
   }
+
   const domains = new Set<string>();
+
   for (const entry of value.split(",")) {
     const trimmed = entry.trim().toLowerCase();
+
     if (!trimmed) {
       continue;
     }
+
     const normalized = trimmed.replace(/\.$/u, "");
+
     if (!isBareHostname(normalized)) {
       return invalid(
         `\`${envName}\` needs comma-separated bare hostnames such as example.com (no scheme, port or wildcard).`,
       );
     }
+
     domains.add(normalized);
   }
+
   return Result.succeed([...domains]);
 }
 
@@ -205,18 +230,22 @@ export function parseSettings(
 ): Result.Result<WebToolsSettings, SettingsError> {
   const environment = withLegacySettings(rawEnvironment);
   const providers = parseProviderList(environment[PROVIDERS_ENV]);
+
   if (Result.isFailure(providers)) {
     return Result.fail(providers.failure);
   }
 
   const exaEndpoint = parseEndpointOverride(environment[EXA_ENDPOINT_ENV], EXA_ENDPOINT_ENV);
+
   if (Result.isFailure(exaEndpoint)) {
     return Result.fail(exaEndpoint.failure);
   }
+
   const parallelEndpoint = parseEndpointOverride(
     environment[PARALLEL_ENDPOINT_ENV],
     PARALLEL_ENDPOINT_ENV,
   );
+
   if (Result.isFailure(parallelEndpoint)) {
     return Result.fail(parallelEndpoint.failure);
   }
@@ -225,10 +254,13 @@ export function parseSettings(
     environment[FETCH_ALLOW_DOMAINS_ENV],
     FETCH_ALLOW_DOMAINS_ENV,
   );
+
   if (Result.isFailure(allowDomains)) {
     return Result.fail(allowDomains.failure);
   }
+
   const denyDomains = parseDomainList(environment[FETCH_DENY_DOMAINS_ENV], FETCH_DENY_DOMAINS_ENV);
+
   if (Result.isFailure(denyDomains)) {
     return Result.fail(denyDomains.failure);
   }

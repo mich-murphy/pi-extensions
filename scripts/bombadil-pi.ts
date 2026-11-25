@@ -13,8 +13,10 @@ const { bin } = readManifest(join(host, "package.json"));
 const extensions: string[] = [];
 let fixturePath: string | undefined;
 const argv = process.argv.slice(2);
+
 for (let index = 0; index < argv.length; index++) {
   const value = argv[index] ?? "";
+
   if (value === "--fixture") {
     index++;
     fixturePath = argv[index];
@@ -22,12 +24,14 @@ for (let index = 0; index < argv.length; index++) {
     extensions.push(value);
   }
 }
+
 if (extensions.length === 0 || (argv.includes("--fixture") && fixturePath === undefined)) {
   throw new Error("Usage: bombadil-pi.ts [--fixture <file.ts>] <extension.ts>...");
 }
 
 const SHORT_TMP_PREFIX_KEEPING_SOCKETS_UNDER_UNIX_PATH_LIMIT = "/tmp/pi-bombadil-";
 const base = mkdtempSync(SHORT_TMP_PREFIX_KEEPING_SOCKETS_UNDER_UNIX_PATH_LIMIT);
+
 const root: BombadilRoot = {
   root: base,
   home: join(base, "home"),
@@ -36,6 +40,7 @@ const root: BombadilRoot = {
   cwd: join(base, "cwd"),
   tmp: join(base, "tmp"),
 };
+
 for (const path of [root.home, root.agent, root.sessions, root.cwd, root.tmp]) {
   mkdirSync(path);
 }
@@ -52,14 +57,18 @@ async function loadFixture(path: string | undefined): Promise<BombadilLaunch> {
   if (path === undefined) {
     return {};
   }
+
   const fixture = decodeFixture(await import(pathToFileURL(resolve(repo, path)).href));
+
   if (Option.isNone(fixture)) {
     throw new TypeError(`Fixture ${path} has no default export function`);
   }
+
   return fixture.value.default(root);
 }
 
 let launch: BombadilLaunch;
+
 try {
   launch = await loadFixture(fixturePath);
 } catch (error) {
@@ -85,6 +94,7 @@ writeFileSync(
 );
 
 const omitted = new Set(launch.omitDefaults);
+
 const defaults = [
   "--offline",
   "--no-extensions",
@@ -97,6 +107,7 @@ const defaults = [
 ].filter((flag) => !omitted.has(flag));
 
 const writeLog = process.env.PI_TUI_WRITE_LOG;
+
 const childEnv: NodeJS.ProcessEnv = {
   PATH: process.env.PATH,
   HOME: root.home,
@@ -109,9 +120,11 @@ const childEnv: NodeJS.ProcessEnv = {
   PI_SKIP_VERSION_CHECK: "1",
   PI_TELEMETRY: "0",
 };
+
 if (writeLog !== undefined && writeLog !== "") {
   childEnv.PI_TUI_WRITE_LOG = writeLog;
 }
+
 const child = spawn(
   process.execPath,
   [
@@ -127,10 +140,13 @@ const child = spawn(
     env: { ...childEnv, ...launch.env },
   },
 );
+
 const TERMINATION_SIGNALS_A_SHARED_TERMINAL_DOES_NOT_DELIVER = ["SIGTERM", "SIGHUP"] as const;
+
 for (const signal of TERMINATION_SIGNALS_A_SHARED_TERMINAL_DOES_NOT_DELIVER) {
   process.on(signal, () => child.kill(signal));
 }
+
 child.on("exit", (code, signal) => {
   void (async () => {
     try {
@@ -138,10 +154,13 @@ child.on("exit", (code, signal) => {
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
+
     if (signal !== null) {
       process.kill(process.pid, signal);
+
       return;
     }
+
     process.exitCode = code ?? 1;
   })();
 });

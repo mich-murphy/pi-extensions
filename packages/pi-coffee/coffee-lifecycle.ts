@@ -73,8 +73,10 @@ function registerCoffeeCommand(
   setEnabled: (enabled: boolean, ctx: CoffeeContext) => void,
 ): () => boolean {
   let enabled = true;
+
   const unavailable =
     platform === "darwin" ? "" : " Sleep prevention is unavailable: it works on macOS only.";
+
   pi.registerCommand(
     "coffee",
     onOffCommand<CoffeeContext>({
@@ -89,12 +91,14 @@ function registerCoffeeCommand(
       note: () => unavailable,
     }),
   );
+
   return () => enabled;
 }
 
 export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDependencies): void {
   if (dependencies.platform !== "darwin") {
     registerCoffeeCommand(pi, dependencies.platform, () => undefined);
+
     return;
   }
 
@@ -107,19 +111,25 @@ export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDepen
       "-w",
       String(dependencies.processIdCaffeinateExitsWith),
     ]);
+
     held = child;
     child.onNotice((notice) => {
       if (held !== child) {
         return;
       }
+
       held = undefined;
+
       if (CaffeinateNotice.$is("failed")(notice)) {
         notify(ctx, `Coffee: ${notice.error.message}`, "error");
+
         return;
       }
+
       const outcome = notice.signal
         ? `signal ${notice.signal}`
         : `exit code ${notice.code ?? "unknown"}`;
+
       notify(
         ctx,
         restartsLeft > 0
@@ -127,6 +137,7 @@ export function registerCoffee(pi: CoffeeRegistration, dependencies: CoffeeDepen
           : `Coffee: caffeinate stopped again (${outcome}). Sleep is allowed until the next agent run.`,
         "warning",
       );
+
       if (restartsLeft > 0) {
         hold(ctx, restartsLeft - 1);
       }

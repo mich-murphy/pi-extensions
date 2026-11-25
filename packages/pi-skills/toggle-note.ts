@@ -35,10 +35,12 @@ export type ToggleNoteInput = {
 
 const SUPERSEDES = "The user changed /skills. This note supersedes earlier /skills notes";
 const HEADER = `${SUPERSEDES} and overrides the skills and project instructions listed in the system prompt.`;
+
 const REVERT = [
   `${SUPERSEDES}.`,
   "The system prompt's skills and project instructions apply as listed.",
 ].join("\n");
+
 const DISABLED_SKILLS = "Disabled skills (do not load unless the user invokes /skill:<name>): ";
 const DISABLED_INSTRUCTIONS = "Disabled instructions (disregard): ";
 
@@ -53,6 +55,7 @@ export function noteView(message: { readonly role: string }): ReadonlySet<string
   ) {
     return undefined;
   }
+
   return isVisibleDetails(message.details) ? new Set(message.details.visible) : undefined;
 }
 
@@ -69,9 +72,11 @@ export function toggleChanges(
 
 export function toggleNote(input: ToggleNoteInput): ToggleNote | undefined {
   const { resources, view, desired } = input;
+
   if (resources.every(({ id }) => view.has(id) === desired.has(id))) {
     return undefined;
   }
+
   return {
     customType: TOGGLE_NOTE_TYPE,
     content: renderToggleNote(input.changes, input.reader),
@@ -90,8 +95,10 @@ export function renderToggleNote(changes: ToggleChanges, reader: SkillReader): s
   if (changes.enabled.length === 0 && changes.disabled.length === 0) {
     return REVERT;
   }
+
   const [disabledSkills, disabledInstructions] = byKind(changes.disabled);
   const [enabledSkills, enabledInstructions] = byKind(changes.enabled);
+
   return [
     HEADER,
     ...block(disabledSkills, (skills) => [
@@ -160,5 +167,6 @@ export function compareText(left: string, right: string): number {
   if (left === right) {
     return 0;
   }
+
   return left < right ? -1 : 1;
 }

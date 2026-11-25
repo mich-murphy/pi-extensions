@@ -14,15 +14,20 @@ const POLICIES = [{ machineId: "alpha", scopeId: "team", permissions: ["discover
 
 async function ready(child: ChildProcess): Promise<void> {
   const stdout = child.stdout;
+
   if (stdout === null) {
     throw new Error("Gateway has no stdout");
   }
+
   const line = new Promise<void>((resolve, reject) => {
     let text = "";
+
     const onData = (bytes: Buffer): void => {
       text += bytes.toString("utf8");
+
       if (text.includes("\n")) {
         stdout.off("data", onData);
+
         if (text.includes('"ready"')) {
           resolve();
         } else {
@@ -30,11 +35,13 @@ async function ready(child: ChildProcess): Promise<void> {
         }
       }
     };
+
     stdout.on("data", onData);
     child.once("exit", () => {
       reject(new Error("Gateway exited before ready"));
     });
   });
+
   await line;
 }
 
@@ -42,6 +49,7 @@ async function stop(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) {
     return;
   }
+
   const exited = once(child, "exit");
   child.kill("SIGTERM");
   await exited;
@@ -53,9 +61,11 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
   const directory = join(withoutSymlinkedAncestors, "gw");
   mkdirSync(directory, { mode: 0o700 });
   const socketPath = join(directory, "g.sock");
+
   if (Buffer.byteLength(socketPath) > GATEWAY_SOCKET_PATH_MAX_BYTES) {
     throw new Error(`Socket path exceeds ${GATEWAY_SOCKET_PATH_MAX_BYTES} bytes: ${socketPath}`);
   }
+
   const gatewayConfig = join(directory, "gateway.json");
   writeFileSync(
     gatewayConfig,
@@ -71,10 +81,13 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
   const binary = join(directory, "pi-gateway");
   copyFileSync(source, binary);
   chmodSync(binary, 0o500);
+
   const gateway = spawn(binary, ["--config", gatewayConfig], {
     stdio: ["ignore", "pipe", "ignore"],
   });
+
   let peer: ChildProcess | undefined;
+
   try {
     await ready(gateway);
     peer = spawn(
@@ -86,7 +99,9 @@ export default async function peersFixture(root: BombadilRoot): Promise<Bombadil
     await stop(gateway);
     throw error;
   }
+
   const started = peer;
+
   return {
     args: ["--provider", "scripted", "--model", "peers"],
     omitDefaults: ["--no-tools"],

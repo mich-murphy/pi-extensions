@@ -9,6 +9,7 @@ export default function retry(pi: RetryRegistration): void {
     now: Date.now,
     every: (intervalMs, tick) => {
       const timer = setInterval(tick, intervalMs);
+
       return () => {
         clearInterval(timer);
       };

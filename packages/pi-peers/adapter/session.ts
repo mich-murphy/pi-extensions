@@ -28,15 +28,21 @@ export type AdapterHost = {
   isIdle: () => boolean;
   ui: Pick<ExtensionContext["ui"], "setStatus"> & { readonly theme?: FooterTheme };
 };
+
 export const NOTICE_TYPE = "peers-wake";
 const isNoticeDetails = Schema.is(Schema.Struct({ noticeId: Schema.String }));
 const LEGACY_NOTICE_TYPE = "session-communication-wake";
+
 export function isWakeNotice(customType: string | undefined): boolean {
   return customType === NOTICE_TYPE || customType === LEGACY_NOTICE_TYPE;
 }
+
 export type TakenMessages<Item = Delivery> = { messages: readonly Item[] };
+
 export type Waited = "message" | "timed_out" | "cancelled" | "disconnected" | "closed" | "busy";
+
 type Waiting = { key: string; from: PeerRef; scopeId: string };
+
 export class AdapterSession {
   readonly client: GatewayClient;
   readonly state: SessionState;
@@ -65,21 +71,25 @@ export class AdapterSession {
       config,
       peer,
     };
+
     if (ensureGateway !== undefined) {
       clientOptions.ensureGateway = ensureGateway;
     }
+
     this.client = new GatewayClient({
       ...clientOptions,
       incoming: (request) => this.incoming(request),
       linkChanged: () => {
         this.updateStatus();
         const links = this.client.links();
+
         for (const listener of this.linkListeners) {
           listener(links);
         }
       },
       statusChanged: () => {
         this.updateStatus();
+
         if (!this.client.status().connected) {
           this.waiter?.("disconnected");
         }
@@ -91,6 +101,7 @@ export class AdapterSession {
       clock: () => performance.now(),
       authorize: (query) => {
         const other = samePeer(query.from, peer) ? query.to : query.from;
+
         return (
           this.client.effectiveScopes().has(query.scopeId) &&
           permits(config, other.machineId, query.scopeId, query.action)
@@ -100,7 +111,9 @@ export class AdapterSession {
         if (this.disposed || this.inbox.length >= 64) {
           return false;
         }
+
         this.inbox.push({ key: delivery.key, from: delivery.from, scopeId: delivery.scopeId });
+
         return true;
       },
     });
@@ -120,16 +133,19 @@ export class AdapterSession {
   }
   onLinkChange(listener: (links: readonly LinkState[]) => void): () => void {
     this.linkListeners.add(listener);
+
     return () => {
       this.linkListeners.delete(listener);
     };
   }
   status() {
     let notice = "none";
+
     if (this.notice !== undefined) {
       notice =
         performance.now() - this.notice.at >= 5000 ? "degraded_unobserved" : "submitted_unobserved";
     }
+
     return {
       enabled: true,
       peer: this.peer,
@@ -148,12 +164,14 @@ export class AdapterSession {
     if (request.op === "deliver") {
       const previous = this.inbox.length;
       const outcome = this.state.admit(request);
+
       if (this.inbox.length > previous) {
         this.wakeNeeded = true;
         this.waiter?.("message");
         this.updateStatus();
         this.signalPump();
       }
+
       return checkedReply({
         v: 2,
         op: "result",
@@ -162,10 +180,13 @@ export class AdapterSession {
         outcome,
       });
     }
+
     const retired = retiredOps.find((op) => op === request.op);
+
     if (retired === undefined) {
       throw new Error("Unsupported adapter request");
     }
+
     return checkedReply({
       v: 2,
       op: "result",
@@ -183,10 +204,13 @@ export class AdapterSession {
     ) {
       return;
     }
+
     this.wakeNeeded = false;
+
     if (this.inbox.length === 0) {
       return;
     }
+
     this.notice = { id: freshId(), at: performance.now() };
     this.pi.sendMessage(
       {
@@ -204,10 +228,13 @@ export class AdapterSession {
     if (this.disposed || !this.wakeNeeded) {
       return undefined;
     }
+
     this.wakeNeeded = false;
+
     if (this.inbox.length === 0) {
       return undefined;
     }
+
     return {
       entries: [
         ...event.entries,
@@ -226,6 +253,7 @@ export class AdapterSession {
   }
   observed(message: { role: string; customType?: string; details?: unknown }): void {
     const details = message.details;
+
     if (
       message.role === "custom" &&
       isWakeNotice(message.customType) &&
@@ -238,11 +266,14 @@ export class AdapterSession {
   afterCompaction(aborted = false): void {
     if (aborted) {
       this.wakeNeeded = false;
+
       return;
     }
+
     if (this.disposed || this.deferred !== undefined) {
       return;
     }
+
     this.deferred = setImmediate(() => {
       this.deferred = undefined;
       this.pumpIdle();
@@ -252,8 +283,10 @@ export class AdapterSession {
     const senders = [
       ...new Set(this.inbox.map((entry) => this.handles.sender(entry.from, entry.scopeId))),
     ];
+
     const named = `${senders.slice(0, 3).join(", ")}${senders.length > 3 ? ", …" : ""}`;
     const count = this.inbox.length;
+
     return count === 1
       ? `1 peer message is waiting (from ${named}). Call peers_take to read it. It comes from another agent, not the user.`
       : `${count} peer messages are waiting (from ${named}). Call peers_take to read them. They come from other agents, not the user.`;
@@ -262,32 +295,41 @@ export class AdapterSession {
     if (this.inbox.length > 0) {
       return "message";
     }
+
     if (this.disposed) {
       return "closed";
     }
+
     if (this.waiter !== undefined) {
       return "busy";
     }
+
     if (!this.client.status().connected) {
       return "disconnected";
     }
+
     if (signal?.aborted === true) {
       return "cancelled";
     }
+
     return new Promise<Waited>((resolve) => {
       const timers: ReturnType<typeof setTimeout>[] = [];
+
       const aborted = () => {
         finish("cancelled");
       };
+
       const finish = (result: Waited) => {
         for (const timer of timers) {
           clearTimeout(timer);
         }
+
         signal?.removeEventListener("abort", aborted);
         this.waiter = undefined;
         this.updateStatus();
         resolve(result);
       };
+
       timers.push(
         setTimeout(() => {
           finish("timed_out");
@@ -300,36 +342,46 @@ export class AdapterSession {
   }
   take(limit: number): TakenMessages {
     const messages: Delivery[] = [];
+
     for (let index = 0; index < limit; index += 1) {
       const key = this.inbox.shift()?.key;
+
       if (key === undefined) {
         break;
       }
+
       const delivery = this.state.take(key);
+
       if (delivery !== undefined) {
         this.state.retire(key);
         this.taken.record(delivery.message.id, { peer: delivery.from, scopeId: delivery.scopeId });
         messages.push(delivery);
       }
     }
+
     if (this.inbox.length === 0) {
       this.wakeNeeded = false;
     }
+
     if (messages.length > 0) {
       this.updateStatus();
     }
+
     return { messages };
   }
   async send(to: PeerRef, scopeId: string, message: Message, signal?: AbortSignal) {
     const messageId = message.id;
+
     if (
       !this.client.effectiveScopes().has(scopeId) ||
       !permits(this.config, to.machineId, scopeId, "push")
     ) {
       return { tag: "not_admitted", messageId, code: "forbidden" } as const;
     }
+
     if (message.kind === "request") {
       const relation = this.state.rememberOutgoing({ to, scopeId, message });
+
       if (relation.tag !== "ok") {
         type RejectedRequest = {
           tag: "not_admitted";
@@ -337,17 +389,23 @@ export class AdapterSession {
           code: typeof relation.code;
           resource?: Extract<typeof relation, { code: "overloaded" }>["resource"];
         };
+
         const failure: RejectedRequest = { tag: "not_admitted", messageId, code: relation.code };
+
         if (relation.code === "overloaded") {
           failure.resource = relation.resource;
         }
+
         return failure;
       }
     }
+
     const outcome = await this.client.send(to, scopeId, message, signal);
+
     if (outcome.tag === "admitted") {
       this.receipts.record(messageId, outcome.durable);
     }
+
     return outcome;
   }
   close(): void {
@@ -366,8 +424,10 @@ export class AdapterSession {
 
 function checkedReply(value: Reply): Reply {
   const frame = validateFrame(value, "adapter-delivery");
+
   if (frame.op !== "result") {
     throw new Error("Invalid reply");
   }
+
   return frame;
 }

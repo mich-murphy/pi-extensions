@@ -40,6 +40,7 @@ const GLOBAL_SKILLS = [
   "perf-profiling",
   "security-audit",
 ] as const;
+
 const PROJECT_SKILLS = ["deploy", "seed-data"] as const;
 
 function description(name: string): string {
@@ -62,12 +63,15 @@ function createFixture(): Fixture {
   const agentDir = join(root, "agent");
   const cwd = join(root, "project");
   mkdirSync(cwd, { recursive: true });
+
   for (const name of GLOBAL_SKILLS) {
     writeSkill(join(agentDir, "skills"), name);
   }
+
   for (const name of PROJECT_SKILLS) {
     writeSkill(join(cwd, ".agents", "skills"), name);
   }
+
   writeFileSync(join(agentDir, "AGENTS.md"), "# Global rules\n\nAnswer concisely. Cite files.\n");
   writeFileSync(
     join(agentDir, "auth.json"),
@@ -76,6 +80,7 @@ function createFixture(): Fixture {
   writeFileSync(join(cwd, "AGENTS.md"), "# Project rules\n\nRun npm run check before finishing.\n");
   writeFileSync(join(cwd, "README.md"), "# Demo project\n\nA fixture for the cache benchmark.\n");
   execFileSync("git", ["init", "-q"], { cwd });
+
   return { root, agentDir, cwd };
 }
 
@@ -93,8 +98,10 @@ class MemoryStore implements ToggleStateStore {
   load: ToggleStateStore["load"] = () => {
     if (this.failLoads > 0) {
       this.failLoads--;
+
       return Result.fail(new ToggleStateUnavailable("load", "/state.json", "EACCES", undefined));
     }
+
     return this.file.load();
   };
 
@@ -102,9 +109,11 @@ class MemoryStore implements ToggleStateStore {
 
   toggle(path: string, value: ToggleValue): this {
     const saved = this.file.set(resourcePathId(path, this.fixture.cwd), value);
+
     if (Result.isFailure(saved)) {
       throw saved.failure;
     }
+
     return this;
   }
 }
@@ -123,6 +132,7 @@ type Scenario = {
 };
 
 type Rendering = "midConvo" | "collapsed" | "claudeSdk";
+
 const RENDERINGS: readonly Rendering[] = ["midConvo", "collapsed", "claudeSdk"];
 
 type Rendered = { readonly text: string; readonly blocks?: readonly string[] };
@@ -131,9 +141,11 @@ function renderMessage(message: Message, head: boolean): string {
   if (message.role === "system") {
     return `system:${head ? getSystemMessageText(message) : renderSystemMessageUpdate(message)}`;
   }
+
   if (message.role === "toolResult") {
     return `toolResult:${message.toolCallId}:${message.toolName}:${JSON.stringify(message.content)}`;
   }
+
   return `${message.role}:${JSON.stringify(message.content)}`;
 }
 
@@ -145,19 +157,24 @@ function render(context: TranscriptContext, rendering: Rendering): Rendered {
   if (rendering === "midConvo") {
     return { text: renderMessages(context.messages) };
   }
+
   if (rendering === "collapsed") {
     return { text: renderMessages(resolveTranscript(context, false).messages) };
   }
+
   const blocks = buildAgentRequest(context).promptBlocks.map((block) => block.text);
+
   return { text: blocks.join(""), blocks };
 }
 
 function commonPrefix(a: string, b: string): number {
   const length = Math.min(a.length, b.length);
   let index = 0;
+
   while (index < length && a[index] === b[index]) {
     index++;
   }
+
   return index;
 }
 
@@ -173,6 +190,7 @@ function reuse(previous: Rendered | undefined, current: Rendered): RequestReuse 
   if (previous === undefined) {
     return { chars: current.text.length, reused: 0, previousChars: 0 };
   }
+
   if (current.blocks === undefined || previous.blocks === undefined) {
     return {
       chars: current.text.length,
@@ -180,8 +198,10 @@ function reuse(previous: Rendered | undefined, current: Rendered): RequestReuse 
       previousChars: previous.text.length,
     };
   }
+
   let blocks = 0;
   let reused = 0;
+
   while (
     blocks < previous.blocks.length &&
     blocks < current.blocks.length &&
@@ -190,6 +210,7 @@ function reuse(previous: Rendered | undefined, current: Rendered): RequestReuse 
     reused += current.blocks[blocks]?.length ?? 0;
     blocks++;
   }
+
   return {
     chars: current.text.length,
     reused,
@@ -226,6 +247,7 @@ function summarize(contexts: readonly TranscriptContext[], rendering: Rendering)
   const laterChars = later.reduce((sum, request) => sum + request.chars, 0);
   const reusedChars = later.reduce((sum, request) => sum + request.reused, 0);
   const totalChars = perRequest.reduce((sum, request) => sum + request.chars, 0);
+
   return {
     requests: perRequest.length,
     totalChars,
@@ -241,6 +263,7 @@ const NOTE_TYPE = "skills";
 const MODEL_IDS = ["faux-a", "faux-b"] as const;
 
 type Faux = ReturnType<typeof fauxProvider>;
+
 type Run = {
   readonly fixture: Fixture;
   readonly store: MemoryStore;
@@ -251,14 +274,17 @@ type Run = {
 
 async function startSession(fixture: Fixture, store: MemoryStore): Promise<Run> {
   const faux = fauxProvider({ provider: "faux", models: MODEL_IDS.map((id) => ({ id })) });
+
   const modelRuntime = await ModelRuntime.create({
     authPath: join(fixture.agentDir, "auth.json"),
     modelsPath: null,
     refreshOnCreate: false,
   });
+
   modelRuntime.registerNativeProvider(faux.provider);
   const settingsManager = SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } });
   settingsManager.setProjectTrusted(true);
+
   const resourceLoader = new DefaultResourceLoader({
     cwd: fixture.cwd,
     agentDir: fixture.agentDir,
@@ -269,7 +295,9 @@ async function startSession(fixture: Fixture, store: MemoryStore): Promise<Run> 
       },
     ],
   });
+
   await resourceLoader.reload();
+
   const { session } = await createAgentSession({
     cwd: fixture.cwd,
     agentDir: fixture.agentDir,
@@ -280,6 +308,7 @@ async function startSession(fixture: Fixture, store: MemoryStore): Promise<Run> 
     settingsManager,
     tools: ["read", "bash"],
   });
+
   return { fixture, store, faux, session, contexts: [] };
 }
 
@@ -287,8 +316,10 @@ async function compact(run: Run): Promise<string> {
   run.faux.setResponses(
     Array.from({ length: 3 }, () => fauxAssistantMessage("Summary: earlier turns edited files.")),
   );
+
   try {
     await run.session.compact();
+
     return "ok";
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -299,9 +330,11 @@ async function compact(run: Run): Promise<string> {
 
 async function switchModel(run: Run, modelId: string): Promise<void> {
   const model = run.faux.getModel(modelId);
+
   if (model === undefined) {
     throw new Error(`unknown faux model ${modelId}`);
   }
+
   await run.session.setModel(model);
 }
 
@@ -309,11 +342,13 @@ function queueResponses(run: Run, step: Step, index: number): void {
   const capture = (context: TranscriptContext): void => {
     run.contexts.push(structuredClone(context));
   };
+
   if (step.toolCall === true) {
     const readme = join(run.fixture.cwd, "README.md");
     run.faux.appendResponses([
       (context) => {
         capture(context);
+
         return fauxAssistantMessage(
           fauxToolCall("read", { path: readme }, { id: `call-${index}` }),
           { stopReason: "toolUse" },
@@ -321,9 +356,11 @@ function queueResponses(run: Run, step: Step, index: number): void {
       },
     ]);
   }
+
   run.faux.appendResponses([
     (context) => {
       capture(context);
+
       return fauxAssistantMessage(`${REPLY}(turn ${index + 1})`);
     },
   ]);
@@ -331,22 +368,27 @@ function queueResponses(run: Run, step: Step, index: number): void {
 
 async function runStep(run: Run, step: Step, index: number): Promise<string | undefined> {
   const compaction = step.compactBefore === true ? await compact(run) : undefined;
+
   if (step.switchModel !== undefined) {
     await switchModel(run, step.switchModel);
   }
+
   step.before?.(run.store, run.fixture);
   queueResponses(run, step, index);
   await run.session.prompt(`Prompt ${index + 1}: please continue with the next part of the task.`);
+
   return compaction;
 }
 
 type SessionMessage = AgentSession["messages"][number];
+
 type NoteMessage = Extract<SessionMessage, { role: "custom" }>;
 
 function contentChars(content: NoteMessage["content"]): number {
   if (Array.isArray(content)) {
     return content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0);
   }
+
   return content.length;
 }
 
@@ -369,6 +411,7 @@ function systemPatches(
 function buildReport(name: string, run: Run, compaction: string | undefined): ScenarioReport {
   const patches = systemPatches(run.contexts);
   const notes = toggleNotes(run.session.messages);
+
   return {
     name,
     requests: run.contexts.length,
@@ -393,10 +436,12 @@ async function runScenario(
   scenario.initial?.(store, fixture);
   const run = await startSession(fixture, store);
   let compaction: string | undefined;
+
   try {
     for (const [index, step] of scenario.steps.entries()) {
       compaction = (await runStep(run, step, index)) ?? compaction;
     }
+
     return { report: buildReport(scenario.name, run, compaction), contexts: run.contexts };
   } finally {
     run.session.dispose();
@@ -405,6 +450,7 @@ async function runScenario(
 
 const globalSkill = (fixture: Fixture, name: string): string =>
   join(fixture.agentDir, "skills", name, "SKILL.md");
+
 const projectSkill = (fixture: Fixture, name: string): string =>
   join(fixture.cwd, ".agents", "skills", name, "SKILL.md");
 
@@ -416,6 +462,7 @@ function stepsWith(at: number, step: Step, count = 6): readonly Step[] {
     if (index === at) {
       return step;
     }
+
     return index === 1 ? withTool : plain;
   });
 }
@@ -522,9 +569,11 @@ const NON_TOGGLE_SCENARIOS = new Set(["a-steady", "k-toggle-before-first-prompt"
 
 function toggleMeans(reports: readonly ScenarioReport[]): Readonly<Record<Rendering, number>> {
   const toggles = reports.filter((report) => !NON_TOGGLE_SCENARIOS.has(report.name));
+
   const mean = (rendering: Rendering): number =>
     toggles.reduce((sum, report) => sum + report.renderings[rendering].reuseRatio, 0) /
     Math.max(1, toggles.length);
+
   return { midConvo: mean("midConvo"), collapsed: mean("collapsed"), claudeSdk: mean("claudeSdk") };
 }
 
@@ -532,6 +581,7 @@ const percent = (ratio: number): string => `${(ratio * 100).toFixed(1)}%`;
 
 function summaryRows(reports: readonly ScenarioReport[]): readonly string[][] {
   const means = toggleMeans(reports);
+
   return RENDERINGS.map((rendering) => ["mean-toggle", rendering, percent(means[rendering])]);
 }
 
@@ -539,6 +589,7 @@ function table(reports: readonly ScenarioReport[]): string {
   const rows = reports.flatMap((report) =>
     RENDERINGS.map((rendering) => {
       const summary = report.renderings[rendering];
+
       return [
         report.name,
         rendering,
@@ -555,6 +606,7 @@ function table(reports: readonly ScenarioReport[]): string {
       ];
     }),
   );
+
   const header = [
     "scenario",
     "rendering",
@@ -569,11 +621,13 @@ function table(reports: readonly ScenarioReport[]): string {
     "noteChars",
     "compaction",
   ];
+
   return [header, ...rows, ...summaryRows(reports)].map((row) => row.join("\t")).join("\n");
 }
 
 function firstRequestTexts(contexts: readonly TranscriptContext[]): readonly string[] {
   const [first] = contexts;
+
   return first === undefined ? [] : RENDERINGS.map((rendering) => render(first, rendering).text);
 }
 
@@ -581,13 +635,16 @@ function steadyReuseViolations(report: ScenarioReport | undefined): readonly str
   if (report === undefined) {
     return ["missing a-steady report"];
   }
+
   return RENDERINGS.flatMap((rendering) =>
     report.renderings[rendering].perRequest.slice(1).flatMap((request, index) => {
       const expected =
         request.reusedBlocks === undefined
           ? request.previousChars
           : (request.previousBlocks ?? 0) - 1;
+
       const actual = request.reusedBlocks ?? request.reused;
+
       return actual === expected
         ? []
         : [`${rendering} request ${index + 2}: ${actual} != ${expected}`];
@@ -597,6 +654,7 @@ function steadyReuseViolations(report: ScenarioReport | undefined): readonly str
 
 function writeReport(reports: readonly ScenarioReport[]): void {
   const out = process.env.PI_SKILL_TOGGLE_BENCH_OUT;
+
   if (out !== undefined && out !== "") {
     const summary = { toggleMeanReuse: toggleMeans(reports) };
     writeFileSync(out, `${JSON.stringify({ reports, summary }, undefined, 2)}\n`);
@@ -630,6 +688,7 @@ describe("pi-skills prompt-cache benchmark", () => {
       const { report } = await runScenario(fixture, scenario);
       reports.push(report);
     }
+
     process.stdout.write(`${table(reports)}\n`);
     writeReport(reports);
 

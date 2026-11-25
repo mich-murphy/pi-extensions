@@ -3,6 +3,7 @@ import type { Formula } from "@antithesishq/bombadil";
 import type { MenuView } from "./bombadil-menu.ts";
 
 const ESCAPE = "\u001B";
+
 export type Read<T> = () => T | null | undefined;
 
 export function escapeGoesBack<T extends MenuView>(
@@ -13,9 +14,11 @@ export function escapeGoesBack<T extends MenuView>(
   return always(() => {
     const before = view();
     const allowed = before?.titleShown === true ? expected(before) : undefined;
+
     if (allowed === undefined) {
       return true;
     }
+
     return next(() => lastKey() !== ESCAPE || allowed.includes(view()?.title ?? null));
   });
 }
@@ -26,6 +29,7 @@ export function menuFits<T extends MenuView & { height: number }>(
 ): Formula {
   return always(() => {
     const menu = view();
+
     return (
       menu === null ||
       menu === undefined ||
@@ -42,6 +46,7 @@ export function oneHighlight<T extends MenuView>(
 ): Formula {
   return always(() => {
     const menu = view();
+
     return (
       menu === null ||
       menu === undefined ||

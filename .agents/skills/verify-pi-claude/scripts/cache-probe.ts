@@ -28,6 +28,7 @@ type TurnRecord = {
   readonly modelUsageKeys: readonly string[];
   readonly resultUsage: SDKResultMessage["usage"] | undefined;
 };
+
 type ModelUsageCheck = {
   readonly turn: string;
   readonly resultPrompt: number | undefined;
@@ -35,6 +36,7 @@ type ModelUsageCheck = {
   readonly modelUsagePrompt: number;
   readonly models: readonly string[];
 };
+
 type CheckValue =
   | number
   | undefined
@@ -55,6 +57,7 @@ const { values } = parseArgs({
     model: { type: "string", default: "claude-5.5-sonnet" },
   },
 });
+
 const packageDir = path.resolve(values.package ?? "packages/pi-claude");
 const modelId = values.model;
 const load = snapshotLoader(packageDir);
@@ -63,22 +66,27 @@ const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runn
 const { models } = await load<typeof ModelsModule>("models.ts");
 
 const entry = models.find((candidate) => candidate.id === modelId);
+
 if (entry === undefined) {
   throw new Error(`unknown model ${modelId}`);
 }
+
 const model = snapshotModel(entry);
 
 const nonce = randomUUID();
+
 const guidelines = Array.from(
   { length: 260 },
   (_, index) =>
     `Guideline ${index}: keep edits minimal, explain reasoning briefly, and prefer the read tool when inspecting file ${index}.`,
 );
+
 const systemPrompt = [
   `Verification run ${nonce}.`,
   "You are a coding assistant inside a cache verification harness.",
   ...guidelines,
 ].join("\n");
+
 const tools = [
   {
     name: "read",
@@ -89,15 +97,18 @@ const tools = [
 
 let lastResult: SDKResultMessage | undefined;
 const readLastResultAssignedByQueryObserver = (): SDKResultMessage | undefined => lastResult;
+
 const runSdkQuery: RunSdkQuery = (params) =>
   (async function* observe() {
     for await (const message of query(params)) {
       if (message.type === "result") {
         lastResult = message;
       }
+
       yield message;
     }
   })();
+
 const run = createClaudeAgentSdkRunner({ runSdkQuery });
 
 const zeroUsage = {
@@ -108,6 +119,7 @@ const zeroUsage = {
   totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
+
 const BLOCKED_CATEGORIES = new Set(["authentication", "usage-limit"]);
 const BLOCKED_TEXT = /usage limit|rate limit|authentication|allowance|sign in|log in/iu;
 
@@ -121,32 +133,41 @@ async function runTurn(
   lastResult = undefined;
   const context = normalizeContext({ systemPrompt, tools, messages: [...messages] });
   const events: BridgeEvent[] = [];
+
   for await (const event of run(buildAgentRequest(context), model, { reasoning: "low" })) {
     events.push(event);
   }
+
   const last = events.at(-1);
+
   if (last?.type === "failed") {
     const { error } = last;
     const category = "category" in error ? error.category : undefined;
     const detail = `${error._tag}:${category ?? ""} ${error.message}`;
+
     if (
       (category !== undefined && BLOCKED_CATEGORIES.has(category)) ||
       BLOCKED_TEXT.test(error.message)
     ) {
       throw new BlockedError(`${session} turn ${turn} blocked: ${detail}`);
     }
+
     throw new Error(`${session} turn ${turn} failed: ${detail}`);
   }
+
   let usage: TokenUsage | undefined;
+
   for (const event of events) {
     if (event.type === "usage") {
       usage = event.usage;
     }
   }
+
   const promptTokens = usage === undefined ? 0 : usage.input + usage.cacheRead + usage.cacheWrite;
   const observed = readLastResultAssignedByQueryObserver();
   const raw = observed?.usage;
   const modelUsage = observed?.modelUsage ?? {};
+
   const record: TurnRecord = {
     session,
     turn,
@@ -177,10 +198,12 @@ async function runTurn(
     modelUsageKeys: Object.keys(modelUsage),
     resultUsage: raw,
   };
+
   process.stderr.write(
     `${session} turn ${turn}: end=${record.end} read=${usage?.cacheRead} write=${usage?.cacheWrite} input=${usage?.input} share=${record.readShare}\n`,
   );
   turns.push(record);
+
   return record;
 }
 
@@ -188,6 +211,7 @@ async function runSession(session: string, count: number, fanout: number): Promi
   const messages: Message[] = [];
   const records: TurnRecord[] = [];
   let callId = 0;
+
   for (let turn = 1; turn <= count; turn += 1) {
     messages.push({
       role: "user",
@@ -197,8 +221,10 @@ async function runSession(session: string, count: number, fanout: number): Promi
     // oxlint-disable-next-line eslint/no-await-in-loop -- each turn replays the previous turn transcript
     const record = await runTurn(session, turn, messages);
     records.push(record);
+
     const calls = Array.from({ length: fanout }, () => {
       callId += 1;
+
       return {
         type: "toolCall" as const,
         id: `call_${session}_${callId}`,
@@ -206,6 +232,7 @@ async function runSession(session: string, count: number, fanout: number): Promi
         arguments: { path: `src/file-${callId}.ts` },
       };
     });
+
     messages.push({
       role: "assistant",
       content: [{ type: "text", text: record.text }, ...calls],
@@ -216,6 +243,7 @@ async function runSession(session: string, count: number, fanout: number): Promi
       timestamp: 0,
       usage: zeroUsage,
     });
+
     for (const call of calls) {
       messages.push({
         role: "toolResult",
@@ -229,6 +257,7 @@ async function runSession(session: string, count: number, fanout: number): Promi
       });
     }
   }
+
   return records;
 }
 
@@ -256,12 +285,15 @@ const output: ProbeReport = {
   systemPromptCharacters: systemPrompt.length,
   turns,
 };
+
 let exitCode = 0;
+
 try {
   const sessionA = await runSession("A", 3, 0);
   const sessionB = await runSession("B", 1, 0);
   const sessionC = await runSession("C", 3, 25);
   const laterA = sessionA.slice(1);
+
   const checks = {
     "turns-completed": check(
       turns.every((turn) => turn.end === "done" && turn.usage !== undefined),
@@ -305,6 +337,7 @@ try {
       "session C (25 tool results/turn) turn 3 cacheRead/prompt >= 0.6",
     ),
   };
+
   output.checks = checks;
   exitCode = Object.values(checks).every((item) => item.status === "passed") ? 0 : 1;
   output.status = exitCode === 0 ? "passed" : "failed";
@@ -315,5 +348,7 @@ try {
   output.status = blocked ? "blocked" : "failed";
   output.error = message;
 }
+
 process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+
 process.exitCode = exitCode;

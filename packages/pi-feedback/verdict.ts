@@ -34,6 +34,7 @@ function verdictPasses(verdict: VerdictEvent | undefined): boolean {
 
 export function isPiCore(candidate: PiCoreCandidate): boolean {
   const { live, excluded } = candidate;
+
   return (
     candidate.owner === UNATTRIBUTED &&
     live.length > 0 &&

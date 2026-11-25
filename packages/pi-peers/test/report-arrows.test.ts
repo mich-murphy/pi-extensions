@@ -43,6 +43,7 @@ describe("report text never uses → as a separator", () => {
 
   test("doctor without a configuration", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pi-peers-arrows-"));
+
     try {
       expect(arrows(await doctor(directory))).toStrictEqual([]);
     } finally {

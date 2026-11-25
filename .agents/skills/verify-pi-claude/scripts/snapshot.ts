@@ -15,18 +15,23 @@ export function snapshotLoader(packageDir: string) {
 export function snapshotModel(entry: SdkModelConfig): Model<Api> {
   const { thinkingLevelMap, inputLimits, promptCache, compat, ...config } = entry;
   const model: SdkModelConfig = config;
+
   if (thinkingLevelMap !== undefined) {
     model.thinkingLevelMap = thinkingLevelMap;
   }
+
   if (inputLimits !== undefined) {
     model.inputLimits = inputLimits;
   }
+
   if (promptCache !== undefined) {
     model.promptCache = promptCache;
   }
+
   if (compat !== undefined) {
     model.compat = compat;
   }
+
   return {
     ...model,
     api: "claude",

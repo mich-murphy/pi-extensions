@@ -46,6 +46,7 @@ import { saveOwnedPlan } from "./update.js";
 export type { ActivatePlan } from "./route.js";
 
 const RECONNECT_STEPS = ["Reconnecting this Pi"] as const;
+
 const ADD_STEPS = [
   "Creating the pair",
   "Saving and restarting the gateway once",
@@ -54,6 +55,7 @@ const ADD_STEPS = [
 
 async function keepWork(reconnect: Reconnect | undefined, step: Step): Promise<Outcome> {
   step(RECONNECT_STEPS[0]);
+
   try {
     await reconnect?.();
   } catch {
@@ -63,6 +65,7 @@ async function keepWork(reconnect: Reconnect | undefined, step: Step): Promise<O
       "Choose Setup › Activate saved configuration.",
     );
   }
+
   return {
     ok: true,
     headline: "✓ Reconnected with the saved settings",
@@ -84,31 +87,42 @@ async function addWork(
   step(ADD_STEPS[0]);
   const config = await loadConfiguration(agentDir);
   const bytes = await regularBytes(paths.gateway);
+
   if (config === undefined || bytes === undefined) {
     throw SETTINGS_CHANGED();
   }
+
   const next = await prepareRemote(setup.executable, directory, currentPlan(config, bytes), intent);
   const pairing = await regularBytes(join(directory, "pairing.json"));
+
   if (pairing === undefined) {
     throw new Error("The pairing step did not write pairing.json");
   }
+
   step(ADD_STEPS[1]);
   await saveOwnedPlan(agentDir, setup, next, pairing.toString("utf8"), true);
   const restart = await requestManagedRestart(setup);
+
   const technical = [
     `Remote addition saved; shared restart ${restart}; local connection is separate from remote link readiness.`,
   ];
+
   step(ADD_STEPS[2]);
+
   try {
     const updated = await readManaged(agentDir, next.adapter);
+
     if (updated === undefined) {
       throw new Error("The updated setup record is missing");
     }
+
     await activate(next, updated, true);
   } catch (error) {
     return afterSave(error instanceof Error ? error : undefined, technical);
   }
+
   const saved = decodePairing(parseJson(pairing));
+
   return {
     ok: true,
     headline: `✓ Remote peer added — ${visibleText(intent.peerMachineId)}`,
@@ -120,16 +134,19 @@ async function addWork(
 
 function addForm(upgrade: Upgrade, machine: string, progress: Progress): Screen {
   const draft = remoteDraft();
+
   const directory = join(
     setupPaths(upgrade.agentDir).directory,
     `pair-${randomBytes(12).toString("hex")}`,
   );
+
   return actionForm({
     title: "Add peer",
     note: `Link one other computer to ${visibleText(machine)}. Nothing changes until you choose Add peer.`,
     rows: () => remoteRows(draft),
     details: () => {
       const gate = remoteGate(draft, machine);
+
       return withTechnical(
         [
           "Applies to every project on this account. Peer messages may wake the model, which costs provider usage.",
@@ -183,19 +200,26 @@ async function rebuilder(
   manage: Manage,
 ): Promise<((choices: LocalChoices) => LocalPlan) | undefined> {
   const { config, pair } = manage;
+
   try {
     const bytes = await regularBytes(setupPaths(manage.agentDir).gateway);
+
     if (bytes === undefined) {
       return undefined;
     }
+
     const saved = currentPlan(config, bytes);
+
     const rebuild = (choices: LocalChoices): LocalPlan => {
       const local = localPlan(choices, config.socketPath);
+
       return pair === undefined
         ? local
         : keptPair(local, pair.pairing.intent, saved.gateway.remote);
     };
+
     const again = rebuild(saved.choices);
+
     return canonical(again.adapter) === canonical(saved.adapter) &&
       canonical(again.gateway) === canonical(saved.gateway)
       ? rebuild
@@ -221,19 +245,25 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
   const { agentDir, setup, activate } = manage;
   step(EDIT_STEPS[0]);
   const observed = await inspectSetup(agentDir, setup.socketPath);
+
   if (observed.sharedInstance !== manage.shared) {
     manage.shared = observed.sharedInstance;
+
     return failed("Changing settings failed", GATEWAY_CHANGED, REVIEW_AGAIN);
   }
+
   await saveOwnedPlan(agentDir, setup, plan, undefined, true);
+
   const technical = [
     manage.shared
       ? "Settings saved. The shared gateway was asked to restart once."
       : "Settings saved.",
   ];
+
   try {
     if (manage.shared) {
       step(EDIT_STEPS[1]);
+
       if ((await manage.restart(setup)) === "uncertain") {
         return pendingOutcome("Settings saved", EDIT_PENDING_NEXT, [
           ...technical,
@@ -241,15 +271,19 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
         ]);
       }
     }
+
     step(EDIT_STEPS[2]);
     const updated = await readManaged(agentDir, plan.adapter);
+
     if (updated === undefined) {
       throw new Error("The updated setup record is missing");
     }
+
     await activate(plan, updated, true);
   } catch (error) {
     return afterSave(error instanceof Error ? error : undefined, technical);
   }
+
   return {
     ok: true,
     headline: `✓ Settings changed — connected as ${visibleText(plan.adapter.machineId)}`,
@@ -282,6 +316,7 @@ function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
 
 function actionRows(manage: Manage, progress: Progress): Row[] {
   const { setup, reconnect, pair } = manage;
+
   return [
     {
       id: "keep",
@@ -325,15 +360,20 @@ export async function manageRoute(
   restart: Restart = requestManagedRestart,
 ): Promise<((progress: Progress) => Screen) | undefined> {
   const config = await loadConfiguration(agentDir);
+
   if (config === undefined) {
     return undefined;
   }
+
   const setup = await readManaged(agentDir, config);
+
   if (setup === undefined) {
     return undefined;
   }
+
   const pair = await loadedPair(agentDir, reconnect);
   const observed = await inspectSetup(agentDir, setup.socketPath);
+
   const manage: Manage = {
     agentDir,
     config,
@@ -344,7 +384,9 @@ export async function manageRoute(
     pair,
     shared: observed.sharedInstance,
   };
+
   const rebuild = await rebuilder(manage);
+
   return (progress) => manageScreen(manage, rebuild, progress);
 }
 
@@ -355,6 +397,7 @@ function manageScreen(
 ): Screen {
   const { config, pair } = manage;
   const machine = visibleText(config.machineId);
+
   const options: ManageFormOptions = {
     saved: savedChoices(config),
     note:
@@ -375,13 +418,16 @@ function manageScreen(
     },
     actions: () => actionRows(manage, progress),
   };
+
   if (pair !== undefined) {
     options.fixedMachine =
       "Can't change here: the pair's certificates name this machine. Re-pair or Reset to rename it.";
     options.peer = pair.pairing.intent.peerMachineId;
   }
+
   if (rebuild !== undefined) {
     options.rebuild = rebuild;
   }
+
   return manageForm(options);
 }

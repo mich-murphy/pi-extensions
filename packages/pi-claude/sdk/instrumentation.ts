@@ -35,17 +35,21 @@ const payloadSchema = z
 
 async function waitForCallback<A>(work: () => Promise<A>, signal: AbortSignal): Promise<A> {
   let abort: (() => void) | undefined;
+
   return new Promise<A>((resolve, reject) => {
     abort = (): void => {
       reject(new SdkInstrumentationError({ operation: "cancelled" }));
     };
+
     signal.addEventListener("abort", abort, { once: true });
+
     if (signal.aborted) {
       abort();
     } else {
       void Promise.resolve()
         .then(async () => {
           signal.throwIfAborted();
+
           return work();
         })
         .then(resolve, reject);
@@ -61,6 +65,7 @@ function callback<A>(operation: "payload" | "event", signal: AbortSignal, work: 
   return Effect.tryPromise({
     try: async (interruptSignal) => {
       const combined = AbortSignal.any([signal, interruptSignal]);
+
       return waitForCallback(work, combined);
     },
     catch: () =>
@@ -79,7 +84,9 @@ export function instrumentRequest(
   if (!options?.onPayload) {
     return Effect.succeed(request);
   }
+
   const onPayload = options.onPayload;
+
   const payload = {
     promptBlocks: request.promptBlocks.map(({ text, images }) => ({
       text,
@@ -87,11 +94,13 @@ export function instrumentRequest(
     })),
     cacheBreakpoints: [...request.cacheBreakpoints],
   };
+
   return callback("payload", signal, async () => onPayload(payload, model)).pipe(
     Effect.flatMap((replacement) =>
       Effect.try({
         try: () => {
           const data = payloadSchema.parse(replacement === undefined ? payload : replacement);
+
           return { ...request, ...data };
         },
         catch: () => new SdkInstrumentationError({ operation: "replacement" }),

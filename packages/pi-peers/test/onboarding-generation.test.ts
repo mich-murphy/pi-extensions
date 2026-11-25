@@ -35,14 +35,17 @@ function requiredSetup(setup: ManagedSetup | undefined): ManagedSetup {
   if (setup === undefined) {
     throw new Error("Expected committed native setup");
   }
+
   return setup;
 }
 
 async function peersOf(client: GatewayClient) {
   const reply = await client.discover(["local"], false);
+
   if (reply.forOp !== "discover" || reply.outcome.tag !== "ok") {
     throw new Error("Expected actual native roster");
   }
+
   return reply.outcome.value.peers;
 }
 
@@ -55,6 +58,7 @@ describe("managed generation admission with actual native helper", () => {
     if (cleanupFailure !== undefined) {
       throw new Error("Prior native cleanup failed; refusing a new fixture", cleanupFailure);
     }
+
     fixture = await nativeFixture();
     vi.stubEnv("HOME", fixture.root);
     agent = join(fixture.root, "agent");
@@ -64,6 +68,7 @@ describe("managed generation admission with actual native helper", () => {
     if (cleanupFailure !== undefined) {
       return;
     }
+
     try {
       await participants.close();
       await nativeUntil(async () => !existsSync(setupPaths(agent).socket), 12_000);
@@ -74,10 +79,13 @@ describe("managed generation admission with actual native helper", () => {
       throw error;
     }
   }, 80_000);
+
   async function owned(body: () => Promise<void>) {
     const thisTestsParticipants = participants;
+
     return thisTestsParticipants.run(body);
   }
+
   function client(plan: LocalPlan, setup: ManagedSetup, ensure?: EnsureGateway) {
     const instance = new GatewayClient({
       config: plan.adapter,
@@ -88,36 +96,47 @@ describe("managed generation admission with actual native helper", () => {
       statusChanged: () => undefined,
       ensureGateway: ensure ?? reloadManagedLauncher(agent, plan.adapter, setup),
     });
+
     participants.own(instance);
+
     return instance;
   }
+
   async function installed() {
     const state = await inspectSetup(agent);
     const plan = localPlan(state.choices, state.paths.socket);
+
     const setup = await applyLocal(
       agent,
       plan,
       { acquire: async () => fixture.executable },
       () => undefined,
     );
+
     const survivor = client(plan, setup);
     await survivor.reconnect();
+
     return { plan, setup, survivor };
   }
+
   test("owned cleanup drains a timed-out body and refuses its late participant", async () => {
     const owner = nativeParticipants();
     const close = vi.fn<() => void>();
     const { promise: gate, resolve: release } = Promise.withResolvers<undefined>();
+
     const body = owner.run(async () => {
       await gate;
       owner.own({ close });
     });
+
     const result = body.catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     let drained = false;
+
     const cleanup = (async () => {
       await owner.close();
       drained = true;
     })();
+
     await immediate();
     expect(drained).toBe(false);
     expect(close).not.toHaveBeenCalled();
@@ -142,12 +161,14 @@ describe("managed generation admission with actual native helper", () => {
         );
         await resetLocal(agent);
         let next: GatewayClient | undefined;
+
         const activate = vi.fn<(plan: LocalPlan, setup: ManagedSetup) => Promise<void>>(
           async (plan, setup) => {
             next = client(plan, setup);
             await next.reconnect();
           },
         );
+
         const restart = vi.fn<typeof requestManagedRestart>(async (setup) => {
           expect(setup.gatewaySha256).not.toBe(old.gatewaySha256);
           const state = await inspectSetup(agent);
@@ -169,8 +190,10 @@ describe("managed generation admission with actual native helper", () => {
           expect(roster.outcome.tag).toBe("ok");
           const peers = await peersOf(survivor);
           expect(peers).toHaveLength(1);
+
           return requestManagedRestart(setup);
         });
+
         const ctx = dialog([...narrow]);
         await setupCommand(agent, ctx, activate, {
           backend: { acquire: async () => fixture.executable },
@@ -239,6 +262,7 @@ describe("managed generation admission with actual native helper", () => {
   test("reviewed activation of narrowed saved grants leaves the surviving old policy disconnected and pending", async () =>
     owned(async () => {
       const { plan, setup } = await installed();
+
       const session = new AdapterSession(
         plan.adapter,
         { machineId: plan.adapter.machineId, sessionId: freshId(), runtimeNonce: freshId() },
@@ -247,6 +271,7 @@ describe("managed generation admission with actual native helper", () => {
         () => undefined,
         reloadManagedLauncher(agent, plan.adapter, setup),
       );
+
       participants.own(session.client);
       await session.reconnect();
       const peer = session.peer;
@@ -261,9 +286,11 @@ describe("managed generation admission with actual native helper", () => {
         restart,
       });
       expect(session.status().connected).toBe(true);
+
       const reconnect = vi.fn<(fresh?: boolean) => Promise<void>>(async (fresh) =>
         session.reconnect(fresh),
       );
+
       const ctx = dialog(["Activate saved configuration", "APPLY"]);
       await setupCommand(agent, ctx, activate, undefined, reconnect);
       expect(reconnect).toHaveBeenCalledExactlyOnceWith(true);
@@ -310,6 +337,7 @@ describe("managed generation admission with actual native helper", () => {
         "info",
       );
       expect(survivor.status().connected).toBe(true);
+
       const session = new AdapterSession(
         plan.adapter,
         { machineId: plan.adapter.machineId, sessionId: freshId(), runtimeNonce: freshId() },
@@ -318,6 +346,7 @@ describe("managed generation admission with actual native helper", () => {
         () => undefined,
         reloadManagedLauncher(agent, plan.adapter, setup),
       );
+
       participants.own(session.client);
       const peer = session.peer;
       const state = session.state;

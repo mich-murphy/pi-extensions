@@ -9,6 +9,7 @@ import type { AdapterHost } from "./session.js";
 class AdapterService extends Context.Service<AdapterService, AdapterSession>()(
   "pi-peers/Adapter",
 ) {}
+
 export async function createAdapterRuntime(
   config: Configuration,
   peer: PeerRef,
@@ -23,6 +24,7 @@ export async function createAdapterRuntime(
         capacity: 1,
         strategy: "dropping",
       });
+
       const session = yield* Effect.acquireRelease(
         Effect.sync(
           () =>
@@ -43,6 +45,7 @@ export async function createAdapterRuntime(
             Queue.shutdownUnsafe(queue);
           }),
       );
+
       yield* Effect.forever(
         Effect.flatMap(Queue.take(queue), () =>
           Effect.sync(() => {
@@ -51,10 +54,13 @@ export async function createAdapterRuntime(
         ),
       ).pipe(Effect.forkScoped);
       yield* Effect.promise(async () => session.start()).pipe(Effect.forkScoped);
+
       return session;
     }),
   );
+
   const runtime = ManagedRuntime.make(layer);
   const session = await runtime.runPromise(AdapterService);
+
   return { session, dispose: async () => runtime.dispose() };
 }

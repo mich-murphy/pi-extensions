@@ -15,6 +15,7 @@ type Descriptor = Extract<
   Extract<Frame, { op: "result"; forOp: "discover" }>["outcome"],
   { tag: "ok" }
 >["value"]["peers"][number];
+
 const validGatewaySnapshot = Schema.is(
   Schema.Struct({ gatewaySha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)) }),
 );
@@ -23,7 +24,9 @@ export type EnsureGateway = (
   deadline: number,
   signal: AbortSignal,
 ) => Promise<{ gatewaySha256?: string | number | undefined } | null | undefined>;
+
 export type { LinkState } from "./links.js";
+
 function outdated(error: ConnectionFailure): boolean {
   return error.possible && (error.peerClosed || error.code === "protocol_error");
 }
@@ -36,6 +39,7 @@ export type ClientOptions = {
   linkChanged?: () => void;
   ensureGateway?: EnsureGateway;
 };
+
 export class GatewayClient {
   private connection: Connection | undefined;
   private connecting: Promise<Connection> | undefined;
@@ -68,6 +72,7 @@ export class GatewayClient {
     if (frame.rid !== this.registerRid) {
       throw new ConnectionFailure("protocol_error", false);
     }
+
     if (this.linkTable.apply(frame)) {
       this.options.linkChanged?.();
     }
@@ -94,6 +99,7 @@ export class GatewayClient {
   }
   private validateReply(request: Request, reply: Reply): void {
     validateBoundReply(request, reply, this.options.peer);
+
     if (
       request.op !== "discover" ||
       !request.watch ||
@@ -103,8 +109,10 @@ export class GatewayClient {
     ) {
       return;
     }
+
     this.watch.ready = true;
     this.peers.clear();
+
     for (const descriptor of reply.outcome.value.peers) {
       this.peers.set(JSON.stringify(descriptor.peer), descriptor);
     }
@@ -113,23 +121,32 @@ export class GatewayClient {
     if (this.watch?.rid !== event.rid) {
       return;
     }
+
     if (event.event.tag === "invalidated") {
       this.watch = undefined;
       this.peers.clear();
+
       return;
     }
+
     if (event.event.tag === "remove") {
       this.peers.delete(JSON.stringify(event.event.peer));
+
       return;
     }
+
     const descriptor = event.event.peer;
+
     if (descriptor.scopeIds.some((scope) => this.watch?.scopes.has(scope) !== true)) {
       throw new Error("Roster scope mismatch");
     }
+
     const key = JSON.stringify(descriptor.peer);
+
     if (!this.peers.has(key) && this.peers.size >= 60) {
       throw new Error("Roster bound exceeded");
     }
+
     this.peers.set(key, descriptor);
   }
   private async connect(deadline: number, callerSignal?: AbortSignal): Promise<Connection> {
@@ -137,15 +154,19 @@ export class GatewayClient {
       callerSignal === undefined
         ? this.lifetime.signal
         : AbortSignal.any([callerSignal, this.lifetime.signal]);
+
     if (this.closed || signal.aborted) {
       throw new ConnectionFailure("cancelled", false);
     }
+
     if (deadline <= performance.now()) {
       throw new ConnectionFailure("unavailable", false);
     }
+
     if (this.connection !== undefined) {
       return this.connection;
     }
+
     if (this.connecting === undefined) {
       const pending = this.initialize();
       this.connecting = pending;
@@ -157,6 +178,7 @@ export class GatewayClient {
         })
         .catch(() => undefined);
     }
+
     return waitFor(
       this.connecting,
       deadline,
@@ -171,20 +193,25 @@ export class GatewayClient {
     current: () => boolean,
   ): Promise<string | undefined> {
     const ensure = this.options.ensureGateway;
+
     if (ensure === undefined) {
       return undefined;
     }
+
     try {
       const snapshot = await ensure(deadline, signal);
+
       if (!validGatewaySnapshot(snapshot)) {
         throw new ConnectionFailure("protocol_error", false);
       }
+
       return snapshot.gatewaySha256;
     } catch (error) {
       if (current()) {
         this.diagnostic = "activation_unconfirmed";
         this.options.statusChanged();
       }
+
       throw error;
     }
   }
@@ -197,6 +224,7 @@ export class GatewayClient {
     this.clearLinks();
     this.diagnostic = this.generationPending ? "activation_pending" : code;
     this.options.statusChanged();
+
     if (established && this.options.ensureGateway !== undefined && !this.closed) {
       queueMicrotask(() => {
         void this.reconnect(this.lifetime.signal).catch(() => undefined);
@@ -205,6 +233,7 @@ export class GatewayClient {
   }
   private registration(rid: string, expected: string | undefined): Request {
     type Registration = Extract<Request, { op: "register" }>;
+
     const request: Omit<Registration, "expectedConfigSha256"> & { expectedConfigSha256?: string } =
       {
         v: 2,
@@ -215,9 +244,11 @@ export class GatewayClient {
         scopeIds: this.options.config.scopeIds,
         label: this.options.config.label,
       };
+
     if (expected !== undefined) {
       request.expectedConfigSha256 = expected;
     }
+
     return request;
   }
   private async register(
@@ -230,17 +261,22 @@ export class GatewayClient {
     },
   ): Promise<Connection> {
     const { expected, deadline, signal, current } = attempt;
+
     const abort = () => {
       connection.close();
     };
+
     signal.addEventListener("abort", abort, { once: true });
     const rid = freshId();
     this.registerRid = rid;
+
     try {
       const reply = await connection.request(this.registration(rid, expected), deadline, signal);
+
       if (!current()) {
         throw new ConnectionFailure("cancelled", false);
       }
+
       return this.registered(connection, reply);
     } catch (error) {
       connection.close();
@@ -258,22 +294,27 @@ export class GatewayClient {
       this.generationPending = true;
       throw new ConnectionFailure("unavailable", false);
     }
+
     if (reply.forOp !== "register" || reply.outcome.tag !== "ok") {
       throw new ConnectionFailure("unavailable", false);
     }
+
     this.scopes = new Set(reply.outcome.value.scopeIds);
     this.connection = connection;
     this.generationPending = false;
     this.diagnostic = "connected";
     this.options.statusChanged();
+
     return connection;
   }
   private registrationFailed(activation: boolean, olderGateway: boolean): void {
     if (olderGateway && !this.generationPending) {
       this.diagnostic = "gateway_outdated";
       this.options.statusChanged();
+
       return;
     }
+
     if (activation) {
       this.diagnostic = this.generationPending ? "activation_pending" : "activation_unconfirmed";
       this.options.statusChanged();
@@ -286,11 +327,14 @@ export class GatewayClient {
     const signal = AbortSignal.any([this.lifetime.signal, controller.signal]);
     const generation = ++this.generation;
     const current = () => !this.closed && generation === this.generation && !signal.aborted;
+
     const pending = (async () => {
       const expected = await this.expectedConfiguration(deadline, signal, current);
+
       if (!current()) {
         throw new ConnectionFailure("cancelled", false);
       }
+
       const connection = await connectTransport({
         socketPath: this.options.config.socketPath,
         deadline,
@@ -317,12 +361,15 @@ export class GatewayClient {
           }
         },
       });
+
       if (!current()) {
         connection.close();
         throw new ConnectionFailure("cancelled", false);
       }
+
       return this.register(connection, { expected, deadline, signal, current });
     })();
+
     try {
       return await pending;
     } finally {
@@ -335,7 +382,9 @@ export class GatewayClient {
     if (this.closed || this.active >= 8) {
       throw new ConnectionFailure(this.closed ? "cancelled" : "overloaded", false);
     }
+
     this.active += 1;
+
     try {
       return await run();
     } finally {
@@ -348,12 +397,14 @@ export class GatewayClient {
     deadline = performance.now() + 15_000,
   ): Promise<Reply> {
     const connection = await this.connect(deadline, signal);
+
     return connection.request(request, deadline, signal);
   }
   async reconnect(signal?: AbortSignal, fresh = false): Promise<void> {
     if (this.closed || signal?.aborted === true) {
       throw new ConnectionFailure("cancelled", false);
     }
+
     if (this.episode !== undefined && !fresh) {
       return waitFor(
         this.episode.promise,
@@ -361,22 +412,28 @@ export class GatewayClient {
         signal ?? this.lifetime.signal,
       );
     }
+
     if (fresh) {
       this.episode?.controller.abort();
       this.fenceTransport();
     }
+
     const controller = new AbortController();
+
     const episodeSignal = AbortSignal.any([
       this.lifetime.signal,
       controller.signal,
       ...(signal === undefined ? [] : [signal]),
     ]);
+
     const promise = this.operation(async () => {
       const deadline = performance.now() + 60_000;
+
       for (let attempt = 0; attempt < 6; attempt += 1) {
         try {
           // eslint-disable-next-line eslint/no-await-in-loop -- One bounded reconnect episode; attempts must be sequential.
           await this.connect(deadline, episodeSignal);
+
           return;
         } catch (error) {
           if (
@@ -387,6 +444,7 @@ export class GatewayClient {
           ) {
             throw error;
           }
+
           try {
             // eslint-disable-next-line eslint/no-await-in-loop -- Retry backoff is sequential and consumes the same deadline.
             await delay(Math.min(4000, 100 * 2 ** attempt), undefined, { signal: episodeSignal });
@@ -396,8 +454,10 @@ export class GatewayClient {
         }
       }
     });
+
     const episode = { promise, controller };
     this.episode = episode;
+
     try {
       await promise;
     } finally {
@@ -427,8 +487,10 @@ export class GatewayClient {
     signal?: AbortSignal,
   ): Promise<SendOutcome> {
     const messageId = message.id;
+
     const combined =
       signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal]);
+
     const run = async () =>
       sendWithRetries({
         sender: this.options.peer,
@@ -443,6 +505,7 @@ export class GatewayClient {
             deadline,
           ),
       });
+
     try {
       return await this.operation(run);
     } catch (error) {
@@ -454,6 +517,7 @@ export class GatewayClient {
           resource: "operations",
         };
       }
+
       return { tag: "not_admitted", messageId, code: "cancelled" };
     }
   }
@@ -467,6 +531,7 @@ export class GatewayClient {
         const scopesMatch =
           scopeIds.length === this.watch.scopes.size &&
           scopeIds.every((scope) => this.watch?.scopes.has(scope) === true);
+
         if (!this.watch.ready || !scopesMatch) {
           return {
             v: 2,
@@ -476,6 +541,7 @@ export class GatewayClient {
             outcome: { tag: "error", code: "overloaded", resource: "watch" },
           };
         }
+
         return {
           v: 2,
           op: "result",
@@ -487,20 +553,26 @@ export class GatewayClient {
           },
         };
       }
+
       const rid = freshId();
+
       if (watch) {
         this.watch = { rid, scopes: new Set(scopeIds), ready: false };
       }
+
       try {
         const reply = await this.request({ v: 2, op: "discover", rid, scopeIds, watch }, signal);
+
         if (watch && (reply.forOp !== "discover" || reply.outcome.tag !== "ok")) {
           this.clearWatch(rid);
         }
+
         return reply;
       } catch (error) {
         if (watch) {
           this.clearWatch(rid);
         }
+
         throw error;
       }
     });

@@ -11,16 +11,19 @@ const ZONE_END = "\u001B]133;B\u0007";
 const settings = propertySettings(200);
 
 type Block = { kind: "filler" | "prompt"; first: string; body: string[]; pad: number };
+
 type Placed = { start: number; lastText: number; text: string };
 
 function layout(blocks: readonly Block[]) {
   const lines: string[] = [];
   const placed: Placed[] = [];
+
   for (const block of blocks) {
     if (block.kind === "filler") {
       lines.push(block.first, ...block.body);
       continue;
     }
+
     const start = lines.length;
     lines.push(`${ZONE_START}  ${block.first}  `, ...block.body);
     const words = [block.first, ...block.body].map((line) => line.trim());
@@ -32,6 +35,7 @@ function layout(blocks: readonly Block[]) {
       text: words.filter((word) => word !== "").join(" "),
     });
   }
+
   return { lines, placed };
 }
 
@@ -39,11 +43,13 @@ function lastTextRow(block: Block, start: number, lastBody: number): number {
   if (lastBody >= 0) {
     return start + lastBody + 1;
   }
+
   return block.first.trim() === "" ? -1 : start;
 }
 
 function expectedContext(placed: readonly Placed[], scrollTop: number): string | undefined {
   const prompt = placed.findLast((span) => span.start <= scrollTop);
+
   return prompt === undefined || prompt.lastText >= scrollTop || prompt.text === ""
     ? undefined
     : prompt.text;
@@ -61,6 +67,7 @@ function assertRow(text: string, width: number): void {
   const row = contextRow(text, width);
   assert.equal(visibleWidth(row), width, JSON.stringify(row));
   assert.ok(!row.includes("\u001B"), "no ESC");
+
   for (const character of row) {
     const code = character.codePointAt(0) ?? 0;
     assert.ok(code >= 32 && !(code >= 127 && code <= 159), `control U+${code.toString(16)}`);
@@ -70,7 +77,9 @@ function assertRow(text: string, width: number): void {
 const word = gs
   .text({ minSize: 1, maxSize: 6, codec: "ascii" })
   .filter((s) => /^[a-z]+$/iu.test(s));
+
 const spaces = gs.sampledFrom(["", "   ", " "]);
+
 const block = gs.record({
   kind: gs.sampledFrom(["filler", "prompt"] as const),
   first: gs.oneOf(word, word, spaces),
@@ -110,6 +119,7 @@ describe("scroll context properties", () => {
           gs.arrays(gs.oneOf(gs.sampledFrom(fragments), gs.text({ maxSize: 4 })), { maxSize: 12 }),
         )
         .join("");
+
       const width = tc.draw(gs.integers({ minValue: 3, maxValue: 40 }));
       assertRow(text, width);
     })

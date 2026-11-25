@@ -9,17 +9,22 @@ export function agentDir(
   home: string = homedir(),
 ): string {
   const configured = env[AGENT_DIR_VARIABLE];
+
   if (configured === undefined || configured === "") {
     return join(home, ".pi", "agent");
   }
+
   if (configured === "~") {
     return home;
   }
+
   if (configured.startsWith("~/")) {
     return join(home, configured.slice(2));
   }
+
   if (configured.startsWith("file://")) {
     return fileURLToPath(configured);
   }
+
   return configured;
 }

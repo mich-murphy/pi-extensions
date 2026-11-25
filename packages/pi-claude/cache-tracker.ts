@@ -75,6 +75,7 @@ export type CacheDiagnosticTracker = (
 ) => (usage: TokenUsage | undefined, metadata?: CacheUsageMetadata) => void;
 
 type PrefixChange = CacheRequestDiagnostic["prefixChange"];
+
 type MissCause = NonNullable<CacheUsageDiagnostic["likelyMissCause"]>;
 
 type BlockStats = {
@@ -133,19 +134,25 @@ function classify(
   if (previous === undefined) {
     return "first";
   }
+
   if (previous.model !== current.model) {
     return "model-changed";
   }
+
   if (previous.reasoning !== current.reasoning) {
     return "reasoning-changed";
   }
+
   if (previous.toolsFingerprint !== current.toolsFingerprint) {
     return "tools-changed";
   }
+
   if (divergence === 0) {
     return "system-changed";
   }
+
   const previousClosingBlock = previous.blocks.length - 1;
+
   return divergence === -1 || divergence >= previousClosingBlock ? "appended" : "history-rewritten";
 }
 
@@ -171,6 +178,7 @@ function likelyMissCause(
   if (context.ttl === "none") {
     return "caching-disabled";
   }
+
   if (
     minimumCacheableTokens !== undefined &&
     promptTokens > 0 &&
@@ -180,19 +188,24 @@ function likelyMissCause(
   ) {
     return "below-minimum";
   }
+
   if (context.prefixChange === "first") {
     return "first";
   }
+
   if ((context.msSincePreviousRequest ?? 0) > TTL_MS[context.ttl]) {
     return "ttl-expired";
   }
+
   if (context.prefixChange !== "appended") {
     return "prefix-changed";
   }
+
   return context.lookbackExceeded ? "lookback" : undefined;
 }
 
 type UsageQueryFields = { query?: QueryDiagnostics };
+
 type PromptUsage = { promptTokens: number; minimumCacheableTokens?: number };
 
 function usageDiagnostic(
@@ -204,18 +217,24 @@ function usageDiagnostic(
   const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
   const minimumCacheableTokens = minimumCacheableTokensFor(metadata.observedModel ?? context.model);
   const cacheReadShare = promptTokens === 0 ? 0 : usage.cacheRead / promptTokens;
+
   const cause =
     cacheReadShare < 0.5
       ? likelyMissCause(context, usage, promptTokens, minimumCacheableTokens)
       : undefined;
+
   const queryFields: UsageQueryFields = {};
+
   if (metadata.query !== undefined) {
     queryFields.query = metadata.query;
   }
+
   const prompt: PromptUsage = { promptTokens };
+
   if (minimumCacheableTokens !== undefined) {
     prompt.minimumCacheableTokens = minimumCacheableTokens;
   }
+
   const diagnostic: Omit<CacheUsageDiagnostic, "likelyMissCause"> & {
     likelyMissCause?: MissCause;
   } = {
@@ -228,9 +247,11 @@ function usageDiagnostic(
     possibleCollapse: promptTokens >= 20_000 && cacheReadShare < 0.5,
     expectedReusableCharacters: context.expectedReusableCharacters,
   };
+
   if (cause !== undefined) {
     diagnostic.likelyMissCause = cause;
   }
+
   return diagnostic;
 }
 
@@ -240,6 +261,7 @@ type RequestComparison = Pick<
 >;
 
 type RequestModelFields = { model: string; minimumCacheableTokens?: number; reasoning?: string };
+
 type RequestFingerprints = {
   contentFingerprint: string;
   systemFingerprint: string;
@@ -254,27 +276,36 @@ function requestDiagnostic(
   commonPrefixBlocks: number,
 ): CacheRequestDiagnostic {
   const { blocks, breakpoints, model } = current;
+
   const modelFields: RequestModelFields = {
     model,
   };
+
   const minimumCacheableTokens = minimumCacheableTokensFor(model);
+
   if (minimumCacheableTokens !== undefined) {
     modelFields.minimumCacheableTokens = minimumCacheableTokens;
   }
+
   if (current.reasoning !== undefined) {
     modelFields.reasoning = current.reasoning;
   }
+
   const fingerprints: RequestFingerprints = {
     contentFingerprint: fingerprint(blocks),
     systemFingerprint: fingerprint(blocks.slice(0, 1)),
   };
+
   if (current.toolsFingerprint !== undefined) {
     fingerprints.toolsFingerprint = current.toolsFingerprint;
   }
+
   const lastBreakpoint = breakpoints.at(-1);
+
   if (lastBreakpoint !== undefined) {
     fingerprints.reusablePrefixFingerprint = fingerprint(blocks.slice(0, lastBreakpoint + 1));
   }
+
   const diagnostic: Omit<CacheRequestDiagnostic, "msSincePreviousRequest"> & {
     msSincePreviousRequest?: number;
   } = {
@@ -291,9 +322,11 @@ function requestDiagnostic(
     ...fingerprints,
     prefixChange: comparison.prefixChange,
   };
+
   if (comparison.msSincePreviousRequest !== undefined) {
     diagnostic.msSincePreviousRequest = comparison.msSincePreviousRequest;
   }
+
   return diagnostic;
 }
 
@@ -301,6 +334,7 @@ export const createCacheDiagnosticTracker = Effect.fnUntraced(function* (
   sink: (diagnostic: CacheDiagnostic) => void,
 ): Effect.fn.Return<CacheDiagnosticTracker> {
   const clock = yield* Clock.Clock;
+
   return trackWith(sink, () => clock.currentTimeMillisUnsafe());
 });
 
@@ -310,6 +344,7 @@ function trackWith(
 ): CacheDiagnosticTracker {
   let turn = 0;
   let previous: RequestState | undefined;
+
   const emit = (diagnostic: CacheDiagnostic): void => {
     try {
       sink(diagnostic);
@@ -322,6 +357,7 @@ function trackWith(
     turn += 1;
     const requestTurn = turn;
     const ttl = settings.ttl ?? "5m";
+
     const current: RequestState = {
       model,
       reasoning: settings.reasoning,
@@ -333,23 +369,31 @@ function trackWith(
       breakpoints: [...request.cacheBreakpoints],
       at: now(),
     };
+
     const { blocks } = current;
+
     const divergence = blocks.findIndex(
       (block, index) => block.digest !== previous?.blocks[index]?.digest,
     );
+
     const commonPrefix = blocks.slice(0, divergence === -1 ? blocks.length : divergence);
+
     const commonPrefixCharacters = sum(
       commonPrefix.map((block) => block.textCharacters + block.imageCharacters),
     );
+
     const prefixChange = classify(previous, current, divergence);
     const msSincePreviousRequest = previous === undefined ? undefined : current.at - previous.at;
+
     const comparison: RequestComparison = {
       ttl,
       prefixChange,
       msSincePreviousRequest,
       expectedReusableCharacters: commonPrefixCharacters,
     };
+
     emit(requestDiagnostic(turn, current, comparison, commonPrefix.length));
+
     const context: MissContext = {
       model,
       ...comparison,
@@ -358,7 +402,9 @@ function trackWith(
         previous.breakpoints.length > 0 &&
         !reachesPreviousWrite(previous, current, commonPrefix.length),
     };
+
     previous = current;
+
     return (usage, metadata) => {
       if (usage !== undefined) {
         emit(usageDiagnostic(requestTurn, usage, context, metadata));

@@ -15,6 +15,7 @@ export function isReadOnlyTool(tool: ToolSource | undefined): boolean {
   if (tool === undefined) {
     return false;
   }
+
   return (
     tool.annotations?.readOnlyHint === true ||
     (tool.sourceInfo.source === "builtin" && READ_ONLY_BUILTINS.has(tool.name))
@@ -28,6 +29,7 @@ function stringsIn(value: JsonValue): string[] {
   if (isString(value)) {
     return [value];
   }
+
   return isNonTextScalar(value)
     ? []
     : Object.values<JsonValue>(value).flatMap((item) => stringsIn(item));
@@ -42,10 +44,12 @@ function pathsIn(texts: readonly string[]): string[] {
 function mentions(text: string, path: string): boolean {
   for (let at = text.indexOf(path); at !== -1; at = text.indexOf(path, at + 1)) {
     const next = text[at + path.length];
+
     if (next === undefined || !PATH_CHAR.test(next)) {
       return true;
     }
   }
+
   return false;
 }
 
@@ -62,11 +66,14 @@ export function isParallelBatch(
   if (!MISSING_PATH.test(error)) {
     return false;
   }
+
   const writers = batch.flatMap((call) =>
     call.id !== failing.id && !readOnly(call.name) ? [stringsIn(call.args).join("\n")] : [],
   );
+
   return pathsIn([error, ...stringsIn(failing.args)]).some((path) => {
     const directory = dirname(path);
+
     return writers.some(
       (text) => mentions(text, path) || (deepEnough(directory) && mentions(text, directory)),
     );

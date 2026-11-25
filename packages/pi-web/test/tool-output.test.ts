@@ -56,6 +56,7 @@ describe("formatSearchResults", () => {
         score: 0.9,
       },
     ]);
+
     expect(output).toContain("Search results for: query");
     expect(output).toContain("1. One");
     expect(output).toContain("URL: https://one.example/");
@@ -77,6 +78,7 @@ describe("projectFetchResult", () => {
           secrets: [],
         }),
       );
+
       assert(Result.isSuccess(projected));
       expect(projected.success.details).toStrictEqual({
         requestedUrl: "https://example.com/",
@@ -96,6 +98,7 @@ describe("projectFetchResult", () => {
 
   test("truncates large output and spills the full text to a private temp file", async () => {
     const large = `line\n`.repeat(300_000);
+
     const projected = await Effect.runPromise(
       Effect.result(
         projectFetchResult(textResult(large), {
@@ -104,6 +107,7 @@ describe("projectFetchResult", () => {
         }),
       ),
     );
+
     assert(Result.isSuccess(projected));
     expect(projected.success.details.truncated).toBe(true);
     const { fullOutputPath } = projected.success.details;
@@ -118,6 +122,7 @@ describe("projectFetchResult", () => {
 
   test("shows the start of a first line longer than the byte limit", async () => {
     const line = "€".repeat(30_000);
+
     const projected = await Effect.runPromise(
       Effect.result(
         projectFetchResult(textResult(`${line}\nsecond`), {
@@ -126,6 +131,7 @@ describe("projectFetchResult", () => {
         }),
       ),
     );
+
     assert(Result.isSuccess(projected));
     const { fullOutputPath } = projected.success.details;
     assert(fullOutputPath !== undefined);
@@ -150,6 +156,7 @@ describe("projectFetchResult", () => {
         }),
       ),
     );
+
     assert(Result.isSuccess(projected));
     expect(textOf(projected.success)).not.toContain("SECRET");
     expect(textOf(projected.success).startsWith("[redacted]x")).toBe(true);
@@ -169,12 +176,14 @@ describe("projectFetchResult", () => {
         },
         body: FetchPageBody.Image({ data: Buffer.from([1, 2, 3, 4]) }),
       };
+
       const projected = yield* Effect.result(
         projectFetchResult(image, {
           store: liveToolOutputStore(),
           secrets: [],
         }),
       );
+
       assert(Result.isSuccess(projected));
       expect(projected.success.details).toStrictEqual({ ...image.meta, image: true });
       expect(projected.success.content).toContainEqual({
@@ -188,6 +197,7 @@ describe("projectFetchResult", () => {
   it.effect("redacts image descriptions and reflected metadata without changing image bytes", () =>
     Effect.gen(function* () {
       const raw = Buffer.from("binary-sekrit", "utf8");
+
       const image: FetchPageResult = {
         meta: {
           requestedUrl: publicUrl("https://sekrit.example/i.png?key=sekrit"),
@@ -201,6 +211,7 @@ describe("projectFetchResult", () => {
         },
         body: FetchPageBody.Image({ data: raw }),
       };
+
       const projected = yield* projectFetchResult(image, {
         store: liveToolOutputStore(),
         secrets: ["sekrit"],
@@ -223,6 +234,7 @@ describe("projectFetchResult", () => {
           secrets: [],
         }),
       );
+
       assert(Result.isFailure(projected));
       expect(projected.failure.message).toBe(
         "Could not save full output to /tmp/x/output.txt: no space left on device (ENOSPC)",
@@ -240,6 +252,7 @@ describe("projectProviderFetchedPage", () => {
           { store: liveToolOutputStore(), secrets: [] },
         ),
       );
+
       assert(Result.isSuccess(projected));
       expect(textOf(projected.success)).toMatch(
         /^\[Direct fetch was blocked or unusable; content retrieved via exa/u,
@@ -265,6 +278,7 @@ describe("projectProviderFetchedPage", () => {
         },
         { store: liveToolOutputStore(), secrets: ["sekrit"] },
       );
+
       expect(JSON.stringify(projected)).not.toContain("sekrit");
       expect(projected.details.requestedUrl).toContain("[redacted]");
     }),
@@ -290,6 +304,7 @@ describe("projectSearchResults", () => {
           { store: liveToolOutputStore(), secrets: ["sekrit"] },
         ),
       );
+
       assert(Result.isSuccess(projected));
       expect(textOf(projected.success)).not.toContain("sekrit");
       expect(textOf(projected.success)).toContain("[redacted]");
@@ -320,6 +335,7 @@ describe("projectSearchResults", () => {
         },
         { store: liveToolOutputStore(), secrets: ["sekrit"] },
       );
+
       expect(JSON.stringify(projected)).not.toContain("sekrit");
       expect(projected.details.query).toBe("find [redacted]");
     }),
@@ -360,23 +376,29 @@ describe("credential reflection defense", () => {
       const secrets = ["key", "key-long", "rotated-key"];
       const raw = "key-long rotated-key key\n".repeat(3000);
       const page = textResult(raw);
+
       const reflected = {
         ...page,
         meta: { ...page.meta, mime: "key-long", contentType: "rotated-key", charset: "key" },
       };
+
       let spilled = "";
+
       const result = yield* projectFetchResult(reflected, {
         secrets,
         store: {
           writeTextFile: (_prefix, _name, content) => {
             spilled = content;
+
             return Effect.succeed("/private/output.txt");
           },
         },
       });
+
       expect(result.details.truncated).toBe(true);
       expect(spilled).toBe("[redacted] [redacted] [redacted]\n".repeat(3000));
       const serialized = JSON.stringify(result);
+
       for (const secret of secrets) {
         expect(serialized).not.toContain(secret);
       }
@@ -386,6 +408,7 @@ describe("credential reflection defense", () => {
   it.effect("scrubs reflected image MIME content and details", () =>
     Effect.gen(function* () {
       const page = textResult("");
+
       const result = yield* projectFetchResult(
         {
           meta: { ...page.meta, mime: "image/key-long" },
@@ -393,6 +416,7 @@ describe("credential reflection defense", () => {
         },
         { secrets: ["key", "key-long"], store: liveToolOutputStore() },
       );
+
       expect(result.content[1]).toMatchObject({ mimeType: "image/[redacted]" });
       expect(JSON.stringify(result)).not.toContain("key");
     }),

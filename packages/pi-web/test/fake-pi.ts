@@ -10,11 +10,14 @@ export async function fakePi() {
   const fixture = await nativeAuthFixture({ register: false });
   const { registry } = fixture;
   const tools: RegisteredWebTool[] = [];
+
   const handlers: HandlerLists = {
     session_start: [],
     session_shutdown: [],
   };
+
   const notifications: string[] = [];
+
   const api: WebToolsRegistration = {
     registerProvider: registry.registerProvider.bind(registry),
     unregisterProvider: registry.unregisterProvider.bind(registry),
@@ -33,6 +36,7 @@ export async function fakePi() {
       }
     },
   };
+
   const ctx = {
     modelRegistry: registry,
     ui: {
@@ -41,6 +45,7 @@ export async function fakePi() {
       },
     },
   };
+
   const emit = async (event: keyof WebToolsHandlers) => {
     if (event === "session_start") {
       for (const handler of handlers.session_start) {
@@ -52,5 +57,6 @@ export async function fakePi() {
       }
     }
   };
+
   return { pi: api, tools, ctx, emit, registry, notifications, fixture };
 }

@@ -27,6 +27,7 @@ function unconsented(events: readonly string[]): number[] {
 
 function press(model: MenuModel, tc: TestCase): void {
   const key = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+
   if (key === 0) {
     model.back();
   } else if (key === 1) {
@@ -42,6 +43,7 @@ function run(tc: TestCase): Run {
   const blocked = tc.draw(gs.booleans());
   const events: string[] = [];
   const depths: number[] = [];
+
   const options: SetupFormOptions = {
     draft: {
       mode: "local",
@@ -56,10 +58,13 @@ function run(tc: TestCase): Run {
       events.push("effect");
     },
   };
+
   if (blocked) {
     options.blocked = "no source";
   }
+
   const form = setupForm(options);
+
   const root: Screen = {
     kind: "list",
     title: "Peers",
@@ -67,12 +72,15 @@ function run(tc: TestCase): Run {
       { id: "setup", label: "Setup", value: "", activation: { kind: "open", screen: () => form } },
     ],
   };
+
   const model = new MenuModel(root, { consented: (action) => events.push(`consent:${action}`) });
   const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 40 }));
+
   for (let index = 0; index < steps && !model.closed; index += 1) {
     press(model, tc);
     depths.push(model.depth);
   }
+
   return { blocked, events, depths };
 }
 
@@ -96,9 +104,11 @@ function existingScreen(blockedRepair: boolean, events: string[]) {
     const effect = (name: string) => () => {
       progress(name, [], async () => {
         events.push(`effect:${name}`);
+
         return { ok: true, headline: `✓ ${name}`, facts: [] };
       });
     };
+
     return {
       kind: "list" as const,
       title: "Setup",
@@ -174,6 +184,7 @@ function runExisting(tc: TestCase) {
   const blockedRepair = tc.draw(gs.booleans());
   const events: string[] = [];
   const depths: number[] = [];
+
   const state = (): RootState => ({
     status: { value: "Connected", lines: ["Connected"] },
     doctor: ["✓ ok"],
@@ -187,10 +198,13 @@ function runExisting(tc: TestCase) {
     resettable: true,
     busy: false,
   });
+
   const root = (name: string) => async () => {
     events.push(`effect:${name}`);
+
     return { ok: true, headline: `✓ ${name}`, facts: [] };
   };
+
   const model = peersMenu(
     {
       state,
@@ -201,10 +215,13 @@ function runExisting(tc: TestCase) {
     },
     { consented: (action) => events.push(`consent:${action}`) },
   );
+
   const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 40 }));
+
   for (let index = 0; index < steps && !model.closed; index += 1) {
     const before = model.depth;
     const back = tc.draw(gs.booleans());
+
     if (back) {
       model.back();
       depths.push(model.closed || model.depth === 0 ? 0 : before - model.depth - 1);
@@ -212,6 +229,7 @@ function runExisting(tc: TestCase) {
       model.activate(tc.draw(gs.sampledFrom(routeIds)));
     }
   }
+
   return { blockedRepair, events, depths };
 }
 
