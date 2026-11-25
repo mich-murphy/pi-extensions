@@ -1,0 +1,85 @@
+import type { Clock, LedgerEvent } from "../ledger.ts";
+
+function eventId(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+function eventAt(n: number): string {
+  return new Date(Date.UTC(2026, 10, 25, 0, 0, 0, n)).toISOString();
+}
+
+export function fakeClock(start = 1): Clock {
+  let next = start;
+  let tick = start;
+  return {
+    id: () => eventId(next++),
+    now: () => new Date(eventAt(tick++)),
+  };
+}
+
+export type SignalOptions = {
+  readonly n: number;
+  readonly session: string;
+  readonly owner?: string;
+  readonly fingerprint?: string;
+  readonly error?: string;
+};
+
+export function signal({
+  n,
+  session,
+  owner = "pi-claude",
+  fingerprint = "read: ENOENT",
+  error = "ENOENT: no such file",
+}: SignalOptions): LedgerEvent {
+  return {
+    type: "signal",
+    id: eventId(n),
+    at: eventAt(n),
+    session,
+    owner,
+    fingerprint,
+    tool: "read",
+    error,
+  };
+}
+
+export type ReportOptions = SignalOptions & { readonly impact?: "blocked" | "slowed" };
+
+export function report({
+  n,
+  session,
+  owner = "pi-claude",
+  fingerprint = "pi-claude/workaround",
+  impact = "slowed",
+}: ReportOptions): LedgerEvent {
+  return {
+    type: "report",
+    id: eventId(n),
+    at: eventAt(n),
+    session,
+    owner,
+    fingerprint,
+    kind: "workaround",
+    component: "pi-claude",
+    summary: "Scratch path changed between turns",
+    expected: "One scratch path per session",
+    actual: "A new path each turn",
+    impact,
+  };
+}
+
+export function resolveEvent(n: number, group: string): LedgerEvent {
+  return {
+    type: "resolve",
+    id: eventId(n),
+    at: eventAt(n),
+    group,
+    commit: "abc1234",
+    layer: "architecture",
+  };
+}
+
+export function reopenEvent(n: number, group: string): LedgerEvent {
+  return { type: "reopen", id: eventId(n), at: eventAt(n), group, reason: "Seen again" };
+}
