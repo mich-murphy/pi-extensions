@@ -8,6 +8,7 @@ import type {
   SessionCompactFailedEvent,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { registerBridge } from "./adapter/bridge.js";
 import { loadConfiguration, visibleText } from "./adapter/config.js";
 import type { Configuration } from "./adapter/config.js";
 import { connectLabel } from "./adapter/label.js";
@@ -133,7 +134,7 @@ export type PeersEvents = {
 };
 
 export type PeersHost = Pick<ExtensionAPI, "sendMessage" | "registerEntryRenderer"> &
-  Partial<Pick<ExtensionAPI, "appendEntry">> &
+  Partial<Pick<ExtensionAPI, "appendEntry" | "events">> &
   ToolHost & {
     registerCommand: (name: string, options: PeersCommand) => void;
     on: {
@@ -228,6 +229,7 @@ export default function registerCommunication(
   };
 
   registerTools(pi, () => owned?.session);
+  registerBridge(pi.events, () => owned?.session);
   pi.registerEntryRenderer("peers-report", (entry, _options, theme) => {
     const outcome = storedOutcome(entry.data);
 

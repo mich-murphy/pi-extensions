@@ -268,11 +268,11 @@ function listStructured(value: ListValue | ToolProblem): Static<typeof listOutpu
   };
 }
 
-async function list(
+export async function discovered(
   session: ToolSession,
   selected: string | undefined,
   signal?: AbortSignal,
-): Promise<Shown<ListValue>> {
+) {
   const scopes = selected === undefined ? [...session.client.effectiveScopes()] : [selected];
 
   for (const chosen of scopes) {
@@ -286,7 +286,7 @@ async function list(
   }
 
   if (reply.outcome.tag === "error") {
-    return shownError(reply.outcome);
+    return { failed: reply.outcome };
   }
 
   const entries = reply.outcome.value.peers.flatMap((descriptor) => {
@@ -303,8 +303,22 @@ async function list(
       : [{ peer: descriptor.peer, scopeId, label: plainText(descriptor.label), self }];
   });
 
+  return { entries };
+}
+
+async function list(
+  session: ToolSession,
+  selected: string | undefined,
+  signal?: AbortSignal,
+): Promise<Shown<ListValue>> {
+  const found = await discovered(session, selected, signal);
+
+  if ("failed" in found) {
+    return shownError(found.failed);
+  }
+
   const peers = session.handles
-    .list(entries)
+    .list(found.entries)
     .map((entry) =>
       !entry.self && session.client.linkDown(entry.peer.machineId)
         ? { ...entry, linkDown: true }

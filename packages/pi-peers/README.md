@@ -196,6 +196,27 @@ Results show message ids as short session-local aliases such as `m-3f2a`: the fi
 
 Labels are claims made by the other session and are not verified. Your own session is marked by comparing runtime identities, never label text. Each session registers a label made of, in order: the configured `label`, the session name, the repository folder name, `derived from s-xxxx` for a forked session, and `branch X at connect` when `shareBranch` is true. Control and bidirectional characters are removed. Parts are dropped from the end to fit 128 bytes; the configured label is cut only as a last resort. The session name and branch are as they were at connect and can go stale.
 
+### Use from other extensions
+
+Another extension can list peers and send a message without the model, over `pi.events`. Requests and replies are plain data, decoded on both sides. The client in `packages/shared/peers-channel.ts` correlates replies by id and resolves `{ ok: false, code: "unavailable" }` when pi-peers does not answer in time or the call is aborted.
+
+```ts
+import { peersClient } from "../shared/peers-channel";
+
+const peers = peersClient(pi.events, { timeoutMs: 20_000 });
+const listed = await peers.list();
+const target = listed.ok ? listed.peers.find((entry) => !entry.self) : undefined;
+if (target !== undefined) {
+  const result = await peers.send({
+    to: target.peer,
+    scope: target.scopeId,
+    message: { kind: "update", content: "Build is green." },
+  });
+}
+```
+
+A send passes the same scope, push permission, protocol and size checks as `peers_send`, and resolves `{ ok: true, messageId, outcome }` or `{ ok: false, code, note }`. Peers are explicit `PeerRef`s, not handles. Outcome `unknown` means it may have arrived. Receivers deduplicate by message id for at least 10 minutes, so to retry safely, pass the earlier `messageId` with the same `to`, `scope` and `message`; changed content with the same id is refused with `id_conflict`. The client always sends a `messageId`, choosing one when you do not, and returns it when pi-peers did not answer in time or the call was aborted after the request went out, because the send may still arrive. Aborting stops the wait, not the send. A call aborted before it was sent resolves `cancelled`.
+
 ## Commands
 
 | Command | Behavior |
