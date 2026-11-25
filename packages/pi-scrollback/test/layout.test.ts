@@ -3,6 +3,7 @@ import type { Component, StackEntryOptions } from "@earendil-works/pi-tui";
 import {
   Container,
   Text,
+  TuiAltScreen,
   VStack,
   stripTerminalSequences,
   visibleWidth,
@@ -70,13 +71,9 @@ function fixture(firstPrompt = "first prompt") {
 
   const { root } = viewport;
   assert(root instanceof VStack);
-  const tui = testTui();
-  Object.defineProperty(tui, "layoutRoot", {
-    configurable: true,
-    writable: true,
-    value: viewport.root,
-  });
+  const tui = new TuiAltScreen(testTui().terminal);
   const request = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
+  tui.setLayoutRoot(root);
   const adapter = createHostAdapter(tui, (text) => text);
 
   const render = (width = 40, height = 12) =>
@@ -102,7 +99,10 @@ function driftedRoot(native: Component, which: "transcript" | "dock", change: St
 
   const layoutNode = () => ({ ...node, entries });
 
-  return { root: { render: () => [], [LAYOUT_NODE]: layoutNode }, layoutNode };
+  return {
+    root: { render: () => [], invalidate: () => undefined, [LAYOUT_NODE]: layoutNode },
+    layoutNode,
+  };
 }
 
 function visible(component: Component): boolean | undefined {
@@ -114,10 +114,19 @@ function visible(component: Component): boolean | undefined {
 }
 
 describe("native chat viewport", () => {
-  test("shows contextual historical turn, keeps anchor through streaming and reclaims bottom row", () => {
+  test("accepts the pinned fullscreen layout and keeps the historical turn anchored", () => {
     const f = fixture();
+    expect(
+      f.root[LAYOUT_NODE]().entries,
+      "adapter adds a row to the native two-entry stack",
+    ).toHaveLength(3);
+    expect(f.transcript.getContentWidth(40)).toBe(40);
+    expect(f.transcript.getContentWidth(20)).toBe(20);
+    expect(plain(f.tui.render(40)).map((line) => line.trim())).toContain("editor");
+
     expect(plain(f.render().lines)[0]).not.toContain("❯");
     f.transcript.scrollTo(8);
+    expect(f.transcript.scrollTop).toBe(8);
     const frame = f.render();
     expect(plain(frame.lines)[0]?.trim()).toBe("❯ first prompt");
     expect(f.transcript.scrollTop).toBe(8);
@@ -195,7 +204,7 @@ describe("native chat viewport", () => {
     const f = fixture();
     f.adapter.dispose();
     const { root, layoutNode } = driftedRoot(f.root, which, change);
-    Reflect.set(f.tui, "layoutRoot", root);
+    f.tui.setLayoutRoot(root);
     const adapter = createHostAdapter(f.tui, (text) => text);
     expect(root[LAYOUT_NODE]).toBe(layoutNode);
     adapter.dispose();
@@ -280,18 +289,18 @@ describe("native chat viewport", () => {
     f.adapter.dispose();
   });
 
-  test("discovers fullscreen after regular startup and restores the root on cleanup", () => {
+  test("discovers a later fullscreen root and restores it on cleanup", () => {
     const f = fixture();
     f.adapter.dispose();
-    Reflect.set(f.tui, "layoutRoot", undefined);
+    f.tui.setLayoutRoot(undefined);
     const adapter = createHostAdapter(f.tui, (text) => text);
-    Reflect.set(f.tui, "layoutRoot", f.root);
+    f.tui.setLayoutRoot(f.root);
     adapter.render(40);
     f.render();
     f.transcript.scrollTo(8);
     expect(plain(f.render().lines)[0]).toContain("❯ first prompt");
-    Reflect.set(f.tui, "layoutRoot", undefined);
-    Reflect.set(f.tui, "layoutRoot", f.root);
+    f.tui.setLayoutRoot(undefined);
+    f.tui.setLayoutRoot(f.root);
     expect(plain(f.render().lines)[0]).toContain("❯ first prompt");
     adapter.dispose();
     expect(plain(f.render().lines)[0]).not.toContain("❯");

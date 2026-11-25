@@ -12,6 +12,11 @@ RuleTester.it = (text, fn) => {
 
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const banned = { message: /^Comments are banned/u };
+
+const assertionJustification = {
+  message: /^Assertion-justification comments are banned/u,
+};
+
 const missingReason = { message: /^Suppressions need a reason/u };
 const blanket = { message: /^Name the rules a suppression disables/u };
 const suppression = { message: /^Do not suppress pi-extensions\/no-comments/u };
@@ -21,6 +26,7 @@ tester.run("no-comments", plugin.rules["no-comments"], {
     "const answer = 42;",
     "const url = 'https://example.com'; const path = '//not-a-comment';",
     "// oxlint-disable-next-line eslint/no-await-in-loop -- sequential by protocol\nawait step();",
+    "// oxlint-disable-next-line typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion -- the producer emits only strings\nconst value = input as string;",
     "/* oxlint-disable typescript/no-unsafe-type-assertion -- trusted fixture module */\nconst x = 1;",
     "// eslint-disable-next-line no-console -- CLI entry point owns stdout\nconsole.log(1);",
     "// oxlint-enable no-console\nconst x = 1;",
@@ -50,6 +56,15 @@ tester.run("no-comments", plugin.rules["no-comments"], {
     },
     { code: "// TODO: remove once fixed\nconst x = 1;", errors: [banned] },
     { code: "// IMPORTANT: do not remove\nconst x = 1;", errors: [banned] },
+    {
+      code: "// SAFETY: the producer emits only strings\nconst value = input as string;",
+      errors: [assertionJustification],
+    },
+    {
+      code: "/**\n * INVARIANT: the producer emits only strings\n */\nconst value = input as string;",
+      errors: [assertionJustification],
+    },
+    { code: "// safety: lowercase marker\nconst value = input as string;", errors: [banned] },
     { code: "// eslint-disable-next-line no-console\nconsole.log(1);", errors: [missingReason] },
     { code: "/* oxlint-disable -- reason */\n// prose\nconst x = 1;", errors: [blanket, banned] },
     {

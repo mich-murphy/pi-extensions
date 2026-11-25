@@ -14,9 +14,13 @@ const suppressesThisRule = /^\s*(?:eslint|oxlint)-disable.*\bno-comments\b/u;
 const needsReason = /^\s*(?:(?:eslint|oxlint)-disable(?:-next-line|-line)?\b|@ts-expect-error\b)/u;
 const hasReason = /\s--\s+\S/u;
 const blanketDisable = /^\s*(?:eslint|oxlint)-disable(?:-next-line|-line)?\s*(?:--|$)/u;
+const assertionJustification = /^\s*(?:\*\s*)*(?:SAFETY|INVARIANT)\s*:/u;
 
 const message =
   "Comments are banned: they go stale and agents copy them. Make the code say it instead: rename, extract a function, encode the constraint in a type, test or lint rule, fix the root cause of the workaround, or delete the comment. Allowed: lint/type/formatter directives, license headers, shebangs, triple-slash references, and a comment holding only an issue or RFC URL.";
+
+const assertionJustificationMessage =
+  "Assertion-justification comments are banned. Remove the type assertion with a Schema decode, `satisfies`, or a type annotation. If the assertion is unavoidable, put the checked invariant in this directive: `// oxlint-disable-next-line typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion -- <checked invariant>`.";
 
 const missingReasonMessage =
   "Suppressions need a reason: append ` -- <why this rule is wrong here>`. If the rule guards correctness or safety, fix the code instead of suppressing it.";
@@ -52,6 +56,8 @@ const noComments = {
             context.report({ message: suppressionMessage, loc: comment.loc });
           } else if (needsReason.test(comment.value) && !hasReason.test(comment.value)) {
             context.report({ message: missingReasonMessage, loc: comment.loc });
+          } else if (comment.type !== "Shebang" && assertionJustification.test(comment.value)) {
+            context.report({ message: assertionJustificationMessage, loc: comment.loc });
           } else if (!isAllowed(comment)) {
             context.report({ message, loc: comment.loc });
           }
