@@ -17,7 +17,7 @@ import { onOffCommand } from "../shared/on-off-command.ts";
 import type { OnOffCommand } from "../shared/on-off-command.ts";
 import { isParallelBatch, isReadOnlyTool } from "./batch.ts";
 import type { BatchCall } from "./batch.ts";
-import { classifyRecord } from "./classify.ts";
+import { ClassifyOutcome, classifyRecord } from "./classify.ts";
 import type { ClassifierRegistry } from "./classify.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
@@ -273,7 +273,7 @@ export function registerFeedback(
     schedule(async () => {
       try {
         const outcome = await classifyRecord({ registry, ledger, record: event, input, clock });
-        unclassified += outcome._tag === "classified" ? outcome.failed : 0;
+        unclassified += ClassifyOutcome.$is("classified")(outcome) ? outcome.failed : 0;
       } catch {
         unclassified += 1;
       }

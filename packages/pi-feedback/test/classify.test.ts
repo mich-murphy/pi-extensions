@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClassifierContext } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { classifyRecord } from "../classify.ts";
+import { ClassifyOutcome, classifyRecord } from "../classify.ts";
 import { JEV_MODEL, JEV_MODEL_ID, MAX_MERGE_COMPARISONS } from "../jev.ts";
 import { appendEvent, ledgerPath, readLedger } from "../ledger.ts";
 import type { LedgerEvent, RecordEvent } from "../ledger.ts";
@@ -59,7 +59,7 @@ describe("classifyRecord", () => {
       record,
       input: { path: "/tmp/a" },
     });
-    expect(outcome).toStrictEqual({ _tag: "classified", calls: 1, failed: 0 });
+    expect(outcome).toStrictEqual(ClassifyOutcome.classified({ calls: 1, failed: 0 }));
     expect(classifier.calls.map((call) => call.model)).toStrictEqual([JEV_MODEL_ID]);
     expect(classifier.calls[0]?.context.state).toStrictEqual({
       tool: "read",
@@ -124,7 +124,7 @@ describe("classifyRecord", () => {
     const classifier = fakeClassifier(answerWith(0.95));
     const record = asSignal(signal({ n: 3, session: "c", fingerprint: "read: newer" }));
     const outcome = await classifyRecord({ registry: classifier.registry, ledger, record });
-    expect(outcome).toStrictEqual({ _tag: "classified", calls: 2, failed: 0 });
+    expect(outcome).toStrictEqual(ClassifyOutcome.classified({ calls: 2, failed: 0 }));
     await expect(stored("same_cause")).resolves.toMatchObject([
       { owner: "pi-claude", a: "read: newer", b: "read: older", sameCause: 0.95 },
     ]);
@@ -157,7 +157,7 @@ describe("classifyRecord", () => {
     const record = asSignal(signal({ n: 3, session: "b", fingerprint: "read: newer" }));
     await expect(
       classifyRecord({ registry: classifier.registry, ledger, record }),
-    ).resolves.toStrictEqual({ _tag: "classified", calls: 0, failed: 0 });
+    ).resolves.toStrictEqual(ClassifyOutcome.classified({ calls: 0, failed: 0 }));
   });
 
   test("counts failed calls and stores nothing for them", async () => {
@@ -166,7 +166,7 @@ describe("classifyRecord", () => {
     const record = asSignal(signal({ n: 2, session: "b", fingerprint: "read: newer" }));
     await expect(
       classifyRecord({ registry: classifier.registry, ledger, record }),
-    ).resolves.toStrictEqual({ _tag: "classified", calls: 2, failed: 2 });
+    ).resolves.toStrictEqual(ClassifyOutcome.classified({ calls: 2, failed: 2 }));
     await expect(stored("verdict")).resolves.toStrictEqual([]);
     await expect(stored("same_cause")).resolves.toStrictEqual([]);
   });
@@ -189,7 +189,7 @@ describe("classifyRecord", () => {
         ledger,
         record: asSignal(signal({ n: 1, session: "a" })),
       }),
-    ).resolves.toStrictEqual({ _tag: "unavailable" });
+    ).resolves.toStrictEqual(ClassifyOutcome.unavailable());
     expect(classifier.calls).toStrictEqual([]);
   });
 
@@ -198,7 +198,7 @@ describe("classifyRecord", () => {
     const registry = { ...classifier.registry, getModelOfType: () => undefined };
     await expect(
       classifyRecord({ registry, ledger, record: asSignal(signal({ n: 1, session: "a" })) }),
-    ).resolves.toStrictEqual({ _tag: "unavailable" });
+    ).resolves.toStrictEqual(ClassifyOutcome.unavailable());
     expect(classifier.calls).toStrictEqual([]);
   });
 
@@ -212,7 +212,7 @@ describe("classifyRecord", () => {
     const classifier = fakeClassifier(answerWith(0.1));
     await expect(
       classifyRecord({ registry: classifier.registry, ledger, record: asSignal(event) }),
-    ).resolves.toStrictEqual({ _tag: "skipped" });
+    ).resolves.toStrictEqual(ClassifyOutcome.skipped());
     expect(classifier.calls).toStrictEqual([]);
   });
 
@@ -223,6 +223,6 @@ describe("classifyRecord", () => {
     );
     await expect(
       classifyRecord({ registry: classifier.registry, ledger, record }),
-    ).resolves.toMatchObject({ _tag: "classified", calls: 1 });
+    ).resolves.toStrictEqual(ClassifyOutcome.classified({ calls: 1, failed: 0 }));
   });
 });

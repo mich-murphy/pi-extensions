@@ -1,6 +1,5 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
-import { Option, Predicate, Schema } from "effect";
-import { absurd } from "effect/Function";
+import { Match, Option, Predicate, Schema } from "effect";
 import { MIN_CLAUDE_CODE_VERSION } from "./claude-executable";
 import { lenientOptional } from "./lenient-schema";
 import {
@@ -72,7 +71,7 @@ export class InvalidDeferredCallLimitError extends Schema.TaggedError<InvalidDef
   }
 }
 
-const SdkQueryFailureReason = Schema.TaggedUnion({
+export const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
   ExecutableLaunchFailed: {},
@@ -83,7 +82,7 @@ const SdkQueryFailureReason = Schema.TaggedUnion({
   Unclassified: {},
 });
 
-type SdkQueryFailureReason = typeof SdkQueryFailureReason.Type;
+export type SdkQueryFailureReason = typeof SdkQueryFailureReason.Type;
 
 const decodeSdkRejection = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -95,40 +94,40 @@ const decodeSdkRejection = Schema.decodeUnknownOption(
 
 function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
   if (cause instanceof AbortError || (cause instanceof Error && cause.name === "AbortError")) {
-    return { _tag: "Cancelled" };
+    return SdkQueryFailureReason.cases.Cancelled.make({});
   }
   if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
-    return { _tag: "ExecutableNotFound" };
+    return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
   }
   const tagged = Option.getOrUndefined(decodeSdkRejection(cause));
   if (tagged === undefined) {
-    return { _tag: "Unclassified" };
+    return SdkQueryFailureReason.cases.Unclassified.make({});
   }
   switch (tagged.errorClass) {
     case "aborted": {
-      return { _tag: "Cancelled" };
+      return SdkQueryFailureReason.cases.Cancelled.make({});
     }
     case "executable_not_found": {
-      return { _tag: "ExecutableNotFound" };
+      return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
     }
     case "executable_launch_failed": {
-      return { _tag: "ExecutableLaunchFailed" };
+      return SdkQueryFailureReason.cases.ExecutableLaunchFailed.make({});
     }
     case "process_exited_nonzero": {
       return tagged.exitCode === undefined
-        ? { _tag: "Unclassified" }
-        : { _tag: "ProcessExited", exitCode: tagged.exitCode };
+        ? SdkQueryFailureReason.cases.Unclassified.make({})
+        : SdkQueryFailureReason.cases.ProcessExited.make({ exitCode: tagged.exitCode });
     }
     case "process_killed_by_signal": {
       return tagged.signal === undefined ||
         !/^SIG(?:ABRT|ALRM|BUS|CHLD|CONT|FPE|HUP|ILL|INT|KILL|PIPE|QUIT|SEGV|STOP|TERM|TRAP|TSTP|TTIN|TTOU|URG|USR1|USR2|VTALRM|WINCH|XCPU|XFSZ)$/u.test(
           tagged.signal,
         )
-        ? { _tag: "Unclassified" }
-        : { _tag: "ProcessKilled", signal: tagged.signal };
+        ? SdkQueryFailureReason.cases.Unclassified.make({})
+        : SdkQueryFailureReason.cases.ProcessKilled.make({ signal: tagged.signal });
     }
     default: {
-      return { _tag: "Unclassified" };
+      return SdkQueryFailureReason.cases.Unclassified.make({});
     }
   }
 }
@@ -137,37 +136,24 @@ function describeQueryFailure(
   reason: SdkQueryFailureReason,
   operation: "start" | "iterate",
 ): string {
-  switch (reason._tag) {
-    case "Cancelled": {
-      return "The request was cancelled.";
-    }
-    case "ExecutableNotFound": {
-      return "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.";
-    }
-    case "ClaudeCodeTooOld": {
-      return `Claude Code ${reason.version} is too old; ${MIN_CLAUDE_CODE_VERSION} or newer is required. Run \`claude update\`.`;
-    }
-    case "ExecutableLaunchFailed": {
-      return "Claude Code is installed but would not launch. Check `claude` or `PI_CLAUDE_PATH`.";
-    }
-    case "WorkingDirectoryUnavailable": {
-      return "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.";
-    }
-    case "ProcessExited": {
-      return `Claude Code quit unexpectedly (exit code ${reason.exitCode}). Run \`/claude status\` to check it.`;
-    }
-    case "ProcessKilled": {
-      return `Claude Code was stopped by signal ${reason.signal}.`;
-    }
-    case "Unclassified": {
-      return operation === "start"
+  return Match.valueTags(reason, {
+    Cancelled: () => "The request was cancelled.",
+    ExecutableNotFound: () =>
+      "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
+    ClaudeCodeTooOld: ({ version }) =>
+      `Claude Code ${version} is too old; ${MIN_CLAUDE_CODE_VERSION} or newer is required. Run \`claude update\`.`,
+    ExecutableLaunchFailed: () =>
+      "Claude Code is installed but would not launch. Check `claude` or `PI_CLAUDE_PATH`.",
+    WorkingDirectoryUnavailable: () =>
+      "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.",
+    ProcessExited: ({ exitCode }) =>
+      `Claude Code quit unexpectedly (exit code ${exitCode}). Run \`/claude status\` to check it.`,
+    ProcessKilled: ({ signal }) => `Claude Code was stopped by signal ${signal}.`,
+    Unclassified: () =>
+      operation === "start"
         ? "Claude Code failed to start with an unexpected error."
-        : "Claude Code stopped mid-turn with an unexpected error.";
-    }
-    default: {
-      return absurd(reason);
-    }
-  }
+        : "Claude Code stopped mid-turn with an unexpected error.",
+  });
 }
 
 export class SdkQueryError extends Schema.TaggedError<SdkQueryError>()("SdkQueryError", {
@@ -180,7 +166,11 @@ export class SdkQueryError extends Schema.TaggedError<SdkQueryError>()("SdkQuery
   }
 
   static cancelled(operation: "start" | "iterate", cause: unknown): SdkQueryError {
-    return new SdkQueryError({ operation, reason: { _tag: "Cancelled" }, cause });
+    return new SdkQueryError({
+      operation,
+      reason: SdkQueryFailureReason.cases.Cancelled.make({}),
+      cause,
+    });
   }
 
   override get message(): string {

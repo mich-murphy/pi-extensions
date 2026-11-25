@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as gs from "@hegeldev/hegel/generators";
+import { Result } from "effect";
 import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
@@ -124,9 +125,9 @@ function assertToggles(
   result: ToggleStateResult,
   expected: ReadonlyMap<string, ToggleValue>,
 ): void {
-  assert.ok(result._tag === "ok", JSON.stringify(result));
-  assert.deepEqual(result.value.files, expected);
-  assert.equal(result.value.repositories.size, 0);
+  assert.ok(Result.isSuccess(result), JSON.stringify(result));
+  assert.deepEqual(result.success.files, expected);
+  assert.equal(result.success.repositories.size, 0);
 }
 
 function assertMalformed(
@@ -134,10 +135,10 @@ function assertMalformed(
   fixture: Fixture,
   entry: string | undefined,
 ): void {
-  assert.ok(result._tag === "err");
-  assert.ok(result.error instanceof ToggleStateMalformed, result.error.message);
-  assert.equal(result.error.path, fixture.statePath);
-  assert.equal(result.error.entry, entry);
+  assert.ok(Result.isFailure(result));
+  assert.ok(result.failure instanceof ToggleStateMalformed, result.failure.message);
+  assert.equal(result.failure.path, fixture.statePath);
+  assert.equal(result.failure.entry, entry);
 }
 
 function assertMigrates(
@@ -151,8 +152,8 @@ function assertMigrates(
   assertToggles(load(fixture, document), expected);
   const store = new ToggleStateFile(fixture.statePath);
   const spare = resourcePathId(fixture.skill(SPARE), "/");
-  assert.equal(store.set(spare, "enabled")._tag, "ok");
-  assert.equal(store.set(spare, "default")._tag, "ok");
+  assert.ok(Result.isSuccess(store.set(spare, "enabled")));
+  assert.ok(Result.isSuccess(store.set(spare, "default")));
   assert.match(readFileSync(fixture.statePath, "utf8"), /"version":\s*7/u);
   assertToggles(store.load(), expected);
   assertToggles(new ToggleStateFile(fixture.statePath).load(), expected);
@@ -191,10 +192,10 @@ function assertEmpty(result: ToggleStateResult): void {
 function assertTooNew(fixture: Fixture, whole: number, fractional: boolean): void {
   const version = whole - (fractional ? 0.5 : 0);
   const result = load(fixture, { version, files: {}, repositories: {} });
-  assert.ok(result._tag === "err");
-  assert.ok(result.error instanceof ToggleStateTooNew, result.error.message);
-  assert.equal(result.error.version, version);
-  assert.equal(result.error.path, fixture.statePath);
+  assert.ok(Result.isFailure(result));
+  assert.ok(result.failure instanceof ToggleStateTooNew, result.failure.message);
+  assert.equal(result.failure.version, version);
+  assert.equal(result.failure.path, fixture.statePath);
 }
 
 describe(

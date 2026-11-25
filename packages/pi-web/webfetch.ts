@@ -2,14 +2,13 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { formatSize } from "@earendil-works/pi-coding-agent";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Cause, Duration, Effect, Exit, Result, Schema } from "effect";
-import { absurd } from "effect/Function";
+import { Cause, Duration, Effect, Exit, Match, Predicate, Result, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { resolveCredentialSnapshot } from "./credentials";
 import type { CredentialResolver, CredentialSnapshot } from "./credentials";
 import { checkDomainPolicy } from "./domain-policy";
-import { FetchPage } from "./fetch-page";
+import { FetchPage, FetchPageBody } from "./fetch-page";
 import type { FetchPageError, FetchPageResult } from "./fetch-page";
 import type { FetchProvider } from "./provider-types";
 import { appendExpandedPreview, appendExpandHint, displayText, getTextContent } from "./render";
@@ -122,12 +121,15 @@ export function parseWebFetchParams(
 export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPageError>): boolean {
   if (Result.isFailure(result)) {
     return (
-      result.failure._tag === "HttpStatusRejected" && RESCUE_STATUSES.has(result.failure.status)
+      Predicate.isTagged("HttpStatusRejected")(result.failure) &&
+      RESCUE_STATUSES.has(result.failure.status)
     );
   }
   const { body } = result.success;
   return (
-    body._tag === "Text" && body.kind === "html" && body.text.trim().length < MIN_USABLE_TEXT_LENGTH
+    FetchPageBody.$is("Text")(body) &&
+    body.kind === "html" &&
+    body.text.trim().length < MIN_USABLE_TEXT_LENGTH
   );
 }
 
@@ -163,7 +165,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
       });
       if (Result.isFailure(policy)) {
         throw new Error(
-          policy.failure._tag === "DomainDenied"
+          Predicate.isTagged("DomainDenied")(policy.failure)
             ? "Fetching from this hostname is denied by the webfetch domain policy (`PI_WEB_FETCH_DENY_DOMAINS`)."
             : "Fetching from this hostname is not in the webfetch allowed domains list (`PI_WEB_FETCH_ALLOW_DOMAINS`).",
         );
@@ -341,27 +343,18 @@ const tryProviderRescue = Effect.fnUntraced(function* (
 });
 
 function renderWebFetchFailure(error: WebFetchRunError): string {
-  return error._tag === "OutputStoreError"
+  return Predicate.isTagged("OutputStoreError")(error)
     ? `Could not save full webfetch output to ${error.path}: ${error.reason}`
     : error.message;
 }
 
 function renderUrlParseError(error: ParsePublicHttpUrlError): string {
-  switch (error._tag) {
-    case "EmptyUrl": {
-      return "URL cannot be empty. Pass a full http:// or https:// address.";
-    }
-    case "UnsupportedUrlProtocol": {
-      return "URL must start with http:// or https://";
-    }
-    case "InvalidUrl": {
-      return "Invalid URL. Check it for typos and pass a full http:// or https:// address.";
-    }
-    case "UrlCredentialsUnsupported": {
-      return "URL credentials are not supported. Remove the user:password part from the URL.";
-    }
-    default: {
-      return absurd(error);
-    }
-  }
+  return Match.valueTags(error, {
+    EmptyUrl: () => "URL cannot be empty. Pass a full http:// or https:// address.",
+    UnsupportedUrlProtocol: () => "URL must start with http:// or https://",
+    InvalidUrl: () =>
+      "Invalid URL. Check it for typos and pass a full http:// or https:// address.",
+    UrlCredentialsUnsupported: () =>
+      "URL credentials are not supported. Remove the user:password part from the URL.",
+  });
 }

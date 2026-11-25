@@ -4,7 +4,7 @@ import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vites
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { WEB_AUTH_PROVIDERS } from "../authentication";
 import { CredentialResolver } from "../credentials";
-import { FetchPage } from "../fetch-page";
+import { FetchPage, FetchPageBody } from "../fetch-page";
 import { McpClients } from "../mcp";
 import type { McpClient, McpToolCallResult } from "../mcp";
 import { ProviderHttpClient } from "../provider-http";
@@ -109,7 +109,7 @@ async function tools(
                 contentType: "text/html",
                 bytes: 0,
               },
-              body: { _tag: "Text", kind: "html", text: "", decoder: "utf-8" },
+              body: FetchPageBody.Text({ kind: "html", text: "", decoder: "utf-8" }),
             }),
         }),
       ),

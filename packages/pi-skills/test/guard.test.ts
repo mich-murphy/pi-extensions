@@ -13,6 +13,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
 import type { Skill } from "@earendil-works/pi-coding-agent";
+import { Result } from "effect";
 import { afterEach, assert, describe, expect, test } from "vitest";
 import { resolveToCwd } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/path-utils.js";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
@@ -23,7 +24,6 @@ import { RepositoryLocator } from "../repository";
 import { resourcePathId } from "../resource-path";
 import { emptyOverrides, ResourcePolicy } from "../resources";
 import type { ToggleOverrides, ToggleResource, ToggleValue } from "../resources";
-import { err, ok } from "../result";
 import { ToggleStateFile, ToggleStateUnavailable } from "../state";
 import type { ToggleStateStore } from "../state";
 
@@ -96,10 +96,10 @@ function overrides(entries: Readonly<Record<string, ToggleValue>>): ToggleOverri
   const path = join(directory, "state.json");
   writeFileSync(path, JSON.stringify({ version: 6, overrides: entries }));
   const loaded = new ToggleStateFile(path).load();
-  if (loaded._tag === "err") {
-    throw loaded.error;
+  if (Result.isFailure(loaded)) {
+    throw loaded.failure;
   }
-  return loaded.value;
+  return loaded.success;
 }
 
 const header = (parentSession?: string): Pick<GuardContext, "sessionManager"> => ({
@@ -168,15 +168,18 @@ function deploySkill(main: string): Skill {
 }
 
 function storeWith(entries: Readonly<Record<string, ToggleValue>>): ToggleStateStore {
-  return { load: () => ok(overrides(entries)), set: () => ok(overrides(entries)) };
+  return {
+    load: () => Result.succeed(overrides(entries)),
+    set: () => Result.succeed(overrides(entries)),
+  };
 }
 
 function loadedState(store: ToggleStateStore) {
   const result = store.load();
-  if (result._tag === "err") {
-    throw result.error;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.value;
+  return result.success;
 }
 
 const subagent = "01a137ea-c2a1-7378-87e6-ab5374db4a3b";
@@ -611,7 +614,7 @@ describe("pi-skills guard", () => {
         const statePath = join(dirname(main), "instruction-state.json");
         const store = new ToggleStateFile(statePath);
         const saved = store.set(path, "disabled");
-        expect(saved._tag).toBe("ok");
+        expect(Result.isSuccess(saved)).toBe(true);
         const guard = guarded(store, main);
         const systemPromptOptions = {
           cwd: main,
@@ -703,8 +706,10 @@ describe("pi-skills guard", () => {
       const { main } = repository();
       const failing: ToggleStateStore = {
         load: () =>
-          err(new ToggleStateUnavailable("load", "/state.json", "EACCES", new Error("EACCES"))),
-        set: () => ok(emptyOverrides()),
+          Result.fail(
+            new ToggleStateUnavailable("load", "/state.json", "EACCES", new Error("EACCES")),
+          ),
+        set: () => Result.succeed(emptyOverrides()),
       };
       const guard = guarded(failing, main);
       guard.start([deploySkill(main)], [join(main, "AGENTS.md")]);
@@ -862,10 +867,10 @@ describe("pi-skills guard", () => {
           },
         },
         {
-          load: () => ok(emptyOverrides()),
+          load: () => Result.succeed(emptyOverrides()),
           set: (id, value) => {
             writes.push([id, value]);
-            return ok(emptyOverrides());
+            return Result.succeed(emptyOverrides());
           },
         },
       );

@@ -6,6 +6,7 @@ import type {
   ClassifierResult,
   JsonObject,
 } from "@earendil-works/pi-ai";
+import { Data } from "effect";
 import {
   ERROR_LIMIT,
   INPUT_LIMIT,
@@ -50,6 +51,8 @@ export type ClassifyOutcome =
   | { readonly _tag: "unavailable" }
   | { readonly _tag: "skipped" }
   | { readonly _tag: "classified"; readonly calls: number; readonly failed: number };
+
+export const ClassifyOutcome = Data.taggedEnum<ClassifyOutcome>();
 
 type Scores = Pick<VerdictEvent, RecordQuestion>;
 
@@ -177,11 +180,11 @@ async function compare(job: ClassifyJob, other: RecordEvent, ask: Asker): Promis
 export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome> {
   const { record, registry } = job;
   if (!needsClassifying(record)) {
-    return { _tag: "skipped" };
+    return ClassifyOutcome.skipped();
   }
   const catalog = registry.getModelOfType("classifier", JEV_PROVIDER, JEV_CATALOG_ID);
   if (catalog === undefined || !registry.getProviderAuthStatus(JEV_PROVIDER).configured) {
-    return { _tag: "unavailable" };
+    return ClassifyOutcome.unavailable();
   }
   const model = { ...catalog, id: JEV_MODEL_ID };
   let calls = 0;
@@ -202,5 +205,5 @@ export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome>
       comparisonsFor(record, events).map(async (other) => compare(job, other, ask)),
     );
   }
-  return { _tag: "classified", calls, failed };
+  return ClassifyOutcome.classified({ calls, failed });
 }

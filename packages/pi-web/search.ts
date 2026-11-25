@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Result, Schema } from "effect";
 import type { Redacted } from "effect";
 import { CredentialFailure } from "./credentials";
 import type { CredentialSnapshot } from "./credentials";
@@ -46,10 +46,13 @@ type ProviderPair = {
   readonly fetch?: FetchProvider;
 };
 
-type ProviderRoute =
-  | { readonly _tag: "OfficialApi"; readonly apiKey: Redacted.Redacted }
-  | { readonly _tag: "KeylessMcp"; readonly endpoint: PublicHttpUrl; readonly freeTier: boolean }
-  | { readonly _tag: "Failed"; readonly error: CredentialFailure };
+type ProviderRoute = Data.TaggedEnum<{
+  OfficialApi: { readonly apiKey: Redacted.Redacted };
+  KeylessMcp: { readonly endpoint: PublicHttpUrl; readonly freeTier: boolean };
+  Failed: { readonly error: CredentialFailure };
+}>;
+
+const ProviderRoute = Data.taggedEnum<ProviderRoute>();
 
 function selectProviderRoute(
   outcome: CredentialSnapshot["outcomes"][SearchProviderName],
@@ -57,14 +60,14 @@ function selectProviderRoute(
   defaultEndpoint: PublicHttpUrl,
 ): ProviderRoute {
   if (override !== undefined) {
-    return { _tag: "KeylessMcp", endpoint: override, freeTier: false };
+    return ProviderRoute.KeylessMcp({ endpoint: override, freeTier: false });
   }
   if (Result.isFailure(outcome)) {
-    return { _tag: "Failed", error: outcome.failure };
+    return ProviderRoute.Failed({ error: outcome.failure });
   }
   return outcome.success === undefined
-    ? { _tag: "KeylessMcp", endpoint: defaultEndpoint, freeTier: true }
-    : { _tag: "OfficialApi", apiKey: outcome.success };
+    ? ProviderRoute.KeylessMcp({ endpoint: defaultEndpoint, freeTier: true })
+    : ProviderRoute.OfficialApi({ apiKey: outcome.success });
 }
 
 function onFreeTier(provider: SearchProvider, freeTier: boolean): SearchProvider {
@@ -92,20 +95,20 @@ const PROVIDER_BUILDERS: Record<
       settings.endpoints.exa,
       EXA_MCP_DEFAULT_ENDPOINT,
     );
-    if (route._tag === "Failed") {
-      return failedPair("exa", route.error);
-    }
-    if (route._tag === "OfficialApi") {
-      return {
-        search: new ExaApiSearchProvider(route.apiKey, http),
-        fetch: new ExaApiFetchProvider(route.apiKey, http),
-      };
-    }
-    const mcp = mcpFor(route.endpoint);
-    return {
-      search: onFreeTier(new ExaMcpSearchProvider(mcp), route.freeTier),
-      fetch: new ExaMcpFetchProvider(mcp),
-    };
+    return ProviderRoute.$match(route, {
+      Failed: ({ error }) => failedPair("exa", error),
+      OfficialApi: ({ apiKey }) => ({
+        search: new ExaApiSearchProvider(apiKey, http),
+        fetch: new ExaApiFetchProvider(apiKey, http),
+      }),
+      KeylessMcp: ({ endpoint, freeTier }) => {
+        const mcp = mcpFor(endpoint);
+        return {
+          search: onFreeTier(new ExaMcpSearchProvider(mcp), freeTier),
+          fetch: new ExaMcpFetchProvider(mcp),
+        };
+      },
+    });
   },
   parallel: ({ settings, snapshot, http, sessionId, mcpFor }) => {
     const route = selectProviderRoute(
@@ -113,19 +116,23 @@ const PROVIDER_BUILDERS: Record<
       settings.endpoints.parallel,
       PARALLEL_MCP_DEFAULT_ENDPOINT,
     );
-    if (route._tag === "Failed") {
-      return failedPair("parallel", route.error);
-    }
-    const mcp = mcpFor(
-      route._tag === "KeylessMcp" ? route.endpoint : PARALLEL_MCP_DEFAULT_ENDPOINT,
-    );
-    return {
-      search:
-        route._tag === "OfficialApi"
-          ? new ParallelApiSearchProvider(route.apiKey, http)
-          : onFreeTier(new ParallelMcpSearchProvider(mcp, sessionId), route.freeTier),
-      fetch: new ParallelMcpFetchProvider(mcp, sessionId),
-    };
+    return ProviderRoute.$match(route, {
+      Failed: ({ error }) => failedPair("parallel", error),
+      OfficialApi: ({ apiKey }) => {
+        const mcp = mcpFor(PARALLEL_MCP_DEFAULT_ENDPOINT);
+        return {
+          search: new ParallelApiSearchProvider(apiKey, http),
+          fetch: new ParallelMcpFetchProvider(mcp, sessionId),
+        };
+      },
+      KeylessMcp: ({ endpoint, freeTier }) => {
+        const mcp = mcpFor(endpoint);
+        return {
+          search: onFreeTier(new ParallelMcpSearchProvider(mcp, sessionId), freeTier),
+          fetch: new ParallelMcpFetchProvider(mcp, sessionId),
+        };
+      },
+    });
   },
   brave: ({ snapshot, http }) => {
     const outcome = snapshot.outcomes.brave;
@@ -258,9 +265,10 @@ function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): bo
   if (provider.freeTier !== true) {
     return false;
   }
-  return (
-    (error._tag === "ProviderStatusRejected" && error.status === 429) ||
-    (error._tag === "ProviderToolError" && RATE_LIMIT_TEXT.test(error.detail))
+  return Match.value(error).pipe(
+    Match.tag("ProviderStatusRejected", ({ status }) => status === 429),
+    Match.tag("ProviderToolError", ({ detail }) => RATE_LIMIT_TEXT.test(detail)),
+    Match.orElse(() => false),
   );
 }
 
@@ -289,7 +297,7 @@ function boundedDetail(detail: string): string {
 }
 
 function attemptReason(error: ProviderError): string {
-  return error._tag === "ProviderToolError" && error.detail !== ""
+  return Predicate.isTagged("ProviderToolError")(error) && error.detail !== ""
     ? `reported an error: ${boundedDetail(error.detail)}`
     : error.message;
 }

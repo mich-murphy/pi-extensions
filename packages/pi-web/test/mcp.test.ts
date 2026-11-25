@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Cause, Duration, Effect, Exit, Fiber, Option, Result, Schema } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Option, Predicate, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { parseMcpMessage, parseMcpToolResult } from "../mcp";
 import type { ProviderJson } from "../provider-types";
@@ -283,7 +283,7 @@ describe("mcpHttpClient", () => {
       });
       const result = yield* Effect.result(client.callTool("web_search", {}));
       assert(Result.isFailure(result));
-      assert(result.failure._tag === "ProviderStatusRejected");
+      assert(Predicate.isTagged("ProviderStatusRejected")(result.failure));
       expect(result.failure.status).toBe(429);
       expect(result.failure.message).toBe("rejected (HTTP 429)");
     }),
@@ -317,7 +317,7 @@ describe("mcpHttpClient", () => {
       });
       const result = yield* Effect.result(client.callTool("web_search", {}));
       assert(Result.isFailure(result));
-      assert(result.failure._tag === "ProviderRequestFailed");
+      assert(Predicate.isTagged("ProviderRequestFailed")(result.failure));
       expect(result.failure.hostname).toBe("mcp.example");
       expect(result.failure.message).toBe("request to mcp.example failed");
     }),
@@ -327,7 +327,7 @@ describe("mcpHttpClient", () => {
 function detailOf(payload: ProviderJson, secrets: readonly string[] = []) {
   const result = parseMcpToolResult(payload, secrets);
   assert(Result.isFailure(result));
-  assert(result.failure._tag === "ProviderToolError");
+  assert(Predicate.isTagged("ProviderToolError")(result.failure));
   return { detail: result.failure.detail, message: result.failure.message };
 }
 

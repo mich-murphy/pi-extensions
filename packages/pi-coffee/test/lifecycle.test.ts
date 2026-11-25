@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
-import type { CaffeinateNotice } from "../coffee-lifecycle";
+import { CaffeinateNotice, CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
 import { fakePi } from "./fake-pi";
 
 class FakeCaffeinate {
@@ -20,15 +19,14 @@ class FakeCaffeinate {
   }
 
   exit(code: number | null, signal: NodeJS.Signals | null): void {
-    this.listener?.({ _tag: "exited", code, signal });
+    this.listener?.(CaffeinateNotice.exited({ code, signal }));
   }
 
   fail(operation: "start" | "stop", code: string): void {
     const cause = new Error(`${operation} ${code}`);
-    this.listener?.({
-      _tag: "failed",
-      error: new CaffeinateProcessError(operation, code, cause),
-    });
+    this.listener?.(
+      CaffeinateNotice.failed({ error: new CaffeinateProcessError(operation, code, cause) }),
+    );
   }
 }
 

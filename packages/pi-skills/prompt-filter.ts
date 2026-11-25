@@ -1,5 +1,6 @@
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, Skill, SourceInfo } from "@earendil-works/pi-coding-agent";
+import { Data } from "effect";
 
 export type PromptSection = "instructions" | "skills";
 
@@ -10,6 +11,8 @@ export type PromptFilterResult =
       readonly systemPrompt: string;
       readonly unmatched: readonly PromptSection[];
     };
+
+export const PromptFilterResult = Data.taggedEnum<PromptFilterResult>();
 
 export type PromptFilterEvent = {
   readonly systemPrompt: string;
@@ -29,7 +32,7 @@ export function hideResources(
   if ("sections" in options) {
     options.contextFiles = shownContextFiles;
     options.skills = shownSkills;
-    return { _tag: "options-filtered" };
+    return PromptFilterResult["options-filtered"]();
   }
 
   const tools = options.selectedTools ?? ["read"];
@@ -50,7 +53,7 @@ export function hideResources(
     }
     systemPrompt = `${systemPrompt.slice(0, index)}${replacement}${systemPrompt.slice(index + original.length)}`;
   }
-  return { _tag: "prompt-filtered", systemPrompt, unmatched };
+  return PromptFilterResult["prompt-filtered"]({ systemPrompt, unmatched });
 }
 
 type ContextFile = Readonly<NonNullable<BuildSystemPromptOptions["contextFiles"]>[number]>;

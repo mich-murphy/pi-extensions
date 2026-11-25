@@ -1,6 +1,7 @@
 import { Effect, Result, Schema } from "effect";
 import { Value } from "typebox/value";
 import { assert, describe, expect, test } from "vitest";
+import { FetchPageBody } from "../fetch-page";
 import { HttpStatusRejected } from "../network";
 import type { PublicWebError, PublicWebResponse } from "../network";
 import type { FetchProvider, SearchProvider } from "../provider-types";
@@ -110,7 +111,7 @@ describe("webfetch structuredContent", () => {
               contentType: "image/png",
               bytes: 4,
             },
-            body: { _tag: "Image", data: Buffer.from([1, 2, 3, 4]) },
+            body: FetchPageBody.Image({ data: Buffer.from([1, 2, 3, 4]) }),
           },
           { store: liveToolOutputStore(), secrets: [] },
         ),

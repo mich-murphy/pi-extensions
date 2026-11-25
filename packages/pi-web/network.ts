@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { STATUS_CODES } from "node:http";
 import { BlockList, isIP } from "node:net";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Predicate, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { checkDomainPolicy } from "./domain-policy";
 import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
@@ -698,10 +698,9 @@ export class PublicWebClient extends Context.Service<
         (effect) =>
           withSafeSpan("PublicWebClient.get", effect, (error) => ({
             type: error._tag,
-            network:
-              error._tag === "PublicWebRequestFailed"
-                ? sanitizeNetworkFailure(error.cause)
-                : undefined,
+            network: Predicate.isTagged("PublicWebRequestFailed")(error)
+              ? sanitizeNetworkFailure(error.cause)
+              : undefined,
           })),
       );
 

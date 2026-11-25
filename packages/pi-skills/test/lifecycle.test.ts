@@ -8,6 +8,7 @@ import type {
   Skill,
 } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { Result } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { testTui, testTheme, testKeybindings } from "../../../test-support/pi-tui";
 import piSkills, { registerPiSkills } from "../index";
@@ -15,7 +16,6 @@ import type { ToggleDialogFactory, ToggleRegistration, ToggleHandlers } from "..
 import type { PromptFilterEvent } from "../prompt-filter";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
-import { err, ok } from "../result";
 import { ToggleStateUnavailable } from "../state";
 import type { ToggleStateResult, ToggleStateStore } from "../state";
 
@@ -107,16 +107,16 @@ function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleS
   const writes: (readonly [string, ToggleValue | "default"])[] = [];
   return {
     writes,
-    load: () => ok(overrides(entries)),
+    load: () => Result.succeed(overrides(entries)),
     set: (id, value) => {
       writes.push([id, value]);
-      return ok(overrides(entries));
+      return Result.succeed(overrides(entries));
     },
   };
 }
 
 function failure(operation: "load" | "update"): ToggleStateResult {
-  return err(
+  return Result.fail(
     new ToggleStateUnavailable(
       operation,
       "/state.json",
@@ -340,7 +340,7 @@ describe("extension lifecycle", () => {
   test("restores the row and reports once when persistence fails", async () => {
     let rendered: readonly string[] = [];
     const testHarness = harness({
-      load: () => ok(overrides({ [skillPath]: "disabled" })),
+      load: () => Result.succeed(overrides({ [skillPath]: "disabled" })),
       set: () => failure("update"),
     });
 
@@ -507,7 +507,7 @@ describe("extension lifecycle", () => {
     await expect(testHarness.emit("before_agent_start", event)).resolves.toBeUndefined();
     expect(testHarness.notifications).toHaveLength(1);
 
-    result = ok(overrides());
+    result = Result.succeed(overrides());
     await testHarness.emit("before_agent_start", event);
     result = failure("load");
     await testHarness.emit("before_agent_start", event);
@@ -617,7 +617,7 @@ describe("extension lifecycle", () => {
   test("a failed save restores every row to the persisted policy", async () => {
     let rendered: readonly string[] = [];
     const testHarness = harness({
-      load: () => ok(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
+      load: () => Result.succeed(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
       set: () => failure("update"),
     });
 

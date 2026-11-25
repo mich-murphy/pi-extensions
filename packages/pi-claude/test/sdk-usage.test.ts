@@ -125,7 +125,8 @@ describe("claude SDK usage", () => {
         }),
       );
 
-      expect(error).toMatchObject({ _tag: "ClaudeUsageInspectionError", operation: "parse" });
+      expect(error._tag).toBe("ClaudeUsageInspectionError");
+      expect(error).toMatchObject({ operation: "parse" });
       expect(error.message).toBe(
         "Claude returned usage data in a format pi-claude does not recognize.",
       );

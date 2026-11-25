@@ -1,8 +1,8 @@
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { inspect } from "node:util";
-import { describe, expect, test } from "@effect/vitest";
-import { Cause, Duration, Effect, Exit, Tracer } from "effect";
+import { assert, describe, expect, test } from "@effect/vitest";
+import { Cause, Duration, Effect, Exit, Predicate, Tracer } from "effect";
 import { withSafeSpan } from "../telemetry";
 import { ToolOutputStore } from "../tool-output";
 import {
@@ -34,12 +34,17 @@ function exportedSpans(spans: readonly Tracer.NativeSpan[]): string {
       events: span.events,
       status: span.status,
       error:
-        span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
+        Predicate.isTagged("Ended")(span.status) && Exit.isFailure(span.status.exit)
           ? Cause.pretty(span.status.exit.cause)
           : undefined,
     })),
     { depth: null },
   );
+}
+
+function expectSuccessfulSpan(span: Tracer.NativeSpan): void {
+  assert(Predicate.isTagged("Ended")(span.status));
+  expect(span.status.exit).toStrictEqual(Exit.succeed(undefined));
 }
 
 describe("safe telemetry", () => {
@@ -157,7 +162,7 @@ describe("safe telemetry", () => {
     ]);
     expect(exportedSpans(spans)).not.toContain(key);
     for (const span of spans) {
-      expect(span.status).toMatchObject({ _tag: "Ended", exit: Exit.succeed(undefined) });
+      expectSuccessfulSpan(span);
     }
   });
 
@@ -186,7 +191,7 @@ describe("safe telemetry", () => {
     ]);
     expect(exportedSpans(spans)).not.toContain(key);
     for (const span of spans) {
-      expect(span.status).toMatchObject({ _tag: "Ended", exit: Exit.succeed(undefined) });
+      expectSuccessfulSpan(span);
     }
   });
 

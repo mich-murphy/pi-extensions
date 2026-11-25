@@ -10,7 +10,7 @@ import type {
   ToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cacheDebugSink, runRecord, usageRecord } from "./cache-debug";
 import type { DebugSink } from "./cache-debug";
 import { diagnosticText } from "./diagnostic-text";
@@ -20,7 +20,7 @@ import { createContextMenu } from "./menu";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { planPrompt, promptSnapshot } from "./prompt-epoch";
 import type { ModelRef, SessionProjection, TranscriptMessage } from "./prompt-epoch";
-import { hideResources } from "./prompt-filter";
+import { hideResources, PromptFilterResult as FilteredPrompt } from "./prompt-filter";
 import type { PromptFilterEvent } from "./prompt-filter";
 import { promptResources, skillReader } from "./prompt-view";
 import { RepositoryLocator } from "./repository";
@@ -332,7 +332,7 @@ class PiSkills {
     const result = hideResources(event, (path) =>
       hidden.has(resourcePathId(path, event.systemPromptOptions.cwd)),
     );
-    if (result._tag === "options-filtered") {
+    if (FilteredPrompt.$is("options-filtered")(result)) {
       return undefined;
     }
     this.reportPromptFailure(
@@ -477,7 +477,7 @@ class PiSkills {
   ): (path: string) => string | undefined {
     const result = this.store.load();
     const loaded = ctx === undefined ? okValue(result) : this.overridesFrom("load", result, ctx);
-    this.stateUnavailable = result._tag === "err";
+    this.stateUnavailable = Result.isFailure(result);
     const matcher = disabledResourceMatcher(
       this.resources,
       loaded,
@@ -600,13 +600,13 @@ class PiSkills {
     result: ToggleStateResult,
     ctx: UiContext,
   ): ToggleOverrides | undefined {
-    if (result._tag === "ok") {
+    if (Result.isSuccess(result)) {
       this.reportStateFailure(ctx, undefined);
-      return result.value;
+      return result.success;
     }
     this.reportStateFailure(
       ctx,
-      `${result.error.message}\n${STATE_FAILURE_CONSEQUENCE[operation]}`,
+      `${result.failure.message}\n${STATE_FAILURE_CONSEQUENCE[operation]}`,
     );
     return undefined;
   }
@@ -621,7 +621,7 @@ function parentVisible(parent: SessionPolicy, resource: ToggleResource): boolean
 }
 
 function okValue(result: ToggleStateResult): ToggleOverrides | undefined {
-  return result._tag === "ok" ? result.value : undefined;
+  return Result.isSuccess(result) ? result.success : undefined;
 }
 
 function disabledIds(

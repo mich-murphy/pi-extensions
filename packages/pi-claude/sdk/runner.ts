@@ -3,7 +3,7 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Option, Result, Stream } from "effect";
+import { Data, Effect, Option, Predicate, Result, Schema, Stream } from "effect";
 import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
@@ -19,6 +19,7 @@ import {
   SdkProtocolError,
   SdkInternalContinuationError,
   SdkQueryError,
+  SdkQueryFailureReason,
   SdkResultError,
   SdkStreamInterruptedError,
   SdkToolContractError,
@@ -279,7 +280,7 @@ function terminalEvent(
   if (!result) {
     return failed(new SdkMissingResultError());
   }
-  if (result._tag === "failed") {
+  if (Predicate.isTagged("failed")(result)) {
     return failedResultEvent(result.error, apiError, rejectedWindow);
   }
   if (batchStopped && calls.length === 0) {
@@ -425,9 +426,12 @@ function advance(progress: QueryProgress, message: SdkMessage): Advanced {
   }
 }
 
-type QueryStep =
-  | { readonly _tag: "event"; readonly event: BridgeEvent }
-  | { readonly _tag: "end"; readonly outcome: QueryOutcome; readonly progress: QueryProgress };
+type QueryStep = Data.TaggedEnum<{
+  event: { readonly event: BridgeEvent };
+  end: { readonly outcome: QueryOutcome; readonly progress: QueryProgress };
+}>;
+
+const QueryStep = Data.taggedEnum<QueryStep>();
 
 const initialProgress = (): QueryProgress => ({
   usage: undefined,
@@ -460,7 +464,7 @@ function interruption(
 }
 
 function ended(outcome: QueryOutcome, progress: QueryProgress): QueryStep {
-  return { _tag: "end", outcome, progress };
+  return QueryStep.end({ outcome, progress });
 }
 
 function settle(
@@ -471,17 +475,15 @@ function settle(
   if (capture.error) {
     return ended(Result.fail(capture.error), progress);
   }
-  if (callerSignal?.aborted === true && progress.result?.result._tag !== "failed") {
+  if (callerSignal?.aborted === true && !Predicate.isTagged("failed")(progress.result?.result)) {
     return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)), progress);
   }
   return ended(Result.succeed(progress), progress);
 }
 
-type QueryItem =
-  | Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError>
-  | { readonly _tag: "Halted" };
+const HALTED = Schema.TaggedStruct("Halted", {}).make({});
 
-const HALTED: QueryItem = { _tag: "Halted" };
+type QueryItem = Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError> | typeof HALTED;
 
 function stopBeforeAdvance(
   progress: QueryProgress,
@@ -500,7 +502,7 @@ function step(
   extraUsage: boolean,
 ): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
   return (progress, item) => {
-    if (item._tag === "Halted") {
+    if (!Result.isResult(item)) {
       return [progress, [settle(capture, progress, callerSignal)]];
     }
     if (capture.error) {
@@ -513,7 +515,7 @@ function step(
     if (tooOld !== undefined) {
       const failure = new SdkQueryError({
         operation: "iterate",
-        reason: { _tag: "ClaudeCodeTooOld", version: tooOld },
+        reason: SdkQueryFailureReason.cases.ClaudeCodeTooOld.make({ version: tooOld }),
         cause: new Error("Claude Code is older than the supported minimum"),
       });
       return [progress, [ended(Result.fail(failure), progress)]];
@@ -527,7 +529,7 @@ function step(
       return [progress, [ended(Result.fail(stopped), progress)]];
     }
     const { progress: next, event } = advance(progress, parsed.success);
-    const steps: QueryStep[] = event ? [{ _tag: "event", event }] : [];
+    const steps = event ? [QueryStep.event({ event })] : [];
     return [next, next.result ? [...steps, settle(capture, next, callerSignal)] : steps];
   };
 }
@@ -579,7 +581,7 @@ function querySteps(
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),
     Stream.mapAccum(initialProgress, step(capture, turn.options?.signal, extraUsage)),
-    Stream.takeUntil((queryStep) => queryStep._tag === "end"),
+    Stream.takeUntil(QueryStep.$is("end")),
   );
 }
 
@@ -694,7 +696,7 @@ function queryUsageMetadata(
 function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {
   return terminal.type === "failed" &&
     progress.modelRequests > 0 &&
-    terminal.error._tag === "SdkResultError" &&
+    Predicate.isTagged("SdkResultError")(terminal.error) &&
     terminal.error.terminalReason === "api_error" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "provider"
     ? failed(new SdkStreamInterruptedError({ evidence: "api-error" }))
@@ -709,7 +711,7 @@ function reportUsageLimit(
   if (
     resetsAt !== undefined &&
     terminal.type === "failed" &&
-    terminal.error._tag === "SdkResultError" &&
+    Predicate.isTagged("SdkResultError")(terminal.error) &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
   ) {
     Result.try(() => {
@@ -730,7 +732,7 @@ function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
     catch: (cause) =>
       new SdkQueryError({
         operation: "start",
-        reason: { _tag: "WorkingDirectoryUnavailable" },
+        reason: SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
         cause,
       }),
   });
@@ -786,7 +788,7 @@ const runTurn = Effect.fnUntraced(function* (
       failed(
         new SdkQueryError({
           operation: "start",
-          reason: { _tag: "ExecutableNotFound" },
+          reason: SdkQueryFailureReason.cases.ExecutableNotFound.make({}),
           cause: new Error("claude executable not found"),
         }),
       ),
@@ -843,10 +845,11 @@ const runTurn = Effect.fnUntraced(function* (
     appliedTurn,
     extraUsageAllowed(sdkEnvironment),
   ).pipe(
-    Stream.map((queryStep) =>
-      queryStep._tag === "event"
-        ? queryStep.event
-        : conclude(queryStep.outcome, queryStep.progress, capture, observers),
+    Stream.map(
+      QueryStep.$match({
+        event: ({ event }) => event,
+        end: ({ outcome, progress }) => conclude(outcome, progress, capture, observers),
+      }),
     ),
   );
 });

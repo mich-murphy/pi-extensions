@@ -90,7 +90,8 @@ describe("claude SDK version status", () => {
         ),
       );
 
-      expect(error).toMatchObject({ _tag: "ClaudeInstalledVersionError", reason: "not-installed" });
+      expect(error._tag).toBe("ClaudeInstalledVersionError");
+      expect(error).toMatchObject({ reason: "not-installed" });
       expect(error.message).toBe(
         "Claude Code (`claude`) was not found. Install it or set `PI_CLAUDE_PATH`.",
       );

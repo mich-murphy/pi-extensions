@@ -1,13 +1,13 @@
 import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { Skill } from "@earendil-works/pi-coding-agent";
+import { Result } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 import { registerPiSkills } from "../index";
 import type { ToggleHandlers } from "../index";
 import type { SessionProjection, TranscriptMessage } from "../prompt-epoch";
 import { resourcePathId } from "../resource-path";
 import type { ToggleValue } from "../resources";
-import { err, ok } from "../result";
 import { registerSession, sessionPolicy, unregisterSession } from "../session-registry";
 import type { SessionPolicy } from "../session-registry";
 import { ToggleStateUnavailable } from "../state";
@@ -42,9 +42,11 @@ function mutableStore(entries: Readonly<Record<string, ToggleValue>> = {}) {
   const store: ToggleStateStore = {
     load: () =>
       failing
-        ? err(new ToggleStateUnavailable("load", "/state.json", "EACCES", new Error("EACCES")))
-        : ok({ files: current, repositories: new Map() }),
-    set: () => ok({ files: current, repositories: new Map() }),
+        ? Result.fail(
+            new ToggleStateUnavailable("load", "/state.json", "EACCES", new Error("EACCES")),
+          )
+        : Result.succeed({ files: current, repositories: new Map() }),
+    set: () => Result.succeed({ files: current, repositories: new Map() }),
   };
   return {
     store,

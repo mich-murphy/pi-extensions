@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Result } from "effect";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { disabledResourceMatcher } from "../guard";
 import { RepositoryLocator } from "../repository";
@@ -22,10 +23,10 @@ import { timeoutOverTenfold } from "./test-timeouts";
 
 const directories: string[] = [];
 function value(result: ToggleStateResult) {
-  if (result._tag === "err") {
-    throw result.error;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.value;
+  return result.success;
 }
 function git(...args: string[]): string {
   return execFileSync(

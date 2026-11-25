@@ -21,12 +21,12 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { Result } from "effect";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../../pi-claude/agent-request";
 import { registerPiSkills } from "../index";
 import { resourcePathId } from "../resource-path";
 import type { ToggleValue } from "../resources";
-import { err } from "../result";
 import { ToggleStateFile, ToggleStateUnavailable } from "../state";
 import type { ToggleStateStore } from "../state";
 
@@ -93,7 +93,7 @@ class MemoryStore implements ToggleStateStore {
   load: ToggleStateStore["load"] = () => {
     if (this.failLoads > 0) {
       this.failLoads--;
-      return err(new ToggleStateUnavailable("load", "/state.json", "EACCES", undefined));
+      return Result.fail(new ToggleStateUnavailable("load", "/state.json", "EACCES", undefined));
     }
     return this.file.load();
   };
@@ -102,8 +102,8 @@ class MemoryStore implements ToggleStateStore {
 
   toggle(path: string, value: ToggleValue): this {
     const saved = this.file.set(resourcePathId(path, this.fixture.cwd), value);
-    if (saved._tag === "err") {
-      throw saved.error;
+    if (Result.isFailure(saved)) {
+      throw saved.failure;
     }
     return this;
   }

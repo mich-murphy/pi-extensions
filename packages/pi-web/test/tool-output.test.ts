@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DEFAULT_MAX_BYTES, formatSize } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, it, test } from "@effect/vitest";
 import { Effect, Result } from "effect";
+import { FetchPageBody } from "../fetch-page";
 import type { FetchPageResult } from "../fetch-page";
 import { OutputStoreError, writeTempTextFile } from "../temp";
 import {
@@ -39,7 +40,7 @@ function textResult(text: string): FetchPageResult {
       charset: UTF8,
       bytes: text.length,
     },
-    body: { _tag: "Text", kind: "html", text, decoder: UTF8 },
+    body: FetchPageBody.Text({ kind: "html", text, decoder: UTF8 }),
   };
 }
 
@@ -166,7 +167,7 @@ describe("projectFetchResult", () => {
           contentType: "image/png",
           bytes: 4,
         },
-        body: { _tag: "Image", data: Buffer.from([1, 2, 3, 4]) },
+        body: FetchPageBody.Image({ data: Buffer.from([1, 2, 3, 4]) }),
       };
       const projected = yield* Effect.result(
         projectFetchResult(image, {
@@ -198,7 +199,7 @@ describe("projectFetchResult", () => {
           charset: "sekrit-charset",
           bytes: raw.byteLength,
         },
-        body: { _tag: "Image", data: raw },
+        body: FetchPageBody.Image({ data: raw }),
       };
       const projected = yield* projectFetchResult(image, {
         store: liveToolOutputStore(),
@@ -388,7 +389,7 @@ describe("credential reflection defense", () => {
       const result = yield* projectFetchResult(
         {
           meta: { ...page.meta, mime: "image/key-long" },
-          body: { _tag: "Image", data: Buffer.from([0, 1]) },
+          body: FetchPageBody.Image({ data: Buffer.from([0, 1]) }),
         },
         { secrets: ["key", "key-long"], store: liveToolOutputStore() },
       );

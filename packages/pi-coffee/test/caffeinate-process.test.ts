@@ -5,7 +5,8 @@ import { join } from "node:path";
 import process from "node:process";
 import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
-import type { CaffeinateNotice, CaffeinateProcess } from "../coffee-lifecycle";
+import { CaffeinateNotice } from "../coffee-lifecycle";
+import type { CaffeinateProcess } from "../coffee-lifecycle";
 import coffee from "../index";
 import { fakePi } from "./fake-pi";
 
@@ -29,7 +30,7 @@ describe("caffeinate process adapter", () => {
   test("reports the exit of a child that stops by itself", async () => {
     const end = await ended(spawnNode(["-e", "process.exit(3)"]));
 
-    expect(end).toStrictEqual({ _tag: "exited", code: 3, signal: null });
+    expect(end).toStrictEqual(CaffeinateNotice.exited({ code: 3, signal: null }));
   });
 
   test("stops a running child with SIGTERM", async () => {
@@ -38,7 +39,9 @@ describe("caffeinate process adapter", () => {
 
     child.stop();
 
-    await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGTERM" });
+    await expect(end).resolves.toStrictEqual(
+      CaffeinateNotice.exited({ code: null, signal: "SIGTERM" }),
+    );
     child.stop();
   });
 
@@ -60,7 +63,9 @@ describe("caffeinate process adapter", () => {
 
         child.stop();
 
-        await expect(end).resolves.toStrictEqual({ _tag: "exited", code: null, signal: "SIGKILL" });
+        await expect(end).resolves.toStrictEqual(
+          CaffeinateNotice.exited({ code: null, signal: "SIGKILL" }),
+        );
       } finally {
         rmSync(directory, { recursive: true });
       }
@@ -73,12 +78,9 @@ describe("caffeinate process adapter", () => {
 
     const end = await ended(child);
 
-    assert(end._tag === "failed");
-    expect(end.error).toMatchObject({
-      _tag: "CaffeinateProcessError",
-      operation: "start",
-      code: "ENOENT",
-    });
+    assert(CaffeinateNotice.$is("failed")(end));
+    expect(end.error._tag).toBe("CaffeinateProcessError");
+    expect(end.error).toMatchObject({ operation: "start", code: "ENOENT" });
     expect(end.error.message).toBe(
       "/usr/bin/caffeinate was not found, so sleep prevention is unavailable.",
     );
@@ -90,7 +92,7 @@ describe("caffeinate process adapter", () => {
 
     const end = await ended(child);
 
-    assert(end._tag === "failed");
+    assert(CaffeinateNotice.$is("failed")(end));
     expect(end.error).toMatchObject({ operation: "start", code: "E2BIG" });
     expect(end.error.message).toBe(
       "Could not start caffeinate (E2BIG). Sleep is allowed until the next agent run.",

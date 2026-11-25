@@ -1,7 +1,7 @@
 import type { AssistantMessage, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
-import { Result } from "effect";
-import { describe, expect, test } from "vitest";
+import { Predicate, Result } from "effect";
+import { assert, describe, expect, test } from "vitest";
 import type { BridgeEvent } from "../bridge";
 import {
   InvalidDeferredCallError,
@@ -13,6 +13,7 @@ import {
   SdkProtocolError,
   SdkProviderDefect,
   SdkQueryError,
+  SdkQueryFailureReason,
   SdkResultError,
   SdkStreamInterruptedError,
   SdkToolContractError,
@@ -94,6 +95,14 @@ function failure(events: readonly BridgeEvent[]): SdkTurnFailure {
   return last.error;
 }
 
+function expectInterruption(
+  error: SdkTurnFailure,
+  evidence: SdkStreamInterruptedError["evidence"],
+): void {
+  assert(Predicate.isTagged("SdkStreamInterruptedError")(error));
+  expect(error.evidence).toBe(evidence);
+}
+
 async function failureOf(messages: readonly unknown[]): Promise<SdkTurnFailure> {
   const { events } = await runMessages(messages);
   return failure(events);
@@ -144,7 +153,7 @@ describe("commit point: no resend after output reached Pi", () => {
 
     expect(textsOf(events)).toStrictEqual(["PARTIAL"]);
     const error = failure(events);
-    expect(error).toMatchObject({ _tag: "SdkStreamInterruptedError", evidence: "api-retry" });
+    expectInterruption(error, "api-retry");
     expect(retryable(error)).toBe(true);
     expect(observed.consumedAfterRetry).toBe(false);
     expect(observed.params?.options?.abortController?.signal.aborted).toBe(true);
@@ -162,10 +171,7 @@ describe("commit point: no resend after output reached Pi", () => {
     ]);
 
     expect(textsOf(events)).toStrictEqual(["PARTIAL"]);
-    expect(failure(events)).toMatchObject({
-      _tag: "SdkStreamInterruptedError",
-      evidence: "new-attempt",
-    });
+    expectInterruption(failure(events), "new-attempt");
   });
 
   test("a resend that repeats the same request id is not a new attempt", async () => {
@@ -207,13 +213,14 @@ describe("commit point: no resend after output reached Pi", () => {
       apiErrorResult,
     ]);
     const error = failure(events);
-    expect(error).toMatchObject({ _tag: "SdkStreamInterruptedError", evidence: "api-error" });
+    expectInterruption(error, "api-error");
     expect(retryable(error)).toBe(true);
   });
 
   test("typed and pre-output API errors keep their own category", async () => {
     const typed = await failureOf([start("a"), apiErrorAssistant("server_error"), apiErrorResult]);
-    expect(typed).toMatchObject({ _tag: "SdkResultError", apiError: "server_error" });
+    expect(typed._tag).toBe("SdkResultError");
+    expect(typed).toMatchObject({ apiError: "server_error" });
     expect(retryable(typed)).toBe(true);
 
     const untypedBeforeOutput = await failureOf([apiErrorAssistant("unknown"), apiErrorResult]);
@@ -286,16 +293,16 @@ describe("stream lifecycle parsing", () => {
 });
 
 const queryReasons = [
-  { _tag: "Cancelled" },
-  { _tag: "ExecutableNotFound" },
-  { _tag: "ExecutableLaunchFailed" },
-  { _tag: "ClaudeCodeTooOld", version: "2.0.0" },
-  { _tag: "WorkingDirectoryUnavailable" },
-  { _tag: "ProcessExited", exitCode: 1 },
-  { _tag: "ProcessKilled", signal: "SIGTERM" },
-  { _tag: "ProcessKilled", signal: "SIGKILL" },
-  { _tag: "Unclassified" },
-] as const;
+  SdkQueryFailureReason.cases.Cancelled.make({}),
+  SdkQueryFailureReason.cases.ExecutableNotFound.make({}),
+  SdkQueryFailureReason.cases.ExecutableLaunchFailed.make({}),
+  SdkQueryFailureReason.cases.ClaudeCodeTooOld.make({ version: "2.0.0" }),
+  SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
+  SdkQueryFailureReason.cases.ProcessExited.make({ exitCode: 1 }),
+  SdkQueryFailureReason.cases.ProcessKilled.make({ signal: "SIGTERM" }),
+  SdkQueryFailureReason.cases.ProcessKilled.make({ signal: "SIGKILL" }),
+  SdkQueryFailureReason.cases.Unclassified.make({}),
+];
 const RETRYABLE_RESULT_CATEGORIES = new Set(["rate-limit", "server-error", "overloaded"]);
 
 const failuresByTag = {
@@ -337,8 +344,8 @@ const failuresByTag = {
 
 function intendedRetry(error: SdkTurnFailure): boolean {
   return (
-    error._tag === "SdkStreamInterruptedError" ||
-    (error._tag === "SdkResultError" && RETRYABLE_RESULT_CATEGORIES.has(error.category))
+    Predicate.isTagged("SdkStreamInterruptedError")(error) ||
+    (Predicate.isTagged("SdkResultError")(error) && RETRYABLE_RESULT_CATEGORIES.has(error.category))
   );
 }
 

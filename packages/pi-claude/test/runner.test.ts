@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
@@ -14,6 +14,8 @@ import type { BridgeEvent } from "../bridge";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import { models } from "../models";
+import { SdkQueryFailureReason } from "../sdk/errors";
+import type { SdkQueryError, SdkResultError, SdkTurnFailure } from "../sdk/errors";
 import { effectiveResultCategory } from "../sdk/result-failure";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type {
@@ -127,6 +129,23 @@ function failureOf(events: readonly BridgeEvent[]) {
     throw new Error("test setup: expected one failed event");
   }
   return event.error;
+}
+
+function expectQueryFailure(
+  error: SdkTurnFailure,
+  operation: SdkQueryError["operation"],
+  reason: SdkQueryFailureReason,
+): void {
+  expect(error._tag).toBe("SdkQueryError");
+  expect(error).toMatchObject({ operation, reason });
+}
+
+function expectResultFailure(
+  error: SdkTurnFailure,
+  details: Partial<Pick<SdkResultError, "apiError" | "category" | "terminalReason">>,
+): void {
+  expect(error._tag).toBe("SdkResultError");
+  expect(error).toMatchObject(details);
 }
 
 async function capturedParameters(
@@ -483,10 +502,9 @@ describe("turn streaming", () => {
       type: "usage",
       usage: { input: 14, output: 5, cacheRead: 3, cacheWrite: 1 },
     });
-    expect(events.at(-1)).toMatchObject({
-      type: "failed",
-      error: { _tag: "SdkInternalContinuationError" },
-    });
+    const terminal = events.at(-1);
+    assert(terminal?.type === "failed");
+    expect(terminal.error._tag).toBe("SdkInternalContinuationError");
   });
 
   test("does not repeat terminal usage that matches the last streamed totals", async () => {
@@ -674,7 +692,7 @@ describe("usage limit observation", () => {
       usageLimitResult,
     );
 
-    expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+    expectResultFailure(failureOf(events), { category: "usage-limit" });
     expect(observations).toStrictEqual([{ resetsAt: 1_792_548_000_000 }]);
   });
 
@@ -799,7 +817,7 @@ describe("usage limit observation", () => {
           usageLimitObserver,
         },
       );
-      expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+      expectResultFailure(failureOf(events), { category: "usage-limit" });
       expect(events.filter((event) => event.type === "failed")).toHaveLength(1);
       expect(closed).toBe(true);
       expect(signal?.aborted).toBe(true);
@@ -877,8 +895,7 @@ describe("deferred tool calls", () => {
             ),
           },
         );
-        expect(failureOf(events)).toMatchObject({
-          _tag: "SdkResultError",
+        expectResultFailure(failureOf(events), {
           terminalReason: "tool_deferred_unavailable",
           category: "tool-contract",
         });
@@ -940,11 +957,7 @@ describe("deferred tool calls", () => {
       ),
     );
 
-    expect(error).toMatchObject({
-      _tag: "SdkResultError",
-      terminalReason: "max_turns",
-      category: "turn-limit",
-    });
+    expectResultFailure(error, { terminalReason: "max_turns", category: "turn-limit" });
   });
 
   test("yields every hook-captured tool call once the SDK result confirms a clean defer", async () => {
@@ -1041,11 +1054,11 @@ describe("turn failures", () => {
       try {
         const error = failureOf(await runTurn(query));
         expect(query).not.toHaveBeenCalled();
-        expect(error).toMatchObject({
-          _tag: "SdkQueryError",
-          operation: "start",
-          reason: { _tag: "WorkingDirectoryUnavailable" },
-        });
+        expectQueryFailure(
+          error,
+          "start",
+          SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
+        );
         expect(error.message).toBe(
           "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.",
         );
@@ -1086,11 +1099,7 @@ describe("turn failures", () => {
 
     const error = failureOf(events);
 
-    expect(error).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "iterate",
-      reason: { _tag: "Unclassified" },
-    });
+    expectQueryFailure(error, "iterate", SdkQueryFailureReason.cases.Unclassified.make({}));
     expect(error.message).not.toContain("transport disconnected");
   });
 
@@ -1103,11 +1112,7 @@ describe("turn failures", () => {
 
     const error = failureOf(await runTurn(() => unopenable));
 
-    expect(error).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "iterate",
-      reason: { _tag: "Unclassified" },
-    });
+    expectQueryFailure(error, "iterate", SdkQueryFailureReason.cases.Unclassified.make({}));
   });
 
   test("reports a typed authentication failure from an assistant message", async () => {
@@ -1126,10 +1131,7 @@ describe("turn failures", () => {
     const error = events.at(-1);
 
     assert(error?.type === "failed");
-    expect(error.error).toMatchObject({
-      _tag: "SdkResultError",
-      apiError: "authentication_failed",
-    });
+    expectResultFailure(error.error, { apiError: "authentication_failed" });
     expect(error.error.message).toBe(
       "Claude could not verify your account or cloud credentials. Run `claude auth login` to sign in.",
     );
@@ -1163,11 +1165,7 @@ describe("turn failures", () => {
       }),
     );
 
-    expect(error).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "start",
-      reason: { _tag: "Unclassified" },
-    });
+    expectQueryFailure(error, "start", SdkQueryFailureReason.cases.Unclassified.make({}));
   });
 
   test("fails on a malformed SDK message and stops the query", async () => {
@@ -1212,11 +1210,7 @@ describe("SDK query cancellation", () => {
     );
 
     expect(queryStarted).toBe(false);
-    expect(failureOf(events)).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "start",
-      reason: { _tag: "Cancelled" },
-    });
+    expectQueryFailure(failureOf(events), "start", SdkQueryFailureReason.cases.Cancelled.make({}));
   });
 
   test("reports caller cancellation when the SDK returns a clean result after being aborted", async () => {
@@ -1230,11 +1224,11 @@ describe("SDK query cancellation", () => {
       { signal: controller.signal },
     );
 
-    expect(failureOf(events)).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "iterate",
-      reason: { _tag: "Cancelled" },
-    });
+    expectQueryFailure(
+      failureOf(events),
+      "iterate",
+      SdkQueryFailureReason.cases.Cancelled.make({}),
+    );
   });
 
   test("reports cancellation, not a missing result, on clean aborted EOF", async () => {
@@ -1247,11 +1241,11 @@ describe("SDK query cancellation", () => {
       requestFixture(),
       { signal: controller.signal },
     );
-    expect(failureOf(events.slice(1))).toMatchObject({
-      _tag: "SdkQueryError",
-      operation: "iterate",
-      reason: { _tag: "Cancelled" },
-    });
+    expectQueryFailure(
+      failureOf(events.slice(1)),
+      "iterate",
+      SdkQueryFailureReason.cases.Cancelled.make({}),
+    );
   });
 
   test("keeps an explicit failed terminal result ahead of caller cancellation", async () => {
@@ -1264,7 +1258,7 @@ describe("SDK query cancellation", () => {
       requestFixture(),
       { signal: controller.signal },
     );
-    expect(failureOf(events)).toMatchObject({ _tag: "SdkResultError", category: "usage-limit" });
+    expectResultFailure(failureOf(events), { category: "usage-limit" });
   });
 
   test("keeps cancellation ahead of pending correction calls", async () => {
@@ -1571,7 +1565,7 @@ describe("rate-limit classification", () => {
       resultMessage({ is_error: true }),
     );
     const error = failedOf(events);
-    assert(error._tag === "SdkResultError");
+    assert(Predicate.isTagged("SdkResultError")(error));
     expect(error).toMatchObject({ apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
     expect(error.message).toBe("Claude hit a rate limit: too many requests in a short time.");
@@ -1585,7 +1579,7 @@ describe("rate-limit classification", () => {
       resultMessage({ is_error: true }),
     );
     const error = failedOf(events);
-    assert(error._tag === "SdkResultError");
+    assert(Predicate.isTagged("SdkResultError")(error));
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
     expect(observations).toStrictEqual([]);
   });
@@ -1607,7 +1601,7 @@ describe("rate-limit classification", () => {
       resultMessage({ is_error: true }),
     );
     const error = failedOf(events);
-    assert(error._tag === "SdkResultError");
+    assert(Predicate.isTagged("SdkResultError")(error));
     expect(error).toMatchObject({ category: "usage-limit", apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("usage-limit");
     expect(error.message).toBe(

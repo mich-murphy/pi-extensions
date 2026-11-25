@@ -53,13 +53,15 @@ export type ReportedUsage = typeof usageSchema.Type;
 
 export type ModelUsage = typeof modelUsageSchema.Type;
 
-export type TurnResult =
-  | {
-      readonly _tag: "completed";
-      readonly stopReason: "stop" | "length";
-      readonly terminalReason: string | undefined;
-    }
-  | { readonly _tag: "failed"; readonly error: Readonly<SdkResultError> };
+export const TurnResult = Schema.TaggedUnion({
+  completed: {
+    stopReason: Schema.Literals(["stop", "length"]),
+    terminalReason: Schema.UndefinedOr(Schema.String),
+  },
+  failed: { error: SdkResultError },
+});
+
+export type TurnResult = typeof TurnResult.Type;
 
 export type SdkMessage =
   | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
@@ -117,10 +119,12 @@ function turnResult(result: typeof resultSchema.Type): TurnResult | undefined {
   if (failure) {
     const category =
       failure === "provider" ? resultFailureCategory(terminalReason, result.subtype) : failure;
-    return { _tag: "failed", error: new SdkResultError({ terminalReason, category }) };
+    return TurnResult.cases.failed.make({
+      error: new SdkResultError({ terminalReason, category }),
+    });
   }
   if (stop === "stop" || stop === "length") {
-    return { _tag: "completed", stopReason: stop, terminalReason };
+    return TurnResult.cases.completed.make({ stopReason: stop, terminalReason });
   }
   return undefined;
 }
