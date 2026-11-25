@@ -1,5 +1,5 @@
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
   decodeKittyPrintable,
   Editor,
@@ -268,12 +268,12 @@ export type VimRegistration = {
   readonly on: (
     name: "session_start",
     handler: (
-      event: unknown,
+      event: SessionStartEvent,
       ctx: Pick<ExtensionContext, "mode"> & {
         readonly ui: Pick<ExtensionContext["ui"], "setEditorComponent">;
       },
     ) => void,
-  ) => unknown;
+  ) => void;
   readonly registerCommand: (name: "vim", options: OnOffCommand<VimCommandContext>) => void;
 };
 

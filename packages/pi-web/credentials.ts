@@ -33,7 +33,7 @@ function validateCredential(provider: SearchProviderName, value: string | undefi
   if (value === undefined) {
     return Effect.succeed(undefined);
   }
-  if (typeof value !== "string") {
+  if (!Schema.is(Schema.String)(value)) {
     return Effect.fail(new CredentialFailure({ provider, reason: "invalid" }));
   }
   const trimmed = value.trim();

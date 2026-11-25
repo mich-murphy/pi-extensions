@@ -5,8 +5,12 @@ import type {
   ExtensionContext,
   ExtensionUIContext,
   InputSource,
+  ResourcesDiscoverEvent,
+  SessionStartEvent,
+  ToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import { cacheDebugSink, runRecord, usageRecord } from "./cache-debug";
 import type { DebugSink } from "./cache-debug";
 import { diagnosticText } from "./diagnostic-text";
@@ -31,12 +35,19 @@ import { ToggleStateFile } from "./state";
 import type { ToggleStateResult, ToggleStateStore } from "./state";
 import type { ToggleNote } from "./toggle-note";
 
+export type ToggleDialogFactory = (
+  tui: Parameters<Parameters<ExtensionUIContext["custom"]>[0]>[0],
+  theme: ExtensionUIContext["theme"],
+  keybindings: Parameters<Parameters<ExtensionUIContext["custom"]>[0]>[2],
+  done: () => void,
+) => ReturnType<Parameters<ExtensionUIContext["custom"]>[0]>;
+
 export type ToggleCommandContext = Pick<
   ExtensionCommandContext,
   "cwd" | "mode" | "getSystemPromptOptions"
 > & {
   readonly ui: Pick<ExtensionUIContext, "notify"> & {
-    readonly custom: (factory: Parameters<ExtensionUIContext["custom"]>[0]) => Promise<unknown>;
+    readonly custom: (factory: ToggleDialogFactory) => Promise<void>;
   };
 };
 
@@ -64,14 +75,14 @@ export type PromptContext = UiContext & {
 
 export type PromptFilterResult = { systemPrompt: string } | { message: ToggleNote } | undefined;
 
-export type GuardedToolCall = {
-  readonly toolName: string;
-  readonly input: Readonly<Record<string, unknown>>;
-};
+export type GuardedToolCall = Readonly<Pick<ToolCallEvent, "toolName" | "input">>;
+
+const isReadInput = Schema.is(Schema.Struct({ path: Schema.String }));
+const isShellInput = Schema.is(Schema.Struct({ command: Schema.String }));
 
 export type ToggleHandlers = {
   readonly resources_discover: (
-    event: unknown,
+    event: ResourcesDiscoverEvent,
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
   ) => Promise<{ skillPaths: string[] } | undefined>;
   readonly before_agent_start: (event: PromptFilterEvent, ctx: PromptContext) => PromptFilterResult;
@@ -88,21 +99,21 @@ export type ToggleHandlers = {
     ctx: { readonly sessionManager: Pick<PromptContext["sessionManager"], "getSessionId"> },
   ) => void;
   readonly session_start: (
-    event: unknown,
+    event: SessionStartEvent,
     ctx: { readonly sessionManager: SessionIdentity },
   ) => void;
-  readonly session_shutdown: (event: unknown, ctx: unknown) => void;
+  readonly session_shutdown: () => void;
 };
 
 export type ToggleRegistration = Pick<ExtensionAPI, "getCommands" | "exec"> & {
   readonly on: {
-    (name: "resources_discover", handler: ToggleHandlers["resources_discover"]): unknown;
-    (name: "before_agent_start", handler: ToggleHandlers["before_agent_start"]): unknown;
-    (name: "tool_call", handler: ToggleHandlers["tool_call"]): unknown;
-    (name: "input", handler: ToggleHandlers["input"]): unknown;
-    (name: "message_end", handler: ToggleHandlers["message_end"]): unknown;
-    (name: "session_start", handler: ToggleHandlers["session_start"]): unknown;
-    (name: "session_shutdown", handler: ToggleHandlers["session_shutdown"]): unknown;
+    (name: "resources_discover", handler: ToggleHandlers["resources_discover"]): void;
+    (name: "before_agent_start", handler: ToggleHandlers["before_agent_start"]): void;
+    (name: "tool_call", handler: ToggleHandlers["tool_call"]): void;
+    (name: "input", handler: ToggleHandlers["input"]): void;
+    (name: "message_end", handler: ToggleHandlers["message_end"]): void;
+    (name: "session_start", handler: ToggleHandlers["session_start"]): void;
+    (name: "session_shutdown", handler: ToggleHandlers["session_shutdown"]): void;
   };
   readonly registerCommand: (
     name: string,
@@ -436,7 +447,7 @@ class PiSkills {
         theme,
         keybindings,
         done: () => {
-          done(undefined);
+          done();
         },
       }),
     );
@@ -520,14 +531,14 @@ class PiSkills {
   }
 
   private readPath(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
-    const { path } = event.input;
-    return event.toolName === "read" && typeof path === "string" ? [toolPath(path, ctx.cwd)] : [];
+    return event.toolName === "read" && isReadInput(event.input)
+      ? [toolPath(event.input.path, ctx.cwd)]
+      : [];
   }
 
   private subagentShellReads(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
-    const { command } = event.input;
-    return typeof command === "string" && isSubagentSession(ctx)
-      ? pathsReadByCommand(command, ctx.cwd)
+    return isShellInput(event.input) && isSubagentSession(ctx)
+      ? pathsReadByCommand(event.input.command, ctx.cwd)
       : [];
   }
 

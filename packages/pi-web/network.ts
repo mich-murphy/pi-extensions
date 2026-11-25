@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { STATUS_CODES } from "node:http";
 import { BlockList, isIP } from "node:net";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { absurd } from "effect/Function";
 import { checkDomainPolicy } from "./domain-policy";
 import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
@@ -38,7 +38,7 @@ export type ParsedContentType = {
 };
 
 export type PublicWebRequest = {
-  readonly url: PublicHttpUrl;
+  readonly url: string;
   readonly accept: string;
   readonly userAgent: string;
   readonly fallbackUserAgent: string;
@@ -50,7 +50,7 @@ export type PublicWebRequest = {
 };
 
 export type PublicWebResponse = {
-  readonly requestedUrl: PublicHttpUrl;
+  readonly requestedUrl: string;
   readonly finalUrl: PublicHttpUrl;
   readonly status: number;
   readonly headers: Headers;
@@ -199,12 +199,23 @@ const NETWORK_CODE_KINDS: ReadonlyMap<string, "dns" | "refused" | "reset" | "tim
 const MAX_CAUSE_DEPTH = 8;
 
 export function sanitizeNetworkFailure(cause: unknown): { readonly code: string } | undefined {
-  const code = findNetworkCode(cause);
-  return code === undefined ? undefined : { code };
+  let current = cause;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    const decoded = decodeNetworkCause(current);
+    if (Option.isNone(decoded)) {
+      return undefined;
+    }
+    const { code, cause: next } = decoded.value;
+    if (Schema.is(Schema.String)(code) && networkCodeKind(code)) {
+      return { code };
+    }
+    current = next;
+  }
+  return undefined;
 }
 
 export function describeNetworkFailure(cause: unknown, hostname: string): string {
-  const code = findNetworkCode(cause);
+  const code = sanitizeNetworkFailure(cause)?.code;
   const kind = code === undefined ? undefined : networkCodeKind(code);
   if (kind === undefined) {
     return `Request to ${hostname} failed`;
@@ -241,19 +252,12 @@ function networkCodeKind(
   return undefined;
 }
 
-function findNetworkCode(error: unknown): string | undefined {
-  let current = error;
-  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
-    if (typeof current !== "object" || current === null) {
-      return undefined;
-    }
-    if ("code" in current && typeof current.code === "string" && networkCodeKind(current.code)) {
-      return current.code;
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-  return undefined;
-}
+const decodeNetworkCause = Schema.decodeUnknownOption(
+  Schema.Struct({
+    code: Schema.optionalKey(Schema.Unknown),
+    cause: Schema.optionalKey(Schema.Unknown),
+  }),
+);
 
 export function parseContentType(contentTypeHeader: string | null | undefined): ParsedContentType {
   const contentType = contentTypeHeader?.trim() ?? "";

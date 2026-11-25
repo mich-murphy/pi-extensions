@@ -1,16 +1,14 @@
-/* oxlint-disable typescript/no-unsafe-type-assertion -- trusted same-checkout snapshot modules and role-checked persisted messages */
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { Message, Model, Api } from "@earendil-works/pi-ai";
+import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { Type } from "typebox";
 import type * as BridgeModule from "../../../../packages/pi-claude/bridge";
 import type { CacheDiagnostic } from "../../../../packages/pi-claude/cache-tracker";
@@ -21,6 +19,7 @@ import type { RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
 import type * as RunnerModule from "../../../../packages/pi-claude/sdk/runner";
 import type * as RecoveryModule from "../../../../packages/pi-claude/validation-recovery";
 import { DUMMY_PARSER_KEY, startParserTransport } from "./parser-transport";
+import { snapshotLoader, snapshotModel } from "./snapshot";
 
 const { values } = parseArgs({
   options: {
@@ -42,25 +41,72 @@ const work = path.resolve(values.work);
 assert(
   work.startsWith("/tmp/pi-claude-state-") || work.startsWith("/private/tmp/pi-claude-state-"),
 );
-const load = async (file: string): Promise<unknown> =>
-  import(pathToFileURL(path.join(packageDir, file)).href);
-const { createClaudeAgentSdkRunner } = (await load("sdk/runner.ts")) as typeof RunnerModule;
-const { createAgentSdkStream } = (await load("bridge.ts")) as typeof BridgeModule;
-const { createCacheDiagnosticTracker } = (await load("cache-tracker.ts")) as typeof TrackerModule;
-const { models } = (await load("models.ts")) as typeof ModelsModule;
-const { validationRecoveryTool, blockValidationRecovery, VALIDATION_ERROR_TOOL } = (await load(
-  "validation-recovery.ts",
-)) as typeof RecoveryModule;
-const { safeTerminalReason } = (await load("sdk/result-failure.ts")) as typeof FailureModule;
+const load = snapshotLoader(packageDir);
+const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runner.ts");
+const { createAgentSdkStream } = await load<typeof BridgeModule>("bridge.ts");
+const { createCacheDiagnosticTracker } = await load<typeof TrackerModule>("cache-tracker.ts");
+const { models } = await load<typeof ModelsModule>("models.ts");
+const {
+  validationRecoveryTool,
+  blockValidationRecovery,
+  decodeValidationInput,
+  VALIDATION_ERROR_TOOL,
+} = await load<typeof RecoveryModule>("validation-recovery.ts");
+const { safeTerminalReason } = await load<typeof FailureModule>("sdk/result-failure.ts");
 const entry = models.find((candidate) => candidate.id === "claude-4.5-haiku");
 assert(entry);
-const model = {
-  ...entry,
-  api: "claude",
-  provider: "claude",
-  baseUrl: "agent-sdk://local-claude-code",
-} as unknown as Model<Api>;
-const reports: Record<string, unknown>[] = [];
+const model = snapshotModel(entry);
+
+type QueryTerminal = {
+  mainPrompt: number;
+  modelPrompt: number;
+  modelCount: number;
+  isError: boolean;
+  terminalReason: string | undefined;
+  stopReason: string;
+  numTurns: number;
+};
+type QueryReport = {
+  query: number;
+  outputCeiling: number;
+  batches?: number;
+  unhooked?: number;
+  errorResults?: number;
+  jsonParseErrors?: number;
+  preHooks?: number;
+  terminal?: QueryTerminal | undefined;
+};
+type JourneyReport = {
+  case: string;
+  faultInjected: boolean;
+  transport: string;
+  queryReports: QueryReport[];
+  diagnostics?: readonly Extract<CacheDiagnostic, { type: "usage" | "query" }>["query"][];
+  executions?: number;
+  durableBeforeCorrection?: boolean;
+  injected?: number;
+  queries?: number;
+  status?: "passed";
+};
+type ProbeReport =
+  | JourneyReport
+  | { status: "failed"; reason: string }
+  | ({ transport: string } & ReturnType<
+      Awaited<ReturnType<typeof startParserTransport>>["summary"]
+    >);
+const reports: ProbeReport[] = [];
+const isText = Schema.is(Schema.String);
+const isCorrectedInput = Schema.is(Schema.Struct({ value: Schema.Literal("corrected") }));
+
+function isTranscriptMessage(message: AgentMessage): message is Message {
+  return (
+    message.role === "system" ||
+    message.role === "user" ||
+    message.role === "assistant" ||
+    message.role === "toolResult"
+  );
+}
+
 let transport: Awaited<ReturnType<typeof startParserTransport>> | undefined;
 if (offline) {
   assert(process.env.PI_CLAUDE_SDK_OFFLINE_PARSER === "1");
@@ -80,8 +126,8 @@ async function journey() {
   let injected = 0;
   let durableBeforeCorrection = false;
   const records: CacheDiagnostic[] = [];
-  const queryReports: Record<string, unknown>[] = [];
-  const report: Record<string, unknown> = {
+  const queryReports: QueryReport[] = [];
+  const report: JourneyReport = {
     case: kind,
     faultInjected: !offline,
     transport: offline ? "offline-synthetic-messages-sse-real-sdk-cli" : "live-subscription",
@@ -102,7 +148,7 @@ async function journey() {
     );
   }
   const runSdkQuery: RunSdkQuery = observeQuery;
-  async function* observeQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
+  async function* observeQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator<SDKMessage> {
     queries += 1;
     assert(queries <= 3, "outer query budget exceeded");
     if (queries === 2) {
@@ -116,7 +162,7 @@ async function journey() {
     let unhooked = 0;
     let errorResults = 0;
     let jsonParseErrors = 0;
-    let terminal: Record<string, unknown> | undefined;
+    let terminal: QueryTerminal | undefined;
     const pre = params.options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
     const batch = params.options?.hooks?.PostToolBatch?.[0]?.hooks?.[0];
     assert(pre && batch);
@@ -137,7 +183,7 @@ async function journey() {
       }
       return batch(input, id, options);
     };
-    const summary = {
+    const summary: QueryReport = {
       query: queries,
       outputCeiling: 2048,
     };
@@ -161,8 +207,7 @@ async function journey() {
             for (const block of content) {
               if (block.type === "tool_result" && block.is_error === true) {
                 errorResults += 1;
-                const text =
-                  typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+                const text = isText(block.content) ? block.content : JSON.stringify(block.content);
                 if (/JSON.*pars|pars.*JSON|invalid JSON/iu.test(text)) {
                   jsonParseErrors += 1;
                 }
@@ -248,13 +293,7 @@ async function journey() {
       parameters: Type.Object({ value: Type.String() }),
       async execute(_id, args) {
         assert(hasError(), "execution before durable rejection");
-        assert(
-          typeof args === "object" &&
-            args !== null &&
-            "value" in args &&
-            args.value === "corrected",
-          "unexpected probe argument",
-        );
+        assert(isCorrectedInput(args), "unexpected probe argument");
         executions += 1;
         assert(executions === 1, "duplicate execution");
         return { content: [{ type: "text", text: "RECOVERY_OK" }], details: undefined };
@@ -275,18 +314,16 @@ async function journey() {
       { messages: [], tools },
       {
         model,
-        convertToLlm: (history) =>
-          history.filter((m): m is Message =>
-            ["system", "user", "assistant", "toolResult"].includes(m.role),
+        convertToLlm: (history) => history.filter((message) => isTranscriptMessage(message)),
+        beforeToolCall: async ({ toolCall, args }) =>
+          blockValidationRecovery(
+            toolCall.name,
+            Option.getOrUndefined(decodeValidationInput(args)),
           ),
-        beforeToolCall: async ({ toolCall, args }) => blockValidationRecovery(toolCall.name, args),
       },
       (event) => {
-        if (
-          event.type === "message_end" &&
-          ["system", "user", "assistant", "toolResult"].includes(event.message.role)
-        ) {
-          session.appendMessage(event.message as Message);
+        if (event.type === "message_end" && isTranscriptMessage(event.message)) {
+          session.appendMessage(event.message);
         }
       },
       AbortSignal.timeout(180_000),
@@ -307,7 +344,7 @@ async function journey() {
     }
     assert(
       queryReports.every((r) => {
-        const terminal = r.terminal as Record<string, unknown> | undefined;
+        const { terminal } = r;
         return terminal?.modelCount === 1 && terminal.mainPrompt === terminal.modelPrompt;
       }),
       "query pipeline usage mismatch",

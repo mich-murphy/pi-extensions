@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { isAbsolute, join } from "node:path";
+import { Schema } from "effect";
 import { createPrivate, regularBytes, privateDirectory } from "./files.js";
 import { credentials, pairAction } from "./pair.js";
 import type { Credentials } from "./pair.js";
@@ -51,13 +52,20 @@ export function pathError(value: string): string | undefined {
   return isAbsolute(value) ? undefined : "Use an absolute path, starting with /.";
 }
 
+const validOfferNames = Schema.is(
+  Schema.Struct({
+    machineId: Schema.String.check(Schema.isPattern(MACHINE)),
+    peerMachineId: Schema.String.check(Schema.isPattern(MACHINE)),
+  }),
+);
+
 export type OfferPreview = { readonly peerMachineId: string; readonly localMachineId: string };
 export async function readOffer(path: string): Promise<OfferPreview | string> {
   const invalid = pathError(path);
   if (invalid !== undefined) {
     return invalid;
   }
-  let offer: Record<string, unknown>;
+  let offer: Schema.JsonObject;
   try {
     const bytes = await regularBytes(path, true);
     if (bytes === undefined) {
@@ -67,16 +75,10 @@ export async function readOffer(path: string): Promise<OfferPreview | string> {
   } catch {
     return "That file could not be read as a public offer.";
   }
-  const { machineId, peerMachineId } = offer;
-  if (
-    typeof machineId !== "string" ||
-    typeof peerMachineId !== "string" ||
-    !MACHINE.test(machineId) ||
-    !MACHINE.test(peerMachineId)
-  ) {
+  if (!validOfferNames(offer)) {
     return "That offer has invalid machine names.";
   }
-  return { peerMachineId: machineId, localMachineId: peerMachineId };
+  return { peerMachineId: offer.machineId, localMachineId: offer.peerMachineId };
 }
 export function remoteReview(intent: RemoteIntent, directory: string): string {
   return [
@@ -173,7 +175,7 @@ export async function prepareRemote(
   await privateDirectory(directory);
   const runtimeDir = join(directory, "pair");
   let material: Credentials | undefined;
-  let output: Record<string, unknown> = {};
+  let output: Schema.JsonObject = {};
   if (intent.kind === "create") {
     output = await pairAction(executable, directory, "create", {
       issuerDir: join(directory, "issuer"),

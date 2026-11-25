@@ -1,13 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { text } from "node:stream/consumers";
 import { fileURLToPath } from "node:url";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { FEEDBACK_NOTE_TYPE, FEEDBACK_TOOL } from "../feedback.ts";
 import { JEV_MODEL, JEV_MODEL_ID } from "../jev.ts";
@@ -36,12 +35,10 @@ function cliPath(): string {
   return join(PI_PACKAGE, manifest.bin.pi);
 }
 
-const SCORES: Readonly<Record<string, number>> = {
-  harnessPath: 0.2,
-  pathExisted: 0.3,
-  outsideService: 0.05,
-  sameCause: 0.1,
-};
+const SCORES = new Map(
+  Object.entries({ harnessPath: 0.2, pathExisted: 0.3, outsideService: 0.05, sameCause: 0.1 }),
+);
+const decodeAddress = Schema.decodeUnknownOption(Schema.Struct({ port: Schema.Number }));
 
 async function answer(
   request: IncomingMessage,
@@ -53,7 +50,7 @@ async function answer(
   );
   requests.push(parsed);
   const answers = Object.fromEntries(
-    Object.keys(parsed.questions).map((id) => [id, { type: "noul", noul: SCORES[id] ?? 0 }]),
+    Object.keys(parsed.questions).map((id) => [id, { type: "noul", noul: SCORES.get(id) ?? 0 }]),
   );
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ answers }));
@@ -69,8 +66,7 @@ async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
-  const address: AddressInfo | string | null = server.address();
-  return typeof address === "object" && address !== null ? address.port : 0;
+  return Option.getOrUndefined(decodeAddress(server.address()))?.port ?? 0;
 }
 
 async function ledgerUntil(

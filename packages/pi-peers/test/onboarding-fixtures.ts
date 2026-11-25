@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { Schema } from "effect";
 import { vi } from "vitest";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
 import type { DialogContext } from "../onboarding/dialog.js";
@@ -134,13 +135,15 @@ export async function nativeUntil(check: () => Promise<boolean>, deadlineMs = 50
   }
 }
 
+const isAddress = Schema.is(Schema.Struct({ address: Schema.String, port: Schema.Number }));
+
 export async function nativeAddress(): Promise<string> {
   const server = createServer();
   const listening = once(server, "listening");
   server.listen(0, "127.0.0.1");
   await listening;
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  if (address === null || !isAddress(address)) {
     throw new Error("No native fixture port");
   }
   const closed = once(server, "close");
@@ -195,7 +198,9 @@ export function nativeParticipants() {
   };
 }
 
-export const noPins: { catalog: GatewayCatalog } = { catalog: { nix: null, native: null } };
+export const noPins = { catalog: { nix: null, native: null } } satisfies {
+  catalog: GatewayCatalog;
+};
 
 export async function consentOutcome(
   open: (progress: Progress) => Screen,

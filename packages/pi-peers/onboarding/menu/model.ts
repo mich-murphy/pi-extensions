@@ -2,7 +2,7 @@ export type Consent = { consented: (action: string) => void };
 
 export type ActGuard = { readonly canAct: () => boolean; readonly busy: string };
 
-export type Saved = string | (() => void) | undefined;
+export type Saved = { error: string } | { apply: () => void } | undefined;
 
 export type Activation =
   | { readonly kind: "open"; readonly screen: () => Screen }
@@ -174,7 +174,7 @@ export class MenuModel {
     try {
       saved = await result;
     } catch {
-      saved = "That could not be checked.";
+      saved = { error: "That could not be checked." };
     } finally {
       this.busy = false;
     }
@@ -186,11 +186,11 @@ export class MenuModel {
     if (this.top !== screen || this.closed) {
       return;
     }
-    if (typeof saved === "string") {
-      this.error = saved;
+    if (saved !== undefined && "error" in saved) {
+      this.error = saved.error;
       return;
     }
-    saved?.();
+    saved?.apply();
     this.back();
   }
 

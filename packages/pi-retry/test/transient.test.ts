@@ -9,12 +9,13 @@ import {
   readTransientSettings,
   registerRetry,
 } from "../retry";
+import type { RetrySettingsInput } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 
 const MINUTE = CHECK_INTERVAL_MS;
 const CONNECTION_ERROR = "Connection error.";
 
-function harness(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
+function harness(mode: ExtensionContext["mode"] = "tui", settings: RetrySettingsInput = {}) {
   const pi = fakePi(mode, settings);
   registerRetry(pi.pi, pi.deps);
   return pi;

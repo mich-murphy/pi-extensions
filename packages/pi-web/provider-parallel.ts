@@ -10,7 +10,13 @@ import {
   ProviderProtocolInvalid,
   publicHttpUrlSchema,
 } from "./provider-types";
-import type { FetchProvider, ProviderError, SearchInput, SearchProvider } from "./provider-types";
+import type {
+  FetchProvider,
+  ProviderError,
+  ProviderJson,
+  SearchInput,
+  SearchProvider,
+} from "./provider-types";
 import {
   PARALLEL_API_SEARCH_URL,
   SEARCH_MAX_RESPONSE_BYTES,
@@ -57,7 +63,7 @@ const decodeParallelFetchPayload = Schema.decodeUnknownOption(
 );
 
 export function parseParallelResults(
-  payload: unknown,
+  payload: ProviderJson,
 ): Result.Result<readonly NormalizedSearchResult[], string> {
   const parsed = decodeParallelResultsPayload(payload);
   return Result.isSuccess(parsed)
@@ -177,7 +183,7 @@ function readParallelFetchResult(call: McpToolCallResult): string | undefined {
   return fromJson ?? text;
 }
 
-function extractParallelFetchText(payload: unknown): string | undefined {
+function extractParallelFetchText(payload: ProviderJson | undefined): string | undefined {
   return Option.getOrUndefined(
     Option.map(decodeParallelFetchPayload(payload), (parsed) => {
       const [first] = parsed.results;

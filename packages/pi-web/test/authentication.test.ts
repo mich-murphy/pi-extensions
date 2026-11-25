@@ -35,7 +35,7 @@ describe("public native web authentication", () => {
     for (const metadata of Object.values(WEB_AUTH_PROVIDERS)) {
       expect(registry.getAll().filter((model) => model.provider === metadata.id)).toStrictEqual([]);
       expect(registry.getProvider(metadata.id)?.name).toBe(metadata.label);
-      expect(typeof registry.getProvider(metadata.id)?.auth.apiKey?.login).toBe("function");
+      expect(registry.getProvider(metadata.id)).toHaveProperty("auth.apiKey.login");
     }
     const first = await resolve();
     assert(Result.isSuccess(first));
@@ -95,7 +95,7 @@ describe("public native web authentication", () => {
     await expect(runtime.checkAuth("pi-web-exa")).resolves.toBeUndefined();
     const auth = registry.getRegisteredNativeProvider("pi-web-exa")?.auth.apiKey;
     assert(auth !== undefined);
-    assert(typeof auth.check === "function");
+    assert(auth.check !== undefined);
     await expect(
       auth.check({
         credential: { type: "api_key", key: "!must-not-execute" },
@@ -161,7 +161,7 @@ describe("public native web authentication", () => {
       const auth = registry.getRegisteredNativeProvider("pi-web-exa")?.auth.apiKey;
       assert(auth !== undefined);
       const operation = auth[method];
-      assert(typeof operation === "function");
+      assert(operation !== undefined);
       const controller = new AbortController();
       await expect(
         operation({

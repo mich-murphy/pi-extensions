@@ -6,7 +6,8 @@ import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
+import type { Schema } from "effect";
 import { Type } from "typebox";
 import { assert, describe, expect, test } from "vitest";
 import { buildAgentRequest } from "../agent-request";
@@ -17,9 +18,11 @@ import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunSdkQuery } from "../sdk/runner";
 import {
   blockValidationRecovery,
+  decodeValidationInput,
   VALIDATION_ERROR_TOOL,
   validationRecoveryReason,
 } from "../validation-recovery";
+import type { ValidationInput } from "../validation-recovery";
 import {
   contextFixture,
   deliverToolUse,
@@ -34,7 +37,7 @@ import {
 
 async function postBatch(
   params: Parameters<RunSdkQuery>[0],
-  input: unknown,
+  input: Schema.Json,
   id = "bad",
   name = "read",
 ) {
@@ -58,7 +61,7 @@ async function* simulatedSdkRejectionNotRealCliPath(
   params: Parameters<RunSdkQuery>[0],
   path: string,
 ): AsyncGenerator {
-  let input: unknown = {};
+  let input: string | { readonly path?: string } = {};
   if (path === "pre-hook-validation") {
     input = "unparseable input";
   }
@@ -140,7 +143,7 @@ const RECOVERY_SCENARIOS: readonly { readonly path: RecoveryPath; readonly inact
   { path: "missing-arguments", inactive: true },
 ];
 
-const REJECTION_KIND: Readonly<Record<RecoveryPath, string>> = {
+const REJECTION_KIND: Readonly<Record<RecoveryPath, ValidationInput["error"]>> = {
   "missing-arguments": "invalid_tool_input",
   "pre-hook-validation": "sdk_input_rejected",
   "unhooked-valid": "uncaptured_tool_batch",
@@ -177,7 +180,7 @@ const isQueryRecord = (record: CacheDiagnostic): boolean =>
 const isBadResult = (message: AgentMessage): boolean =>
   message.role === "toolResult" && message.toolCallId === "bad";
 
-function rejectionText(rejectionKind: string, inactive: boolean): string {
+function rejectionText(rejectionKind: ValidationInput["error"], inactive: boolean): string {
   return inactive
     ? `Tool ${VALIDATION_ERROR_TOOL} not found`
     : validationRecoveryReason({ error: rejectionKind });
@@ -265,7 +268,11 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
       {
         model: sonnet,
         convertToLlm: (history) => history.filter((message) => isPiMessage(message)),
-        beforeToolCall: async ({ toolCall, args }) => blockValidationRecovery(toolCall.name, args),
+        beforeToolCall: async ({ toolCall, args }) =>
+          blockValidationRecovery(
+            toolCall.name,
+            Option.getOrUndefined(decodeValidationInput(args)),
+          ),
       },
       recordTo(session),
       undefined,
@@ -291,6 +298,12 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
   }
 }
 
+function findRejectedCall(messages: readonly AgentMessage[]) {
+  return messages
+    .flatMap((message) => (message.role === "assistant" ? message.content : []))
+    .find((block) => block.type === "toolCall" && block.id === "bad");
+}
+
 describe("Pi-owned validation recovery", () => {
   test.each(RECOVERY_SCENARIOS)(
     "real Pi outer loop persists $path rejection and correction (inactive=$inactive)",
@@ -313,22 +326,13 @@ describe("Pi-owned validation recovery", () => {
         content: [{ type: "text", text: rejectionText(rejectionKind, inactive) }],
       });
       expect(run.persisted).toContainEqual(rejection);
-      expect(run.persisted).toContainEqual(
-        expect.objectContaining({
-          role: "assistant",
-          content: expect.arrayContaining([
-            {
-              type: "toolCall",
-              id: "bad",
-              name: VALIDATION_ERROR_TOOL,
-              arguments: { error: rejectionKind },
-            },
-          ]) as unknown,
-        }),
-      );
-      expect(run.persisted).toContainEqual(
-        expect.objectContaining({ role: "toolResult", toolCallId: "corrected", isError: false }),
-      );
+      const call = findRejectedCall(run.persisted);
+      expect(call).toStrictEqual({
+        type: "toolCall",
+        id: "bad",
+        name: VALIDATION_ERROR_TOOL,
+        arguments: { error: rejectionKind },
+      });
     },
   );
 

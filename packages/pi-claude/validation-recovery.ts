@@ -4,6 +4,7 @@ import type {
   ToolCallEventResult,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { Option, Schema } from "effect";
 import { Type } from "typebox";
 import { isClaudeProvider } from "./provider-id";
 
@@ -17,44 +18,30 @@ export const VALIDATION_REASONS = [
   "printed_tool_call",
 ] as const;
 
-export function validationRecoveryReason(input: unknown): string {
-  if (
-    typeof input === "object" &&
-    input !== null &&
-    "error" in input &&
-    input.error === "uncaptured_tool_batch"
-  ) {
-    return "The tool did not run: Claude Code handled the call without passing it to Pi. Call the declared mcp__pi__ tool again.";
-  }
-  if (
-    typeof input === "object" &&
-    input !== null &&
-    "error" in input &&
-    input.error === "sdk_input_rejected"
-  ) {
-    return "The tool did not run: Claude Code rejected its input, possibly as invalid JSON. Call a declared mcp__pi__ tool again with valid JSON that matches its schema.";
-  }
-  if (
-    typeof input === "object" &&
-    input !== null &&
-    "error" in input &&
-    input.error === "printed_tool_call"
-  ) {
-    return "Your last reply printed a tool call as text, so nothing ran. Call the declared mcp__pi__ tool directly instead of writing a <call> tag or JSON.";
-  }
-  const unexpected =
-    typeof input === "object" &&
-    input !== null &&
-    "error" in input &&
-    input.error === "unexpected_sdk_tool";
-  return unexpected
-    ? "That tool is not available, so it did not run. Call only a declared mcp__pi__ tool, with parameters that match its schema."
-    : `The tool did not run: its parameters do not match its schema. Call the declared mcp__pi__ tool again with valid parameters. Do not call ${VALIDATION_ERROR_TOOL}.`;
+const validationInput = Schema.Struct({ error: Schema.Literals(VALIDATION_REASONS) });
+export const decodeValidationInput = Schema.decodeUnknownOption(validationInput);
+
+export type ValidationInput = typeof validationInput.Type;
+
+const recoveryReasons = {
+  uncaptured_tool_batch:
+    "The tool did not run: Claude Code handled the call without passing it to Pi. Call the declared mcp__pi__ tool again.",
+  sdk_input_rejected:
+    "The tool did not run: Claude Code rejected its input, possibly as invalid JSON. Call a declared mcp__pi__ tool again with valid JSON that matches its schema.",
+  printed_tool_call:
+    "Your last reply printed a tool call as text, so nothing ran. Call the declared mcp__pi__ tool directly instead of writing a <call> tag or JSON.",
+  unexpected_sdk_tool:
+    "That tool is not available, so it did not run. Call only a declared mcp__pi__ tool, with parameters that match its schema.",
+  invalid_tool_input: `The tool did not run: its parameters do not match its schema. Call the declared mcp__pi__ tool again with valid parameters. Do not call ${VALIDATION_ERROR_TOOL}.`,
+} satisfies Record<ValidationInput["error"], string>;
+
+export function validationRecoveryReason(input: ValidationInput | undefined): string {
+  return recoveryReasons[input?.error ?? "invalid_tool_input"];
 }
 
 export function blockValidationRecovery(
   toolName: string,
-  input: unknown,
+  input: ValidationInput | undefined,
 ): ToolCallEventResult | undefined {
   return toolName === VALIDATION_ERROR_TOOL
     ? { block: true, reason: validationRecoveryReason(input) }
@@ -78,7 +65,7 @@ export const validationRecoveryTool: ToolDefinition = {
     error: Type.Union(VALIDATION_REASONS.map((reason) => Type.Literal(reason))),
   }),
   async execute(_id, input) {
-    throw new Error(validationRecoveryReason(input));
+    throw new Error(validationRecoveryReason(Option.getOrUndefined(decodeValidationInput(input))));
   },
 };
 
@@ -107,25 +94,26 @@ export function normalizeValidationResult(
   if (
     call?.type !== "toolCall" ||
     call.name !== VALIDATION_ERROR_TOOL ||
-    !VALIDATION_REASONS.some((reason) => reason === call.arguments.error) ||
     Object.keys(call.arguments).length !== 1
   ) {
     return undefined;
   }
+  const input = Option.getOrUndefined(decodeValidationInput(call.arguments));
+  if (input === undefined) {
+    return undefined;
+  }
+  const reason = validationRecoveryReason(input);
   const text =
     message.content.length === 1 && message.content[0]?.type === "text"
       ? message.content[0].text
       : undefined;
-  if (
-    text !== `Tool ${VALIDATION_ERROR_TOOL} not found` &&
-    text !== validationRecoveryReason(call.arguments)
-  ) {
+  if (text !== `Tool ${VALIDATION_ERROR_TOOL} not found` && text !== reason) {
     return undefined;
   }
   return {
     message: {
       ...message,
-      content: [{ type: "text", text: validationRecoveryReason(call.arguments) }],
+      content: [{ type: "text", text: reason }],
     },
   };
 }

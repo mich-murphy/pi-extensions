@@ -1,12 +1,35 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ProjectedSessionEntry } from "@earendil-works/pi-coding-agent";
+import { ProcessTerminal, TuiAltScreen } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
-import type { RetryHandlers, RetryRegistration, MarkerRenderer, WidgetFactory } from "../retry";
+import type {
+  RetryHandlers,
+  RetryRegistration,
+  MarkerRenderer,
+  RetrySettingsInput,
+  WidgetFactory,
+} from "../retry";
 
 type Command = Parameters<RetryRegistration["registerCommand"]>[1];
-type Sent = { readonly message: unknown; readonly options: unknown };
+type Sent = {
+  readonly message: Parameters<RetryRegistration["sendMessage"]>[0];
+  readonly options: Parameters<RetryRegistration["sendMessage"]>[1];
+};
 
+export type TestUsageNotice = {
+  readonly provider?: string;
+  readonly resetsAt?: number | string;
+} | null;
+
+const renderOptions = {
+  expanded: false,
+  outputPad: 0,
+  keyText: () => "",
+  keyHint: () => "",
+} satisfies Parameters<MarkerRenderer>[1];
+
+const tui = new TuiAltScreen(new ProcessTerminal());
 const plainTheme = { fg: (_color: string, text: string) => text };
 
 function renderText(component: Component): string {
@@ -55,9 +78,9 @@ export function userEntry(id: string): ProjectedSessionEntry {
   };
 }
 
-export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object = {}) {
+export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySettingsInput = {}) {
   const handlers: Partial<RetryHandlers> = {};
-  const channels = new Map<string, (data: unknown) => void>();
+  const channels = new Map<string, Parameters<RetryRegistration["events"]["on"]>[1]>();
   const commands = new Map<string, Command>();
   const renderers = new Map<string, MarkerRenderer>();
   const notifications: { message: string; level: string | undefined }[] = [];
@@ -137,7 +160,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
         stderr.push(line);
       },
     },
-    publish: (channel: string, data: unknown) => {
+    publish: (channel: string, data: TestUsageNotice) => {
       channels.get(channel)?.(data);
     },
     startRun: () => {
@@ -188,18 +211,18 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: object 
     setIdle: (value: boolean) => {
       idle = value;
     },
-    setSettings: (value: object) => {
+    setSettings: (value: RetrySettingsInput) => {
       currentSettings = value;
     },
     widgetText: (key: string) => {
       const widget = widgets.get(key);
-      return widget === undefined ? undefined : renderText(widget(undefined, plainTheme));
+      return widget === undefined ? undefined : renderText(widget(tui, plainTheme));
     },
-    renderMarker: (content: unknown, customType = "retry") => {
+    renderMarker: (content: Parameters<MarkerRenderer>[0]["content"], customType = "retry") => {
       const renderer = renderers.get(customType);
       return renderer === undefined
         ? undefined
-        : renderText(renderer({ content }, undefined, plainTheme));
+        : renderText(renderer({ content }, renderOptions, plainTheme));
     },
     timerCount: () => timers.size,
     notifications,

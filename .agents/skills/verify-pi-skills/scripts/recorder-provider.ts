@@ -1,32 +1,25 @@
 import { appendFileSync } from "node:fs";
 import { env } from "node:process";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ToolCall,
+  TranscriptContext,
+  UserMessage,
+} from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const API = "skills-recorder";
 const READ_FILES = "READ-FILES: ";
 const RUN_BASH = "RUN-BASH: ";
 const SPAWN_CHILD = "SPAWN-CHILD";
 
-type RecorderMessage = { readonly role: string; readonly content?: unknown };
-type ScriptedCall = { readonly name: string; readonly arguments: Record<string, unknown> };
+type ScriptedCall = Pick<ToolCall, "name" | "arguments">;
 
-function textOf(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((block: unknown) =>
-      typeof block === "object" &&
-      block !== null &&
-      "text" in block &&
-      typeof block.text === "string"
-        ? block.text
-        : "",
-    )
-    .join("\n");
+function textOf(content: UserMessage["content"]): string {
+  return Array.isArray(content)
+    ? content.map((block) => (block.type === "text" ? block.text : "")).join("\n")
+    : content;
 }
 
 function markedLines(text: string, marker: string): string[] {
@@ -48,7 +41,9 @@ function fileAndShellCalls(text: string): ScriptedCall[] {
   ];
 }
 
-function scriptedCalls(messages: readonly RecorderMessage[]): readonly ScriptedCall[] {
+function scriptedCalls(
+  messages: readonly TranscriptContext["messages"][number][],
+): readonly ScriptedCall[] {
   let lastAssistant = -1;
   for (const [position, { role }] of messages.entries()) {
     if (role === "assistant") {
@@ -60,7 +55,7 @@ function scriptedCalls(messages: readonly RecorderMessage[]): readonly ScriptedC
     return [];
   }
   const text = pending
-    .filter(({ role }) => role === "user")
+    .filter((message) => message.role === "user")
     .map(({ content }) => textOf(content))
     .join("\n");
   const spawn = text.indexOf(SPAWN_CHILD);
@@ -95,21 +90,7 @@ function recorderModel(id: string, name: string, midConvo: boolean) {
   };
 }
 
-type RecorderModel = {
-  readonly id: string;
-  readonly api: string;
-  readonly provider: string;
-  readonly compat?: unknown;
-};
-type RecorderOptions = {
-  readonly onPayload?: (payload: unknown, model: RecorderModel) => unknown;
-  readonly sessionId?: string;
-};
-type RecorderApi = {
-  readonly registerProvider: (name: string, config: unknown) => void;
-};
-
-export default function registerRecorder(pi: RecorderApi): void {
+export default function registerRecorder(pi: ExtensionAPI): void {
   let requests = 0;
   pi.registerProvider("recorder", {
     name: "Offline prompt recorder",
@@ -120,16 +101,12 @@ export default function registerRecorder(pi: RecorderApi): void {
       recorderModel("codex-like", "Recorder (mid-convo system messages)", true),
       recorderModel("collapse-like", "Recorder (collapsed system prompt)", false),
     ],
-    streamSimple: (
-      model: RecorderModel,
-      context: { readonly messages: readonly RecorderMessage[] },
-      options?: RecorderOptions,
-    ) => {
+    streamSimple: (model, context, options) => {
       const stream = createAssistantMessageEventStream();
       requests += 1;
       const index = requests;
       void (async () => {
-        let payload: unknown = {
+        const payload = {
           index,
           at: Date.now(),
           model: model.id,
@@ -137,24 +114,21 @@ export default function registerRecorder(pi: RecorderApi): void {
           compat: model.compat ?? null,
           messages: context.messages,
         };
-        const replaced: unknown = await options?.onPayload?.(payload, model);
-        if (replaced !== undefined) {
-          payload = replaced;
-        }
+        const replaced = await options?.onPayload?.(payload, model);
         const file = env.PI_SKILL_TOGGLE_RECORDER_FILE;
         if (file !== undefined && file !== "") {
-          appendFileSync(file, `${JSON.stringify(payload)}\n`);
+          appendFileSync(file, `${JSON.stringify(replaced === undefined ? payload : replaced)}\n`);
         }
         const calls = scriptedCalls(context.messages);
         const text = `Recorded request ${index}.`;
         const input = Math.ceil(JSON.stringify(context.messages).length / 4);
-        const toolCalls = calls.map((call, position) => ({
+        const toolCalls = calls.map((call, position): ToolCall => ({
           type: "toolCall",
           id: `call-${index}-${position}`,
           name: call.name,
           arguments: call.arguments,
         }));
-        const message = {
+        const message: AssistantMessage = {
           role: "assistant",
           content: toolCalls.length > 0 ? toolCalls : [{ type: "text", text }],
           api: model.api,
@@ -171,7 +145,7 @@ export default function registerRecorder(pi: RecorderApi): void {
           stopReason: toolCalls.length > 0 ? "toolUse" : "stop",
           timestamp: Date.now(),
         };
-        const partial = { ...message, content: [], stopReason: "pending" };
+        const partial: AssistantMessage = { ...message, content: [], stopReason: "pending" };
         stream.push({ type: "start", partial });
         if (toolCalls.length > 0) {
           for (const [contentIndex, toolCall] of toolCalls.entries()) {
@@ -183,7 +157,7 @@ export default function registerRecorder(pi: RecorderApi): void {
           stream.end(message);
           return;
         }
-        const done = { ...partial, content: [{ type: "text", text }] };
+        const done: AssistantMessage = { ...partial, content: [{ type: "text", text }] };
         stream.push({ type: "text_start", contentIndex: 0, partial: done });
         stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: done });
         stream.push({ type: "text_end", contentIndex: 0, content: text, partial: done });

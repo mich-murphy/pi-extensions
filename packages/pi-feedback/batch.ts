@@ -1,4 +1,6 @@
 import { dirname } from "node:path";
+import type { JsonObject, JsonValue } from "@earendil-works/pi-ai";
+import { Schema } from "effect";
 import type { ToolSource } from "./owner.ts";
 
 const READ_ONLY_BUILTINS: ReadonlySet<string> = new Set(["read", "ls", "grep", "find"]);
@@ -7,7 +9,7 @@ const ABSOLUTE_PATH = /(?<![\w/~.])\/[^\s'"`,;:()[\]{}<>]+/gu;
 const PATH_CHAR = /[^\s'"`,;:()[\]{}<>]/u;
 const MIN_DIRECTORY_DEPTH = 2;
 
-export type BatchCall = { readonly id: string; readonly name: string; readonly args: unknown };
+export type BatchCall = { readonly id: string; readonly name: string; readonly args: JsonObject };
 
 export function isReadOnlyTool(tool: ToolSource | undefined): boolean {
   if (tool === undefined) {
@@ -19,14 +21,16 @@ export function isReadOnlyTool(tool: ToolSource | undefined): boolean {
   );
 }
 
-function stringsIn(value: unknown): string[] {
-  if (typeof value === "string") {
+const isString = Schema.is(Schema.String);
+const isNonTextScalar = Schema.is(Schema.Union([Schema.Null, Schema.Number, Schema.Boolean]));
+
+function stringsIn(value: JsonValue): string[] {
+  if (isString(value)) {
     return [value];
   }
-  if (typeof value === "object" && value !== null) {
-    return Object.values(value).flatMap((item) => stringsIn(item));
-  }
-  return [];
+  return isNonTextScalar(value)
+    ? []
+    : Object.values<JsonValue>(value).flatMap((item) => stringsIn(item));
 }
 
 function pathsIn(texts: readonly string[]): string[] {

@@ -190,16 +190,18 @@ const OPEN_BARE = /^<(?<name>user|assistant|results)>$/u;
 const OPEN_ATTR =
   /^<(?<name>call|past-call|result|past-result) id="[^"<>]*" tool="[^"<>]*"(?: error)?>$/u;
 const CLOSE = /^<\/(?<name>user|assistant|call|past-call|results|result|past-result)>$/u;
-const CHILDREN: Record<string, readonly string[]> = {
-  user: [],
-  assistant: ["call", "past-call"],
-  results: ["result", "past-result"],
-};
+const CHILDREN = new Map<string, readonly string[]>(
+  Object.entries({
+    user: [],
+    assistant: ["call", "past-call"],
+    results: ["result", "past-result"],
+  }),
+);
 
 function nestingAllowed(parent: string | undefined, name: string): boolean {
   return parent === undefined
-    ? Object.hasOwn(CHILDREN, name)
-    : (CHILDREN[parent]?.includes(name) ?? false);
+    ? CHILDREN.has(name)
+    : (CHILDREN.get(parent)?.includes(name) ?? false);
 }
 
 function assertWellFormed(block: string): string[] {

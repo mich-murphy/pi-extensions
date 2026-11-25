@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { WEB_AUTH_PROVIDERS } from "../authentication";
 import { CredentialResolver } from "../credentials";
 import { FetchPage } from "../fetch-page";
 import { McpClients } from "../mcp";
-import type { McpToolCallResult } from "../mcp";
+import type { McpClient, McpToolCallResult } from "../mcp";
 import { ProviderHttpClient } from "../provider-http";
 import type { ProviderHttpRequest, ProviderHttpResponse } from "../provider-http";
 import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
@@ -16,7 +16,7 @@ import { WebToolsConfig } from "../settings";
 import { createToolRuntime } from "../tool-runtime";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
-import { settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
+import { errorMessage, settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
 import { expectNoLeak } from "./leaks";
 import { nativeAuthFixture } from "./native-auth-fixture";
 import type { AuthStorageData } from "./native-auth-fixture";
@@ -35,7 +35,7 @@ async function tools(
     http?: (request: ProviderHttpRequest) => Effect.Effect<ProviderHttpResponse, ProviderError>;
     mcp?: (
       name: string,
-      args: Readonly<Record<string, unknown>>,
+      args: Parameters<McpClient["callTool"]>[1],
     ) => Effect.Effect<McpToolCallResult, ProviderError>;
   } = {},
 ) {
@@ -45,7 +45,7 @@ async function tools(
   const calls: {
     endpoint: string;
     name: string;
-    args: Readonly<Record<string, unknown>>;
+    args: Parameters<McpClient["callTool"]>[1];
     secrets: readonly string[];
   }[] = [];
   const respond = (request: ProviderHttpRequest) =>
@@ -158,10 +158,6 @@ async function tools(
 
 function deferred<A>() {
   return Promise.withResolvers<A>();
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unexpected failure";
 }
 
 describe("native-auth integration", () => {
@@ -421,7 +417,7 @@ describe("native-auth integration", () => {
       expect(result.details.truncated).toBe(true);
       const path = result.details.fullOutputPath;
       expect(path).toStrictEqual(expect.any(String));
-      assert(typeof path === "string");
+      assert(path !== undefined);
       const contents = await readFile(path, "utf8");
       expect(contents).not.toContain(secret);
       expect(contents).toContain("[redacted]");
@@ -435,10 +431,9 @@ describe("native-auth integration", () => {
           ),
       });
       await t.login("exa", "error-synthetic-key");
-      const failure = await t.runSearch("exa").then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+      const failure = await t
+        .runSearch("exa")
+        .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
       assert(failure instanceof Error);
       expect(failure.message).toContain("reported an error: reflected [redacted]");
       expectNoLeak(failure, "error-synthetic-key");

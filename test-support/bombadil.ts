@@ -1,3 +1,5 @@
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+
 export type BombadilRoot = {
   readonly root: string;
   readonly home: string;
@@ -10,7 +12,7 @@ export type BombadilRoot = {
 export type BombadilLaunch = {
   readonly args?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
-  readonly settings?: Readonly<Record<string, unknown>>;
+  readonly settings?: Readonly<ReturnType<SettingsManager["getSettings"]>>;
   readonly omitDefaults?: readonly string[];
   readonly session?: string;
   readonly dispose?: () => Promise<void> | void;

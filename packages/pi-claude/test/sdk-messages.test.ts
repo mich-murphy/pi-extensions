@@ -1,20 +1,50 @@
 import { Result } from "effect";
+import type { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
-import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
+import {
+  applyUsage,
+  contextWindowFor,
+  decodeSdkEvent,
+  maxOutputTokensFor,
+  parseSdkMessage,
+} from "../sdk/messages";
 import type { SdkMessage } from "../sdk/messages";
 import { resultMessage, streamEvent, textDelta } from "./fixtures";
+import type { SdkResultFields } from "./fixtures";
 
-function parsed(input: unknown): SdkMessage {
-  const result = parseSdkMessage(input);
+type RateLimitFixture = {
+  readonly type: "rate_limit_event";
+  readonly rate_limit_info:
+    | Schema.Json
+    | undefined
+    | { readonly status: string; readonly resetsAt: Schema.Json | undefined };
+};
+
+function parsed(
+  input:
+    | Schema.Json
+    | ReturnType<typeof streamEvent>
+    | ReturnType<typeof resultMessage>
+    | RateLimitFixture
+    | undefined,
+): SdkMessage {
+  const result = parseSdkMessage(decodeSdkEvent(input));
   if (Result.isFailure(result)) {
     throw result.failure;
   }
   return result.success;
 }
 
-function protocolError(input: unknown): SdkProtocolError {
-  const result = parseSdkMessage(input);
+function protocolError(
+  input:
+    | Schema.Json
+    | ReturnType<typeof streamEvent>
+    | ReturnType<typeof resultMessage>
+    | RateLimitFixture
+    | undefined,
+): SdkProtocolError {
+  const result = parseSdkMessage(decodeSdkEvent(input));
   if (Result.isSuccess(result)) {
     throw new Error("test setup: expected a protocol error");
   }
@@ -23,7 +53,7 @@ function protocolError(input: unknown): SdkProtocolError {
   return result.failure;
 }
 
-function turnResult(fields: Readonly<Record<string, unknown>>) {
+function turnResult(fields: SdkResultFields) {
   const message = parsed(resultMessage(fields));
   if (message.type !== "result") {
     throw new Error("test setup: expected a result message");
@@ -31,7 +61,7 @@ function turnResult(fields: Readonly<Record<string, unknown>>) {
   return message.result;
 }
 
-function failedResult(fields: Readonly<Record<string, unknown>>) {
+function failedResult(fields: SdkResultFields) {
   const result = turnResult({ is_error: true, stop_reason: null, ...fields });
   if (result._tag !== "failed") {
     throw new Error("test setup: expected a failed result");
@@ -505,7 +535,7 @@ describe("contextWindowFor", () => {
   });
 });
 
-function overageEvent(rate_limit_info: unknown) {
+function overageEvent(rate_limit_info: Schema.Json) {
   return parsed({ type: "rate_limit_event", rate_limit_info });
 }
 

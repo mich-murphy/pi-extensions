@@ -3,7 +3,7 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Result, Stream } from "effect";
+import { Effect, Option, Result, Stream } from "effect";
 import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
@@ -25,7 +25,13 @@ import {
 } from "./errors";
 import type { SdkRunError } from "./errors";
 import { instrumentEvent, instrumentRequest } from "./instrumentation";
-import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "./messages";
+import {
+  applyUsage,
+  contextWindowFor,
+  decodeSdkEvent,
+  maxOutputTokensFor,
+  parseSdkMessage,
+} from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
 import type { CacheTtl } from "./prompt-stream";
@@ -465,7 +471,9 @@ function settle(
   return ended(Result.succeed(progress), progress);
 }
 
-type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted" };
+type QueryItem =
+  | Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError>
+  | { readonly _tag: "Halted" };
 
 const HALTED: QueryItem = { _tag: "Halted" };
 
@@ -495,7 +503,7 @@ function step(
     if (Result.isFailure(item)) {
       return [progress, [ended(Result.fail(item.failure), progress)]];
     }
-    const tooOld = tooOldClaudeCode(item.success);
+    const tooOld = tooOldClaudeCode(Option.getOrUndefined(item.success));
     if (tooOld !== undefined) {
       const failure = new SdkQueryError({
         operation: "iterate",
@@ -554,9 +562,14 @@ function querySteps(
   return Stream.fromAsyncIterable(abortOnClose(messages, abortController), (error) =>
     iterationFailure(capture, abortController.signal, error),
   ).pipe(
-    Stream.mapEffect((event) =>
-      instrumentEvent(event, turn.model, turn.options, abortController.signal),
-    ),
+    Stream.mapEffect((event) => {
+      const onEvent = turn.options?.onProviderStreamEvent;
+      return (
+        onEvent === undefined
+          ? Effect.void
+          : instrumentEvent(abortController.signal, async () => onEvent(event, turn.model))
+      ).pipe(Effect.map(() => decodeSdkEvent(event)));
+    }),
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),
     Stream.mapAccum(initialProgress, step(capture, turn.options?.signal, extraUsage)),
@@ -564,13 +577,13 @@ function querySteps(
   );
 }
 
-function iterationFailure(capture: QueryCapture, signal: AbortSignal, error: unknown): SdkRunError {
+function iterationFailure(capture: QueryCapture, signal: AbortSignal, cause: unknown): SdkRunError {
   if (capture.error) {
     return capture.error;
   }
   return signal.aborted
-    ? SdkQueryError.cancelled("iterate", error)
-    : SdkQueryError.fromCause("iterate", error);
+    ? SdkQueryError.cancelled("iterate", cause)
+    : SdkQueryError.fromCause("iterate", cause);
 }
 
 function turnAbortController(

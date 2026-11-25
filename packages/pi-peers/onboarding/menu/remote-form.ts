@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import { visibleText } from "../../adapter/config.js";
 import { addressError, machineError, readOffer } from "../remote.js";
 import type { OfferPreview, RemoteIntent } from "../remote.js";
@@ -80,6 +81,8 @@ function sha256Row(draft: RemoteDraft): Row {
   });
 }
 
+const isMessage = Schema.is(Schema.String);
+
 function offerRows(draft: RemoteDraft, options: RemoteOptions): Row[] {
   return [
     textField({
@@ -90,13 +93,15 @@ function offerRows(draft: RemoteDraft, options: RemoteOptions): Row[] {
       get: () => draft.offerPath,
       save: async (value) => {
         const offer = await readOffer(value);
-        if (typeof offer === "string") {
-          return offer;
+        if (isMessage(offer)) {
+          return { error: offer };
         }
-        return () => {
-          draft.offerPath = value;
-          draft.offer = offer;
-          options.adopt?.(offer.localMachineId);
+        return {
+          apply: () => {
+            draft.offerPath = value;
+            draft.offer = offer;
+            options.adopt?.(offer.localMachineId);
+          },
         };
       },
     }),

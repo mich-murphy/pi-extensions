@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate as immediate } from "node:timers/promises";
+import { Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
 import type { EnsureGateway } from "../adapter/client.js";
@@ -111,7 +112,7 @@ describe("managed generation admission with actual native helper", () => {
       await gate;
       owner.own({ close });
     });
-    const result = body.catch((error: unknown) => error);
+    const result = body.catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     let drained = false;
     const cleanup = (async () => {
       await owner.close();

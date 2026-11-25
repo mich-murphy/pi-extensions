@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Usage } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import type { ModelRef, PromptPlan, PromptSnapshot, TranscriptMessage } from "./prompt-epoch";
 import { isInPrompt } from "./prompt-view";
 import type { PromptResource } from "./prompt-view";
@@ -13,11 +13,17 @@ import { compareText } from "./toggle-note";
 const CACHE_DEBUG_ENV = "PI_SKILLS_CACHE_DEBUG";
 const LEGACY_CACHE_DEBUG_ENV = "PI_SKILL_TOGGLE_CACHE_DEBUG";
 
-export type DebugRecord = Readonly<Record<string, unknown>> & {
-  readonly type: "run" | "usage" | "discover";
-};
-
-export type DebugSink = (record: DebugRecord) => void;
+export type DebugSink = (
+  record:
+    | {
+        readonly type: "discover";
+        readonly cwd: string;
+        readonly contributed: number;
+        readonly durationMs: number;
+      }
+    | ReturnType<typeof runRecord>
+    | NonNullable<ReturnType<typeof usageRecord>>,
+) => void;
 
 export function cacheDebugValue(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -68,10 +74,10 @@ export type RunDiagnostics = {
   readonly durationMs: number;
 };
 
-export function runRecord(run: RunDiagnostics): DebugRecord {
+export function runRecord(run: RunDiagnostics) {
   const { snapshot, plan } = run;
   return {
-    type: "run",
+    type: "run" as const,
     sessionId: run.sessionId,
     model: modelName(run.model),
     epoch: snapshot.epoch,
@@ -99,32 +105,28 @@ export function runRecord(run: RunDiagnostics): DebugRecord {
   };
 }
 
-type UsageMessage = TranscriptMessage & {
-  readonly provider: string;
-  readonly model: string;
-  readonly usage: Readonly<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">>;
-};
+const isUsageMessage = Schema.is(
+  Schema.Struct({
+    role: Schema.Literal("assistant"),
+    provider: Schema.String,
+    model: Schema.String,
+    usage: Schema.Struct({
+      input: Schema.Number,
+      output: Schema.Number,
+      cacheRead: Schema.Number,
+      cacheWrite: Schema.Number,
+    }),
+  }),
+);
 
-function isUsageMessage(message: TranscriptMessage): message is UsageMessage {
-  return (
-    message.role === "assistant" &&
-    "usage" in message &&
-    typeof message.usage === "object" &&
-    message.usage !== null
-  );
-}
-
-export function usageRecord(
-  message: TranscriptMessage,
-  sessionId: string,
-): DebugRecord | undefined {
+export function usageRecord(message: TranscriptMessage, sessionId: string) {
   if (!isUsageMessage(message)) {
     return undefined;
   }
   const { input, output, cacheRead, cacheWrite } = message.usage;
   const promptTokens = input + cacheRead + cacheWrite;
   return {
-    type: "usage",
+    type: "usage" as const,
     sessionId,
     model: `${message.provider}/${message.model}`,
     input,

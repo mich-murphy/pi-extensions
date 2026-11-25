@@ -65,14 +65,14 @@ function kind(keys: string | undefined, esc: string | undefined): PeersKind | nu
     return /^Working…$/u.test(keys) ? "progress" : null;
   }
   const word = /(?<word>select|save|toggle|scroll|close)$/u.exec(keys)?.groups?.word;
-  const kinds: Record<string, PeersKind> = {
-    select: esc === "close" ? "root" : "list",
-    save: "editor",
-    toggle: "toggle",
-    scroll: "report",
-    close: "outcome",
-  };
-  return word === undefined ? null : (kinds[word] ?? null);
+  const kinds = new Map<string, PeersKind>([
+    ["select", esc === "close" ? "root" : "list"],
+    ["save", "editor"],
+    ["toggle", "toggle"],
+    ["scroll", "report"],
+    ["close", "outcome"],
+  ]);
+  return kinds.get(word ?? "") ?? null;
 }
 
 export type ListRow = { label: string; value: string };

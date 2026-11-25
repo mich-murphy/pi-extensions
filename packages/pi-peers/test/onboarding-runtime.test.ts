@@ -36,9 +36,11 @@ import type { DialogContext } from "../onboarding/dialog.js";
 import { managedLauncher } from "../onboarding/managed.js";
 import type { LocalPlan } from "../onboarding/plan.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
+import { parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import { saveOwnedPlan } from "../onboarding/update.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
+import { toolRecorder } from "./adapter-tool-fixture.js";
 import { nativeIncarnation, nativeParticipants } from "./onboarding-fixtures.js";
 
 const builtExecutable = resolve("packages/pi-peers/gateway/target/debug/pi-gateway");
@@ -373,24 +375,8 @@ describe("actual setup plan/apply lifecycle", () => {
       () => undefined,
       gate.ensure,
     );
-    const tools = new Map<string, () => Promise<unknown>>();
-    registerTools(
-      {
-        registerTool: (definition) => {
-          tools.set(definition.name, async () => {
-            const value: unknown = Reflect.apply(definition.execute.bind(definition), undefined, [
-              "fixture",
-              {},
-              undefined,
-              undefined,
-              undefined,
-            ]);
-            return value;
-          });
-        },
-      },
-      () => session,
-    );
+    const tools = toolRecorder();
+    registerTools(tools, () => session);
     try {
       await expect(session.reconnect()).rejects.toThrow("unavailable");
       expect(gate.attempts()).toBe(6);
@@ -398,7 +384,7 @@ describe("actual setup plan/apply lifecycle", () => {
       await delay(150);
       expect(gate.attempts()).toBe(6);
       gate.allow();
-      await expect(tools.get("peers_list")?.()).resolves.toMatchObject({
+      await expect(tools.run("peers_list", {})).resolves.toMatchObject({
         details: { value: { peers: [{ label: "native-host", peer: session.peer, self: true }] } },
         structuredContent: { ok: true, peers: [{ label: "native-host", self: true }] },
       });
@@ -479,8 +465,8 @@ function incompatiblePlan(
   return { ...selected, adapter: { ...selected.adapter, [field]: changes[field] } };
 }
 
-function readyAnnouncement(output: string): unknown {
-  return JSON.parse(output.split("\n")[0] ?? "");
+function readyAnnouncement(output: string) {
+  return parseJson(output.split("\n")[0] ?? "");
 }
 function childExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;

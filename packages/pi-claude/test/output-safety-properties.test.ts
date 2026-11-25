@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "../output-safety";
-import type { SuspiciousOutputKind } from "../output-safety";
+import type { ContextMessage as Message, SuspiciousOutputKind } from "../output-safety";
 
 const settings = propertySettings(200);
 const PROSE = "hello, world.\n";
@@ -15,8 +16,6 @@ const NOTICE_LIMIT = 500;
 
 type Block = { type: "text"; text: string } | typeof IMAGE;
 type Case = { readonly text: string; readonly expected: SuspiciousOutputKind | undefined };
-type Messages = Parameters<typeof sanitizeContextMessages>[0];
-type Message = Messages[number];
 
 function prose(length: number): string {
   return PROSE.repeat(Math.ceil(length / PROSE.length)).slice(0, length);
@@ -105,50 +104,46 @@ function assertSanitizes(tc: TestCase): void {
   );
 }
 
-function isMessage(value: unknown): value is Message {
-  return typeof value === "object" && value !== null && "role" in value;
-}
-
-function forge(value: object): Message {
-  const copy: unknown = structuredClone(value);
-  assert.ok(isMessage(copy));
-  return copy;
-}
-
 const BAD = `${"\0".repeat(20)}${prose(5000)}`;
 const stamp = { toolCallId: "t", isError: false, timestamp: 0 };
 const BAD_BLOCKS: Block[] = [{ type: "text", text: BAD }];
 const SAFE_BLOCKS: Block[] = [{ type: "text", text: prose(5000) }, IMAGE];
 const MESSAGE_KINDS: readonly { readonly make: () => Message; readonly flagged: boolean }[] = [
-  { make: () => forge({ role: "user", content: "hi", timestamp: 0 }), flagged: false },
+  { make: () => ({ role: "user", content: "hi", timestamp: 0 }), flagged: false },
   {
-    make: () => forge({ role: "toolResult", toolName: "read", content: BAD_BLOCKS, ...stamp }),
+    make: () => ({ role: "toolResult", toolName: "read", content: BAD_BLOCKS, ...stamp }),
     flagged: false,
   },
   {
-    make: () => forge({ role: "toolResult", toolName: "bash", content: BAD, ...stamp }),
+    make: () => ({ role: "toolResult", toolName: "bash", content: BAD, ...stamp }),
     flagged: false,
   },
   {
-    make: () => forge({ role: "toolResult", toolName: "bash", content: SAFE_BLOCKS, ...stamp }),
+    make: () => ({ role: "toolResult", toolName: "bash", content: SAFE_BLOCKS, ...stamp }),
     flagged: false,
   },
   {
-    make: () => forge({ role: "toolResult", toolName: "bash", content: BAD_BLOCKS, ...stamp }),
+    make: () => ({ role: "toolResult", toolName: "bash", content: BAD_BLOCKS, ...stamp }),
     flagged: true,
   },
 ];
 
+function makeMessage(kind: number): Message {
+  const fixture = MESSAGE_KINDS[kind];
+  assert.ok(fixture);
+  return fixture.make();
+}
+
 function assertFlaggedReplaced(before: Message | undefined, after: Message | undefined): void {
   assert.notEqual(after, before);
   assert.deepEqual({ ...after, content: 0 }, { ...before, content: 0 });
-  const content = after?.role === "toolResult" ? after.content : [];
+  const content = after?.role === "toolResult" && Array.isArray(after.content) ? after.content : [];
   assert.ok(noticeOf(content).includes("Binary-like"));
 }
 
 function assertContext(tc: TestCase): void {
   const kinds = tc.draw(gs.arrays(gs.integers({ minValue: 0, maxValue: 4 }), { maxSize: 8 }));
-  const input = kinds.map((kind) => MESSAGE_KINDS[kind]?.make() ?? forge({}));
+  const input = kinds.map((kind) => makeMessage(kind));
   const output = sanitizeContextMessages(input);
   assert.equal(output.length, input.length);
   for (const [index, kind] of kinds.entries()) {
@@ -218,7 +213,7 @@ function assertNeverThrows(tc: TestCase): void {
   const mixed = tc.draw(gs.arrays(gs.sampledFrom(["cat ", "$(", "`", "which", ")", ";", "\n"])));
   for (const command of [text, mixed.join("")]) {
     const verdict = inspectBashCommand(command);
-    assert.ok(verdict === undefined || typeof verdict === "string");
+    assert.ok(verdict === undefined || Schema.is(Schema.String)(verdict));
   }
 }
 

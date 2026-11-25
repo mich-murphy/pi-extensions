@@ -1,3 +1,4 @@
+import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 import { assert, describe, expect, test } from "vitest";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "../output-safety";
 
@@ -15,7 +16,7 @@ function bashResult(
   };
 }
 
-function sanitizedText(messages: Parameters<typeof sanitizeContextMessages>[0], index: number) {
+function sanitizedText(messages: ContextEvent["messages"], index: number) {
   const message = sanitizeContextMessages(messages)[index];
   if (message?.role !== "toolResult") {
     throw new Error("test setup: expected a tool result");

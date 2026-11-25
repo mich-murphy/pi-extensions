@@ -5,6 +5,7 @@ import {
   lenientArray,
   orFallback,
   parseJsonBody,
+  ProviderJson,
   ProviderProtocolInvalid,
   ProviderStatusRejected,
   ProviderToolError,
@@ -20,13 +21,13 @@ const MCP_PROTOCOL_VERSION = "2025-06-18";
 
 export type McpToolCallResult = {
   readonly text: readonly string[];
-  readonly structuredContent?: unknown;
+  readonly structuredContent?: ProviderJson | undefined;
 };
 
 export type McpClient = {
   readonly callTool: (
     name: string,
-    args: Readonly<Record<string, unknown>>,
+    args: Schema.JsonObject,
     secrets?: readonly string[],
   ) => Effect.Effect<McpToolCallResult, ProviderError>;
 };
@@ -79,21 +80,42 @@ export class McpClients extends Context.Service<
   });
 }
 
+type McpRequest = { readonly jsonrpc: "2.0" } & (
+  | {
+      readonly method: "initialize";
+      readonly id: 1;
+      readonly params: {
+        readonly protocolVersion: string;
+        readonly capabilities: Schema.JsonObject;
+        readonly clientInfo: { readonly name: string; readonly version: string };
+      };
+    }
+  | { readonly method: "notifications/initialized" }
+  | {
+      readonly method: "tools/call";
+      readonly id: 2;
+      readonly params: {
+        readonly name: string;
+        readonly arguments: Schema.JsonObject;
+      };
+    }
+);
+
 function makeSessionPerToolCallMcpHttpClient(
   http: HttpFetch["Service"],
   endpoint: PublicHttpUrl,
   options: McpClientOptions,
 ): McpClient {
   const post = Effect.fnUntraced(function* (
-    payload: Readonly<Record<string, unknown>>,
+    payload: McpRequest,
     sessionId: string | null,
   ): Effect.fn.Return<McpPostOutcome, ProviderError> {
-    const headers: Record<string, string> = {
+    const headers = new Headers({
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
-    };
+    });
     if (sessionId !== null && sessionId !== "") {
-      headers["mcp-session-id"] = sessionId;
+      headers.set("mcp-session-id", sessionId);
     }
     const { response, bodyText } = yield* sendProviderRequest(
       http,
@@ -124,7 +146,7 @@ function makeSessionPerToolCallMcpHttpClient(
   const callTool = Effect.fnUntraced(
     function* (
       name: string,
-      args: Readonly<Record<string, unknown>>,
+      args: Schema.JsonObject,
       secrets: readonly string[] = [],
     ): Effect.fn.Return<McpToolCallResult, ProviderError> {
       let sessionId: string | null = null;
@@ -184,7 +206,7 @@ const isJsonRpcResponse = Schema.is(
 export function parseMcpMessage(
   body: string,
   contentType: string,
-): Result.Result<unknown, ProviderError> {
+): Result.Result<ProviderJson, ProviderError> {
   if (contentType.toLowerCase().includes("text/event-stream") || /^data:/mu.test(body)) {
     return parseSseResponse(body);
   }
@@ -194,7 +216,7 @@ export function parseMcpMessage(
   return parseJsonBody(body);
 }
 
-function parseSseResponse(body: string): Result.Result<unknown, ProviderError> {
+function parseSseResponse(body: string): Result.Result<ProviderJson, ProviderError> {
   const events = parseSseDataLines(body).map((chunk) => parseJsonBody(chunk));
   const responses = events.filter(
     (event) => Result.isSuccess(event) && isJsonRpcResponse(event.success),
@@ -224,7 +246,7 @@ const decodeToolCallResponse = Schema.decodeUnknownResult(
         Schema.Struct({
           isError: orFallback(Schema.Boolean, false),
           content: orFallback(lenientArray(TextContent), []),
-          structuredContent: Schema.optionalKey(Schema.Unknown),
+          structuredContent: Schema.optionalKey(ProviderJson),
         }),
       ),
       undefined,
@@ -235,7 +257,7 @@ const decodeToolCallResponse = Schema.decodeUnknownResult(
 const MAX_TOOL_ERROR_DETAIL = 200;
 
 export function parseMcpToolResult(
-  payload: unknown,
+  payload: ProviderJson,
   secrets: readonly (string | undefined)[] = [],
 ): Result.Result<McpToolCallResult, ProviderError> {
   const parsed = decodeToolCallResponse(payload);

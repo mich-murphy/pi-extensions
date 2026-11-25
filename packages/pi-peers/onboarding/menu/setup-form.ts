@@ -224,12 +224,14 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
       save: async (value) => {
         const error = validateSocket(value);
         if (error !== undefined) {
-          return error;
+          return { error };
         }
         const shared = (await probe?.(value)) ?? false;
-        return () => {
-          draft.shared = shared;
-          draft.socket = value;
+        return {
+          apply: () => {
+            draft.shared = shared;
+            draft.socket = value;
+          },
         };
       },
     }),

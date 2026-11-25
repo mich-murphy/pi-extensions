@@ -4,23 +4,26 @@ import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
+import { Option, Schema } from "effect";
 import { acquireGateway, discoverNixExecutable } from "../packages/pi-peers/onboarding/acquire.js";
-import { MAX_BINARY, jsonObject, sha256 } from "../packages/pi-peers/onboarding/artifact.js";
+import { MAX_BINARY, sha256 } from "../packages/pi-peers/onboarding/artifact.js";
 import {
-  GATEWAY_MANAGED_CAPABILITY,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
-  GATEWAY_WIRE_VERSION,
   gatewayCatalog,
-  wireMismatch,
   gatewayTarget,
 } from "../packages/pi-peers/onboarding/catalog.js";
 import {
   createRecord,
   currentUid,
+  describeFailure,
+  isPrivateDirectory,
+  parseRecordJson,
+  privateProfile,
   readOwnedJson,
   readRegular,
   requireAbsent,
   sameFile,
+  verifyGatewayVersion,
 } from "./verify-gateway-nix-io.js";
 import type { RecordWriter } from "./verify-gateway-nix-io.js";
 
@@ -29,10 +32,9 @@ const STORE_EXECUTABLE = /^\/nix\/store\/[a-z0-9]{32}-[^/]+\/bin\/pi-gateway$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
 const ACQUISITION_MS = 600_000;
-const REQUIRED_CAPABILITIES = [GATEWAY_MANAGED_CAPABILITY, ...GATEWAY_REMOTE_SETUP_CAPABILITIES];
 const IDENTITY_KEYS = ["root", "dev", "ino", "uid", "nonce"] as const;
 
-type Identity = { root: string; dev: string; ino: string; uid: number; nonce: string };
+type Identity = typeof Identity.Type;
 type NixRecord = Identity & { executable: string; binarySha256: string };
 type NixPin = NonNullable<typeof gatewayCatalog.nix>;
 
@@ -41,14 +43,6 @@ async function canonicalTemp(runnerTemp: string): Promise<string> {
     throw new Error("--runner-temp must be absolute");
   }
   return fs.realpath(runnerTemp);
-}
-
-function isSha256(value: unknown): value is string {
-  return typeof value === "string" && SHA256.test(value);
-}
-
-function isPrivateDirectory(stat: BigIntStats, uid: number): boolean {
-  return stat.isDirectory() && stat.uid === BigInt(uid) && (stat.mode & 0o077n) === 0n;
 }
 
 async function readStoreExecutable(executable: string): Promise<Buffer> {
@@ -66,37 +60,6 @@ async function run(file: string, args: string[], home: string): Promise<string> 
     env: { HOME: home, TMPDIR: home, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" },
   });
   return stdout;
-}
-
-function messageOf(item: unknown): string {
-  if (item instanceof Error) {
-    return item.message;
-  }
-  return typeof item === "string" ? item : (JSON.stringify(item) ?? typeof item);
-}
-
-function causesOf(item: unknown): unknown[] {
-  const aggregated = item instanceof AggregateError ? (item.errors as unknown[]) : [];
-  const causes = item instanceof Error ? [item.cause, ...aggregated] : [];
-  return causes.filter((cause) => cause !== undefined);
-}
-
-function collectMessages(pending: unknown[], messages: string[]): string[] {
-  if (pending.length === 0 || messages.length >= 8) {
-    return messages;
-  }
-  const [item, ...rest] = pending;
-  return collectMessages([...rest, ...causesOf(item)], [...messages, messageOf(item)]);
-}
-
-function describe(error: unknown): string {
-  return collectMessages(
-    [error].filter((item) => item !== undefined),
-    [],
-  )
-    .join("\n  caused by: ")
-    .replaceAll(/\b(?:gh[opsur]|github_pat)_[A-Za-z0-9_]+/gu, "[redacted]")
-    .slice(0, 8000);
 }
 
 async function namingRoot<T>(root: string, step: string, action: () => Promise<T>): Promise<T> {
@@ -136,18 +99,6 @@ async function createOwnedRoot(runnerTemp: string, out: string) {
   return { identity, writer };
 }
 
-async function privateProfile(root: string) {
-  const dirs = {
-    home: path.join(root, "home"),
-    tmp: path.join(root, "tmp"),
-    installRoot: path.join(root, "install"),
-  };
-  await Promise.all(Object.values(dirs).map(async (dir) => fs.mkdir(dir, { mode: 0o700 })));
-  process.env.HOME = dirs.home;
-  process.env.TMPDIR = dirs.tmp;
-  return dirs;
-}
-
 async function acquireThroughNix(pin: NixPin, target: string, installRoot: string) {
   const nixExecutable = await discoverNixExecutable();
   if (nixExecutable === undefined) {
@@ -175,33 +126,11 @@ async function acquireThroughNix(pin: NixPin, target: string, installRoot: strin
   return { nixExecutable, result };
 }
 
-function isPinnedGateway(version: Record<string, unknown>, expected: string): boolean {
-  return version.name === "pi-gateway" && version.version === expected;
-}
-
-function speaksWire(version: Record<string, unknown>): boolean {
-  return Array.isArray(version.wireVersions) && version.wireVersions.includes(GATEWAY_WIRE_VERSION);
-}
-
-function hasRequiredCapabilities(version: Record<string, unknown>): boolean {
-  const capabilities: unknown[] = Array.isArray(version.capabilities) ? version.capabilities : [];
-  return REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability));
-}
-
-function verifyGatewayVersion(version: Record<string, unknown>, expected: string): void {
-  if (isPinnedGateway(version, expected) && !speaksWire(version)) {
-    throw new Error(wireMismatch("Acquired Nix", expected, version.wireVersions));
-  }
-  if (!isPinnedGateway(version, expected) || !hasRequiredCapabilities(version)) {
-    throw new Error("Acquired Nix gateway ABI/capability mismatch");
-  }
-}
-
 async function probeAcquired(executable: string, nix: string, home: string, expected: string) {
   const binary = await readStoreExecutable(executable);
-  const version = jsonObject(JSON.parse(await run(executable, ["--version", "--json"], home)));
+  const version = parseRecordJson(await run(executable, ["--version", "--json"], home));
   const nixVersion = await run(nix, ["--version"], home);
-  verifyGatewayVersion(version, expected);
+  verifyGatewayVersion(version, expected, "Acquired Nix");
   return {
     nixVersion: nixVersion.trim(),
     executable,
@@ -211,16 +140,16 @@ async function probeAcquired(executable: string, nix: string, home: string, expe
   };
 }
 
-async function recordFailure(writer: RecordWriter, base: Identity, error: unknown) {
+async function recordFailure(writer: RecordWriter, base: Identity, cause: unknown) {
   try {
     await writer.write({
       ...base,
       status: "failed",
       retained: "root kept for runner teardown",
-      error: describe(error),
+      error: describeFailure(cause, true),
     });
   } catch (recordError) {
-    throw new AggregateError([error, recordError], `Nix root ${base.root} retained`, {
+    throw new AggregateError([cause, recordError], `Nix root ${base.root} retained`, {
       cause: recordError,
     });
   }
@@ -231,7 +160,7 @@ async function acquireInRoot(
   writer: RecordWriter,
   pin: NixPin,
   target: string,
-): Promise<object> {
+) {
   const base = { ...identity, target, ...pin };
   await namingRoot(identity.root, "Cannot write preparing record", async () =>
     writer.write({ ...base, status: "preparing" }),
@@ -256,7 +185,7 @@ async function acquireInRoot(
   }
 }
 
-async function prepare(target: string, runnerTemp: string, out: string): Promise<object> {
+async function prepare(target: string, runnerTemp: string, out: string) {
   const pin = gatewayCatalog.nix;
   if (gatewayTarget() !== target) {
     throw new Error(`Host target ${gatewayTarget()} does not match matrix target ${target}`);
@@ -272,55 +201,88 @@ async function prepare(target: string, runnerTemp: string, out: string): Promise
   }
 }
 
-function namesOwnedRoot(root: unknown, runnerTemp: string): root is string {
-  return (
-    typeof root === "string" &&
-    path.dirname(root) === runnerTemp &&
-    ROOT_NAME.test(path.basename(root))
-  );
+const OwnedRoot = Schema.Struct({
+  root: Schema.String,
+  uid: Schema.Number,
+  nonce: Schema.String.check(Schema.isPattern(NONCE)),
+});
+const Identity = Schema.Struct({ ...OwnedRoot.fields, dev: Schema.String, ino: Schema.String });
+const decodeOwnedRoot = Schema.decodeUnknownOption(OwnedRoot);
+const decodeIdentity = Schema.decodeUnknownOption(Identity);
+const BinaryDigest = Schema.String.check(Schema.isPattern(SHA256));
+const decodeAcquired = Schema.decodeUnknownOption(
+  Schema.Struct({
+    status: Schema.Literal("acquired"),
+    executable: Schema.String,
+    binarySha256: BinaryDigest,
+  }),
+);
+const decodeExtracted = Schema.decodeUnknownOption(Schema.Struct({ binarySha256: BinaryDigest }));
+
+function namesOwnedRoot(root: string, runnerTemp: string): boolean {
+  return path.dirname(root) === runnerTemp && ROOT_NAME.test(path.basename(root));
 }
 
-function isRunNonce(nonce: unknown): nonce is string {
-  return typeof nonce === "string" && NONCE.test(nonce);
-}
-
-function recordSchema(record: Record<string, unknown>, runnerTemp: string) {
-  const { root, uid, nonce } = record;
-  if (!namesOwnedRoot(root, runnerTemp) || uid !== currentUid() || !isRunNonce(nonce)) {
+function recordRoot(record: Schema.JsonObject, runnerTemp: string) {
+  const named = Option.getOrUndefined(decodeOwnedRoot(record));
+  if (
+    named === undefined ||
+    !namesOwnedRoot(named.root, runnerTemp) ||
+    named.uid !== currentUid()
+  ) {
     throw new Error("Record does not name an owned Nix root");
   }
-  return { root, uid: currentUid(), nonce };
+  return named;
 }
 
-async function rootIdentity(root: string, uid: number, record: Record<string, unknown>) {
+type RecordedFileIdentity = { dev: Schema.Json | undefined; ino: Schema.Json | undefined };
+
+async function rootIdentity(root: string, uid: number, recorded: RecordedFileIdentity) {
   const stat = await fs.lstat(root, { bigint: true });
   const dev = String(stat.dev);
   const ino = String(stat.ino);
-  if (!isPrivateDirectory(stat, uid) || record.dev !== dev || record.ino !== ino) {
+  if (!isPrivateDirectory(stat, uid) || recorded.dev !== dev || recorded.ino !== ino) {
     throw new Error("Nix root identity, ownership or mode changed");
   }
   return { dev, ino };
 }
 
 async function requireMarker(identity: Identity): Promise<void> {
-  const marker = await readOwnedJson(path.join(identity.root, "owner.json"));
-  if (IDENTITY_KEYS.some((key) => marker[key] !== identity[key])) {
+  const raw = await readOwnedJson(path.join(identity.root, "owner.json"));
+  const marker = Option.getOrUndefined(decodeIdentity(raw));
+  if (marker === undefined || IDENTITY_KEYS.some((key) => marker[key] !== identity[key])) {
     throw new Error("Nix root marker does not match record");
   }
 }
 
-function acquiredState(record: Record<string, unknown>) {
-  const { status, executable, binarySha256 } = record;
-  if (status !== "acquired" || typeof executable !== "string" || !isSha256(binarySha256)) {
-    throw new Error(`Nix record is not an acquired run (status ${String(status)})`);
+const isStatusScalar = Schema.is(
+  Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null, Schema.Undefined]),
+);
+const isStatusList = Schema.is(Schema.Array(Schema.Json));
+
+function statusText(value: Schema.Json | undefined): string {
+  if (isStatusScalar(value)) {
+    return String(value);
   }
+  return isStatusList(value)
+    ? value.map((item) => (item === null ? "" : statusText(item))).join(",")
+    : "[object Object]";
+}
+
+function acquiredState(record: Schema.JsonObject) {
+  const acquired = Option.getOrUndefined(decodeAcquired(record));
+  if (acquired === undefined) {
+    throw new Error(`Nix record is not an acquired run (status ${statusText(record.status)})`);
+  }
+  const { executable, binarySha256 } = acquired;
   return { executable, binarySha256 };
 }
 
 async function ownedRecord(recordPath: string, runnerTemp: string): Promise<NixRecord> {
   const record = await readOwnedJson(recordPath);
-  const named = recordSchema(record, await canonicalTemp(runnerTemp));
-  const identity: Identity = { ...named, ...(await rootIdentity(named.root, named.uid, record)) };
+  const named = recordRoot(record, await canonicalTemp(runnerTemp));
+  const { dev, ino } = record;
+  const identity = { ...named, ...(await rootIdentity(named.root, named.uid, { dev, ino })) };
   await requireMarker(identity);
   return { ...identity, ...acquiredState(record) };
 }
@@ -334,11 +296,11 @@ async function storeBinary(record: NixRecord): Promise<Buffer> {
 }
 
 async function expectedNative(extractedPath: string): Promise<string> {
-  const { binarySha256 } = await readOwnedJson(extractedPath);
-  if (!isSha256(binarySha256)) {
+  const extracted = Option.getOrUndefined(decodeExtracted(await readOwnedJson(extractedPath)));
+  if (extracted === undefined) {
     throw new Error("Invalid extracted native record");
   }
-  return binarySha256;
+  return extracted.binarySha256;
 }
 
 function isWriterPrivate(stat: BigIntStats): boolean {
@@ -385,16 +347,18 @@ async function verifyFixture(record: NixRecord, fixture: string) {
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: Object.fromEntries(
-    ["target", "runner-temp", "out", "record", "extracted", "fixture"].map((name) => [
-      name,
-      { type: "string" as const },
-    ]),
-  ),
+  options: {
+    target: { type: "string" },
+    "runner-temp": { type: "string" },
+    out: { type: "string" },
+    record: { type: "string" },
+    extracted: { type: "string" },
+    fixture: { type: "string" },
+  },
 });
-function option(name: string): string {
+function option(name: keyof typeof values): string {
   const value = values[name];
-  if (typeof value !== "string" || value.length === 0) {
+  if (value === undefined || value.length === 0) {
     throw new Error(`Missing --${name}`);
   }
   return value;
@@ -403,7 +367,9 @@ async function owned(): Promise<NixRecord> {
   return ownedRecord(option("record"), option("runner-temp"));
 }
 
-const commands = new Map<string, () => Promise<unknown>>([
+type Command = () => Promise<Schema.JsonObject>;
+
+const commands = new Map<string, Command>([
   ["prepare", async () => prepare(option("target"), option("runner-temp"), option("out"))],
   [
     "install-fixture",
@@ -421,7 +387,7 @@ const commands = new Map<string, () => Promise<unknown>>([
   ],
 ]);
 
-function selectCommand(args: string[]): () => Promise<unknown> {
+function selectCommand(args: string[]): Command {
   const [command = "", ...extra] = args;
   const handler = commands.get(command);
   if (handler === undefined || extra.length > 0) {
@@ -434,6 +400,6 @@ try {
   const result = await selectCommand(positionals)();
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {
-  process.stderr.write(`verify-gateway-nix: ${describe(error)}\n`);
+  process.stderr.write(`verify-gateway-nix: ${describeFailure(error, true)}\n`);
   process.exitCode = 1;
 }

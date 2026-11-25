@@ -1,5 +1,6 @@
 import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { Schema } from "effect";
 import {
   configurationKeys,
   decodeConfiguration,
@@ -9,7 +10,7 @@ import {
   visibleText,
 } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
-import { stateLocations } from "../adapter/locations.js";
+import { isMissingFile, stateLocations } from "../adapter/locations.js";
 import type { StateSet } from "../adapter/locations.js";
 import { readManaged } from "./backend.js";
 import { regularBytes } from "./files.js";
@@ -40,21 +41,30 @@ const baseline = {
 };
 const keys = Object.keys(baseline);
 const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
-export function invalidFields(value: unknown): string[] {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+const isJsonObject = Schema.is(Schema.JsonObject);
+const isNumber = Schema.is(Schema.Number);
+export function invalidFields(value: Schema.Json): string[] {
+  if (!isJsonObject(value)) {
     return ["root (expected an object)"];
   }
   const fields: string[] = [];
   for (const key of keys) {
     try {
-      const field: unknown = Reflect.get(value, key);
+      const field = value[key];
+      if (field === undefined) {
+        fields.push(key);
+        continue;
+      }
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
       fields.push(key);
     }
   }
   for (const key of optionalKeys.filter((name) => Object.hasOwn(value, name))) {
-    const field: unknown = Reflect.get(value, key);
+    const field = value[key];
+    if (field === undefined) {
+      continue;
+    }
     try {
       decodeConfiguration({ ...baseline, [key]: field });
     } catch {
@@ -78,9 +88,9 @@ async function inspectConfiguration(agentDir: string): Promise<Inspection> {
     if (bytes === undefined) {
       return { kind: "missing", path };
     }
-    let value: unknown;
+    let value: Schema.Json;
     try {
-      value = JSON.parse(bytes.toString("utf8"));
+      value = parseJson(bytes);
     } catch {
       return { kind: "invalid-json", path };
     }
@@ -91,10 +101,7 @@ async function inspectConfiguration(agentDir: string): Promise<Inspection> {
     return { kind: "valid", path, config: decodeConfiguration(value) };
   } catch (error) {
     return {
-      kind:
-        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
-          ? "missing"
-          : "unreadable",
+      kind: isMissingFile(error) ? "missing" : "unreadable",
       path,
     };
   }
@@ -426,7 +433,7 @@ async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<C
     }
     const value = decodePairing(parseJson(bytes));
     const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
-      typeof value.inspection?.[key] === "number" ? [[key, value.inspection[key]] as const] : [],
+      isNumber(value.inspection?.[key]) ? [[key, value.inspection[key]] as const] : [],
     );
     if (deadlines.length === 0) {
       return {

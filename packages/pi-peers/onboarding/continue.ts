@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import { Schema } from "effect";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { readManaged, setupPaths } from "./backend.js";
@@ -24,7 +25,7 @@ import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
 import type { RemoteOptions } from "./menu/remote-form.js";
 import { attempt, failed, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
 import { credentials, pairAction } from "./pair.js";
-import type { PairOperation } from "./pair.js";
+import type { PairInput, PairOperation } from "./pair.js";
 import type { LocalChoices, LocalPlan } from "./plan.js";
 import { configured, machineError, prepareRemote, remoteReview } from "./remote.js";
 import type { RemoteIntent } from "./remote.js";
@@ -43,10 +44,12 @@ const PUBLIC = [
   ["pairId", "Pair ID"],
 ] as const;
 
-function publicFacts(available: Record<string, unknown>): [string, string][] {
+const isString = Schema.is(Schema.String);
+
+function publicFacts(available: Schema.JsonObject): [string, string][] {
   return PUBLIC.flatMap(([key, label]): [string, string][] => {
     const value = available[key];
-    return typeof value === "string" ? [[label, visibleText(value)]] : [];
+    return isString(value) ? [[label, visibleText(value)]] : [];
   });
 }
 
@@ -114,7 +117,7 @@ export async function loadedPair(
   return { agentDir, reconnect, paths: setupPaths(agentDir), config, setup, pairing };
 }
 
-type Maintenance = { readonly operation: PairOperation; readonly input: Record<string, unknown> };
+type Maintenance = { readonly operation: PairOperation; readonly input: PairInput };
 
 const STEPS = [
   "Running the pairing step",
@@ -148,7 +151,7 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
   const { setup, paths, pairing, agentDir } = context;
   const { operation, input } = action;
   step(STEPS[0]);
-  let output: Record<string, unknown> = {};
+  let output: Schema.JsonObject;
   try {
     const prepared =
       operation === "import"
@@ -535,7 +538,7 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
 
 function oldRoot(pairing: Pairing): string | undefined {
   const root = pairing.output.rootSha256;
-  return typeof root === "string"
+  return isString(root)
     ? root
     : (pairing.intent.confirmedRootSha256 ?? pairing.intent.existing?.confirmedRootSha256);
 }

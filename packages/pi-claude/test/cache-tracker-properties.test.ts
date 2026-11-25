@@ -21,11 +21,13 @@ import type {
 
 const settings = propertySettings(200);
 const MODELS = ["claude/sonnet", "claude/claude-haiku-4-5", "other"] as const;
-const MINIMUMS: Readonly<Record<string, number | undefined>> = {
-  "claude/sonnet": 512,
-  "claude/claude-haiku-4-5": 4096,
-  other: undefined,
-};
+const MINIMUMS = new Map(
+  Object.entries({
+    "claude/sonnet": 512,
+    "claude/claude-haiku-4-5": 4096,
+    other: undefined,
+  }),
+);
 const TTL_MS = { none: 0, "5m": 300_000, "1h": 3_600_000 } as const;
 type Ttl = keyof typeof TTL_MS;
 
@@ -211,7 +213,7 @@ function submit(machine: Machine, req: Req): void {
     characters(req.blocks.slice(0, common), false) + characters(req.blocks.slice(0, common), true),
   );
   assert.equal(request.prefixChange, change);
-  assert.equal(request.minimumCacheableTokens, MINIMUMS[req.model]);
+  assert.equal(request.minimumCacheableTokens, MINIMUMS.get(req.model));
   const gap = machine.previous === undefined ? undefined : machine.now - machine.previousAt;
   assert.equal(request.msSincePreviousRequest, gap);
   machine.pending.push({
@@ -249,7 +251,7 @@ function expectedCauses(
 }
 
 function belowMinimum(pending: Pending, usage: TokenUsage, prompt: number): boolean {
-  const minimum = MINIMUMS[pending.model];
+  const minimum = MINIMUMS.get(pending.model);
   const cold = usage.cacheRead === 0 && usage.cacheWrite === 0;
   return minimum !== undefined && prompt > 0 && prompt < minimum && cold;
 }
@@ -259,7 +261,7 @@ function checkUsage(usage: TokenUsage, pending: Pending, event: CacheUsageDiagno
   assert.equal(event.turn, pending.turn);
   assert.equal(event.promptTokens, prompt);
   assert.ok(event.cacheReadPercent >= 0 && event.cacheReadPercent <= 100);
-  assert.equal(event.minimumCacheableTokens, MINIMUMS[pending.model]);
+  assert.equal(event.minimumCacheableTokens, MINIMUMS.get(pending.model));
   const low = prompt === 0 || usage.cacheRead * 2 < prompt;
   if (prompt === 0) {
     assert.equal(event.cacheReadPercent, 0);

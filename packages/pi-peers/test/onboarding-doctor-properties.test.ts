@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import {
   assertHegel,
@@ -11,7 +12,7 @@ import { decodeConfiguration } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { invalidFields } from "../onboarding/doctor.js";
 
-type Field = { required: boolean; valid: readonly unknown[]; invalid: readonly unknown[] };
+type Field = { required: boolean; valid: readonly Schema.Json[]; invalid: readonly Schema.Json[] };
 const fields = {
   machineId: { required: true, valid: ["host", "a-1"], invalid: ["Host", "", 3] },
   socketPath: {
@@ -52,7 +53,7 @@ const fields = {
   maxWaitSeconds: { required: false, valid: [1, 60, 300], invalid: [0, 301, 1.5, "60"] },
 } satisfies Record<keyof Configuration, Field>;
 
-function accepted(value: unknown): boolean {
+function accepted(value: Schema.Json): boolean {
   try {
     decodeConfiguration(value);
     return true;
@@ -61,9 +62,9 @@ function accepted(value: unknown): boolean {
   }
 }
 function assertDoctorMatchesAdapter(tc: TestCase): void {
-  const value: Record<string, unknown> = {};
+  const value: Record<string, Schema.Json> = {};
   const expected: string[] = [];
-  for (const [name, field] of Object.entries(fields) as [string, Field][]) {
+  for (const [name, field] of Object.entries<Field>(fields)) {
     const choice = tc.draw(gs.sampledFrom(["absent", "valid", "invalid"] as const), name);
     if (choice === "absent") {
       expected.push(...(field.required ? [name] : []));

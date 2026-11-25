@@ -1,3 +1,4 @@
+import { flow, Option, Schema } from "effect";
 import { visibleText } from "../../adapter/config.js";
 import type { MenuModel } from "./model.js";
 
@@ -41,48 +42,53 @@ export function outcomeLevel(outcome: Outcome): "info" | "warning" | "error" {
   return outcome.headline.startsWith("!") ? "warning" : "error";
 }
 
-function pair(value: unknown): readonly [string, string] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const items: unknown[] = value;
-  const [label, text] = items;
-  return typeof label === "string" && typeof text === "string"
-    ? [clean(label, MAX_TEXT), clean(text, MAX_TEXT)]
-    : undefined;
-}
+const isFact = Schema.is(
+  Schema.TupleWithRest(Schema.Tuple([Schema.String, Schema.String]), [Schema.Unknown]),
+);
+const isString = Schema.is(Schema.String);
+const decodeRows = Schema.decodeUnknownOption(Schema.Array(Schema.Unknown));
+const StoredReport = Schema.Struct({
+  ok: Schema.Boolean,
+  headline: Schema.String,
+  facts: Schema.Array(Schema.Unknown),
+  next: Schema.optional(Schema.Unknown),
+  technical: Schema.optional(Schema.Unknown),
+});
 
-export function storedOutcome(data: unknown): Outcome | undefined {
-  if (typeof data !== "object" || data === null) {
-    return undefined;
-  }
-  const ok: unknown = Reflect.get(data, "ok");
-  const headline: unknown = Reflect.get(data, "headline");
-  const facts: unknown = Reflect.get(data, "facts");
-  const next: unknown = Reflect.get(data, "next");
-  const technical: unknown = Reflect.get(data, "technical");
-  if (typeof ok !== "boolean" || typeof headline !== "string" || !Array.isArray(facts)) {
-    return undefined;
-  }
-  const rows: unknown[] = facts;
+function restoreOutcome({
+  ok,
+  headline,
+  facts,
+  next,
+  technical,
+}: typeof StoredReport.Type): Outcome {
+  const lines = Option.getOrUndefined(decodeRows(technical));
+  const rows: Outcome["facts"] = facts
+    .slice(0, MAX_FACTS)
+    .flatMap((row) =>
+      isFact(row) ? [[clean(row[0], MAX_TEXT), clean(row[1], MAX_TEXT)] as const] : [],
+    );
   return {
     ok,
     headline: clean(headline, MAX_TEXT),
-    facts: rows.slice(0, MAX_FACTS).flatMap((row) => {
-      const value = pair(row);
-      return value === undefined ? [] : [value];
-    }),
-    ...(typeof next === "string" ? { next: clean(next, MAX_TEXT * 2) } : {}),
-    ...(Array.isArray(technical)
-      ? {
-          technical: technical
+    facts: rows,
+    ...(isString(next) ? { next: clean(next, MAX_TEXT * 2) } : {}),
+    ...(lines === undefined
+      ? {}
+      : {
+          technical: lines
             .slice(0, MAX_TECHNICAL)
-            .filter((line): line is string => typeof line === "string")
+            .filter((line) => isString(line))
             .map((line) => clean(line, MAX_TEXT * 4)),
-        }
-      : {}),
+        }),
   };
 }
+
+export const storedOutcome = flow(
+  Schema.decodeUnknownOption(StoredReport),
+  Option.map(restoreOutcome),
+  Option.getOrUndefined,
+);
 
 type Running = { readonly text: string; readonly started: number; ended?: number };
 

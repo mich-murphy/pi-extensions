@@ -5,14 +5,13 @@ import { formatSkillsForPrompt, getAgentDir, initTheme } from "@earendil-works/p
 import type {
   BuildSystemPromptOptions,
   ExtensionCommandContext,
-  ExtensionUIContext,
   Skill,
 } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { testTui, testTheme, testKeybindings } from "../../../test-support/pi-tui";
 import piSkills, { registerPiSkills } from "../index";
-import type { ToggleRegistration, ToggleHandlers } from "../index";
+import type { ToggleDialogFactory, ToggleRegistration, ToggleHandlers } from "../index";
 import type { PromptFilterEvent } from "../prompt-filter";
 import { resourcePathId } from "../resource-path";
 import type { ToggleOverrides, ToggleValue } from "../resources";
@@ -43,10 +42,9 @@ const options: BuildSystemPromptOptions = { cwd, skills: [research] };
 const temporaryDirectories: string[] = [];
 
 type CommandOptions = Parameters<ToggleRegistration["registerCommand"]>[1];
-type DialogFactory = Parameters<ExtensionUIContext["custom"]>[0];
 
 async function selectFirstDialogItem(
-  factory: DialogFactory,
+  factory: ToggleDialogFactory,
   width = 120,
   group = 1,
 ): Promise<readonly string[]> {
@@ -62,7 +60,7 @@ async function selectFirstDialogItem(
 }
 
 async function driveDialog(
-  factory: DialogFactory,
+  factory: ToggleDialogFactory,
   keys: readonly string[],
   width = 120,
   group = 1,
@@ -157,10 +155,13 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
   };
   registerPiSkills(piMock, store);
   const emit = async (
-    ...args: ["resources_discover", unknown] | ["before_agent_start", PromptFilterEvent]
-  ): Promise<unknown> => {
+    ...args: ["resources_discover"] | ["before_agent_start", PromptFilterEvent]
+  ) => {
     if (args[0] === "resources_discover") {
-      return handlers.resources_discover?.(args[1], ctx);
+      return handlers.resources_discover?.(
+        { type: "resources_discover", cwd: projectDirectory, reason: "startup" },
+        ctx,
+      );
     }
     return handlers.before_agent_start?.(args[1], ctx);
   };
@@ -169,7 +170,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
     commandOptions: {
       readonly mode?: ExtensionCommandContext["mode"];
       readonly promptOptions?: BuildSystemPromptOptions;
-      readonly custom?: (factory: DialogFactory) => Promise<unknown>;
+      readonly custom?: (factory: ToggleDialogFactory) => Promise<void>;
     } = {},
   ): Promise<void> => {
     const command = commands.get("skills");
@@ -198,7 +199,7 @@ function harness(store: ToggleStateStore, projectDirectory = cwd) {
   };
 }
 
-function projectWithSkill(): { readonly directory: string; readonly skill: Skill } {
+function projectWithSkill() {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-lifecycle-"));
   temporaryDirectories.push(directory);
   const path = join(directory, ".claude", "skills", "design", "SKILL.md");
@@ -308,10 +309,16 @@ describe("extension lifecycle", () => {
     const global = storeWith();
     const project = storeWith();
 
-    await harness(global).runCommand("", { custom: selectFirstDialogItem });
+    await harness(global).runCommand("", {
+      custom: async (factory) => {
+        await selectFirstDialogItem(factory);
+      },
+    });
     await harness(project).runCommand("", {
       promptOptions: { cwd, skills: [deploy] },
-      custom: async (factory) => selectFirstDialogItem(factory, 120, 3),
+      custom: async (factory) => {
+        await selectFirstDialogItem(factory, 120, 3);
+      },
     });
 
     expect(global.writes).toStrictEqual([[skillPath, "disabled"]]);
@@ -321,7 +328,11 @@ describe("extension lifecycle", () => {
   test("clears the override when a toggle returns to the default", async () => {
     const store = storeWith({ [skillPath]: "disabled" });
 
-    await harness(store).runCommand("", { custom: selectFirstDialogItem });
+    await harness(store).runCommand("", {
+      custom: async (factory) => {
+        await selectFirstDialogItem(factory);
+      },
+    });
 
     expect(store.writes).toStrictEqual([[skillPath, "default"]]);
   });
@@ -379,13 +390,13 @@ describe("extension lifecycle", () => {
     const hidden = harness(storeWith(), project.directory);
     const enabled = harness(storeWith({ [project.skill.filePath]: "enabled" }), project.directory);
 
-    await expect(hidden.emit("resources_discover", {})).resolves.toStrictEqual({
+    await expect(hidden.emit("resources_discover")).resolves.toStrictEqual({
       skillPaths: [project.skill.filePath],
     });
     await expect(hidden.emit("before_agent_start", event)).resolves.toStrictEqual({
       systemPrompt: "base",
     });
-    await enabled.emit("resources_discover", {});
+    await enabled.emit("resources_discover");
     await expect(enabled.emit("before_agent_start", event)).resolves.toBeUndefined();
   });
 
@@ -394,7 +405,7 @@ describe("extension lifecycle", () => {
     const testHarness = harness(storeWith(), project.directory);
     testHarness.distrustProject();
 
-    await expect(testHarness.emit("resources_discover", {})).resolves.toBeUndefined();
+    await expect(testHarness.emit("resources_discover")).resolves.toBeUndefined();
     await expect(
       testHarness.emit("before_agent_start", {
         systemPrompt: `base${formatSkillsForPrompt([project.skill])}`,
@@ -508,7 +519,7 @@ describe("extension lifecycle", () => {
 
   test("Esc with search text clears the search and keeps the menu open", async () => {
     const store = storeWith();
-    let result = { closed: true, rendered: [] as readonly string[] };
+    let result: Awaited<ReturnType<typeof driveDialog>> = { closed: true, rendered: [] };
 
     await harness(store).runCommand("", {
       custom: async (factory) => {

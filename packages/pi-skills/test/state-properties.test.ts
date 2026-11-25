@@ -107,7 +107,7 @@ const document = gs.oneOf<unknown>(json, documentLike);
 
 const stats = { ok: 0, err: 0 };
 
-function isToggleValue(value: unknown): boolean {
+function isToggleValue(value: string): boolean {
   return value === "enabled" || value === "disabled";
 }
 

@@ -12,13 +12,13 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
-import type { ExtensionUIContext, Skill } from "@earendil-works/pi-coding-agent";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import { afterEach, assert, describe, expect, test } from "vitest";
 import { resolveToCwd } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/path-utils.js";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
 import { disabledResourceMatcher, toolPath } from "../guard";
 import { isSubagentSession, registerPiSkills } from "../index";
-import type { GuardContext, ToggleHandlers } from "../index";
+import type { GuardContext, GuardedToolCall, ToggleDialogFactory, ToggleHandlers } from "../index";
 import { RepositoryLocator } from "../repository";
 import { resourcePathId } from "../resource-path";
 import { emptyOverrides, ResourcePolicy } from "../resources";
@@ -47,11 +47,7 @@ function write(path: string, content = "content\n"): string {
   return path;
 }
 
-function repository(): {
-  readonly main: string;
-  readonly worktree: string;
-  readonly other: string;
-} {
+function repository() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-skills-guard-")));
   temporaryDirectories.push(root);
   const main = join(root, "main");
@@ -151,7 +147,7 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
         },
       },
     );
-  const call = (toolName: string, input: Record<string, unknown>, parentSession?: string) =>
+  const call = (toolName: string, input: GuardedToolCall["input"], parentSession?: string) =>
     handlers.tool_call?.({ toolName, input }, context(parentSession));
   const type = (text: string, parentSession?: string) => {
     handlers.input?.({ text, source: "interactive" }, context(parentSession));
@@ -874,7 +870,7 @@ describe("pi-skills guard", () => {
         },
       );
       let rendered: readonly string[] = [];
-      const custom = async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
+      const custom = async (factory: ToggleDialogFactory) => {
         initTheme();
         const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
         component.handleInput?.("\u001b[B");

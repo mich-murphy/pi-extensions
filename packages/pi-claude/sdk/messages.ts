@@ -135,7 +135,7 @@ function describeIssue(issue: SchemaIssue.Issue): string {
     .join("; ");
 }
 
-type MessageParser = (input: unknown) => Result.Result<SdkMessage, string>;
+type MessageParser = (input: SdkEventEnvelope) => Result.Result<SdkMessage, string>;
 
 function messageParser<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
@@ -162,15 +162,18 @@ function usageMessage(
   });
 }
 
-function countBlocks(blocks: readonly unknown[], type: string, errorsOnly = false): number {
-  return blocks.filter(
-    (block) =>
-      typeof block === "object" &&
-      block !== null &&
-      "type" in block &&
-      block.type === type &&
-      (!errorsOnly || ("is_error" in block && block.is_error === true)),
-  ).length;
+const blockSchema = withFallback(
+  Schema.UndefinedOr(
+    Schema.Struct({ type: Schema.String, is_error: lenientOptional(Schema.Boolean) }),
+  ),
+  undefined,
+);
+
+type WireBlock = typeof blockSchema.Type;
+
+function countBlocks(blocks: readonly WireBlock[], type: string, errorsOnly = false): number {
+  return blocks.filter((block) => block?.type === type && (!errorsOnly || block.is_error === true))
+    .length;
 }
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -193,7 +196,7 @@ const decodeRateLimit = Schema.decodeUnknownOption(
   }),
 );
 
-function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
+function rateLimitMessage(input: SdkEventEnvelope): Result.Result<SdkMessage, string> {
   const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
   const overageReset = info?.overageResetsAt ?? info?.resetsAt;
   const overage =
@@ -266,7 +269,9 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
         Result.succeed({
           type: "usage",
           usage: event.usage,
-          ...(typeof event.delta?.stop_reason === "string" && event.delta.stop_reason !== ""
+          ...(event.delta?.stop_reason !== undefined &&
+          event.delta.stop_reason !== null &&
+          event.delta.stop_reason !== ""
             ? { requestStopped: true as const }
             : {}),
         }),
@@ -278,7 +283,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
       Schema.Struct({
         message: Schema.Struct({
           ...modelCallSchema.fields,
-          content: lenientOptional(Schema.Array(Schema.Unknown)),
+          content: lenientOptional(Schema.Array(blockSchema)),
         }),
         error: lenientOptional(Schema.String),
       }),
@@ -296,7 +301,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
     messageParser(
       Schema.Struct({
         message: lenientOptional(
-          Schema.Struct({ content: lenientOptional(Schema.Array(Schema.Unknown)) }),
+          Schema.Struct({ content: lenientOptional(Schema.Array(blockSchema)) }),
         ),
       }),
       ({ message }) => {
@@ -326,22 +331,40 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
   ],
 ]);
 
+const nodeSchema = Schema.Struct({
+  type: Schema.String,
+  subtype: lenientOptional(Schema.String),
+  event: Schema.optional(Schema.Unknown),
+  delta: Schema.optional(Schema.Unknown),
+  claude_code_version: Schema.optional(Schema.Unknown),
+  message: Schema.optional(Schema.Unknown),
+  error: Schema.optional(Schema.Unknown),
+  is_error: Schema.optional(Schema.Unknown),
+  stop_reason: Schema.optional(Schema.Unknown),
+  terminal_reason: Schema.optional(Schema.Unknown),
+  usage: Schema.optional(Schema.Unknown),
+  modelUsage: Schema.optional(Schema.Unknown),
+  num_turns: Schema.optional(Schema.Unknown),
+  rate_limit_info: Schema.optional(Schema.Unknown),
+});
+
 const decodeNode = Schema.decodeUnknownOption(
   Schema.Struct({
     type: Schema.String,
-    subtype: Schema.optional(Schema.Unknown),
-    event: Schema.optional(Schema.Unknown),
     delta: Schema.optional(Schema.Unknown),
   }),
 );
 
-function kindOf(input: unknown): string | undefined {
-  const message = Option.getOrUndefined(decodeNode(input));
-  if (message?.type === "system") {
-    return typeof message.subtype === "string" ? `system.${message.subtype}` : "system";
+export const decodeSdkEvent = Schema.decodeUnknownOption(nodeSchema);
+
+type SdkEventEnvelope = typeof nodeSchema.Type;
+
+function kindOf(message: SdkEventEnvelope): string {
+  if (message.type === "system") {
+    return message.subtype === undefined ? "system" : `system.${message.subtype}`;
   }
-  if (message?.type !== "stream_event") {
-    return message?.type;
+  if (message.type !== "stream_event") {
+    return message.type;
   }
   const event = Option.getOrUndefined(decodeNode(message.event));
   if (event?.type !== "content_block_delta") {
@@ -350,19 +373,21 @@ function kindOf(input: unknown): string | undefined {
   return `stream_event.content_block_delta.${Option.getOrUndefined(decodeNode(event.delta))?.type}`;
 }
 
-export function parseSdkMessage(input: unknown): Result.Result<SdkMessage, SdkProtocolError> {
-  const kind = kindOf(input);
-  if (kind === undefined) {
+export function parseSdkMessage(
+  decoded: ReturnType<typeof decodeSdkEvent>,
+): Result.Result<SdkMessage, SdkProtocolError> {
+  if (Option.isNone(decoded)) {
     return Result.fail(
       new SdkProtocolError({ messageType: "message", detail: "type must be a string" }),
     );
   }
+  const kind = kindOf(decoded.value);
   const parse = MESSAGE_PARSERS.get(kind);
   if (parse === undefined) {
     return Result.succeed({ type: "ignored" });
   }
   return Result.mapError(
-    parse(input),
+    parse(decoded.value),
     (detail) => new SdkProtocolError({ messageType: kind, detail }),
   );
 }

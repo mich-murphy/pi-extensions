@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { Text, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
 import { toolPresentation } from "../adapter/presentation.js";
+import type { RenderContext, RenderPayload } from "../adapter/presentation.js";
 
 const settings = propertySettings(200);
 const toolNames = ["peers_list", "peers_send", "peers_take"] as const;
@@ -116,7 +117,7 @@ function assertVisibleTextBidi(code: number, prefix: string): void {
   assert.equal(output.includes(`\\u${code.toString(16)}`), true);
 }
 const controlCodes = [...Array.from({ length: 32 }, (_, code) => code), 127, 128, 155, 159];
-function baseConfiguration(allowed: boolean): Record<string, unknown> {
+function baseConfiguration(allowed: boolean) {
   return {
     machineId: "alpha",
     socketPath: "/tmp/gateway.sock",
@@ -125,10 +126,10 @@ function baseConfiguration(allowed: boolean): Record<string, unknown> {
     policies: [{ machineId: "beta", scopeId: "team", permissions: allowed ? ["push"] : [] }],
   };
 }
-function injectControl(allowed: boolean, field: number, injected: string): unknown {
+function injectControl(allowed: boolean, field: number, injected: string) {
   const config = baseConfiguration(allowed);
   const policy = { machineId: "beta", scopeId: "team", permissions: ["push"] };
-  const variants: Record<string, unknown>[] = [
+  const variants = [
     { label: `test${injected}` },
     { socketPath: `/tmp/${injected}.sock` },
     { scopeIds: [`team${injected}`] },
@@ -186,30 +187,27 @@ const argsValue = gs.oneOf<Json>(jsonValue, hostileShape);
 function renderLines(
   name: string,
   slot: "call" | "result",
-  args: unknown,
-  payload: unknown,
+  args: Json,
+  payload: RenderPayload,
   options: { expanded: boolean; isError: boolean; width: number },
 ): readonly string[] {
   const theme = { fg: (_token: string, value: string) => value };
-  const context = {
+  const context: RenderContext = {
     args,
-    state: {},
-    argsComplete: true,
     expanded: options.expanded,
     isError: options.isError,
     keyHint: (_key: string, description: string) => `ctrl+o ${description}`,
   };
   const renderer = toolPresentation(name);
-  const render = slot === "call" ? renderer.renderCall : renderer.renderResult;
-  assert(typeof render === "function");
-  const component: unknown = Reflect.apply(
-    render,
-    undefined,
+  const component =
     slot === "call"
-      ? [args, theme, context]
-      : [payload, { expanded: options.expanded, isPartial: false }, theme, context],
-  );
-  assert(component instanceof Text);
+      ? renderer.renderCall(args, theme, context)
+      : renderer.renderResult(
+          payload,
+          { expanded: options.expanded, isPartial: false },
+          theme,
+          context,
+        );
   return component.render(options.width);
 }
 function assertRenderedBounds(
@@ -219,7 +217,7 @@ function assertRenderedBounds(
   width: number,
   isError: boolean,
 ): void {
-  const payload = {
+  const payload: RenderPayload = {
     content: [{ type: "text", text: JSON.stringify(value) }],
     details: { value },
   };

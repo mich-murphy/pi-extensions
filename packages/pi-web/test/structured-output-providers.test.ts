@@ -14,7 +14,7 @@ import {
   ParallelMcpFetchProvider,
   ParallelMcpSearchProvider,
 } from "../provider-parallel";
-import type { FetchProvider, SearchProvider } from "../provider-types";
+import type { FetchProvider, ProviderJson, SearchProvider } from "../provider-types";
 import { WEB_SEARCH_OUTPUT_SCHEMA } from "../tool-output";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
@@ -33,14 +33,14 @@ const SECRET = "sekrit-key";
 const SETTINGS = settingsFrom({ EXA_API_KEY: SECRET });
 const KEY = Redacted.make("adapter-key");
 
-function json(payload: unknown) {
+function json(payload: ProviderJson) {
   return Result.succeed({ bodyText: JSON.stringify(payload) });
 }
 
 type SearchCase = {
   readonly name: string;
   readonly make: (leak: string) => SearchProvider;
-  readonly expected: (leak: string) => Record<string, unknown>;
+  readonly expected: (leak: string) => ProviderJson;
 };
 
 const SEARCH_CASES: readonly SearchCase[] = [

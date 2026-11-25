@@ -33,7 +33,7 @@ const rateLimitsSchema = Schema.Struct({
   extra_usage: Schema.optional(Schema.NullOr(Schema.Struct({ is_enabled: Schema.Boolean }))),
 });
 
-const decodeUsageResponse = Schema.decodeUnknownResult(
+export const decodeUsageResponse = Schema.decodeUnknownResult(
   Schema.Struct({
     subscription_type: Schema.NullOr(Schema.String),
     rate_limits_available: Schema.Boolean,
@@ -87,7 +87,7 @@ class ClaudeUsageTimeoutError extends Schema.TaggedError<ClaudeUsageTimeoutError
 }
 
 export type ClaudeUsageQuery = {
-  readonly readUsage: () => Promise<unknown>;
+  readonly readUsage: () => Promise<ReturnType<typeof decodeUsageResponse>>;
   readonly close: () => Promise<void>;
 };
 
@@ -125,7 +125,10 @@ function defaultStartClaudeUsageQuery(abortController: AbortController): ClaudeU
     },
   });
   return {
-    readUsage: async () => sdkQuery.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+    readUsage: async () =>
+      decodeUsageResponse(
+        await sdkQuery.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+      ),
     close: async () => {
       await sdkQuery.return();
     },
@@ -160,9 +163,8 @@ export class ClaudeUsageQueries extends Context.Service<
 }
 
 function parseUsageResponse(
-  input: unknown,
+  parsed: ReturnType<typeof decodeUsageResponse>,
 ): Result.Result<ClaudeUsageStatus, ClaudeUsageInspectionError> {
-  const parsed = decodeUsageResponse(input);
   if (Result.isFailure(parsed)) {
     return Result.fail(
       new ClaudeUsageInspectionError({ operation: "parse", cause: parsed.failure }),

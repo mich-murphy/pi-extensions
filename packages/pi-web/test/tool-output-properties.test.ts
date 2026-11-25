@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as gs from "@hegeldev/hegel/generators";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import type { FetchPageResult } from "../fetch-page";
@@ -68,11 +68,10 @@ function shownText(result: ReturnType<typeof run>): string {
   return first.text;
 }
 
+const decodeContent = Schema.decodeUnknownSync(Schema.Struct({ content: Schema.String }));
+
 function structuredBytes(result: ReturnType<typeof run>): number {
-  const sc: unknown = result.structuredContent;
-  assert.ok(typeof sc === "object" && sc !== null);
-  const content: unknown = Reflect.get(sc, "content");
-  assert.ok(typeof content === "string");
+  const { content } = decodeContent(result.structuredContent);
   return Buffer.byteLength(content);
 }
 

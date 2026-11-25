@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { decodeConfiguration } from "../../adapter/config.js";
 import { createAdapterRuntime } from "../../adapter/runtime.js";
 import { freshId } from "../../adapter/transport.js";
+import { parseJson } from "../../onboarding/schema.js";
 
 const PERIOD_MS = 4000;
 const LIMIT = 8;
-const config = decodeConfiguration(JSON.parse(readFileSync(process.argv[2] ?? "", "utf8")));
+const config = decodeConfiguration(parseJson(readFileSync(process.argv[2] ?? "")));
 const self = { machineId: config.machineId, sessionId: "scripted-peer", runtimeNonce: freshId() };
 const runtime = await createAdapterRuntime(config, self, { sendMessage: () => undefined }, () => ({
   isIdle: () => true,

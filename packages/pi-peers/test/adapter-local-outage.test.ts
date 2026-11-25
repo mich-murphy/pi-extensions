@@ -8,9 +8,11 @@ import type { EnsureGateway } from "../adapter/client.js";
 import type { Configuration } from "../adapter/config.js";
 import { AdapterSession } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
+import type { ToolArguments } from "../adapter/tools.js";
 import type { Request } from "../adapter/transport.js";
 import type { Frame } from "../protocol/schema.js";
 import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
+import { toolRecorder } from "./adapter-tool-fixture.js";
 
 const peer = {
   machineId: "alpha",
@@ -98,29 +100,9 @@ function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-function recordWith(value: unknown, key: string, label: string): Record<string, unknown> {
-  if (!isRecord(value) || !(key in value)) {
-    throw new TypeError(label);
-  }
-  return value;
-}
-
-type Tool = { name: string; execute: unknown };
-async function tool(tools: readonly Tool[], name: string, args: unknown) {
-  const found = tools.find((item) => item.name === name);
-  if (found === undefined || typeof found.execute !== "function") {
-    throw new Error(name);
-  }
-  const result = recordWith(
-    await Reflect.apply(found.execute, undefined, ["unit", args, new AbortController().signal]),
-    "details",
-    "tool result",
-  );
-  const details = recordWith(result.details, "value", "tool details");
-  return { value: details.value, isError: result.isError === true };
+async function tool(tools: ReturnType<typeof toolRecorder>, name: string, args: ToolArguments) {
+  const result = await tools.run(name, args, new AbortController().signal);
+  return { value: result.details.value, isError: result.isError === true };
 }
 
 async function setup(grants: readonly string[], managed = true) {
@@ -159,18 +141,8 @@ async function setup(grants: readonly string[], managed = true) {
     await state.server.stop();
     await rm(directory, { recursive: true, force: true });
   });
-  const tools: Tool[] = [];
-  registerTools(
-    {
-      registerTool: (definition) => {
-        tools.push({
-          name: definition.name,
-          execute: definition.execute.bind(definition),
-        });
-      },
-    },
-    () => session,
-  );
+  const tools = toolRecorder();
+  registerTools(tools, () => session);
   await session.start();
   expect(session.client.status().connected).toBe(true);
   const outage = async () => {

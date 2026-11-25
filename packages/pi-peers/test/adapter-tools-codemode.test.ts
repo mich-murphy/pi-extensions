@@ -1,35 +1,24 @@
 import { describe, expect, test } from "vitest";
 import { registerTools } from "../adapter/tools.js";
+import type { PeerTool, PeerToolLoadout } from "../adapter/tools.js";
 
-type Declared = { name: string; description: string };
-type Loadout = { declared: readonly Declared[] };
-type Definition = {
-  name: string;
-  description: string;
-  exposure?: string;
-  prepareLoadout?: (loadout: Loadout) => { descriptions?: Record<string, string> } | undefined;
-};
+type Definition = Pick<PeerTool, "name" | "description" | "exposure" | "prepareLoadout">;
 
 function definitions(): Map<string, Definition> {
   const tools = new Map<string, Definition>();
-  Reflect.apply(registerTools, undefined, [
+  registerTools(
     {
-      registerTool: (tool: Definition) => {
+      registerTool: (tool) => {
         tools.set(tool.name, tool);
       },
     },
     () => undefined,
-  ]);
+  );
   return tools;
 }
 
-function loadoutOf(names: string[], tools: Map<string, Definition>): Loadout {
-  return {
-    declared: names.map((name) => ({
-      name,
-      description: descriptionOf(tools, name),
-    })),
-  };
+function loadoutOf(...names: string[]): PeerToolLoadout {
+  return { declared: names.map((name) => ({ name })) };
 }
 
 function descriptionOf(tools: Map<string, Definition>, name: string): string {
@@ -47,7 +36,7 @@ describe.each(["peers_send", "peers_take"])("%s codemode note", (name) => {
     const tools = definitions();
     const changes = tools
       .get(name)
-      ?.prepareLoadout?.(loadoutOf(["peers_list", "peers_send", "peers_take"], tools));
+      ?.prepareLoadout?.(loadoutOf("peers_list", "peers_send", "peers_take"));
     expect(changes).toBeUndefined();
   });
 
@@ -56,7 +45,7 @@ describe.each(["peers_send", "peers_take"])("%s codemode note", (name) => {
     const original = descriptionOf(tools, name);
     const changes = tools
       .get(name)
-      ?.prepareLoadout?.(loadoutOf(["peers_list", "peers_send", "peers_take", "codemode"], tools));
+      ?.prepareLoadout?.(loadoutOf("peers_list", "peers_send", "peers_take", "codemode"));
     expect(changes).toStrictEqual({ descriptions: { [name]: `${original} ${note}` } });
   });
 });

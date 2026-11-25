@@ -22,7 +22,13 @@ import {
 } from "../sdk/failure-diagnostics";
 import { ResultFailureCategory } from "../sdk/result-failure";
 
-function sdkRejection(message: string, fields: Readonly<Record<string, unknown>>): Error {
+type ProcessFailure = {
+  readonly errorClass: string;
+  readonly exitCode?: number;
+  readonly signal?: string;
+};
+
+function sdkRejection(message: string, fields: ProcessFailure): Error {
   return Object.assign(new Error(message), fields);
 }
 

@@ -1,32 +1,42 @@
-import type { ToolRenderers } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentToolResult,
+  KeybindingHints,
+  Theme,
+  ToolRenderResultOptions,
+} from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Option, Schema } from "effect";
+import type { PeerRef } from "../protocol/schema.js";
 import { visibleText } from "./config.js";
+import type { LinkState } from "./links.js";
 
 const UNCERTAIN =
   "UNKNOWN — Delivery uncertain; may already be in peer inbox. Do not resend as new.";
-type Fields = Record<string, unknown>;
-function isFields(value: unknown): value is Fields {
-  return typeof value === "object" && value !== null;
-}
-function fields(value: unknown): Fields {
+const decodePayload = Schema.decodeUnknownOption(Schema.Json);
+const isFields = Schema.is(Schema.JsonObject);
+const isItems = Schema.is(Schema.Array(Schema.Json));
+const isString = Schema.is(Schema.String);
+const isText = Schema.is(Schema.Union([Schema.String, Schema.Number]));
+
+function fields(value: Schema.Json | undefined): Schema.JsonObject {
   return isFields(value) ? value : {};
 }
-function items(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+function items(value: Schema.Json | undefined): readonly Schema.Json[] {
+  return isItems(value) ? value : [];
 }
-function text(value: unknown, fallback = "…"): string {
-  return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
+function text(value: Schema.Json | undefined, fallback = "…"): string {
+  return isText(value) ? String(value) : fallback;
 }
-function preview(value: unknown, fallback = "…"): string {
+function preview(value: Schema.Json | undefined, fallback = "…"): string {
   return truncateToWidth(visibleText(text(value, fallback)).replaceAll(/\s+/gu, " "), 96);
 }
-function listing(values: unknown[], render: (value: unknown) => string): string[] {
+function listing(values: readonly Schema.Json[], render: (value: Schema.Json) => string): string[] {
   return [
     ...values.slice(0, 3).map((value) => render(value)),
     ...(values.length > 3 ? [`… ${values.length - 3} more (expand)`] : []),
   ];
 }
-function delivery(value: unknown): string {
+function delivery(value: Schema.Json | undefined): string {
   const outcome = fields(value);
   if (outcome.tag === "unknown") {
     return UNCERTAIN;
@@ -39,7 +49,7 @@ function delivery(value: unknown): string {
   }
   return `Outcome unavailable · ${preview(outcome.code ?? outcome.tag)}`;
 }
-function callSummary(name: string, args: Fields): string {
+function callSummary(name: string, args: Schema.JsonObject): string {
   switch (name) {
     case "peers_send": {
       return `→ ${preview(args.to)} · ${preview(args.kind)} · ${preview(args.content)}`;
@@ -52,7 +62,7 @@ function callSummary(name: string, args: Fields): string {
     }
   }
 }
-function resultSummary(name: string, raw: unknown): string[] {
+function resultSummary(name: string, raw: Schema.Json | undefined): string[] {
   const result = fields(raw);
   if (result.tag === "error") {
     return [
@@ -115,29 +125,48 @@ function component(content: string, expanded: boolean, primary = ""): Text {
   };
   return output;
 }
-function full(value: unknown): string {
+function full(value: Schema.Json | RenderPayload | undefined): string {
   return visibleText(JSON.stringify(value, null, 2) ?? "No payload");
 }
-function hasHiddenPreview(summary: string[], raw: unknown, args: Fields): boolean {
+function hasHiddenPreview(
+  summary: string[],
+  raw: Schema.Json | undefined,
+  args: Schema.JsonObject,
+): boolean {
   const result = fields(raw);
   const value = result.tag === "ok" ? fields(result.value) : result;
   const previews = [args.content, ...items(value.messages).map((entry) => fields(entry).content)];
   return (
     summary.some((line) => line.includes("more (expand)")) ||
-    previews.some((entry) => typeof entry === "string" && visibleWidth(visibleText(entry)) > 96)
+    previews.some((entry) => isString(entry) && visibleWidth(visibleText(entry)) > 96)
   );
 }
-export function toolPresentation(name: string): ToolRenderers {
+export type RenderPayload = Partial<
+  Pick<AgentToolResult<{ value?: Schema.Json }>, "details" | "content">
+>;
+export type RenderContext = Pick<KeybindingHints, "keyHint"> & {
+  readonly args: Schema.Json | undefined;
+  readonly expanded: boolean;
+  readonly isError: boolean;
+};
+
+export function toolPresentation(name: string) {
   return {
-    renderCall(args, theme, context) {
-      const summary = `${name} ${callSummary(name, fields(args))}`;
+    renderCall(args: Schema.Json | undefined, theme: Pick<Theme, "fg">, context: RenderContext) {
+      const payload = Option.getOrUndefined(decodePayload(args));
+      const summary = `${name} ${callSummary(name, fields(payload))}`;
       return component(
-        theme.fg("toolTitle", summary) + (context.expanded ? `\n${full(args)}` : ""),
+        theme.fg("toolTitle", summary) + (context.expanded ? `\n${full(payload)}` : ""),
         context.expanded,
       );
     },
-    renderResult(result, options, theme, context) {
-      const raw = fields(fields(result).details).value;
+    renderResult(
+      result: RenderPayload | undefined,
+      options: ToolRenderResultOptions,
+      theme: Pick<Theme, "fg">,
+      context: RenderContext,
+    ) {
+      const raw = Option.getOrUndefined(decodePayload(result?.details?.value));
       const summary = options.isPartial
         ? ["In progress · outcome not final"]
         : resultSummary(name, raw);
@@ -149,8 +178,8 @@ export function toolPresentation(name: string): ToolRenderers {
           context.isError ? 1 : 0,
           summary.length,
           "Result unavailable",
-          ...items(fields(result).content).flatMap((part) =>
-            fields(part).type === "text" ? [preview(fields(part).text)] : [],
+          ...(result?.content ?? []).flatMap((part) =>
+            part.type === "text" ? [preview(part.text)] : [],
           ),
         );
       }
@@ -161,7 +190,11 @@ export function toolPresentation(name: string): ToolRenderers {
       if (context.isError || fields(raw).tag === "error") {
         color = "error";
       }
-      const hint = hasHiddenPreview(summary, raw, fields(context.args))
+      const hint = hasHiddenPreview(
+        summary,
+        raw,
+        fields(Option.getOrUndefined(decodePayload(context.args))),
+      )
         ? `\n${theme.fg("dim", context.keyHint("app.tools.expand", "for details"))}`
         : "";
       return component(
@@ -179,22 +212,37 @@ const ACTIVATION_PENDING_DETAILS: readonly string[] = [
   "/peers setup, then Activate saved configuration, restarts it once.",
   "Existing sessions may still use old trust.",
 ];
-export function diagnostics(value: unknown, diagnostic: string): string {
-  if (value === undefined) {
+export type StatusSnapshot = {
+  readonly enabled?: boolean;
+  readonly status?: string;
+  readonly peer?: PeerRef;
+  readonly scopes?: readonly string[];
+  readonly watching?: boolean;
+  readonly inboxMessages?: number;
+  readonly inboxBytes?: number;
+  readonly receipts?: number;
+  readonly operations?: number;
+  readonly relations?: number;
+  readonly notice?: string;
+  readonly waiting?: boolean;
+  readonly links?: readonly LinkState[];
+};
+
+export function diagnostics(status: StatusSnapshot | undefined, diagnostic: string): string {
+  if (status === undefined) {
     const reason =
       diagnostic === "enabled" ? "runtime unavailable" : diagnostic.replace(/^not enabled\s*/u, "");
     return `Session communication: not enabled${reason.length > 0 ? ` · ${visibleText(reason)}` : ""}`;
   }
-  const status = fields(value);
-  const peer = fields(status.peer);
+  const { peer } = status;
   return [
     `Session communication: ${status.enabled === true ? "enabled" : "not enabled"} · ${preview(status.status)}`,
     ...(status.status === "activation_pending" || status.status === "activation_unconfirmed"
       ? ACTIVATION_PENDING_DETAILS
       : []),
-    `Exact runtime: machine=${visibleText(text(peer.machineId))} session=${visibleText(text(peer.sessionId))} nonce=${visibleText(text(peer.runtimeNonce))}`,
+    `Exact runtime: machine=${visibleText(text(peer?.machineId))} session=${visibleText(text(peer?.sessionId))} nonce=${visibleText(text(peer?.runtimeNonce))}`,
     `Scopes: ${
-      items(status.scopes)
+      (status.scopes ?? [])
         .slice(0, 4)
         .map((scope) => preview(scope))
         .join(", ") || "none"
@@ -213,23 +261,23 @@ export type StatusSummary = {
   readonly technical: string[];
 };
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-function plain(value: unknown, limit = 64): string {
+function plain(value: string | undefined, limit = 64): string {
   const flat = visibleText(text(value, "")).replaceAll(/\s+/gu, " ").trim();
   const characters = Array.from(graphemes.segment(flat), (part) => part.segment);
   return characters.length > limit ? `${characters.slice(0, limit - 1).join("")}…` : flat;
 }
-function tally(value: unknown): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+function tally(value: number | undefined): number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 function plural(amount: number, one: string, many: string): string {
   return `${amount} ${amount === 1 ? one : many}`;
 }
-function runtimeTechnical(status: Fields): string[] {
-  const peer = fields(status.peer);
+function runtimeTechnical(status: StatusSnapshot): string[] {
+  const { peer } = status;
   const notice = text(status.notice, "none");
   return [
     `Runtime status: ${plain(status.status, 96) || "unknown"}`,
-    `Exact runtime: machine=${plain(peer.machineId, 96)} session=${plain(peer.sessionId, 96)} nonce=${plain(peer.runtimeNonce, 96)}`,
+    `Exact runtime: machine=${plain(peer?.machineId, 96)} session=${plain(peer?.sessionId, 96)} nonce=${plain(peer?.runtimeNonce, 96)}`,
     `Inbox: ${tally(status.inboxMessages)} messages / ${tally(status.inboxBytes)} bytes · receipts=${tally(status.receipts)} · operations=${tally(status.operations)} · relations=${tally(status.relations)}`,
     `Wake notice: ${plain(notice, 96)} · inbox admission does not imply reading or work completion.`,
   ];
@@ -276,11 +324,11 @@ function offline(diagnostic: string, options: PresentationOptions): StatusSummar
   };
 }
 export function statusSummary(
-  status: unknown,
+  status: StatusSnapshot | undefined,
   diagnostic: string,
   options: PresentationOptions = {},
 ): StatusSummary {
-  if (!isFields(status)) {
+  if (status === undefined) {
     return offline(diagnostic, options);
   }
   const technical = runtimeTechnical(status);
@@ -293,8 +341,8 @@ export function statusSummary(
       technical,
     };
   }
-  const machine = plain(fields(status.peer).machineId) || "this machine";
-  const scopes = items(status.scopes)
+  const machine = plain(status.peer?.machineId) || "this machine";
+  const scopes = (status.scopes ?? [])
     .slice(0, 4)
     .map((scope) => plain(scope))
     .filter((scope) => scope.length > 0);
@@ -315,22 +363,21 @@ export function statusSummary(
     options,
   );
 }
-const LINK_WORDS: Record<string, string> = {
+const LINK_WORDS: Record<LinkState["state"], string> = {
   up: "Up",
   down: "Down — sends to it fail at once; the gateway keeps retrying",
   probing: "Reconnecting",
 };
-function clock(value: unknown): string {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+function clock(value: number | undefined): string {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0
     ? new Date(value).toISOString().slice(11, 19)
     : "";
 }
-function linkRows(value: unknown): [string, string][] {
-  return items(value).flatMap((entry) => {
-    const link = fields(entry);
+function linkRows(value: readonly LinkState[] = []): [string, string][] {
+  return value.flatMap((link) => {
     const machine = plain(link.machineId, 32);
-    const word = LINK_WORDS[text(link.state, "")];
-    if (machine.length === 0 || word === undefined) {
+    const word = LINK_WORDS[link.state];
+    if (machine.length === 0) {
       return [];
     }
     const since = clock(link.since);
@@ -444,9 +491,8 @@ function styled(parts: readonly (readonly [FooterTone, string])[], theme?: Foote
 export function footerLine(state: FooterState, theme?: FooterTheme): string {
   return styled(FOOTER_PARTS[state], theme);
 }
-function downLinks(value: unknown): (readonly [FooterTone, string])[] {
-  const down = items(value)
-    .map((entry) => fields(entry))
+function downLinks(value: readonly LinkState[] = []): (readonly [FooterTone, string])[] {
+  const down = value
     .filter((link) => link.state === "down" || link.state === "probing")
     .map((link) => plain(link.machineId, 32))
     .filter((machine) => machine.length > 0);
@@ -456,24 +502,20 @@ function downLinks(value: unknown): (readonly [FooterTone, string])[] {
   const [only] = down;
   return [["warning", down.length === 1 ? ` ! ${only} down` : ` ! ${down.length} links down`]];
 }
-function unreadCount(status: Fields): number {
-  const count = status.inboxMessages;
-  return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : 0;
-}
 export function footerStatus(
-  status: unknown,
+  status: StatusSnapshot | undefined,
   configured: boolean,
   theme?: FooterTheme,
 ): string | undefined {
   if (!configured) {
     return undefined;
   }
-  if (!isFields(status)) {
+  if (status === undefined) {
     return footerLine("setup_failed", theme);
   }
   const code = status.status;
   if (code === "connected") {
-    const unread = unreadCount(status);
+    const unread = tally(status.inboxMessages);
     const base =
       unread > 0
         ? [["accent", `● ${unread}`] as const]

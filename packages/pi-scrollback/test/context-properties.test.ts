@@ -13,7 +13,7 @@ const settings = propertySettings(200);
 type Block = { kind: "filler" | "prompt"; first: string; body: string[]; pad: number };
 type Placed = { start: number; lastText: number; text: string };
 
-function layout(blocks: readonly Block[]): { lines: string[]; placed: Placed[] } {
+function layout(blocks: readonly Block[]) {
   const lines: string[] = [];
   const placed: Placed[] = [];
   for (const block of blocks) {

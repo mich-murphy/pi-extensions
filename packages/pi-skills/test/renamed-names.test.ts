@@ -24,7 +24,7 @@ function writeState(path: string, overrides: Readonly<Record<string, string>>): 
   return text;
 }
 
-function noteMessage(customType: string): { readonly role: string } {
+function noteMessage(customType: string) {
   const value = { role: "custom", customType, details: { version: 1, visible: ["/a"] } };
   return value;
 }

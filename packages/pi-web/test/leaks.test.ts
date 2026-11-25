@@ -23,7 +23,8 @@ describe("expectNoLeak", () => {
   });
 
   test("passes a value carrying none of the fragments, even with a cycle", () => {
-    const value: { self?: unknown; reason: string } = { reason: "invalid" };
+    type Cycle = { self?: Cycle; reason: string };
+    const value: Cycle = { reason: "invalid" };
     value.self = value;
     expect(() => {
       expectNoLeak(value, "SECRET");
@@ -40,7 +41,8 @@ describe("expectNoLeak", () => {
   });
 
   test("stops descending past the depth limit instead of recursing forever", () => {
-    let deep: object = { leaf: "SECRET-leaf" };
+    type Chain = { leaf: string } | { next: Chain };
+    let deep: Chain = { leaf: "SECRET-leaf" };
     for (let level = 0; level < 40; level += 1) {
       deep = { next: deep };
     }

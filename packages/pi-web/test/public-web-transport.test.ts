@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { brotliCompressSync, gzipSync } from "node:zlib";
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import {
   DnsLookup,
@@ -39,10 +39,7 @@ function uninitializedDeferred(): never {
   throw new Error("Deferred promise was not initialized");
 }
 
-function undefinedDeferred(): {
-  readonly promise: Promise<undefined>;
-  readonly resolve: () => void;
-} {
+function undefinedDeferred() {
   let resolvePromise: () => void = uninitializedDeferred;
   const promise = new Promise<undefined>((resolve) => {
     resolvePromise = () => {
@@ -63,7 +60,7 @@ async function withLocalServer<A>(
   });
   try {
     const address = server.address();
-    assert(typeof address === "object" && address !== null);
+    assert(Schema.is(Schema.Struct({ port: Schema.Number }))(address));
     return await run(address.port);
   } finally {
     server.closeAllConnections();
@@ -203,9 +200,9 @@ describe("PublicWebTransport", () => {
     const cap = 64 * 1024;
     const decodedSize = 8 * 1024 * 1024;
     const connectionClosed = undefinedDeferred();
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown) => {
-      unhandled.push(reason);
+    let unhandled = 0;
+    const onUnhandled = () => {
+      unhandled += 1;
     };
     process.on("unhandledRejection", onUnhandled);
     process.on("uncaughtException", onUnhandled);
@@ -258,7 +255,7 @@ describe("PublicWebTransport", () => {
       process.off("unhandledRejection", onUnhandled);
       process.off("uncaughtException", onUnhandled);
     }
-    expect(unhandled).toStrictEqual([]);
+    expect(unhandled).toBe(0);
   });
 
   test("decodes stacked content encodings in reverse order and drops the compressed Content-Length", async () => {

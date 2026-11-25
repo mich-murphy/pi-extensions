@@ -1,5 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
+import type { SessionHeader, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
 import type { BombadilFixture } from "../../../../test-support/bombadil.ts";
 import { PROMPTS, replyText } from "./scroll-prompts.ts";
 
@@ -15,11 +17,13 @@ const USAGE = {
 
 function sessionLines(cwd: string): string[] {
   const time = new Date(TIMESTAMP).toISOString();
-  const entries: unknown[] = [
+  const entries: (SessionHeader | SessionMessageEntry)[] = [
     { type: "session", version: 3, id: "scroll-bombadil", timestamp: time, cwd },
   ];
   let parentId: string | null = null;
-  const message = (value: Record<string, unknown>): void => {
+  const message = (
+    value: Omit<UserMessage, "timestamp"> | Omit<AssistantMessage, "timestamp">,
+  ): void => {
     const id = String(entries.length).padStart(8, "0");
     entries.push({
       type: "message",

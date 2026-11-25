@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import registerCommunication from "../../index.js";
+import type { PeersHost } from "../../index.js";
 import type { SetupBackend } from "../../onboarding/backend.js";
 
 const STATUS = "bombadil-probe";
@@ -91,22 +92,6 @@ function settlingScope(agentDir: string, home: string): (path: string) => boolea
     path === dotPi ||
     within(path, sockets) ||
     LOG.test(path);
-}
-
-function forwarded(target: object, property: string | symbol): unknown {
-  const value: unknown = Reflect.get(target, property, target);
-  if (typeof value !== "function") {
-    return value;
-  }
-  const bound: unknown = value.bind(target);
-  return bound;
-}
-
-function overriding<T extends object>(target: T, own: Record<PropertyKey, unknown>): T {
-  return new Proxy(target, {
-    get: (object, property) =>
-      Object.hasOwn(own, property) ? own[property] : forwarded(object, property),
-  });
 }
 
 type Settling = { print: string; quietSince: number; since: number };
@@ -212,7 +197,7 @@ export function probedPeers(pi: ExtensionAPI, backend: SetupBackend, description
     (path) => relative(home, path),
     (text) => status?.(text),
   );
-  const registerCommand: ExtensionAPI["registerCommand"] = (name, options) => {
+  const registerCommand: PeersHost["registerCommand"] = (name, options) => {
     pi.registerCommand(name, {
       ...options,
       handler: async (args, ctx) => {
@@ -234,9 +219,19 @@ export function probedPeers(pi: ExtensionAPI, backend: SetupBackend, description
     };
     status(probe.text());
   });
-  registerCommunication(overriding(pi, { registerCommand, appendEntry }), {
-    backend,
-    description,
-    observe: { consented: probe.consented },
-  });
+  registerCommunication(
+    {
+      on: pi.on.bind(pi),
+      registerTool: pi.registerTool.bind(pi),
+      registerEntryRenderer: pi.registerEntryRenderer.bind(pi),
+      sendMessage: pi.sendMessage.bind(pi),
+      registerCommand,
+      appendEntry,
+    },
+    {
+      backend,
+      description,
+      observe: { consented: probe.consented },
+    },
+  );
 }

@@ -3,17 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Predicate, Schema } from "effect";
 
-const FS_ERROR_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  ENOSPC: "no space left on device",
-  EDQUOT: "disk quota exceeded",
-  EACCES: "permission denied",
-  EPERM: "operation not permitted",
-  EROFS: "read-only file system",
-  ENOENT: "directory does not exist",
-  ENOTDIR: "a path component is not a directory",
-  EMFILE: "too many open files",
-  ENFILE: "too many open files",
-};
+const FS_ERROR_DESCRIPTIONS = new Map(
+  Object.entries({
+    ENOSPC: "no space left on device",
+    EDQUOT: "disk quota exceeded",
+    EACCES: "permission denied",
+    EPERM: "operation not permitted",
+    EROFS: "read-only file system",
+    ENOENT: "directory does not exist",
+    ENOTDIR: "a path component is not a directory",
+    EMFILE: "too many open files",
+    ENFILE: "too many open files",
+  }),
+);
 
 export class OutputStoreError extends Schema.TaggedError<OutputStoreError>()("OutputStoreError", {
   operation: Schema.Literals(["mkdtemp", "chmod", "write"]),
@@ -22,7 +24,7 @@ export class OutputStoreError extends Schema.TaggedError<OutputStoreError>()("Ou
   cause: Schema.optional(Schema.Defect()),
 }) {
   get reason(): string {
-    const description = FS_ERROR_DESCRIPTIONS[this.code];
+    const description = FS_ERROR_DESCRIPTIONS.get(this.code);
     return description === undefined ? this.code : `${description} (${this.code})`;
   }
 

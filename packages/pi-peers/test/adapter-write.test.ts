@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Socket } from "node:net";
+import { Schema } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { sendWithRetries } from "../adapter/send.js";
 import {
@@ -168,7 +169,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
     const queue = async (index: number) =>
       connection
         .request(sending(index.toString(16).padStart(32, "0")), performance.now() + 15_000)
-        .catch((error: unknown) => error);
+        .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     const queued = [queue(1)];
     await vi.advanceTimersByTimeAsync(1000);
     queued.push(queue(2));
@@ -195,7 +196,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
           performance.now() + 15_000,
           abort.signal,
         )
-        .catch((error: unknown) => error);
+        .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     });
     abort.abort();
     await expect(Promise.all(requests)).resolves.toHaveLength(8);
@@ -209,7 +210,7 @@ describe("bounded transport write completion and absolute progress deadlines", (
         performance.now() + 15_000,
         nextAbort.signal,
       )
-      .catch((error: unknown) => error);
+      .catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
     nextAbort.abort();
     await expect(ninthWait).resolves.toMatchObject({ code: "cancelled", possible: true });
     await expect(

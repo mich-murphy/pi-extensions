@@ -1,7 +1,14 @@
 import { constants } from "node:fs";
 import type { BigIntStats } from "node:fs";
 import * as fs from "node:fs/promises";
-import { jsonObject } from "../packages/pi-peers/onboarding/artifact.js";
+import path from "node:path";
+import { Predicate, Schema } from "effect";
+import {
+  GATEWAY_MANAGED_CAPABILITY,
+  GATEWAY_REMOTE_SETUP_CAPABILITIES,
+  GATEWAY_WIRE_VERSION,
+  wireMismatch,
+} from "../packages/pi-peers/onboarding/catalog.js";
 
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const CREATE_FLAGS =
@@ -64,13 +71,23 @@ async function readBounded(
   return readBounded(handle, filename, maximum, [...chunks, chunk.subarray(0, bytesRead)]);
 }
 
-export async function readOwnedJson(filename: string): Promise<Record<string, unknown>> {
+const isRecordJson = Schema.is(Schema.JsonObject);
+
+export function parseRecordJson(source: string): Schema.JsonObject {
+  const record: unknown = JSON.parse(source);
+  if (!isRecordJson(record)) {
+    throw new Error("Invalid JSON object");
+  }
+  return record;
+}
+
+export async function readOwnedJson(filename: string) {
   const { bytes } = await readRegular(filename, MAX_JSON, "owned");
-  return jsonObject(JSON.parse(bytes.toString("utf8")));
+  return parseRecordJson(bytes.toString("utf8"));
 }
 
 export type RecordWriter = {
-  write: (record: object) => Promise<void>;
+  write: (record: typeof Schema.JsonObject.Type) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -114,18 +131,88 @@ export async function createRecord(filename: string): Promise<RecordWriter> {
   };
 }
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 export async function requireAbsent(filename: string): Promise<void> {
   try {
     await fs.lstat(filename);
   } catch (error) {
-    if (isMissing(error)) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return;
     }
     throw error;
   }
   throw new Error(`${filename} still exists after removal`);
+}
+
+export function isPrivateDirectory(stat: BigIntStats, uid: number): boolean {
+  return stat.isDirectory() && stat.uid === BigInt(uid) && (stat.mode & 0o077n) === 0n;
+}
+
+export async function privateProfile(root: string) {
+  const dirs = {
+    home: path.join(root, "home"),
+    tmp: path.join(root, "tmp"),
+    installRoot: path.join(root, "install"),
+  };
+  await Promise.all(Object.values(dirs).map(async (dir) => fs.mkdir(dir, { mode: 0o700 })));
+  process.env.HOME = dirs.home;
+  process.env.TMPDIR = dirs.tmp;
+  return dirs;
+}
+
+const isVersionList = Schema.is(Schema.Array(Schema.Json));
+const REQUIRED_CAPABILITIES = [GATEWAY_MANAGED_CAPABILITY, ...GATEWAY_REMOTE_SETUP_CAPABILITIES];
+
+export function verifyGatewayVersion(record: Schema.JsonObject, expected: string, source: string) {
+  const { name, version, wireVersions, capabilities } = record;
+  const mismatch = `${source} gateway ABI/capability mismatch`;
+  if (name !== "pi-gateway" || version !== expected) {
+    throw new Error(mismatch);
+  }
+  if (!isVersionList(wireVersions) || !wireVersions.includes(GATEWAY_WIRE_VERSION)) {
+    throw new Error(wireMismatch(source, expected, wireVersions));
+  }
+  if (
+    !isVersionList(capabilities) ||
+    !REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability))
+  ) {
+    throw new Error(mismatch);
+  }
+  return { name, version, wireVersions, capabilities };
+}
+
+const isString = Schema.is(Schema.String);
+const isSymbol = Schema.is(Schema.Symbol);
+const isFunction = Schema.is(Schema.declare(Predicate.isFunction));
+const nestedErrors = Schema.decodeUnknownSync(Schema.Array(Schema.Unknown));
+
+export function describeFailure(cause: unknown, includeAggregates: boolean): string {
+  const pending = [cause];
+  const messages: string[] = [];
+  while (pending.length > 0 && messages.length < 8) {
+    const item = pending.shift();
+    if (item === undefined) {
+      continue;
+    }
+    if (item instanceof Error) {
+      messages.push(item.message);
+      pending.push(item.cause, ...aggregateMembers(item, includeAggregates));
+    } else if (includeAggregates && isString(item)) {
+      messages.push(item);
+    } else {
+      const json = JSON.stringify(item);
+      messages.push(json ?? (isSymbol(item) ? "symbol" : fallbackKind(isFunction(item))));
+    }
+  }
+  return messages
+    .join("\n  caused by: ")
+    .replaceAll(/\b(?:gh[opsur]|github_pat)_[A-Za-z0-9_]+/gu, "[redacted]")
+    .slice(0, 8000);
+}
+
+function aggregateMembers(error: Error, includeAggregates: boolean) {
+  return includeAggregates && error instanceof AggregateError ? nestedErrors(error.errors) : [];
+}
+
+function fallbackKind(callable: boolean): string {
+  return callable ? "function" : "object";
 }

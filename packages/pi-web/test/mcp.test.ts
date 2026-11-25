@@ -2,6 +2,7 @@ import { assert, describe, expect, it, test } from "@effect/vitest";
 import { Cause, Duration, Effect, Exit, Fiber, Option, Result, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { parseMcpMessage, parseMcpToolResult } from "../mcp";
+import type { ProviderJson } from "../provider-types";
 import { ProviderProtocolInvalid, ProviderToolError } from "../provider-types";
 import { publicUrl, mcpClientWith } from "./fakes";
 import { expectNoLeak } from "./leaks";
@@ -17,6 +18,17 @@ describe("parseMcpMessage", () => {
     expect(
       parseMcpMessage('{"jsonrpc":"2.0","id":2,"result":{}}', "application/json"),
     ).toStrictEqual(Result.succeed({ jsonrpc: "2.0", id: 2, result: {} }));
+  });
+
+  test("does not reject a response when a JSON number overflows the JavaScript range", () => {
+    const parsed = parseMcpMessage(
+      '{"result":{"structuredContent":{"number":1e999}}}',
+      "application/json",
+    );
+    assert(Result.isSuccess(parsed));
+    expect(parseMcpToolResult(parsed.success)).toStrictEqual(
+      Result.succeed({ text: [], structuredContent: { number: Infinity } }),
+    );
   });
 
   test("joins an SSE event's multi-line data and ignores non-data fields", () => {
@@ -121,13 +133,15 @@ describe("parseMcpToolResult", () => {
 });
 
 function jsonResponse(
-  body: unknown,
+  body: ProviderJson,
   init: { readonly status?: number; readonly headers?: Readonly<Record<string, string>> } = {},
 ): Response {
   return Response.json(body, { status: init.status ?? 200, headers: init.headers ?? {} });
 }
 
-const decodeRpcRequest = Schema.decodeUnknownOption(Schema.Struct({ method: Schema.String }));
+const decodeRpcRequest = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ method: Schema.String })),
+);
 
 type RecordedRequest = {
   readonly httpMethod: string;
@@ -136,13 +150,8 @@ type RecordedRequest = {
   readonly redirect: RequestRedirect | undefined;
 };
 
-function rpcMethodOf(body: unknown): string | undefined {
-  if (typeof body !== "string") {
-    return undefined;
-  }
-  return Option.getOrUndefined(
-    Option.map(decodeRpcRequest(JSON.parse(body)), (request) => request.method),
-  );
+function rpcMethodOf(body: RequestInit["body"]): string | undefined {
+  return Option.getOrUndefined(Option.map(decodeRpcRequest(body), (request) => request.method));
 }
 
 function fakeMcpEndpoint(
@@ -315,7 +324,7 @@ describe("mcpHttpClient", () => {
   );
 });
 
-function detailOf(payload: unknown, secrets: readonly string[] = []) {
+function detailOf(payload: ProviderJson, secrets: readonly string[] = []) {
   const result = parseMcpToolResult(payload, secrets);
   assert(Result.isFailure(result));
   assert(result.failure._tag === "ProviderToolError");

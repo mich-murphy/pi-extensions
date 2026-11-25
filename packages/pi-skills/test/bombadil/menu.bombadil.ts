@@ -97,7 +97,7 @@ let fresh = false;
 let lastRoot: string | null = null;
 let closedWith: string | null = null;
 
-function remember(menu: Menu): { fresh: boolean; counts: string; closedWith: string | null } {
+function remember(menu: Menu) {
   if (menu.level === null) {
     if (wasOpen) {
       closedWith = lastRoot;
@@ -151,7 +151,7 @@ function searchKeeps(search: string, name: string): boolean {
 const menuOpen = (): boolean => (ui.current?.level ?? null) !== null;
 const selected = (menu: Menu | null | undefined): Item | null =>
   menu?.items.find((item) => item.selected) ?? null;
-const FLIP: Readonly<Record<string, string>> = { On: "Off", Off: "On" };
+const FLIP = new Map(Object.entries({ On: "Off", Off: "On" }));
 
 const open = actions(() =>
   menuOpen()
@@ -206,14 +206,20 @@ export const oneHighlight: Formula = always(() => {
 export const toggleFlips: Formula = always(() => {
   const before = ui.current;
   const row = selected(before);
-  if (before?.search !== "" || before.clearing || row === null || FLIP[row.state] === undefined) {
+  if (
+    before?.search !== "" ||
+    before.clearing ||
+    row === null ||
+    FLIP.get(row.state) === undefined
+  ) {
     return true;
   }
   return next(() => {
     const key = lastKey.current;
     const after = selected(ui.current);
     return (
-      (key !== " " && key !== "\r") || (after?.name === row.name && after.state === FLIP[row.state])
+      (key !== " " && key !== "\r") ||
+      (after?.name === row.name && after.state === FLIP.get(row.state))
     );
   });
 });

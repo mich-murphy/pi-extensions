@@ -2,6 +2,7 @@ import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Tool } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai";
+import { Schema } from "effect";
 import { Type } from "typebox";
 import { describe, expect, test, vi } from "vitest";
 import { createDeferredCallCapture, createDeferredPiTools } from "../sdk/deferred-tools";
@@ -17,14 +18,16 @@ const declaration = {
 function expectedPiCall(
   tool: Tool,
   input: Parameters<typeof validateToolArguments>[1]["arguments"],
-): object {
+) {
   try {
-    const normalized: unknown = validateToolArguments(tool, {
-      type: "toolCall",
-      id: "corpus",
-      name: tool.name,
-      arguments: input,
-    });
+    const normalized = Schema.decodeUnknownSync(Schema.JsonObject)(
+      validateToolArguments(tool, {
+        type: "toolCall",
+        id: "corpus",
+        name: tool.name,
+        arguments: input,
+      }),
+    );
     return { name: tool.name, arguments: normalized };
   } catch {
     return { name: "pi_claude_sdk_validation_error", arguments: { error: "invalid_tool_input" } };

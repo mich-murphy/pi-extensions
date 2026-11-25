@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as gs from "@hegeldev/hegel/generators";
+import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { resourcePathId } from "../resource-path";
@@ -45,14 +46,18 @@ const BAD_CONTAINERS = [null, 5, "x", true, [], undefined];
 const BAD_VERSIONS = ["7", "4", null, true, [], {}];
 const BAD_DOCUMENTS = [null, 5, "x", true, []];
 
+type JsonValue = typeof Schema.Json.Type;
+type JsonObject = typeof Schema.JsonObject.Type;
+type FixtureExtra = { name?: string; mtime?: number };
+
 type Choice = "absent" | ToggleValue;
 type Version = 4 | 5 | 6;
 type Fixture = { readonly statePath: string; readonly skill: (name: string) => string };
 
-const BODIES: readonly Record<string, unknown>[] = [{}, { resources: 5 }, { overrides: DECOY }];
+const BODIES: readonly JsonObject[] = [{}, { resources: 5 }, { overrides: DECOY }];
 
-function badValues(version: Version): gs.PrintableGenerator<unknown> {
-  return gs.sampledFrom<unknown>(version === 6 ? BAD_TOGGLES : BAD_LEGACY);
+function badValues(version: Version): gs.PrintableGenerator<JsonValue> {
+  return gs.sampledFrom<JsonValue>(version === 6 ? BAD_TOGGLES : BAD_LEGACY);
 }
 
 const versions = gs.sampledFrom<Version>([4, 5, 6]);
@@ -75,18 +80,18 @@ function withFixture(run: (fixture: Fixture) => void): void {
   }
 }
 
-function load(fixture: Fixture, document: unknown): ToggleStateResult {
+function load(fixture: Fixture, document: JsonValue): ToggleStateResult {
   writeFileSync(fixture.statePath, JSON.stringify(document));
   return new ToggleStateFile(fixture.statePath).load();
 }
 
-function legacyDocument(version: Version, entries: Record<string, unknown>): unknown {
+function legacyDocument(version: Version, entries: JsonObject) {
   return version === 6
     ? { version, overrides: entries, resources: DECOY }
     : { version, resources: entries, overrides: DECOY };
 }
 
-function legacyEntry(version: Version, value: ToggleValue, extra: object): unknown {
+function legacyEntry(version: Version, value: ToggleValue, extra: FixtureExtra) {
   return version === 6 ? value : { enabled: value === "enabled", ...extra };
 }
 
@@ -104,15 +109,15 @@ function validEntries(
   fixture: Fixture,
   version: Version,
   picks: readonly Choice[],
-  extra: object,
-): Record<string, unknown> {
-  const entries: Record<string, unknown> = {};
+  extra: FixtureExtra,
+) {
+  const entries = new Map<string, JsonValue>();
   for (const [index, pick] of picks.entries()) {
     if (pick !== "absent") {
-      entries[fixture.skill(NAMES[index] ?? "")] = legacyEntry(version, pick, extra);
+      entries.set(fixture.skill(NAMES[index] ?? ""), legacyEntry(version, pick, extra));
     }
   }
-  return entries;
+  return Object.fromEntries(entries);
 }
 
 function assertToggles(
@@ -139,7 +144,7 @@ function assertMigrates(
   fixture: Fixture,
   version: Version,
   picks: readonly Choice[],
-  extra: object,
+  extra: FixtureExtra,
 ): void {
   const expected = expectedToggles(fixture, picks);
   const document = legacyDocument(version, validEntries(fixture, version, picks, extra));
@@ -157,7 +162,7 @@ function assertBadEntry(
   fixture: Fixture,
   version: Version,
   picks: readonly Choice[],
-  bad: { readonly keyIsBad: boolean; readonly key: string; readonly value: unknown },
+  bad: { readonly keyIsBad: boolean; readonly key: string; readonly value: JsonValue },
   slot: number,
 ): void {
   const entries = validEntries(fixture, version, picks, {});
@@ -166,9 +171,17 @@ function assertBadEntry(
   assertMalformed(load(fixture, legacyDocument(version, entries)), fixture, key);
 }
 
-function assertBadContainer(fixture: Fixture, version: Version, container: unknown): void {
+function assertBadContainer(
+  fixture: Fixture,
+  version: Version,
+  container: JsonValue | undefined,
+): void {
   const field = version === 6 ? "overrides" : "resources";
-  assertMalformed(load(fixture, { version, [field]: container }), fixture, undefined);
+  assertMalformed(
+    load(fixture, container === undefined ? { version } : { version, [field]: container }),
+    fixture,
+    undefined,
+  );
 }
 
 function assertEmpty(result: ToggleStateResult): void {
@@ -219,7 +232,7 @@ describe(
           assertBadContainer(
             fixture,
             tc.draw(versions),
-            tc.draw(gs.sampledFrom<unknown>(BAD_CONTAINERS)),
+            tc.draw(gs.sampledFrom<JsonValue | undefined>(BAD_CONTAINERS)),
           );
         });
       });
@@ -249,10 +262,10 @@ describe(
         assertProperty("migration", "bad-version", (tc) => {
           const half = tc.draw(gs.integers({ minValue: -100_000, maxValue: 6 })) + 0.5;
           assertMalformed(load(fixture, { version: half, resources: {} }), fixture, undefined);
-          const odd = tc.draw(gs.sampledFrom<unknown>(BAD_VERSIONS));
+          const odd = tc.draw(gs.sampledFrom<JsonValue>(BAD_VERSIONS));
           assertMalformed(load(fixture, { version: odd, resources: {} }), fixture, undefined);
           assertMalformed(
-            load(fixture, tc.draw(gs.sampledFrom<unknown>(BAD_DOCUMENTS))),
+            load(fixture, tc.draw(gs.sampledFrom<JsonValue>(BAD_DOCUMENTS))),
             fixture,
             undefined,
           );

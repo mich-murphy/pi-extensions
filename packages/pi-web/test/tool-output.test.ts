@@ -106,7 +106,7 @@ describe("projectFetchResult", () => {
     assert(Result.isSuccess(projected));
     expect(projected.success.details.truncated).toBe(true);
     const { fullOutputPath } = projected.success.details;
-    assert(typeof fullOutputPath === "string");
+    assert(fullOutputPath !== undefined);
 
     const fileStat = await stat(fullOutputPath);
     expect(permissionBits(fileStat.mode)).toBe(0o600);
@@ -127,7 +127,7 @@ describe("projectFetchResult", () => {
     );
     assert(Result.isSuccess(projected));
     const { fullOutputPath } = projected.success.details;
-    assert(typeof fullOutputPath === "string");
+    assert(fullOutputPath !== undefined);
     const text = textOf(projected.success);
     const shown = text.slice(0, text.indexOf("\n\n[Output truncated"));
     expect(shown).toBe("€".repeat(Math.floor(DEFAULT_MAX_BYTES / 3)));

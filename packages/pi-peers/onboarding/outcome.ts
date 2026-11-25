@@ -2,7 +2,7 @@ import type { Outcome } from "./menu/progress.js";
 import { Refusal } from "./refusal.js";
 
 const SAFE_REASON = /^[\p{L}\p{N} .,;:()'’—–-]{1,240}$/u;
-export function safeReason(error: unknown, fallback = ""): string {
+export function safeReason(error: Error | undefined, fallback = ""): string {
   if (
     error instanceof Error &&
     Object.getPrototypeOf(error) === Error.prototype &&
@@ -25,7 +25,7 @@ export function failed(
   return { ok: false, headline: `✗ ${what}: ${reason}`, facts: [], next, technical };
 }
 
-export function failedWith(what: string, error: unknown, next: string): Outcome {
+export function failedWith(what: string, error: Error | undefined, next: string): Outcome {
   if (error instanceof Refusal) {
     return failed(what, error.reason, `${error.fix}.`);
   }
@@ -33,7 +33,7 @@ export function failedWith(what: string, error: unknown, next: string): Outcome 
   return failed(what, UNEXPECTED, next, detail === "" ? [] : [detail]);
 }
 
-export function refusalText(error: unknown, fallback: string): string {
+export function refusalText(error: Error | undefined, fallback: string): string {
   return error instanceof Refusal ? `${capitalize(error.reason)}. ${error.fix}.` : fallback;
 }
 function capitalize(text: string): string {
@@ -54,7 +54,7 @@ export async function attempt(
   try {
     return await work();
   } catch (error) {
-    return failedWith(what, error, next);
+    return failedWith(what, error instanceof Error ? error : undefined, next);
   }
 }
 
@@ -68,7 +68,7 @@ export function pendingOutcome(
   return { ok: false, headline: `! ${what} but not active yet`, facts: [], next, technical };
 }
 
-export function afterSave(error: unknown, technical: readonly string[] = []): Outcome {
+export function afterSave(error: Error | undefined, technical: readonly string[] = []): Outcome {
   if (error instanceof NotActive) {
     return pendingOutcome("Settings saved", error.message, technical);
   }

@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
+import { Option, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { VALIDATION_REASONS, validationRecoveryReason } from "../validation-recovery";
+import {
+  VALIDATION_REASONS,
+  decodeValidationInput,
+  validationRecoveryReason,
+} from "../validation-recovery";
 
 const settings = propertySettings(200);
 const MAX_REASON_LENGTH = 400;
@@ -13,9 +18,9 @@ function drawMarker(tc: TestCase): string {
   return `ZQ${tc.draw(gs.integers({ minValue: 1e9, maxValue: 9e15 }))}QZ`;
 }
 
-function drawInput(tc: TestCase, marker: string): unknown {
+function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
   const reason = tc.draw(gs.sampledFrom([...VALIDATION_REASONS, marker, "", 7]));
-  const shapes: unknown[] = [
+  const shapes: (Schema.Json | undefined)[] = [
     marker,
     [marker, { error: marker }],
     { error: marker },
@@ -34,11 +39,15 @@ function drawInput(tc: TestCase, marker: string): unknown {
 function assertTotalBoundedValueFree(tc: TestCase): void {
   const marker = drawMarker(tc);
   for (const error of VALIDATION_REASONS) {
-    const reason = validationRecoveryReason({ error, message: marker, [marker]: marker });
+    const reason = validationRecoveryReason(
+      Option.getOrUndefined(decodeValidationInput({ error, message: marker, [marker]: marker })),
+    );
     assert.ok(!reason.includes(marker), reason);
   }
-  const reason = validationRecoveryReason(drawInput(tc, marker));
-  assert.equal(typeof reason, "string");
+  const reason = validationRecoveryReason(
+    Option.getOrUndefined(decodeValidationInput(drawInput(tc, marker))),
+  );
+  assert.ok(Schema.is(Schema.String)(reason));
   assert.ok(reason.length > 0 && reason.length <= MAX_REASON_LENGTH, reason);
   assert.ok(!reason.includes(marker), reason);
 }
@@ -49,7 +58,9 @@ function assertReasonsDistinct(tc: TestCase): void {
   const messages = new Map(
     VALIDATION_REASONS.map((error) => [error, validationRecoveryReason({ ...noise, error })]),
   );
-  const fallback = validationRecoveryReason({ ...noise, error: marker });
+  const fallback = validationRecoveryReason(
+    Option.getOrUndefined(decodeValidationInput({ ...noise, error: marker })),
+  );
   const shared = messages.get("invalid_tool_input");
   assert.equal(shared, fallback);
   assert.equal(shared, validationRecoveryReason(undefined));

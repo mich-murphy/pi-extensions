@@ -344,10 +344,10 @@ type SessionMessage = AgentSession["messages"][number];
 type NoteMessage = Extract<SessionMessage, { role: "custom" }>;
 
 function contentChars(content: NoteMessage["content"]): number {
-  if (typeof content === "string") {
-    return content.length;
+  if (Array.isArray(content)) {
+    return content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0);
   }
-  return content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0);
+  return content.length;
 }
 
 function toggleNotes(messages: readonly SessionMessage[]): readonly NoteMessage[] {

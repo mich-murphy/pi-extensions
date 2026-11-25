@@ -60,16 +60,18 @@ async function runSessionRecovery() {
     expect(counts.queries).toBe(3);
     expect(counts.executions).toBe(1);
     expect(counts.rejectedExecutions).toBe(0);
-    expect(SessionManager.open(sessionFile(manager)).getEntries()).toContainEqual(
-      expect.objectContaining({
-        type: "message",
-        message: expect.objectContaining({
-          role: "toolResult",
-          toolCallId: "corrected",
-          isError: false,
-        }) as unknown,
-      }),
-    );
+    const corrected = SessionManager.open(sessionFile(manager))
+      .getEntries()
+      .find(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "toolResult" &&
+          entry.message.toolCallId === "corrected",
+      );
+    expect(corrected).toMatchObject({
+      type: "message",
+      message: { role: "toolResult", toolCallId: "corrected", isError: false },
+    });
   } finally {
     session?.dispose();
     await rm(dir, { recursive: true, force: true });
@@ -143,9 +145,9 @@ async function runContinuationRejection() {
   expect(failure).toMatchObject({
     stopReason: "error",
     content: [],
-    errorMessage: expect.stringContaining("Review completed work") as unknown,
   });
   assert(failure?.role === "assistant");
+  expect(failure.errorMessage).toContain("Review completed work");
   expect(failure.errorMessage).not.toContain("malformed");
   expect(isRetryableAssistantError(failure)).toBe(false);
 }
@@ -170,20 +172,24 @@ async function verifyPersistedRejection(
   prompt: Parameters<RunSdkQuery>[0]["prompt"],
 ) {
   const reopened = SessionManager.open(sessionFile(manager));
-  expect(reopened.getEntries()).toContainEqual(
-    expect.objectContaining({
-      type: "message",
-      message: expect.objectContaining({
-        role: "toolResult",
-        toolName: VALIDATION_ERROR_TOOL,
-        toolCallId: "bad",
-        isError: true,
-        content: [
-          { type: "text", text: validationRecoveryReason({ error: "unexpected_sdk_tool" }) },
-        ],
-      }) as unknown,
-    }),
-  );
+  const rejected = reopened
+    .getEntries()
+    .find(
+      (entry) =>
+        entry.type === "message" &&
+        entry.message.role === "toolResult" &&
+        entry.message.toolCallId === "bad",
+    );
+  expect(rejected).toMatchObject({
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolName: VALIDATION_ERROR_TOOL,
+      toolCallId: "bad",
+      isError: true,
+      content: [{ type: "text", text: validationRecoveryReason({ error: "unexpected_sdk_tool" }) }],
+    },
+  });
   const replay = await drain(sdkPromptFixture(prompt));
   expect(JSON.stringify(replay)).toContain("nothing executed (unexpected_sdk_tool)");
   expect(JSON.stringify(replay)).not.toContain(`Tool ${VALIDATION_ERROR_TOOL} not found`);

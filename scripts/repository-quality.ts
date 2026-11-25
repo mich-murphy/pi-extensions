@@ -3,31 +3,35 @@ import { lstatSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const extensions: Record<string, RegExp> = {
-  format: /\.(?:[cm]?[jt]sx?|jsonc?|ya?ml|toml|html?|css|scss|less|vue|graphql|gql)$/iu,
-  "format-check": /\.(?:[cm]?[jt]sx?|jsonc?|ya?ml|toml|html?|css|scss|less|vue|graphql|gql)$/iu,
-  lint: /\.(?:[cm]?[jt]sx?|vue)$/iu,
-  markdownlint: /\.md$/iu,
-};
+const extensions = new Map(
+  Object.entries({
+    format: /\.(?:[cm]?[jt]sx?|jsonc?|ya?ml|toml|html?|css|scss|less|vue|graphql|gql)$/iu,
+    "format-check": /\.(?:[cm]?[jt]sx?|jsonc?|ya?ml|toml|html?|css|scss|less|vue|graphql|gql)$/iu,
+    lint: /\.(?:[cm]?[jt]sx?|vue)$/iu,
+    markdownlint: /\.md$/iu,
+  }),
+);
 
 type Tool = { name: string; options: string[]; pathPrefix: string; retry: string };
 
-const tools: Record<string, Tool> = {
-  format: { name: "oxfmt", options: ["--threads=2"], pathPrefix: "./", retry: "format" },
-  "format-check": {
-    name: "oxfmt",
-    options: ["--check", "--threads=2"],
-    pathPrefix: "./",
-    retry: "format:check",
-  },
-  lint: { name: "oxlint", options: ["--threads=2"], pathPrefix: "./", retry: "lint" },
-  markdownlint: {
-    name: "markdownlint-cli2",
-    options: ["--config", "config/markdownlint-cli2.yaml", "--no-globs"],
-    pathPrefix: ":./",
-    retry: "markdownlint",
-  },
-};
+const tools = new Map(
+  Object.entries({
+    format: { name: "oxfmt", options: ["--threads=2"], pathPrefix: "./", retry: "format" },
+    "format-check": {
+      name: "oxfmt",
+      options: ["--check", "--threads=2"],
+      pathPrefix: "./",
+      retry: "format:check",
+    },
+    lint: { name: "oxlint", options: ["--threads=2"], pathPrefix: "./", retry: "lint" },
+    markdownlint: {
+      name: "markdownlint-cli2",
+      options: ["--config", "config/markdownlint-cli2.yaml", "--no-globs"],
+      pathPrefix: ":./",
+      retry: "markdownlint",
+    },
+  } satisfies Record<string, Tool>),
+);
 
 function git(args: string[], cwd: string): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -41,19 +45,8 @@ function git(args: string[], cwd: string): string {
   return result.stdout;
 }
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 function indexedStat(root: string, path: string) {
-  try {
-    return lstatSync(resolve(root, path));
-  } catch (error) {
-    if (isMissing(error)) {
-      return undefined;
-    }
-    throw error;
-  }
+  return lstatSync(resolve(root, path), { throwIfNoEntry: false });
 }
 
 function rejectSymlink(path: string, component: string): never {
@@ -88,7 +81,7 @@ function existingFile(root: string, path: string, stats: PathStats): boolean {
   return stat?.isFile() ?? false;
 }
 
-function indexedEntry(entry: string): { path: string; symlink: boolean } {
+function indexedEntry(entry: string) {
   return { path: entry.slice(entry.indexOf("\t") + 1), symlink: entry.startsWith("120000 ") };
 }
 
@@ -166,8 +159,8 @@ function runBatches(root: string, tool: Tool, files: string[]): number {
 }
 
 function run(mode: string): number {
-  const extension = extensions[mode];
-  const tool = tools[mode];
+  const extension = extensions.get(mode);
+  const tool = tools.get(mode);
   if (extension === undefined || tool === undefined) {
     throw new Error("Choose format, format-check, lint or markdownlint.");
   }

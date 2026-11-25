@@ -133,7 +133,7 @@ export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPag
 
 export function createWebFetchTool(composition: WebFetchToolComposition) {
   return {
-    name: "webfetch",
+    name: "webfetch" as const,
     label: "Web Fetch",
     description:
       "Fetch a single URL and return readable markdown, text, raw HTML/source, or an inline raster image. Long text is cut to a window; pass offset to read on.",
@@ -250,7 +250,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
             maxColumns: 220,
           });
         }
-        if (typeof details?.fullOutputPath === "string") {
+        if (Schema.is(Schema.String)(details?.fullOutputPath)) {
           text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
         }
       }

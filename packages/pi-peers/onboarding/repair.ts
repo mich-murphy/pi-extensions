@@ -36,7 +36,7 @@ const decodeRepair = Schema.decodeUnknownSync(
   { onExcessProperty: "error" },
 );
 type Ledger = ReturnType<typeof decodeRepair>;
-const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+const json = (value: Schema.Json): string => `${JSON.stringify(value, null, 2)}\n`;
 
 async function inspectOwned(agentDir: string) {
   const paths = setupPaths(agentDir);
@@ -179,7 +179,7 @@ async function repairWork(
       step(message.startsWith("Acquiring") ? STEPS[0] : STEPS[1]);
     });
   } catch (error) {
-    return failedWith("Repair failed", error, INCOMPLETE_NEXT);
+    return failedWith("Repair failed", error instanceof Error ? error : undefined, INCOMPLETE_NEXT);
   }
   step(STEPS[2]);
   try {

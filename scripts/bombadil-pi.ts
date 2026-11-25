@@ -1,17 +1,14 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { Option, Predicate, Schema } from "effect";
 import type { BombadilFixture, BombadilLaunch, BombadilRoot } from "../test-support/bombadil.ts";
+import { readManifest } from "../test-support/pi-manifest.ts";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const host = join(repo, "node_modules/@earendil-works/pi-coding-agent");
-const manifest: unknown = JSON.parse(readFileSync(join(host, "package.json"), "utf8"));
-const bin =
-  typeof manifest === "object" && manifest !== null && "bin" in manifest ? manifest.bin : undefined;
-if (typeof bin !== "object" || bin === null || !("pi" in bin) || typeof bin.pi !== "string") {
-  throw new Error("Missing Pi executable in the pinned pi-coding-agent package");
-}
+const { bin } = readManifest(join(host, "package.json"));
 
 const extensions: string[] = [];
 let fixturePath: string | undefined;
@@ -43,23 +40,23 @@ for (const path of [root.home, root.agent, root.sessions, root.cwd, root.tmp]) {
   mkdirSync(path);
 }
 
-function isFixture(value: unknown): value is BombadilFixture {
-  return typeof value === "function";
-}
+const decodeFixture = Schema.decodeUnknownOption(
+  Schema.Struct({
+    default: Schema.declare<BombadilFixture>((value): value is BombadilFixture =>
+      Predicate.isFunction(value),
+    ),
+  }),
+);
 
 async function loadFixture(path: string | undefined): Promise<BombadilLaunch> {
   if (path === undefined) {
     return {};
   }
-  const module: unknown = await import(pathToFileURL(resolve(repo, path)).href);
-  const run: unknown =
-    typeof module === "object" && module !== null && "default" in module
-      ? module.default
-      : undefined;
-  if (!isFixture(run)) {
+  const fixture = decodeFixture(await import(pathToFileURL(resolve(repo, path)).href));
+  if (Option.isNone(fixture)) {
     throw new TypeError(`Fixture ${path} has no default export function`);
   }
-  return run(root);
+  return fixture.value.default(root);
 }
 
 let launch: BombadilLaunch;

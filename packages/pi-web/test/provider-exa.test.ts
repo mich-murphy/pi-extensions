@@ -7,6 +7,8 @@ import {
   ExaMcpSearchProvider,
   parseExaSearchText,
 } from "../provider-exa";
+import type { ExaTextResults } from "../provider-exa";
+import type { ProviderJson } from "../provider-types";
 import {
   ProviderProtocolInvalid,
   ProviderStatusRejected,
@@ -23,7 +25,7 @@ function sourceOf(headers: string) {
     ?.source;
 }
 
-function fetchBody(body: unknown) {
+function fetchBody(body: ProviderJson) {
   const { client } = fakeProviderHttp([Result.succeed({ bodyText: JSON.stringify(body) })]);
   return new ExaApiFetchProvider(Redacted.make("k"), client).fetchMarkdown(PAGE);
 }
@@ -42,7 +44,7 @@ Text: Source for the pi agent toolkit.`;
 
 describe("parseExaSearchText", () => {
   test("parses titled sections with metadata", () => {
-    const parsed = parseExaSearchText(EXA_TEXT);
+    const parsed: ExaTextResults = parseExaSearchText(EXA_TEXT);
     expect(parsed.results).toHaveLength(2);
     const [first, second] = parsed.results;
     expect(first?.title).toBe("Pi Coding Agent");

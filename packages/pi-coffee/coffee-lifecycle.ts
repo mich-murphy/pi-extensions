@@ -53,9 +53,9 @@ export type CoffeeHandlers = {
 export type CoffeeRegistration = {
   readonly registerCommand: (name: string, options: OnOffCommand<CoffeeContext>) => void;
   readonly on: {
-    (name: "agent_start", handler: CoffeeHandlers["agent_start"]): unknown;
-    (name: "agent_settled", handler: CoffeeHandlers["agent_settled"]): unknown;
-    (name: "session_shutdown", handler: CoffeeHandlers["session_shutdown"]): unknown;
+    (name: "agent_start", handler: CoffeeHandlers["agent_start"]): void;
+    (name: "agent_settled", handler: CoffeeHandlers["agent_settled"]): void;
+    (name: "session_shutdown", handler: CoffeeHandlers["session_shutdown"]): void;
   };
 };
 

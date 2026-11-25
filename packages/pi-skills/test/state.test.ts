@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Schema } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
@@ -26,13 +27,15 @@ import type { ToggleStateError, ToggleStateResult } from "../state";
 const FILE_NAME_MAX_BYTES = 255;
 const temporaryDirectories: string[] = [];
 
+type StateDocument = typeof Schema.Json.Type;
+
 function testContext() {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-"));
   temporaryDirectories.push(directory);
   const statePath = join(directory, "state", "pi-skills.json");
-  const writeState = (state: unknown): void => {
+  const writeState = (state: StateDocument): void => {
     mkdirSync(dirname(statePath), { recursive: true });
-    writeFileSync(statePath, typeof state === "string" ? state : JSON.stringify(state));
+    writeFileSync(statePath, Schema.is(Schema.String)(state) ? state : JSON.stringify(state));
   };
   const resourceFile = (name: string): ResourcePath => {
     const path = join(directory, name, "SKILL.md");
@@ -231,7 +234,7 @@ describe("toggleStateFile", () => {
   test.each<
     readonly [
       string,
-      unknown,
+      StateDocument,
       typeof ToggleStateInvalidJson | typeof ToggleStateTooNew | typeof ToggleStateMalformed,
     ]
   >([
@@ -245,6 +248,7 @@ describe("toggleStateFile", () => {
     ["array overrides", { version: 7, repositories: {}, files: [] }, ToggleStateMalformed],
     ["fractional version", { version: 4.5, overrides: {} }, ToggleStateMalformed],
     ["newer version", { version: 8, overrides: {} }, ToggleStateTooNew],
+    ["overflowing newer version", '{"version":1e999}', ToggleStateTooNew],
     [
       "unknown value",
       { version: 7, repositories: {}, files: { "/skill": "sometimes" } },
@@ -285,7 +289,7 @@ describe("toggleStateFile", () => {
 
   test("tells the user exactly what is wrong with the file", () => {
     const context = testContext();
-    const messageFor = (state: unknown): string => {
+    const messageFor = (state: StateDocument): string => {
       context.writeState(state);
       return failureOf(context.store.load()).message;
     };
@@ -304,7 +308,7 @@ describe("toggleStateFile", () => {
     );
   });
 
-  test.each<readonly [string, Record<string, unknown>, string]>([
+  test.each<readonly [string, typeof Schema.JsonObject.Type, string]>([
     [
       "absolute file paths",
       { files: { "/x/SKILL.md": "enabled", "/x/./SKILL.md": "disabled" }, repositories: {} },

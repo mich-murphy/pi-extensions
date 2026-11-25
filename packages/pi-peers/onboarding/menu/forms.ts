@@ -82,13 +82,13 @@ export function textField(field: TextField): Row {
 export function validated(
   validate: (value: string) => string | undefined,
   set: (value: string) => void,
-): (value: string) => string | undefined {
+): (value: string) => Saved {
   return (value) => {
     const error = validate(value);
     if (error === undefined) {
       set(value);
     }
-    return error;
+    return error === undefined ? undefined : { error };
   };
 }
 

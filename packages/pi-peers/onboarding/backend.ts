@@ -5,7 +5,7 @@ import { hostname, homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { loadConfiguration } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
-import { stateLocations } from "../adapter/locations.js";
+import { isMissingFile, isMissingPath, stateLocations } from "../adapter/locations.js";
 import { MAX_BINARY } from "./artifact.js";
 import {
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
@@ -113,9 +113,7 @@ export async function inspectSetup(agentDir: string, socketPath?: string) {
     await lstat(paths.adapter);
     existing = true;
   } catch (error) {
-    if (
-      !(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-    ) {
+    if (!isMissingFile(error)) {
       throw error;
     }
   }
@@ -124,9 +122,7 @@ export async function inspectSetup(agentDir: string, socketPath?: string) {
     const socket = await lstat(socketPath ?? paths.socket);
     sharedInstance = socket.isSocket();
   } catch (error) {
-    if (
-      !(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-    ) {
+    if (!isMissingFile(error)) {
       throw error;
     }
   }
@@ -244,14 +240,6 @@ export class ResetFailure extends Error {
   }
 }
 type ResetEntry = { path: string; backup: string; sha256: string };
-function isAbsent(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
-}
 export async function hasResetTarget(agentDir: string): Promise<boolean> {
   const paths = setupPaths(agentDir);
   const found = await Promise.all(
@@ -260,7 +248,7 @@ export async function hasResetTarget(agentDir: string): Promise<boolean> {
         await lstat(path);
         return true;
       } catch (error) {
-        if (isAbsent(error)) {
+        if (isMissingPath(error)) {
           return false;
         }
         throw error;
@@ -471,9 +459,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
       sha256,
     };
   } catch (error) {
-    if (
-      !(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-    ) {
+    if (!isMissingFile(error)) {
       throw error;
     }
   }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import { diagnosticText } from "./diagnostic-text";
 import { RepositoryLocator } from "./repository";
 import { parseResourcePath } from "./resource-path";
@@ -14,15 +15,17 @@ import type { Result } from "./result";
 const STATE_VERSION = 7;
 const RESET_ADVICE = "Fix the file, or remove it to reset all toggles.";
 
-const SYSTEM_ERROR_REASONS: Readonly<Record<string, string>> = {
-  EACCES: "permission denied. Check the file and folder permissions.",
-  EPERM: "operation not permitted. Check the file and folder permissions.",
-  ENOSPC: "the disk is full. Free some space and try again.",
-  EDQUOT: "the disk quota is used up. Free some space and try again.",
-  EROFS: "the file system is read-only. Use a writable agent directory.",
-  EISDIR: "the path is a folder, not a file. Move the folder away.",
-  ENOTDIR: "part of the path is a file, not a folder. Check the agent directory path.",
-};
+const SYSTEM_ERROR_REASONS = new Map(
+  Object.entries({
+    EACCES: "permission denied. Check the file and folder permissions.",
+    EPERM: "operation not permitted. Check the file and folder permissions.",
+    ENOSPC: "the disk is full. Free some space and try again.",
+    EDQUOT: "the disk quota is used up. Free some space and try again.",
+    EROFS: "the file system is read-only. Use a writable agent directory.",
+    EISDIR: "the path is a folder, not a file. Move the folder away.",
+    ENOTDIR: "part of the path is a file, not a folder. Check the agent directory path.",
+  }),
+);
 
 export class ToggleStateUnavailable extends Error {
   readonly _tag = "ToggleStateUnavailable" as const;
@@ -34,7 +37,7 @@ export class ToggleStateUnavailable extends Error {
     override readonly cause: unknown,
   ) {
     const reason =
-      SYSTEM_ERROR_REASONS[code] ??
+      SYSTEM_ERROR_REASONS.get(code) ??
       `the file system reported ${diagnosticText(code)}. Check the file, its folder permissions and free disk space.`;
     super(`Could not ${operation} pi-skills state at ${diagnosticText(path)}: ${reason}`, {
       cause,
@@ -236,7 +239,7 @@ function parseState(path: string, content: string): ToggleStateResult {
     }
     throw cause;
   }
-  if (!isRecord(state) || typeof state.version !== "number") {
+  if (!isStateDocument(state)) {
     return err(new ToggleStateMalformed(path, undefined));
   }
   if (state.version > STATE_VERSION) {
@@ -258,8 +261,12 @@ function parseState(path: string, content: string): ToggleStateResult {
   );
 }
 
-function migrateLegacyState(path: string, version: number, entries: unknown): ToggleStateResult {
-  if (!isRecord(entries)) {
+function migrateLegacyState(
+  path: string,
+  version: number,
+  entries: StateValue | undefined,
+): ToggleStateResult {
+  if (!isStateRecord(entries)) {
     return err(new ToggleStateMalformed(path, undefined));
   }
   const files = new Map<ResourcePath, ToggleValue>();
@@ -285,14 +292,14 @@ function migrateLegacyState(path: string, version: number, entries: unknown): To
   return ok({ files, repositories });
 }
 
-function migrateEnabledResource(entry: unknown): ToggleValue | undefined {
-  if (!isRecord(entry) || typeof entry.enabled !== "boolean") {
+function migrateEnabledResource(entry: StateValue): ToggleValue | undefined {
+  if (!isStateRecord(entry) || !Schema.is(Schema.Boolean)(entry.enabled)) {
     return undefined;
   }
   return entry.enabled ? "enabled" : "disabled";
 }
 
-function parsePolicy(path: string, state: Record<string, unknown>): ToggleStateResult {
+function parsePolicy(path: string, state: StateRecord): ToggleStateResult {
   const files = parseFileOverrides(path, state.files);
   if (files._tag === "err") {
     return files;
@@ -306,9 +313,9 @@ function parsePolicy(path: string, state: Record<string, unknown>): ToggleStateR
 
 function parseFileOverrides(
   path: string,
-  entries: unknown,
+  entries: StateValue | undefined,
 ): Result<Map<ResourcePath, ToggleValue>, ToggleStateMalformed> {
-  if (!isRecord(entries)) {
+  if (!isStateRecord(entries)) {
     return err(new ToggleStateMalformed(path, undefined));
   }
   const files = new Map<ResourcePath, ToggleValue>();
@@ -324,15 +331,15 @@ function parseFileOverrides(
 
 function parseRepositoryOverrides(
   path: string,
-  entries: unknown,
+  entries: StateValue | undefined,
 ): Result<Map<string, Map<string, ToggleValue>>, ToggleStateMalformed> {
-  if (!isRecord(entries)) {
+  if (!isStateRecord(entries)) {
     return err(new ToggleStateMalformed(path, undefined));
   }
   const repositories = new Map<string, Map<string, ToggleValue>>();
   for (const [repository, resources] of Object.entries(entries)) {
     const id = parseResourcePath(repository);
-    if (!id || !isRecord(resources) || repositories.has(id)) {
+    if (!id || !isStateRecord(resources) || repositories.has(id)) {
       return err(new ToggleStateMalformed(path, repository));
     }
     const parsed = parseRelativeOverrides(path, resources);
@@ -346,7 +353,7 @@ function parseRepositoryOverrides(
 
 function parseRelativeOverrides(
   path: string,
-  entries: Record<string, unknown>,
+  entries: StateRecord,
 ): Result<Map<string, ToggleValue>, ToggleStateMalformed> {
   const resources = new Map<string, ToggleValue>();
   for (const [key, value] of Object.entries(entries)) {
@@ -371,8 +378,27 @@ function validRelativePath(path: string): boolean {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type StateRecord = typeof Schema.JsonObject.Type;
+type StateValue = typeof Schema.Json.Type;
+const StateValue: Schema.Codec<StateValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Boolean,
+    Schema.Number,
+    Schema.String,
+    Schema.Array(StateValue),
+    Schema.Record(Schema.String, StateValue),
+  ]),
+);
+const isStateDocument = Schema.is(
+  Schema.StructWithRest(Schema.Struct({ version: Schema.Number }), [
+    Schema.Record(Schema.String, StateValue),
+  ]),
+);
+const isJsonReference = Schema.is(Schema.ObjectKeyword);
+
+function isStateRecord(value: StateValue | undefined): value is StateRecord {
+  return isJsonReference(value) && !Array.isArray(value);
 }
 
 const sorted = (entries: ReadonlyMap<string, ToggleValue>): Record<string, ToggleValue> =>

@@ -112,7 +112,7 @@ function isSearchQuery(value: string): value is SearchQuery {
 
 const REDACTED_DISPLAY = "<redacted>";
 
-export function redactUrlCredentialsForDisplay(input: unknown): string {
+export function redactUrlCredentialsForDisplay(input: string | undefined): string {
   const raw = String(input);
   const trimmed = raw.trim();
   if (!trimmed) {

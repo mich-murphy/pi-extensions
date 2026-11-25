@@ -2,40 +2,35 @@ import { describe, expect, test } from "vitest";
 import { MessageAliases } from "../adapter/aliases.js";
 import { Handles, sessionHandle, TakenIndex } from "../adapter/handles.js";
 import { UnsureSends } from "../adapter/retries.js";
+import type { Waited } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
+import type { ToolArguments, ToolResult, ToolSession } from "../adapter/tools.js";
+import type { Message, PeerRef } from "../protocol/schema.js";
 import { defaults } from "../state/shared.js";
+import { toolRecorder } from "./adapter-tool-fixture.js";
 
 const self = { machineId: "alpha", sessionId: "me", runtimeNonce: "a".repeat(32) };
 const beta = { machineId: "beta", sessionId: "them", runtimeNonce: "b".repeat(32) };
 const restarted = { ...beta, runtimeNonce: "c".repeat(32) };
-type Incoming = {
-  from: typeof beta;
-  to: typeof self;
-  scopeId: string;
-  message: Record<string, unknown> & { id: string };
-};
-type Sent = { to: unknown; scopeId: string; message: Record<string, unknown> };
-type Result = {
-  content: { text: string }[];
-  details: { value: Record<string, unknown> };
-  structuredContent?: unknown;
-  isError?: boolean;
-};
+type Incoming = { from: PeerRef; to: PeerRef; scopeId: string; message: Message };
+type Sent = { to: PeerRef; scopeId: string; message: Message };
 
 function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds?: number) {
   let roster = initial.map((entry) => ({ ...entry, scopeIds: ["team"] }));
   const waits: number[] = [];
-  let waited = "timed_out";
+  let waited: Waited = "timed_out";
   let clock = 0;
-  const outcomes: string[] = [];
+  const outcomes: "unknown"[] = [];
   const sent: Sent[] = [];
   const inbox: Incoming[] = [];
   const taken = new TakenIndex();
   const down = new Set<string>();
-  const session = {
+  const session: ToolSession = {
     peer: self,
     config: {
       machineId: "alpha",
+      socketPath: "/tmp/pi-peers-test.sock",
+      label: "Pi",
       scopeIds: ["team"],
       policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
       ...(maxWaitSeconds === undefined ? {} : { maxWaitSeconds }),
@@ -54,16 +49,19 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
       effectiveScopes: () => new Set(["team"]),
       linkDown: (machineId: string) => down.has(machineId),
       discover: async () => ({
+        v: 2,
+        op: "result",
+        rid: "0".repeat(32),
         forOp: "discover",
         outcome: { tag: "ok", value: { peers: roster, watching: false } },
       }),
     },
-    send: async (to: unknown, scopeId: string, message: Record<string, unknown>) => {
+    send: async (to, scopeId, message) => {
       sent.push({ to, scopeId, message });
       const tag = outcomes.shift() ?? "admitted";
       return tag === "admitted"
-        ? { tag, binding: {}, correlation: "none" }
-        : { tag, binding: {}, code: "unavailable" };
+        ? { tag, messageId: message.id, correlation: "none", durable: false }
+        : { tag, messageId: message.id, code: "unavailable" };
     },
     take: () => {
       const messages = inbox.splice(0);
@@ -73,22 +71,9 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
       return { messages };
     },
   };
-  const tools = new Map<string, (args: unknown) => Promise<Result>>();
-  Reflect.apply(registerTools, undefined, [
-    {
-      registerTool: (tool: { name: string; execute: (...args: unknown[]) => Promise<Result> }) => {
-        tools.set(tool.name, async (args) => tool.execute("id", args, undefined));
-      },
-    },
-    () => session,
-  ]);
-  const call = async (name: string, args: unknown = {}): Promise<Result> => {
-    const tool = tools.get(name);
-    if (tool === undefined) {
-      throw new Error(name);
-    }
-    return tool(args);
-  };
+  const tools = toolRecorder();
+  registerTools(tools, () => session);
+  const call = async (name: string, args: ToolArguments = {}) => tools.run(name, args);
   return {
     call,
     sent,
@@ -105,7 +90,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
         down.delete(machineId);
       }
     },
-    setWaited: (next: string) => {
+    setWaited: (next: Waited) => {
       waited = next;
     },
     setRoster: (next: { peer: typeof beta; label: string }[]) => {
@@ -118,7 +103,7 @@ async function listedFixture() {
   await fx.call("peers_list");
   return fx;
 }
-function textOf(result: Result): string {
+function textOf(result: ToolResult): string {
   return result.content[0]?.text ?? "";
 }
 const handle = sessionHandle("beta", "them");
@@ -344,7 +329,7 @@ describe("peers_take waitSeconds", () => {
     ["busy", "overloaded", /already waiting/u],
     ["disconnected", "unavailable", /no message can arrive/u],
     ["cancelled", "cancelled", /cancelled/u],
-  ])("a %s wait is an error with its own note", async (waited, code, note) => {
+  ] as const)("a %s wait is an error with its own note", async (waited, code, note) => {
     const fx = fixture([]);
     fx.setWaited(waited);
     const result = await fx.call("peers_take", { waitSeconds: 30 });

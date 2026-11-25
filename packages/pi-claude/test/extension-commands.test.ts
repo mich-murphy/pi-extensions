@@ -3,35 +3,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
-import type { ClaudeHandlers } from "../index";
+import type { ClaudeContext, ClaudeHandlers, ClaudeRegistration } from "../index";
 import registerClaudeProvider from "../index";
 import { VALIDATION_ERROR_TOOL, validationRecoveryReason } from "../validation-recovery";
 import { installFakeClaude } from "./fake-claude-cli";
 import type { FakeClaude, FakeClaudeBehaviour } from "./fake-claude-cli";
 
-type Notice = { readonly text: string; readonly level: string };
-type Context = {
-  readonly hasUI: boolean;
-  readonly ui: { readonly notify: (text: string, level: "info" | "warning" | "error") => void };
-};
-type Command = (args: string, ctx: Context) => Promise<void>;
+type Notice = { readonly text: string; readonly level: string | undefined };
+type CommandOptions = Parameters<ClaudeRegistration["registerCommand"]>[1];
 
-const quietContext: Context = { hasUI: false, ui: { notify: () => undefined } };
+const quietContext: ClaudeContext = { hasUI: false, ui: { notify: () => undefined } };
 
 function toolCall(toolName: string): ToolCallEvent {
   return { type: "tool_call", toolCallId: "call-1", toolName, input: {} };
 }
 
 function loadExtension() {
-  const commands = new Map<string, Command>();
-  const completions = new Map<string, (prefix: string) => unknown>();
+  const commands = new Map<string, CommandOptions["handler"]>();
+  const completions = new Map<string, NonNullable<CommandOptions["getArgumentCompletions"]>>();
   const handlers: Partial<ClaudeHandlers> = {};
   registerClaudeProvider({
-    registerCommand: (name: string, options: { readonly handler: Command }) => {
+    registerCommand: (name, options) => {
       commands.set(name, options.handler);
-      const complete: unknown = Reflect.get(options, "getArgumentCompletions");
-      if (typeof complete === "function") {
-        completions.set(name, (prefix) => Reflect.apply(complete, undefined, [prefix]) as unknown);
+      if (options.getArgumentCompletions !== undefined) {
+        completions.set(name, options.getArgumentCompletions);
       }
     },
     registerTool: () => undefined,
@@ -206,7 +201,7 @@ describe("reserved validation-recovery tool", () => {
 
   test("the loaded extension passes the call's input to the correction", () => {
     const { handlers } = loadExtension();
-    const input = { error: "printed_tool_call" };
+    const input = { error: "printed_tool_call" } as const;
 
     const result = handlers.tool_call?.(
       { ...toolCall(VALIDATION_ERROR_TOOL), input },
@@ -214,7 +209,7 @@ describe("reserved validation-recovery tool", () => {
     );
 
     expect(result?.reason).toBe(validationRecoveryReason(input));
-    expect(result?.reason).not.toBe(validationRecoveryReason({}));
+    expect(result?.reason).not.toBe(validationRecoveryReason(undefined));
   });
 
   test("the loaded extension leaves an ordinary tool alone", () => {

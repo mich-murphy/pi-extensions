@@ -22,10 +22,12 @@ import type { NormalizedSearchResult, PublicHttpUrl } from "./types";
 const EXA_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 const EXA_FETCH_MAX_CHARACTERS = 60_000;
 
-export function parseExaSearchText(input: string): {
+export type ExaTextResults = {
   readonly results: readonly NormalizedSearchResult[];
   readonly discardedSections: number;
-} {
+};
+
+export function parseExaSearchText(input: string): ExaTextResults {
   const trimmed = input.replaceAll("\r\n", "\n").trim();
   if (!trimmed || isExplicitNoResultsText(trimmed)) {
     return { results: [], discardedSections: 0 };

@@ -119,12 +119,11 @@ async function reopen(args: readonly string[], io: CliIo): Promise<number> {
   return 0;
 }
 
-const COMMANDS: Readonly<Record<string, (args: readonly string[], io: CliIo) => Promise<number>>> =
-  { queue, resolve, reopen };
+const COMMANDS = new Map(Object.entries({ queue, resolve, reopen }));
 
 export async function runCli(args: readonly string[], io: CliIo): Promise<number> {
   const [command = "help", ...rest] = args;
-  const run = COMMANDS[command];
+  const run = COMMANDS.get(command);
   if (run === undefined) {
     const asked = command === "help" || command === "--help";
     (asked ? io.out : io.err)(USAGE);

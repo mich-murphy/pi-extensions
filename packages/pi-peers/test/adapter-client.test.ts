@@ -4,6 +4,8 @@ import { createConnection, createServer } from "node:net";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Schema } from "effect";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { GatewayClient } from "../adapter/client.js";
 import type { EnsureGateway } from "../adapter/client.js";
@@ -13,10 +15,14 @@ import { statusSummary } from "../adapter/presentation.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
+import type { ToolArguments, ToolValue } from "../adapter/tools.js";
 import { connectTransport } from "../adapter/transport.js";
+import type { PeersContext } from "../index.js";
 import sessionCommunication from "../index.js";
 import type { Frame, Message } from "../protocol/schema.js";
 import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
+import { toolRecorder } from "./adapter-tool-fixture.js";
+import { extensionFixture } from "./extension-fixture.js";
 
 const peer = {
   machineId: "alpha",
@@ -29,6 +35,8 @@ const other = {
   runtimeNonce: "2".repeat(32),
 };
 const cleanups: (() => Promise<void>)[] = [];
+type SentNotice = Parameters<ExtensionAPI["sendMessage"]>;
+type SessionHolder = { session?: AdapterSession };
 type Reply = Extract<Frame, { op: "result" }>;
 type Request = Exclude<Frame, { op: "result" | "roster.event" | "link.state" }>;
 async function gateway(
@@ -266,25 +274,13 @@ function toolGateway(request: Request): Reply | undefined {
   }
   return discoveryReply(request);
 }
-type CapturedTool = { name: string; execute: unknown };
 async function executeTool(
-  tools: readonly CapturedTool[],
+  fixture: ReturnType<typeof toolRecorder>,
   name: string,
-  args: unknown,
-): Promise<unknown> {
-  const definition = tools.find((tool) => tool.name === name);
-  assert(definition);
-  const action = definition.execute;
-  assert(typeof action === "function");
-  const result: unknown = await Reflect.apply(action, undefined, [
-    "unit",
-    args,
-    new AbortController().signal,
-  ]);
-  assert(typeof result === "object" && result !== null && "details" in result);
-  const details: unknown = result.details;
-  assert(typeof details === "object" && details !== null && "value" in details);
-  return details.value;
+  args: ToolArguments,
+): Promise<ToolValue> {
+  const result = await fixture.run(name, args);
+  return result.details.value;
 }
 
 async function acceptedProbe(fixture: Awaited<ReturnType<typeof gateway>>): Promise<void> {
@@ -296,25 +292,17 @@ async function acceptedProbe(fixture: Awaited<ReturnType<typeof gateway>>): Prom
   await expect.poll(() => fixture.connections()).toBeGreaterThan(before);
 }
 async function flaggedResult(
-  tools: readonly CapturedTool[],
+  fixture: ReturnType<typeof toolRecorder>,
   name: string,
-  args: unknown,
-): Promise<{ isError: boolean; value: unknown; note: unknown }> {
-  const definition = tools.find((tool) => tool.name === name);
-  assert(definition);
-  assert(typeof definition.execute === "function");
-  const result: unknown = await Reflect.apply(definition.execute, undefined, [
-    "unit",
-    args,
-    new AbortController().signal,
-  ]);
-  assert(typeof result === "object" && result !== null && "details" in result);
-  const details: unknown = result.details;
-  assert(typeof details === "object" && details !== null && "value" in details);
-  const value: unknown = details.value;
-  const note: unknown =
-    typeof value === "object" && value !== null && "note" in value ? value.note : undefined;
-  return { isError: "isError" in result && result.isError === true, value, note };
+  args: ToolArguments,
+) {
+  const result = await fixture.run(name, args);
+  const { value } = result.details;
+  return {
+    isError: result.isError === true,
+    value,
+    note: "note" in value ? value.note : undefined,
+  };
 }
 
 function restoreAgentDir(previous: string | undefined): void {
@@ -324,17 +312,14 @@ function restoreAgentDir(previous: string | undefined): void {
     process.env.PI_CODING_AGENT_DIR = previous;
   }
 }
-function extensionHost(select: () => Promise<unknown> = async () => undefined) {
-  const handlers = new Map<string, unknown>();
-  const commands = new Map<
-    string,
-    { handler: unknown; getArgumentCompletions?: (prefix: string) => unknown }
-  >();
+function extensionHost(select: PeersContext["ui"]["select"] = async () => undefined) {
+  const fixture = extensionFixture();
   const notifications: string[] = [];
   const statuses: (string | undefined)[] = [];
-  const context = {
+  const context: PeersContext = {
     mode: "rpc",
     hasUI: true,
+    signal: undefined,
     sessionManager: {
       getSessionId: () => peer.sessionId,
       getCwd: () => "/work/repo",
@@ -344,59 +329,28 @@ function extensionHost(select: () => Promise<unknown> = async () => undefined) {
     isIdle: () => true,
     ui: {
       select,
-      notify: (text: string) => {
+      input: async () => undefined,
+      notify: (text) => {
         notifications.push(text);
       },
-      setStatus: (_key: string, text: string | undefined) => {
+      setStatus: (_key, text) => {
         statuses.push(text);
       },
     },
   };
-  Reflect.apply(sessionCommunication, undefined, [
-    {
-      on: (name: string, handler: unknown) => {
-        handlers.set(name, handler);
-      },
-      registerTool: () => undefined,
-      registerEntryRenderer: () => undefined,
-      registerCommand: (
-        name: string,
-        definition: {
-          handler: unknown;
-          getArgumentCompletions?: (prefix: string) => unknown;
-        },
-      ) => {
-        commands.set(name, definition);
-      },
-      sendMessage: () => undefined,
-    },
-  ]);
+  sessionCommunication(fixture.api);
   return {
     notifications,
     statuses,
-    commands,
-    event: async (name: string, event: unknown = {}) => {
-      const handler = handlers.get(name);
-      assert(typeof handler === "function");
-      const result: unknown = await Reflect.apply(handler, undefined, [event, context]);
-      return result;
-    },
-    command: async (args: string, name = "peers") => {
-      const command = commands.get(name)?.handler;
-      assert(typeof command === "function");
-      const result: unknown = await Reflect.apply(command, undefined, [args, context]);
-      return result;
-    },
+    commands: fixture.commands,
+    event: async <Name extends Parameters<typeof fixture.event>[0]>(
+      name: Name,
+      payload: Parameters<typeof fixture.event<Name>>[1],
+    ) => fixture.event(name, payload, context),
+    command: async (args: string, name = "peers") => fixture.command(name, args, context),
   };
 }
 
-function malformedEnsure(value: unknown): EnsureGateway {
-  const ensure = vi.fn<EnsureGateway>();
-  const resolve: unknown = Reflect.get(ensure, "mockResolvedValue");
-  assert(typeof resolve === "function");
-  Reflect.apply(resolve, ensure, [value]);
-  return ensure;
-}
 function registerHash(request: Request) {
   assert.equal(request.op, "register");
   if (request.op !== "register") {
@@ -440,10 +394,10 @@ function generationEnsure(hashes: string[]) {
   );
 }
 
-async function expectFailure(pending: Promise<unknown>, message: string): Promise<void> {
+async function expectFailure<Value>(pending: Promise<Value>, message: string): Promise<void> {
   await expect(pending).rejects.toThrow(message);
 }
-async function expectPossibleFailure(pending: Promise<unknown>): Promise<void> {
+async function expectPossibleFailure<Value>(pending: Promise<Value>): Promise<void> {
   await expect(pending).rejects.toMatchObject({ possible: true });
 }
 function holdRegister(
@@ -538,7 +492,7 @@ describe("public adapter transport and notice accounting", () => {
       const client = new GatewayClient({
         config: fixture.config,
         peer,
-        ensureGateway: malformedEnsure(value),
+        ensureGateway: async () => value,
         incoming: () => {
           throw new Error("Unexpected request");
         },
@@ -1055,11 +1009,11 @@ describe("public adapter transport and notice accounting", () => {
     process.env.PI_CODING_AGENT_DIR = directory;
     const host = extensionHost();
     cleanups.push(async () => {
-      await host.event("session_shutdown");
+      await host.event("session_shutdown", { type: "session_shutdown" });
       restoreAgentDir(previous);
       await rm(directory, { recursive: true, force: true });
     });
-    await host.event("session_start");
+    await host.event("session_start", { type: "session_start" });
     expect(host.notifications).toStrictEqual([]);
     expect([...host.commands.keys()]).toStrictEqual(["peers"]);
     expect(host.commands.get("peers")?.getArgumentCompletions?.("re")).toStrictEqual([
@@ -1083,14 +1037,14 @@ describe("public adapter transport and notice accounting", () => {
     await host.command("invalid");
     expect(host.notifications.at(-1)).toContain("Usage:");
     await host.command("reconnect");
-    await host.event("message_end", { message: { role: "custom" } });
-    await host.event("agent_before_settle", { entries: [] });
-    await host.event("agent_settled");
-    await host.event("session_compact");
-    await host.event("session_compact_failed", { aborted: true });
-    await host.event("session_shutdown");
+    await host.event("message_end", { type: "message_end", message: { role: "custom" } });
+    await host.event("agent_before_settle", { type: "agent_before_settle", entries: [] });
+    await host.event("agent_settled", { type: "agent_settled" });
+    await host.event("session_compact", { type: "session_compact" });
+    await host.event("session_compact_failed", { type: "session_compact_failed", aborted: true });
+    await host.event("session_shutdown", { type: "session_shutdown" });
     await writeFile(join(directory, "pi-peers.json"), "invalid");
-    await host.event("session_start");
+    await host.event("session_start", { type: "session_start" });
     expect(host.statuses.at(-1)).toBe("peers ✕ setup failed");
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("invalid JSON");
@@ -1107,15 +1061,15 @@ describe("public adapter transport and notice accounting", () => {
         policies: [],
       }),
     );
-    await host.event("session_start");
+    await host.event("session_start", { type: "session_start" });
     await host.command("doctor", "peers");
     expect(host.notifications.at(-1)).toContain("Configuration: valid");
     expect(host.notifications.at(-1)).toContain("absent or inaccessible");
     expect(host.notifications.at(-1)).not.toContain("connected ·");
-    await host.event("session_shutdown");
+    await host.event("session_shutdown", { type: "session_shutdown" });
     const fixture = await gateway(discoveryReply);
     await writeFile(join(directory, "pi-peers.json"), JSON.stringify(fixture.config));
-    await host.event("session_start");
+    await host.event("session_start", { type: "session_start" });
     await expect.poll(() => fixture.requests.length).toBe(1);
     await host.command("reconnect", "peers");
     expect(host.notifications.at(-1)).toContain("Connected as");
@@ -1126,13 +1080,13 @@ describe("public adapter transport and notice accounting", () => {
     expect(host.notifications.at(-1)).toContain("Connected as");
     expect(host.notifications.at(-1)).not.toContain("participation is off");
     expect(host.statuses.at(-1)).toBe("peers ✓");
-    await host.event("message_end", { message: { role: "custom" } });
-    await host.event("agent_before_settle", { entries: [] });
-    await host.event("agent_settled");
-    await host.event("session_compact");
-    await host.event("session_compact_failed", { aborted: true });
-    await host.event("session_shutdown");
-    await host.event("session_shutdown");
+    await host.event("message_end", { type: "message_end", message: { role: "custom" } });
+    await host.event("agent_before_settle", { type: "agent_before_settle", entries: [] });
+    await host.event("agent_settled", { type: "agent_settled" });
+    await host.event("session_compact", { type: "session_compact" });
+    await host.event("session_compact_failed", { type: "session_compact_failed", aborted: true });
+    await host.event("session_shutdown", { type: "session_shutdown" });
+    await host.event("session_shutdown", { type: "session_shutdown" });
     await host.command("status");
     expect(host.notifications.at(-1)).toContain("Peers is unavailable in this session");
     expect(host.notifications.at(-1)).not.toContain("Remote config snapshot");
@@ -1140,19 +1094,9 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("public tools share the scoped runtime", async () => {
     const fixture = await gateway(toolGateway);
-    const current: { session?: AdapterSession } = {};
-    const tools: CapturedTool[] = [];
-    registerTools(
-      {
-        registerTool: (definition) => {
-          tools.push({
-            name: definition.name,
-            execute: definition.execute.bind(definition),
-          });
-        },
-      },
-      () => current.session,
-    );
+    const current: SessionHolder = {};
+    const tools = toolRecorder();
+    registerTools(tools, () => current.session);
     await expect(executeTool(tools, "peers_take", {})).resolves.toMatchObject({
       tag: "error",
       code: "unavailable",
@@ -1198,7 +1142,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a tool call on a closed client reports a cancelled request", async () => {
     const fixture = await gateway(toolGateway);
-    const tools: CapturedTool[] = [];
+    const tools = toolRecorder();
     const owned = await createAdapterRuntime(
       fixture.config,
       peer,
@@ -1208,14 +1152,7 @@ describe("public adapter transport and notice accounting", () => {
     cleanups.push(async () => {
       await owned.dispose();
     });
-    registerTools(
-      {
-        registerTool: (definition) => {
-          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
-        },
-      },
-      () => owned.session,
-    );
+    registerTools(tools, () => owned.session);
     owned.session.client.close();
     await expect(executeTool(tools, "peers_take", {})).resolves.toStrictEqual({
       tag: "error",
@@ -1225,7 +1162,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a send the gateway could not route is flagged as an error and says resending cannot duplicate it", async () => {
     const fixture = await gateway(unroutedGateway);
-    const tools: CapturedTool[] = [];
+    const tools = toolRecorder();
     const owned = await createAdapterRuntime(
       fixture.config,
       peer,
@@ -1235,14 +1172,7 @@ describe("public adapter transport and notice accounting", () => {
     cleanups.push(async () => {
       await owned.dispose();
     });
-    registerTools(
-      {
-        registerTool: (definition) => {
-          tools.push({ name: definition.name, execute: definition.execute.bind(definition) });
-        },
-      },
-      () => owned.session,
-    );
+    registerTools(tools, () => owned.session);
     await expect.poll(() => owned.session.client.status().connected).toBe(true);
     await executeTool(tools, "peers_list", {});
     const result = await flaggedResult(tools, "peers_send", {
@@ -1401,8 +1331,8 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("transfers FIFO payloads once, retains receipts, and retires only exact identified notices", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: { customType: string; details?: unknown }[] = [];
-    const wakes: unknown[] = [];
+    const notices: SentNotice[0][] = [];
+    const wakes: SentNotice[1][] = [];
     let idle = false;
     const session: AdapterSession = new AdapterSession(
       fixture.config,
@@ -1490,7 +1420,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("an unobserved wake notice is never replayed when more messages arrive", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: unknown[] = [];
+    const notices: SentNotice[0][] = [];
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1529,7 +1459,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a take that empties the inbox drops the pending wake, and a partial take keeps it", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: unknown[] = [];
+    const notices: SentNotice[0][] = [];
     let idle = false;
     const session: AdapterSession = new AdapterSession(
       fixture.config,
@@ -1657,7 +1587,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("the wake notice names the sender but never carries the message body", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: { content?: unknown }[] = [];
+    const notices: SentNotice[0][] = [];
     const session: AdapterSession = new AdapterSession(
       fixture.config,
       peer,
@@ -1686,7 +1616,7 @@ describe("public adapter transport and notice accounting", () => {
       message: authored("a".repeat(32)),
     });
     await expect.poll(() => notices.length).toBe(1);
-    const notice = String(notices[0]?.content);
+    const notice = Schema.decodeUnknownSync(Schema.String)(notices[0]?.content);
     expect(notice).toContain(sessionHandle(other.machineId, other.sessionId));
     expect(notice).toContain("peers_take");
     expect(notice).not.toContain(authored().content);
@@ -1946,10 +1876,7 @@ describe("public adapter transport and notice accounting", () => {
     try {
       const unanswered = connection
         .request({ v: 2, op: "close", rid: "b".repeat(32) }, performance.now() + 10)
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
+        .then(() => undefined, Schema.decodeUnknownSync(Schema.instanceOf(Error)));
       await expect
         .poll(() => fixture.requests.some((item) => item.rid === "b".repeat(32)))
         .toBe(true);
@@ -1979,7 +1906,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("adapter answers forwarded state and interest requests with forbidden, without wakes", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: unknown[] = [];
+    const notices: SentNotice[0][] = [];
     const session = new AdapterSession(
       fixture.config,
       peer,

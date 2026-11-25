@@ -1,5 +1,7 @@
+import type { JsonValue } from "@earendil-works/pi-ai";
 import type { MessageEndEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+import type { BatchCall } from "../batch.ts";
 import type { ClassifierRegistry } from "../classify.ts";
 import type {
   FeedbackCommandContext,
@@ -15,12 +17,11 @@ type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
 type MessageHandler = (event: Pick<MessageEndEvent, "message">) => void;
 
-export type FakeCall = { readonly id: string; readonly name: string; readonly args: object };
-
 function isEndHandler(name: string, _handler: EndHandler | MessageHandler): _handler is EndHandler {
   return name === "tool_execution_end";
 }
 
+const renderOptions = { expanded: false, keyText: () => "", keyHint: () => "" };
 const plainTheme = { fg: (_color: string, text: string) => text };
 
 function renderText(component: Component | undefined): string {
@@ -128,7 +129,7 @@ export function fakePi(
     },
     call: async (params: Parameters<FeedbackTool["execute"]>[1]) =>
       tool().execute("call-1", params, undefined, undefined, ctx()),
-    batch: (calls: readonly FakeCall[]) => {
+    batch: (calls: readonly BatchCall[]) => {
       const message: MessageEndEvent["message"] = {
         role: "assistant",
         content: calls.map((call) => ({
@@ -187,7 +188,7 @@ export function fakePi(
       }
       await command.handler(args, commandCtx);
     },
-    render: (customType: string, data: unknown) =>
-      renderText(renderers.get(customType)?.({ data }, {}, plainTheme)),
+    render: (customType: string, data: JsonValue) =>
+      renderText(renderers.get(customType)?.({ data }, renderOptions, plainTheme)),
   };
 }

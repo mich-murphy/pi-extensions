@@ -1,104 +1,84 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
+import { Option, Predicate, Schema } from "effect";
 import { contextRow, selectContext } from "./context";
 
 const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
-type StackNode = {
-  type: "vstack";
-  entries: readonly StackEntry[];
-  gap: number;
-  align: "stretch";
-};
-type LayoutRoot = Component & { [LAYOUT_NODE]: () => StackNode };
+type RenderComponent = Pick<Component, "render">;
+type LayoutRoot = RenderComponent & { [LAYOUT_NODE]: () => typeof Schema.Unknown.Type };
 
-function isComponent(value: unknown): value is Component {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof Reflect.get(value, "render") === "function"
-  );
-}
+const Render = Schema.declare<Component["render"]>((value): value is Component["render"] =>
+  Predicate.isFunction(value),
+);
+const ComponentShape = Schema.Struct({ render: Render });
+const isComponent = Schema.is(ComponentShape);
+const hasLayout = Schema.is(
+  Schema.Struct({
+    render: Render,
+    [LAYOUT_NODE]: Schema.declare<LayoutRoot[typeof LAYOUT_NODE]>(
+      (value): value is LayoutRoot[typeof LAYOUT_NODE] => Predicate.isFunction(value),
+    ),
+  }),
+);
+const decodeHost = Schema.decodeUnknownOption(
+  Schema.Struct({ layoutRoot: Schema.declare<LayoutRoot>(hasLayout) }),
+);
+const isNativeStack = Schema.is(
+  Schema.Struct({
+    type: Schema.Literal("vstack"),
+    gap: Schema.Literal(0),
+    align: Schema.Literal("stretch"),
+    entries: Schema.Tuple([
+      Schema.Struct({
+        component: ComponentShape,
+        basis: Schema.Literal(0),
+        grow: Schema.Literal(1),
+        shrink: Schema.Literal(1),
+        minSize: Schema.Literal(1),
+      }),
+      Schema.Struct({
+        component: ComponentShape,
+        basis: Schema.Literal("auto"),
+        grow: Schema.Literal(0),
+        shrink: Schema.Literal(1),
+        minSize: Schema.Literal(1),
+      }),
+    ]),
+  }),
+);
+const isNativeScroll = Schema.is(
+  Schema.Struct({
+    primary: Schema.Literal(true),
+    isFollowingEnd: Schema.Boolean,
+    scrollTop: Schema.Number,
+    getContentWidth: Schema.declare<ScrollView["getContentWidth"]>(
+      (value): value is ScrollView["getContentWidth"] => Predicate.isFunction(value),
+    ),
+    scrollTo: Schema.declare<ScrollView["scrollTo"]>((value): value is ScrollView["scrollTo"] =>
+      Predicate.isFunction(value),
+    ),
+    children: Schema.Array(Schema.Unknown),
+  }),
+);
+const hasChildren = Schema.is(Schema.Struct({ children: Schema.Array(Schema.Unknown) }));
+const hasText = Schema.is(Schema.Struct({ text: Schema.String }));
 
-function isRoot(value: unknown): value is LayoutRoot {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof Reflect.get(value, "render") === "function" &&
-    typeof Reflect.get(value, LAYOUT_NODE) === "function"
-  );
-}
-
-function hasNativeEntries(node: StackNode): boolean {
-  return (
-    typeof node === "object" &&
-    node !== null &&
-    Array.isArray(node.entries) &&
-    node.entries.length === 2 &&
-    node.entries.every((entry) => typeof entry === "object" && entry !== null)
-  );
-}
-
-function nativeAllocation(entry: StackEntry, basis: 0 | "auto", grow: 0 | 1): boolean {
-  return entry.basis === basis && entry.grow === grow && entry.shrink === 1 && entry.minSize === 1;
-}
-
-function nativeStack(node: StackNode): boolean {
-  return node.type === "vstack" && node.gap === 0 && node.align === "stretch";
-}
-
-function nativeChat(node: StackNode): { scroll: ScrollView; dock: Component } | undefined {
-  if (!hasNativeEntries(node)) {
-    return undefined;
-  }
-  const [transcript, dock] = node.entries;
-  if (!nativeStack(node) || transcript === undefined || dock === undefined) {
-    return undefined;
-  }
-  if (
-    !isNativeScroll(transcript.component) ||
-    !isComponent(dock.component) ||
-    !nativeAllocation(transcript, 0, 1) ||
-    !nativeAllocation(dock, "auto", 0)
-  ) {
-    return undefined;
-  }
-  return { scroll: transcript.component, dock: dock.component };
-}
-
-function isNativeScroll(component: Component): component is ScrollView {
-  return (
-    typeof component === "object" &&
-    component !== null &&
-    Reflect.get(component, "primary") === true &&
-    typeof Reflect.get(component, "isFollowingEnd") === "boolean" &&
-    typeof Reflect.get(component, "scrollTop") === "number" &&
-    typeof Reflect.get(component, "getContentWidth") === "function" &&
-    typeof Reflect.get(component, "scrollTo") === "function" &&
-    Array.isArray(Reflect.get(component, "children"))
-  );
-}
-
-function* userComponents(component: Component): Generator<Component> {
+function* userComponents(component: RenderComponent): Generator<RenderComponent> {
   if (component.constructor.name === "UserMessageComponent") {
     yield component;
     return;
   }
-  const children: unknown = Reflect.get(component, "children");
-  if (!Array.isArray(children)) {
+  if (!hasChildren(component)) {
     return;
   }
-  for (const child of children) {
+  for (const child of component.children) {
     if (isComponent(child)) {
       yield* userComponents(child);
     }
   }
 }
 
-function nativeTexts(
-  document: Component,
-  rendered: readonly string[],
-  width: number,
-): { lines: string[]; texts: string[] } {
+function nativeTexts(document: RenderComponent, rendered: readonly string[], width: number) {
   const texts: string[] = [];
   const lines = rendered.map((line) => stripTerminalSequences(line));
   let cursor = 0;
@@ -117,8 +97,7 @@ function nativeTexts(
       lines[cursor + offset] = line;
     }
     cursor += block.length;
-    const value: unknown = Reflect.get(component, "text");
-    texts.push(typeof value === "string" ? value.replaceAll(/\s+/gu, " ").trim() : "");
+    texts.push(hasText(component) ? component.text.replaceAll(/\s+/gu, " ").trim() : "");
   }
   return { lines, texts };
 }
@@ -141,19 +120,25 @@ export function createHostAdapter(
     if (disposed) {
       return;
     }
-    const candidate: unknown = Reflect.get(tui, "layoutRoot");
-    if (!isRoot(candidate) || restorers.has(candidate)) {
+    const host = decodeHost(tui);
+    if (Option.isNone(host)) {
       return;
     }
-    const original = candidate[LAYOUT_NODE];
-    let node: StackNode;
+    const candidate = host.value.layoutRoot;
+    if (restorers.has(candidate)) {
+      return;
+    }
+    let node;
     try {
-      node = original.call(candidate);
+      node = candidate[LAYOUT_NODE]();
     } catch {
       return;
     }
-    const chat = nativeChat(node);
-    if (chat === undefined || !Object.isExtensible(candidate)) {
+    if (!isNativeStack(node) || !Object.isExtensible(candidate)) {
+      return;
+    }
+    const [{ component: scroll }, { component: dock }] = node.entries;
+    if (!isNativeScroll(scroll)) {
       return;
     }
     const ownDescriptor = Object.getOwnPropertyDescriptor(candidate, LAYOUT_NODE);
@@ -169,7 +154,7 @@ export function createHostAdapter(
       }
       return header.component;
     };
-    const patched = (): StackNode =>
+    const patched = () =>
       disposed
         ? node
         : {
@@ -183,11 +168,10 @@ export function createHostAdapter(
                 grow: 0,
                 shrink: 0,
                 minSize: 1,
-                visible: (viewport) => {
+                visible: (viewport: Parameters<NonNullable<StackEntry["visible"]>>[0]) => {
                   const wasShown = shown;
                   shown = false;
                   text = undefined;
-                  const { scroll, dock } = chat;
                   if (scroll.isFollowingEnd || viewport.height < 3) {
                     return false;
                   }

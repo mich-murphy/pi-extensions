@@ -2,24 +2,23 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { ToolArguments } from "../adapter/tools.js";
 import { freshId } from "../adapter/transport.js";
 import communication from "../index.js";
+import type { PeersContext } from "../index.js";
 import { setupPaths } from "../onboarding/backend.js";
 import type { SetupBackend } from "../onboarding/backend.js";
 import { digest } from "../onboarding/files.js";
-import { decodeRecord } from "../onboarding/schema.js";
+import { extensionFixture } from "./extension-fixture.js";
 import { dialog, nativeAddress, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 function extensionHost(testBackend?: { backend: SetupBackend; description: string }) {
-  const handlers = new Map<string, unknown>();
-  const commands = new Map<string, unknown>();
-  const tools = new Map<string, unknown>();
   const notifications: string[] = [];
   const entries: string[] = [];
   const answers: (string | undefined)[] = [];
   let idle = true;
   const ui = dialog(answers);
-  const context = {
+  const context: PeersContext = {
     mode: "rpc",
     hasUI: true,
     signal: undefined,
@@ -39,52 +38,33 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
     },
   };
   const sessionId = freshId();
-  const api = {
-    on: (name: string, handler: unknown) => {
-      handlers.set(name, handler);
-    },
-    registerTool: (definition: { name: string; execute: unknown }) => {
-      tools.set(definition.name, definition.execute);
-    },
-    registerCommand: (name: string, definition: { handler: unknown }) => {
-      commands.set(name, definition.handler);
-    },
-    sendMessage: () => undefined,
-    appendEntry: (type: string) => {
+  const fixture = extensionFixture({
+    appendEntry: (type) => {
       entries.push(type);
     },
-    registerEntryRenderer: () => undefined,
-  };
-  Reflect.apply(communication, undefined, testBackend === undefined ? [api] : [api, testBackend]);
+  });
+  communication(fixture.api, testBackend);
   return {
-    commands,
+    commands: fixture.commands,
     notifications,
     unusedAnswers: () => answers.length,
     entries,
     setIdle: (value: boolean) => {
       idle = value;
     },
-    event: async (name: string) => invoke(handlers.get(name), [{}, context]),
+    event: async (type: "session_start" | "session_shutdown") =>
+      fixture.event(type, { type }, context),
     command: async (args: string, next: (string | undefined)[] = []) => {
       answers.push(...next);
       const start = notifications.length;
-      await invoke(commands.get("peers"), [args, context]);
+      await fixture.command("peers", args, context);
       return notifications.slice(start);
     },
-    tool: async (name: string, args: unknown) => {
-      const result = decodeRecord(
-        await invoke(tools.get(name), ["fixture", args, undefined, undefined, context]),
-      );
-      return decodeRecord(decodeRecord(result.details).value);
+    tool: async (name: string, args: ToolArguments) => {
+      const result = await fixture.tools.run(name, args);
+      return result.details.value;
     },
   };
-}
-async function invoke(handler: unknown, args: unknown[]): Promise<unknown> {
-  if (typeof handler !== "function") {
-    throw new TypeError("Unregistered fixture callback");
-  }
-  const result: unknown = await Reflect.apply(handler, undefined, args);
-  return result;
 }
 
 function identity(messages: string[]) {

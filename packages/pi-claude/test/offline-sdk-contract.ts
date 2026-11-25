@@ -7,7 +7,7 @@ import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentEvent, AgentMessage, AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { Type } from "typebox";
 import { z } from "zod";
 import { createAgentSdkStream } from "../bridge";
@@ -17,6 +17,7 @@ import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunSdkQuery } from "../sdk/runner";
 import {
   blockValidationRecovery,
+  decodeValidationInput,
   VALIDATION_ERROR_TOOL,
   validationRecoveryTool,
 } from "../validation-recovery";
@@ -42,7 +43,14 @@ type Proof = {
   reservedExecutions: number;
   durableBeforeCorrection: boolean;
 };
-type Emit = (type: string, data: Record<string, unknown>) => void;
+type StreamEventFields = {
+  readonly index?: number;
+  readonly message?: Schema.JsonObject;
+  readonly content_block?: Schema.JsonObject;
+  readonly delta?: Schema.JsonObject;
+  readonly usage?: Schema.JsonObject;
+};
+type Emit = (type: string, data: StreamEventFields) => void;
 
 function isMessage(message: AgentMessage): message is Message {
   return ["system", "user", "assistant", "toolResult"].includes(message.role);
@@ -192,7 +200,7 @@ async function startTransport(proof: Proof) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  assert(address !== null && typeof address === "object");
+  assert(address !== null && !Schema.is(Schema.String)(address));
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     async close() {
@@ -240,7 +248,7 @@ function observeHooks(params: Parameters<RunSdkQuery>[0], proof: Proof) {
   };
 }
 
-function terminalFixture(message: SDKMessage, proof: Proof): unknown {
+function terminalFixture(message: SDKMessage, proof: Proof) {
   if (message.type !== "result") {
     return message;
   }
@@ -248,7 +256,8 @@ function terminalFixture(message: SDKMessage, proof: Proof): unknown {
     proof.controller.abort();
   }
   if (proof.scenario === "invalid-terminal") {
-    return { ...message, stop_reason: "max_tokens", terminal_reason: "completed" };
+    const invalid = { ...message, stop_reason: "max_tokens", terminal_reason: "completed" };
+    return invalid;
   }
   return message;
 }
@@ -415,7 +424,11 @@ async function runContract(): Promise<void> {
       {
         model: modelFixture({ id: "claude-4.5-haiku", reasoning: false }),
         convertToLlm: (messages) => messages.filter((message) => isMessage(message)),
-        beforeToolCall: async ({ toolCall, args }) => blockValidationRecovery(toolCall.name, args),
+        beforeToolCall: async ({ toolCall, args }) =>
+          blockValidationRecovery(
+            toolCall.name,
+            Option.getOrUndefined(decodeValidationInput(args)),
+          ),
       },
       (event) => {
         persistEvent(proof.session, event);

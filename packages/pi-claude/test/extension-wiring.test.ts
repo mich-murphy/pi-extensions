@@ -103,10 +103,13 @@ describe("extension wiring", () => {
       const { commands, handlers } = loadExtension();
 
       const running = notices(commands.get("claude"), "usage");
-      await handlers.session_shutdown?.(undefined, {
-        hasUI: false,
-        ui: { notify: () => undefined },
-      });
+      await handlers.session_shutdown?.(
+        { type: "session_shutdown", reason: "quit" },
+        {
+          hasUI: false,
+          ui: { notify: () => undefined },
+        },
+      );
 
       await expect(running).resolves.toStrictEqual([]);
     },

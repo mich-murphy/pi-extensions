@@ -7,20 +7,26 @@ import { acquireGateway } from "../packages/pi-peers/onboarding/acquire.js";
 import {
   MAX_BINARY,
   gatewayReleaseTag,
-  jsonObject,
   sha256,
   verifyManifest,
 } from "../packages/pi-peers/onboarding/artifact.js";
 import {
-  GATEWAY_MANAGED_CAPABILITY,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
-  GATEWAY_WIRE_VERSION,
   gatewayCatalog,
   gatewayTarget,
-  wireMismatch,
 } from "../packages/pi-peers/onboarding/catalog.js";
 import type { GatewayReleasePin } from "../packages/pi-peers/onboarding/catalog.js";
-import { createRecord, currentUid, readRegular, requireAbsent } from "./verify-gateway-nix-io.js";
+import {
+  createRecord,
+  currentUid,
+  describeFailure,
+  isPrivateDirectory,
+  parseRecordJson,
+  privateProfile,
+  readRegular,
+  requireAbsent,
+  verifyGatewayVersion,
+} from "./verify-gateway-nix-io.js";
 import type { RecordWriter } from "./verify-gateway-nix-io.js";
 
 const ROOT_PREFIX = "gateway-public-native-";
@@ -29,35 +35,8 @@ const ACQUISITION_MS = 120_000;
 const PROBE_MS = 10_000;
 const CLOSE_GRACE_MS = 5000;
 const MAX_JSON = 65_536;
-const REQUIRED_CAPABILITIES = [GATEWAY_MANAGED_CAPABILITY, ...GATEWAY_REMOTE_SETUP_CAPABILITIES];
 
 type Root = { root: string; dev: bigint; ino: bigint; uid: number };
-
-function isPrivateDirectory(stat: BigIntStats, uid: number): boolean {
-  return stat.isDirectory() && stat.uid === BigInt(uid) && (stat.mode & 0o077n) === 0n;
-}
-
-function causeChain(error: unknown): unknown[] {
-  const chain: unknown[] = [];
-  let item: unknown = error;
-  while (item !== undefined && chain.length < 8) {
-    chain.push(item);
-    item = item instanceof Error ? item.cause : undefined;
-  }
-  return chain;
-}
-
-function messageOf(item: unknown): string {
-  return item instanceof Error ? item.message : (JSON.stringify(item) ?? typeof item);
-}
-
-function describe(error: unknown): string {
-  return causeChain(error)
-    .map((item) => messageOf(item))
-    .join("\n  caused by: ")
-    .replaceAll(/\b(?:gh[opsur]|github_pat)_[A-Za-z0-9_]+/gu, "[redacted]")
-    .slice(0, 8000);
-}
 
 function requirePin(target: string): GatewayReleasePin {
   if (gatewayTarget() !== target) {
@@ -85,18 +64,6 @@ async function createRoot(runnerTemp: string): Promise<Root> {
   } catch (error) {
     throw new Error(`Fresh root ${root} not confirmed private; retained`, { cause: error });
   }
-}
-
-async function privateProfile(root: string) {
-  const dirs = {
-    home: path.join(root, "home"),
-    tmp: path.join(root, "tmp"),
-    installRoot: path.join(root, "install"),
-  };
-  await Promise.all(Object.values(dirs).map(async (dir) => fs.mkdir(dir, { mode: 0o700 })));
-  process.env.HOME = dirs.home;
-  process.env.TMPDIR = dirs.tmp;
-  return dirs;
 }
 
 async function requireOwnedExecutable(
@@ -191,37 +158,6 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
   });
 }
 
-function isPinnedGateway(version: Record<string, unknown>, expected: string): boolean {
-  return version.name === "pi-gateway" && version.version === expected;
-}
-
-function speaksWire(wireVersions: unknown): boolean {
-  return Array.isArray(wireVersions) && wireVersions.includes(GATEWAY_WIRE_VERSION);
-}
-
-function isAbiCompatible({ wireVersions, capabilities }: Record<string, unknown>): boolean {
-  return (
-    speaksWire(wireVersions) &&
-    Array.isArray(capabilities) &&
-    REQUIRED_CAPABILITIES.every((capability) => capabilities.includes(capability))
-  );
-}
-
-function requireWire(version: Record<string, unknown>, expected: string): void {
-  if (isPinnedGateway(version, expected) && !speaksWire(version.wireVersions)) {
-    throw new Error(wireMismatch("Public native", expected, version.wireVersions));
-  }
-}
-
-function verifyVersion(version: Record<string, unknown>, expected: string) {
-  const { name, wireVersions, capabilities } = version;
-  requireWire(version, expected);
-  if (!isPinnedGateway(version, expected) || !isAbiCompatible(version)) {
-    throw new Error("Public native gateway ABI/capability mismatch");
-  }
-  return { name, version: version.version, wireVersions, capabilities };
-}
-
 async function requireEmpty(...dirs: string[]): Promise<void> {
   const entries = await Promise.all(dirs.map(async (dir) => fs.readdir(dir)));
   if (entries.some((list) => list.length > 0)) {
@@ -279,9 +215,10 @@ async function verifyInRoot(
     );
     await requireOwnedExecutable(result.executable, installRoot, result.ownedPaths);
     const installed = await verifyInstalled(result.executable, pin, target);
-    const version = verifyVersion(
-      jsonObject(JSON.parse(await probeVersion(result.executable, home, tmp))),
+    const version = verifyGatewayVersion(
+      parseRecordJson(await probeVersion(result.executable, home, tmp)),
       pin.version,
+      "Public native",
     );
     await requireEmpty(home, tmp);
     const verified = {
@@ -306,12 +243,26 @@ async function verifyInRoot(
   }
 }
 
-async function recordFailure(writer: RecordWriter, base: object, error: unknown): Promise<void> {
+type FailureRecord = GatewayReleasePin & {
+  target: string;
+  retained: string | null;
+  root?: string;
+  source?: string;
+  rootState?: string;
+};
+
+async function recordFailure(
+  writer: RecordWriter,
+  base: FailureRecord,
+  cause: unknown,
+): Promise<void> {
+  const error = describeFailure(cause, false);
   try {
-    await writer.write({ ...base, status: "failed", error: describe(error) });
+    await writer.write({ ...base, status: "failed", error });
   } catch (recordError) {
-    const message = `${describe(error)}\n  failure record not written`;
-    throw new AggregateError([error, recordError], message, { cause: recordError });
+    throw new AggregateError([cause, recordError], `${error}\n  failure record not written`, {
+      cause: recordError,
+    });
   }
 }
 
@@ -355,6 +306,6 @@ try {
   const result = await main(target, runnerTemp, path.resolve(out));
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {
-  process.stderr.write(`verify-gateway-native: ${describe(error)}\n`);
+  process.stderr.write(`verify-gateway-native: ${describeFailure(error, false)}\n`);
   process.exitCode = 1;
 }

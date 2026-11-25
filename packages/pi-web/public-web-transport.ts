@@ -7,7 +7,7 @@ import { pipeline, Readable } from "node:stream";
 import type { Transform } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
-import { Context, Layer } from "effect";
+import { Context, Layer, Schema } from "effect";
 
 export type ApprovedAddress = {
   readonly address: string;
@@ -227,12 +227,7 @@ function decodedResponseBody(
 
 const WEB_STREAM_HIGH_WATER_MARK_BYTES = 64 * 1024;
 
-function parseByteChunk(chunk: unknown): Uint8Array {
-  if (chunk instanceof Uint8Array) {
-    return chunk;
-  }
-  throw new TypeError("HTTP response stream supplied a non-byte chunk");
-}
+const isByteChunk = Schema.is(Schema.instanceOf(Uint8Array));
 
 function webReadable(stream: Readable): ReadableStream<Uint8Array> {
   const converted: NodeReadableStream<unknown> = Readable.toWeb(stream, {
@@ -251,7 +246,10 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
             reader.releaseLock();
             controller.close();
           } else {
-            controller.enqueue(parseByteChunk(chunk.value));
+            if (!isByteChunk(chunk.value)) {
+              throw new TypeError("HTTP response stream supplied a non-byte chunk");
+            }
+            controller.enqueue(chunk.value);
           }
         } catch (cause) {
           try {
@@ -262,7 +260,7 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
           controller.error(cause);
         }
       },
-      async cancel(reason: unknown) {
+      async cancel(reason) {
         try {
           await reader.cancel(reason);
         } finally {

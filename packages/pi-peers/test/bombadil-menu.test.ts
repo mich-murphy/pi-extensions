@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { bottomBorderBelow, readMenu } from "../../../test-support/bombadil-menu.ts";
 import { outcomeOf, readPeers } from "./bombadil/peers-screen.ts";
@@ -248,19 +249,19 @@ const SUITES = {
   "test:bombadil:peers:messages": ["peers.bombadil.ts"],
 } as const;
 
+const decodeScripts = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      scripts: Schema.Record(Schema.String, Schema.String),
+    }),
+  ),
+);
 function npmScript(name: string): string {
-  const manifest: unknown = JSON.parse(
+  const { scripts } = decodeScripts(
     readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
   );
-  const scripts: unknown =
-    typeof manifest === "object" && manifest !== null && "scripts" in manifest
-      ? manifest.scripts
-      : undefined;
-  const script: unknown =
-    typeof scripts === "object" && scripts !== null && name in scripts
-      ? Reflect.get(scripts, name)
-      : undefined;
-  if (typeof script !== "string") {
+  const script = scripts[name];
+  if (script === undefined) {
     throw new TypeError(`No npm script ${name}`);
   }
   return script;

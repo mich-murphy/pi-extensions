@@ -6,13 +6,16 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   ToolCallEvent,
+  RegisteredCommand,
+  SessionShutdownEvent,
   ToolResultEvent,
   ProviderConfig,
   ToolCallEventResult,
   ToolResultEventResult,
+  ContextEvent,
   ContextEventResult,
 } from "@earendil-works/pi-coding-agent";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { USAGE_LIMIT_CHANNEL } from "../shared/usage-limit";
 import type { UsageLimitNotice } from "../shared/usage-limit";
 import { createAgentSdkStream } from "./bridge";
@@ -32,6 +35,7 @@ import { createClaudeAgentSdkRunner } from "./sdk/runner";
 import type { UsageLimitObservation } from "./sdk/runner";
 import {
   blockValidationRecovery,
+  decodeValidationInput,
   normalizeValidationResult,
   validationRecoveryTool,
   VALIDATION_ERROR_TOOL,
@@ -44,16 +48,19 @@ export type ClaudeEvents = {
   readonly message_end: Pick<MessageEndEvent, "message">;
   readonly tool_call: ToolCallEvent;
   readonly tool_result: Pick<ToolResultEvent, "toolName" | "content">;
-  readonly context: { readonly messages: Parameters<typeof sanitizeContextMessages>[0] };
-  readonly session_shutdown: unknown;
+  readonly context: { readonly messages: ContextEvent["messages"] };
+  readonly session_shutdown: SessionShutdownEvent;
+};
+
+export type ClaudeContext = Pick<ExtensionContext, "hasUI"> & {
+  readonly ui: Pick<ExtensionContext["ui"], "notify">;
 };
 
 export type ClaudeHandlers = {
   [K in keyof ClaudeEvents]: (
     event: ClaudeEvents[K],
-    ctx: Pick<ExtensionContext, "hasUI"> & {
+    ctx: ClaudeContext & {
       readonly sessionManager?: Pick<ExtensionContext["sessionManager"], "getBranch">;
-      readonly ui: Pick<ExtensionContext["ui"], "notify">;
     },
   ) => {
     readonly before_agent_start: undefined;
@@ -74,16 +81,22 @@ export function usageLimitPublisher(
   };
 }
 
-export type ClaudeRegistration = Pick<ExtensionAPI, "registerCommand" | "registerTool"> & {
+export type ClaudeRegistration = Pick<ExtensionAPI, "registerTool"> & {
   readonly events: Pick<ExtensionAPI["events"], "emit">;
+  readonly registerCommand: (
+    name: string,
+    options: Pick<RegisteredCommand, "description" | "getArgumentCompletions"> & {
+      readonly handler: (args: string, ctx: ClaudeContext) => Promise<void>;
+    },
+  ) => void;
   readonly registerProvider: (name: string, config: ProviderConfig) => void;
   readonly on: {
-    (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): unknown;
-    (name: "message_end", handler: ClaudeHandlers["message_end"]): unknown;
-    (name: "tool_call", handler: ClaudeHandlers["tool_call"]): unknown;
-    (name: "tool_result", handler: ClaudeHandlers["tool_result"]): unknown;
-    (name: "context", handler: ClaudeHandlers["context"]): unknown;
-    (name: "session_shutdown", handler: ClaudeHandlers["session_shutdown"]): unknown;
+    (name: "before_agent_start", handler: ClaudeHandlers["before_agent_start"]): void;
+    (name: "message_end", handler: ClaudeHandlers["message_end"]): void;
+    (name: "tool_call", handler: ClaudeHandlers["tool_call"]): void;
+    (name: "tool_result", handler: ClaudeHandlers["tool_result"]): void;
+    (name: "context", handler: ClaudeHandlers["context"]): void;
+    (name: "session_shutdown", handler: ClaudeHandlers["session_shutdown"]): void;
   };
 };
 
@@ -164,7 +177,13 @@ function registerSafetyHooks(pi: ClaudeRegistration): void {
     );
   });
   pi.on("tool_call", (event) => {
-    const recovery = blockValidationRecovery(event.toolName, event.input);
+    const recovery =
+      event.toolName === VALIDATION_ERROR_TOOL
+        ? blockValidationRecovery(
+            event.toolName,
+            Option.getOrUndefined(decodeValidationInput(event.input)),
+          )
+        : undefined;
     if (recovery) {
       return recovery;
     }

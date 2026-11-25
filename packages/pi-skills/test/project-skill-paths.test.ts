@@ -31,7 +31,7 @@ function writeSkill(root: string, directory: string, name: string): string {
   return path;
 }
 
-function project(): { readonly root: string; readonly cwd: string; readonly agentDir: string } {
+function project() {
   const root = temporaryDirectory();
   const cwd = join(root, "apps", "web");
   const agentDir = join(root, "agent");
@@ -268,7 +268,10 @@ describe("discoverProjectSkillPaths", () => {
     registerPiSkills(piDouble, store);
     const discover = requiredDiscover(handlers);
 
-    const contribution = await discover({}, { cwd, isProjectTrusted: () => true });
+    const contribution = await discover(
+      { type: "resources_discover", cwd, reason: "startup" },
+      { cwd, isProjectTrusted: () => true },
+    );
     expect(contribution).toStrictEqual({ skillPaths: [extra] });
     loader.extendResources({
       skillPaths: [extra].map((path) => ({
@@ -276,7 +279,12 @@ describe("discoverProjectSkillPaths", () => {
         metadata: { source: "extension:test", scope: "temporary", origin: "top-level" },
       })),
     });
-    await expect(discover({}, { cwd, isProjectTrusted: () => true })).resolves.toStrictEqual({
+    await expect(
+      discover(
+        { type: "resources_discover", cwd, reason: "startup" },
+        { cwd, isProjectTrusted: () => true },
+      ),
+    ).resolves.toStrictEqual({
       skillPaths: [extra],
     });
     const loaded = loader.getSkills();

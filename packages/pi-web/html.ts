@@ -492,10 +492,12 @@ type MeasuredContent = {
 
 type CandidateFilter = (element: Element, inTemplateContent: boolean) => boolean;
 
-function removeBoilerplate(root: Element): {
+type BoilerplateRemoval = {
   readonly tables: Element[];
   readonly links: Element[];
-} {
+};
+
+function removeBoilerplate(root: Element): BoilerplateRemoval {
   const tables: Element[] = [];
   const links: Element[] = [];
   let element = root.firstElementChild;
@@ -874,10 +876,12 @@ function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefin
   return text;
 }
 
-function wrapperChain(root: Element): {
+type WrapperChain = {
   readonly levels: readonly Element[];
   readonly container: Element;
-} {
+};
+
+function wrapperChain(root: Element): WrapperChain {
   const levels: Element[] = [root];
   let container = root;
   for (let wrapper = loneWrapperChild(root); wrapper !== undefined;) {

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Fiber } from "effect";
-import type { Duration } from "effect";
+import type { Duration, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { ClaudeUsageQueries, formatClaudeUsageStatus, inspectClaudeUsage } from "../sdk-usage";
+import {
+  ClaudeUsageQueries,
+  decodeUsageResponse,
+  formatClaudeUsageStatus,
+  inspectClaudeUsage,
+} from "../sdk-usage";
 import type { ClaudeUsageQuery, StartClaudeUsageQuery } from "../sdk-usage";
 import { unsettled } from "./fixtures";
 
@@ -22,9 +27,9 @@ const afterAdvancing = Effect.fnUntraced(function* <A, E>(
   return yield* Fiber.join(fiber);
 });
 
-function usageQuery(response: unknown): ClaudeUsageQuery {
+function usageQuery(response: Schema.Json): ClaudeUsageQuery {
   return {
-    readUsage: async () => response,
+    readUsage: async () => decodeUsageResponse(response),
     close: async () => undefined,
   };
 }
@@ -139,7 +144,7 @@ describe("claude SDK usage", () => {
         close: async () => undefined,
       }));
       const close = yield* failureOf(() => ({
-        readUsage: async () => usageResponse,
+        readUsage: async () => decodeUsageResponse(usageResponse),
         close: async () => {
           throw new Error("close failed");
         },
@@ -196,7 +201,7 @@ describe("claude SDK usage", () => {
           [
             failureOf(
               () => ({
-                readUsage: async () => usageResponse,
+                readUsage: async () => decodeUsageResponse(usageResponse),
                 close: async () => unsettled(),
               }),
               10,

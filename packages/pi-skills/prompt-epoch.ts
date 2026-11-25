@@ -1,4 +1,5 @@
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { Option, Schema } from "effect";
 import { isInPrompt, RESOURCE_SECTIONS } from "./prompt-view";
 import type { PromptResource, SkillReader } from "./prompt-view";
 import type { ResourcePath } from "./resource-path";
@@ -63,32 +64,23 @@ function latestSelection(entries: readonly ProjectedEntry[]): Selection | undefi
     .findLast((selection) => selection !== undefined);
 }
 
-function modelChange(entry: { readonly type: string }): Selection | undefined {
-  if (entry.type !== "model_change" || !("provider" in entry) || !("modelId" in entry)) {
-    return undefined;
-  }
-  const { provider, modelId } = entry;
-  return typeof provider === "string" && typeof modelId === "string"
-    ? { provider, modelId }
-    : undefined;
+const decodeSelection = Schema.decodeUnknownOption(
+  Schema.Struct({ provider: Schema.String, modelId: Schema.String }),
+);
+const isAssistantMessage = Schema.is(Schema.Struct({ role: Schema.Literal("assistant") }));
+
+function modelChange(entry: ProjectedEntry["sourceEntry"]): Selection | undefined {
+  return entry.type === "model_change" ? Option.getOrUndefined(decodeSelection(entry)) : undefined;
 }
 
-function responseModel(entry: { readonly type: string }): Selection | null | undefined {
+function responseModel(entry: ProjectedEntry["sourceEntry"]): Selection | null | undefined {
   const message = "message" in entry ? entry.message : undefined;
-  if (
-    entry.type !== "message" ||
-    typeof message !== "object" ||
-    message === null ||
-    !("role" in message) ||
-    message.role !== "assistant"
-  ) {
+  if (entry.type !== "message" || !isAssistantMessage(message)) {
     return null;
   }
   const provider = "provider" in message ? message.provider : undefined;
   const modelId = "model" in message ? message.model : undefined;
-  return typeof provider === "string" && typeof modelId === "string"
-    ? { provider, modelId }
-    : undefined;
+  return Option.getOrUndefined(decodeSelection({ provider, modelId }));
 }
 
 export function modelView(
@@ -113,7 +105,7 @@ function lastSetting(messages: readonly TranscriptMessage[], section: string): n
       return false;
     }
     const { sections } = message;
-    return typeof sections === "object" && sections !== null && Object.hasOwn(sections, section);
+    return Schema.is(Schema.ObjectKeyword)(sections) && Object.hasOwn(sections, section);
   });
 }
 

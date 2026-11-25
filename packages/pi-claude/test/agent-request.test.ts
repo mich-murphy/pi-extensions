@@ -574,6 +574,8 @@ describe("printed tool call heuristic", () => {
     'Let me read it.\n<call id="x" tool="mcp__pi__read">{"path":"a"}</call>',
     '<call id="x" tool="mcp__pi__read">{}</call>\n',
     '{"type":"toolCall","id":"x","name":"read","arguments":{"path":"a"}}',
+    '{"type":"toolCall","name":"read","arguments":{"largeNumber":1e999}}',
+    '{"content":[{},42,"ignored",{"type":"toolCall","name":"read"}]}',
     'Sure:\n{"role":"assistant","content":[{"type":"toolCall","id":"x","name":"read","arguments":{}}]}',
   ])("flags %j", (text) => {
     expect(endsWithPrintedToolCall(text)).toBe(true);

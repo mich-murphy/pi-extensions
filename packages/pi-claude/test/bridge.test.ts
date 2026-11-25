@@ -280,9 +280,9 @@ describe("broken stderr", () => {
     vi.spyOn(stderr, "write").mockImplementation(() => {
       throw new Error("EPIPE");
     });
-    const unhandled: unknown[] = [];
-    const listener = (reason: unknown): void => {
-      unhandled.push(reason);
+    let unhandled = 0;
+    const listener = (): void => {
+      unhandled++;
     };
     process.on("unhandledRejection", listener);
     try {
@@ -308,13 +308,13 @@ describe("broken stderr", () => {
       };
     });
     expect(terminalOf(events).reason).toBe("error");
-    expect(unhandled).toStrictEqual([]);
+    expect(unhandled).toBe(0);
   });
 
   test("a rejecting run still ends the stream with an error", async () => {
     const { events, unhandled } = await drainWithBrokenStderr(failingRun);
     expect(terminalOf(events).reason).toBe("error");
-    expect(unhandled).toStrictEqual([]);
+    expect(unhandled).toBe(0);
   });
 
   test("a run that throws synchronously still ends the stream with an error", async () => {
@@ -322,7 +322,7 @@ describe("broken stderr", () => {
       throw new Error("sync defect");
     });
     expect(terminalOf(events).reason).toBe("error");
-    expect(unhandled).toStrictEqual([]);
+    expect(unhandled).toBe(0);
   });
 
   test("a throw while pushing the error event still ends the stream and settles its result", async () => {

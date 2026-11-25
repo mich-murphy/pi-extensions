@@ -4,8 +4,9 @@ import type { Screen } from "../onboarding/menu/model.js";
 import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, editState, manageForm, setupForm } from "../onboarding/menu/setup-form.js";
-import type { SetupDraft } from "../onboarding/menu/setup-form.js";
+import type { SetupChoice, SetupDraft } from "../onboarding/menu/setup-form.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
+import type { LocalPlan } from "../onboarding/plan.js";
 import { dialog } from "./onboarding-fixtures.js";
 
 const keys = { confirm: "Enter", cancel: "Esc" };
@@ -20,7 +21,7 @@ const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 });
 
 function harness(blocked?: string, state = draft()) {
-  const apply = vi.fn<(plan: unknown) => void>();
+  const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
   const form = setupForm({
     draft: state,
@@ -159,7 +160,7 @@ describe("peers menu model", () => {
 
 function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shared?: boolean }) {
   const saved = { ...defaultChoices("Saved Host"), label: "Saved label" };
-  const apply = vi.fn<(plan: unknown) => void>();
+  const apply = vi.fn<(plan: LocalPlan) => void>();
   const consented = vi.fn<(action: string) => void>();
   const keep = vi.fn<() => void>();
   const form = manageForm({

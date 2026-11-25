@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { Schema } from "effect";
 
 const NAMES = {
   current: { config: "pi-peers.json", directory: "pi-peers", socketRoot: "pi-peers" },
@@ -15,17 +16,17 @@ export type StateSet = {
   readonly id: string;
 };
 
+export const isMissingFile = Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }));
+export const isMissingPath = Schema.is(
+  Schema.Struct({ code: Schema.Literals(["ENOENT", "ENOTDIR"]) }),
+);
+
 function present(path: string): boolean {
   try {
     lstatSync(path);
     return true;
   } catch (error) {
-    return !(
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
-    );
+    return !isMissingPath(error);
   }
 }
 
@@ -37,10 +38,11 @@ function realpathOrUnresolved(path: string): string {
   }
 }
 
-export function stateLocations(agentDir: string): {
-  readonly active: StateSet;
-  readonly ignored: StateSet | undefined;
-} {
+function exists(set: StateSet): boolean {
+  return present(set.config) || present(set.directory);
+}
+
+export function stateLocations(agentDir: string) {
   const agent = resolve(agentDir);
   const canonical = realpathOrUnresolved(agent);
   const locate = (kind: StateSetKind): StateSet => {
@@ -56,7 +58,6 @@ export function stateLocations(agentDir: string): {
   };
   const current = locate("current");
   const legacy = locate("legacy");
-  const exists = (set: StateSet) => present(set.config) || present(set.directory);
   const currentExists = exists(current);
   const legacyExists = exists(legacy);
   return {

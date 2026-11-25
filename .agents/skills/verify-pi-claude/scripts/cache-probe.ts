@@ -1,65 +1,19 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { normalizeContext } from "@earendil-works/pi-ai";
-import type {
-  Api,
-  Context,
-  Message,
-  Model,
-  SimpleStreamOptions,
-  TranscriptContext,
-} from "@earendil-works/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
+import type * as AgentRequestModule from "../../../../packages/pi-claude/agent-request";
+import type { BridgeEvent, TokenUsage } from "../../../../packages/pi-claude/bridge";
+import type * as ModelsModule from "../../../../packages/pi-claude/models";
+import type * as RunnerModule from "../../../../packages/pi-claude/sdk/runner";
+import type { RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
+import { snapshotLoader, snapshotModel } from "./snapshot";
 
-type TokenUsage = {
-  readonly input: number;
-  readonly output: number;
-  readonly cacheRead: number;
-  readonly cacheWrite: number;
-  readonly cacheWrite1h?: number;
-};
-type BridgeEvent = {
-  readonly type: string;
-  readonly text?: string;
-  readonly usage?: TokenUsage;
-  readonly error?: {
-    readonly _tag?: string;
-    readonly category?: string;
-    readonly message?: string;
-  };
-};
-type RunSdkQuery = (params: Parameters<typeof query>[0]) => AsyncIterable<unknown>;
-type Runner = (
-  request: unknown,
-  model: Model<Api>,
-  options?: SimpleStreamOptions,
-) => AsyncIterable<BridgeEvent>;
-type RawUsage = {
-  readonly input_tokens?: number | null;
-  readonly output_tokens?: number | null;
-  readonly cache_read_input_tokens?: number | null;
-  readonly cache_creation_input_tokens?: number | null;
-  readonly cache_creation?: Record<string, number | null>;
-};
-type RawModelUsage = Record<
-  string,
-  {
-    readonly inputTokens?: number;
-    readonly outputTokens?: number;
-    readonly cacheReadInputTokens?: number;
-    readonly cacheCreationInputTokens?: number;
-  }
->;
-type RawResult = {
-  readonly isError: boolean;
-  readonly subtype: unknown;
-  readonly numTurns: number | undefined;
-  readonly usage: RawUsage | undefined;
-  readonly modelUsage: RawModelUsage;
-};
 type TurnRecord = {
   readonly session: string;
   readonly turn: number;
@@ -72,11 +26,24 @@ type TurnRecord = {
   readonly numTurns: number | undefined;
   readonly modelUsagePromptTokens: number;
   readonly modelUsageKeys: readonly string[];
-  readonly resultUsage: RawUsage | undefined;
+  readonly resultUsage: SDKResultMessage["usage"] | undefined;
 };
+type ModelUsageCheck = {
+  readonly turn: string;
+  readonly resultPrompt: number | undefined;
+  readonly numTurns: number | undefined;
+  readonly modelUsagePrompt: number;
+  readonly models: readonly string[];
+};
+type CheckValue =
+  | number
+  | undefined
+  | readonly (string | number | undefined)[]
+  | readonly ModelUsageCheck[];
+
 type Check = {
   readonly status: "passed" | "failed";
-  readonly value: unknown;
+  readonly value: CheckValue;
   readonly threshold: string;
 };
 
@@ -90,32 +57,16 @@ const { values } = parseArgs({
 });
 const packageDir = path.resolve(values.package ?? "packages/pi-claude");
 const modelId = values.model;
-const moduleUrl = (file: string): string => pathToFileURL(path.join(packageDir, file)).href;
-
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- dynamic import of the package snapshot under test
-const { buildAgentRequest } = (await import(moduleUrl("agent-request.ts"))) as {
-  buildAgentRequest: (context: TranscriptContext) => unknown;
-};
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- dynamic import of the package snapshot under test
-const { createClaudeAgentSdkRunner } = (await import(moduleUrl("sdk/runner.ts"))) as {
-  createClaudeAgentSdkRunner: (options: { runSdkQuery: RunSdkQuery }) => Runner;
-};
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- dynamic import of the package snapshot under test
-const { models } = (await import(moduleUrl("models.ts"))) as {
-  models: readonly (Record<string, unknown> & { readonly id: string })[];
-};
+const load = snapshotLoader(packageDir);
+const { buildAgentRequest } = await load<typeof AgentRequestModule>("agent-request.ts");
+const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runner.ts");
+const { models } = await load<typeof ModelsModule>("models.ts");
 
 const entry = models.find((candidate) => candidate.id === modelId);
 if (entry === undefined) {
   throw new Error(`unknown model ${modelId}`);
 }
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- registered entry plus the fields Pi adds at registration
-const model = {
-  ...entry,
-  api: "claude",
-  provider: "claude",
-  baseUrl: "agent-sdk://local-claude-code",
-} as unknown as Model<Api>;
+const model = snapshotModel(entry);
 
 const nonce = randomUUID();
 const guidelines = Array.from(
@@ -128,47 +79,21 @@ const systemPrompt = [
   "You are a coding assistant inside a cache verification harness.",
   ...guidelines,
 ].join("\n");
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- plain JSON schema stands in for a TypeBox schema
 const tools = [
   {
     name: "read",
     description: "Read a file from the workspace.",
-    parameters: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-    },
+    parameters: Type.Object({ path: Type.String() }),
   },
-] as unknown as NonNullable<Context["tools"]>;
+];
 
-let lastResult: RawResult | undefined;
-const readLastResultAssignedByQueryObserver = (): RawResult | undefined => lastResult;
-function isResult(message: unknown): message is {
-  type: "result";
-  is_error?: boolean;
-  subtype?: unknown;
-  num_turns?: number;
-  usage?: RawUsage;
-  modelUsage?: RawModelUsage;
-} {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    "type" in message &&
-    message.type === "result"
-  );
-}
+let lastResult: SDKResultMessage | undefined;
+const readLastResultAssignedByQueryObserver = (): SDKResultMessage | undefined => lastResult;
 const runSdkQuery: RunSdkQuery = (params) =>
   (async function* observe() {
     for await (const message of query(params)) {
-      if (isResult(message)) {
-        lastResult = {
-          isError: message.is_error ?? false,
-          subtype: message.subtype,
-          numTurns: message.num_turns,
-          usage: message.usage,
-          modelUsage: message.modelUsage ?? {},
-        };
+      if (message.type === "result") {
+        lastResult = message;
       }
       yield message;
     }
@@ -201,11 +126,12 @@ async function runTurn(
   }
   const last = events.at(-1);
   if (last?.type === "failed") {
-    const error = last.error ?? {};
-    const detail = `${error._tag ?? "error"}:${error.category ?? ""} ${error.message ?? ""}`;
+    const { error } = last;
+    const category = "category" in error ? error.category : undefined;
+    const detail = `${error._tag}:${category ?? ""} ${error.message}`;
     if (
-      (error.category !== undefined && BLOCKED_CATEGORIES.has(error.category)) ||
-      BLOCKED_TEXT.test(error.message ?? "")
+      (category !== undefined && BLOCKED_CATEGORIES.has(category)) ||
+      BLOCKED_TEXT.test(error.message)
     ) {
       throw new BlockedError(`${session} turn ${turn} blocked: ${detail}`);
     }
@@ -225,8 +151,7 @@ async function runTurn(
     session,
     turn,
     text: events
-      .filter((event) => event.type === "text_delta")
-      .map((event) => event.text ?? "")
+      .flatMap((event) => (event.type === "text_delta" ? [event.text] : []))
       .join("")
       .trim(),
     end: last?.type ?? "none",
@@ -240,7 +165,7 @@ async function runTurn(
         : (raw.input_tokens ?? 0) +
           (raw.cache_read_input_tokens ?? 0) +
           (raw.cache_creation_input_tokens ?? 0),
-    numTurns: observed?.numTurns,
+    numTurns: observed?.num_turns,
     modelUsagePromptTokens: Object.values(modelUsage).reduce(
       (sum, value) =>
         sum +
@@ -307,11 +232,23 @@ async function runSession(session: string, count: number, fanout: number): Promi
   return records;
 }
 
-function check(passed: boolean, value: unknown, threshold: string): Check {
+function check(passed: boolean, value: CheckValue, threshold: string): Check {
   return { status: passed ? "passed" : "failed", value, threshold };
 }
 
-const output: Record<string, unknown> = {
+type ProbeReport = {
+  probe: string;
+  model: string;
+  packageDir: string;
+  nonce: string;
+  systemPromptCharacters: number;
+  turns: readonly TurnRecord[];
+  checks?: Readonly<Record<string, Check>>;
+  status?: "passed" | "failed" | "blocked";
+  error?: string;
+};
+
+const output: ProbeReport = {
   probe: "pi-claude-cache",
   model: modelId,
   packageDir,
@@ -325,7 +262,7 @@ try {
   const sessionB = await runSession("B", 1, 0);
   const sessionC = await runSession("C", 3, 25);
   const laterA = sessionA.slice(1);
-  const checks: Record<string, Check> = {
+  const checks = {
     "turns-completed": check(
       turns.every((turn) => turn.end === "done" && turn.usage !== undefined),
       turns.map((turn) => turn.end),

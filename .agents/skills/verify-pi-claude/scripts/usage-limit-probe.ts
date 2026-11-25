@@ -27,7 +27,8 @@ assert.equal(process.env.PI_OFFLINE, "1");
 const agentDir = process.env.PI_CODING_AGENT_DIR;
 assert(agentDir !== undefined);
 const seconds = 1_792_548_000;
-const rate = (info: unknown) => ({ type: "rate_limit_event", rate_limit_info: info });
+type FixtureRateLimit = string | { status: string; resetsAt?: number | string };
+const rate = (info: FixtureRateLimit) => ({ type: "rate_limit_event", rate_limit_info: info });
 const rejected = rate({ status: "rejected", resetsAt: seconds });
 const result = (fields = {}) => ({
   type: "result",

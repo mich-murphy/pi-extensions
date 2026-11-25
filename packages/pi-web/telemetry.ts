@@ -3,7 +3,12 @@ import { Cause, Effect, Exit, Option } from "effect";
 export function withSafeSpan<A, E, R>(
   name: string,
   operation: Effect.Effect<A, E, R>,
-  summarizeFailure: (error: E) => unknown = () => "Operation failed",
+  summarizeFailure: (
+    error: E,
+  ) =>
+    | string
+    | { readonly type: string; readonly network?: { readonly code: string } | undefined } = () =>
+    "Operation failed",
 ): Effect.Effect<A, E, R> {
   return Effect.uninterruptibleMask((restore) =>
     Effect.gen(function* () {
