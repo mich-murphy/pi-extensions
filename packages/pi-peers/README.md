@@ -164,7 +164,7 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
 | `peers_list` | `scope?` | List sessions you can message, each with a handle and its label. |
-| `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (messageId), `retryOf?` (messageId), `status?`, `scope?` | Send a request, reply or update to one session. |
+| `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (message id), `retryOf?` (message id), `status?`, `scope?` | Send a request, reply or update to one session. |
 | `peers_take` | `limit?` (1–8, default 4), `waitSeconds?` (0–300, default 0) | Move messages from your inbox into the conversation, waiting for the first one when asked. |
 
 `peers_send` and `peers_take` are declared to the model only (`model-only`). `peers_list` also returns `structuredContent` for scripts.
@@ -183,7 +183,9 @@ A handle names one Pi session (machine and session), not one runtime. It is `s-`
 
 A send goes to the exact runtime last listed for the handle; it is never redirected to another runtime. A runtime that is still listed keeps its handle. A new runtime of a session takes the handle of a runtime that is no longer listed, marked `restarted` because that runtime's unread inbox and receipts are gone; otherwise it gets the next free `/n`. Being listed does not mean a session is active.
 
-`replyTo` takes the messageId of a message you took with `peers_take`; the adapter remembers the sender and scope of the last 256 taken messages. A reply never goes to a newer runtime of the sender.
+`replyTo` takes the id of a message you took with `peers_take`; the adapter remembers the sender and scope of the last 256 taken messages. A reply never goes to a newer runtime of the sender.
+
+Results show message ids as short session-local aliases such as `m-3f2a`: the first four hex digits of the 32-hex id, growing by two while that prefix names another remembered id. `replyTo` and `retryOf` accept the alias or the full id. An alias is never reassigned, and the adapter still checks the id against the taken messages or unsure sends it remembers.
 
 ### Labels
 
@@ -218,7 +220,7 @@ Labels are claims made by the other session and are not verified. Your own sessi
 
 - `admitted`: the receiving session's inbox holds the message. It does not mean read, accepted or done.
 - `not_admitted`: the attempt is known not to have been admitted.
-- `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message. To try again later, repeat the call unchanged with `retryOf` set to its messageId. The adapter resends the stored message, with the same id and bytes, to the exact runtime it first went to, and the receiver answers a duplicate with its original receipt. `retryOf` is refused for a message that was delivered or not delivered, for a changed `to`, `kind` or `content`, and after 8 minutes, because receivers keep receipts for 10.
+- `unknown`: it may have been admitted. The adapter retries with the same `message.id`; do not resend the work as a new message. To try again later, repeat the call unchanged with `retryOf` set to its id. The adapter resends the stored message, with the same id and bytes, to the exact runtime it first went to, and the receiver answers a duplicate with its original receipt. `retryOf` is refused for a message that was delivered or not delivered, for a changed `to`, `kind` or `content`, and after 8 minutes, because receivers keep receipts for 10.
 
 See [design](docs/design.md#receipts-and-idempotency).
 
