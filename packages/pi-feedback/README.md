@@ -40,6 +40,12 @@ A report that code leaves `unattributed` can still be moved by the classifier (s
 
 Pi runs the tool calls of one assistant message at the same time. When a call fails because a path is missing, and another call in the same message that can write names that path or its directory, the failure is marked `parallel-batch`: the agent ordered its calls badly. Such records do not count towards a group.
 
+## Codemode
+
+`harness_feedback` declares an output schema, so a codemode script that calls it gets `{ status, group, owner }` instead of text. `status` is `recorded`, `duplicate`, `limit`, `off` or `failed`, and `group` and `owner` are set when it is `recorded`. A call that fails still resolves to this value.
+
+Calls a script makes are checked the same way as calls in one message: a failed call's batch is the script's other calls that were running at the same time. When a call inside a script fails, that call is recorded once, and the script's own failure is not recorded again.
+
 ## Pi core
 
 Pi core problems are recorded but never queued for a fix here. The queue shows a group as `pi-core` only when all of these hold, and `unattributed` otherwise:

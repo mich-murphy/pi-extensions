@@ -7,6 +7,7 @@ import type {
   MessageEndEvent,
   Theme,
   ToolExecutionEndEvent,
+  ToolExecutionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
@@ -23,6 +24,8 @@ import type { ClassifierRegistry } from "./classify.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
 import type { Clock, EventDraft, LedgerEvent, RecordEvent } from "./ledger.ts";
+import { createNestedTracker } from "./nested.ts";
+import { FEEDBACK_OUTPUT } from "./output.ts";
 import { createAttribution } from "./owner.ts";
 import type { Attribution, CommandSource, ToolSource } from "./owner.ts";
 
@@ -63,6 +66,7 @@ export type FeedbackDetails =
 export type FeedbackResult = {
   readonly content: Array<{ readonly type: "text"; readonly text: string }>;
   readonly details: FeedbackDetails;
+  readonly structuredContent: FeedbackDetails;
   readonly isError?: boolean;
 };
 
@@ -83,6 +87,7 @@ export type FeedbackTool = {
   readonly promptSnippet: string;
   readonly promptGuidelines: Array<string>;
   readonly parameters: typeof FEEDBACK_PARAMETERS;
+  readonly outputSchema: typeof FEEDBACK_OUTPUT;
   readonly annotations: {
     readonly readOnlyHint: boolean;
     readonly destructiveHint: boolean;
@@ -115,6 +120,7 @@ export type FeedbackRegistration = {
   readonly registerEntryRenderer: (customType: string, renderer: NoteRenderer) => void;
   readonly registerCommand: (name: string, options: OnOffCommand<FeedbackCommandContext>) => void;
   readonly on: {
+    (name: "tool_execution_start", handler: (event: ToolExecutionStartEvent) => void): void;
     (
       name: "tool_execution_end",
       handler: (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>,
@@ -159,6 +165,7 @@ function result(text: string, details: FeedbackDetails, isError = false): Feedba
   const response: Types.Mutable<FeedbackResult> = {
     content: [{ type: "text", text }],
     details,
+    structuredContent: details,
   };
 
   if (isError) {
@@ -311,6 +318,7 @@ export function registerFeedback(
   const owners = createAttribution(pi, dependencies);
   const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
   let batch: ReadonlyArray<BatchCall> = [];
+  const nested = createNestedTracker();
   const filedBySession = new Map<string, Set<string>>();
   let enabled = true;
   let unwritten = 0;
@@ -378,6 +386,7 @@ export function registerFeedback(
       "Do not use harness_feedback for bugs in the user's project or failures of outside services.",
     ],
     parameters: FEEDBACK_PARAMETERS,
+    outputSchema: FEEDBACK_OUTPUT,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -402,15 +411,22 @@ export function registerFeedback(
     batch = toolCallsOf(event.message) ?? batch;
   });
 
+  pi.on("tool_execution_start", (event) => {
+    nested.start(event);
+  });
+
   pi.on("tool_execution_end", async (event, ctx) => {
-    if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL) {
+    const ended = nested.end(event);
+
+    if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL || ended.suppressed) {
       return;
     }
 
     const error = errorText(event.result);
     const attribution = owners.forSignal(event.toolName, error);
-    const failing = batch.find((call) => call.id === event.toolCallId);
-    const ordered = failing !== undefined && isParallelBatch(failing, error, batch, readOnly);
+    const calls = ended.batch ?? batch;
+    const failing = calls.find((call) => call.id === event.toolCallId);
+    const ordered = failing !== undefined && isParallelBatch(failing, error, calls, readOnly);
 
     try {
       const recorded = await appendEvent(

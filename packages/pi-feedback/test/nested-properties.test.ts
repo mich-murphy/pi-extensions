@@ -1,0 +1,92 @@
+import assert from "node:assert/strict";
+import type { TestCase } from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
+import { describe, test } from "vitest";
+import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
+import { createNestedTracker } from "../nested.ts";
+
+type Step = { readonly id: string; readonly kind: "start" | "end"; readonly failed: boolean };
+
+const PARENT = "p";
+const settings = propertySettings(200);
+
+function drawSteps(tc: TestCase): Step[] {
+  const count = tc.draw(gs.integers({ minValue: 1, maxValue: 6 }), "count");
+  const waiting = Array.from({ length: count }, (_, n) => `${PARENT}/${n + 1}`);
+  const running: string[] = [];
+  const steps: Step[] = [];
+
+  while (waiting.length + running.length > 0) {
+    const pick = tc.draw(
+      gs.integers({ minValue: 0, maxValue: waiting.length + running.length - 1 }),
+      "pick",
+    );
+
+    const next = waiting.shift();
+
+    if (pick < waiting.length + 1 && next !== undefined) {
+      running.push(next);
+      steps.push({ id: next, kind: "start", failed: false });
+    } else {
+      waiting.unshift(...(next === undefined ? [] : [next]));
+      const [ending] = running.splice(pick - waiting.length, 1);
+      assert.ok(ending !== undefined);
+      steps.push({ id: ending, kind: "end", failed: tc.draw(gs.booleans(), "failed") });
+    }
+  }
+
+  return steps;
+}
+
+function replay(steps: readonly Step[], tracker: ReturnType<typeof createNestedTracker>) {
+  const batches = new Map<string, readonly string[]>();
+
+  for (const step of steps) {
+    if (step.kind === "start") {
+      tracker.start({ toolCallId: step.id, toolName: "read", args: {}, parentToolCallId: PARENT });
+    } else {
+      const ended = tracker.end({
+        toolCallId: step.id,
+        isError: step.failed,
+        parentToolCallId: PARENT,
+      });
+
+      batches.set(
+        step.id,
+        (ended.batch ?? []).map((call) => call.id),
+      );
+    }
+  }
+
+  return batches;
+}
+
+function expectedBatch(steps: readonly Step[], id: string): string[] {
+  const at = (kind: Step["kind"], target: string): number =>
+    steps.findIndex((step) => step.kind === kind && step.id === target);
+
+  return steps.flatMap((step) =>
+    step.kind === "start" &&
+    at("start", step.id) < at("end", id) &&
+    at("end", step.id) > at("start", id)
+      ? [step.id]
+      : [],
+  );
+}
+
+describe("nested call tracking", () => {
+  test("a failed call's batch is exactly the siblings whose runs overlapped it", () => {
+    assertHegel(settings, (tc) => {
+      const steps = drawSteps(tc);
+      const tracker = createNestedTracker();
+
+      for (const [id, batch] of replay(steps, tracker)) {
+        assert.deepEqual(batch, expectedBatch(steps, id));
+      }
+
+      const failed = steps.some((step) => step.failed);
+      assert.equal(tracker.end({ toolCallId: PARENT, isError: true }).suppressed, failed);
+      assert.equal(tracker.end({ toolCallId: PARENT, isError: true }).suppressed, false);
+    });
+  });
+});

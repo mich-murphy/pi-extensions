@@ -1,5 +1,9 @@
-import type { JsonValue } from "@earendil-works/pi-ai";
-import type { MessageEndEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
+import type { JsonObject, JsonValue } from "@earendil-works/pi-ai";
+import type {
+  MessageEndEvent,
+  ToolExecutionEndEvent,
+  ToolExecutionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import type { BatchCall } from "../batch.ts";
 import type { ClassifierRegistry } from "../classify.ts";
@@ -15,12 +19,20 @@ import { noClassifier } from "./fake-classifier.ts";
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 
+type StartHandler = (event: ToolExecutionStartEvent) => void;
+
+type Handler = EndHandler | MessageHandler | StartHandler;
+
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
 
 type MessageHandler = (event: Pick<MessageEndEvent, "message">) => void;
 
-function isEndHandler(name: string, _handler: EndHandler | MessageHandler): _handler is EndHandler {
+function isEndHandler(name: string, _handler: Handler): _handler is EndHandler {
   return name === "tool_execution_end";
+}
+
+function isStartHandler(name: string, _handler: Handler): _handler is StartHandler {
+  return name === "tool_execution_start";
 }
 
 const renderOptions = { expanded: false, keyText: () => "", keyHint: () => "" };
@@ -43,6 +55,7 @@ export function fakePi(
   const commands = new Map<string, Command>();
   const endHandlers: Array<EndHandler> = [];
   const messageHandlers: Array<MessageHandler> = [];
+  const startHandlers: Array<StartHandler> = [];
   const notes: Array<{ customType: string; data: FeedbackNote }> = [];
   const notifications: Array<{ message: string; level: string | undefined }> = [];
   let active = ["read", "bash"];
@@ -75,9 +88,11 @@ export function fakePi(
     registerCommand: (name, options) => {
       commands.set(name, options);
     },
-    on: (name: string, handler: EndHandler | MessageHandler) => {
+    on: (name: string, handler: Handler) => {
       if (isEndHandler(name, handler)) {
         endHandlers.push(handler);
+      } else if (isStartHandler(name, handler)) {
+        startHandlers.push(handler);
       } else {
         messageHandlers.push(handler);
       }
@@ -183,6 +198,44 @@ export function fakePi(
         toolName,
         result: { content: [{ type: "text", text }] },
         isError,
+      };
+
+      for (const handler of endHandlers) {
+        await handler(event, ctx());
+      }
+    },
+    nestedStart: (
+      parentToolCallId: string,
+      toolCallId: string,
+      toolName: string,
+      args: JsonObject,
+    ) => {
+      const event: ToolExecutionStartEvent = {
+        type: "tool_execution_start",
+        toolCallId,
+        toolName,
+        args,
+        parentToolCallId,
+      };
+
+      for (const handler of startHandlers) {
+        handler(event);
+      }
+    },
+    nestedEnd: async (
+      parentToolCallId: string,
+      toolCallId: string,
+      toolName: string,
+      isError: boolean,
+      text: string,
+    ) => {
+      const event: ToolExecutionEndEvent = {
+        type: "tool_execution_end",
+        toolCallId,
+        toolName,
+        result: { content: [{ type: "text", text }] },
+        isError,
+        parentToolCallId,
       };
 
       for (const handler of endHandlers) {
