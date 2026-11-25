@@ -118,13 +118,32 @@ describe("plain-language status summary", () => {
   });
   test("footer uses exactly the contract strings", () => {
     expect(footerStatus({ status: "connected" }, false)).toBeUndefined();
-    expect(footerStatus({ status: "connected" }, true)).toBe("Peers: connected");
-    expect(footerStatus({ status: "activation_pending" }, true)).toBe("Peers: activation pending");
+    expect(footerStatus({ status: "connected" }, true)).toBe("peers ✓");
+    expect(footerStatus({ status: "activation_pending" }, true)).toBe("peers ! activation pending");
     expect(footerStatus({ status: "activation_unconfirmed" }, true)).toBe(
-      "Peers: activation pending",
+      "peers ! activation pending",
     );
-    expect(footerStatus({ status: "disconnected" }, true)).toBe("Peers: unavailable");
-    expect(footerStatus(undefined, true)).toBe("Peers: setup failed");
+    expect(footerStatus({ status: "disconnected" }, true)).toBe("peers ✕ offline");
+    expect(footerStatus(undefined, true)).toBe("peers ✕ setup failed");
+  });
+  test("footer shows unread mail before a wait, and only while connected", () => {
+    expect(footerStatus({ status: "connected", inboxMessages: 2 }, true)).toBe("peers ● 2");
+    expect(footerStatus({ status: "connected", inboxMessages: 2, waiting: true }, true)).toBe(
+      "peers ● 2",
+    );
+    expect(footerStatus({ status: "connected", waiting: true }, true)).toBe("peers ✓ waiting…");
+    expect(footerStatus({ status: "connected", inboxMessages: -1 }, true)).toBe("peers ✓");
+    expect(footerStatus({ status: "disconnected", inboxMessages: 3 }, true)).toBe(
+      "peers ✕ offline",
+    );
+  });
+  test("footer colours each part with a theme token", () => {
+    const theme = { fg: (tone: string, part: string) => `<${tone}>${part}` };
+    expect(footerStatus({ status: "connected", inboxMessages: 1 }, true, theme)).toBe(
+      "<dim>peers <accent>● 1",
+    );
+    expect(footerStatus({ status: "connected" }, true, theme)).toBe("<dim>peers <success>✓");
+    expect(footerStatus(undefined, true, theme)).toBe("<dim>peers <error>✕ setup failed");
   });
   test(
     "arbitrary status objects never leak internal terms or control characters into primary text",

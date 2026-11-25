@@ -113,11 +113,15 @@ including when it is connected:
 
 | Footer | Meaning |
 | --- | --- |
-| `Peers: setting up…` | Apply is running. |
-| `Peers: connected` | This session is connected. |
-| `Peers: activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them. |
-| `Peers: unavailable` | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`. |
-| `Peers: setup failed` | This session couldn't start peers. Run `/peers doctor`. |
+| `peers ⋯ setting up` | Apply is running. |
+| `peers ✓` | This session is connected and its inbox is empty. |
+| `peers ● 2` | Connected, with 2 unread peer messages. The agent is woken to read them. |
+| `peers ✓ waiting…` | `peers_take` is waiting for a message. |
+| `peers ! activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them. |
+| `peers ✕ offline` | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`. |
+| `peers ✕ setup failed` | This session couldn't start peers. Run `/peers doctor`. |
+
+The symbol is coloured from the theme (`success`, `accent`, `warning`, `error`) and the word `peers` is dimmed; every problem state also has a word, so colour is never the only signal.
 
 There is no footer when peers is not set up. Print and JSON modes show status
 and doctor reports but refuse setup and reset.

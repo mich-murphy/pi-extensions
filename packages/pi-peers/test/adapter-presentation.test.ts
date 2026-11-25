@@ -379,8 +379,8 @@ describe("presentation-only session tool rendering", () => {
     );
   });
   test.each([
-    ["activation_pending", "Peers: activation pending"],
-    ["activation_unconfirmed", "Peers: activation pending"],
+    ["activation_pending", "peers ! activation pending"],
+    ["activation_unconfirmed", "peers ! activation pending"],
   ])(
     "%s has a plain footer; diagnostics explain passive versus explicit activation",
     (status, footer) => {
@@ -392,10 +392,10 @@ describe("presentation-only session tool rendering", () => {
     },
   );
   test("footer uses contract strings; explicit diagnostics retain exact identity and accounting", () => {
-    expect(footerStatus({ status: "connected" }, true)).toBe("Peers: connected");
-    expect(footerStatus({ status: "unavailable" }, true)).toBe("Peers: unavailable");
-    expect(footerStatus({ status: "disconnected" }, true)).toBe("Peers: unavailable");
-    expect(footerStatus({ status: "unavailable\u001b[31m" }, true)).toBe("Peers: unavailable");
+    expect(footerStatus({ status: "connected" }, true)).toBe("peers ✓");
+    expect(footerStatus({ status: "unavailable" }, true)).toBe("peers ✕ offline");
+    expect(footerStatus({ status: "disconnected" }, true)).toBe("peers ✕ offline");
+    expect(footerStatus({ status: "unavailable\u001b[31m" }, true)).toBe("peers ✕ offline");
     expect(diagnostics(undefined, "not enabled")).toBe("Session communication: not enabled");
     expect(diagnostics(undefined, "enabled")).toBe(
       "Session communication: not enabled · runtime unavailable",
