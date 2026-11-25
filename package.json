@@ -97,7 +97,8 @@
       "./packages/pi-vim/index.ts",
       "./packages/pi-scrollback/index.ts",
       "./packages/pi-web/index.ts",
-      "./packages/pi-peers/index.ts"
+      "./packages/pi-peers/index.ts",
+      "./packages/pi-feedback/index.ts"
     ]
   }
 }
