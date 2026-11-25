@@ -39,7 +39,7 @@ function row(group: Group): string[] {
     String(group.sessions),
     String(group.records),
     group.status,
-    group.owner,
+    group.piCore ? "pi-core" : group.owner,
     group.id,
     group.example,
   ];

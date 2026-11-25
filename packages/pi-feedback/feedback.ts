@@ -1,7 +1,7 @@
-import { isAbsolute, relative, sep } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
   ExtensionContext,
+  MessageEndEvent,
   Theme,
   ToolExecutionEndEvent,
 } from "@earendil-works/pi-coding-agent";
@@ -12,13 +12,16 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { onOffCommand } from "../shared/on-off-command.ts";
 import type { OnOffCommand } from "../shared/on-off-command.ts";
+import { isParallelBatch, isReadOnlyTool } from "./batch.ts";
+import type { BatchCall } from "./batch.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
 import type { Clock } from "./ledger.ts";
+import { createAttribution } from "./owner.ts";
+import type { Attribution, CommandSource, ToolSource } from "./owner.ts";
 
 export const FEEDBACK_TOOL = "harness_feedback";
 export const FEEDBACK_NOTE_TYPE = "feedback-report";
-const UNATTRIBUTED = "unattributed";
 export const REPORTS_PER_SESSION = 5;
 
 const SHORT_TEXT = 200;
@@ -100,18 +103,20 @@ export type NoteRenderer = (
   theme: Pick<Theme, "fg">,
 ) => Component | undefined;
 
-export type ToolSource = { readonly name: string; readonly sourceInfo: { readonly path: string } };
-
 export type FeedbackRegistration = {
   readonly registerTool: (tool: FeedbackTool) => void;
   readonly registerEntryRenderer: (customType: string, renderer: NoteRenderer) => void;
   readonly registerCommand: (name: string, options: OnOffCommand<FeedbackCommandContext>) => void;
-  readonly on: (
-    name: "tool_execution_end",
-    handler: (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>,
-  ) => unknown;
+  readonly on: {
+    (
+      name: "tool_execution_end",
+      handler: (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>,
+    ): unknown;
+    (name: "message_end", handler: (event: Pick<MessageEndEvent, "message">) => void): unknown;
+  };
   readonly appendEntry: (customType: string, data: FeedbackNote) => void;
   readonly getAllTools: () => readonly ToolSource[];
+  readonly getCommands: () => readonly CommandSource[];
   readonly getActiveTools: () => string[];
   readonly setActiveTools: (names: string[]) => void;
 };
@@ -120,6 +125,8 @@ export type FeedbackDependencies = {
   readonly ledger: string;
   readonly packagesDir: string;
   readonly ownPackages: readonly string[];
+  readonly agentDir: string;
+  readonly home: string;
   readonly piVersion: string;
   readonly clock?: Clock;
 };
@@ -166,30 +173,28 @@ function runContext(ctx: FeedbackContext, piVersion: string) {
   };
 }
 
-function createOwners(pi: FeedbackRegistration, dependencies: FeedbackDependencies) {
-  const own: ReadonlySet<string> = new Set(dependencies.ownPackages);
+function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null;
+}
 
-  const packageAt = (path: string): string | undefined => {
-    if (!isAbsolute(path)) {
-      return undefined;
-    }
-    const inside = relative(dependencies.packagesDir, path);
-    const name = inside.split(sep)[0] ?? "";
-    return inside.startsWith("..") || isAbsolute(inside) || !own.has(name) ? undefined : name;
-  };
+function toolCallsOf(message: unknown): readonly BatchCall[] | undefined {
+  if (!isObject(message) || message.role !== "assistant") {
+    return undefined;
+  }
+  const content: unknown = message.content;
+  const parts: readonly unknown[] = Array.isArray(content) ? content : [];
+  return parts.flatMap((part) =>
+    isObject(part) &&
+    part.type === "toolCall" &&
+    typeof part.id === "string" &&
+    typeof part.name === "string"
+      ? [{ id: part.id, name: part.name, args: part.arguments }]
+      : [],
+  );
+}
 
-  const toolOwner = (toolName: string): string => {
-    const tool = pi.getAllTools().find((candidate) => candidate.name === toolName);
-    return (tool === undefined ? undefined : packageAt(tool.sourceInfo.path)) ?? UNATTRIBUTED;
-  };
-
-  const reportOwner = (component: string): string => {
-    const trimmed = component.trim();
-    const first = trimmed.toLowerCase().split(/[\s/:]+/u)[0] ?? "";
-    return own.has(first) ? first : toolOwner(trimmed);
-  };
-
-  return { toolOwner, reportOwner };
+function evidenceOf(attribution: Attribution) {
+  return attribution.evidence === undefined ? {} : { evidence: attribution.evidence };
 }
 
 function renderNote(note: FeedbackNote, theme: Pick<Theme, "fg">): Component {
@@ -205,7 +210,9 @@ export function registerFeedback(
   dependencies: FeedbackDependencies,
 ): void {
   const { ledger, piVersion, clock } = dependencies;
-  const owners = createOwners(pi, dependencies);
+  const owners = createAttribution(pi, dependencies);
+  const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
+  let batch: readonly BatchCall[] = [];
   const filedBySession = new Map<string, Set<string>>();
   let enabled = true;
   let unwritten = 0;
@@ -227,7 +234,8 @@ export function registerFeedback(
         { status: "limit" },
       );
     }
-    const owner = owners.reportOwner(params.component);
+    const attribution = owners.forReport(params.component, params.actual);
+    const { owner } = attribution;
     filed.add(key);
     try {
       const event = await appendEvent(
@@ -244,6 +252,7 @@ export function registerFeedback(
           actual: params.actual,
           ...(params.workaround === undefined ? {} : { workaround: params.workaround }),
           impact: params.impact,
+          ...evidenceOf(attribution),
           ...runContext(ctx, piVersion),
         },
         clock,
@@ -296,21 +305,30 @@ export function registerFeedback(
     return note === undefined ? undefined : renderNote(note, theme);
   });
 
+  pi.on("message_end", (event) => {
+    batch = toolCallsOf(event.message) ?? batch;
+  });
+
   pi.on("tool_execution_end", async (event, ctx) => {
     if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL) {
       return;
     }
     const error = errorText(event.result);
+    const attribution = owners.forSignal(event.toolName, error);
+    const failing = batch.find((call) => call.id === event.toolCallId);
+    const ordered = failing !== undefined && isParallelBatch(failing, error, batch, readOnly);
     try {
       await appendEvent(
         ledger,
         {
           type: "signal",
           session: ctx.sessionManager.getSessionId(),
-          owner: owners.toolOwner(event.toolName),
+          owner: attribution.owner,
           fingerprint: signalFingerprint(event.toolName, error),
           tool: event.toolName,
           error,
+          ...(ordered ? { cause: "parallel-batch" as const } : {}),
+          ...evidenceOf(attribution),
           ...runContext(ctx, piVersion),
         },
         clock,

@@ -1,7 +1,9 @@
 import { groupId } from "./fingerprint.ts";
-import type { LedgerEvent, RecordEvent } from "./ledger.ts";
+import type { LedgerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
+import { PI_CORE, UNATTRIBUTED } from "./owner.ts";
+import { isExcluded, isPiCore } from "./verdict.ts";
 
-const NOT_FIXED_HERE: ReadonlySet<string> = new Set(["pi-core", "unattributed"]);
+const NOT_FIXED_HERE: ReadonlySet<string> = new Set([PI_CORE, UNATTRIBUTED]);
 const MIN_SESSIONS = 2;
 const EXAMPLE_LIMIT = 80;
 
@@ -15,7 +17,9 @@ export type Group = {
   readonly fingerprint: string;
   readonly status: GroupStatus;
   readonly records: number;
+  readonly excluded: number;
   readonly sessions: number;
+  readonly piCore: boolean;
   readonly blocked: boolean;
   readonly lastAt: string;
   readonly example: string;
@@ -63,9 +67,17 @@ function addRecord(builders: Map<string, Builder>, event: RecordEvent): void {
   builders.set(id, builder);
 }
 
-function apply(builders: Map<string, Builder>, event: LedgerEvent): void {
+function apply(
+  builders: Map<string, Builder>,
+  verdicts: Map<string, VerdictEvent>,
+  event: LedgerEvent,
+): void {
   if (event.type === "report" || event.type === "signal") {
     addRecord(builders, event);
+    return;
+  }
+  if (event.type === "verdict") {
+    verdicts.set(event.fingerprint, event);
     return;
   }
   const builder = builders.get(event.group);
@@ -88,19 +100,24 @@ function exampleOf(event: RecordEvent): string {
   return text.length > EXAMPLE_LIMIT ? `${text.slice(0, EXAMPLE_LIMIT - 1)}…` : text;
 }
 
-function finish(builder: Builder): Group {
-  const { live, status } = builder;
+function finish(builder: Builder, verdict: VerdictEvent | undefined): Group {
+  const { status } = builder;
+  const live = builder.live.filter((event) => !isExcluded(event, verdict));
+  const excluded = builder.live.filter((event) => isExcluded(event, verdict));
   const sessions = new Set(live.map((event) => event.session)).size;
   const blocked = live.some((event) => event.type === "report" && event.impact === "blocked");
   const latest = live.at(-1);
   const open = status !== "resolved";
+  const piCore = isPiCore({ owner: builder.owner, live, excluded, sessions, verdict });
   return {
     id: builder.id,
     owner: builder.owner,
     fingerprint: builder.fingerprint,
     status,
     records: live.length,
+    excluded: excluded.length,
     sessions,
+    piCore,
     blocked,
     lastAt: latest?.at ?? builder.resolution?.at ?? "",
     example: latest === undefined ? "" : exampleOf(latest),
@@ -121,8 +138,11 @@ function byPriority(a: Group, b: Group): number {
 
 export function deriveGroups(events: readonly LedgerEvent[]): readonly Group[] {
   const builders = new Map<string, Builder>();
+  const verdicts = new Map<string, VerdictEvent>();
   for (const event of canonical(events)) {
-    apply(builders, event);
+    apply(builders, verdicts, event);
   }
-  return [...builders.values()].map((builder) => finish(builder)).toSorted(byPriority);
+  return [...builders.values()]
+    .map((builder) => finish(builder, verdicts.get(builder.fingerprint)))
+    .toSorted(byPriority);
 }
