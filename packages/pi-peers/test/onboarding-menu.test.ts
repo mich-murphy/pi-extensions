@@ -4,7 +4,12 @@ import type { Screen } from "../onboarding/menu/model.js";
 import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, editState, manageForm, setupForm } from "../onboarding/menu/setup-form.js";
-import type { SetupChoice, SetupDraft } from "../onboarding/menu/setup-form.js";
+import type {
+  ManageFormOptions,
+  SetupChoice,
+  SetupDraft,
+  SetupFormOptions,
+} from "../onboarding/menu/setup-form.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import type { LocalPlan } from "../onboarding/plan.js";
 import { dialog } from "./onboarding-fixtures.js";
@@ -23,12 +28,15 @@ const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
 function harness(blocked?: string, state = draft()) {
   const apply = vi.fn<(choice: SetupChoice) => void>();
   const consented = vi.fn<(action: string) => void>();
-  const form = setupForm({
+  const options: SetupFormOptions = {
     draft: state,
-    ...(blocked === undefined ? {} : { blocked }),
     details: () => "Account-wide scope\nPeer messages may wake the model",
     apply,
-  });
+  };
+  if (blocked !== undefined) {
+    options.blocked = blocked;
+  }
+  const form = setupForm(options);
   const root: Screen = {
     kind: "list",
     title: "Peers",
@@ -163,13 +171,9 @@ function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shar
   const apply = vi.fn<(plan: LocalPlan) => void>();
   const consented = vi.fn<(action: string) => void>();
   const keep = vi.fn<() => void>();
-  const form = manageForm({
+  const formOptions: ManageFormOptions = {
     saved,
     note: "Peers is set up on this computer as saved-host.",
-    ...(options.fixedMachine === undefined ? {} : { fixedMachine: options.fixedMachine }),
-    ...(options.rebuild === false
-      ? {}
-      : { rebuild: (choices) => localPlan(choices, "/private/owned/s") }),
     shared: () => options.shared === true,
     details: (plan) => [plan === undefined ? "saved" : `edited ${plan.choices.label}`],
     apply,
@@ -181,7 +185,14 @@ function manageHarness(options: { fixedMachine?: string; rebuild?: boolean; shar
         activation: { kind: "consent", action: "Reconnect", run: keep },
       },
     ],
-  });
+  };
+  if (options.fixedMachine !== undefined) {
+    formOptions.fixedMachine = options.fixedMachine;
+  }
+  if (options.rebuild !== false) {
+    formOptions.rebuild = (choices) => localPlan(choices, "/private/owned/s");
+  }
+  const form = manageForm(formOptions);
   const root: Screen = {
     kind: "list",
     title: "Peers",

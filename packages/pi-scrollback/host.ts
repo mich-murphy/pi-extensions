@@ -10,8 +10,8 @@ type LayoutRoot = RenderComponent & { [LAYOUT_NODE]: () => typeof Schema.Unknown
 const Render = Schema.declare<Component["render"]>((value): value is Component["render"] =>
   Predicate.isFunction(value),
 );
-const ComponentShape = Schema.Struct({ render: Render });
-const isComponent = Schema.is(ComponentShape);
+const RenderableComponent = Schema.Struct({ render: Render });
+const isComponent = Schema.is(RenderableComponent);
 const hasLayout = Schema.is(
   Schema.Struct({
     render: Render,
@@ -30,14 +30,14 @@ const isNativeStack = Schema.is(
     align: Schema.Literal("stretch"),
     entries: Schema.Tuple([
       Schema.Struct({
-        component: ComponentShape,
+        component: RenderableComponent,
         basis: Schema.Literal(0),
         grow: Schema.Literal(1),
         shrink: Schema.Literal(1),
         minSize: Schema.Literal(1),
       }),
       Schema.Struct({
-        component: ComponentShape,
+        component: RenderableComponent,
         basis: Schema.Literal("auto"),
         grow: Schema.Literal(0),
         shrink: Schema.Literal(1),

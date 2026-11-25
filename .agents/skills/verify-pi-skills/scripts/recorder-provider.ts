@@ -7,7 +7,7 @@ import type {
   TranscriptContext,
   UserMessage,
 } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const API = "skills-recorder";
 const READ_FILES = "READ-FILES: ";
@@ -55,8 +55,7 @@ function scriptedCalls(
     return [];
   }
   const text = pending
-    .filter((message) => message.role === "user")
-    .map(({ content }) => textOf(content))
+    .flatMap((message) => (message.role === "user" ? [textOf(message.content)] : []))
     .join("\n");
   const spawn = text.indexOf(SPAWN_CHILD);
   if (spawn === -1) {
@@ -77,17 +76,20 @@ function scriptedCalls(
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 function recorderModel(id: string, name: string, midConvo: boolean) {
-  return {
+  const model: Extract<ProviderModelConfig, { type?: "chat" }> = {
     id,
     name,
     api: API,
     reasoning: false,
-    input: ["text" as const],
+    input: ["text"],
     cost: ZERO_COST,
     contextWindow: 200_000,
     maxTokens: 8192,
-    ...(midConvo ? { compat: { supportsMidConvoSystemMessages: true } } : {}),
   };
+  if (midConvo) {
+    model.compat = { supportsMidConvoSystemMessages: true };
+  }
+  return model;
 }
 
 export default function registerRecorder(pi: ExtensionAPI): void {

@@ -221,6 +221,9 @@
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/prefer-effect-match": "error",
 

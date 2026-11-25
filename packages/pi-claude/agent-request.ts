@@ -205,14 +205,17 @@ function resultsBlock(
   available: ReadonlySet<string>,
 ): PromptBlock | undefined {
   const images: ImageAttachment[] = [];
-  const rendered = results
-    .filter((result) => result.name !== VALIDATION_ERROR_TOOL)
-    .map((result) => {
-      const tag = available.has(result.name) ? "result" : "past-result";
-      const tool = tag === "result" ? sdkToolName(result.name) : attribute(result.name);
-      const flag = result.isError ? " error" : "";
-      return `<${tag} id="${attribute(result.id)}" tool="${tool}"${flag}>\n${bodyOf(result.content, images)}\n</${tag}>`;
-    });
+  const rendered = results.flatMap((result) => {
+    if (result.name === VALIDATION_ERROR_TOOL) {
+      return [];
+    }
+    const tag = available.has(result.name) ? "result" : "past-result";
+    const tool = tag === "result" ? sdkToolName(result.name) : attribute(result.name);
+    const flag = result.isError ? " error" : "";
+    return [
+      `<${tag} id="${attribute(result.id)}" tool="${tool}"${flag}>\n${bodyOf(result.content, images)}\n</${tag}>`,
+    ];
+  });
   return rendered.length === 0
     ? undefined
     : { text: `<results>\n${rendered.join("\n")}\n</results>`, images };

@@ -126,18 +126,29 @@ function failureKind(error: SdkTurnFailure): SdkFailureKind {
   }
 }
 
+type FailureDiagnostic = {
+  -readonly [Key in keyof SdkFailureDiagnostic]: SdkFailureDiagnostic[Key];
+};
+
 export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic {
-  return {
+  const diagnostic: FailureDiagnostic = {
     schemaVersion: 1,
     kind: failureKind(error),
     errorTag: error._tag,
-    ...(error._tag === "SdkToolContractError" ? { toolContract: error.reason } : {}),
-    ...(error._tag === "SdkQueryError" ? { operation: error.operation } : {}),
-    ...(error._tag === "SdkStreamInterruptedError" ? { streamInterruption: error.evidence } : {}),
-    ...(error._tag === "SdkResultError" && error.terminalReason !== undefined
-      ? { terminalReason: safeTerminalReason(error.terminalReason) }
-      : {}),
   };
+  if (error._tag === "SdkToolContractError") {
+    diagnostic.toolContract = error.reason;
+  }
+  if (error._tag === "SdkQueryError") {
+    diagnostic.operation = error.operation;
+  }
+  if (error._tag === "SdkStreamInterruptedError") {
+    diagnostic.streamInterruption = error.evidence;
+  }
+  if (error._tag === "SdkResultError" && error.terminalReason !== undefined) {
+    diagnostic.terminalReason = safeTerminalReason(error.terminalReason);
+  }
+  return diagnostic;
 }
 
 export function formatSdkRunError(error: SdkTurnFailure): string {

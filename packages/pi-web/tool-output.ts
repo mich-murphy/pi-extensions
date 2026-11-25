@@ -138,7 +138,7 @@ function characterBoundaryAtOrAfter(bytes: Buffer, offset: number): number {
 
 type StructureOutput = (fullOutputPath: string | undefined) => JsonValue;
 
-function fetchTextStructure(page: {
+type FetchTextPage = {
   readonly url: string;
   readonly format: WebFetchFormat;
   readonly bytes: number;
@@ -147,8 +147,26 @@ function fetchTextStructure(page: {
   readonly status?: number;
   readonly mimeType?: string;
   readonly via?: string;
-  readonly responseTruncated?: boolean;
-}): StructureOutput {
+  responseTruncated?: true;
+};
+
+type FetchTextOutput = {
+  url: string;
+  status?: number;
+  mime_type?: string;
+  format: WebFetchFormat;
+  bytes: number;
+  content: string;
+  truncated: boolean;
+  response_truncated?: true;
+  download_limit_bytes?: number;
+  full_output_path?: string;
+  via?: string;
+  offset?: number;
+  next_offset?: number;
+};
+
+function fetchTextStructure(page: FetchTextPage): StructureOutput {
   return (fullOutputPath) => {
     const all = Buffer.from(page.text, "utf8");
     const start = page.offset > 0 ? characterBoundaryAtOrAfter(all, page.offset) : 0;
@@ -157,22 +175,37 @@ function fetchTextStructure(page: {
       start === 0 ? page.text : all.subarray(start).toString("utf8"),
       STRUCTURED_OUTPUT_MAX_BYTES,
     );
-    return {
-      url: page.url,
-      ...(page.status === undefined ? {} : { status: page.status }),
-      ...(page.mimeType === undefined ? {} : { mime_type: page.mimeType }),
+    const location: Pick<FetchTextOutput, "url" | "status" | "mime_type"> = { url: page.url };
+    if (page.status !== undefined) {
+      location.status = page.status;
+    }
+    if (page.mimeType !== undefined) {
+      location.mime_type = page.mimeType;
+    }
+    const result: FetchTextOutput = {
+      ...location,
       format: page.format,
       bytes: page.bytes,
       content,
       truncated: truncated || page.responseTruncated === true,
-      ...(page.responseTruncated === true
-        ? { response_truncated: true, download_limit_bytes: page.bytes }
-        : {}),
-      ...(fullOutputPath === undefined ? {} : { full_output_path: fullOutputPath }),
-      ...(page.via === undefined ? {} : { via: page.via }),
-      ...(page.offset > 0 ? { offset: pastEnd ? page.offset : start } : {}),
-      ...(truncated ? { next_offset: start + bytes } : {}),
     };
+    if (page.responseTruncated === true) {
+      result.response_truncated = true;
+      result.download_limit_bytes = page.bytes;
+    }
+    if (fullOutputPath !== undefined) {
+      result.full_output_path = fullOutputPath;
+    }
+    if (page.via !== undefined) {
+      result.via = page.via;
+    }
+    if (page.offset > 0) {
+      result.offset = pastEnd ? page.offset : start;
+    }
+    if (truncated) {
+      result.next_offset = start + bytes;
+    }
+    return result;
   };
 }
 
@@ -231,10 +264,10 @@ export function projectFetchResult(
     finalUrl: redactSecrets(meta.finalUrl, options.secrets),
     mime: redactSecrets(meta.mime, options.secrets),
     contentType: redactSecrets(meta.contentType, options.secrets),
-    ...(meta.charset === undefined
-      ? {}
-      : { charset: redactSecrets(meta.charset, options.secrets) }),
   };
+  if (meta.charset !== undefined) {
+    safeMeta.charset = redactSecrets(meta.charset, options.secrets);
+  }
   if (body._tag === "Image") {
     const note = redactSecrets(
       `Fetched image from ${meta.finalUrl} (${meta.mime || "image"}, ${formatSize(meta.bytes)})`,
@@ -251,30 +284,46 @@ export function projectFetchResult(
     });
   }
 
-  const text = redactSecrets(body.text, options.secrets);
-  const responseTruncated = meta.responseTruncated === true;
-  const projected = projectTextOutput<WebFetchDetails>({
-    prefix: responseTruncated ? `${responseTruncatedNotice(meta.bytes)}\n\n` : "",
-    ...(responseTruncated ? { endNote: responseTruncatedEnd(meta.bytes) } : {}),
-    output: text,
-    details: {
-      ...safeMeta,
-      decoder: redactSecrets(body.decoder, options.secrets),
-    },
-    structure: fetchTextStructure({
-      url: safeMeta.finalUrl,
-      format: meta.format,
-      bytes: meta.bytes,
-      text,
-      offset,
-      status: meta.status,
-      mimeType: safeMeta.mime,
-      ...(responseTruncated ? { responseTruncated } : {}),
-    }),
+  return projectFetchedText(
+    redactSecrets(body.text, options.secrets),
+    meta,
+    { ...safeMeta, decoder: redactSecrets(body.decoder, options.secrets) },
+    options.store,
     offset,
-    store: options.store,
+  );
+}
+
+function projectFetchedText(
+  text: string,
+  meta: FetchPageResult["meta"],
+  details: WebFetchDetails & { readonly finalUrl: string; readonly mime: string },
+  store: ToolOutputStore["Service"],
+  offset: number,
+): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
+  const responseTruncated = meta.responseTruncated === true;
+  const page: FetchTextPage = {
+    url: details.finalUrl,
+    format: meta.format,
+    bytes: meta.bytes,
+    text,
+    offset,
+    status: meta.status,
+    mimeType: details.mime,
+  };
+  const output: TextOutputOptions<WebFetchDetails> = {
+    prefix: responseTruncated ? `${responseTruncatedNotice(meta.bytes)}\n\n` : "",
+    output: text,
+    details,
+    structure: fetchTextStructure(page),
+    offset,
+    store,
     tempPrefix: "pi-webfetch-",
-  });
+  };
+  if (responseTruncated) {
+    output.endNote = responseTruncatedEnd(meta.bytes);
+    page.responseTruncated = true;
+  }
+  const projected = projectTextOutput(output);
   return responseTruncated
     ? projected.pipe(
         Effect.map((projectedResult) => ({
@@ -364,15 +413,37 @@ function searchStructure(
   return {
     query: redact(search.query),
     provider: redact(search.details.provider),
-    results: search.results.map((result) => ({
-      title: redact(result.title),
-      url: redact(result.url),
-      ...(result.snippet === undefined ? {} : { snippet: redact(result.snippet) }),
-      ...(result.publishedAt === undefined ? {} : { published_at: redact(result.publishedAt) }),
-      ...(result.source === undefined ? {} : { source: redact(result.source) }),
-      ...(result.score === undefined ? {} : { score: result.score }),
-    })),
+    results: search.results.map((result) => searchEntry(result, redact)),
   };
+}
+
+type StructuredSearchEntry = {
+  title: string;
+  url: string;
+  snippet?: string;
+  published_at?: string;
+  source?: string;
+  score?: number;
+};
+
+function searchEntry(
+  result: NormalizedSearchResult,
+  redact: (input: string) => string,
+): StructuredSearchEntry {
+  const entry: StructuredSearchEntry = { title: redact(result.title), url: redact(result.url) };
+  if (result.snippet !== undefined) {
+    entry.snippet = redact(result.snippet);
+  }
+  if (result.publishedAt !== undefined) {
+    entry.published_at = redact(result.publishedAt);
+  }
+  if (result.source !== undefined) {
+    entry.source = redact(result.source);
+  }
+  if (result.score !== undefined) {
+    entry.score = result.score;
+  }
+  return entry;
 }
 
 function endLine(endNote: string | undefined): string {
@@ -421,6 +492,17 @@ function truncatedWindow(
   };
 }
 
+type TextOutputOptions<Details> = {
+  readonly output: string;
+  readonly prefix?: string;
+  endNote?: string;
+  readonly offset?: number;
+  readonly details: Details;
+  readonly structure: StructureOutput;
+  readonly store: ToolOutputStore["Service"];
+  readonly tempPrefix: string;
+};
+
 function projectTextOutput<Details>({
   output,
   prefix = "",
@@ -430,16 +512,10 @@ function projectTextOutput<Details>({
   structure,
   store,
   tempPrefix,
-}: {
-  readonly output: string;
-  readonly prefix?: string;
-  readonly endNote?: string;
-  readonly offset?: number;
-  readonly details: Details;
-  readonly structure: StructureOutput;
-  readonly store: ToolOutputStore["Service"];
-  readonly tempPrefix: string;
-}): Effect.Effect<PiToolResult<Details & TruncationDetails>, ToolOutputStoreError> {
+}: TextOutputOptions<Details>): Effect.Effect<
+  PiToolResult<Details & TruncationDetails>,
+  ToolOutputStoreError
+> {
   const bytes = Buffer.from(output, "utf8");
   const total = bytes.length;
   const start = offset > 0 ? characterBoundaryAtOrAfter(bytes, offset) : 0;

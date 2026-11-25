@@ -492,10 +492,13 @@ export function footerLine(state: FooterState, theme?: FooterTheme): string {
   return styled(FOOTER_PARTS[state], theme);
 }
 function downLinks(value: readonly LinkState[] = []): (readonly [FooterTone, string])[] {
-  const down = value
-    .filter((link) => link.state === "down" || link.state === "probing")
-    .map((link) => plain(link.machineId, 32))
-    .filter((machine) => machine.length > 0);
+  const down = value.flatMap((link) => {
+    if (link.state === "down" || link.state === "probing") {
+      const machine = plain(link.machineId, 32);
+      return machine.length > 0 ? [machine] : [];
+    }
+    return [];
+  });
   if (down.length === 0) {
     return [];
   }

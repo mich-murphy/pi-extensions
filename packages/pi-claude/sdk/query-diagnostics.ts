@@ -42,6 +42,42 @@ function safeCount(count: number | undefined): number | undefined {
   return count !== undefined && Number.isSafeInteger(count) && count >= 0 ? count : undefined;
 }
 
+type ModelDiagnostic = { -readonly [Key in keyof QueryModelDiagnostic]: QueryModelDiagnostic[Key] };
+
+function modelDiagnostic(
+  key: string,
+  usage: ModelUsage[string],
+  index: number,
+): QueryModelDiagnostic {
+  const diagnostic: ModelDiagnostic = { model: publicModel(key) ?? `unknown-${index + 1}` };
+  const canonicalModel =
+    usage.canonicalModel === undefined ? undefined : publicModel(usage.canonicalModel);
+  if (canonicalModel !== undefined) {
+    diagnostic.canonicalModel = canonicalModel;
+  }
+  const input = safeCount(usage.inputTokens);
+  const cacheRead = safeCount(usage.cacheReadInputTokens);
+  const cacheWrite = safeCount(usage.cacheCreationInputTokens);
+  if (input !== undefined) {
+    diagnostic.input = input;
+  }
+  if (cacheRead !== undefined) {
+    diagnostic.cacheRead = cacheRead;
+  }
+  if (cacheWrite !== undefined) {
+    diagnostic.cacheWrite = cacheWrite;
+  }
+  if (input !== undefined && cacheRead !== undefined && cacheWrite !== undefined) {
+    const promptTokens = safeCount(input + cacheRead + cacheWrite);
+    if (promptTokens !== undefined) {
+      diagnostic.promptTokens = promptTokens;
+    }
+  }
+  return diagnostic;
+}
+
+type ApiErrorDiagnostic = { apiError?: string };
+
 export function queryDiagnostics(
   metadata: Omit<QueryDiagnostics, "models" | "modelEntriesOmitted"> & {
     readonly modelUsage: ModelUsage;
@@ -50,29 +86,16 @@ export function queryDiagnostics(
   const { modelUsage, apiError, ...counters } = metadata;
   const entries = Object.entries(modelUsage);
   const safeError = safeApiError(apiError);
+  const report: ApiErrorDiagnostic = {};
+  if (safeError !== undefined) {
+    report.apiError = safeError;
+  }
   return {
     ...counters,
-    ...(safeError === undefined ? {} : { apiError: safeError }),
-    models: entries.slice(0, MAX_MODEL_ENTRIES).map(([key, usage], index) => {
-      const model = publicModel(key) ?? `unknown-${index + 1}`;
-      const canonicalModel =
-        usage.canonicalModel === undefined ? undefined : publicModel(usage.canonicalModel);
-      const input = safeCount(usage.inputTokens);
-      const cacheRead = safeCount(usage.cacheReadInputTokens);
-      const cacheWrite = safeCount(usage.cacheCreationInputTokens);
-      const promptTokens =
-        input === undefined || cacheRead === undefined || cacheWrite === undefined
-          ? undefined
-          : safeCount(input + cacheRead + cacheWrite);
-      return {
-        model,
-        ...(canonicalModel === undefined ? {} : { canonicalModel }),
-        ...(input === undefined ? {} : { input }),
-        ...(cacheRead === undefined ? {} : { cacheRead }),
-        ...(cacheWrite === undefined ? {} : { cacheWrite }),
-        ...(promptTokens === undefined ? {} : { promptTokens }),
-      };
-    }),
+    ...report,
+    models: entries
+      .slice(0, MAX_MODEL_ENTRIES)
+      .map(([key, usage], index) => modelDiagnostic(key, usage, index)),
     modelEntriesOmitted: Math.max(0, entries.length - MAX_MODEL_ENTRIES),
   };
 }

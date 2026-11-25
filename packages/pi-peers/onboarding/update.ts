@@ -46,12 +46,12 @@ export async function saveOwnedPlan(
         "This change would also change this Pi's peer permissions, so nothing was saved.",
       );
     }
-    const next = {
-      ...previous,
-      ...(pairingContent === undefined ? {} : { pairingSha256: digest(pairingContent) }),
-      adapterSha256: digest(nextAdapter),
-      gatewaySha256: digest(nextGateway),
-    };
+    const next = { ...previous };
+    if (pairingContent !== undefined) {
+      next.pairingSha256 = digest(pairingContent);
+    }
+    next.adapterSha256 = digest(nextAdapter);
+    next.gatewaySha256 = digest(nextGateway);
     await createPrivate(
       paths.journal,
       JSON.stringify({

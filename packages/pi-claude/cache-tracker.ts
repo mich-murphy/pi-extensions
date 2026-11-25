@@ -192,6 +192,9 @@ function likelyMissCause(
   return context.lookbackExceeded ? "lookback" : undefined;
 }
 
+type UsageQueryFields = { query?: QueryDiagnostics };
+type PromptUsage = { promptTokens: number; minimumCacheableTokens?: number };
+
 function usageDiagnostic(
   turn: number,
   usage: TokenUsage,
@@ -205,18 +208,93 @@ function usageDiagnostic(
     cacheReadShare < 0.5
       ? likelyMissCause(context, usage, promptTokens, minimumCacheableTokens)
       : undefined;
-  return {
+  const queryFields: UsageQueryFields = {};
+  if (metadata.query !== undefined) {
+    queryFields.query = metadata.query;
+  }
+  const prompt: PromptUsage = { promptTokens };
+  if (minimumCacheableTokens !== undefined) {
+    prompt.minimumCacheableTokens = minimumCacheableTokens;
+  }
+  const diagnostic: Omit<CacheUsageDiagnostic, "likelyMissCause"> & {
+    likelyMissCause?: MissCause;
+  } = {
     type: "usage",
     turn,
     ...usage,
-    ...(metadata.query === undefined ? {} : { query: metadata.query }),
-    promptTokens,
-    ...(minimumCacheableTokens === undefined ? {} : { minimumCacheableTokens }),
+    ...queryFields,
+    ...prompt,
     cacheReadPercent: Math.round(cacheReadShare * 10_000) / 100,
     possibleCollapse: promptTokens >= 20_000 && cacheReadShare < 0.5,
     expectedReusableCharacters: context.expectedReusableCharacters,
-    ...(cause === undefined ? {} : { likelyMissCause: cause }),
   };
+  if (cause !== undefined) {
+    diagnostic.likelyMissCause = cause;
+  }
+  return diagnostic;
+}
+
+type RequestComparison = Pick<
+  MissContext,
+  "ttl" | "prefixChange" | "msSincePreviousRequest" | "expectedReusableCharacters"
+>;
+
+type RequestModelFields = { model: string; minimumCacheableTokens?: number; reasoning?: string };
+type RequestFingerprints = {
+  contentFingerprint: string;
+  systemFingerprint: string;
+  toolsFingerprint?: string;
+  reusablePrefixFingerprint?: string;
+};
+
+function requestDiagnostic(
+  turn: number,
+  current: RequestState,
+  comparison: RequestComparison,
+  commonPrefixBlocks: number,
+): CacheRequestDiagnostic {
+  const { blocks, breakpoints, model } = current;
+  const modelFields: RequestModelFields = {
+    model,
+  };
+  const minimumCacheableTokens = minimumCacheableTokensFor(model);
+  if (minimumCacheableTokens !== undefined) {
+    modelFields.minimumCacheableTokens = minimumCacheableTokens;
+  }
+  if (current.reasoning !== undefined) {
+    modelFields.reasoning = current.reasoning;
+  }
+  const fingerprints: RequestFingerprints = {
+    contentFingerprint: fingerprint(blocks),
+    systemFingerprint: fingerprint(blocks.slice(0, 1)),
+  };
+  if (current.toolsFingerprint !== undefined) {
+    fingerprints.toolsFingerprint = current.toolsFingerprint;
+  }
+  const lastBreakpoint = breakpoints.at(-1);
+  if (lastBreakpoint !== undefined) {
+    fingerprints.reusablePrefixFingerprint = fingerprint(blocks.slice(0, lastBreakpoint + 1));
+  }
+  const diagnostic: Omit<CacheRequestDiagnostic, "msSincePreviousRequest"> & {
+    msSincePreviousRequest?: number;
+  } = {
+    type: "request",
+    turn,
+    ...modelFields,
+    ttl: comparison.ttl,
+    blocks: blocks.length,
+    textCharacters: sum(blocks.map((block) => block.textCharacters)),
+    imageBase64Characters: sum(blocks.map((block) => block.imageCharacters)),
+    breakpoints,
+    commonPrefixBlocks,
+    commonPrefixCharacters: comparison.expectedReusableCharacters,
+    ...fingerprints,
+    prefixChange: comparison.prefixChange,
+  };
+  if (comparison.msSincePreviousRequest !== undefined) {
+    diagnostic.msSincePreviousRequest = comparison.msSincePreviousRequest;
+  }
+  return diagnostic;
 }
 
 export const createCacheDiagnosticTracker = Effect.fnUntraced(function* (
@@ -244,7 +322,6 @@ function trackWith(
     turn += 1;
     const requestTurn = turn;
     const ttl = settings.ttl ?? "5m";
-    const minimumCacheableTokens = minimumCacheableTokensFor(model);
     const current: RequestState = {
       model,
       reasoning: settings.reasoning,
@@ -256,7 +333,7 @@ function trackWith(
       breakpoints: [...request.cacheBreakpoints],
       at: now(),
     };
-    const { blocks, breakpoints } = current;
+    const { blocks } = current;
     const divergence = blocks.findIndex(
       (block, index) => block.digest !== previous?.blocks[index]?.digest,
     );
@@ -266,41 +343,20 @@ function trackWith(
     );
     const prefixChange = classify(previous, current, divergence);
     const msSincePreviousRequest = previous === undefined ? undefined : current.at - previous.at;
-    const lastBreakpoint = breakpoints.at(-1);
-    emit({
-      type: "request",
-      turn,
-      model,
-      ...(minimumCacheableTokens === undefined ? {} : { minimumCacheableTokens }),
-      ...(settings.reasoning === undefined ? {} : { reasoning: settings.reasoning }),
-      ttl,
-      blocks: blocks.length,
-      textCharacters: sum(blocks.map((block) => block.textCharacters)),
-      imageBase64Characters: sum(blocks.map((block) => block.imageCharacters)),
-      breakpoints,
-      commonPrefixBlocks: commonPrefix.length,
-      commonPrefixCharacters,
-      contentFingerprint: fingerprint(blocks),
-      systemFingerprint: fingerprint(blocks.slice(0, 1)),
-      ...(current.toolsFingerprint === undefined
-        ? {}
-        : { toolsFingerprint: current.toolsFingerprint }),
-      ...(lastBreakpoint === undefined
-        ? {}
-        : { reusablePrefixFingerprint: fingerprint(blocks.slice(0, lastBreakpoint + 1)) }),
-      prefixChange,
-      ...(msSincePreviousRequest === undefined ? {} : { msSincePreviousRequest }),
-    });
-    const context: MissContext = {
-      model,
+    const comparison: RequestComparison = {
       ttl,
       prefixChange,
       msSincePreviousRequest,
+      expectedReusableCharacters: commonPrefixCharacters,
+    };
+    emit(requestDiagnostic(turn, current, comparison, commonPrefix.length));
+    const context: MissContext = {
+      model,
+      ...comparison,
       lookbackExceeded:
         previous !== undefined &&
         previous.breakpoints.length > 0 &&
         !reachesPreviousWrite(previous, current, commonPrefix.length),
-      expectedReusableCharacters: commonPrefixCharacters,
     };
     previous = current;
     return (usage, metadata) => {

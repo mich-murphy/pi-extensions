@@ -122,10 +122,9 @@ function registerClaudeCommand(
     description:
       "Show Agent SDK versions and observed model mappings (status, the default) or remaining Claude subscription usage (usage)",
     getArgumentCompletions: (prefix) =>
-      CLAUDE_ACTIONS.filter((action) => action.startsWith(prefix)).map((value) => ({
-        value,
-        label: value,
-      })),
+      CLAUDE_ACTIONS.flatMap((value) =>
+        value.startsWith(prefix) ? [{ value, label: value }] : [],
+      ),
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         return;

@@ -630,9 +630,7 @@ function disabledIds(
 ): ReadonlySet<ResourcePath> {
   const policy = new ResourcePolicy(loaded);
   return new Set(
-    resources
-      .filter((resource) => policy.value(resource) === "disabled")
-      .map((resource) => resource.id),
+    resources.flatMap((resource) => (policy.value(resource) === "disabled" ? [resource.id] : [])),
   );
 }
 

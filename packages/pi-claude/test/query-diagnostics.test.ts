@@ -2,12 +2,18 @@ import { describe, expect, test } from "vitest";
 import type { ModelUsage } from "../sdk/messages";
 import { queryDiagnostics } from "../sdk/query-diagnostics";
 
+type ApiErrorFixture = { apiError?: string };
+
 function diagnostic(modelUsage: ModelUsage, apiError?: string) {
+  const api: ApiErrorFixture = {};
+  if (apiError !== undefined) {
+    api.apiError = apiError;
+  }
   return queryDiagnostics({
     outcome: "completed",
     numTurns: 3,
     modelUsage,
-    ...(apiError === undefined ? {} : { apiError }),
+    ...api,
     assistantToolUses: 4,
     maxAssistantToolUses: 2,
     errorToolResults: 1,

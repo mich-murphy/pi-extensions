@@ -1,7 +1,7 @@
 import { readMenu } from "../../../../test-support/bombadil-menu.ts";
 import type { MenuView } from "../../../../test-support/bombadil-menu.ts";
 
-const SHAPE = {
+const PEERS_MENU_PATTERNS = {
   title: /^Peers(?: › .+)?$/u,
   hint: /^(?<keys>.+) · Esc (?<esc>back|close|hide)$/u,
   separator: " › ",
@@ -177,7 +177,7 @@ function footerOf(rows: readonly string[]): string | null {
 }
 
 export function readPeers(rows: readonly string[], height: number): PeersView {
-  const menu = readMenu(rows, SHAPE);
+  const menu = readMenu(rows, PEERS_MENU_PATTERNS);
   const { keys, esc } = menu.hintGroups;
   const shown = kind(keys, esc);
   const list = shownRows(menu.body, shown);

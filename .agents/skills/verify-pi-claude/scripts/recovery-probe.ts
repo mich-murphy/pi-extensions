@@ -15,7 +15,7 @@ import type { CacheDiagnostic } from "../../../../packages/pi-claude/cache-track
 import type * as TrackerModule from "../../../../packages/pi-claude/cache-tracker";
 import type * as ModelsModule from "../../../../packages/pi-claude/models";
 import type * as FailureModule from "../../../../packages/pi-claude/sdk/result-failure";
-import type { RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
+import type { RunnerOptions, RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
 import type * as RunnerModule from "../../../../packages/pi-claude/sdk/runner";
 import type * as RecoveryModule from "../../../../packages/pi-claude/validation-recovery";
 import { DUMMY_PARSER_KEY, startParserTransport } from "./parser-transport";
@@ -268,19 +268,19 @@ async function journey() {
       });
     }
   }
+  const runnerOptions: Pick<RunnerOptions, "validationRecovery" | "runSdkQuery"> & {
+    sdkEnvironment?: NonNullable<RunnerOptions["sdkEnvironment"]>;
+  } = { validationRecovery: "pi-tool-loop", runSdkQuery };
+  if (transport !== undefined) {
+    runnerOptions.sdkEnvironment = {
+      ...process.env,
+      ANTHROPIC_BASE_URL: transport.baseUrl,
+      ANTHROPIC_API_KEY: DUMMY_PARSER_KEY,
+      ANTHROPIC_AUTH_TOKEN: undefined,
+    };
+  }
   const runner = createClaudeAgentSdkRunner({
-    validationRecovery: "pi-tool-loop",
-    runSdkQuery,
-    ...(transport === undefined
-      ? {}
-      : {
-          sdkEnvironment: {
-            ...process.env,
-            ANTHROPIC_BASE_URL: transport.baseUrl,
-            ANTHROPIC_API_KEY: DUMMY_PARSER_KEY,
-            ANTHROPIC_AUTH_TOKEN: undefined,
-          },
-        }),
+    ...runnerOptions,
     cacheDiagnostics: Effect.runSync(
       createCacheDiagnosticTracker((record) => records.push(record)),
     ),

@@ -15,11 +15,15 @@ const verdict: VerdictEvent = {
   outsideService: 0.02,
 };
 
-type RecordShape = { readonly piPath?: boolean; readonly batchOrdered?: boolean };
+type RecordOptions = { readonly piPath?: boolean; readonly batchOrdered?: boolean };
 
-function record(session: string, shape: RecordShape = {}): RecordEvent {
-  const { piPath = true, batchOrdered = false } = shape;
-  return {
+function record(session: string, options: RecordOptions = {}): RecordEvent {
+  const { piPath = true, batchOrdered = false } = options;
+  type Signal = Extract<RecordEvent, { type: "signal" }>;
+  const event: Omit<Signal, "evidence" | "cause"> & {
+    evidence?: NonNullable<Signal["evidence"]>;
+    cause?: NonNullable<Signal["cause"]>;
+  } = {
     type: "signal",
     id: `00000000-0000-4000-8000-${session.padStart(12, "0")}`,
     at: "2026-11-25T00:00:00.000Z",
@@ -28,9 +32,14 @@ function record(session: string, shape: RecordShape = {}): RecordEvent {
     fingerprint: verdict.fingerprint,
     tool: "bash",
     error: "ls: unrecognized option",
-    ...(piPath ? { evidence: "pi-path" as const } : {}),
-    ...(batchOrdered ? { cause: "parallel-batch" as const } : {}),
   };
+  if (piPath) {
+    event.evidence = "pi-path";
+  }
+  if (batchOrdered) {
+    event.cause = "parallel-batch";
+  }
+  return event;
 }
 
 const passing: PiCoreCandidate = {

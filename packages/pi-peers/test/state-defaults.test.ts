@@ -8,13 +8,16 @@ const peer = { machineId: "beta", sessionId: "b", runtimeNonce: "b".repeat(32) }
 const sender = { machineId: "alpha", sessionId: "a", runtimeNonce: "a".repeat(32) };
 const id = (index: number) => index.toString(16).padStart(32, "0");
 function incoming(index: number, kind: "update" | "request", deliveryBytes?: number): AdmitInput {
-  return {
+  const request: AdmitInput = {
     from: sender,
     to: peer,
     scopeId: "team",
     message: { id: id(index), kind, format: "text", content: "work" },
-    ...(deliveryBytes === undefined ? {} : { deliveryBytes }),
   };
+  if (deliveryBytes !== undefined) {
+    request.deliveryBytes = deliveryBytes;
+  }
+  return request;
 }
 function stock() {
   let now = 0;

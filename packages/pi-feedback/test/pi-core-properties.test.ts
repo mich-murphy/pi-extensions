@@ -7,6 +7,7 @@ import type { LedgerEvent } from "../ledger.ts";
 import { deriveGroups } from "../queue.ts";
 import type { Group } from "../queue.ts";
 import { signal, verdictEvent } from "./events.ts";
+import type { SignalOptions } from "./events.ts";
 
 const OWNERS = ["pi-claude", "unattributed"] as const;
 const FINGERPRINTS = ["bash: ls: unrecognized option", "read: ENOENT"] as const;
@@ -30,14 +31,22 @@ function drawEvents(tc: TestCase): Drawn {
     const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
     const piPath = tc.draw(gs.booleans(), "piPath");
     const batchOrdered = tc.draw(gs.booleans(), "batchOrdered");
-    const made = signal({
+    const options: Omit<SignalOptions, "evidence" | "cause"> & {
+      evidence?: NonNullable<SignalOptions["evidence"]>;
+      cause?: NonNullable<SignalOptions["cause"]>;
+    } = {
       n,
       session: tc.draw(gs.sampledFrom([...SESSIONS]), "session"),
       owner: tc.draw(gs.sampledFrom([...OWNERS]), "owner"),
       fingerprint,
-      ...(piPath ? { evidence: "pi-path" as const } : {}),
-      ...(batchOrdered ? { cause: "parallel-batch" as const } : {}),
-    });
+    };
+    if (piPath) {
+      options.evidence = "pi-path";
+    }
+    if (batchOrdered) {
+      options.cause = "parallel-batch";
+    }
+    const made = signal(options);
     assert.ok(made.type === "signal");
     records.push(made);
     if (tc.draw(gs.booleans(), "verdict")) {

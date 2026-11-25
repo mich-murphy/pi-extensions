@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ExtensionUIDialogOptions } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
 
 export type DialogContext = Pick<ExtensionContext, "mode" | "hasUI" | "signal"> & {
@@ -8,6 +8,14 @@ const isAnswer = Schema.is(Schema.String);
 const timeout = 120_000;
 function aborted(ctx: DialogContext): boolean {
   return ctx.signal?.aborted === true;
+}
+
+function dialogOptions(signal: AbortSignal | undefined): ExtensionUIDialogOptions {
+  const options: ExtensionUIDialogOptions = { timeout };
+  if (signal !== undefined) {
+    options.signal = signal;
+  }
+  return options;
 }
 
 export function requireAttendedUI(ctx: DialogContext): void {
@@ -25,10 +33,7 @@ export async function selectChoice(
   if (aborted(ctx)) {
     return undefined;
   }
-  const answer = await ctx.ui.select(title, [...options], {
-    timeout,
-    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-  });
+  const answer = await ctx.ui.select(title, [...options], dialogOptions(ctx.signal));
   return !aborted(ctx) && isAnswer(answer) && options.includes(answer) ? answer : undefined;
 }
 export async function inputChoice(
@@ -40,9 +45,6 @@ export async function inputChoice(
   if (aborted(ctx)) {
     return undefined;
   }
-  const answer = await ctx.ui.input(title, placeholder, {
-    timeout,
-    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-  });
+  const answer = await ctx.ui.input(title, placeholder, dialogOptions(ctx.signal));
   return !aborted(ctx) && isAnswer(answer) ? answer : undefined;
 }

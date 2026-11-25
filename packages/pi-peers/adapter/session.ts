@@ -12,7 +12,7 @@ import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
 import type { Delivery } from "../state/types.js";
 import { MessageAliases } from "./aliases.js";
-import type { EnsureGateway, LinkState } from "./client.js";
+import type { ClientOptions, EnsureGateway, LinkState } from "./client.js";
 import { GatewayClient } from "./client.js";
 import { permits } from "./config.js";
 import type { Configuration } from "./config.js";
@@ -61,10 +61,15 @@ export class AdapterSession {
     private readonly signalPump: () => void,
     ensureGateway?: EnsureGateway,
   ) {
-    this.client = new GatewayClient({
+    const clientOptions: Pick<ClientOptions, "config" | "peer" | "ensureGateway"> = {
       config,
       peer,
-      ...(ensureGateway === undefined ? {} : { ensureGateway }),
+    };
+    if (ensureGateway !== undefined) {
+      clientOptions.ensureGateway = ensureGateway;
+    }
+    this.client = new GatewayClient({
+      ...clientOptions,
       incoming: (request) => this.incoming(request),
       linkChanged: () => {
         this.updateStatus();
@@ -326,12 +331,17 @@ export class AdapterSession {
     if (message.kind === "request") {
       const relation = this.state.rememberOutgoing({ to, scopeId, message });
       if (relation.tag !== "ok") {
-        return {
-          tag: "not_admitted",
-          messageId,
-          code: relation.code,
-          ...(relation.code === "overloaded" ? { resource: relation.resource } : {}),
+        type RejectedRequest = {
+          tag: "not_admitted";
+          messageId: string;
+          code: typeof relation.code;
+          resource?: Extract<typeof relation, { code: "overloaded" }>["resource"];
         };
+        const failure: RejectedRequest = { tag: "not_admitted", messageId, code: relation.code };
+        if (relation.code === "overloaded") {
+          failure.resource = relation.resource;
+        }
+        return failure;
       }
     }
     const outcome = await this.client.send(to, scopeId, message, signal);

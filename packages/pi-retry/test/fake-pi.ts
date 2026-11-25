@@ -62,8 +62,10 @@ export function assistantEntry(
     },
     stopReason,
     timestamp: 0,
-    ...(errorMessage === undefined ? {} : { errorMessage }),
   };
+  if (errorMessage !== undefined) {
+    message.errorMessage = errorMessage;
+  }
   return {
     sourceEntry: { type: "message", id, parentId: null, timestamp: "", message },
     messages: [message],

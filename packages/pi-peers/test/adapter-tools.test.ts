@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { MessageAliases } from "../adapter/aliases.js";
+import type { Configuration } from "../adapter/config.js";
 import { Handles, sessionHandle, TakenIndex } from "../adapter/handles.js";
 import { UnsureSends } from "../adapter/retries.js";
 import type { Waited } from "../adapter/session.js";
@@ -15,6 +16,20 @@ const restarted = { ...beta, runtimeNonce: "c".repeat(32) };
 type Incoming = { from: PeerRef; to: PeerRef; scopeId: string; message: Message };
 type Sent = { to: PeerRef; scopeId: string; message: Message };
 
+function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
+  const config: Omit<Configuration, "maxWaitSeconds"> & { maxWaitSeconds?: number } = {
+    machineId: "alpha",
+    socketPath: "/tmp/pi-peers-test.sock",
+    label: "Pi",
+    scopeIds: ["team"],
+    policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
+  };
+  if (maxWaitSeconds !== undefined) {
+    config.maxWaitSeconds = maxWaitSeconds;
+  }
+  return config;
+}
+
 function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds?: number) {
   let roster = initial.map((entry) => ({ ...entry, scopeIds: ["team"] }));
   const waits: number[] = [];
@@ -27,14 +42,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
   const down = new Set<string>();
   const session: ToolSession = {
     peer: self,
-    config: {
-      machineId: "alpha",
-      socketPath: "/tmp/pi-peers-test.sock",
-      label: "Pi",
-      scopeIds: ["team"],
-      policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
-      ...(maxWaitSeconds === undefined ? {} : { maxWaitSeconds }),
-    },
+    config: fixtureConfig(maxWaitSeconds),
     waitForMessage: async (seconds: number) => {
       waits.push(seconds);
       return waited;

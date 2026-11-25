@@ -190,9 +190,9 @@ function inRepository(fixture: Fixture, path: string): boolean {
 function assertLoads(fixture: Fixture, model: ReadonlyMap<ResourcePath, ToggleValue>): void {
   const files = new Map([...model].filter(([path]) => !inRepository(fixture, path)));
   const entries = new Map(
-    [...model]
-      .filter(([path]) => inRepository(fixture, path))
-      .map(([path, value]) => [relative(fixture.root, path), value]),
+    [...model].flatMap<[string, ToggleValue]>(([path, value]) =>
+      inRepository(fixture, path) ? [[relative(fixture.root, path), value]] : [],
+    ),
   );
   const repositories = entries.size === 0 ? new Map() : new Map([[fixture.repository, entries]]);
   for (const store of [fixture.store, new ToggleStateFile(fixture.statePath)]) {

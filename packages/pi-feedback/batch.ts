@@ -62,9 +62,9 @@ export function isParallelBatch(
   if (!MISSING_PATH.test(error)) {
     return false;
   }
-  const writers = batch
-    .filter((call) => call.id !== failing.id && !readOnly(call.name))
-    .map((call) => stringsIn(call.args).join("\n"));
+  const writers = batch.flatMap((call) =>
+    call.id !== failing.id && !readOnly(call.name) ? [stringsIn(call.args).join("\n")] : [],
+  );
   return pathsIn([error, ...stringsIn(failing.args)]).some((path) => {
     const directory = dirname(path);
     return writers.some(

@@ -8,7 +8,7 @@ function bodyCursors(body: readonly string[]): number {
   return body.filter((row) => row.startsWith("→ ")).length;
 }
 
-export type MenuShape = {
+export type MenuLayout = {
   readonly title: RegExp;
   readonly hint: RegExp;
   readonly separator: string;
@@ -57,13 +57,13 @@ function hintFields(
   };
 }
 
-export function readMenu(rows: readonly string[], shape: MenuShape): MenuView {
-  const top = rows.findIndex((row) => shape.title.test(row));
-  const hint = rows.findIndex((row, index) => index > top && shape.hint.test(row));
+export function readMenu(rows: readonly string[], layout: MenuLayout): MenuView {
+  const top = rows.findIndex((row) => layout.title.test(row));
+  const hint = rows.findIndex((row, index) => index > top && layout.hint.test(row));
   const body = top >= 0 && hint > top ? rows.slice(top + 1, hint) : [];
   return {
-    ...titleFields(rows, top, shape.separator),
-    ...hintFields(rows, hint, shape.hint),
+    ...titleFields(rows, top, layout.separator),
+    ...hintFields(rows, hint, layout.hint),
     body,
     cursors: bodyCursors(body),
     selected: selectedLabel(body),

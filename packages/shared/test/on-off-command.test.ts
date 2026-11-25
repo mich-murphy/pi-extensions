@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { onOffCommand } from "../on-off-command";
+import type { OnOffContext, OnOffOptions } from "../on-off-command";
 
 type Notice = readonly [string, "info" | "warning"];
 
@@ -7,7 +8,9 @@ function harness(note?: (enabled: boolean) => string) {
   const notices: Notice[] = [];
   const applied: boolean[] = [];
   let state = true;
-  const command = onOffCommand({
+  const options: Omit<OnOffOptions<OnOffContext>, "note"> & {
+    note?: (enabled: boolean) => string;
+  } = {
     name: "demo",
     label: "Demo",
     description: "Turn demo on or off",
@@ -16,8 +19,11 @@ function harness(note?: (enabled: boolean) => string) {
       state = enabled;
       applied.push(enabled);
     },
-    ...(note === undefined ? {} : { note }),
-  });
+  };
+  if (note !== undefined) {
+    options.note = note;
+  }
+  const command = onOffCommand(options);
   const ctx = {
     ui: { notify: (message: string, type: "info" | "warning") => notices.push([message, type]) },
   };

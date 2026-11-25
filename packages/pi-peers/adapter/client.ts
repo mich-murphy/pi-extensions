@@ -203,6 +203,23 @@ export class GatewayClient {
       });
     }
   }
+  private registration(rid: string, expected: string | undefined): Request {
+    type Registration = Extract<Request, { op: "register" }>;
+    const request: Omit<Registration, "expectedConfigSha256"> & { expectedConfigSha256?: string } =
+      {
+        v: 2,
+        op: "register",
+        rid,
+        sessionId: this.options.peer.sessionId,
+        runtimeNonce: this.options.peer.runtimeNonce,
+        scopeIds: this.options.config.scopeIds,
+        label: this.options.config.label,
+      };
+    if (expected !== undefined) {
+      request.expectedConfigSha256 = expected;
+    }
+    return request;
+  }
   private async register(
     connection: Connection,
     attempt: {
@@ -220,20 +237,7 @@ export class GatewayClient {
     const rid = freshId();
     this.registerRid = rid;
     try {
-      const reply = await connection.request(
-        {
-          v: 2,
-          op: "register",
-          rid,
-          sessionId: this.options.peer.sessionId,
-          runtimeNonce: this.options.peer.runtimeNonce,
-          scopeIds: this.options.config.scopeIds,
-          label: this.options.config.label,
-          ...(expected === undefined ? {} : { expectedConfigSha256: expected }),
-        },
-        deadline,
-        signal,
-      );
+      const reply = await connection.request(this.registration(rid, expected), deadline, signal);
       if (!current()) {
         throw new ConnectionFailure("cancelled", false);
       }

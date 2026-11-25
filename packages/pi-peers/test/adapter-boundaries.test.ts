@@ -104,19 +104,17 @@ describe("adapter configuration and retry boundaries", () => {
     request: Parameters<typeof sendWithRetries>[0]["request"],
     signal?: AbortSignal,
   ) {
-    return {
+    const options: Parameters<typeof sendWithRetries>[0] = {
       sender,
       recipient,
       scopeId: "team",
-      message: {
-        id: "3".repeat(32),
-        kind: "update" as const,
-        content: "content",
-        format: "text" as const,
-      },
+      message: { id: "3".repeat(32), kind: "update", content: "content", format: "text" },
       request,
-      ...(signal === undefined ? {} : { signal }),
     };
+    if (signal !== undefined) {
+      options.signal = signal;
+    }
+    return options;
   }
 
   test("send preflight and cancellation prove non-admission without invoking transport", async () => {

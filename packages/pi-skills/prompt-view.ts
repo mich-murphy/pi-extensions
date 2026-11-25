@@ -44,7 +44,7 @@ export function promptResources(
   resources: readonly Pick<ToggleResource, "id" | "editability">[],
 ): readonly PromptResource[] {
   const editable = new Set(
-    resources.filter((resource) => resource.editability === "editable").map(({ id }) => id),
+    resources.flatMap(({ editability, id }) => (editability === "editable" ? [id] : [])),
   );
   const entries: readonly PromptResource[] = [
     ...(options.contextFiles ?? []).map<PromptResource>((file) => ({

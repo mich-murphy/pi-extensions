@@ -181,17 +181,25 @@ function expectedChange(
   return common >= previous.blocks.length - 1 ? "appended" : "history-rewritten";
 }
 
+type CacheSettings = { ttl?: Ttl; reasoning?: string | undefined };
+
 function submit(machine: Machine, req: Req): void {
   const before = machine.events.length;
-  const recorder = machine.tracker(
-    req.model,
-    {
-      promptBlocks: req.blocks,
-      cacheBreakpoints: [],
-      ...(req.tools === undefined ? {} : { toolDescription: req.tools }),
-    },
-    { ...(req.ttl === undefined ? {} : { ttl: req.ttl }), reasoning: req.reasoning },
-  );
+  const requestInput: Pick<
+    Parameters<CacheDiagnosticTracker>[1],
+    "promptBlocks" | "cacheBreakpoints"
+  > & {
+    toolDescription?: string;
+  } = { promptBlocks: req.blocks, cacheBreakpoints: [] };
+  if (req.tools !== undefined) {
+    requestInput.toolDescription = req.tools;
+  }
+  const cacheSettings: CacheSettings = {};
+  if (req.ttl !== undefined) {
+    cacheSettings.ttl = req.ttl;
+  }
+  cacheSettings.reasoning = req.reasoning;
+  const recorder = machine.tracker(req.model, requestInput, cacheSettings);
   assert.equal(machine.events.length, before + 1);
   const event = machine.events.at(-1);
   assert.equal(event?.type, "request");

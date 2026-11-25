@@ -8,7 +8,7 @@ import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
-import type { CacheDiagnosticTracker } from "../cache-tracker";
+import type { CacheDiagnosticTracker, CacheUsageMetadata } from "../cache-tracker";
 import { sdkModelSelectorFor, undatedModelId } from "../models";
 import { resolveClaudeExecutable, tooOldClaudeCode } from "./claude-executable";
 import { createDeferredCallCapture, createDeferredPiTools } from "./deferred-tools";
@@ -180,6 +180,11 @@ function claudeCodeRetries(requested: number | undefined): number {
     : 0;
 }
 
+type QueryEnvironment = QueryWiring["env"] & {
+  CLAUDE_CODE_MAX_RETRIES: string;
+  CLAUDE_CODE_MAX_OUTPUT_TOKENS?: string;
+};
+
 function queryParameters(
   turn: Turn,
   {
@@ -214,6 +219,13 @@ function queryParameters(
       definition.handler,
     );
   }
+  const queryEnv: QueryEnvironment = {
+    ...env,
+    CLAUDE_CODE_MAX_RETRIES: String(claudeCodeRetries(streamOptions?.maxRetries)),
+  };
+  if (maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1) {
+    queryEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(Math.floor(maxTokens));
+  }
   return {
     prompt: buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
     options: {
@@ -235,13 +247,7 @@ function queryParameters(
       strictMcpConfig: true,
       skills: [],
       mcpServers: { pi: server },
-      env: {
-        ...env,
-        CLAUDE_CODE_MAX_RETRIES: String(claudeCodeRetries(streamOptions?.maxRetries)),
-        ...(maxTokens !== undefined && Number.isFinite(maxTokens) && maxTokens >= 1
-          ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxTokens)) }
-          : {}),
-      },
+      env: queryEnv,
       hooks: {
         PreToolUse: [{ hooks: [hook], onFailure: "block" }],
         PostToolBatch: [{ hooks: [batchHook], onFailure: "block" }],
@@ -642,13 +648,36 @@ function conclude(
       ? failed(new SdkInternalContinuationError())
       : startedApiFailure(terminal, progress);
   reportUsageLimit(checkedTerminal, progress.usageLimitResetsAt, usageLimitObserver);
-  recordUsage?.(usage, {
-    ...(observedModel === undefined ? {} : { observedModel }),
+  recordUsage?.(usage, queryUsageMetadata(checkedTerminal, progress, capture));
+  return checkedTerminal;
+}
+
+type ObservedModelFields = { observedModel?: string };
+type QueryResultFields = { numTurns?: number; apiError?: string };
+
+function queryUsageMetadata(
+  terminal: BridgeEvent,
+  progress: QueryProgress,
+  capture: QueryCapture,
+): CacheUsageMetadata {
+  const { observedModel, result, apiError } = progress;
+  const observed: ObservedModelFields = {};
+  if (observedModel !== undefined) {
+    observed.observedModel = observedModel;
+  }
+  const resultFields: QueryResultFields = {};
+  if (result?.numTurns !== undefined) {
+    resultFields.numTurns = result.numTurns;
+  }
+  if (apiError !== undefined) {
+    resultFields.apiError = apiError;
+  }
+  return {
+    ...observed,
     query: queryDiagnostics({
-      outcome: checkedTerminal.type === "failed" ? "failed" : "completed",
-      ...(result?.numTurns === undefined ? {} : { numTurns: result.numTurns }),
+      outcome: terminal.type === "failed" ? "failed" : "completed",
+      ...resultFields,
       modelUsage: result?.modelUsage ?? {},
-      ...(apiError === undefined ? {} : { apiError }),
       modelRequests: progress.modelRequests,
       assistantToolUses: progress.assistantToolUses,
       maxAssistantToolUses: progress.maxAssistantToolUses,
@@ -659,8 +688,7 @@ function conclude(
       sdkRejectedCalls: capture.deferred.sdkRejectedCalls,
       fallbackCalls: capture.fallbackCalls,
     }),
-  });
-  return checkedTerminal;
+  };
 }
 
 function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {

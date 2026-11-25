@@ -494,12 +494,8 @@ export default function registerCommunication(
   pi.registerCommand("peers", {
     description: "Peers menu: status, setup, doctor, reconnect, reset",
     getArgumentCompletions: (prefix) => {
-      const items = COMMANDS.filter((command) => command.value.startsWith(prefix)).map(
-        (command) => ({
-          value: command.value,
-          label: command.value,
-          description: command.description,
-        }),
+      const items = COMMANDS.flatMap(({ value, description }) =>
+        value.startsWith(prefix) ? [{ value, label: value, description }] : [],
       );
       return items.length === 0 ? null : items;
     },

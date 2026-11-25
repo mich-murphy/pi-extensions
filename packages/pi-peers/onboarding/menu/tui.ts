@@ -223,14 +223,13 @@ export class PeersMenu implements Component, Focusable {
 
   private list(screen: Screen, width: number): string[] {
     const entries = this.entries(screen);
-    const items = entries.map<SettingItem>((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      currentValue: entry.value,
-      ...(entry.description === undefined
-        ? {}
-        : { description: truncateToWidth(entry.description, Math.max(1, width - 6), "…") }),
-    }));
+    const items = entries.map((entry) => {
+      const item: SettingItem = { id: entry.id, label: entry.label, currentValue: entry.value };
+      if (entry.description !== undefined) {
+        item.description = truncateToWidth(entry.description, Math.max(1, width - 6), "…");
+      }
+      return item;
+    });
     const list = new SettingsList(
       items,
       this.maxRows(),

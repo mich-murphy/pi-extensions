@@ -150,7 +150,11 @@ function shownError(value: RejectedDiscovery): Shown<never> {
   return { value: { ...value, note }, text: note };
 }
 function problem(code: string, note?: string): Shown<never> {
-  return shownError({ tag: "error", code, ...(note === undefined ? {} : { note }) });
+  const failure: RejectedDiscovery = { tag: "error", code };
+  if (note !== undefined) {
+    failure.note = note;
+  }
+  return shownError(failure);
 }
 async function invoke<Value extends ToolSuccess>(
   getSession: () => ToolSession | undefined,
@@ -297,6 +301,24 @@ function route(session: ToolSession, args: SendArguments): Route | InvalidRoute 
     replyTo: { sender: original.peer, messageId },
   };
 }
+function outgoingMessage(args: SendArguments, replyTo: Message["replyTo"]): Message {
+  const message: Omit<Message, "status" | "replyTo"> & {
+    status?: NonNullable<Message["status"]>;
+    replyTo?: NonNullable<Message["replyTo"]>;
+  } = {
+    id: freshId(),
+    kind: args.kind,
+    content: args.content,
+    format: args.format ?? "markdown",
+  };
+  if (args.status !== undefined) {
+    message.status = args.status;
+  }
+  if (replyTo !== undefined) {
+    message.replyTo = replyTo;
+  }
+  return message;
+}
 async function send(
   session: ToolSession,
   args: ToolArguments,
@@ -327,14 +349,7 @@ async function send(
       to: target.to.peer,
       scopeId: target.scopeId,
       budgetMs: SEND_BUDGET_MS,
-      message: {
-        id: freshId(),
-        kind: args.kind,
-        content: args.content,
-        format: args.format ?? "markdown",
-        ...(args.status === undefined ? {} : { status: args.status }),
-        ...(target.replyTo === undefined ? {} : { replyTo: target.replyTo }),
-      },
+      message: outgoingMessage(args, target.replyTo),
     },
     "local-client",
   );
@@ -402,7 +417,7 @@ async function resend(
 }
 function takenEntry(session: ToolSession, delivery: TakenDelivery) {
   const { message } = delivery;
-  return {
+  const received = {
     from: session.handles.sender(delivery.from, delivery.scopeId),
     sender: delivery.from,
     scopeId: delivery.scopeId,
@@ -411,11 +426,16 @@ function takenEntry(session: ToolSession, delivery: TakenDelivery) {
     kind: message.kind,
     format: message.format,
     content: message.content,
-    ...(message.replyTo === undefined
-      ? {}
-      : { replyTo: session.aliases.alias(message.replyTo.messageId) }),
-    ...(message.status === undefined ? {} : { status: message.status }),
   };
+  const entry: typeof received & { replyTo?: string; status?: NonNullable<Message["status"]> } =
+    received;
+  if (message.replyTo !== undefined) {
+    entry.replyTo = session.aliases.alias(message.replyTo.messageId);
+  }
+  if (message.status !== undefined) {
+    entry.status = message.status;
+  }
+  return entry;
 }
 function takenText(entry: ReturnType<typeof takenEntry>): string {
   const header = [
