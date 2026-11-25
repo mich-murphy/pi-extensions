@@ -15,6 +15,7 @@ import { diagnoseManaged } from "../onboarding/managed.js";
 import { decodeGateway, decodePairing, decodeRecord, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import {
+  expectedUnroutedCode,
   dialog,
   nativeAddress,
   nativeFixture,
@@ -362,7 +363,8 @@ describe("guided remote actions with actual native crypto and loopback mTLS", ()
       content: "old-root must not reach new Pi",
       format: "text",
     });
-    expect(sent).toMatchObject({ tag: "not_admitted", code: "link_down" });
+    const code = await expectedUnroutedCode(fixture.executable);
+    expect(sent).toMatchObject({ tag: "not_admitted", code });
     expect(client(fresh).status().connected).toBe(true);
     oldClient.close();
   });
