@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { copyFile, chmod, mkdtemp, realpath, lstat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { vi } from "vitest";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
 import type { DialogContext } from "../onboarding/dialog.js";
@@ -11,8 +13,22 @@ import type { Progress } from "../onboarding/menu/forms.js";
 import { MenuModel } from "../onboarding/menu/model.js";
 import type { Screen } from "../onboarding/menu/model.js";
 import type { Outcome } from "../onboarding/menu/progress.js";
+import { decodeRecord, parseJson } from "../onboarding/schema.js";
 
 export const builtGateway = resolve("packages/pi-peers/gateway/target/debug/pi-gateway");
+async function advertisesLinkState(executable: string): Promise<boolean> {
+  const { stdout } = await promisify(execFile)(executable, ["--version", "--json"], {
+    timeout: 5000,
+  });
+  const capabilities = decodeRecord(parseJson(stdout)).capabilities;
+  return Array.isArray(capabilities) && capabilities.includes("link-state-v1");
+}
+export async function expectedLinkEvents(executable: string): Promise<{ linkEvents?: true }> {
+  return (await advertisesLinkState(executable)) ? { linkEvents: true } : {};
+}
+export async function expectedUnroutedCode(executable: string): Promise<string> {
+  return (await advertisesLinkState(executable)) ? "link_down" : "no_route";
+}
 export async function nativeFixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pc-")));
   const executable = join(root, "pi-gateway");

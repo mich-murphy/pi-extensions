@@ -268,6 +268,7 @@ export default function registerCommunication(
     return { connected: session.status().connected, technical: [] };
   };
   const summary = () => statusSummary(owned?.session.status(), diagnostic);
+  const liveLinks = () => owned?.session.linkStates() ?? [];
   const reconnectOutcome = async (ctx: ExtensionContext): Promise<Outcome> => {
     const { connected, technical } = await reconnectCurrent(ctx);
     const after = summary();
@@ -328,7 +329,7 @@ export default function registerCommunication(
     const agentDir = getAgentDir();
     const [setup, checks, resettable] = await Promise.all([
       prepareSetup(agentDir, activatePlan(ctx), testBackend, reconnectGuarded(ctx)),
-      doctorReport(agentDir, { inMenu: true }).then(doctorLines, () => [
+      doctorReport(agentDir, { inMenu: true, liveLinks: liveLinks() }).then(doctorLines, () => [
         "✗ Doctor could not read the setup files.",
       ]),
       hasResetTarget(agentDir).catch(() => true),
@@ -457,7 +458,10 @@ export default function registerCommunication(
         return;
       }
       if (action === "doctor") {
-        ctx.ui.notify(`${await doctor(getAgentDir())}\nLive: ${summary().headline}`, "info");
+        ctx.ui.notify(
+          `${await doctor(getAgentDir(), { liveLinks: liveLinks() })}\nLive: ${summary().headline}`,
+          "info",
+        );
         return;
       }
       if (action === "reconnect") {

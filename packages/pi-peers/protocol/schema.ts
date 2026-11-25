@@ -119,6 +119,7 @@ const requests = [
     runtimeNonce: randomId,
     scopeIds: scopeIds(4),
     label,
+    linkEvents: Schema.optionalKey(Schema.Boolean),
   }),
   Schema.Struct({ ...head, op: Schema.Literal("close") }),
   Schema.Struct({ ...head, op: Schema.Literal("gateway.restart"), expectedMachineId: machineId }),
@@ -227,7 +228,11 @@ const deliveryOutcome = Schema.Union([
 const sendOutcome = Schema.Union([
   admittedOutcome,
   overloadedOutcome,
-  Schema.Struct({ tag: Schema.Literal("not_admitted"), binding, code: Schema.Literals(sendCodes) }),
+  Schema.Struct({
+    tag: Schema.Literal("not_admitted"),
+    binding,
+    code: Schema.Literals([...sendCodes, "link_down"]),
+  }),
   Schema.Struct({
     tag: Schema.Literal("unknown"),
     binding,
@@ -276,6 +281,15 @@ const event = Schema.Struct({
     }),
   ]),
 });
-export const Frame = Schema.Union([...requests, ...results, event]);
+const linkStates = ["up", "down", "probing"] as const;
+const linkState = Schema.Struct({
+  ...head,
+  op: Schema.Literal("link.state"),
+  machineId,
+  state: Schema.Literals(linkStates),
+  since: natural,
+  nextProbe: Schema.optionalKey(natural),
+});
+export const Frame = Schema.Union([...requests, ...results, event, linkState]);
 export type Frame = typeof Frame.Type;
 export type WorkRef = typeof work.Type;

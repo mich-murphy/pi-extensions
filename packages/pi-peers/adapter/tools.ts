@@ -139,11 +139,21 @@ function ownScope(session: AdapterSession, scopeId: string): void {
     throw new ConnectionFailure("unavailable", false);
   }
 }
-type Listed = { handle: string; label: string; self: boolean; restarted: boolean };
+type Listed = {
+  handle: string;
+  label: string;
+  self: boolean;
+  restarted: boolean;
+  linkDown?: boolean;
+};
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const RESTARTED = "restarted: unread inbox and receipts reset";
 function listLine(entry: Listed): string {
-  const markers = [...(entry.self ? ["you"] : []), ...(entry.restarted ? [RESTARTED] : [])];
+  const markers = [
+    ...(entry.self ? ["you"] : []),
+    ...(entry.restarted ? [RESTARTED] : []),
+    ...(entry.linkDown === true ? ["link down"] : []),
+  ];
   const head = markers.length === 0 ? entry.handle : `${entry.handle} (${markers.join("; ")})`;
   const room = Math.max(8, 80 - head.length - 3);
   const characters = Array.from(graphemes.segment(entry.label), (part) => part.segment);
@@ -196,7 +206,13 @@ async function list(
       ? []
       : [{ peer: descriptor.peer, scopeId, label: plainText(descriptor.label), self }];
   });
-  const peers = session.handles.list(entries);
+  const peers = session.handles
+    .list(entries)
+    .map((entry) =>
+      !entry.self && session.client.linkDown(entry.peer.machineId)
+        ? { ...entry, linkDown: true }
+        : entry,
+    );
   return { value: { peers }, text: listText(peers) };
 }
 function sendProblem(args: SendArguments): string | undefined {

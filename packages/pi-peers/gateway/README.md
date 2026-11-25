@@ -107,7 +107,8 @@ See [provisioning and maintenance](PAIRING.md) for confirmation and custody deta
 | Ping after silence | 30 s |
 | Close after silence | 90 s |
 | Link age cap | 24 h, or the earliest certificate or CRL expiry |
-| Reconnect | 6 attempts per 60 s, with backoff from 250 ms |
+| Reconnect | 6 attempts per 60 s, with backoff from 250 ms, then the breaker opens |
+| Breaker probe | 30 s doubling to 240 s, plus up to 25% jitter (always 30 s–5 min), forever |
 | Pending inbound handshakes | 4 |
 | Forwarded operation timeout | 15 s |
 | Read assembly and queued write deadline | 5 s |
@@ -130,7 +131,7 @@ acknowledgement claims remote connectivity.
 
 ## Output
 
-Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A gateway whose remote endpoint listens adds `"remoteListenAddress":"IP:port"`, the socket address it actually bound. With a configured port of `0` this is the only way to learn the port. Gateways without a remote, and connectors, omit the field. Stderr has `{"event":"remote_unavailable","reason":"reconnect_exhausted"}` when the connector gives up. It then stays down until you restart it or a local session registers again. Structural/bind startup failures print `Error:` and exit non-zero. Operational remote credential failures leave local service available; `--diagnose` reports their sanitized degraded reason.
+Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A gateway whose remote endpoint listens adds `"remoteListenAddress":"IP:port"`, the socket address it actually bound. With a configured port of `0` this is the only way to learn the port. Gateways without a remote, and connectors, omit the field. Stderr has coalesced JSON events, at most one per kind every 30 s, with `suppressed` counting the ones folded in: `{"event":"link_state","machineId":"…","state":"up|down|probing"}`, `{"event":"forward_timeout","remote":true|false}` and `{"event":"overloaded","resource":"…","op":"…"}`. They never contain payloads, paths or credentials. After 6 failed attempts in 60 s the link circuit breaker opens: sends to that machine fail at once with `link_down` for sessions that opted in, and the gateway keeps probing every 30 s to 5 min until a handshake succeeds. A local registration in a remote scope brings the next probe forward. It never stays down for good. Structural/bind startup failures print `Error:` and exit non-zero. Operational remote credential failures leave local service available; `--diagnose` reports their sanitized degraded reason.
 
 ## Troubleshooting
 
@@ -142,7 +143,16 @@ Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A
 | `remote credentials rejected` | Wrong format or permissions, wrong SAN, expired certificate or CRL, a revoked leaf, or a CRL older than the floor. |
 | `revocation commit busy` | Another gateway holds the floor file. Use one file per gateway. |
 | `ready` but no link | Check the address, the open port and the roles. Exactly one side must listen. |
-| `remote_unavailable` | The connector gave up. Fix the cause and restart. |
+| `link_state` `down` repeating | Handshakes keep failing. Check the address, port and credentials with `--diagnose`; the gateway keeps probing on its own. |
+
+## Link state events
+
+Capability `link-state-v1` adds the optional local-only register field `linkEvents` (boolean). With `true`, the gateway sends
+`{"v":1,"op":"link.state","rid":<register rid>,"machineId":…,"state":"up"|"down"|"probing","since":<unix ms>,"nextProbe"?:<unix ms>}`
+right after the register result and again on every change. `nextProbe` appears only while `down`. The same session's sends to that
+machine are refused with `not_admitted` code `link_down` whenever no link is up. Without the field nothing changes: no
+`link.state` frames, and `no_route` as before. `link.state` is valid only at the adapter-delivery boundary, and `link_down` only
+in send results to local clients.
 
 ## Loaded configuration generation guard
 

@@ -23,7 +23,7 @@ async fn main() -> io::Result<()> {
         if json.is_some() {
             serde_json::to_writer(
                 &mut stdout,
-                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[1],"capabilities":["managed-on-demand-v1","pairing-v1","gateway-control-v1","setup-lock-v1","config-generation-v1"]}),
+                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[1],"capabilities":["managed-on-demand-v1","pairing-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","link-state-v1"]}),
             )?;
         } else {
             write!(stdout, "pi-gateway {}", env!("CARGO_PKG_VERSION"))?;

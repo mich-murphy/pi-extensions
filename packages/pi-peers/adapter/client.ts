@@ -1,11 +1,13 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Frame, Message, PeerRef } from "../protocol/schema.js";
 import type { Configuration } from "./config.js";
+import { LinkTable } from "./links.js";
+import type { LinkState } from "./links.js";
 import { validateBoundReply } from "./replies.js";
 import { sendWithRetries } from "./send.js";
 import type { SendOutcome } from "./send.js";
 import { connectTransport, ConnectionFailure, freshId } from "./transport.js";
-import type { Connection, Reply, Request } from "./transport.js";
+import type { Connection, LinkFrame, Reply, Request } from "./transport.js";
 import { waitFor } from "./wait.js";
 
 type Descriptor = Extract<
@@ -15,13 +17,15 @@ type Descriptor = Extract<
 export type EnsureGateway = (
   deadline: number,
   signal: AbortSignal,
-) => Promise<{ gatewaySha256: string }>;
+) => Promise<{ gatewaySha256: string; linkEvents?: boolean }>;
+export type { LinkState } from "./links.js";
 
 export type ClientOptions = {
   config: Configuration;
   peer: PeerRef;
   incoming: (request: Request) => Reply;
   statusChanged: () => void;
+  linkChanged?: () => void;
   ensureGateway?: EnsureGateway;
 };
 export class GatewayClient {
@@ -38,10 +42,33 @@ export class GatewayClient {
   private readonly peers = new Map<string, Descriptor>();
   private diagnostic = "disconnected";
   private generationPending = false;
+  private linkEvents = false;
+  private linkRefused = false;
+  private registerRid: string | undefined;
+  private readonly linkTable = new LinkTable();
   constructor(private readonly options: ClientOptions) {}
   async recoverForTool(): Promise<void> {
     if (this.options.ensureGateway !== undefined && this.connection === undefined) {
       await this.reconnect(this.lifetime.signal);
+    }
+  }
+  links(): readonly LinkState[] {
+    return this.linkTable.list();
+  }
+  linkDown(machineId: string): boolean {
+    return this.linkTable.down(machineId);
+  }
+  private link(frame: LinkFrame): void {
+    if (frame.rid !== this.registerRid) {
+      throw new ConnectionFailure("protocol_error", false);
+    }
+    if (this.linkTable.apply(frame)) {
+      this.options.linkChanged?.();
+    }
+  }
+  private clearLinks(): void {
+    if (this.linkTable.clear()) {
+      this.options.linkChanged?.();
     }
   }
   effectiveScopes(): ReadonlySet<string> {
@@ -138,6 +165,7 @@ export class GatewayClient {
     current: () => boolean,
   ): Promise<string | undefined> {
     const ensure = this.options.ensureGateway;
+    this.linkEvents = false;
     if (ensure === undefined) {
       return undefined;
     }
@@ -152,6 +180,7 @@ export class GatewayClient {
       ) {
         throw new ConnectionFailure("protocol_error", false);
       }
+      this.linkEvents = "linkEvents" in snapshot && snapshot.linkEvents === true;
       return snapshot.gatewaySha256;
     } catch (error) {
       if (current()) {
@@ -159,6 +188,90 @@ export class GatewayClient {
         this.options.statusChanged();
       }
       throw error;
+    }
+  }
+  private disconnected(code: string): void {
+    const established = this.connection !== undefined;
+    this.connection = undefined;
+    this.scopes.clear();
+    this.watch = undefined;
+    this.peers.clear();
+    this.clearLinks();
+    this.diagnostic = this.generationPending ? "activation_pending" : code;
+    this.options.statusChanged();
+    if (established && this.options.ensureGateway !== undefined && !this.closed) {
+      queueMicrotask(() => {
+        void this.reconnect(this.lifetime.signal).catch(() => undefined);
+      });
+    }
+  }
+  private async register(
+    connection: Connection,
+    attempt: {
+      expected: string | undefined;
+      deadline: number;
+      signal: AbortSignal;
+      current: () => boolean;
+    },
+  ): Promise<Connection> {
+    const { expected, deadline, signal, current } = attempt;
+    const abort = () => {
+      connection.close();
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    const optIn = this.linkEvents && !this.linkRefused;
+    const rid = freshId();
+    this.registerRid = rid;
+    try {
+      const reply = await connection.request(
+        {
+          v: 1,
+          op: "register",
+          rid,
+          sessionId: this.options.peer.sessionId,
+          runtimeNonce: this.options.peer.runtimeNonce,
+          scopeIds: this.options.config.scopeIds,
+          label: this.options.config.label,
+          ...(expected === undefined ? {} : { expectedConfigSha256: expected }),
+          ...(optIn ? { linkEvents: true } : {}),
+        },
+        deadline,
+        signal,
+      );
+      if (!current()) {
+        throw new ConnectionFailure("cancelled", false);
+      }
+      return this.registered(connection, reply);
+    } catch (error) {
+      connection.close();
+      this.registrationFailed(error, optIn, current() && expected !== undefined);
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+  private registered(connection: Connection, reply: Reply): Connection {
+    if (reply.outcome.tag === "error" && reply.outcome.code === "config_mismatch") {
+      this.generationPending = true;
+      throw new ConnectionFailure("unavailable", false);
+    }
+    if (reply.forOp !== "register" || reply.outcome.tag !== "ok") {
+      throw new ConnectionFailure("unavailable", false);
+    }
+    this.scopes = new Set(reply.outcome.value.scopeIds);
+    this.connection = connection;
+    this.generationPending = false;
+    this.diagnostic = "connected";
+    this.options.statusChanged();
+    return connection;
+  }
+  private registrationFailed(error: unknown, optIn: boolean, activation: boolean): void {
+    if (optIn && error instanceof ConnectionFailure && error.code === "unavailable") {
+      this.linkRefused = true;
+    }
+    if (activation) {
+      this.diagnostic = this.generationPending ? "activation_pending" : "activation_unconfirmed";
+      this.options.statusChanged();
     }
   }
   private async initialize(): Promise<Connection> {
@@ -183,26 +296,19 @@ export class GatewayClient {
             this.roster(event);
           }
         },
+        link: (frame) => {
+          if (current()) {
+            this.link(frame);
+          }
+        },
         validateReply: (request, reply) => {
           if (current()) {
             this.validateReply(request, reply);
           }
         },
         disconnected: (code) => {
-          if (!current()) {
-            return;
-          }
-          const established = this.connection !== undefined;
-          this.connection = undefined;
-          this.scopes.clear();
-          this.watch = undefined;
-          this.peers.clear();
-          this.diagnostic = this.generationPending ? "activation_pending" : code;
-          this.options.statusChanged();
-          if (established && this.options.ensureGateway !== undefined && !this.closed) {
-            queueMicrotask(() => {
-              void this.reconnect(this.lifetime.signal).catch(() => undefined);
-            });
+          if (current()) {
+            this.disconnected(code);
           }
         },
       });
@@ -210,53 +316,7 @@ export class GatewayClient {
         connection.close();
         throw new ConnectionFailure("cancelled", false);
       }
-      const abort = () => {
-        connection.close();
-      };
-      signal.addEventListener("abort", abort, { once: true });
-      try {
-        const reply = await connection.request(
-          {
-            v: 1,
-            op: "register",
-            rid: freshId(),
-            sessionId: this.options.peer.sessionId,
-            runtimeNonce: this.options.peer.runtimeNonce,
-            scopeIds: this.options.config.scopeIds,
-            label: this.options.config.label,
-            ...(expected === undefined ? {} : { expectedConfigSha256: expected }),
-          },
-          deadline,
-          signal,
-        );
-        if (!current()) {
-          throw new ConnectionFailure("cancelled", false);
-        }
-        if (reply.outcome.tag === "error" && reply.outcome.code === "config_mismatch") {
-          this.generationPending = true;
-          throw new ConnectionFailure("unavailable", false);
-        }
-        if (reply.forOp !== "register" || reply.outcome.tag !== "ok") {
-          throw new ConnectionFailure("unavailable", false);
-        }
-        this.scopes = new Set(reply.outcome.value.scopeIds);
-        this.connection = connection;
-        this.generationPending = false;
-        this.diagnostic = "connected";
-        this.options.statusChanged();
-        return connection;
-      } catch (error) {
-        connection.close();
-        if (current() && expected !== undefined) {
-          this.diagnostic = this.generationPending
-            ? "activation_pending"
-            : "activation_unconfirmed";
-          this.options.statusChanged();
-        }
-        throw error;
-      } finally {
-        signal.removeEventListener("abort", abort);
-      }
+      return this.register(connection, { expected, deadline, signal, current });
     })();
     try {
       return await pending;
@@ -351,6 +411,7 @@ export class GatewayClient {
     this.scopes.clear();
     this.peers.clear();
     this.watch = undefined;
+    this.clearLinks();
     this.diagnostic = "disconnected";
     this.options.statusChanged();
   }

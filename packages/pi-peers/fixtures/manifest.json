@@ -1140,7 +1140,7 @@
           "sessionId": "session",
           "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "scopeIds": ["team"],
-          "label": "\u00e9\ud83d\ude00"
+          "label": "é😀"
         }
       }
     },
@@ -1158,7 +1158,7 @@
           "sessionId": "session",
           "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "scopeIds": ["team"],
-          "label": "\u00e9\ud83d\ude00"
+          "label": "é😀"
         }
       }
     },
@@ -2320,7 +2320,7 @@
           "v": 1,
           "op": "register",
           "rid": "11111111111111111111111111111111",
-          "sessionId": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+          "sessionId": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
           "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "scopeIds": ["team"],
           "label": "Alpha"
@@ -2351,7 +2351,7 @@
           "sessionId": "session",
           "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "scopeIds": ["team"],
-          "label": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+          "label": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
         }
       }
     },
@@ -2416,7 +2416,7 @@
             "tag": "remove",
             "peer": {
               "machineId": "alpha",
-              "sessionId": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+              "sessionId": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
               "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             }
           }
@@ -2963,6 +2963,183 @@
       "boundary": "frame",
       "role": "local-client",
       "hexFile": "wire/gateway-restart-config-generation.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "link-state-down",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/link-state-down.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "link.state",
+          "rid": "11111111111111111111111111111111",
+          "machineId": "beta",
+          "state": "down",
+          "since": 1700000000000,
+          "nextProbe": 1700000030000
+        }
+      }
+    },
+    {
+      "name": "link-state-up",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/link-state-up.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "link.state",
+          "rid": "11111111111111111111111111111111",
+          "machineId": "beta",
+          "state": "up",
+          "since": 1700000000000
+        }
+      }
+    },
+    {
+      "name": "link-state-local-client",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/link-state-local-client.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "link-state-remote-link",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/link-state-remote-link.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "link-state-unknown-state",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/link-state-unknown-state.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "link-state-missing-since",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/link-state-missing-since.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "link-state-extra-field",
+      "boundary": "frame",
+      "role": "adapter-delivery",
+      "hexFile": "wire/link-state-extra-field.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "register-link-events",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-link-events.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "register",
+          "rid": "11111111111111111111111111111111",
+          "sessionId": "session",
+          "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeIds": ["team"],
+          "label": "Alpha",
+          "linkEvents": true
+        }
+      }
+    },
+    {
+      "name": "register-link-events-string",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/register-link-events-string.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "send-link-down",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/send-link-down.hex",
+      "expected": {
+        "tag": "accepted",
+        "value": {
+          "v": 1,
+          "op": "result",
+          "rid": "11111111111111111111111111111111",
+          "forOp": "send",
+          "outcome": {
+            "tag": "not_admitted",
+            "binding": {
+              "messageId": "22222222222222222222222222222222",
+              "sender": {
+                "machineId": "alpha",
+                "sessionId": "session",
+                "runtimeNonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "recipient": {
+                "machineId": "beta",
+                "sessionId": "session",
+                "runtimeNonce": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "scopeId": "team"
+            },
+            "code": "link_down"
+          }
+        }
+      }
+    },
+    {
+      "name": "send-link-down-remote-link",
+      "boundary": "frame",
+      "role": "remote-link",
+      "hexFile": "wire/send-link-down-remote-link.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "send-link-down-unknown",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/send-link-down-unknown.hex",
+      "expected": {
+        "tag": "rejected",
+        "connection": "closed"
+      }
+    },
+    {
+      "name": "discover-link-down",
+      "boundary": "frame",
+      "role": "local-client",
+      "hexFile": "wire/discover-link-down.hex",
       "expected": {
         "tag": "rejected",
         "connection": "closed"

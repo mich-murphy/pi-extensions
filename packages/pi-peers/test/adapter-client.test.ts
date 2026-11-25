@@ -29,7 +29,7 @@ const other = {
 };
 const cleanups: (() => Promise<void>)[] = [];
 type Reply = Extract<Frame, { op: "result" }>;
-type Request = Exclude<Frame, { op: "result" | "roster.event" }>;
+type Request = Exclude<Frame, { op: "result" | "roster.event" | "link.state" }>;
 async function gateway(
   handler: (request: Request, socket: Socket) => Reply | undefined,
   holdRegistration = false,
@@ -56,7 +56,7 @@ async function gateway(
           replies.push(request);
           continue;
         }
-        if (request.op === "roster.event") {
+        if (request.op === "roster.event" || request.op === "link.state") {
           continue;
         }
         requests.push(request);
@@ -1638,6 +1638,106 @@ describe("public adapter transport and notice accounting", () => {
     expect(notice).toContain(sessionHandle(other.machineId, other.sessionId));
     expect(notice).toContain("peers_take");
     expect(notice).not.toContain(authored().content);
+  });
+  test("opted-in sessions track pushed link state and notify listeners only on change", async () => {
+    const fixture = await gateway(() => undefined);
+    const ensureGateway = vi
+      .fn<EnsureGateway>()
+      .mockResolvedValue({ gatewaySha256: "a".repeat(64), linkEvents: true });
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+      ensureGateway,
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    const seen: string[] = [];
+    const stop = session.onLinkChange((links) => {
+      seen.push(links.map((link) => `${link.machineId}:${link.state}`).join(","));
+    });
+    await session.reconnect();
+    const register = fixture.requests[0];
+    assert(register?.op === "register");
+    expect(register.linkEvents).toBe(true);
+    const base = { v: 1, op: "link.state", rid: register.rid, machineId: "beta" } as const;
+    const down = {
+      ...base,
+      state: "down",
+      since: 1_700_000_000_000,
+      nextProbe: 1_700_000_030_000,
+    } as const;
+    fixture.sendFrame(down);
+    await vi.waitFor(() => {
+      expect(session.linkStates()).toStrictEqual([
+        {
+          machineId: "beta",
+          state: "down",
+          since: 1_700_000_000_000,
+          nextProbe: 1_700_000_030_000,
+        },
+      ]);
+    });
+    expect(session.client.linkDown("beta")).toBe(true);
+    expect(session.status().links).toHaveLength(1);
+    fixture.sendFrame(down);
+    fixture.sendFrame({ ...base, state: "up", since: 1_700_000_000_000 });
+    await vi.waitFor(() => {
+      expect(session.client.linkDown("beta")).toBe(false);
+    });
+    expect(seen).toStrictEqual(["beta:down", "beta:up"]);
+    stop();
+    fixture.drop();
+    await vi.waitFor(() => {
+      expect(session.linkStates()).toStrictEqual([]);
+    });
+    expect(seen).toHaveLength(2);
+  });
+  test("a link state for another registration closes the connection", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+      vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64), linkEvents: true }),
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.reconnect();
+    fixture.sendFrame({
+      v: 1,
+      op: "link.state",
+      rid: "f".repeat(32),
+      machineId: "beta",
+      state: "down",
+      since: 1,
+    });
+    await vi.waitFor(() => {
+      expect(fixture.connections()).toBe(2);
+    });
+    expect(session.linkStates()).toStrictEqual([]);
+  });
+  test("without the gateway capability registration never opts in to link events", async () => {
+    const fixture = await gateway(() => undefined);
+    const session = new AdapterSession(
+      fixture.config,
+      peer,
+      { sendMessage: () => undefined },
+      () => undefined,
+      () => undefined,
+      vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64) }),
+    );
+    cleanups.push(async () => {
+      session.close();
+    });
+    await session.reconnect();
+    expect(fixture.requests[0]).not.toHaveProperty("linkEvents");
   });
   test("a wait ends as disconnected when the gateway connection drops", async () => {
     const fixture = await gateway(() => undefined);

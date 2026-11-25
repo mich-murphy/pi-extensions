@@ -8,6 +8,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 use super::{Client, Daemon, Remote, Watch, encoded_length, member, project, random_id};
+use crate::breaker::LinkView;
 use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
 use crate::config::Permission;
 use crate::remote::Authenticated;
@@ -120,6 +121,7 @@ impl Daemon {
                 source,
                 descriptor: None,
                 watch: None,
+                link_events: None,
                 remote: Some(Remote {
                     roster: Vec::new(),
                     snapshot_rid: snapshot_rid.clone(),
@@ -139,6 +141,76 @@ impl Daemon {
             self.fail(id);
         }
         Ok(())
+    }
+    /// Whether sends to `machine` are refused at once because its link is not up.
+    pub(super) fn link_down(&self, machine: &str) -> bool {
+        self.config
+            .remote
+            .as_ref()
+            .is_some_and(|remote| remote.machine_id() == machine)
+            && self.remote_id().is_none()
+    }
+    fn link_view(&self) -> LinkView {
+        match &self.link {
+            Some(_) if self.remote_id().is_some() => LinkView::Up,
+            Some(link) if link.breaker().view() == LinkView::Up => LinkView::Probing,
+            Some(link) => link.breaker().view(),
+            None => LinkView::Down,
+        }
+    }
+    /// The current link state frame for one opted-in local session, if a remote is configured.
+    pub(super) fn link_frame(&self, rid: &str) -> Option<Value> {
+        let machine = self.config.remote.as_ref()?.machine_id();
+        let view = self.link_view();
+        let since = self
+            .link
+            .as_ref()
+            .map_or(self.bound_at, |link| link.breaker().since());
+        let mut frame = json!({"v":1,"op":"link.state","rid":rid,"machineId":machine,"state":view.as_str(),"since":unix_millis(since)});
+        if let Some(next) = self
+            .link
+            .as_ref()
+            .and_then(|link| link.breaker().next_probe())
+            .filter(|_| view == LinkView::Down)
+        {
+            frame["nextProbe"] = Value::from(unix_millis(next));
+        }
+        Some(frame)
+    }
+    /// Pushes the link state to opted-in sessions and the operator log, exactly on a change.
+    pub(super) fn announce_link(&mut self) {
+        let Some(machine) = self
+            .config
+            .remote
+            .as_ref()
+            .map(|remote| remote.machine_id().to_owned())
+        else {
+            return;
+        };
+        let view = self.link_view();
+        if self.link_view == Some(view) {
+            return;
+        }
+        self.link_view = Some(view);
+        if self.link.is_some() {
+            self.events.emit(
+                &format!("link_state:{}", view.as_str()),
+                json!({"event":"link_state","machineId":machine,"state":view.as_str()}),
+            );
+        }
+        let subscribers: Vec<_> = self
+            .clients
+            .iter()
+            .filter(|(_, client)| !client.failed && !client.closing)
+            .filter_map(|(id, client)| client.link_events.clone().map(|rid| (*id, rid)))
+            .collect();
+        for (id, rid) in subscribers {
+            if let Some(frame) = self.link_frame(&rid)
+                && !self.queue(id, &frame, BufferClass::Control, None)
+            {
+                self.fail(id);
+            }
+        }
     }
     pub(super) fn deadline(&self) -> Option<Instant> {
         self.forwards
@@ -501,4 +573,17 @@ impl Daemon {
             }
         }
     }
+}
+
+fn unix_millis(at: Instant) -> u64 {
+    let now = Instant::now();
+    let wall = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let wall = if at <= now {
+        wall.saturating_sub(now - at)
+    } else {
+        wall + (at - now)
+    };
+    u64::try_from(wall.as_millis()).unwrap_or(u64::MAX)
 }

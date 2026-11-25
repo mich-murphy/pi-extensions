@@ -31,6 +31,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
   const sent: Sent[] = [];
   const inbox: Incoming[] = [];
   const taken = new TakenIndex();
+  const down = new Set<string>();
   const session = {
     peer: self,
     config: {
@@ -51,6 +52,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
       isClosed: () => false,
       recoverForTool: async () => undefined,
       effectiveScopes: () => new Set(["team"]),
+      linkDown: (machineId: string) => down.has(machineId),
       discover: async () => ({
         forOp: "discover",
         outcome: { tag: "ok", value: { peers: roster, watching: false } },
@@ -96,6 +98,13 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     advance: (milliseconds: number) => {
       clock += milliseconds;
     },
+    setLinkDown: (machineId: string, isDown: boolean) => {
+      if (isDown) {
+        down.add(machineId);
+      } else {
+        down.delete(machineId);
+      }
+    },
     setWaited: (next: string) => {
       waited = next;
     },
@@ -140,6 +149,19 @@ describe("peers_list", () => {
     expect(result.content[0]?.text).toBe(
       `${handle} (restarted: unread inbox and receipts reset) · Pi`,
     );
+  });
+  test("a peer behind a down link is marked, and the mark clears when the link is up", async () => {
+    const fx = fixture([
+      { peer: self, label: "Me" },
+      { peer: beta, label: "Pi" },
+    ]);
+    fx.setLinkDown("beta", true);
+    fx.setLinkDown("alpha", true);
+    const down = await fx.call("peers_list");
+    expect(down.content[0]?.text).toBe(`${mine} (you) · Me\n${handle} (link down) · Pi`);
+    fx.setLinkDown("beta", false);
+    const up = await fx.call("peers_list");
+    expect(up.content[0]?.text).toBe(`${mine} (you) · Me\n${handle} · Pi`);
   });
   test("an empty listing says so", async () => {
     const empty = await fixture([]).call("peers_list");

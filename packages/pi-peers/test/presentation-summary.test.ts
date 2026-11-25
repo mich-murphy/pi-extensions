@@ -65,7 +65,37 @@ function primary(status: unknown, diagnostic: string): string {
   return [summary.headline, ...summary.rows.flat(), summary.next ?? ""].join("\n");
 }
 
+function links(...states: [string, string][]) {
+  return states.map(([machineId, state]) => ({ machineId, state, since: 0 }));
+}
 describe("plain-language status summary", () => {
+  test("remote link state appears as one row per machine with its next try", () => {
+    const summary = statusSummary(
+      {
+        enabled: true,
+        status: "connected",
+        peer,
+        scopes: ["local"],
+        links: [
+          { machineId: "laptop", state: "up", since: Date.UTC(2026, 0, 1, 9, 0, 0) },
+          {
+            machineId: "dev-01",
+            state: "down",
+            since: Date.UTC(2026, 0, 1, 10, 0, 0),
+            nextProbe: Date.UTC(2026, 0, 1, 10, 0, 30),
+          },
+          { machineId: "x", state: "weird", since: 1 },
+        ],
+      },
+      "enabled",
+    );
+    expect(summary.rows).toContainEqual(["Link to laptop", "Up (since 09:00:00 UTC)"]);
+    expect(summary.rows).toContainEqual([
+      "Link to dev-01",
+      "Down — sends to it fail at once; the gateway keeps retrying (since 10:00:00 UTC, next try 10:00:30 UTC)",
+    ]);
+    expect(summary.rows.map(([label]) => label)).not.toContain("Link to x");
+  });
   test("connected names the machine and scope and keeps identifiers technical", () => {
     const summary = statusSummary(
       { enabled: true, status: "connected", peer, scopes: ["local"], inboxMessages: 2 },
@@ -136,6 +166,23 @@ describe("plain-language status summary", () => {
     expect(footerStatus({ status: "disconnected", inboxMessages: 3 }, true)).toBe(
       "peers ✕ offline",
     );
+  });
+  test("footer warns about remote links that are not up, and only those", () => {
+    expect(footerStatus({ status: "connected", links: links(["dev-01", "up"]) }, true)).toBe(
+      "peers ✓",
+    );
+    expect(footerStatus({ status: "connected", links: links(["dev-01", "probing"]) }, true)).toBe(
+      "peers ✓ ! dev-01 down",
+    );
+    expect(
+      footerStatus(
+        { status: "connected", inboxMessages: 1, links: links(["a", "down"], ["b", "down"]) },
+        true,
+      ),
+    ).toBe("peers ● 1 ! 2 links down");
+    expect(
+      footerStatus({ status: "connected", links: links(["dev-01\u001b[31m", "down"]) }, true),
+    ).not.toContain("\u001b");
   });
   test("footer colours each part with a theme token", () => {
     const theme = { fg: (tone: string, part: string) => `<${tone}>${part}` };

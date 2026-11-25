@@ -7,7 +7,8 @@ import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
 export function freshId(): string {
   return randomBytes(16).toString("hex");
 }
-export type Request = Exclude<Frame, { op: "result" | "roster.event" }>;
+export type Request = Exclude<Frame, { op: "result" | "roster.event" | "link.state" }>;
+export type LinkFrame = Extract<Frame, { op: "link.state" }>;
 export type Reply = Extract<Frame, { op: "result" }>;
 export class ConnectionFailure extends Error {
   constructor(
@@ -39,6 +40,7 @@ export async function connectTransport(
     signal?: AbortSignal;
     incoming: (request: Request) => Reply;
     event: (event: Extract<Frame, { op: "roster.event" }>) => void;
+    link?: (frame: LinkFrame) => void;
     disconnected: (code: ConnectionFailure["code"]) => void;
     validateReply: (request: Request, reply: Reply) => void;
   },
@@ -152,6 +154,11 @@ export async function connectTransport(
       operation.resolve(frame);
     } else if (frame.op === "roster.event") {
       options.event(frame);
+    } else if (frame.op === "link.state") {
+      if (options.link === undefined) {
+        throw new ConnectionFailure("protocol_error", false);
+      }
+      options.link(frame);
     } else {
       write(options.incoming(frame), true);
     }
