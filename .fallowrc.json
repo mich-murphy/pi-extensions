@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "minimumVersion": "3.32.0",
+  "ignorePatterns": ["config/oxlint/anti-slop/**"],
+  "ignoreDependencies": ["@oxlint/plugins"],
   // Real Pi subprocess/evaluation entrypoints are launched outside the TS import graph.
   "framework": [
     {
