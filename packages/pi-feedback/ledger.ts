@@ -6,7 +6,7 @@ import { redact } from "./redact.ts";
 
 export const FIELD_LIMIT = 2000;
 
-const KINDS = [
+export const KINDS = [
   "tool_error",
   "confusing_instruction",
   "missing_capability",
@@ -15,6 +15,8 @@ const KINDS = [
 ] as const;
 
 export const LAYERS = ["architecture", "types", "lint", "test", "docs"] as const;
+
+export const IMPACTS = ["blocked", "slowed"] as const;
 
 const matching = (pattern: RegExp) => Schema.String.pipe(Schema.check(Schema.isPattern(pattern)));
 const Text = Schema.String.pipe(Schema.check(Schema.isMaxLength(FIELD_LIMIT)));
@@ -30,6 +32,8 @@ const recorded = {
   session: Line,
   owner: matching(/^[a-z0-9][a-z0-9-]{0,63}$/u),
   fingerprint: Line,
+  model: Schema.optionalKey(Line),
+  piVersion: Schema.optionalKey(Line),
 };
 
 const GroupId = matching(/^[0-9a-f]{12}$/u);
@@ -43,7 +47,7 @@ const ReportEvent = Schema.Struct({
   expected: Text,
   actual: Line,
   workaround: Schema.optionalKey(Text),
-  impact: Schema.Literals(["blocked", "slowed"]),
+  impact: Schema.Literals(IMPACTS),
 });
 
 const SignalEvent = Schema.Struct({
