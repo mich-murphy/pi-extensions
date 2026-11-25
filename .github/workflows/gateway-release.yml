@@ -207,7 +207,7 @@ jobs:
           cargo = tomllib.loads(pathlib.Path("packages/pi-peers/gateway/Cargo.toml").read_text())["package"]
           required = {"managed-on-demand-v1", "pairing-v1", "gateway-control-v1", "setup-lock-v1", "config-generation-v1"}
           assert version["name"] == "pi-gateway" and version["version"] == cargo["version"], version
-          assert version["wireVersions"] == [1], version
+          assert version["wireVersions"] == [2], version
           assert required <= set(version["capabilities"]), version
           PY
       - name: Older glibc loader smoke of the extracted binary (Linux only)

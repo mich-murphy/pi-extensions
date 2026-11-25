@@ -359,6 +359,15 @@ function liveSummary(code: string, facts: LiveFacts, options: PresentationOption
   if (code === "activation_pending" || code === "activation_unconfirmed") {
     return pendingSummary(code === "activation_pending", facts, options);
   }
+  if (code === "gateway_outdated") {
+    return {
+      state: "unavailable",
+      headline: "The running gateway is an older version",
+      rows: facts.rows,
+      next: setupStep(options, "to restart it"),
+      technical: facts.technical,
+    };
+  }
   return {
     state: "unavailable",
     headline: "Peers is unavailable right now",

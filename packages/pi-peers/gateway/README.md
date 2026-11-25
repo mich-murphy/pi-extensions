@@ -110,7 +110,7 @@ See [provisioning and maintenance](PAIRING.md) for confirmation and custody deta
 | Reconnect | 6 attempts per 60 s, with backoff from 250 ms, then the breaker opens |
 | Breaker probe | 30 s doubling to 240 s, plus up to 25% jitter (always 30 s–5 min), forever |
 | Pending inbound handshakes | 4 |
-| Forwarded operation timeout | 15 s |
+| Forwarded operation timeout | min(`budgetMs`, 15 s) less 250 ms per hop |
 | Read assembly and queued write deadline | 5 s |
 | Local connections | 30 |
 | Operations per connection, total | 8, 256 |
@@ -147,12 +147,18 @@ Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A
 
 ## Link state events
 
-Capability `link-state-v1` adds the optional local-only register field `linkEvents` (boolean). With `true`, the gateway sends
-`{"v":1,"op":"link.state","rid":<register rid>,"machineId":…,"state":"up"|"down"|"probing","since":<unix ms>,"nextProbe"?:<unix ms>}`
-right after the register result and again on every change. `nextProbe` appears only while `down`. The same session's sends to that
-machine are refused with `not_admitted` code `link_down` whenever no link is up. Without the field nothing changes: no
-`link.state` frames, and `no_route` as before. `link.state` is valid only at the adapter-delivery boundary, and `link_down` only
-in send results to local clients.
+Under wire v2 every registered session gets
+`{"v":2,"op":"link.state","rid":<register rid>,"machineId":…,"state":"up"|"down"|"probing","since":<unix ms>,"nextProbe"?:<unix ms>}`
+right after the register result and again on every change. `nextProbe` appears only while `down`. Sends to that machine are
+refused with `not_admitted` code `link_down` whenever no link is up. `link.state` is valid only at the adapter-delivery boundary,
+and `link_down` only in send results to local clients.
+
+## Wire v2
+
+Every frame has `"v":2`; v1 frames close the connection, except the upgrade path: a local `gateway.restart` request may be
+`"v":1` and is acknowledged in the same version. `--request-restart` sends v1, so it can stop a running 0.2.0 gateway. `send` and `deliver` require `budgetMs` (0–60000), and a hop that
+cannot forward a positive budget answers code `expired`. Send and deliver results carry `messageId` instead of `binding`, and
+`admitted` adds `durable`. On the remote link, `send` `from`/`to` may be per-link peer numbers (see docs/design.md).
 
 ## Loaded configuration generation guard
 

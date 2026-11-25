@@ -12,6 +12,7 @@ const refusedCodes = Object.keys({
   id_conflict: true,
   invalid_correlation: true,
   delivery_too_large: true,
+  expired: true,
   protocol_error: true,
   cancelled: true,
   overloaded: true,
@@ -45,18 +46,14 @@ describe("send hints say what happened to the message", () => {
       expect(hint).toMatch(/retryOf/u);
     },
   );
-  test("only a missing route says sending again cannot duplicate the message", () => {
+  test("only a missing route, a down link or a spent budget say sending again cannot duplicate the message", () => {
     const safe = refusedCodes.filter((code) =>
       /cannot duplicate/u.test(sendHint({ tag: "not_admitted", code })),
     );
-    expect(safe).toStrictEqual(["no_route", "link_down"]);
+    expect(safe).toStrictEqual(["no_route", "link_down", "expired"]);
   });
   test("a link_down refusal names the machine and says the session may still exist", () => {
-    const hint = sendHint({
-      tag: "not_admitted",
-      code: "link_down",
-      binding: { recipient: { machineId: "dev-01" } },
-    });
+    const hint = sendHint({ tag: "not_admitted", code: "link_down" }, "dev-01");
     expect(hint).toMatch(/^Not delivered\. The link to dev-01 is down/u);
     expect(hint).toMatch(/may still exist/u);
     expect(hint).toMatch(/waitSeconds/u);

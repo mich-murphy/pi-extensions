@@ -20,7 +20,6 @@ import { localPlan } from "../onboarding/plan.js";
 import type { LocalPlan } from "../onboarding/plan.js";
 import { setupCommand } from "../onboarding/setup.js";
 import {
-  expectedLinkEvents,
   dialog,
   nativeFixture,
   nativeUntil,
@@ -365,14 +364,13 @@ describe("managed generation admission with actual native helper", () => {
       const reload = vi.fn<() => Promise<ManagedSetup>>(async () => current);
       const ensure = managedLauncher(setup, reload);
       const entries = await readdir(setupPaths(agent).directory);
-      const linkEvents = await expectedLinkEvents(fixture.executable);
       await expect(
         ensure(performance.now() + 5000, new AbortController().signal),
-      ).resolves.toStrictEqual({ gatewaySha256: setup.gatewaySha256, ...linkEvents });
+      ).resolves.toStrictEqual({ gatewaySha256: setup.gatewaySha256 });
       current = { ...setup, gatewaySha256: "d".repeat(64) };
       await expect(
         ensure(performance.now() + 5000, new AbortController().signal),
-      ).resolves.toStrictEqual({ gatewaySha256: current.gatewaySha256, ...linkEvents });
+      ).resolves.toStrictEqual({ gatewaySha256: current.gatewaySha256 });
       expect(reload).toHaveBeenCalledTimes(2);
       await expect(readdir(setupPaths(agent).directory)).resolves.toStrictEqual(entries);
     }));

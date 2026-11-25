@@ -34,6 +34,8 @@ const natural = Schema.Number.check(
   Schema.makeFilter<number>((value) => !Object.is(value, -0)),
 );
 const revision = natural;
+export const MAX_BUDGET_MS = 60_000;
+const budgetMs = natural.check(Schema.isLessThanOrEqualTo(MAX_BUDGET_MS));
 const label = text(128, false);
 const scopeIds = (maximum: number) =>
   Schema.Array(key).check(
@@ -104,7 +106,7 @@ export type Message = typeof Message.Type;
 
 const descriptor = Schema.Struct({ peer: Peer, label, scopeIds: scopeIds(4) });
 const retiredRouting = { from: Schema.optionalKey(Peer), publisher: Peer, scopeId: key };
-const head = { v: Schema.Literal(1), rid: randomId };
+const head = { v: Schema.Literal(2), rid: randomId };
 
 const requests = [
   Schema.Struct({
@@ -119,7 +121,6 @@ const requests = [
     runtimeNonce: randomId,
     scopeIds: scopeIds(4),
     label,
-    linkEvents: Schema.optionalKey(Schema.Boolean),
   }),
   Schema.Struct({ ...head, op: Schema.Literal("close") }),
   Schema.Struct({ ...head, op: Schema.Literal("gateway.restart"), expectedMachineId: machineId }),
@@ -137,6 +138,7 @@ const requests = [
     from: Schema.optionalKey(Peer),
     to: Peer,
     scopeId: key,
+    budgetMs,
     message: Message,
   }),
   Schema.Struct({
@@ -145,6 +147,7 @@ const requests = [
     from: Peer,
     to: Peer,
     scopeId: key,
+    budgetMs,
     message: Message,
   }),
   Schema.Struct({
@@ -159,7 +162,6 @@ const requests = [
   Schema.Struct({ ...head, op: Schema.Literal("interest.remove"), ...retiredRouting, work }),
 ] as const;
 
-const binding = Schema.Struct({ messageId: randomId, sender: Peer, recipient: Peer, scopeId: key });
 const resource = Schema.Literals([
   "registrations",
   "inbox",
@@ -176,6 +178,7 @@ const deliveryCodes = [
   "id_conflict",
   "invalid_correlation",
   "delivery_too_large",
+  "expired",
 ] as const;
 const sendCodes = [...deliveryCodes, "protocol_error", "cancelled"] as const;
 function failure<const C extends readonly string[]>(codes: C) {
@@ -207,12 +210,13 @@ function result<
 }
 const admittedOutcome = Schema.Struct({
   tag: Schema.Literal("admitted"),
-  binding,
+  messageId: randomId,
   correlation: Schema.Literals(["none", "verified", "unresolved"]),
+  durable: Schema.Boolean,
 });
 const overloadedOutcome = Schema.Struct({
   tag: Schema.Literal("not_admitted"),
-  binding,
+  messageId: randomId,
   code: Schema.Literal("overloaded"),
   resource,
 });
@@ -221,7 +225,7 @@ const deliveryOutcome = Schema.Union([
   overloadedOutcome,
   Schema.Struct({
     tag: Schema.Literal("not_admitted"),
-    binding,
+    messageId: randomId,
     code: Schema.Literals(deliveryCodes),
   }),
 ]);
@@ -230,12 +234,12 @@ const sendOutcome = Schema.Union([
   overloadedOutcome,
   Schema.Struct({
     tag: Schema.Literal("not_admitted"),
-    binding,
+    messageId: randomId,
     code: Schema.Literals([...sendCodes, "link_down"]),
   }),
   Schema.Struct({
     tag: Schema.Literal("unknown"),
-    binding,
+    messageId: randomId,
     code: Schema.Literals(["unavailable", "protocol_error", "cancelled"]),
   }),
 ]);

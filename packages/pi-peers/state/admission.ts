@@ -1,4 +1,5 @@
 import { messageFingerprint, samePeer, scopedMessageKey } from "../protocol/identity.js";
+import { MAX_BUDGET_MS } from "../protocol/schema.js";
 import type { Message, PeerRef, WorkRef } from "../protocol/schema.js";
 import { encodeFrame } from "../protocol/wire.js";
 import { allowed, hasRecipientCapacity, overload } from "./shared.js";
@@ -79,14 +80,9 @@ function reservationFailure(store: Store, bytes: number): Failure | undefined {
   return undefined;
 }
 function rejection(input: AdmitInput, failure: Failure): AdmissionOutcome {
-  const binding = {
-    messageId: input.message.id,
-    sender: input.from,
-    recipient: input.to,
-    scopeId: input.scopeId,
-  };
+  const messageId = input.message.id;
   if (failure.code === "overloaded") {
-    return { tag: "not_admitted", binding, code: "overloaded", resource: failure.resource };
+    return { tag: "not_admitted", messageId, code: "overloaded", resource: failure.resource };
   }
   if (
     failure.code === "forbidden" ||
@@ -94,7 +90,7 @@ function rejection(input: AdmitInput, failure: Failure): AdmissionOutcome {
     failure.code === "id_conflict" ||
     failure.code === "invalid_correlation"
   ) {
-    return { tag: "not_admitted", binding, code: failure.code };
+    return { tag: "not_admitted", messageId, code: failure.code };
   }
   throw new Error("Unexpected admission failure");
 }
@@ -112,12 +108,13 @@ export function admit(store: Store, authored: AdmitInput, now: number): Admissio
   const input = structuredClone(authored);
   const encoded = encodeFrame(
     {
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "0".repeat(32),
       from: input.from,
       to: input.to,
       scopeId: input.scopeId,
+      budgetMs: MAX_BUDGET_MS,
       message: input.message,
     },
     "adapter-delivery",
@@ -161,13 +158,9 @@ export function admit(store: Store, authored: AdmitInput, now: number): Admissio
   };
   const outcome = {
     tag: "admitted",
-    binding: {
-      messageId: input.message.id,
-      sender: input.from,
-      recipient: input.to,
-      scopeId: input.scopeId,
-    },
+    messageId: input.message.id,
     correlation: classification,
+    durable: false,
   } as const;
   if (!store.offer(delivery)) {
     return rejection(input, overload("inbox"));
@@ -187,7 +180,10 @@ export function rememberOutgoing(
   now: number,
 ): Result<string> {
   const validated = structuredClone(input);
-  encodeFrame({ v: 1, op: "send", rid: "0".repeat(32), ...validated }, "local-client");
+  encodeFrame(
+    { v: 2, op: "send", rid: "0".repeat(32), budgetMs: MAX_BUDGET_MS, ...validated },
+    "local-client",
+  );
   if (validated.message.kind !== "request") {
     return { tag: "error", code: "invalid_record" };
   }

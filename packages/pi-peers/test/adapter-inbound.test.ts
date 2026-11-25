@@ -8,7 +8,7 @@ const INBOUND_BUFFER_LIMIT = 262_144;
 
 function rosterRemoval(sessionIdLength: number): Uint8Array {
   const frame: Frame = {
-    v: 1,
+    v: 2,
     op: "roster.event",
     rid: "f".repeat(32),
     event: {

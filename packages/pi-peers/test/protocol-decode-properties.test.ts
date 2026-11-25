@@ -21,22 +21,23 @@ const validFrames: readonly { role: BoundaryRole; frame: unknown }[] = [
   {
     role: "local-client",
     frame: {
-      v: 1,
+      v: 2,
       op: "send",
       rid,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: { id: "2".repeat(32), kind: "request", format: "text", content: "hi \u{1F600}" },
     },
   },
   {
     role: "local-client",
-    frame: { v: 1, rid, op: "discover", scopeIds: ["a", "b"], watch: false },
+    frame: { v: 2, rid, op: "discover", scopeIds: ["a", "b"], watch: false },
   },
   {
     role: "local-client",
     frame: {
-      v: 1,
+      v: 2,
       rid,
       op: "register",
       sessionId: "s",
@@ -45,10 +46,10 @@ const validFrames: readonly { role: BoundaryRole; frame: unknown }[] = [
       label: "l",
     },
   },
-  { role: "remote-link", frame: { v: 1, rid, op: "ping" } },
+  { role: "remote-link", frame: { v: 2, rid, op: "ping" } },
   {
     role: "local-client",
-    frame: { v: 1, rid, op: "roster.event", event: { tag: "remove", peer } },
+    frame: { v: 2, rid, op: "roster.event", event: { tag: "remove", peer } },
   },
 ];
 

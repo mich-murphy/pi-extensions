@@ -223,10 +223,13 @@ describe("production adapter / native local gateway vertical slice", () => {
         format: "text",
       };
       const admitted = await left.session.send(receiver, "team", message);
-      expect(admitted).toMatchObject({
+      expect(admitted).toStrictEqual({
         tag: "admitted",
-        binding: { sender, recipient: receiver, messageId: message.id, scopeId: "team" },
+        messageId: message.id,
+        correlation: "none",
+        durable: false,
       });
+      expect(left.session.receipts.durableFor(message.id)).toBe(false);
       await expect.poll(() => notices.length).toBe(1);
       await expect(left.session.send(receiver, "team", message)).resolves.toStrictEqual(admitted);
       await expect(

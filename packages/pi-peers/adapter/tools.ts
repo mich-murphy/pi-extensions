@@ -11,6 +11,7 @@ import { permits, plainText, visibleText } from "./config.js";
 import type { Bound } from "./handles.js";
 import { failureHint, sendHint } from "./hints.js";
 import { toolPresentation } from "./presentation.js";
+import { SEND_BUDGET_MS } from "./send.js";
 import type { AdapterSession } from "./session.js";
 import { ConnectionFailure, freshId } from "./transport.js";
 
@@ -278,11 +279,12 @@ async function send(
   }
   const frame = validateFrame(
     {
-      v: 1,
+      v: 2,
       op: "send",
       rid: freshId(),
       to: target.to.peer,
       scopeId: target.scopeId,
+      budgetMs: SEND_BUDGET_MS,
       message: {
         id: freshId(),
         kind: args.kind,
@@ -306,13 +308,18 @@ async function send(
       message: frame.message,
     });
   }
-  return sent(session, args.to, frame.message.id, outcome);
+  return sent(session, { handle: args.to, machine: frame.to.machineId }, frame.message.id, outcome);
 }
 type Sent = Awaited<ReturnType<AdapterSession["send"]>>;
-function sent(session: AdapterSession, to: string, messageId: string, outcome: Sent): Shown {
-  const note = sendHint(outcome);
+function sent(
+  session: AdapterSession,
+  to: { handle: string; machine: string },
+  messageId: string,
+  outcome: Sent,
+): Shown {
+  const note = sendHint(outcome, to.machine);
   const id = session.aliases.alias(messageId);
-  return { value: { to, id, messageId, outcome, note }, text: `${note}\nid ${id}` };
+  return { value: { to: to.handle, id, messageId, outcome, note }, text: `${note}\nid ${id}` };
 }
 async function resend(
   session: AdapterSession,
@@ -349,7 +356,7 @@ async function resend(
   if (outcome.tag !== "unknown") {
     session.unsure.settle(entry.message.id);
   }
-  return sent(session, args.to, entry.message.id, outcome);
+  return sent(session, { handle: args.to, machine: entry.to.machineId }, entry.message.id, outcome);
 }
 function takenEntry(session: AdapterSession, delivery: Delivery) {
   const { message } = delivery;

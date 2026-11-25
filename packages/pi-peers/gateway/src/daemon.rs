@@ -64,6 +64,8 @@ struct Remote {
     last_progress: Instant,
     ping: Option<String>,
     scopes: Vec<String>,
+    /// Interning tables of this link generation; a new link starts empty.
+    refs: crate::intern::Refs,
 }
 #[derive(Debug)]
 struct Forward {
@@ -71,7 +73,6 @@ struct Forward {
     destination: ConnectionId,
     /// The original request, retained for exact result binding and correlation checks.
     request: Value,
-    binding: Value,
     deadline: Instant,
     reservation: Charge,
 }
@@ -464,7 +465,14 @@ impl Daemon {
     }
 
     fn respond(&mut self, id: ConnectionId, request: &Value, outcome: Value) {
-        let mut response = json!({"v":1,"op":"result","rid":request["rid"],"forOp":request["op"]});
+        // Echo the request's version: only a v1 `gateway.restart` can differ from v2.
+        let version = if request["op"] == "gateway.restart" && request["v"] == 1 {
+            1
+        } else {
+            wire::WIRE_VERSION
+        };
+        let mut response =
+            json!({"v":version,"op":"result","rid":request["rid"],"forOp":request["op"]});
         response["outcome"] = outcome;
         if !self.queue(id, &response, BufferClass::Control, None) {
             self.fail(id);
@@ -486,11 +494,11 @@ impl Daemon {
             } else {
                 self.descriptor(id).map(|descriptor| &descriptor["peer"])
             };
-            let Some(sender) = sender else {
+            if sender.is_none() {
                 self.fail(id);
                 return;
-            };
-            json!({"tag":"not_admitted","binding":{"messageId":request["message"]["id"],"sender":sender,"recipient":request["to"],"scopeId":request["scopeId"]},"code":code})
+            }
+            json!({"tag":"not_admitted","messageId":request["message"]["id"],"code":code})
         } else {
             json!({"tag":"error","code":code})
         };
@@ -634,8 +642,7 @@ impl Daemon {
             self.reject(id, request, "descriptor_too_large", None);
             return;
         }
-        let link_events = (request["linkEvents"] == true)
-            .then(|| request["rid"].as_str().unwrap_or("").to_owned());
+        let link_events = Some(request["rid"].as_str().unwrap_or("").to_owned());
         if let Some(client) = self.clients.get_mut(&id) {
             client.descriptor = Some(descriptor.clone());
             client.link_events.clone_from(&link_events);
@@ -721,7 +728,7 @@ impl Daemon {
             .filter_map(|descriptor| self.discovery_projection(id, descriptor, &scopes))
             .collect();
         peers.sort_by_key(|descriptor| descriptor["peer"].to_string());
-        let result = json!({"v":1,"op":"result","rid":request["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":watching}}});
+        let result = json!({"v":2,"op":"result","rid":request["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":watching}}});
         if !self.queue(id, &result, BufferClass::Data, None) {
             self.fail(id);
             return;
@@ -761,18 +768,28 @@ impl Daemon {
             } else {
                 json!({"tag":"remove","peer":descriptor["peer"]})
             };
-            let event = json!({"v":1,"op":"roster.event","rid":rid,"event":event});
+            let event = json!({"v":2,"op":"roster.event","rid":rid,"event":event});
             let bytes = encoded_length(&event).unwrap_or(wire::MAX_BODY) + 4;
             let overflow = self
                 .clients
                 .get(&id)
                 .and_then(|client| client.watch.as_ref())
                 .is_none_or(|watch| watch.events >= 256 || watch.bytes + bytes > 128 * 1024);
-            if overflow || !self.queue(id, &event, BufferClass::Data, Some(generation)) {
+            let queued = !overflow && self.queue(id, &event, BufferClass::Data, Some(generation));
+            if queued
+                && tag == "upsert"
+                && let Some(remote) = self
+                    .clients
+                    .get_mut(&id)
+                    .and_then(|client| client.remote.as_mut())
+            {
+                remote.refs.exported(&projected["peer"]);
+            }
+            if !queued {
                 if let Some(client) = self.clients.get_mut(&id) {
                     client.watch = None;
                 }
-                let invalidated = json!({"v":1,"op":"roster.event","rid":rid,"event":{"tag":"invalidated","reason":"overflow"}});
+                let invalidated = json!({"v":2,"op":"roster.event","rid":rid,"event":{"tag":"invalidated","reason":"overflow"}});
                 if !self.queue(id, &invalidated, BufferClass::Control, None) {
                     self.fail(id);
                 }
@@ -860,13 +877,7 @@ impl Daemon {
             })
         };
         let Some(destination) = destination else {
-            let code = if !remote_origin
-                && self.link_down(machine)
-                && self
-                    .clients
-                    .get(&origin)
-                    .is_some_and(|client| client.link_events.is_some())
-            {
+            let code = if !remote_origin && self.link_down(machine) {
                 "link_down"
             } else {
                 "no_route"
@@ -904,14 +915,21 @@ impl Daemon {
             self.descriptor(origin)
                 .map_or(Value::Null, |descriptor| descriptor["peer"].clone())
         };
-        let binding = json!({"messageId":request["message"]["id"],"sender":sender,"recipient":request["to"],"scopeId":request["scopeId"]});
         let retained = encoded_length(&request).unwrap_or(wire::MAX_BODY);
         let Ok(reservation) = self.buffers.reserve(origin, BufferClass::Data, retained) else {
             self.reject(origin, &request, "overloaded", Some("buffers"));
             return;
         };
+        let Some(hop) = crate::deadline::hop(&request["budgetMs"], OPERATION_TIMEOUT) else {
+            drop(reservation);
+            self.events
+                .emit("expired", json!({"event":"expired","remote":remote_origin}));
+            self.reject(origin, &request, "expired", None);
+            return;
+        };
         let mut forwarded = request.clone();
         forwarded["rid"] = Value::from(rid.clone());
+        forwarded["budgetMs"] = Value::from(hop.forward_ms);
         forwarded["from"] = sender;
         if !self.is_remote(destination) {
             forwarded["op"] = Value::from("deliver");
@@ -935,6 +953,13 @@ impl Daemon {
         {
             source.bind_target(target);
         }
+        if let Some(remote) = self
+            .clients
+            .get(&destination)
+            .and_then(|client| client.remote.as_ref())
+        {
+            remote.refs.compress(&mut forwarded);
+        }
         if !self.queue_authorized(destination, &forwarded, BufferClass::Data, None, source) {
             drop(reservation);
             self.reject(origin, &request, "overloaded", Some("buffers"));
@@ -946,8 +971,7 @@ impl Daemon {
                 origin,
                 destination,
                 request,
-                binding,
-                deadline: Instant::now() + OPERATION_TIMEOUT,
+                deadline: Instant::now() + hop.wait,
                 reservation,
             },
         );
@@ -1000,7 +1024,8 @@ impl Daemon {
         let Some(forward) = self.forwards.remove(rid) else {
             return;
         };
-        let outcome = json!({"tag":"unknown","binding":forward.binding,"code":code});
+        let outcome =
+            json!({"tag":"unknown","messageId":forward.request["message"]["id"],"code":code});
         self.respond(forward.origin, &forward.request, outcome);
         drop(forward.reservation);
     }
@@ -1099,7 +1124,7 @@ fn project(descriptor: &Value, scopes: &[String]) -> Option<Value> {
     }
 }
 fn matches_result(forward: &Forward, outcome: &Value) -> bool {
-    outcome["binding"] == forward.binding
+    outcome["messageId"] == forward.request["message"]["id"]
         && (outcome["tag"] != "admitted"
             || (outcome["correlation"] == "none")
                 == forward.request["message"].get("replyTo").is_none())
@@ -1188,7 +1213,7 @@ mod tests {
             .accept(stream, &events, &mut tasks)
             .expect("fixture connection");
         let id = ConnectionId(1);
-        let mut request = json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":"fixture","runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"fixture","expectedConfigSha256":"0".repeat(64)});
+        let mut request = json!({"v":2,"op":"register","rid":"00000000000000000000000000000001","sessionId":"fixture","runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"fixture","expectedConfigSha256":"0".repeat(64)});
         daemon.handle(id, request.clone());
         assert!(
             daemon.descriptor(id).is_none(),
@@ -1229,8 +1254,8 @@ mod tests {
             .accept(stream, &events, &mut tasks)
             .expect("fixture connection");
         let id = ConnectionId(1);
-        daemon.handle(id, json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":"fixture","runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"fixture"}));
-        let discover = json!({"v":1,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":true});
+        daemon.handle(id, json!({"v":2,"op":"register","rid":"00000000000000000000000000000001","sessionId":"fixture","runtimeNonce":"00000000000000000000000000000002","scopeIds":["team"],"label":"fixture"}));
+        let discover = json!({"v":2,"op":"discover","rid":"00000000000000000000000000000003","scopeIds":["team"],"watch":true});
         daemon.handle(id, discover.clone());
         let descriptor = daemon.descriptor(id).expect("registered fixture").clone();
         daemon.publish(&descriptor, "upsert");
@@ -1240,7 +1265,7 @@ mod tests {
             .expect("old watch")
             .generation;
         let old_bytes = daemon.clients[&id].watch.as_ref().expect("old watch").bytes;
-        daemon.handle(id, json!({"v":1,"op":"unwatch","rid":"00000000000000000000000000000004","watchRid":discover["rid"]}));
+        daemon.handle(id, json!({"v":2,"op":"unwatch","rid":"00000000000000000000000000000004","watchRid":discover["rid"]}));
         daemon.handle(id, discover);
         daemon.publish(&descriptor, "upsert");
         let before = daemon.clients[&id]
@@ -1309,6 +1334,7 @@ mod tests {
             last_progress: Instant::now(),
             ping: None,
             scopes: vec!["team".to_owned()],
+            refs: crate::intern::Refs::default(),
         });
         tokio::time::advance(Duration::from_secs(29)).await;
         daemon.liveness();
@@ -1339,7 +1365,7 @@ mod tests {
             ping,
             "do not stack pending pings"
         );
-        let stale = json!({"v":1,"op":"result","rid":"00000000000000000000000000000099","forOp":"ping","outcome":{"tag":"ok","value":{}}});
+        let stale = json!({"v":2,"op":"result","rid":"00000000000000000000000000000099","forOp":"ping","outcome":{"tag":"ok","value":{}}});
         let stale = wire::decode_body(
             &serde_json::to_vec(&stale).expect("valid fixture encoding"),
             Role::RemoteLink,
@@ -1400,43 +1426,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn opted_in_sessions_get_link_state_and_fail_fast_with_link_down() {
+    async fn every_session_gets_link_state_and_fails_fast_with_link_down() {
         let (mut daemon, directory) = remote_daemon("link-down");
         let (events, _receive) = mpsc::channel(68);
         let mut tasks = JoinSet::new();
-        let (opted, mut opted_peer) = UnixStream::pair().expect("sockets");
-        let (legacy, mut legacy_peer) = UnixStream::pair().expect("sockets");
+        let (first, mut first_peer) = UnixStream::pair().expect("sockets");
+        let (second, mut second_peer) = UnixStream::pair().expect("sockets");
         daemon
-            .accept(opted, &events, &mut tasks)
-            .expect("opted connection");
+            .accept(first, &events, &mut tasks)
+            .expect("first connection");
         daemon
-            .accept(legacy, &events, &mut tasks)
-            .expect("legacy connection");
-        let register = |nonce: &str, opt: bool| {
-            let mut value = json!({"v":1,"op":"register","rid":"00000000000000000000000000000001","sessionId":"s","runtimeNonce":nonce,"scopeIds":["team"],"label":"fixture"});
-            if opt {
-                value["linkEvents"] = Value::Bool(true);
-            }
-            value
-        };
+            .accept(second, &events, &mut tasks)
+            .expect("second connection");
+        let register = |nonce: &str| json!({"v":2,"op":"register","rid":"00000000000000000000000000000001","sessionId":"s","runtimeNonce":nonce,"scopeIds":["team"],"label":"fixture"});
         daemon.handle(
             ConnectionId(1),
-            register("00000000000000000000000000000002", true),
+            register("00000000000000000000000000000002"),
         );
         daemon.handle(
             ConnectionId(2),
-            register("00000000000000000000000000000003", false),
+            register("00000000000000000000000000000003"),
         );
-        assert_eq!(read_frame(&mut opted_peer).await["outcome"]["tag"], "ok");
-        let state = read_frame(&mut opted_peer).await;
-        assert_eq!(state["op"], "link.state");
-        assert_eq!(state["machineId"], "beta");
-        assert_eq!(state["state"], "down");
-        assert_eq!(state["rid"], "00000000000000000000000000000001");
-        assert_eq!(read_frame(&mut legacy_peer).await["outcome"]["tag"], "ok");
-        let send = |rid: &str| json!({"v":1,"op":"send","rid":rid,"to":{"machineId":"beta","sessionId":"remote","runtimeNonce":"00000000000000000000000000000009"},"scopeId":"team","message":{"id":"0000000000000000000000000000000a","kind":"update","content":"hi","format":"text"}});
+        for peer in [&mut first_peer, &mut second_peer] {
+            assert_eq!(read_frame(peer).await["outcome"]["tag"], "ok");
+            let state = read_frame(peer).await;
+            assert_eq!(state["op"], "link.state");
+            assert_eq!(state["machineId"], "beta");
+            assert_eq!(state["state"], "down");
+            assert_eq!(state["rid"], "00000000000000000000000000000001");
+        }
+        let send = |rid: &str| json!({"v":2,"op":"send","rid":rid,"to":{"machineId":"beta","sessionId":"remote","runtimeNonce":"00000000000000000000000000000009"},"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000a","kind":"update","content":"hi","format":"text"}});
         daemon.handle(ConnectionId(1), send("00000000000000000000000000000004"));
-        let refused = read_frame(&mut opted_peer).await;
+        let refused = read_frame(&mut first_peer).await;
         assert_eq!(refused["outcome"]["tag"], "not_admitted");
         assert_eq!(
             refused["outcome"]["code"], "link_down",
@@ -1445,9 +1466,9 @@ mod tests {
         assert!(wire::validate_value(&refused, Role::LocalClient).is_ok());
         daemon.handle(ConnectionId(2), send("00000000000000000000000000000005"));
         assert_eq!(
-            read_frame(&mut legacy_peer).await["outcome"]["code"],
-            "no_route",
-            "a session that did not opt in keeps the old code"
+            read_frame(&mut second_peer).await["outcome"]["code"],
+            "link_down",
+            "no session is left on the old no_route code"
         );
         daemon.announce_link();
         daemon.announce_link();

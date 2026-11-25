@@ -155,7 +155,7 @@ signed root subject exactly. Inspect supports both runtime kinds.
 ## Native local maintenance and setup lock
 
 `--version --json` advertises pairing-v1, gateway-control-v1 and setup-lock-v1 in
-addition to managed-on-demand-v1; wireVersions remains [1].
+addition to managed-on-demand-v1; wireVersions is [2].
 
 `--setup-lock ABS_LOCK` creates/opens a permanent owner-only 0600 regular single-link
 file in a private directory, takes a nonblocking exclusive flock, emits

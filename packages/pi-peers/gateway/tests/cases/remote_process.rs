@@ -136,7 +136,16 @@ fn write(stream: &mut UnixStream, value: &Value) {
         .write_all(&bytes)
         .expect("isolated generated-PKI process fixture and bounded framed I/O");
 }
+/// Reads the next frame other than a pushed `link.state`, which every local session now receives.
 fn read(stream: &mut UnixStream) -> Value {
+    loop {
+        let frame = read_any(stream);
+        if frame["op"] != "link.state" {
+            return frame;
+        }
+    }
+}
+fn read_any(stream: &mut UnixStream) -> Value {
     let mut header = [0; 4];
     stream
         .read_exact(&mut header)
@@ -153,7 +162,7 @@ fn read(stream: &mut UnixStream) -> Value {
 fn register(stream: &mut UnixStream, session: &str, n: u32) -> Value {
     write(
         stream,
-        &json!({"v":1,"op":"register","rid":rid(n),"sessionId":session,"runtimeNonce":rid(n+1000),"scopeIds":["team","private"],"label":session}),
+        &json!({"v":2,"op":"register","rid":rid(n),"sessionId":session,"runtimeNonce":rid(n+1000),"scopeIds":["team","private"],"label":session}),
     );
     let result = read(stream);
     assert_eq!(result["outcome"]["tag"], "ok", "registration succeeds");
@@ -162,7 +171,7 @@ fn register(stream: &mut UnixStream, session: &str, n: u32) -> Value {
 fn watch(stream: &mut UnixStream, n: u32) -> Value {
     write(
         stream,
-        &json!({"v":1,"op":"discover","rid":rid(n),"scopeIds":["team"],"watch":true}),
+        &json!({"v":2,"op":"discover","rid":rid(n),"scopeIds":["team"],"watch":true}),
     );
     let snapshot = read(stream);
     assert_eq!(
@@ -203,12 +212,12 @@ fn grants(peer: &str) -> Value {
     json!([{"machineId":peer,"scopeId":"team","permissions":["discover","push","read","interest"]},{"machineId":peer,"scopeId":"team","direction":"incoming","permissions":["push","read","interest"]}])
 }
 fn receipt(delivery: &Value) -> Value {
-    json!({"v":1,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","binding":{"messageId":delivery["message"]["id"],"sender":delivery["from"],"recipient":delivery["to"],"scopeId":delivery["scopeId"]},"correlation":"none"}})
+    json!({"v":2,"op":"result","rid":delivery["rid"],"forOp":"deliver","outcome":{"tag":"admitted","messageId":delivery["message"]["id"],"correlation":"none","durable":false}})
 }
 fn send(stream: &mut UnixStream, to: &Value, n: u32) {
     write(
         stream,
-        &json!({"v":1,"op":"send","rid":rid(n),"to":to,"scopeId":"team","message":{"id":rid(n+1000),"kind":"request","content":"isolated collaboration","format":"text"}}),
+        &json!({"v":2,"op":"send","rid":rid(n),"to":to,"scopeId":"team","budgetMs":15000,"message":{"id":rid(n+1000),"kind":"request","content":"isolated collaboration","format":"text"}}),
     );
 }
 
@@ -238,8 +247,8 @@ fn two_real_daemons_route_exact_receipts_refuse_retired_requests_and_withdraw_wi
     assert_eq!(result["outcome"]["tag"], "admitted");
     let work = json!({"kind":"request","origin":alpha_peer,"requestId":rid(1005)});
     for (n, retired) in [
-        json!({"v":1,"op":"state.list","rid":rid(6),"publisher":beta_peer,"scopeId":"team"}),
-        json!({"v":1,"op":"interest.add","rid":rid(7),"publisher":beta_peer,"scopeId":"team","work":work}),
+        json!({"v":2,"op":"state.list","rid":rid(6),"publisher":beta_peer,"scopeId":"team"}),
+        json!({"v":2,"op":"interest.add","rid":rid(7),"publisher":beta_peer,"scopeId":"team","work":work}),
     ]
     .into_iter()
     .enumerate()
@@ -265,7 +274,11 @@ fn two_real_daemons_route_exact_receipts_refuse_retired_requests_and_withdraw_wi
     assert_eq!(remove["event"]["tag"], "remove");
     assert_eq!(remove["event"]["peer"], beta_peer);
     send(&mut a, &beta_peer, 9);
-    assert_eq!(read(&mut a)["outcome"]["code"], "no_route");
+    assert_eq!(
+        read(&mut a)["outcome"]["code"],
+        "link_down",
+        "with the link gone, every session is told the link is down"
+    );
     alpha.stop();
 }
 
@@ -295,7 +308,7 @@ fn real_pair_push_only_does_not_require_discover_and_incoming_ceiling_is_indepen
     );
     write(
         &mut a,
-        &json!({"v":1,"op":"discover","rid":rid(25),"scopeIds":["team"],"watch":false}),
+        &json!({"v":2,"op":"discover","rid":rid(25),"scopeIds":["team"],"watch":false}),
     );
     assert_eq!(read(&mut a)["outcome"]["code"], "forbidden");
     send(&mut a, &beta_peer, 26);
@@ -358,9 +371,9 @@ async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_
             advertised["scopeIds"] = json!(["team", "private"]);
         }
         if case == 2 {
-            remote_write(&mut stream,&json!({"v":1,"op":"roster.event","rid":discover["rid"],"event":{"tag":"upsert","peer":advertised}})).await;
+            remote_write(&mut stream,&json!({"v":2,"op":"roster.event","rid":discover["rid"],"event":{"tag":"upsert","peer":advertised}})).await;
         } else {
-            remote_write(&mut stream,&json!({"v":1,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[advertised],"watching":true}}})).await;
+            remote_write(&mut stream,&json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[advertised],"watching":true}}})).await;
             if case >= 3 {
                 let from = if case == 3 {
                     descriptor("gamma")["peer"].clone()
@@ -369,7 +382,7 @@ async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_
                     peer["runtimeNonce"] = json!(rid(801));
                     peer
                 };
-                remote_write(&mut stream,&json!({"v":1,"op":"send","rid":rid(802),"from":from,"to":{"machineId":"beta","sessionId":"no-runtime","runtimeNonce":rid(803)},"scopeId":"team","message":{"id":rid(804),"kind":"request","content":"must not route","format":"text"}})).await;
+                remote_write(&mut stream,&json!({"v":2,"op":"send","rid":rid(802),"from":from,"to":{"machineId":"beta","sessionId":"no-runtime","runtimeNonce":rid(803)},"scopeId":"team","budgetMs":15000,"message":{"id":rid(804),"kind":"request","content":"must not route","format":"text"}})).await;
             }
         }
         let closed = tokio::time::timeout(Duration::from_secs(3), remote_read(&mut stream)).await;
@@ -409,12 +422,12 @@ async fn real_daemon_authenticates_identity_and_rejects_transit_but_keeps_valid_
     let (mut stream, _lease) = prepared.connect().await.unwrap().into_parts();
     let discover = remote_read(&mut stream).await.unwrap();
     let advertised = descriptor("alpha");
-    remote_write(&mut stream,&json!({"v":1,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[advertised],"watching":true}}})).await;
-    remote_write(&mut stream,&json!({"v":1,"op":"send","rid":rid(850),"from":advertised["peer"],"to":descriptor("gamma")["peer"],"scopeId":"team","message":{"id":rid(851),"kind":"request","content":"no transit","format":"text"}})).await;
+    remote_write(&mut stream,&json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[advertised],"watching":true}}})).await;
+    remote_write(&mut stream,&json!({"v":2,"op":"send","rid":rid(850),"from":advertised["peer"],"to":descriptor("gamma")["peer"],"scopeId":"team","budgetMs":15000,"message":{"id":rid(851),"kind":"request","content":"no transit","format":"text"}})).await;
     let rejection = remote_read(&mut stream).await.unwrap();
     assert_eq!(rejection["outcome"]["tag"], "not_admitted");
     assert_eq!(rejection["outcome"]["code"], "forbidden");
-    remote_write(&mut stream, &json!({"v":1,"op":"ping","rid":rid(852)})).await;
+    remote_write(&mut stream, &json!({"v":2,"op":"ping","rid":rid(852)})).await;
     let pong = remote_read(&mut stream).await.unwrap();
     assert_eq!(pong["forOp"], "ping");
     assert_eq!(pong["outcome"]["tag"], "ok");
@@ -468,7 +481,11 @@ fn real_pair_active_credential_expiry_withdraws_routes_and_possible_admission_st
         "actual leased TLS process link must withdraw imported routes"
     );
     send(&mut a, &beta_peer, 905);
-    assert_eq!(read(&mut a)["outcome"]["code"], "no_route");
+    assert_eq!(
+        read(&mut a)["outcome"]["code"],
+        "link_down",
+        "with the link gone, every session is told the link is down"
+    );
 }
 
 #[test]
@@ -640,7 +657,11 @@ fn real_pair_active_crl_expiry_withdraws_routes_and_possible_admission_stays_unk
         "actual leased TLS process link must withdraw imported routes"
     );
     send(&mut a, &beta_peer, 905);
-    assert_eq!(read(&mut a)["outcome"]["code"], "no_route");
+    assert_eq!(
+        read(&mut a)["outcome"]["code"],
+        "link_down",
+        "with the link gone, every session is told the link is down"
+    );
 }
 
 fn imported(index: u32) -> Value {
@@ -672,14 +693,14 @@ async fn link_with_snapshot(
         .await
         .expect("roster watch request");
     let peers: Vec<_> = (0..snapshot).map(imported).collect();
-    remote_write(&mut stream,&json!({"v":1,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":true}}})).await;
+    remote_write(&mut stream,&json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":true}}})).await;
     (stream, discover["rid"].clone(), directory, lease)
 }
 
 async fn link_is_alive<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
     stream: &mut S,
 ) -> bool {
-    remote_write(stream, &json!({"v":1,"op":"ping","rid":rid(3000)})).await;
+    remote_write(stream, &json!({"v":2,"op":"ping","rid":rid(3000)})).await;
     tokio::time::timeout(Duration::from_secs(3), remote_read(stream))
         .await
         .is_ok_and(|reply| reply.is_ok_and(|pong| pong["forOp"] == "ping"))
@@ -697,7 +718,7 @@ async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_t
         let (mut stream, watch, _directory, _lease) =
             link_with_snapshot(&ca, address, snapshot).await;
         for index in 0..upserts {
-            remote_write(&mut stream,&json!({"v":1,"op":"roster.event","rid":watch,"event":{"tag":"upsert","peer":imported(snapshot + index)}})).await;
+            remote_write(&mut stream,&json!({"v":2,"op":"roster.event","rid":watch,"event":{"tag":"upsert","peer":imported(snapshot + index)}})).await;
         }
         assert_eq!(
             link_is_alive(&mut stream).await,
@@ -720,10 +741,10 @@ async fn real_daemon_refuses_retired_requests_from_an_older_remote_gateway_and_k
     let origin = imported(0)["peer"].clone();
     let work = json!({"kind":"request","origin":origin,"requestId":rid(6100)});
     let retired = [
-        json!({"v":1,"op":"state.get","rid":rid(6001),"from":origin,"publisher":target,"scopeId":"team","key":"report"}),
-        json!({"v":1,"op":"state.list","rid":rid(6002),"from":origin,"publisher":target,"scopeId":"team"}),
-        json!({"v":1,"op":"interest.add","rid":rid(6003),"from":origin,"publisher":target,"scopeId":"team","work":work}),
-        json!({"v":1,"op":"interest.remove","rid":rid(6004),"from":origin,"publisher":target,"scopeId":"team","work":work}),
+        json!({"v":2,"op":"state.get","rid":rid(6001),"from":origin,"publisher":target,"scopeId":"team","key":"report"}),
+        json!({"v":2,"op":"state.list","rid":rid(6002),"from":origin,"publisher":target,"scopeId":"team"}),
+        json!({"v":2,"op":"interest.add","rid":rid(6003),"from":origin,"publisher":target,"scopeId":"team","work":work}),
+        json!({"v":2,"op":"interest.remove","rid":rid(6004),"from":origin,"publisher":target,"scopeId":"team","work":work}),
     ];
     for request in &retired {
         remote_write(&mut stream, request).await;
@@ -742,7 +763,7 @@ async fn real_daemon_refuses_retired_requests_from_an_older_remote_gateway_and_k
         link_is_alive(&mut stream).await,
         "the link survives retired requests"
     );
-    let send = json!({"v":1,"op":"send","rid":rid(6005),"from":origin,"to":target,"scopeId":"team","message":{"id":rid(6006),"kind":"request","content":"still routed","format":"text"}});
+    let send = json!({"v":2,"op":"send","rid":rid(6005),"from":origin,"to":target,"scopeId":"team","budgetMs":15000,"message":{"id":rid(6006),"kind":"request","content":"still routed","format":"text"}});
     remote_write(&mut stream, &send).await;
     assert_eq!(
         read(&mut receiver)["message"]["id"],
@@ -761,7 +782,7 @@ async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overl
     let target = register(&mut receiver, "receiver", 1);
     let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
     let origin = imported(0)["peer"].clone();
-    let send_from_remote = |number: u32| json!({"v":1,"op":"send","rid":rid(4000 + number),"from":origin,"to":target,"scopeId":"team","message":{"id":rid(5000 + number),"kind":"request","content":"queued","format":"text"}});
+    let send_from_remote = |number: u32| json!({"v":2,"op":"send","rid":rid(4000 + number),"from":origin,"to":target,"scopeId":"team","budgetMs":15000,"message":{"id":rid(5000 + number),"kind":"request","content":"queued","format":"text"}});
     // One operation at a time: the delivery proves the gateway registered it before the next
     // frame is offered, so the gateway's bounded inbound queue never overflows.
     for number in 0..256 {

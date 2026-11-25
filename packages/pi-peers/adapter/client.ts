@@ -4,7 +4,7 @@ import type { Configuration } from "./config.js";
 import { LinkTable } from "./links.js";
 import type { LinkState } from "./links.js";
 import { validateBoundReply } from "./replies.js";
-import { sendWithRetries } from "./send.js";
+import { remainingBudget, sendWithRetries } from "./send.js";
 import type { SendOutcome } from "./send.js";
 import { connectTransport, ConnectionFailure, freshId } from "./transport.js";
 import type { Connection, LinkFrame, Reply, Request } from "./transport.js";
@@ -17,8 +17,15 @@ type Descriptor = Extract<
 export type EnsureGateway = (
   deadline: number,
   signal: AbortSignal,
-) => Promise<{ gatewaySha256: string; linkEvents?: boolean }>;
+) => Promise<{ gatewaySha256: string }>;
 export type { LinkState } from "./links.js";
+function outdated(error: unknown): boolean {
+  return (
+    error instanceof ConnectionFailure &&
+    error.possible &&
+    (error.peerClosed || error.code === "protocol_error")
+  );
+}
 
 export type ClientOptions = {
   config: Configuration;
@@ -42,8 +49,6 @@ export class GatewayClient {
   private readonly peers = new Map<string, Descriptor>();
   private diagnostic = "disconnected";
   private generationPending = false;
-  private linkEvents = false;
-  private linkRefused = false;
   private registerRid: string | undefined;
   private readonly linkTable = new LinkTable();
   constructor(private readonly options: ClientOptions) {}
@@ -165,7 +170,6 @@ export class GatewayClient {
     current: () => boolean,
   ): Promise<string | undefined> {
     const ensure = this.options.ensureGateway;
-    this.linkEvents = false;
     if (ensure === undefined) {
       return undefined;
     }
@@ -180,7 +184,6 @@ export class GatewayClient {
       ) {
         throw new ConnectionFailure("protocol_error", false);
       }
-      this.linkEvents = "linkEvents" in snapshot && snapshot.linkEvents === true;
       return snapshot.gatewaySha256;
     } catch (error) {
       if (current()) {
@@ -219,13 +222,12 @@ export class GatewayClient {
       connection.close();
     };
     signal.addEventListener("abort", abort, { once: true });
-    const optIn = this.linkEvents && !this.linkRefused;
     const rid = freshId();
     this.registerRid = rid;
     try {
       const reply = await connection.request(
         {
-          v: 1,
+          v: 2,
           op: "register",
           rid,
           sessionId: this.options.peer.sessionId,
@@ -233,7 +235,6 @@ export class GatewayClient {
           scopeIds: this.options.config.scopeIds,
           label: this.options.config.label,
           ...(expected === undefined ? {} : { expectedConfigSha256: expected }),
-          ...(optIn ? { linkEvents: true } : {}),
         },
         deadline,
         signal,
@@ -244,7 +245,7 @@ export class GatewayClient {
       return this.registered(connection, reply);
     } catch (error) {
       connection.close();
-      this.registrationFailed(error, optIn, current() && expected !== undefined);
+      this.registrationFailed(current() && expected !== undefined, current() && outdated(error));
       throw error;
     } finally {
       signal.removeEventListener("abort", abort);
@@ -265,9 +266,11 @@ export class GatewayClient {
     this.options.statusChanged();
     return connection;
   }
-  private registrationFailed(error: unknown, optIn: boolean, activation: boolean): void {
-    if (optIn && error instanceof ConnectionFailure && error.code === "unavailable") {
-      this.linkRefused = true;
+  private registrationFailed(activation: boolean, olderGateway: boolean): void {
+    if (olderGateway && !this.generationPending) {
+      this.diagnostic = "gateway_outdated";
+      this.options.statusChanged();
+      return;
     }
     if (activation) {
       this.diagnostic = this.generationPending ? "activation_pending" : "activation_unconfirmed";
@@ -421,12 +424,7 @@ export class GatewayClient {
     message: Message,
     signal?: AbortSignal,
   ): Promise<SendOutcome> {
-    const binding = {
-      messageId: message.id,
-      sender: this.options.peer,
-      recipient: to,
-      scopeId,
-    };
+    const messageId = message.id;
     const combined =
       signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal]);
     const run = async () =>
@@ -437,7 +435,11 @@ export class GatewayClient {
         message,
         signal: combined,
         request: async (rid, deadline) =>
-          this.request({ v: 1, op: "send", rid, to, scopeId, message }, combined, deadline),
+          this.request(
+            { v: 2, op: "send", rid, to, scopeId, budgetMs: remainingBudget(deadline), message },
+            combined,
+            deadline,
+          ),
       });
     try {
       return await this.operation(run);
@@ -445,12 +447,12 @@ export class GatewayClient {
       if (error instanceof ConnectionFailure && error.code === "overloaded") {
         return {
           tag: "not_admitted",
-          binding,
+          messageId,
           code: "overloaded",
           resource: "operations",
         };
       }
-      return { tag: "not_admitted", binding, code: "cancelled" };
+      return { tag: "not_admitted", messageId, code: "cancelled" };
     }
   }
   async discover(
@@ -465,7 +467,7 @@ export class GatewayClient {
           scopeIds.every((scope) => this.watch?.scopes.has(scope) === true);
         if (!this.watch.ready || !scopesMatch) {
           return {
-            v: 1,
+            v: 2,
             op: "result",
             rid: freshId(),
             forOp: "discover",
@@ -473,7 +475,7 @@ export class GatewayClient {
           };
         }
         return {
-          v: 1,
+          v: 2,
           op: "result",
           rid: freshId(),
           forOp: "discover",
@@ -488,7 +490,7 @@ export class GatewayClient {
         this.watch = { rid, scopes: new Set(scopeIds), ready: false };
       }
       try {
-        const reply = await this.request({ v: 1, op: "discover", rid, scopeIds, watch }, signal);
+        const reply = await this.request({ v: 2, op: "discover", rid, scopeIds, watch }, signal);
         if (watch && (reply.forOp !== "discover" || reply.outcome.tag !== "ok")) {
           this.clearWatch(rid);
         }

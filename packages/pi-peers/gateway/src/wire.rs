@@ -12,6 +12,18 @@ pub const MAX_BODY: usize = 32_764;
 
 const MAX_AUTHORED: usize = 24_576;
 
+/// The only wire version this gateway speaks.
+pub const WIRE_VERSION: u64 = 2;
+
+/// The one upgrade-path exception: a local `gateway.restart` may arrive as v1, so an older
+/// `--request-restart` (or this one, which sends v1) can stop either version. Nothing else does.
+fn legacy_restart(op: &str, role: Role, version: &Value) -> bool {
+    op == "gateway.restart" && role == Role::LocalClient && *version == 1
+}
+
+/// Largest remaining time budget a send or deliver frame may carry, in milliseconds.
+pub const MAX_BUDGET_MS: u64 = 60_000;
+
 /// Trust boundary at which an operation is interpreted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -336,14 +348,14 @@ fn number(value: &Value) -> Result<(), DecodeError> {
 
 pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeError> {
     let op = value["op"].as_str().ok_or(DecodeError)?;
-    if value["v"] != 1 {
+    if value["v"] != WIRE_VERSION && !legacy_restart(op, role, &value["v"]) {
         return Err(DecodeError);
     }
     identifier(&value["rid"])?;
     let (required, optional): (&[&str], &[&str]) = match op {
         "register" if role == Role::LocalClient => (
             &["sessionId", "runtimeNonce", "scopeIds", "label"],
-            &["expectedConfigSha256", "linkEvents"],
+            &["expectedConfigSha256"],
         ),
         "close" if role == Role::LocalClient => (&[], &[]),
         "gateway.restart" if role == Role::LocalClient => (&["expectedMachineId"], &[]),
@@ -352,8 +364,12 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
             (&["scopeIds", "watch"], &[])
         }
         "unwatch" if matches!(role, Role::LocalClient | Role::RemoteLink) => (&["watchRid"], &[]),
-        "send" if role != Role::AdapterDelivery => (&["to", "scopeId", "message"], &["from"]),
-        "deliver" if role == Role::AdapterDelivery => (&["from", "to", "scopeId", "message"], &[]),
+        "send" if role != Role::AdapterDelivery => {
+            (&["to", "scopeId", "budgetMs", "message"], &["from"])
+        }
+        "deliver" if role == Role::AdapterDelivery => {
+            (&["from", "to", "scopeId", "budgetMs", "message"], &[])
+        }
         "state.get" => (
             &["publisher", "scopeId", "key"],
             &["from", "expectedRevision"],
@@ -380,37 +396,7 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
     required.extend(["v", "op", "rid"]);
     let fields = object(value, &required, optional)?;
     for (name, field) in fields {
-        match name.as_str() {
-            "to" | "from" | "publisher" => peer(field)?,
-            "expectedMachineId" | "machineId" => machine(field)?,
-            "expectedConfigSha256" => {
-                let hash = field.as_str().ok_or(DecodeError)?;
-                if hash.len() != 64
-                    || !hash
-                        .bytes()
-                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-                {
-                    return Err(DecodeError);
-                }
-            }
-            "sessionId" => {
-                plain(field, 256)?;
-            }
-            "runtimeNonce" | "watchRid" => identifier(field)?,
-            "scopeId" | "key" => key(field)?,
-            "scopeIds" => scopes(field, if op == "register" { 4 } else { 64 })?,
-            "label" => {
-                plain(field, 128)?;
-            }
-            "watch" | "linkEvents" => {
-                field.as_bool().ok_or(DecodeError)?;
-            }
-            "state" => enum_value(field, &["up", "down", "probing"])?,
-            "message" => message(field)?,
-            "work" => work(field)?,
-            "expectedRevision" | "since" | "nextProbe" => number(field)?,
-            _ => {}
-        }
+        header_field(op, role, name, field)?;
     }
     if matches!(
         op,
@@ -431,6 +417,52 @@ pub(crate) fn validate_value(value: &Value, role: Role) -> Result<(), DecodeErro
     authored_bytes(value)
         .filter(|bytes| *bytes <= MAX_AUTHORED)
         .ok_or(DecodeError)?;
+    Ok(())
+}
+fn header_field(op: &str, role: Role, name: &str, field: &Value) -> Result<(), DecodeError> {
+    match name {
+        "to" | "from" if op == "send" && role == Role::RemoteLink && field.is_u64() => {
+            if field
+                .as_u64()
+                .and_then(|number| usize::try_from(number).ok())
+                .is_none_or(|number| number >= crate::intern::MAX_REFS)
+            {
+                return Err(DecodeError);
+            }
+        }
+        "to" | "from" | "publisher" => peer(field)?,
+        "expectedMachineId" | "machineId" => machine(field)?,
+        "expectedConfigSha256" => {
+            let hash = field.as_str().ok_or(DecodeError)?;
+            if hash.len() != 64
+                || !hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(DecodeError);
+            }
+        }
+        "sessionId" => {
+            plain(field, 256)?;
+        }
+        "runtimeNonce" | "watchRid" => identifier(field)?,
+        "scopeId" | "key" => key(field)?,
+        "scopeIds" => scopes(field, if op == "register" { 4 } else { 64 })?,
+        "label" => {
+            plain(field, 128)?;
+        }
+        "watch" => {
+            field.as_bool().ok_or(DecodeError)?;
+        }
+        "state" => enum_value(field, &["up", "down", "probing"])?,
+        "message" => message(field)?,
+        "work" => work(field)?,
+        "expectedRevision" | "since" | "nextProbe" => number(field)?,
+        "budgetMs" if field.as_u64().is_none_or(|budget| budget > MAX_BUDGET_MS) => {
+            return Err(DecodeError);
+        }
+        _ => {}
+    }
     Ok(())
 }
 fn authored_bytes(value: &Value) -> Option<usize> {
@@ -499,31 +531,23 @@ fn result(value: &Value) -> Result<(), DecodeError> {
     let outcome = &value["outcome"];
     let tag = outcome["tag"].as_str().ok_or(DecodeError)?;
     if matches!(op, "send" | "deliver") {
-        let extra = match tag {
-            "admitted" => "correlation",
-            "not_admitted" | "unknown" => "code",
+        let required: &[&str] = match tag {
+            "admitted" => &["tag", "messageId", "correlation", "durable"],
+            "not_admitted" | "unknown" => &["tag", "messageId", "code"],
             _ => return Err(DecodeError),
         };
         object(
             outcome,
-            &["tag", "binding", extra],
+            required,
             if tag == "not_admitted" {
                 &["resource"]
             } else {
                 &[]
             },
         )?;
-        let binding = &outcome["binding"];
-        object(
-            binding,
-            &["messageId", "sender", "recipient", "scopeId"],
-            &[],
-        )?;
-        identifier(&binding["messageId"])?;
-        peer(&binding["sender"])?;
-        peer(&binding["recipient"])?;
-        key(&binding["scopeId"])?;
+        identifier(&outcome["messageId"])?;
         if tag == "admitted" {
+            outcome["durable"].as_bool().ok_or(DecodeError)?;
             return enum_value(&outcome["correlation"], &["none", "verified", "unresolved"]);
         }
         if tag == "unknown" {
@@ -559,7 +583,7 @@ fn error_outcome(value: &Value, op: &str) -> Result<(), DecodeError> {
             "send" | "deliver" | "state.get" | "state.list" | "interest.add" | "interest.remove"
         ),
         "link_down" => op == "send",
-        "id_conflict" | "invalid_correlation" | "delivery_too_large" => {
+        "id_conflict" | "invalid_correlation" | "delivery_too_large" | "expired" => {
             matches!(op, "send" | "deliver")
         }
         _ => false,

@@ -13,7 +13,10 @@ export type GatewayCatalog = {
   native: GatewayReleasePin | null;
 };
 
-export const GATEWAY_WIRE_VERSION = 1;
+export const GATEWAY_WIRE_VERSION = 2;
+export function wireMismatch(source: string, pinned: string, wires: unknown): string {
+  return `${source} gateway ${pinned} (pinned) speaks wire ${JSON.stringify(wires ?? null)}; this adapter needs wire ${String(GATEWAY_WIRE_VERSION)}. Tag a gateway release that speaks it and re-pin the catalog.`;
+}
 export const GATEWAY_MANAGED_CAPABILITY = "managed-on-demand-v1";
 export const GATEWAY_LOCK_CAPABILITIES = ["setup-lock-v1"] as const;
 export const GATEWAY_LOCAL_SETUP_CAPABILITIES = [

@@ -130,13 +130,14 @@ impl Daemon {
                     expires,
                     last_progress: Instant::now(),
                     ping: None,
+                    refs: crate::intern::Refs::default(),
                 }),
                 closing: false,
                 failed: false,
             },
         );
         let request =
-            json!({"v":1,"op":"discover","rid":snapshot_rid,"scopeIds":scopes,"watch":true});
+            json!({"v":2,"op":"discover","rid":snapshot_rid,"scopeIds":scopes,"watch":true});
         if !self.queue(id, &request, BufferClass::Data, None) {
             self.fail(id);
         }
@@ -166,7 +167,7 @@ impl Daemon {
             .link
             .as_ref()
             .map_or(self.bound_at, |link| link.breaker().since());
-        let mut frame = json!({"v":1,"op":"link.state","rid":rid,"machineId":machine,"state":view.as_str(),"since":unix_millis(since)});
+        let mut frame = json!({"v":2,"op":"link.state","rid":rid,"machineId":machine,"state":view.as_str(),"since":unix_millis(since)});
         if let Some(next) = self
             .link
             .as_ref()
@@ -263,7 +264,7 @@ impl Daemon {
             };
             if !self.queue(
                 id,
-                &json!({"v":1,"op":"ping","rid":rid}),
+                &json!({"v":2,"op":"ping","rid":rid}),
                 BufferClass::Control,
                 None,
             ) {
@@ -337,6 +338,16 @@ impl Daemon {
                 self.reject(id, &request, "forbidden", None);
             }
             Some("send") => {
+                let mut request = request;
+                if self
+                    .clients
+                    .get(&id)
+                    .and_then(|client| client.remote.as_ref())
+                    .is_none_or(|remote| remote.refs.expand(&mut request).is_err())
+                {
+                    self.fail(id);
+                    return;
+                }
                 let valid_source =
                     self.remote_descriptor(id, &request["from"])
                         .is_some_and(|descriptor| {
@@ -387,12 +398,21 @@ impl Daemon {
             .collect();
         peers.sort_by_key(|descriptor| descriptor["peer"].to_string());
         let watching = request["watch"] == true;
-        let response = json!({"v":1,"op":"result","rid":request["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":watching}}});
+        let response = json!({"v":2,"op":"result","rid":request["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":watching}}});
         if !self.queue(id, &response, BufferClass::Data, None) {
             self.fail(id);
             return;
         }
         if watching {
+            if let Some(remote) = self
+                .clients
+                .get_mut(&id)
+                .and_then(|client| client.remote.as_mut())
+            {
+                for descriptor in &peers {
+                    remote.refs.exported(&descriptor["peer"]);
+                }
+            }
             let generation = self.next_watch_generation;
             let Some(next) = generation.checked_add(1) else {
                 self.fail(id);
@@ -486,6 +506,9 @@ impl Daemon {
             .get_mut(&id)
             .and_then(|client| client.remote.as_mut())
         {
+            for (descriptor, _, _) in &roster {
+                remote.refs.imported(&descriptor["peer"]);
+            }
             remote.roster = roster;
             remote.established = true;
         }
@@ -569,6 +592,7 @@ impl Daemon {
                 .get_mut(&id)
                 .and_then(|client| client.remote.as_mut())
             {
+                remote.refs.imported(&entry.0["peer"]);
                 remote.roster.push(entry);
             }
         }

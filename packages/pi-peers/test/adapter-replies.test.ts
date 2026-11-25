@@ -3,13 +3,13 @@ import { validateBoundReply } from "../adapter/replies.js";
 
 const self = { machineId: "local", sessionId: "session", runtimeNonce: "a".repeat(32) };
 const request = {
-  v: 1,
+  v: 2,
   op: "gateway.restart",
   rid: "b".repeat(32),
   expectedMachineId: "local",
 } as const;
 const reply = {
-  v: 1,
+  v: 2,
   op: "result",
   rid: request.rid,
   forOp: "gateway.restart",
@@ -31,7 +31,7 @@ describe("local maintenance reply binding", () => {
 
   test("cannot substitute a restart acknowledgment for an ordinary close request", () => {
     expect(() => {
-      validateBoundReply({ v: 1, op: "close", rid: request.rid }, reply, self);
+      validateBoundReply({ v: 2, op: "close", rid: request.rid }, reply, self);
     }).toThrow("Operation binding mismatch");
   });
 });

@@ -9,6 +9,7 @@ import { GatewayClient } from "../adapter/client.js";
 import type { EnsureGateway } from "../adapter/client.js";
 import type { Configuration } from "../adapter/config.js";
 import { sessionHandle } from "../adapter/handles.js";
+import { statusSummary } from "../adapter/presentation.js";
 import { createAdapterRuntime } from "../adapter/runtime.js";
 import { AdapterSession, NOTICE_TYPE } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
@@ -63,7 +64,7 @@ async function gateway(
         let reply: Reply | undefined;
         if (request.op === "register" && !holdRegistration) {
           reply = {
-            v: 1,
+            v: 2,
             op: "result",
             rid: request.rid,
             forOp: "register",
@@ -147,14 +148,6 @@ function authored(id = "3".repeat(32)): Message {
     format: "text",
   };
 }
-function binding(message: Message) {
-  return {
-    messageId: message.id,
-    sender: peer,
-    recipient: other,
-    scopeId: "team",
-  };
-}
 
 function lostThenDenied() {
   let sends = 0;
@@ -168,13 +161,13 @@ function lostThenDenied() {
       return undefined;
     }
     return {
-      v: 1,
+      v: 2,
       op: "result",
       rid: request.rid,
       forOp: "send",
       outcome: {
         tag: "not_admitted",
-        binding: binding(request.message),
+        messageId: request.message.id,
         code: "forbidden",
       },
     };
@@ -185,14 +178,15 @@ function misbound(request: Request): Reply | undefined {
     return undefined;
   }
   return {
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "send",
     outcome: {
       tag: "admitted",
-      binding: { ...binding(request.message), messageId: "f".repeat(32) },
+      messageId: "f".repeat(32),
       correlation: "none",
+      durable: false,
     },
   };
 }
@@ -201,7 +195,7 @@ function discoveryReply(request: Request): Reply | undefined {
     return undefined;
   }
   return {
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "discover",
@@ -218,7 +212,7 @@ function releaseRegistration(fixture: Awaited<ReturnType<typeof gateway>>): void
   const request = fixture.requests.find((item) => item.op === "register");
   assert(request?.op === "register");
   fixture.sendFrame({
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "register",
@@ -248,24 +242,25 @@ function unroutedGateway(request: Request): Reply | undefined {
     return toolGateway(request);
   }
   return {
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "send",
-    outcome: { tag: "not_admitted", binding: binding(request.message), code: "no_route" },
+    outcome: { tag: "not_admitted", messageId: request.message.id, code: "no_route" },
   };
 }
 function toolGateway(request: Request): Reply | undefined {
   if (request.op === "send") {
     return {
-      v: 1,
+      v: 2,
       op: "result",
       rid: request.rid,
       forOp: "send",
       outcome: {
         tag: "admitted",
-        binding: binding(request.message),
+        messageId: request.message.id,
         correlation: "none",
+        durable: false,
       },
     };
   }
@@ -412,7 +407,7 @@ function registerHash(request: Request) {
 function mismatchReply(request: Request): Reply {
   assert.equal(request.op, "register");
   return {
-    v: 1,
+    v: 2,
     op: "result",
     rid: request.rid,
     forOp: "register",
@@ -426,7 +421,7 @@ function generationReply(request: Request): Reply {
   return request.expectedConfigSha256 === "a".repeat(64)
     ? mismatchReply(request)
     : {
-        v: 1,
+        v: 2,
         op: "result",
         rid: request.rid,
         forOp: "register",
@@ -472,6 +467,55 @@ function signalDiscover(received: () => void) {
     return undefined;
   };
 }
+
+const olderGatewayAnswers = {
+  "closes the connection": (_request: Request, socket: Socket) => {
+    socket.destroy();
+  },
+  "answers in wire v1": (request: Request, socket: Socket) => {
+    const body = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        op: "result",
+        rid: request.rid,
+        forOp: "register",
+        outcome: { tag: "error", code: "forbidden" },
+      }),
+    );
+    const prefix = Buffer.alloc(4);
+    prefix.writeUInt32BE(body.length);
+    socket.write(Buffer.concat([prefix, body]));
+  },
+};
+describe("an older gateway still running", () => {
+  test.each(Object.entries(olderGatewayAnswers))(
+    "a register it %s says the gateway is older and to restart it with Setup",
+    async (_name, answer) => {
+      const fixture = await gateway((request, socket) => {
+        answer(request, socket);
+        return undefined;
+      }, true);
+      const session = new AdapterSession(
+        fixture.config,
+        peer,
+        { sendMessage: () => undefined },
+        () => undefined,
+        () => undefined,
+      );
+      cleanups.push(async () => {
+        session.close();
+      });
+      await expect(session.reconnect()).rejects.toThrow("Session communication");
+      expect(session.status().status).toBe("gateway_outdated");
+      const summary = statusSummary(session.status(), "enabled", { inMenu: true });
+      expect(summary.headline).toBe("The running gateway is an older version");
+      expect(summary.next).toBe("Choose Setup to restart it.");
+      expect(fixture.requests.filter((request) => request.op === "gateway.restart")).toHaveLength(
+        0,
+      );
+    },
+  );
+});
 
 describe("public adapter transport and notice accounting", () => {
   afterEach(async () => {
@@ -681,7 +725,7 @@ describe("public adapter transport and notice accounting", () => {
       });
       expect(statusChanged).toHaveBeenCalledTimes(1);
       const tool = client.request({
-        v: 1,
+        v: 2,
         op: "discover",
         rid: "f".repeat(32),
         scopeIds: ["team"],
@@ -883,7 +927,7 @@ describe("public adapter transport and notice accounting", () => {
       await client.reconnect();
       const work = expectPossibleFailure(
         client.request({
-          v: 1,
+          v: 2,
           op: "discover",
           rid: "e".repeat(32),
           scopeIds: ["team"],
@@ -978,7 +1022,7 @@ describe("public adapter transport and notice accounting", () => {
       client.close();
     }
   });
-  test("an older gateway closing guarded register never triggers unguarded fallback or passive control", async () => {
+  test("an older gateway closing guarded register is reported as outdated and never triggers unguarded fallback or passive control", async () => {
     const fixture = await gateway(olderGatewayClose, true);
     const ensureGateway = generationEnsure(["a".repeat(64)]);
     const client = new GatewayClient({
@@ -998,7 +1042,7 @@ describe("public adapter transport and notice accounting", () => {
       );
       expect(client.status()).toMatchObject({
         connected: false,
-        status: "activation_unconfirmed",
+        status: "gateway_outdated",
         scopes: [],
       });
     } finally {
@@ -1222,7 +1266,7 @@ describe("public adapter transport and notice accounting", () => {
     const first = resultOf(
       client.request(
         {
-          v: 1,
+          v: 2,
           op: "discover",
           rid: "a".repeat(32),
           scopeIds: ["team"],
@@ -1234,7 +1278,7 @@ describe("public adapter transport and notice accounting", () => {
     await expect.poll(() => fixture.requests.length).toBe(1);
     const second = resultOf(
       client.request({
-        v: 1,
+        v: 2,
         op: "discover",
         rid: "b".repeat(32),
         scopeIds: ["team"],
@@ -1257,7 +1301,7 @@ describe("public adapter transport and notice accounting", () => {
     });
     const first = resultOf(
       client.request({
-        v: 1,
+        v: 2,
         op: "discover",
         rid: "a".repeat(32),
         scopeIds: ["team"],
@@ -1268,7 +1312,7 @@ describe("public adapter transport and notice accounting", () => {
     const short = resultOf(
       client.request(
         {
-          v: 1,
+          v: 2,
           op: "discover",
           rid: "b".repeat(32),
           scopeIds: ["team"],
@@ -1380,12 +1424,13 @@ describe("public adapter transport and notice accounting", () => {
     await session.start();
     const message = authored();
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "4".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message,
     });
     await expect.poll(() => session.state.stats().inboxMessages).toBe(1);
@@ -1396,12 +1441,13 @@ describe("public adapter transport and notice accounting", () => {
     session.settled();
     idle = true;
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "5".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: authored("6".repeat(32)),
     });
     await expect.poll(() => notices.length).toBe(1);
@@ -1427,12 +1473,13 @@ describe("public adapter transport and notice accounting", () => {
     });
     expect(session.status().notice).toBe("none");
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "7".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message,
     });
     await new Promise<void>((resolve) => {
@@ -1466,12 +1513,13 @@ describe("public adapter transport and notice accounting", () => {
       ["5", "7"],
     ] as const) {
       fixture.sendFrame({
-        v: 1,
+        v: 2,
         op: "deliver",
         rid: rid.repeat(32),
         from: other,
         to: peer,
         scopeId: "team",
+        budgetMs: 15_000,
         message: authored(id.repeat(32)),
       });
     }
@@ -1502,12 +1550,13 @@ describe("public adapter transport and notice accounting", () => {
     await session.start();
     const deliver = (rid: string, id: string) => {
       fixture.sendFrame({
-        v: 1,
+        v: 2,
         op: "deliver",
         rid: rid.repeat(32),
         from: other,
         to: peer,
         scopeId: "team",
+        budgetMs: 15_000,
         message: authored(id.repeat(32)),
       });
     };
@@ -1549,12 +1598,13 @@ describe("public adapter transport and notice accounting", () => {
     const waiting = session.waitForMessage(60);
     expect(footers.at(-1)).toBe("peers ✓ waiting…");
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "4".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: authored("a".repeat(32)),
     });
     await expect(waiting).resolves.toBe("message");
@@ -1583,12 +1633,13 @@ describe("public adapter transport and notice accounting", () => {
     await expect(aborted).resolves.toBe("cancelled");
     const waiting = session.waitForMessage(60);
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "4".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: authored("a".repeat(32)),
     });
     await expect(waiting).resolves.toBe("message");
@@ -1625,12 +1676,13 @@ describe("public adapter transport and notice accounting", () => {
     });
     await session.start();
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "deliver",
       rid: "4".repeat(32),
       from: other,
       to: peer,
       scopeId: "team",
+      budgetMs: 15_000,
       message: authored("a".repeat(32)),
     });
     await expect.poll(() => notices.length).toBe(1);
@@ -1639,11 +1691,11 @@ describe("public adapter transport and notice accounting", () => {
     expect(notice).toContain("peers_take");
     expect(notice).not.toContain(authored().content);
   });
-  test("opted-in sessions track pushed link state and notify listeners only on change", async () => {
+  test("sessions track pushed link state and notify listeners only on change", async () => {
     const fixture = await gateway(() => undefined);
     const ensureGateway = vi
       .fn<EnsureGateway>()
-      .mockResolvedValue({ gatewaySha256: "a".repeat(64), linkEvents: true });
+      .mockResolvedValue({ gatewaySha256: "a".repeat(64) });
     const session = new AdapterSession(
       fixture.config,
       peer,
@@ -1662,8 +1714,8 @@ describe("public adapter transport and notice accounting", () => {
     await session.reconnect();
     const register = fixture.requests[0];
     assert(register?.op === "register");
-    expect(register.linkEvents).toBe(true);
-    const base = { v: 1, op: "link.state", rid: register.rid, machineId: "beta" } as const;
+    expect(register).not.toHaveProperty("linkEvents");
+    const base = { v: 2, op: "link.state", rid: register.rid, machineId: "beta" } as const;
     const down = {
       ...base,
       state: "down",
@@ -1704,14 +1756,14 @@ describe("public adapter transport and notice accounting", () => {
       { sendMessage: () => undefined },
       () => undefined,
       () => undefined,
-      vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64), linkEvents: true }),
+      vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64) }),
     );
     cleanups.push(async () => {
       session.close();
     });
     await session.reconnect();
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "link.state",
       rid: "f".repeat(32),
       machineId: "beta",
@@ -1722,22 +1774,6 @@ describe("public adapter transport and notice accounting", () => {
       expect(fixture.connections()).toBe(2);
     });
     expect(session.linkStates()).toStrictEqual([]);
-  });
-  test("without the gateway capability registration never opts in to link events", async () => {
-    const fixture = await gateway(() => undefined);
-    const session = new AdapterSession(
-      fixture.config,
-      peer,
-      { sendMessage: () => undefined },
-      () => undefined,
-      () => undefined,
-      vi.fn<EnsureGateway>().mockResolvedValue({ gatewaySha256: "a".repeat(64) }),
-    );
-    cleanups.push(async () => {
-      session.close();
-    });
-    await session.reconnect();
-    expect(fixture.requests[0]).not.toHaveProperty("linkEvents");
   });
   test("a wait ends as disconnected when the gateway connection drops", async () => {
     const fixture = await gateway(() => undefined);
@@ -1766,13 +1802,13 @@ describe("public adapter transport and notice accounting", () => {
     const request = fixture.requests.find((item) => item.op === "discover");
     assert(request);
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "roster.event",
       rid: "f".repeat(32),
       event: { tag: "remove", peer: other },
     });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "roster.event",
       rid: request.rid,
       event: { tag: "remove", peer: other },
@@ -1781,7 +1817,7 @@ describe("public adapter transport and notice accounting", () => {
       .poll(async () => client.discover(["team"], true))
       .toMatchObject({ outcome: { value: { peers: [] } } });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "roster.event",
       rid: request.rid,
       event: {
@@ -1793,7 +1829,7 @@ describe("public adapter transport and notice accounting", () => {
       .poll(async () => client.discover(["team"], true))
       .toMatchObject({ outcome: { value: { peers: [{ label: "changed" }] } } });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "roster.event",
       rid: request.rid,
       event: { tag: "invalidated", reason: "policy_changed" },
@@ -1808,7 +1844,7 @@ describe("public adapter transport and notice accounting", () => {
     });
     await expect(
       client.request({
-        v: 1,
+        v: 2,
         op: "discover",
         rid: "e".repeat(32),
         scopeIds: ["team"],
@@ -1830,7 +1866,7 @@ describe("public adapter transport and notice accounting", () => {
     const request = fixture.requests.find((item) => item.op === "discover");
     assert(request);
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "roster.event",
       rid: request.rid,
       event: {
@@ -1842,7 +1878,7 @@ describe("public adapter transport and notice accounting", () => {
     await expect(
       client.request(
         {
-          v: 1,
+          v: 2,
           op: "discover",
           rid: "e".repeat(32),
           scopeIds: ["team"],
@@ -1876,7 +1912,7 @@ describe("public adapter transport and notice accounting", () => {
       resultOf(
         connection.request(
           {
-            v: 1,
+            v: 2,
             op: "discover",
             rid: index.toString(16).repeat(32),
             scopeIds: ["team"],
@@ -1889,7 +1925,7 @@ describe("public adapter transport and notice accounting", () => {
     );
     expect(connection.pendingCount()).toBe(8);
     await expect(
-      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() + 60_000),
+      connection.request({ v: 2, op: "close", rid: "a".repeat(32) }, performance.now() + 60_000),
     ).rejects.toMatchObject({ code: "overloaded", possible: false });
     abort.abort();
     await expect(Promise.all(pending)).resolves.toStrictEqual(
@@ -1898,18 +1934,18 @@ describe("public adapter transport and notice accounting", () => {
     expect(connection.pendingCount()).toBe(0);
     await expect(
       connection.request(
-        { v: 1, op: "close", rid: "a".repeat(32) },
+        { v: 2, op: "close", rid: "a".repeat(32) },
         performance.now() + 60_000,
         AbortSignal.abort(),
       ),
     ).rejects.toMatchObject({ code: "cancelled" });
     await expect(
-      connection.request({ v: 1, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
+      connection.request({ v: 2, op: "close", rid: "a".repeat(32) }, performance.now() - 1),
     ).rejects.toMatchObject({ code: "unavailable" });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     try {
       const unanswered = connection
-        .request({ v: 1, op: "close", rid: "b".repeat(32) }, performance.now() + 10)
+        .request({ v: 2, op: "close", rid: "b".repeat(32) }, performance.now() + 10)
         .then(
           () => undefined,
           (error: unknown) => error,
@@ -1929,7 +1965,7 @@ describe("public adapter transport and notice accounting", () => {
       vi.useRealTimers();
     }
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "result",
       rid: "b".repeat(32),
       forOp: "close",
@@ -1938,7 +1974,7 @@ describe("public adapter transport and notice accounting", () => {
     fixture.raw(Buffer.from([0, 0, 0, 0]));
     await expect.poll(() => disconnected).toEqual(["protocol_error"]);
     await expect(
-      connection.request({ v: 1, op: "close", rid: "c".repeat(32) }, performance.now() + 60_000),
+      connection.request({ v: 2, op: "close", rid: "c".repeat(32) }, performance.now() + 60_000),
     ).rejects.toMatchObject({ code: "unavailable" });
   });
   test("adapter answers forwarded state and interest requests with forbidden, without wakes", async () => {
@@ -1961,7 +1997,7 @@ describe("public adapter transport and notice accounting", () => {
     await session.start();
     const work = { kind: "publication" as const, publisher: peer, key: "report" };
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "state.get",
       rid: "a".repeat(32),
       from: other,
@@ -1971,7 +2007,7 @@ describe("public adapter transport and notice accounting", () => {
       expectedRevision: 1,
     });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "state.list",
       rid: "b".repeat(32),
       from: other,
@@ -1979,7 +2015,7 @@ describe("public adapter transport and notice accounting", () => {
       scopeId: "team",
     });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "interest.add",
       rid: "c".repeat(32),
       from: other,
@@ -1988,7 +2024,7 @@ describe("public adapter transport and notice accounting", () => {
       work,
     });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "interest.remove",
       rid: "d".repeat(32),
       from: other,
@@ -1997,7 +2033,7 @@ describe("public adapter transport and notice accounting", () => {
       work,
     });
     fixture.sendFrame({
-      v: 1,
+      v: 2,
       op: "state.list",
       rid: "e".repeat(32),
       from: other,
@@ -2019,7 +2055,7 @@ describe("public adapter transport and notice accounting", () => {
       setImmediate(resolve);
     });
     expect(notices).toHaveLength(0);
-    fixture.raw(Buffer.from(encodeFrame({ v: 1, op: "ping", rid: "f".repeat(32) }, "remote-link")));
+    fixture.raw(Buffer.from(encodeFrame({ v: 2, op: "ping", rid: "f".repeat(32) }, "remote-link")));
     await expect.poll(() => session.client.status().connected).toBe(false);
     session.close();
     session.afterCompaction();

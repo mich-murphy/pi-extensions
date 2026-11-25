@@ -14,6 +14,7 @@ export class ConnectionFailure extends Error {
   constructor(
     readonly code: "unavailable" | "protocol_error" | "cancelled" | "overloaded",
     readonly possible: boolean,
+    readonly peerClosed = false,
   ) {
     super(`Session communication ${code}`);
   }
@@ -56,7 +57,7 @@ export async function connectTransport(
   let closed = false;
   let ready = false;
   const socket = openSocket(options.socketPath);
-  const fail = (code: ConnectionFailure["code"]) => {
+  const fail = (code: ConnectionFailure["code"], peerClosed = false) => {
     if (closed) {
       return;
     }
@@ -70,7 +71,7 @@ export async function connectTransport(
     socket.destroy();
     for (const operation of pending.values()) {
       operation.cleanup();
-      operation.reject(new ConnectionFailure(code, operation.possible));
+      operation.reject(new ConnectionFailure(code, operation.possible, peerClosed));
     }
     pending.clear();
     if (ready) {
@@ -164,10 +165,10 @@ export async function connectTransport(
     }
   };
   socket.on("error", () => {
-    fail("unavailable");
+    fail("unavailable", true);
   });
   socket.on("close", () => {
-    fail("unavailable");
+    fail("unavailable", true);
   });
   socket.on("data", (chunk: Buffer) => {
     try {

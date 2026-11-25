@@ -3,6 +3,7 @@ import { Hegel } from "@hegeldev/hegel";
 import * as gs from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
+import { MAX_BUDGET_MS } from "../protocol/schema.js";
 import { createState } from "../state/core.js";
 import type { SessionState } from "../state/core.js";
 import type { Delivery } from "../state/types.js";
@@ -62,7 +63,13 @@ function inputFor(id: number, content: string) {
 function deliveryBytes(id: number, content: string): number {
   return (
     Buffer.byteLength(
-      JSON.stringify({ v: 1, op: "deliver", rid: "0".repeat(32), ...inputFor(id, content) }),
+      JSON.stringify({
+        v: 2,
+        op: "deliver",
+        rid: "0".repeat(32),
+        budgetMs: MAX_BUDGET_MS,
+        ...inputFor(id, content),
+      }),
     ) + 4
   );
 }
