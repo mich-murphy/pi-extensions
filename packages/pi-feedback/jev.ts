@@ -87,8 +87,7 @@ const PACKAGE_DESCRIPTIONS = {
 export const OUTSIDE_OWNERS = {
   "pi-core":
     "Pi itself: built-in tools read, bash, edit, write, grep, find and ls; the codemode script runner and its models/tools API; the TUI, editor, themes and scrolling; sessions, tree, compaction, settings, Pi's built-in providers and their API keys and OAuth login, Pi's own provider retries, its own skill discovery and /skill:name commands, bug reports",
-  other:
-    "A third-party extension or MCP server not listed here, such as mcp__linear__*, mcp__github__*, Playwright, subagent or todo extensions",
+  other: "A third-party extension or MCP server not listed here",
 } as const;
 
 const OWNER_INSTRUCTIONS =
