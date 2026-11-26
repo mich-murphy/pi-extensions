@@ -1,4 +1,4 @@
-import { Match, Predicate } from "effect";
+import { Match } from "effect";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import type {
   SdkQueryError,
@@ -53,11 +53,11 @@ function textKind(text: string): SdkFailureKind {
 }
 
 function queryFailureKind({ cause, reason }: SdkQueryError): SdkFailureKind {
-  if (Predicate.isTagged("WorkingDirectoryUnavailable")(reason)) {
+  if (reason._tag === "WorkingDirectoryUnavailable") {
     return "provider";
   }
 
-  return Predicate.isTagged("Cancelled")(reason)
+  return reason._tag === "Cancelled"
     ? "cancelled"
     : textKind(cause instanceof Error ? cause.message : String(cause));
 }
@@ -117,19 +117,19 @@ export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic
     errorTag: error._tag,
   };
 
-  if (Predicate.isTagged("SdkToolContractError")(error)) {
+  if (error._tag === "SdkToolContractError") {
     diagnostic.toolContract = error.reason;
   }
 
-  if (Predicate.isTagged("SdkQueryError")(error)) {
+  if (error._tag === "SdkQueryError") {
     diagnostic.operation = error.operation;
   }
 
-  if (Predicate.isTagged("SdkStreamInterruptedError")(error)) {
+  if (error._tag === "SdkStreamInterruptedError") {
     diagnostic.streamInterruption = error.evidence;
   }
 
-  if (Predicate.isTagged("SdkResultError")(error) && error.terminalReason !== undefined) {
+  if (error._tag === "SdkResultError" && error.terminalReason !== undefined) {
     diagnostic.terminalReason = safeTerminalReason(error.terminalReason);
   }
 

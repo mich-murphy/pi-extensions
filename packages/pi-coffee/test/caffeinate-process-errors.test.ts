@@ -3,7 +3,7 @@ import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
-import { CaffeinateNotice } from "../coffee-lifecycle";
+import type { CaffeinateNotice } from "../coffee-lifecycle";
 
 const POLL_UNTIL_TRUE_WITH_LOADED_MACHINE_HANG_GUARD = { timeout: 20_000 };
 
@@ -14,9 +14,7 @@ function systemError(code: string): Error {
 }
 
 function summary(end: CaffeinateNotice): string {
-  return CaffeinateNotice.$is("failed")(end)
-    ? `${end.error.operation}:${end.error.code}`
-    : end._tag;
+  return end._tag === "failed" ? `${end.error.operation}:${end.error.code}` : end._tag;
 }
 
 describe("caffeinate child errors", () => {

@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { inspect } from "node:util";
 import { assert, describe, expect, test } from "@effect/vitest";
-import { Cause, Duration, Effect, Exit, Predicate, Tracer } from "effect";
+import { Cause, Duration, Effect, Exit, Tracer } from "effect";
 import { withSafeSpan } from "../telemetry";
 import { ToolOutputStore } from "../tool-output";
 import {
@@ -37,7 +37,7 @@ function exportedSpans(spans: ReadonlyArray<Tracer.NativeSpan>): string {
       events: span.events,
       status: span.status,
       error:
-        Predicate.isTagged("Ended")(span.status) && Exit.isFailure(span.status.exit)
+        span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
           ? Cause.pretty(span.status.exit.cause)
           : undefined,
     })),
@@ -46,7 +46,7 @@ function exportedSpans(spans: ReadonlyArray<Tracer.NativeSpan>): string {
 }
 
 function expectSuccessfulSpan(span: Tracer.NativeSpan): void {
-  assert(Predicate.isTagged("Ended")(span.status));
+  assert(span.status._tag === "Ended");
   expect(span.status.exit).toStrictEqual(Exit.succeed(undefined));
 }
 

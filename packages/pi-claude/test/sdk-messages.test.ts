@@ -1,4 +1,4 @@
-import { Predicate, Result } from "effect";
+import { Result } from "effect";
 import type { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
@@ -8,7 +8,6 @@ import {
   decodeSdkEvent,
   maxOutputTokensFor,
   parseSdkMessage,
-  TurnResult,
 } from "../sdk/messages";
 import type { SdkMessage } from "../sdk/messages";
 import { resultMessage, streamEvent, textDelta } from "./fixtures";
@@ -72,7 +71,7 @@ function turnResult(fields: SdkResultFields) {
 function failedResult(fields: SdkResultFields) {
   const result = turnResult({ is_error: true, stop_reason: null, ...fields });
 
-  if (!Predicate.isTagged("failed")(result)) {
+  if (result._tag !== "failed") {
     throw new Error("test setup: expected a failed result");
   }
 
@@ -341,9 +340,11 @@ describe("terminal SDK result", () => {
     ["model_context_window_exceeded", "length", undefined],
     ["tool_deferred", "stop", "tool_deferred"],
   ])("maps stop_reason %s to %s", (stopReason, expected, terminalReason) => {
-    expect(turnResult({ stop_reason: stopReason })).toStrictEqual(
-      TurnResult.cases.completed.make({ stopReason: expected, terminalReason }),
-    );
+    expect(turnResult({ stop_reason: stopReason })).toStrictEqual({
+      _tag: "completed",
+      stopReason: expected,
+      terminalReason,
+    });
   });
 
   test("keeps the serialized terminal result fields in order", () => {
@@ -449,14 +450,14 @@ describe("terminal SDK result", () => {
       errors: ["upstream failed"],
     });
 
-    assert(Predicate.isTagged("failed")(result));
+    assert(result._tag === "failed");
     expect(result.error.message).toBe("Claude Code stopped with an error but did not say why.");
   });
 
   test("treats terminal_reason tool_deferred_unavailable as an error even when is_error is false", () => {
     const result = turnResult({ stop_reason: null, terminal_reason: "tool_deferred_unavailable" });
 
-    assert(Predicate.isTagged("failed")(result));
+    assert(result._tag === "failed");
     expect(result.error._tag).toBe("SdkResultError");
     expect(result.error.terminalReason).toBe("tool_deferred_unavailable");
     expect(result.error.message).toBe(
@@ -466,7 +467,7 @@ describe("terminal SDK result", () => {
 
   test("treats a model refusal as a failure, like Pi's Anthropic provider", () => {
     const result = turnResult({ stop_reason: "refusal" });
-    assert(Predicate.isTagged("failed")(result));
+    assert(result._tag === "failed");
     expect(result.error.message).toBe("Claude declined to answer this request.");
   });
 });

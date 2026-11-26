@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Predicate, Result, Schema } from "effect";
-import { afterEach, describe, expect, test } from "vitest";
+import { Result, Schema } from "effect";
+import { afterEach, assert, describe, expect, test } from "vitest";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
 import type { ToggleOverrides } from "../resources";
@@ -373,7 +373,7 @@ describe("toggleStateFile", () => {
     mkdirSync(context.statePath, { recursive: true });
 
     const loadFailure = failureOf(context.store.load());
-    expect(Predicate.isTagged("ToggleStateUnavailable")(loadFailure)).toBe(true);
+    assert(loadFailure._tag === "ToggleStateUnavailable");
     expect(loadFailure).toMatchObject({
       operation: "load",
       code: "EISDIR",
@@ -382,7 +382,7 @@ describe("toggleStateFile", () => {
       `Could not load pi-skills state at ${context.statePath}: the path is a folder, not a file. Move the folder away.`,
     );
     const updateFailure = failureOf(context.store.set(context.resourceFile("skill"), "disabled"));
-    expect(Predicate.isTagged("ToggleStateUnavailable")(updateFailure)).toBe(true);
+    assert(updateFailure._tag === "ToggleStateUnavailable");
     expect(updateFailure).toMatchObject({
       operation: "update",
       code: "EISDIR",
@@ -408,7 +408,7 @@ describe("toggleStateFile", () => {
 
     const failure = failureOf(store.set(context.resourceFile("skill"), "disabled"));
 
-    expect(Predicate.isTagged("ToggleStateUnavailable")(failure)).toBe(true);
+    assert(failure._tag === "ToggleStateUnavailable");
     expect(failure).toMatchObject({
       operation: "update",
       code: "ENAMETOOLONG",

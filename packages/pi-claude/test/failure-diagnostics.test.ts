@@ -11,7 +11,6 @@ import {
   SdkProtocolError,
   SdkProviderDefect,
   SdkQueryError,
-  SdkQueryFailureReason,
   SdkResultError,
   SdkStreamInterruptedError,
   SdkToolContractError,
@@ -191,7 +190,7 @@ describe("claude SDK failure diagnostics", () => {
   test("keeps working-directory failures actionable, private and non-retryable", () => {
     const error = new SdkQueryError({
       operation: "start",
-      reason: SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
+      reason: { _tag: "WorkingDirectoryUnavailable" },
       cause: new Error("ENOENT /secret/network/timeout/worktree"),
     });
 

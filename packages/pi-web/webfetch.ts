@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { formatSize } from "@earendil-works/pi-coding-agent";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Cause, Duration, Effect, Exit, Match, Predicate, Result, Schema } from "effect";
+import { Cause, Duration, Effect, Exit, Match, Result, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { resolveCredentialSnapshot } from "./credentials";
@@ -122,8 +122,7 @@ export function parseWebFetchParams(
 export function isRescueEligible(result: Result.Result<FetchPageResult, FetchPageError>): boolean {
   if (Result.isFailure(result)) {
     return (
-      Predicate.isTagged("HttpStatusRejected")(result.failure) &&
-      RESCUE_STATUSES.has(result.failure.status)
+      result.failure._tag === "HttpStatusRejected" && RESCUE_STATUSES.has(result.failure.status)
     );
   }
 
@@ -170,7 +169,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
 
       if (Result.isFailure(policy)) {
         throw new Error(
-          Predicate.isTagged("DomainDenied")(policy.failure)
+          policy.failure._tag === "DomainDenied"
             ? "Fetching from this hostname is denied by the webfetch domain policy (`PI_WEB_FETCH_DENY_DOMAINS`)."
             : "Fetching from this hostname is not in the webfetch allowed domains list (`PI_WEB_FETCH_ALLOW_DOMAINS`).",
         );
@@ -375,7 +374,7 @@ const tryProviderRescue = Effect.fnUntraced(function* (
 });
 
 function renderWebFetchFailure(error: WebFetchRunError): string {
-  return Predicate.isTagged("OutputStoreError")(error)
+  return error._tag === "OutputStoreError"
     ? `Could not save full webfetch output to ${error.path}: ${error.reason}`
     : error.message;
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Context, Data, Effect, Layer, Match, Predicate, Result, Schema } from "effect";
+import { Context, Data, Effect, Layer, Result, Schema } from "effect";
 import type { Redacted } from "effect";
 import { CredentialFailure } from "./credentials";
 import type { CredentialSnapshot } from "./credentials";
@@ -284,10 +284,9 @@ function isFreeTierRateLimit(provider: SearchProvider, error: ProviderError): bo
     return false;
   }
 
-  return Match.value(error).pipe(
-    Match.tag("ProviderStatusRejected", ({ status }) => status === 429),
-    Match.tag("ProviderToolError", ({ detail }) => RATE_LIMIT_TEXT.test(detail)),
-    Match.orElse(() => false),
+  return (
+    (error._tag === "ProviderStatusRejected" && error.status === 429) ||
+    (error._tag === "ProviderToolError" && RATE_LIMIT_TEXT.test(error.detail))
   );
 }
 
@@ -321,7 +320,7 @@ function boundedDetail(detail: string): string {
 }
 
 function attemptReason(error: ProviderError): string {
-  return Predicate.isTagged("ProviderToolError")(error) && error.detail !== ""
+  return error._tag === "ProviderToolError" && error.detail !== ""
     ? `reported an error: ${boundedDetail(error.detail)}`
     : error.message;
 }
