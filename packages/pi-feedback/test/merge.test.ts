@@ -109,8 +109,8 @@ describe("merging groups", () => {
   });
 
   test("needs every merged fingerprint's verdict to pass for Pi core", () => {
-    const piPath = { owner: "unattributed", evidence: "pi-path" } as const;
-    const passing = { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 };
+    const piPath = { owner: "unattributed", evidence: "pi-path", pathExisted: true } as const;
+    const passing = { harnessPath: 0.9, outsideService: 0.02 };
 
     const events = [
       signal({ n: 1, session: "a", fingerprint: "bash: one", ...piPath }),

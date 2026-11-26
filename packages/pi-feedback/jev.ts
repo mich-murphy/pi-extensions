@@ -12,32 +12,22 @@ export const CLASSIFY_TIMEOUT_MS = 30_000;
 
 export const THRESHOLDS = {
   harnessPath: 0.7,
-  pathExisted: 0.7,
   piCoreOutsideBelow: 0.3,
   excludedOutsideFrom: 0.9,
   sameCause: 0.7,
   owner: 0.9,
 } as const;
 
-export type RecordQuestion = "harnessPath" | "pathExisted" | "outsideService";
+export type RecordQuestion = "harnessPath" | "outsideService";
 
 export const RECORD_QUESTIONS: Readonly<Record<RecordQuestion, ClassifierBoolQuestion>> = {
   harnessPath: {
     type: "bool",
     instructions:
-      "An AI coding agent's tool call failed. Does the error involve a path, directory name or length limit that the agent harness (Pi or one of its extensions) created, such as a temporary scratch directory, a session directory or a socket path?",
+      "An AI coding agent's tool call failed. Does the error involve a path or directory name that the agent harness (Pi or one of its extensions) created, such as a temporary scratch directory, a session directory or a socket path?",
     criteria: {
-      true: "A harness-created path, directory name or limit is involved",
-      false: "No harness-created path, name or limit is involved",
-    },
-  },
-  pathExisted: {
-    type: "bool",
-    instructions:
-      "When the call ran, did the path named in the error exist? Answer yes when the error is about how an existing path was used, for example its name being read as a command-line option or being too long.",
-    criteria: {
-      true: "The path existed when the call ran",
-      false: "The path did not exist, or no path is involved",
+      true: "A harness-created path or directory name is involved",
+      false: "No harness-created path or directory name is involved",
     },
   },
   outsideService: {

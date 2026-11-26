@@ -60,10 +60,11 @@ describe("pi-feedback commands", () => {
 
   test("shows a group that passes every Pi core check as pi-core", async () => {
     const fingerprint = "bash: ls: unrecognized option '<path>'";
+    const piPath = { evidence: "pi-path", pathExisted: true } as const;
     write(io.ledger, [
-      signal({ n: 3, session: "a", owner: "unattributed", fingerprint, evidence: "pi-path" }),
-      signal({ n: 4, session: "b", owner: "unattributed", fingerprint, evidence: "pi-path" }),
-      verdictEvent(5, fingerprint, { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 }),
+      signal({ n: 3, session: "a", owner: "unattributed", fingerprint, ...piPath }),
+      signal({ n: 4, session: "b", owner: "unattributed", fingerprint, ...piPath }),
+      verdictEvent(5, fingerprint, { harnessPath: 0.9, outsideService: 0.02 }),
     ]);
     await run("queue");
     expect(io.stdout).toContain(

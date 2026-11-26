@@ -98,6 +98,42 @@ describe("signal owner", () => {
   });
 });
 
+describe("Pi paths named in an error", () => {
+  test.each([
+    [
+      "a path under the sessions directory",
+      "ENOENT: /home/u/.pi/agent/sessions/x.jsonl.",
+      ["/home/u/.pi/agent/sessions/x.jsonl"],
+    ],
+    [
+      "a path written from home",
+      "ls: cannot access '~/.pi/agent/sessions/x': Permission denied",
+      ["/home/u/.pi/agent/sessions/x"],
+    ],
+    [
+      "a session directory name",
+      "ls: unrecognized option '--home-u-dev-x--'",
+      ["/home/u/.pi/agent/sessions/--home-u-dev-x--"],
+    ],
+    [
+      "a session directory inside the sessions path",
+      "EACCES: /home/u/.pi/agent/sessions/--home-u-dev-x--/a.jsonl",
+      [
+        "/home/u/.pi/agent/sessions/--home-u-dev-x--/a.jsonl",
+        "/home/u/.pi/agent/sessions/--home-u-dev-x--",
+      ],
+    ],
+    ["no Pi path", "make: *** [all] Error 2", []],
+    [
+      "a path that leaves the sessions directory",
+      "ENOENT: /home/u/.pi/agent/sessions/../auth.json",
+      [],
+    ],
+  ])("lists %s", (_name, text, expected) => {
+    expect(attribution().piPathsIn(text)).toStrictEqual(expected);
+  });
+});
+
 describe("report owner", () => {
   test.each([
     ["an extension named first", "pi-web: webfetch", "", { owner: "pi-web" }],

@@ -26,6 +26,7 @@ export type SignalOptions = {
   readonly fingerprint?: string;
   readonly error?: string;
   readonly evidence?: "pi-path";
+  readonly pathExisted?: boolean;
   readonly cause?: "parallel-batch";
 };
 
@@ -36,6 +37,7 @@ export function signal({
   fingerprint = "read: ENOENT",
   error = "ENOENT: no such file",
   evidence,
+  pathExisted,
   cause,
 }: SignalOptions): LedgerEvent {
   type Signal = Extract<LedgerEvent, { type: "signal" }>;
@@ -55,6 +57,10 @@ export function signal({
     event.evidence = evidence;
   }
 
+  if (pathExisted !== undefined) {
+    event.pathExisted = pathExisted;
+  }
+
   if (cause !== undefined) {
     event.cause = cause;
   }
@@ -64,7 +70,6 @@ export function signal({
 
 export type VerdictScores = {
   readonly harnessPath: number;
-  readonly pathExisted: number;
   readonly outsideService: number;
 };
 

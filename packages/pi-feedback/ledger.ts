@@ -38,6 +38,7 @@ const recorded = {
   model: Schema.optionalKey(Line),
   piVersion: Schema.optionalKey(Line),
   evidence: Schema.optionalKey(Schema.Literal("pi-path")),
+  pathExisted: Schema.optionalKey(Schema.Boolean),
 };
 
 const Score = Schema.Finite.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 1 })));
@@ -70,7 +71,6 @@ const VerdictEvent = Schema.Struct({
   fingerprint: Line,
   model: Line,
   harnessPath: Score,
-  pathExisted: Score,
   outsideService: Score,
 });
 

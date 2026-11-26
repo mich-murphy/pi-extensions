@@ -27,7 +27,6 @@ function verdictPasses(verdict: VerdictEvent | undefined): boolean {
   return (
     verdict !== undefined &&
     verdict.harnessPath >= THRESHOLDS.harnessPath &&
-    verdict.pathExisted >= THRESHOLDS.pathExisted &&
     verdict.outsideService < THRESHOLDS.piCoreOutsideBelow
   );
 }
@@ -38,7 +37,7 @@ export function isPiCore(candidate: PiCoreCandidate): boolean {
   return (
     candidate.owner === UNATTRIBUTED &&
     live.length > 0 &&
-    live.every((record) => record.evidence === "pi-path") &&
+    live.every((record) => record.evidence === "pi-path" && record.pathExisted === true) &&
     ![...live, ...excluded].some((record) => isBatchOrdered(record)) &&
     candidate.sessions >= PI_CORE_MIN_SESSIONS &&
     candidate.verdicts.length > 0 &&

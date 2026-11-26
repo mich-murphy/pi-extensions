@@ -93,6 +93,34 @@ describe("ledger", () => {
     expect(parseLedger(text)).toStrictEqual({ events: [good], skipped: 2 });
   });
 
+  test("reads a verdict written with the old path-existed score", () => {
+    const old = {
+      type: "verdict",
+      id: "00000000-0000-4000-8000-000000000001",
+      at: "2026-11-25T00:00:00.000Z",
+      fingerprint: "bash: ls",
+      model: "typesafe/jev-1.14.0",
+      harnessPath: 0.9,
+      pathExisted: 0.9,
+      outsideService: 0.02,
+    };
+
+    expect(parseLedger(JSON.stringify(old))).toStrictEqual({
+      events: [
+        {
+          type: "verdict",
+          id: old.id,
+          at: old.at,
+          fingerprint: old.fingerprint,
+          model: old.model,
+          harnessPath: 0.9,
+          outsideService: 0.02,
+        },
+      ],
+      skipped: 0,
+    });
+  });
+
   test("keeps line and paragraph separators inside strings", async () => {
     await appendEvent(file, { ...draft, error: "a b c" }, fakeClock());
     const { events } = await readLedger(file);

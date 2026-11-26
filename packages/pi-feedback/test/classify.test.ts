@@ -10,7 +10,7 @@ import type { LedgerEvent, RecordEvent } from "../ledger.ts";
 import { fakeClock, signal, verdictEvent } from "./events.ts";
 import { fakeClassifier } from "./fake-classifier.ts";
 
-const recordScores = { harnessPath: 0.9, pathExisted: 0.8, outsideService: 0.05 };
+const recordScores = { harnessPath: 0.9, outsideService: 0.05 };
 
 function answerWith(sameCause: number) {
   return (context: ClassifierContext) =>
@@ -156,7 +156,7 @@ describe("classifyRecord", () => {
   test("does not compare a record an outside service caused", async () => {
     await seed([
       signal({ n: 1, session: "a", fingerprint: "read: older" }),
-      verdictEvent(2, "read: newer", { harnessPath: 0.1, pathExisted: 0.1, outsideService: 0.95 }),
+      verdictEvent(2, "read: newer", { harnessPath: 0.1, outsideService: 0.95 }),
     ]);
     const classifier = fakeClassifier(answerWith(0.95));
     const record = asSignal(signal({ n: 3, session: "b", fingerprint: "read: newer" }));
@@ -213,6 +213,16 @@ describe("classifyRecord", () => {
       "an unattributed failure without a Pi path",
       signal({ n: 1, session: "a", owner: "unattributed" }),
     ],
+    [
+      "an unattributed failure whose Pi path did not exist",
+      signal({
+        n: 1,
+        session: "a",
+        owner: "unattributed",
+        evidence: "pi-path",
+        pathExisted: false,
+      }),
+    ],
   ])("skips %s", async (_name, event) => {
     const classifier = fakeClassifier(answerWith(0.1));
     await expect(
@@ -221,11 +231,11 @@ describe("classifyRecord", () => {
     expect(classifier.calls).toStrictEqual([]);
   });
 
-  test("classifies an unattributed failure that names a Pi path", async () => {
+  test("classifies an unattributed failure that names an existing Pi path", async () => {
     const classifier = fakeClassifier(answerWith(0.1));
 
     const record = asSignal(
-      signal({ n: 1, session: "a", owner: "unattributed", evidence: "pi-path" }),
+      signal({ n: 1, session: "a", owner: "unattributed", evidence: "pi-path", pathExisted: true }),
     );
 
     await expect(

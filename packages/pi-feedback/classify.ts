@@ -81,12 +81,11 @@ function probability(result: ClassifierResult | undefined, id: string): number |
 
 function scoresOf(result: ClassifierResult | undefined): Scores | undefined {
   const harnessPath = probability(result, "harnessPath");
-  const pathExisted = probability(result, "pathExisted");
   const outsideService = probability(result, "outsideService");
 
-  return harnessPath === undefined || pathExisted === undefined || outsideService === undefined
+  return harnessPath === undefined || outsideService === undefined
     ? undefined
-    : { harnessPath, pathExisted, outsideService };
+    : { harnessPath, outsideService };
 }
 
 function sideOf(record: RecordEvent): JsonObject {
@@ -169,7 +168,11 @@ function pairKey(a: string, b: string): string {
 function needsClassifying(record: RecordEvent): boolean {
   const batchOrdered = record.type === "signal" && record.cause === "parallel-batch";
 
-  return !batchOrdered && (record.owner !== UNATTRIBUTED || record.evidence === "pi-path");
+  return (
+    !batchOrdered &&
+    (record.owner !== UNATTRIBUTED ||
+      (record.evidence === "pi-path" && record.pathExisted === true))
+  );
 }
 
 async function verdictFor(
