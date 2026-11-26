@@ -102,6 +102,11 @@ describe("report owner", () => {
   test.each([
     ["an extension named first", "pi-web: webfetch", "", { owner: "pi-web" }],
     ["an extension's command", "/skills", "", { owner: "pi-skills" }],
+    ["an extension's command with an argument", "/skills project", "", { owner: "pi-skills" }],
+    ["a bare word that is also a command name", "skills", "", { owner: "unattributed" }],
+    ["a bare command word with more words", "skills menu", "", { owner: "unattributed" }],
+    ["a command this repository does not own", "/skill:tidy", "", { owner: "unattributed" }],
+    ["a Pi command", "/compact", "", { owner: "unattributed" }],
     ["a tool our extension registered", "webfetch", "", { owner: "pi-web" }],
     ["a skill outside this repository", "tidy", "", { owner: "unattributed" }],
     ["an instruction file", "AGENTS.md", "", { owner: "unattributed" }],
