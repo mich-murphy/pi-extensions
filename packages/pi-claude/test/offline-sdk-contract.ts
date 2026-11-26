@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { fileURLToPath } from "node:url";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { runAgentLoop } from "@earendil-works/pi-agent-core";
@@ -24,7 +23,7 @@ import {
 import { testClaudeExecutable } from "./claude-cli";
 import { modelFixture } from "./fixtures";
 
-export const offlineContractPath = fileURLToPath(import.meta.url);
+export const offlineContractPath = import.meta.filename;
 
 const scenarioSchema = z.enum(["siblings", "schema", "malformed", "cancelled", "invalid-terminal"]);
 

@@ -56,10 +56,10 @@ function attempt<A>(
   run: () => Promise<A>,
 ): Effect.Effect<A, OutputStoreError> {
   return Effect.tryPromise({ try: run, catch: (cause) => cause }).pipe(
-    Effect.catch((cause) =>
-      isNodeSystemError(cause)
-        ? Effect.fail(new OutputStoreError({ operation, path, code: cause.code, cause }))
-        : Effect.die(cause),
+    Effect.catch((error) =>
+      isNodeSystemError(error)
+        ? Effect.fail(new OutputStoreError({ operation, path, code: error.code, cause: error }))
+        : Effect.die(error),
     ),
   );
 }

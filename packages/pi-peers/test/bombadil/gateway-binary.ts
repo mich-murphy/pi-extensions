@@ -20,7 +20,7 @@ export function gatewayBinary(): string {
   return binary;
 }
 
-if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+if (resolve(process.argv[1] ?? "") === import.meta.filename) {
   try {
     buildEvenWhenCargoRestoredAnOldBinary();
     gatewayBinary();

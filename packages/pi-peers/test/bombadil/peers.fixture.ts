@@ -2,12 +2,12 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { chmodSync, copyFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BombadilLaunch, BombadilRoot } from "../../../../test-support/bombadil.ts";
 import { gatewayBinary } from "./gateway-binary.ts";
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const repo = fileURLToPath(new URL("../../../../", import.meta.url));
 const GATEWAY_SOCKET_PATH_MAX_BYTES = 100;
 const POLICIES = [{ machineId: "alpha", scopeId: "team", permissions: ["discover", "push"] }];

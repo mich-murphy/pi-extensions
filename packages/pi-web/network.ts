@@ -27,7 +27,7 @@ const MIME_KINDS: ReadonlyMap<string, ContentKind> = new Map<string, ContentKind
 ]);
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const UTF8_LABEL = "utf-8";
+const UTF8_LABEL = new TextDecoder().encoding;
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 const LEADING_DIGITS_RE = /^\d+/u;
 

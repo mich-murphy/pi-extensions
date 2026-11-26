@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Option, Predicate, Schema } from "effect";
 import type { BombadilFixture, BombadilLaunch, BombadilRoot } from "../test-support/bombadil.ts";
 import { readManifest } from "../test-support/pi-manifest.ts";
 
-const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repo = resolve(import.meta.dirname, "..");
 const host = join(repo, "node_modules/@earendil-works/pi-coding-agent");
 const { bin } = readManifest(join(host, "package.json"));
 

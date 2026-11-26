@@ -17,7 +17,7 @@ import { createToolRuntime } from "../tool-runtime";
 import type { SearchProviderName } from "../types";
 import { createWebFetchTool } from "../webfetch";
 import { createWebSearchTool } from "../websearch";
-import { errorMessage, settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
+import { UTF8, errorMessage, settingsFrom, textOf, trackedToolOutputLayer } from "./fakes";
 import { expectNoLeak } from "./leaks";
 import { nativeAuthFixture } from "./native-auth-fixture";
 import type { AuthStorageData } from "./native-auth-fixture";
@@ -117,7 +117,7 @@ async function tools(
                 contentType: "text/html",
                 bytes: 0,
               },
-              body: FetchPageBody.Text({ kind: "html", text: "", decoder: "utf-8" }),
+              body: FetchPageBody.Text({ kind: "html", text: "", decoder: UTF8 }),
             }),
         }),
       ),

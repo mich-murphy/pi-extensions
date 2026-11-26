@@ -170,8 +170,8 @@ class AssistantMessageWriter {
       }
 
       this.fail(new SdkProviderDefect({ reason: "no-terminal-event" }));
-    } catch (cause) {
-      this.fail(new SdkProviderDefect({ reason: "run-rejected", cause }));
+    } catch (error) {
+      this.abandon(error);
     }
   }
 
@@ -292,9 +292,7 @@ export function createAgentSdkStream({
   const writer = new AssistantMessageWriter(model, options?.signal);
   writer
     .pump(() => run(buildAgentRequest(context), model, options))
-    .catch((cause: unknown) => {
-      writer.abandon(cause);
-    });
+    .catch(writer.abandon.bind(writer));
 
   return writer.stream;
 }

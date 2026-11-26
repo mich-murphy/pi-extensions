@@ -26,7 +26,7 @@ import type { ToolRuntime } from "../tool-runtime";
 import { parsePublicHttpUrl, parseSearchQuery } from "../types";
 import type { PublicHttpUrl, SearchQuery } from "../types";
 
-export const UTF8 = "utf-8";
+export const UTF8 = new TextDecoder().encoding;
 
 export function publicUrl(input: string): PublicHttpUrl {
   const parsed = parsePublicHttpUrl(input);

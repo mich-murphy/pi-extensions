@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { readManifest } from "../../../test-support/pi-manifest";
 
-const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const repo = resolve(import.meta.dirname, "../../..");
 const host = join(repo, "node_modules/@earendil-works/pi-coding-agent");
 const manifest = readManifest(join(host, "package.json"));
 const cli = resolve(host, manifest.bin.pi);

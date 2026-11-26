@@ -96,8 +96,6 @@ export function createDeferredCallCapture(catalog: readonly CatalogTool[]): Defe
       | "sdk_input_rejected" = "unexpected_sdk_tool";
 
     if (selected) {
-      reason = "invalid_tool_input";
-
       try {
         const args = readToolArguments(
           validateToolArguments(selected.declaration, {

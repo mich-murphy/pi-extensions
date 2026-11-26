@@ -2,15 +2,14 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve, join } from "node:path";
+import { resolve, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
 import type { SessionHeader, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
 import { Result, Schema } from "effect";
 import { readManifest } from "../../../../test-support/pi-manifest.ts";
 
-const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+const repo = resolve(import.meta.dirname, "../../../..");
 const host = resolve(process.argv[2] ?? join(repo, "node_modules/@earendil-works/pi-coding-agent"));
 const manifest = readManifest(join(host, "package.json"));
 const { bin } = manifest;
