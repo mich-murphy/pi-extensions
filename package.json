@@ -40,7 +40,7 @@
     "check:rust": "cd packages/pi-peers/gateway && export CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 && cargo fmt --all -- --check && cargo check --locked --all-targets --all-features && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all-features -- --test-threads=2 && RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:rust && npm run test:coverage && npm run fallow && npm run markdownlint",
     "format:check": "node --experimental-strip-types scripts/repository-quality.ts format-check",
-    "test:tooling": "node --experimental-strip-types --test test-support/repository-quality.test.ts test-support/no-comments.test.ts"
+    "test:tooling": "node --experimental-strip-types --test test-support/repository-quality.test.ts test-support/no-comments.test.ts test-support/synchronized-output.test.ts"
   },
   "dependencies": {
     "effect": "4.1.5"
