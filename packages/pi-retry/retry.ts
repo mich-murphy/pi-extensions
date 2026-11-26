@@ -16,7 +16,16 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { Schema } from "effect";
+import {
+  Boolean as SchemaBoolean,
+  Finite,
+  Number as SchemaNumber,
+  Struct,
+  declare,
+  is,
+  isGreaterThan,
+  makeFilter,
+} from "effect/Schema";
 import { onOffCommand } from "../shared/on-off-command";
 import { USAGE_LIMIT_CHANNEL, readUsageLimitNotice } from "../shared/usage-limit";
 import type { UsageLimitNotice } from "../shared/usage-limit";
@@ -150,15 +159,15 @@ function isPositive(input: unknown): input is number {
   return typeof input === "number" && Number.isFinite(input) && input > 0;
 }
 
-const isTransientSettings = Schema.is(
-  Schema.Struct({
-    enabled: Schema.Boolean,
-    delaysMinutes: Schema.declare<ReadonlyArray<number>>(
+const isTransientSettings = is(
+  Struct({
+    enabled: SchemaBoolean,
+    delaysMinutes: declare<ReadonlyArray<number>>(
       (input): input is ReadonlyArray<number> =>
         Array.isArray(input) && input.length > 0 && input.every((delay) => isPositive(delay)),
     ),
-    maxAttempts: Schema.Number.check(Schema.makeFilter(Number.isInteger), Schema.isGreaterThan(0)),
-    windowMinutes: Schema.Finite.check(Schema.isGreaterThan(0)),
+    maxAttempts: SchemaNumber.check(makeFilter(Number.isInteger), isGreaterThan(0)),
+    windowMinutes: Finite.check(isGreaterThan(0)),
   }),
 );
 
