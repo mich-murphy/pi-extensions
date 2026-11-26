@@ -701,6 +701,70 @@ fn an_unusable_or_self_pinned_key_degrades_remote_but_local_still_serves() {
     }
 }
 
+/// Reads frames for `window` and returns every `link.state` the session hears, in order.
+fn link_states(stream: &mut UnixStream, window: Duration) -> Vec<String> {
+    let quiet = Some(Duration::from_millis(100));
+    stream.set_read_timeout(quiet).expect("short read deadline");
+    let until = Instant::now() + window;
+    let mut states = Vec::new();
+    while Instant::now() < until {
+        let mut length = [0; 4];
+        match stream.read_exact(&mut length) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => panic!("link state stream ended: {error}"),
+        }
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("frame read deadline");
+        let mut body = vec![0; usize::try_from(u32::from_be_bytes(length)).expect("length")];
+        stream.read_exact(&mut body).expect("frame body");
+        stream.set_read_timeout(quiet).expect("short read deadline");
+        let frame: Value = serde_json::from_slice(&body).expect("frame JSON");
+        if frame["op"] == "link.state" {
+            states.push(frame["state"].as_str().expect("link state").to_owned());
+        }
+    }
+    states
+}
+
+#[test]
+fn a_connector_whose_key_the_listener_refuses_never_reports_the_link_up() {
+    let dir = Dir::new();
+    let (alpha_key, _) = dir.key("alpha.key");
+    let (beta_key, beta_public) = dir.key("beta.key");
+    let (_, gamma_public) = dir.key("gamma.key");
+    // Beta pins gamma, so alpha's TLS 1.3 client handshake completes on alpha's side
+    // before beta verifies alpha's key and refuses it.
+    let beta = Gateway::start(
+        &dir,
+        "beta",
+        &remote(&beta_key, "alpha", &gamma_public, "listen", "127.0.0.1:0"),
+    );
+    let address = beta.ready["remoteListenAddress"]
+        .as_str()
+        .expect("listener reports its port");
+    let _alpha = Gateway::start(
+        &dir,
+        "alpha",
+        &remote(&alpha_key, "beta", &beta_public, "connect", address),
+    );
+    let mut session = register(&dir, "alpha");
+    let states = link_states(&mut session, Duration::from_secs(4));
+    assert!(!states.is_empty(), "the session hears the link state");
+    assert!(
+        !states.iter().any(|state| state == "up"),
+        "a link the peer refuses is never reported up: {states:?}"
+    );
+}
+
 #[test]
 fn an_old_certificate_config_never_starts_and_diagnose_names_it() {
     let dir = Dir::new();

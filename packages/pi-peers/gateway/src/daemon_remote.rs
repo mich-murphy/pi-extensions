@@ -139,11 +139,24 @@ impl Daemon {
             .remote
             .as_ref()
             .is_some_and(|remote| remote.machine_id() == machine)
-            && self.remote_id().is_none()
+            && !self.remote_established()
+    }
+    /// Whether the active remote link has received the peer's roster snapshot.
+    ///
+    /// A TLS 1.3 client finishes its handshake before the server verifies the client key, so an
+    /// activated connection can still be refused. Only the peer's snapshot proves it accepted us.
+    fn remote_established(&self) -> bool {
+        self.remote_id().is_some_and(|id| {
+            self.clients
+                .get(&id)
+                .and_then(|client| client.remote.as_ref())
+                .is_some_and(|remote| remote.established)
+        })
     }
     fn link_view(&self) -> LinkView {
         match &self.link {
-            Some(_) if self.remote_id().is_some() => LinkView::Up,
+            Some(_) if self.remote_established() => LinkView::Up,
+            Some(_) if self.remote_id().is_some() => LinkView::Probing,
             Some(link) if link.breaker().view() == LinkView::Up => LinkView::Probing,
             Some(link) => link.breaker().view(),
             None => LinkView::Down,
