@@ -1,6 +1,6 @@
 import type { AssistantMessage, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
-import { Predicate, Result } from "effect";
+import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import type { BridgeEvent } from "../bridge";
 import {
@@ -13,7 +13,6 @@ import {
   SdkProtocolError,
   SdkProviderDefect,
   SdkQueryError,
-  SdkQueryFailureReason,
   SdkResultError,
   SdkStreamInterruptedError,
   SdkToolContractError,
@@ -111,7 +110,7 @@ function expectInterruption(
   error: SdkTurnFailure,
   evidence: SdkStreamInterruptedError["evidence"],
 ): void {
-  assert(Predicate.isTagged("SdkStreamInterruptedError")(error));
+  assert(error._tag === "SdkStreamInterruptedError");
   expect(error.evidence).toBe(evidence);
 }
 
@@ -309,16 +308,16 @@ describe("stream lifecycle parsing", () => {
   });
 });
 
-const queryReasons = [
-  SdkQueryFailureReason.cases.Cancelled.make({}),
-  SdkQueryFailureReason.cases.ExecutableNotFound.make({}),
-  SdkQueryFailureReason.cases.ExecutableLaunchFailed.make({}),
-  SdkQueryFailureReason.cases.ClaudeCodeTooOld.make({ version: "2.0.0" }),
-  SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
-  SdkQueryFailureReason.cases.ProcessExited.make({ exitCode: 1 }),
-  SdkQueryFailureReason.cases.ProcessKilled.make({ signal: "SIGTERM" }),
-  SdkQueryFailureReason.cases.ProcessKilled.make({ signal: "SIGKILL" }),
-  SdkQueryFailureReason.cases.Unclassified.make({}),
+const queryReasons: ReadonlyArray<SdkQueryError["reason"]> = [
+  { _tag: "Cancelled" },
+  { _tag: "ExecutableNotFound" },
+  { _tag: "ExecutableLaunchFailed" },
+  { _tag: "ClaudeCodeTooOld", version: "2.0.0" },
+  { _tag: "WorkingDirectoryUnavailable" },
+  { _tag: "ProcessExited", exitCode: 1 },
+  { _tag: "ProcessKilled", signal: "SIGTERM" },
+  { _tag: "ProcessKilled", signal: "SIGKILL" },
+  { _tag: "Unclassified" },
 ];
 
 const RETRYABLE_RESULT_CATEGORIES = new Set(["rate-limit", "server-error", "overloaded"]);
@@ -362,8 +361,8 @@ const failuresByTag = {
 
 function intendedRetry(error: SdkTurnFailure): boolean {
   return (
-    Predicate.isTagged("SdkStreamInterruptedError")(error) ||
-    (Predicate.isTagged("SdkResultError")(error) && RETRYABLE_RESULT_CATEGORIES.has(error.category))
+    error._tag === "SdkStreamInterruptedError" ||
+    (error._tag === "SdkResultError" && RETRYABLE_RESULT_CATEGORIES.has(error.category))
   );
 }
 

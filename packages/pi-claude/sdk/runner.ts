@@ -3,7 +3,7 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Data, Effect, Option, Predicate, Result, Schema, Stream } from "effect";
+import { Data, Effect, Option, Result, Stream } from "effect";
 import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
@@ -19,7 +19,6 @@ import {
   SdkProtocolError,
   SdkInternalContinuationError,
   SdkQueryError,
-  SdkQueryFailureReason,
   SdkResultError,
   SdkStreamInterruptedError,
   SdkToolContractError,
@@ -296,7 +295,7 @@ function terminalEvent(
     return failed(new SdkMissingResultError());
   }
 
-  if (Predicate.isTagged("failed")(result)) {
+  if (result._tag === "failed") {
     return failedResultEvent(result.error, apiError, rejectedWindow);
   }
 
@@ -516,16 +515,18 @@ function settle(
     return ended(Result.fail(capture.error), progress);
   }
 
-  if (callerSignal?.aborted === true && !Predicate.isTagged("failed")(progress.result?.result)) {
+  if (callerSignal?.aborted === true && progress.result?.result._tag !== "failed") {
     return ended(Result.fail(SdkQueryError.cancelled("iterate", callerSignal.reason)), progress);
   }
 
   return ended(Result.succeed(progress), progress);
 }
 
-const HALTED = Schema.TaggedStruct("Halted", {}).make({});
+type QueryItem =
+  | Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError>
+  | { readonly _tag: "Halted" };
 
-type QueryItem = Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError> | typeof HALTED;
+const HALTED: QueryItem = { _tag: "Halted" };
 
 function stopBeforeAdvance(
   progress: QueryProgress,
@@ -548,7 +549,7 @@ function step(
   item: QueryItem,
 ) => readonly [QueryProgress, ReadonlyArray<QueryStep>] {
   return (progress, item) => {
-    if (!Result.isResult(item)) {
+    if (item._tag === "Halted") {
       return [progress, [settle(capture, progress, callerSignal)]];
     }
 
@@ -565,7 +566,7 @@ function step(
     if (tooOld !== undefined) {
       const failure = new SdkQueryError({
         operation: "iterate",
-        reason: SdkQueryFailureReason.cases.ClaudeCodeTooOld.make({ version: tooOld }),
+        reason: { _tag: "ClaudeCodeTooOld", version: tooOld },
         cause: new Error("Claude Code is older than the supported minimum"),
       });
 
@@ -773,7 +774,7 @@ function queryUsageMetadata(
 function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {
   return terminal.type === "failed" &&
     progress.modelRequests > 0 &&
-    Predicate.isTagged("SdkResultError")(terminal.error) &&
+    terminal.error._tag === "SdkResultError" &&
     terminal.error.terminalReason === "api_error" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "provider"
     ? failed(new SdkStreamInterruptedError({ evidence: "api-error" }))
@@ -788,7 +789,7 @@ function reportUsageLimit(
   if (
     resetsAt !== undefined &&
     terminal.type === "failed" &&
-    Predicate.isTagged("SdkResultError")(terminal.error) &&
+    terminal.error._tag === "SdkResultError" &&
     effectiveResultCategory(terminal.error.category, terminal.error.apiError) === "usage-limit"
   ) {
     Result.try(() => {
@@ -811,7 +812,7 @@ function queryWorkingDirectory(): Result.Result<string, SdkQueryError> {
     catch: (cause) =>
       new SdkQueryError({
         operation: "start",
-        reason: SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
+        reason: { _tag: "WorkingDirectoryUnavailable" },
         cause,
       }),
   });
@@ -879,7 +880,7 @@ const runTurn = Effect.fnUntraced(function* (
       failed(
         new SdkQueryError({
           operation: "start",
-          reason: SdkQueryFailureReason.cases.ExecutableNotFound.make({}),
+          reason: { _tag: "ExecutableNotFound" },
           cause: new Error("claude executable not found"),
         }),
       ),

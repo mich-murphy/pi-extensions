@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Predicate } from "effect";
+import { Context, Duration, Effect, Layer } from "effect";
 import { HttpFetch, readResponseBodyWithLimit, sanitizeNetworkFailure } from "./network";
 import {
   parseJsonBody,
@@ -146,8 +146,7 @@ export class ProviderHttpClient extends Context.Service<
 function safeProviderFailure(error: ProviderError) {
   return {
     type: error._tag,
-    network: Predicate.isTagged("ProviderRequestFailed")(error)
-      ? sanitizeNetworkFailure(error.cause)
-      : undefined,
+    network:
+      error._tag === "ProviderRequestFailed" ? sanitizeNetworkFailure(error.cause) : undefined,
   };
 }

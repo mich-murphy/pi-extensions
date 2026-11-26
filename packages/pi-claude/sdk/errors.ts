@@ -71,7 +71,7 @@ export class InvalidDeferredCallLimitError extends Schema.TaggedError<InvalidDef
   }
 }
 
-export const SdkQueryFailureReason = Schema.TaggedUnion({
+const SdkQueryFailureReason = Schema.TaggedUnion({
   Cancelled: {},
   ExecutableNotFound: {},
   ExecutableLaunchFailed: {},
@@ -82,7 +82,7 @@ export const SdkQueryFailureReason = Schema.TaggedUnion({
   Unclassified: {},
 });
 
-export type SdkQueryFailureReason = typeof SdkQueryFailureReason.Type;
+type SdkQueryFailureReason = typeof SdkQueryFailureReason.Type;
 
 const decodeSdkRejection = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -94,36 +94,36 @@ const decodeSdkRejection = Schema.decodeUnknownOption(
 
 function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
   if (cause instanceof AbortError || (cause instanceof Error && cause.name === "AbortError")) {
-    return SdkQueryFailureReason.cases.Cancelled.make({});
+    return { _tag: "Cancelled" };
   }
 
   if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
-    return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
+    return { _tag: "ExecutableNotFound" };
   }
 
   const tagged = Option.getOrUndefined(decodeSdkRejection(cause));
 
   if (tagged === undefined) {
-    return SdkQueryFailureReason.cases.Unclassified.make({});
+    return { _tag: "Unclassified" };
   }
 
   switch (tagged.errorClass) {
     case "aborted": {
-      return SdkQueryFailureReason.cases.Cancelled.make({});
+      return { _tag: "Cancelled" };
     }
 
     case "executable_not_found": {
-      return SdkQueryFailureReason.cases.ExecutableNotFound.make({});
+      return { _tag: "ExecutableNotFound" };
     }
 
     case "executable_launch_failed": {
-      return SdkQueryFailureReason.cases.ExecutableLaunchFailed.make({});
+      return { _tag: "ExecutableLaunchFailed" };
     }
 
     case "process_exited_nonzero": {
       return tagged.exitCode === undefined
-        ? SdkQueryFailureReason.cases.Unclassified.make({})
-        : SdkQueryFailureReason.cases.ProcessExited.make({ exitCode: tagged.exitCode });
+        ? { _tag: "Unclassified" }
+        : { _tag: "ProcessExited", exitCode: tagged.exitCode };
     }
 
     case "process_killed_by_signal": {
@@ -131,12 +131,12 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
         !/^SIG(?:ABRT|ALRM|BUS|CHLD|CONT|FPE|HUP|ILL|INT|KILL|PIPE|QUIT|SEGV|STOP|TERM|TRAP|TSTP|TTIN|TTOU|URG|USR1|USR2|VTALRM|WINCH|XCPU|XFSZ)$/u.test(
           tagged.signal,
         )
-        ? SdkQueryFailureReason.cases.Unclassified.make({})
-        : SdkQueryFailureReason.cases.ProcessKilled.make({ signal: tagged.signal });
+        ? { _tag: "Unclassified" }
+        : { _tag: "ProcessKilled", signal: tagged.signal };
     }
 
     default: {
-      return SdkQueryFailureReason.cases.Unclassified.make({});
+      return { _tag: "Unclassified" };
     }
   }
 }
@@ -177,7 +177,7 @@ export class SdkQueryError extends Schema.TaggedError<SdkQueryError>()("SdkQuery
   static cancelled(operation: "start" | "iterate", cause: unknown): SdkQueryError {
     return new SdkQueryError({
       operation,
-      reason: SdkQueryFailureReason.cases.Cancelled.make({}),
+      reason: { _tag: "Cancelled" },
       cause,
     });
   }

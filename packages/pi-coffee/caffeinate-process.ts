@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { CaffeinateNotice, CaffeinateProcessError } from "./coffee-lifecycle";
-import type { CaffeinateProcess } from "./coffee-lifecycle";
+import { CaffeinateProcessError } from "./coffee-lifecycle";
+import type { CaffeinateNotice, CaffeinateProcess } from "./coffee-lifecycle";
 
 function nodeSystemErrorAsFailureOrRethrow(
   operation: CaffeinateProcessError["operation"],
@@ -10,7 +10,7 @@ function nodeSystemErrorAsFailureOrRethrow(
   if (cause instanceof Error && "syscall" in cause && "code" in cause) {
     const error = new CaffeinateProcessError(operation, String(cause.code), cause);
 
-    return CaffeinateNotice.failed({ error });
+    return { _tag: "failed", error };
   }
 
   throw cause;
@@ -53,7 +53,7 @@ export function caffeinateSpawner(
           );
         });
         child.once("exit", (code, signal) => {
-          listener(CaffeinateNotice.exited({ code, signal }));
+          listener({ _tag: "exited", code, signal });
         });
       },
       stop: () => {

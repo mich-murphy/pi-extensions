@@ -4,7 +4,7 @@ import type { BuildSystemPromptOptions, Skill } from "@earendil-works/pi-coding-
 import type { TestCase } from "@hegeldev/hegel";
 import { arrays, booleans, text as textGen } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
-import { hideResources, PromptFilterResult } from "../prompt-filter";
+import { hideResources } from "../prompt-filter";
 import { assertProperty } from "./hegel-property";
 
 type ContextFile = { readonly path: string; readonly content: string };
@@ -112,7 +112,7 @@ function legacyPrompt(
   );
 
   assert.deepEqual(options, before, "legacy options are not mutated");
-  assert.ok(PromptFilterResult.$is("prompt-filtered")(result));
+  assert.ok(result._tag === "prompt-filtered");
   assert.deepEqual(result.unmatched, []);
 
   return result.systemPrompt;
@@ -160,7 +160,7 @@ function assertModern(scenario: Scenario): void {
   );
 
   const expected = shown(scenario, scenario.hiddenA);
-  assert.deepEqual(result, PromptFilterResult["options-filtered"]());
+  assert.deepEqual(result, { _tag: "options-filtered" });
   assert.deepEqual(options.contextFiles, expected.files);
   assert.deepEqual(options.skills, expected.skills);
 }

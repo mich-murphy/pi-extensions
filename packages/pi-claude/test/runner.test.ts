@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
@@ -14,7 +14,6 @@ import type { BridgeEvent } from "../bridge";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
 import { models } from "../models";
-import { SdkQueryFailureReason } from "../sdk/errors";
 import type { SdkQueryError, SdkResultError, SdkTurnFailure } from "../sdk/errors";
 import { effectiveResultCategory } from "../sdk/result-failure";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
@@ -147,7 +146,7 @@ function failureOf(events: ReadonlyArray<BridgeEvent>) {
 function expectQueryFailure(
   error: SdkTurnFailure,
   operation: SdkQueryError["operation"],
-  reason: SdkQueryFailureReason,
+  reason: SdkQueryError["reason"],
 ): void {
   expect(error._tag).toBe("SdkQueryError");
   expect(error).toMatchObject({ operation, reason });
@@ -1113,11 +1112,7 @@ describe("turn failures", () => {
       try {
         const error = failureOf(await runTurn(query));
         expect(query).not.toHaveBeenCalled();
-        expectQueryFailure(
-          error,
-          "start",
-          SdkQueryFailureReason.cases.WorkingDirectoryUnavailable.make({}),
-        );
+        expectQueryFailure(error, "start", { _tag: "WorkingDirectoryUnavailable" });
         expect(error.message).toBe(
           "This session's folder is missing or unreadable. Restart Pi from an existing folder and resume it.",
         );
@@ -1158,7 +1153,7 @@ describe("turn failures", () => {
 
     const error = failureOf(events);
 
-    expectQueryFailure(error, "iterate", SdkQueryFailureReason.cases.Unclassified.make({}));
+    expectQueryFailure(error, "iterate", { _tag: "Unclassified" });
     expect(error.message).not.toContain("transport disconnected");
   });
 
@@ -1171,7 +1166,7 @@ describe("turn failures", () => {
 
     const error = failureOf(await runTurn(() => unopenable));
 
-    expectQueryFailure(error, "iterate", SdkQueryFailureReason.cases.Unclassified.make({}));
+    expectQueryFailure(error, "iterate", { _tag: "Unclassified" });
   });
 
   test("reports a typed authentication failure from an assistant message", async () => {
@@ -1226,7 +1221,7 @@ describe("turn failures", () => {
       }),
     );
 
-    expectQueryFailure(error, "start", SdkQueryFailureReason.cases.Unclassified.make({}));
+    expectQueryFailure(error, "start", { _tag: "Unclassified" });
   });
 
   test("fails on a malformed SDK message and stops the query", async () => {
@@ -1272,7 +1267,7 @@ describe("SDK query cancellation", () => {
     );
 
     expect(queryStarted).toBe(false);
-    expectQueryFailure(failureOf(events), "start", SdkQueryFailureReason.cases.Cancelled.make({}));
+    expectQueryFailure(failureOf(events), "start", { _tag: "Cancelled" });
   });
 
   test("reports caller cancellation when the SDK returns a clean result after being aborted", async () => {
@@ -1287,11 +1282,7 @@ describe("SDK query cancellation", () => {
       { signal: controller.signal },
     );
 
-    expectQueryFailure(
-      failureOf(events),
-      "iterate",
-      SdkQueryFailureReason.cases.Cancelled.make({}),
-    );
+    expectQueryFailure(failureOf(events), "iterate", { _tag: "Cancelled" });
   });
 
   test("reports cancellation, not a missing result, on clean aborted EOF", async () => {
@@ -1306,11 +1297,7 @@ describe("SDK query cancellation", () => {
       { signal: controller.signal },
     );
 
-    expectQueryFailure(
-      failureOf(events.slice(1)),
-      "iterate",
-      SdkQueryFailureReason.cases.Cancelled.make({}),
-    );
+    expectQueryFailure(failureOf(events.slice(1)), "iterate", { _tag: "Cancelled" });
   });
 
   test("keeps an explicit failed terminal result ahead of caller cancellation", async () => {
@@ -1646,7 +1633,7 @@ describe("rate-limit classification", () => {
     );
 
     const error = failedOf(events);
-    assert(Predicate.isTagged("SdkResultError")(error));
+    assert(error._tag === "SdkResultError");
     expect(error).toMatchObject({ apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
     expect(error.message).toBe("Claude hit a rate limit: too many requests in a short time.");
@@ -1661,7 +1648,7 @@ describe("rate-limit classification", () => {
     );
 
     const error = failedOf(events);
-    assert(Predicate.isTagged("SdkResultError")(error));
+    assert(error._tag === "SdkResultError");
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("rate-limit");
     expect(observations).toStrictEqual([]);
   });
@@ -1685,7 +1672,7 @@ describe("rate-limit classification", () => {
     );
 
     const error = failedOf(events);
-    assert(Predicate.isTagged("SdkResultError")(error));
+    assert(error._tag === "SdkResultError");
     expect(error).toMatchObject({ category: "usage-limit", apiError: "rate_limit" });
     expect(effectiveResultCategory(error.category, error.apiError)).toBe("usage-limit");
     expect(error.message).toBe(

@@ -20,7 +20,7 @@ import { createContextMenu } from "./menu";
 import { discoverProjectSkillPaths } from "./project-skill-paths";
 import { planPrompt, promptSnapshot } from "./prompt-epoch";
 import type { ModelRef, SessionProjection, TranscriptMessage } from "./prompt-epoch";
-import { hideResources, PromptFilterResult as FilteredPrompt } from "./prompt-filter";
+import { hideResources } from "./prompt-filter";
 import type { PromptFilterEvent } from "./prompt-filter";
 import { promptResources, skillReader } from "./prompt-view";
 import { RepositoryLocator } from "./repository";
@@ -355,7 +355,7 @@ class PiSkills {
       hidden.has(resourcePathId(path, event.systemPromptOptions.cwd)),
     );
 
-    if (FilteredPrompt.$is("options-filtered")(result)) {
+    if (result._tag === "options-filtered") {
       return undefined;
     }
 
