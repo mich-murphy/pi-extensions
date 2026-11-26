@@ -2,13 +2,7 @@ import { Result } from "effect";
 import type { Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { SdkProtocolError } from "../sdk/errors";
-import {
-  applyUsage,
-  contextWindowFor,
-  decodeSdkEvent,
-  maxOutputTokensFor,
-  parseSdkMessage,
-} from "../sdk/messages";
+import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
 import type { SdkMessage } from "../sdk/messages";
 import { resultMessage, streamEvent, textDelta } from "./fixtures";
 import type { SdkResultFields } from "./fixtures";
@@ -29,7 +23,7 @@ function parsed(
     | RateLimitFixture
     | undefined,
 ): SdkMessage {
-  const result = parseSdkMessage(decodeSdkEvent(input));
+  const result = parseSdkMessage(input);
 
   if (Result.isFailure(result)) {
     throw result.failure;
@@ -46,7 +40,7 @@ function protocolError(
     | RateLimitFixture
     | undefined,
 ): SdkProtocolError {
-  const result = parseSdkMessage(decodeSdkEvent(input));
+  const result = parseSdkMessage(input);
 
   if (Result.isSuccess(result)) {
     throw new Error("test setup: expected a protocol error");

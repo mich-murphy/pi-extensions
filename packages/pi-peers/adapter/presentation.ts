@@ -5,7 +5,7 @@ import type {
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 import type { PeerRef } from "../protocol/schema.js";
 import { visibleText } from "./config.js";
 import type { LinkState } from "./links.js";
@@ -13,18 +13,19 @@ import type { LinkState } from "./links.js";
 const UNCERTAIN =
   "UNKNOWN — Delivery uncertain; may already be in peer inbox. Do not resend as new.";
 
-const decodePayload = Schema.decodeUnknownOption(Schema.Json);
-const isFields = Schema.is(Schema.JsonObject);
-const isItems = Schema.is(Schema.Array(Schema.Json));
 const isString = Schema.is(Schema.String);
 const isText = Schema.is(Schema.Union([Schema.String, Schema.Number]));
 
+function isArray(value: Schema.Json | undefined): value is Schema.JsonArray {
+  return Array.isArray(value);
+}
+
 function fields(value: Schema.Json | undefined): Schema.JsonObject {
-  return isFields(value) ? value : {};
+  return typeof value === "object" && value !== null && !isArray(value) ? value : {};
 }
 
 function items(value: Schema.Json | undefined): ReadonlyArray<Schema.Json> {
-  return isItems(value) ? value : [];
+  return isArray(value) ? value : [];
 }
 
 function text(value: Schema.Json | undefined, fallback = "…"): string {
@@ -192,11 +193,10 @@ export type RenderContext = Pick<KeybindingHints, "keyHint"> & {
 export function toolPresentation(name: string) {
   return {
     renderCall(args: Schema.Json | undefined, theme: Pick<Theme, "fg">, context: RenderContext) {
-      const payload = Option.getOrUndefined(decodePayload(args));
-      const summary = `${name} ${callSummary(name, fields(payload))}`;
+      const summary = `${name} ${callSummary(name, fields(args))}`;
 
       return component(
-        theme.fg("toolTitle", summary) + (context.expanded ? `\n${full(payload)}` : ""),
+        theme.fg("toolTitle", summary) + (context.expanded ? `\n${full(args)}` : ""),
         context.expanded,
       );
     },
@@ -206,7 +206,7 @@ export function toolPresentation(name: string) {
       theme: Pick<Theme, "fg">,
       context: RenderContext,
     ) {
-      const raw = Option.getOrUndefined(decodePayload(result?.details?.value));
+      const raw = result?.details?.value;
 
       const summary = options.isPartial
         ? ["In progress · outcome not final"]
@@ -237,11 +237,7 @@ export function toolPresentation(name: string) {
         color = "error";
       }
 
-      const hint = hasHiddenPreview(
-        summary,
-        raw,
-        fields(Option.getOrUndefined(decodePayload(context.args))),
-      )
+      const hint = hasHiddenPreview(summary, raw, fields(context.args))
         ? `\n${theme.fg("dim", context.keyHint("app.tools.expand", "for details"))}`
         : "";
 

@@ -19,7 +19,7 @@ import {
 } from "../sdk/errors";
 import type { SdkTurnFailure } from "../sdk/errors";
 import { diagnoseSdkRunError, formatSdkRunError } from "../sdk/failure-diagnostics";
-import { decodeSdkEvent, parseSdkMessage } from "../sdk/messages";
+import { parseSdkMessage } from "../sdk/messages";
 import { ResultFailureCategory } from "../sdk/result-failure";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunSdkQuery } from "../sdk/runner";
@@ -126,7 +126,7 @@ function textsOf(events: ReadonlyArray<BridgeEvent>): Array<string> {
 
 const parse = (
   input: ReturnType<typeof streamEvent> | { readonly type: string; readonly subtype?: string },
-) => Result.getOrThrow(parseSdkMessage(decodeSdkEvent(input)));
+) => Result.getOrThrow(parseSdkMessage(input));
 
 function retryable(error: SdkTurnFailure): boolean {
   const message: AssistantMessage = {

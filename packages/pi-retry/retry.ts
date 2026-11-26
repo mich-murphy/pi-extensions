@@ -16,9 +16,9 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { Result, Schema, SchemaGetter } from "effect";
+import { Schema } from "effect";
 import { onOffCommand } from "../shared/on-off-command";
-import { USAGE_LIMIT_CHANNEL, decodeUsageLimitNotice } from "../shared/usage-limit";
+import { USAGE_LIMIT_CHANNEL, readUsageLimitNotice } from "../shared/usage-limit";
 import type { UsageLimitNotice } from "../shared/usage-limit";
 
 export const RETRY_TYPE = "retry";
@@ -132,93 +132,56 @@ export type RetrySettingsInput = {
 
 type DataDescriptor = { readonly value?: unknown };
 
-const isSettingsObject = Schema.is(
-  Schema.ObjectKeyword.check(Schema.makeFilter((raw) => !Array.isArray(raw))),
-);
+function ownField(input: unknown, key: string): DataDescriptor | undefined {
+  if (input === null || input === undefined) {
+    return undefined;
+  }
 
-const ownSettingsObject = Schema.Unknown.pipe(
-  Schema.decode({
-    decode: SchemaGetter.transform((raw) => {
-      if (!isSettingsObject(raw)) {
-        return raw;
-      }
+  const descriptor: DataDescriptor | undefined = Object.getOwnPropertyDescriptor(input, key);
 
-      const entries = Object.entries(Object.getOwnPropertyDescriptors(raw));
+  return descriptor;
+}
 
-      const fields = Object.fromEntries(
-        entries.flatMap(([key, descriptor]: [string, DataDescriptor]) =>
-          Object.hasOwn(descriptor, "value") ? [[key, descriptor.value] as const] : [],
-        ),
-      );
+function isSettingsObject(input: unknown): boolean {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
 
-      Object.setPrototypeOf(fields, null);
+function isPositive(input: unknown): input is number {
+  return typeof input === "number" && Number.isFinite(input) && input > 0;
+}
 
-      return fields;
-    }),
-    encode: SchemaGetter.transform((value) => value),
+const isTransientSettings = Schema.is(
+  Schema.Struct({
+    enabled: Schema.Boolean,
+    delaysMinutes: Schema.declare<ReadonlyArray<number>>(
+      (input): input is ReadonlyArray<number> =>
+        Array.isArray(input) && input.length > 0 && input.every((delay) => isPositive(delay)),
+    ),
+    maxAttempts: Schema.Number.check(Schema.makeFilter(Number.isInteger), Schema.isGreaterThan(0)),
+    windowMinutes: Schema.Finite.check(Schema.isGreaterThan(0)),
   }),
 );
 
-const readSettingsSections = Schema.decodeUnknownSync(
-  ownSettingsObject.pipe(
-    Schema.decodeTo(
-      Schema.Struct({
-        piRetry: Schema.optional(Schema.Unknown),
-        autoResume: Schema.optional(Schema.Unknown),
-      }),
-    ),
-  ),
-);
+export function readTransientSettings(settings: unknown): TransientSettings | undefined {
+  const section =
+    ownField(settings, "piRetry")?.value ?? ownField(settings, "autoResume")?.value ?? {};
+  const transient = isSettingsObject(section)
+    ? (ownField(section, "transient")?.value ?? {})
+    : null;
 
-const readRetrySection = Schema.decodeUnknownResult(
-  ownSettingsObject.pipe(
-    Schema.decodeTo(Schema.Struct({ transient: Schema.optional(Schema.Unknown) })),
-  ),
-);
-
-const positive = Schema.Finite.check(Schema.isGreaterThan(0));
-
-const readTransientSection = Schema.decodeUnknownResult(
-  ownSettingsObject.pipe(
-    Schema.decodeTo(
-      Schema.Struct({
-        enabled: Schema.optional(Schema.NullOr(Schema.Boolean)),
-        delaysMinutes: Schema.optional(Schema.NullOr(Schema.NonEmptyArray(positive))),
-        maxAttempts: Schema.optional(
-          Schema.NullOr(
-            Schema.Number.check(Schema.makeFilter(Number.isInteger), Schema.isGreaterThan(0)),
-          ),
-        ),
-        windowMinutes: Schema.optional(Schema.NullOr(positive)),
-      }),
-    ),
-  ),
-);
-
-export function readTransientSettings(
-  settings: RetrySettingsInput | ReturnType<ExtensionAPI["getSettings"]>,
-): TransientSettings | undefined {
-  const { piRetry, autoResume } = readSettingsSections(settings);
-  const section = readRetrySection(piRetry ?? autoResume ?? {});
-
-  if (Result.isFailure(section)) {
+  if (!isSettingsObject(transient)) {
     return undefined;
   }
 
-  const transient = readTransientSection(section.success.transient ?? {});
-
-  if (Result.isFailure(transient)) {
-    return undefined;
-  }
-
-  const { enabled, delaysMinutes, maxAttempts, windowMinutes } = transient.success;
-
-  return {
-    enabled: enabled ?? DEFAULT_TRANSIENT_SETTINGS.enabled,
-    delaysMinutes: delaysMinutes ?? DEFAULT_TRANSIENT_SETTINGS.delaysMinutes,
-    maxAttempts: maxAttempts ?? DEFAULT_TRANSIENT_SETTINGS.maxAttempts,
-    windowMinutes: windowMinutes ?? DEFAULT_TRANSIENT_SETTINGS.windowMinutes,
+  const defaults = DEFAULT_TRANSIENT_SETTINGS;
+  const candidate = {
+    enabled: ownField(transient, "enabled")?.value ?? defaults.enabled,
+    delaysMinutes: ownField(transient, "delaysMinutes")?.value ?? defaults.delaysMinutes,
+    maxAttempts: ownField(transient, "maxAttempts")?.value ?? defaults.maxAttempts,
+    windowMinutes: ownField(transient, "windowMinutes")?.value ?? defaults.windowMinutes,
   };
+
+  return isTransientSettings(candidate) ? candidate : undefined;
 }
 
 function isTransientFailure(message: AssistantMessage, contextWindow?: number): boolean {
@@ -252,7 +215,7 @@ function omit(targetId: string): BoundaryResult {
 
 const renderMarker: MarkerRenderer = (message, _options, theme) =>
   new Text(
-    theme.fg("dim", `↻ ${Schema.is(Schema.String)(message.content) ? message.content : ""}`),
+    theme.fg("dim", `↻ ${typeof message.content === "string" ? message.content : ""}`),
     1,
     0,
   );
@@ -407,8 +370,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   };
 
   pi.events.on(USAGE_LIMIT_CHANNEL, (data) => {
-    const notice = decodeUsageLimitNotice(data);
-    publishedThisTurn = Result.isSuccess(notice) ? notice.success : undefined;
+    publishedThisTurn = readUsageLimitNotice(data);
   });
 
   for (const type of MARKER_TYPES) {

@@ -3,7 +3,7 @@ import process from "node:process";
 import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Data, Effect, Option, Result, Stream } from "effect";
+import { Data, Effect, Result, Stream } from "effect";
 import type { Scope } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
@@ -25,13 +25,7 @@ import {
 } from "./errors";
 import type { SdkRunError } from "./errors";
 import { instrumentEvent, instrumentRequest } from "./instrumentation";
-import {
-  applyUsage,
-  contextWindowFor,
-  decodeSdkEvent,
-  maxOutputTokensFor,
-  parseSdkMessage,
-} from "./messages";
+import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "./messages";
 import type { SdkMessage, TurnResult } from "./messages";
 import { buildPromptStream, cacheTtlFor } from "./prompt-stream";
 import type { CacheTtl } from "./prompt-stream";
@@ -522,9 +516,7 @@ function settle(
   return ended(Result.succeed(progress), progress);
 }
 
-type QueryItem =
-  | Result.Result<ReturnType<typeof decodeSdkEvent>, SdkRunError>
-  | { readonly _tag: "Halted" };
+type QueryItem = Result.Result<unknown, SdkRunError> | { readonly _tag: "Halted" };
 
 const HALTED: QueryItem = { _tag: "Halted" };
 
@@ -561,7 +553,7 @@ function step(
       return [progress, [ended(Result.fail(item.failure), progress)]];
     }
 
-    const tooOld = tooOldClaudeCode(Option.getOrUndefined(item.success));
+    const tooOld = tooOldClaudeCode(item.success);
 
     if (tooOld !== undefined) {
       const failure = new SdkQueryError({
@@ -639,7 +631,7 @@ function querySteps(
         onEvent === undefined
           ? Effect.void
           : instrumentEvent(abortController.signal, async () => onEvent(event, turn.model))
-      ).pipe(Effect.map(() => decodeSdkEvent(event)));
+      ).pipe(Effect.as(event));
     }),
     Stream.result,
     Stream.concat(Stream.succeed(HALTED)),

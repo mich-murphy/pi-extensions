@@ -7,7 +7,7 @@ import { buildAgentRequest } from "../agent-request";
 import { createAgentSdkStream } from "../bridge";
 import type { CacheDiagnostic } from "../cache-tracker";
 import { createCacheDiagnosticTracker } from "../cache-tracker";
-import { decodeSdkEvent, parseSdkMessage } from "../sdk/messages";
+import { parseSdkMessage } from "../sdk/messages";
 import { createClaudeAgentSdkRunner } from "../sdk/runner";
 import type { RunnerOptions, RunSdkQuery } from "../sdk/runner";
 import {
@@ -147,7 +147,7 @@ describe("public terminal failure privacy", () => {
         terminal_reason: detail,
       });
 
-      const parsed = parseSdkMessage(decodeSdkEvent(sdkResult));
+      const parsed = parseSdkMessage(sdkResult);
       assert(Result.isSuccess(parsed));
       expect(JSON.stringify(parsed)).not.toContain(PRIVATE);
       const message = await turn(messagesQuery(sdkResult));
