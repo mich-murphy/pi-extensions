@@ -7,6 +7,7 @@ pub mod daemon;
 mod deadline;
 mod events;
 pub mod intern;
+pub mod keys;
 pub mod managed;
 mod transport;
 pub mod wire;
@@ -20,6 +21,8 @@ pub mod lease;
 pub mod remote;
 
 mod link;
+
+mod pinned;
 
 mod paths;
 
