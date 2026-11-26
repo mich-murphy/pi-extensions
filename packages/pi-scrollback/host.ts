@@ -2,7 +2,8 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
 import type { LayoutNode } from "@earendil-works/pi-tui/dist/layout-node";
 import { Option, Predicate, Schema } from "effect";
-import { contextRow, selectContext } from "./context";
+import { contextRow, indexPrompts, selectPrompt } from "./context";
+import type { PromptIndex } from "./context";
 
 const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
 
@@ -120,6 +121,26 @@ function nativeTexts(document: RenderComponent, rendered: ReadonlyArray<string>,
   return { lines, texts };
 }
 
+type PromptCache = {
+  document: RenderComponent;
+  lines: ReadonlyArray<string>;
+  width: number;
+  index: PromptIndex;
+};
+
+function promptIndexCache() {
+  let cache: PromptCache | undefined;
+
+  return (document: RenderComponent, lines: ReadonlyArray<string>, width: number) => {
+    if (cache?.document !== document || cache.lines !== lines || cache.width !== width) {
+      const prompts = nativeTexts(document, lines, width);
+      cache = { document, lines, width, index: indexPrompts(prompts.lines, prompts.texts) };
+    }
+
+    return cache.index;
+  };
+}
+
 function headerFor(row: string | undefined, muted: (text: string) => string): Component {
   return {
     render: (width) => (row === undefined ? [] : [muted(contextRow(row, width))]),
@@ -177,6 +198,7 @@ export function createHostAdapter(
 
     let text: string | undefined;
     let shown = false;
+    const promptsFor = promptIndexCache();
     let header = { text, component: headerFor(text, muted) };
 
     const currentHeader = (): Component => {
@@ -216,7 +238,8 @@ export function createHostAdapter(
                     return false;
                   }
 
-                  const lines = document.render(scroll.getContentWidth(viewport.width));
+                  const width = scroll.getContentWidth(viewport.width);
+                  const lines = document.render(width);
 
                   const height = Math.max(
                     1,
@@ -229,13 +252,7 @@ export function createHostAdapter(
                     return false;
                   }
 
-                  const prompts = nativeTexts(
-                    document,
-                    lines,
-                    scroll.getContentWidth(viewport.width),
-                  );
-
-                  text = selectContext(prompts.lines, scroll.scrollTop, prompts.texts);
+                  text = selectPrompt(promptsFor(document, lines, width), scroll.scrollTop);
                   shown = text !== undefined;
 
                   return shown;

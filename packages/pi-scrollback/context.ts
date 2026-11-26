@@ -5,6 +5,12 @@ const ZONE_END = "\u001B]133;B\u0007";
 
 type PromptSpan = { start: number; lastText: number; text: string };
 
+export type PromptIndex = ReadonlyArray<{
+  readonly start: number;
+  readonly lastText: number;
+  readonly text: string;
+}>;
+
 function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
   const spans: Array<PromptSpan> = [];
   let start: number | undefined;
@@ -38,21 +44,45 @@ function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
   return spans;
 }
 
-export function selectContext(
+export function indexPrompts(
   lines: ReadonlyArray<string>,
-  scrollTop: number,
   texts?: ReadonlyArray<string>,
-): string | undefined {
-  const spans = promptSpans(lines);
-  const prompt = spans.findLast((span) => span.start <= scrollTop);
+): PromptIndex {
+  return promptSpans(lines).map((span, index) => ({
+    ...span,
+    text: texts?.[index] ?? span.text,
+  }));
+}
+
+export function selectPrompt(index: PromptIndex, scrollTop: number): string | undefined {
+  let low = 0;
+  let high = index.length;
+
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+
+    if ((index[middle]?.start ?? Number.POSITIVE_INFINITY) <= scrollTop) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  const prompt = index[low - 1];
 
   if (prompt === undefined || prompt.lastText >= scrollTop) {
     return undefined;
   }
 
-  const text = texts?.[spans.indexOf(prompt)] ?? prompt.text;
+  return prompt.text.trim().length === 0 ? undefined : prompt.text;
+}
 
-  return text.trim().length === 0 ? undefined : text;
+export function selectContext(
+  lines: ReadonlyArray<string>,
+  scrollTop: number,
+  texts?: ReadonlyArray<string>,
+): string | undefined {
+  return selectPrompt(indexPrompts(lines, texts), scrollTop);
 }
 
 export function contextRow(text: string, width: number): string {
