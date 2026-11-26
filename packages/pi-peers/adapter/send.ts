@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Frame, Message, PeerRef } from "../protocol/schema.js";
 import { encodeFrame } from "../protocol/wire.js";
-import { ConnectionFailure, freshId } from "./transport.js";
+import { ConnectionFailureError, freshId } from "./transport.js";
 import type { Reply } from "./transport.js";
 
 export type SendOutcome = Extract<Frame, { op: "result"; forOp: "send" }>["outcome"];
@@ -20,13 +20,13 @@ function failure(
   return possible ? { tag: "unknown", messageId, code } : { tag: "not_admitted", messageId, code };
 }
 
-async function attempt(run: () => Promise<Reply>): Promise<Reply | ConnectionFailure> {
+async function attempt(run: () => Promise<Reply>): Promise<Reply | ConnectionFailureError> {
   try {
     return await run();
   } catch (error) {
-    return error instanceof ConnectionFailure
+    return error instanceof ConnectionFailureError
       ? error
-      : new ConnectionFailure("protocol_error", false);
+      : new ConnectionFailureError("protocol_error", false);
   }
 }
 
@@ -43,7 +43,7 @@ function terminalReply(reply: Reply, messageId: string, possible: boolean): Send
 }
 
 function terminalFailure(
-  error: ConnectionFailure,
+  error: ConnectionFailureError,
   messageId: string,
   possible: boolean,
 ): SendOutcome {
@@ -123,7 +123,7 @@ export async function sendWithRetries(options: {
     // eslint-disable-next-line eslint/no-await-in-loop -- Attempts must be sequential and share their original deadline.
     const result = await attempt(async () => options.request(freshId(), deadline));
 
-    if (!(result instanceof ConnectionFailure)) {
+    if ("op" in result) {
       return terminalReply(result, messageId, possible);
     }
 

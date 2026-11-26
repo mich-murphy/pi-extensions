@@ -298,7 +298,9 @@ class VimEditor extends CustomEditor {
   }
 }
 
-type EditorFactory = NonNullable<Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]>;
+export type EditorFactory = (
+  ...args: Parameters<NonNullable<Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]>>
+) => CustomEditor;
 
 export type VimRegistration = {
   readonly on: (
@@ -306,7 +308,7 @@ export type VimRegistration = {
     handler: (
       event: SessionStartEvent,
       ctx: Pick<ExtensionContext, "mode"> & {
-        readonly ui: Pick<ExtensionContext["ui"], "setEditorComponent">;
+        readonly ui: Pick<VimCommandContext["ui"], "setEditorComponent">;
       },
     ) => void,
   ) => void;
@@ -314,7 +316,9 @@ export type VimRegistration = {
 };
 
 export type VimCommandContext = Pick<ExtensionContext, "mode"> & {
-  readonly ui: Pick<ExtensionContext["ui"], "notify" | "setEditorComponent">;
+  readonly ui: Pick<ExtensionContext["ui"], "notify"> & {
+    readonly setEditorComponent: (factory: EditorFactory | undefined) => void;
+  };
 };
 
 const vimEditor: EditorFactory = (tui, theme, keybindings) =>

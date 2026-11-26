@@ -1,7 +1,7 @@
-import { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 import { caffeinateSpawner } from "../caffeinate-process";
 import { CaffeinateNotice } from "../coffee-lifecycle";
 
@@ -13,16 +13,6 @@ function systemError(code: string): Error {
   return Object.assign(new Error(code), { syscall: "kill", code });
 }
 
-function childSubscribedViaOnceExit(subscriptions: readonly unknown[]): ChildProcess {
-  const child = subscriptions.at(-1);
-
-  if (!(child instanceof ChildProcess)) {
-    throw new TypeError("test setup: the adapter did not subscribe to a child process");
-  }
-
-  return child;
-}
-
 function summary(end: CaffeinateNotice): string {
   return CaffeinateNotice.$is("failed")(end)
     ? `${end.error.operation}:${end.error.code}`
@@ -31,20 +21,21 @@ function summary(end: CaffeinateNotice): string {
 
 describe("caffeinate child errors", () => {
   test("keeps reporting every error: a second one must not crash Pi as unhandled", async () => {
-    const subscribe = vi.spyOn(ChildProcess.prototype, "once");
+    const startChild = vi.fn<NonNullable<Parameters<typeof caffeinateSpawner>[2]>>(spawn);
     const ends: CaffeinateNotice[] = [];
 
     const adapter = caffeinateSpawner(
       process.execPath,
       KILL_GRACE_MS,
+      startChild,
     )(["-e", "setInterval(() => {}, 1000)"]);
 
     adapter.onNotice((end) => ends.push(end));
-    const child = childSubscribedViaOnceExit(subscribe.mock.contexts);
-    subscribe.mockRestore();
+    const child = startChild.mock.results[0];
+    assert(child?.type === "return");
 
-    child.emit("error", systemError("EPERM"));
-    expect(() => child.emit("error", systemError("ESRCH"))).not.toThrow();
+    child.value.emit("error", systemError("EPERM"));
+    expect(() => child.value.emit("error", systemError("ESRCH"))).not.toThrow();
     adapter.stop();
 
     await vi.waitFor(() => {
@@ -53,17 +44,22 @@ describe("caffeinate child errors", () => {
   });
 
   test("stop after exit signals nothing, so a reused PID is never hit", async () => {
-    const subscribe = vi.spyOn(ChildProcess.prototype, "once");
-    const adapter = caffeinateSpawner(process.execPath, KILL_GRACE_MS)(["-e", "process.exit(0)"]);
+    const startChild = vi.fn<NonNullable<Parameters<typeof caffeinateSpawner>[2]>>(spawn);
+
+    const adapter = caffeinateSpawner(
+      process.execPath,
+      KILL_GRACE_MS,
+      startChild,
+    )(["-e", "process.exit(0)"]);
 
     const exited = new Promise((resolve) => {
       adapter.onNotice(resolve);
     });
 
-    const child = childSubscribedViaOnceExit(subscribe.mock.contexts);
-    subscribe.mockRestore();
+    const child = startChild.mock.results[0];
+    assert(child?.type === "return");
     await exited;
-    const kill = vi.spyOn(child, "kill");
+    const kill = vi.spyOn(child.value, "kill");
 
     try {
       adapter.stop();

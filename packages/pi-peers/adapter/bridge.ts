@@ -14,7 +14,7 @@ import { failureHint } from "./hints.js";
 import { SEND_BUDGET_MS } from "./send.js";
 import type { ToolSession } from "./tools.js";
 import { discovered } from "./tools.js";
-import { ConnectionFailure, freshId } from "./transport.js";
+import { ConnectionFailureError, freshId } from "./transport.js";
 
 type Send = Extract<PeersRequest, { op: "send" }>;
 
@@ -177,7 +177,7 @@ async function answer(
       ? await list(session, id, request.scope)
       : await send(session, request);
   } catch (error) {
-    if (error instanceof ConnectionFailure) {
+    if (error instanceof ConnectionFailureError) {
       return failure(id, error.code, failureHint(error.code));
     }
 

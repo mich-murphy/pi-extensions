@@ -5,7 +5,13 @@ import { describe, expect, test } from "vitest";
 import { diagnostics, statusSummary, statusText } from "../adapter/presentation.js";
 import { doctor } from "../onboarding/doctor.js";
 import { outcomeLines } from "../onboarding/menu/progress.js";
-import { afterSave, failed, NotActive, pendingOutcome, SAVED_NEXT } from "../onboarding/outcome.js";
+import {
+  afterSave,
+  failed,
+  NotActiveError,
+  pendingOutcome,
+  SAVED_NEXT,
+} from "../onboarding/outcome.js";
 
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
 
@@ -35,7 +41,7 @@ describe("report text never uses → as a separator", () => {
   test.each([
     ["pending", pendingOutcome("Settings saved")],
     ["after save", afterSave(new Error("busy"), ["detail"])],
-    ["not active", afterSave(new NotActive("Pi is busy. Try again when idle."))],
+    ["not active", afterSave(new NotActiveError("Pi is busy. Try again when idle."))],
     ["failed", failed("Setup failed", "refused", SAVED_NEXT, ["technical"])],
   ])("outcome: %s", (_name, outcome) => {
     expect(arrows(outcomeLines(outcome).join("\n"))).toStrictEqual([]);

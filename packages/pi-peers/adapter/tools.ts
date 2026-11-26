@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { refusalText } from "../onboarding/outcome.js";
-import { Refusal } from "../onboarding/refusal.js";
+import { RefusalError } from "../onboarding/refusal.js";
 import { samePeer } from "../protocol/identity.js";
 import { MAX_AUTHORED_BYTES } from "../protocol/schema.js";
 import type { Message } from "../protocol/schema.js";
@@ -20,7 +20,7 @@ import { failureHint, sendHint } from "./hints.js";
 import { toolPresentation } from "./presentation.js";
 import { SEND_BUDGET_MS } from "./send.js";
 import type { AdapterSession, TakenMessages, Waited } from "./session.js";
-import { ConnectionFailure, freshId } from "./transport.js";
+import { ConnectionFailureError, freshId } from "./transport.js";
 
 const scope = Type.String({ pattern: "^[A-Za-z0-9_-]{1,64}$" });
 const listParameters = Type.Object({ scope: Type.Optional(scope) });
@@ -191,11 +191,11 @@ const NOT_CONNECTED =
   "Peers could not connect in this session. Ask the user to run `/peers status`.";
 
 function unrecovered(error: Error): Shown<never> {
-  if (error instanceof ConnectionFailure) {
+  if (error instanceof ConnectionFailureError) {
     return problem(error.code);
   }
 
-  return error instanceof Refusal
+  return error instanceof RefusalError
     ? problem(
         "unavailable",
         `${refusalText(error, NOT_CONNECTED)} Ask the user to do this; do not retry.`,
@@ -222,7 +222,7 @@ async function invoke<Value extends ToolSuccess>(
   try {
     if (local) {
       if (session.client.isClosed()) {
-        throw new ConnectionFailure("cancelled", false);
+        throw new ConnectionFailureError("cancelled", false);
       }
     } else {
       await session.client.recoverForTool();
@@ -234,13 +234,13 @@ async function invoke<Value extends ToolSuccess>(
   try {
     return output(await run(session));
   } catch (error) {
-    return output(problem(error instanceof ConnectionFailure ? error.code : "invalid_input"));
+    return output(problem(error instanceof ConnectionFailureError ? error.code : "invalid_input"));
   }
 }
 
 function ownScope(session: ToolSession, scopeId: string): void {
   if (!session.client.effectiveScopes().has(scopeId)) {
-    throw new ConnectionFailure("unavailable", false);
+    throw new ConnectionFailureError("unavailable", false);
   }
 }
 
@@ -304,7 +304,7 @@ export async function discovered(
   const reply = await session.client.discover(scopes, false, signal);
 
   if (reply.forOp !== "discover") {
-    throw new ConnectionFailure("protocol_error", false);
+    throw new ConnectionFailureError("protocol_error", false);
   }
 
   if (reply.outcome.tag === "error") {

@@ -1,4 +1,4 @@
-import { ConnectionFailure } from "./transport.js";
+import { ConnectionFailureError } from "./transport.js";
 
 export async function waitFor<A>(
   shared: Promise<A>,
@@ -6,22 +6,22 @@ export async function waitFor<A>(
   signal: AbortSignal,
 ): Promise<A> {
   if (signal.aborted) {
-    throw new ConnectionFailure("cancelled", false);
+    throw new ConnectionFailureError("cancelled", false);
   }
 
   if (deadline <= performance.now()) {
-    throw new ConnectionFailure("unavailable", false);
+    throw new ConnectionFailureError("unavailable", false);
   }
 
   return new Promise<A>((resolve, reject) => {
     let settled = false;
 
     const timer = setTimeout(() => {
-      finish(new ConnectionFailure("unavailable", false));
+      finish(new ConnectionFailureError("unavailable", false));
     }, deadline - performance.now());
 
     const aborted = () => {
-      finish(new ConnectionFailure("cancelled", false));
+      finish(new ConnectionFailureError("cancelled", false));
     };
 
     const cleanup = () => {

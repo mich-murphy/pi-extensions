@@ -5,7 +5,7 @@ import type { PeersSend } from "../../shared/peers-channel";
 import { registerBridge } from "../adapter/bridge.js";
 import type { ToolSession } from "../adapter/tools.js";
 import type { Reply } from "../adapter/transport.js";
-import { Refusal } from "../onboarding/refusal.js";
+import { RefusalError } from "../onboarding/refusal.js";
 import type { Message, PeerRef } from "../protocol/schema.js";
 import { beta, discoverReply, self, toolSession } from "./tool-session-fixture.js";
 
@@ -178,7 +178,7 @@ describe("peers extension bridge", () => {
     });
   });
   test("a refusal while recovering is unavailable with its next step", async () => {
-    const refuse = new Refusal("the gateway program is out of date", "Run pi update");
+    const refuse = new RefusalError("the gateway program is out of date", "Run pi update");
     await expect(fixture({ refuse }).client.list()).resolves.toMatchObject({
       ok: false,
       code: "unavailable",

@@ -14,7 +14,7 @@ import type { Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
 import { failedWith, INCOMPLETE_NEXT, pendingOutcome, SAVED_NEXT } from "./outcome.js";
 import { replaceOwned } from "./owned-file.js";
-import { Refusal, SETTINGS_CHANGED } from "./refusal.js";
+import { RefusalError, SETTINGS_CHANGED } from "./refusal.js";
 import type { Acquisition, Reconnect } from "./route.js";
 import {
   cachedSchema,
@@ -65,14 +65,14 @@ async function inspectOwned(agentDir: string) {
     );
 
   if (pending !== undefined || prepared !== undefined || reset !== undefined) {
-    throw new Refusal(
+    throw new RefusalError(
       "a previous setup or reset did not finish",
       "Choose Reset in /peers, then Setup again",
     );
   }
 
   if (installed === undefined || adapter === undefined || gateway === undefined) {
-    throw new Refusal(
+    throw new RefusalError(
       "setup files are missing or were edited by hand",
       "Choose Reset in /peers, then Setup again",
     );

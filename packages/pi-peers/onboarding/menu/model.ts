@@ -176,7 +176,7 @@ export class MenuModel {
 
     const result = screen.save(value);
 
-    if (!(result instanceof Promise)) {
+    if (result === undefined || !("then" in result)) {
       this.settle(screen, result);
 
       return;

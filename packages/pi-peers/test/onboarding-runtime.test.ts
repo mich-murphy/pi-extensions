@@ -22,7 +22,7 @@ import { GatewayClient } from "../adapter/client.js";
 import { loadConfiguration } from "../adapter/config.js";
 import { AdapterSession } from "../adapter/session.js";
 import { registerTools } from "../adapter/tools.js";
-import { ConnectionFailure, freshId } from "../adapter/transport.js";
+import { ConnectionFailureError, freshId } from "../adapter/transport.js";
 import type { SetupBackend } from "../onboarding/backend.js";
 import {
   applyLocal,
@@ -480,7 +480,7 @@ function recoveryGate(launcher: ReturnType<typeof managedLauncher>) {
       count += 1;
 
       if (!available) {
-        throw new ConnectionFailure("unavailable", false);
+        throw new ConnectionFailureError("unavailable", false);
       }
 
       return launcher(deadline, signal);

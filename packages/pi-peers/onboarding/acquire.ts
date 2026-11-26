@@ -24,7 +24,7 @@ import {
   wireMismatch,
 } from "./catalog.js";
 import type { GatewayCatalog, GatewayNixPin, GatewayReleasePin } from "./catalog.js";
-import { foreignFolder, linkedFolder, openFolder, Refusal, sharedFolder } from "./refusal.js";
+import { foreignFolder, linkedFolder, openFolder, RefusalError, sharedFolder } from "./refusal.js";
 import { parseJson } from "./schema.js";
 
 export type AcquisitionPlanCommon = Readonly<{
@@ -54,7 +54,7 @@ export type AcquisitionResult = {
 
 export type AcquisitionSeams = {
   fs: Omit<typeof fs, "realpath"> & { realpath: (filename: string) => Promise<string> };
-  fetch: typeof globalThis.fetch;
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
   exec: (file: string, args: string[], signal: AbortSignal) => Promise<string>;
 };
 
@@ -118,7 +118,7 @@ async function download(
   url: string,
   maximum: number,
   signal: AbortSignal,
-  fetcher: typeof fetch,
+  fetcher: AcquisitionSeams["fetch"],
 ): Promise<Buffer> {
   let current = url;
 
@@ -149,7 +149,7 @@ async function download(
 async function fetchOnce(
   url: string,
   signal: AbortSignal,
-  fetcher: typeof fetch,
+  fetcher: AcquisitionSeams["fetch"],
 ): Promise<Response> {
   try {
     return await fetcher(url, { signal, redirect: "manual", credentials: "omit" });
@@ -159,8 +159,8 @@ async function fetchOnce(
   }
 }
 
-function downloadFailed(cause: unknown): Refusal {
-  const refusal = new Refusal(
+function downloadFailed(cause: unknown): RefusalError {
+  const refusal = new RefusalError(
     "the gateway download failed",
     "Check your internet connection, then try again",
   );

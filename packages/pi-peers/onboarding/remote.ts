@@ -5,7 +5,7 @@ import { createPrivate, regularBytes, privateDirectory } from "./files.js";
 import { credentials, pairAction } from "./pair.js";
 import type { Credentials } from "./pair.js";
 import type { LocalPlan } from "./plan.js";
-import { Refusal } from "./refusal.js";
+import { RefusalError } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 export type RemoteIntent = {
@@ -108,7 +108,7 @@ export function remoteReview(intent: RemoteIntent, directory: string): string {
 
 function grantedPlan(plan: LocalPlan, intent: RemoteIntent): LocalPlan {
   if (intent.peerMachineId === plan.adapter.machineId) {
-    throw new Refusal(
+    throw new RefusalError(
       "this computer and the peer have the same machine name",
       "Give one of them a different machine name",
     );
@@ -163,7 +163,7 @@ export function configured(
     material.machineId !== plan.adapter.machineId ||
     material.peerMachineId !== intent.peerMachineId
   ) {
-    throw new Refusal(
+    throw new RefusalError(
       "the certificate files name a different machine",
       "Check the certificate files, then try again",
     );

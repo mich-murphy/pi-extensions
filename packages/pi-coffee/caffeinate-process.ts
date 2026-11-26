@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { CaffeinateNotice, CaffeinateProcessError } from "./coffee-lifecycle";
 import type { CaffeinateProcess } from "./coffee-lifecycle";
 
@@ -19,12 +19,17 @@ function nodeSystemErrorAsFailureOrRethrow(
 export function caffeinateSpawner(
   command: string,
   killGraceMs: number,
+  startChild: (
+    file: string,
+    args: readonly string[],
+    options: SpawnOptions,
+  ) => ChildProcess = spawn,
 ): (args: readonly string[]) => CaffeinateProcess {
   return (args) => {
     let child: ChildProcess;
 
     try {
-      child = spawn(command, [...args], { stdio: "ignore" });
+      child = startChild(command, [...args], { stdio: "ignore" });
     } catch (error) {
       const end = nodeSystemErrorAsFailureOrRethrow("start", error);
 

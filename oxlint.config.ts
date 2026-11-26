@@ -38,7 +38,6 @@ const keepArrayTypeStyleForTheBaseline = {
 
 const presetRulesPendingFixes = {
   "import/no-namespace": "off",
-  "@nkzw/no-instanceof": "off",
 } satisfies Rules;
 
 const readlineImportMessage = String.raw`readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \n only.`;

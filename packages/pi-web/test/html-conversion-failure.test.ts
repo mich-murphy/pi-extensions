@@ -1,4 +1,4 @@
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import TurndownService from "turndown";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import * as Html from "../html";
@@ -17,7 +17,7 @@ describe("a library stack overflow", () => {
     });
 
     assert(Result.isFailure(converted));
-    assert(converted.failure instanceof HtmlConversionFailed);
+    assert(Schema.is(HtmlConversionFailed)(converted.failure));
     expect(converted.failure.cause).toBe(OVERFLOW);
   });
 
@@ -36,7 +36,7 @@ describe("a library stack overflow", () => {
     });
     const converted = Html.htmlToMarkdown("<p>hello</p>", "https://example.com");
     assert(Result.isFailure(converted));
-    assert(converted.failure instanceof HtmlConversionFailed);
+    assert(Schema.is(HtmlConversionFailed)(converted.failure));
     expect(converted.failure.cause).toBe(OVERFLOW);
   });
 });

@@ -14,23 +14,11 @@ import type {
 import { sha256 } from "../onboarding/artifact.js";
 import { executableDigest } from "../onboarding/backend.js";
 import { gatewayTarget } from "../onboarding/catalog.js";
-import { UnsafeFolder } from "../onboarding/refusal.js";
+import { UnsafeFolderError } from "../onboarding/refusal.js";
 import { fixture } from "./onboarding-artifact-fixture.js";
 
 const roots: string[] = [];
 const narHash = `sha256-${Buffer.alloc(32, 251).toString("base64")}`;
-
-function requestUrl(url: string | URL | Request): string {
-  if (isString(url)) {
-    return url;
-  }
-
-  if (url instanceof URL) {
-    return url.href;
-  }
-
-  return url.url;
-}
 
 async function mockNixBuild(_file: string, args: string[]): Promise<string> {
   const link = args[args.indexOf("--out-link") + 1];
@@ -75,11 +63,9 @@ async function setup() {
 
   const exec = vi.fn<AcquisitionSeams["exec"]>(async () => versionJson);
 
-  const fetcher = vi.fn<typeof fetch>(
+  const fetcher = vi.fn<AcquisitionSeams["fetch"]>(
     async (url) =>
-      new Response(
-        new Uint8Array(requestUrl(url).endsWith("manifest.json") ? f.manifest : f.archive),
-      ),
+      new Response(new Uint8Array(url.endsWith("manifest.json") ? f.manifest : f.archive)),
   );
 
   return {
@@ -159,7 +145,7 @@ describe("approved gateway acquisition", () => {
     const origin =
       "https://github.com/mich-murphy/pi-extensions/releases/download/pi-gateway-v0.1.0/";
 
-    expect(s.fetcher.mock.calls.map(([url]) => requestUrl(url))).toStrictEqual([
+    expect(s.fetcher.mock.calls.map(([url]) => url)).toStrictEqual([
       `${origin}manifest.json`,
       `${origin}${s.f.record.file}`,
     ]);
@@ -309,7 +295,7 @@ describe("approved gateway acquisition", () => {
   test("never adopts existing installations or follows symlink roots", async () => {
     const s = await setup();
     await fs.symlink(s.root, s.plan.installRoot);
-    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeFolder);
+    await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeFolderError);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("names a group-writable folder on the install path and how to fix it", async () => {
@@ -323,7 +309,7 @@ describe("approved gateway acquisition", () => {
       s.options,
     ).catch(Schema.decodeUnknownSync(Schema.instanceOf(Error)));
 
-    expect(error).toBeInstanceOf(UnsafeFolder);
+    expect(error).toBeInstanceOf(UnsafeFolderError);
     expect(error).toMatchObject({
       folder: shared,
       reason: `${shared} is writable by other users`,

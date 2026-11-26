@@ -36,7 +36,7 @@ import { peersMenu } from "./onboarding/menu/root.js";
 import type { ActionKind, RootState } from "./onboarding/menu/root.js";
 import { runMenu } from "./onboarding/menu/run.js";
 import type { MenuContext } from "./onboarding/menu/run.js";
-import { NotActive, refusalText } from "./onboarding/outcome.js";
+import { NotActiveError, refusalText } from "./onboarding/outcome.js";
 import { NO_CHANGES, NOTHING_TO_RESET } from "./onboarding/route.js";
 import type { ActivatePlan, SetupRoute } from "./onboarding/route.js";
 import { prepareSetup, resetOutcome } from "./onboarding/setup.js";
@@ -182,7 +182,7 @@ export default function registerCommunication(
   const ensureCurrent = async (started: number, fresh?: Runtime): Promise<void> => {
     if (generation !== started) {
       await fresh?.dispose();
-      throw new NotActive(STALE);
+      throw new NotActiveError(STALE);
     }
   };
 
@@ -290,14 +290,14 @@ export default function registerCommunication(
       await ensureCurrent(started);
 
       if (owned !== undefined && replace !== true) {
-        throw new NotActive(
+        throw new NotActiveError(
           "This Pi still uses its earlier connection. Start a new Pi session to use the saved settings.",
         );
       }
 
       if (owned !== undefined) {
         if (!ctx.isIdle()) {
-          throw new NotActive(
+          throw new NotActiveError(
             "This Pi is busy and was not replaced. Start a new Pi session to use the saved settings.",
           );
         }
