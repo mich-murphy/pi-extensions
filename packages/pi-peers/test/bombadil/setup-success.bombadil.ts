@@ -59,8 +59,15 @@ const sticky: Facts = {
   turnedOff: 0,
 };
 
+const SET_UP = "✓ Peers set up";
+
 function setupSucceeded(screen: Screen): boolean {
-  return screen.outcome === "ok" && (screen.headline ?? "").startsWith("✓ Peers set up");
+  const outcomeShown = screen.outcome === "ok" && (screen.headline ?? "").startsWith(SET_UP);
+  const transcriptKeepsTheReportAfterTheOutcomeCloses = screen.reported.some((row) =>
+    row.startsWith(SET_UP),
+  );
+
+  return outcomeShown || transcriptKeepsTheReportAfterTheOutcomeCloses;
 }
 
 function turnedOffShown(screen: Screen): boolean {
