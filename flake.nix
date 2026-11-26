@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   # Official Rust binaries, pinned independently of nixpkgs.
   inputs.rust-overlay = {
-    url = "github:oxalica/rust-overlay/ea2084066e0f3fed86a76a2654658ed2eb998046";
+    url = "github:oxalica/rust-overlay/8771c4aba509d6efb8bf376fd8cb657cce52b013";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
