@@ -42,6 +42,7 @@ type Builder = {
 };
 
 type Merges = {
+  readonly idOf: (owner: string, fingerprint: string) => string;
   readonly rootOf: (owner: string, fingerprint: string) => string;
   readonly aliases: ReadonlyMap<string, string>;
 };
@@ -70,7 +71,27 @@ function memberKey(owner: string, fingerprint: string): string {
   return JSON.stringify([owner, fingerprint]);
 }
 
+function groupIds(): (owner: string, fingerprint: string) => string {
+  const byOwner = new Map<string, Map<string, string>>();
+
+  return (owner, fingerprint) => {
+    const known = byOwner.get(owner) ?? new Map<string, string>();
+    byOwner.set(owner, known);
+    const cached = known.get(fingerprint);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const id = groupId(owner, fingerprint);
+    known.set(fingerprint, id);
+
+    return id;
+  };
+}
+
 function mergesOf(events: ReadonlyArray<LedgerEvent>, moved: ReadonlyMap<string, string>): Merges {
+  const idOf = groupIds();
   const firstAt = new Map<string, string>();
   const fingerprintOf = new Map<string, readonly [string, string]>();
 
@@ -121,12 +142,12 @@ function mergesOf(events: ReadonlyArray<LedgerEvent>, moved: ReadonlyMap<string,
   const aliases = new Map<string, string>();
 
   for (const [owner, fingerprint] of fingerprintOf.values()) {
-    aliases.set(groupId(owner, fingerprint), groupId(owner, rootOf(owner, fingerprint)));
+    aliases.set(idOf(owner, fingerprint), idOf(owner, rootOf(owner, fingerprint)));
   }
 
   const members = new Set(fingerprintOf.keys());
 
-  return { rootOf, aliases: withMovedAliases(aliases, moved, members, rootOf) };
+  return { idOf, rootOf, aliases: withMovedAliases(aliases, moved, members, rootOf) };
 }
 
 function withMovedAliases(
@@ -146,7 +167,7 @@ function withMovedAliases(
 
 function addRecord(builders: Map<string, Builder>, merges: Merges, event: RecordEvent): void {
   const fingerprint = merges.rootOf(event.owner, event.fingerprint);
-  const id = groupId(event.owner, fingerprint);
+  const id = merges.idOf(event.owner, fingerprint);
 
   const builder = builders.get(id) ?? {
     id,
