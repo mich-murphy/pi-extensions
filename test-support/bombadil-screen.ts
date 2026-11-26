@@ -1,5 +1,5 @@
 import type { State } from "@antithesishq/bombadil/terminal";
-import { Schema } from "effect";
+import { hasProperty, isString } from "effect/Predicate";
 
 export function screenRows(state: State): Array<string> {
   const rows: Array<string> = [];
@@ -11,18 +11,18 @@ export function screenRows(state: State): Array<string> {
   return rows;
 }
 
-const hasTypeText = Schema.is(
-  Schema.Struct({
-    TypeText: Schema.Union([Schema.String, Schema.Struct({ text: Schema.String })]),
-  }),
-);
-
 export function typedText(state: State): string | null {
-  const action = state.lastAction;
+  const action: unknown = state.lastAction;
 
-  if (!hasTypeText(action)) {
+  if (!hasProperty(action, "TypeText")) {
     return null;
   }
 
-  return typeof action.TypeText === "string" ? action.TypeText : action.TypeText.text;
+  const typed = action.TypeText;
+
+  if (isString(typed)) {
+    return typed;
+  }
+
+  return hasProperty(typed, "text") && isString(typed.text) ? typed.text : null;
 }
