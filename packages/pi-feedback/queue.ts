@@ -70,7 +70,7 @@ function memberKey(owner: string, fingerprint: string): string {
   return JSON.stringify([owner, fingerprint]);
 }
 
-function mergesOf(events: ReadonlyArray<LedgerEvent>): Merges {
+function mergesOf(events: ReadonlyArray<LedgerEvent>, moved: ReadonlyMap<string, string>): Merges {
   const firstAt = new Map<string, string>();
   const fingerprintOf = new Map<string, readonly [string, string]>();
 
@@ -120,6 +120,15 @@ function mergesOf(events: ReadonlyArray<LedgerEvent>): Merges {
   for (const [key, [owner, fingerprint]] of fingerprintOf) {
     const root = fingerprintOf.get(find(key))?.[1] ?? fingerprint;
     aliases.set(groupId(owner, fingerprint), groupId(owner, root));
+  }
+
+  for (const [fingerprint, owner] of moved) {
+    const original = groupId(UNATTRIBUTED, fingerprint);
+
+    if (!fingerprintOf.has(memberKey(UNATTRIBUTED, fingerprint))) {
+      const root = fingerprintOf.get(find(memberKey(owner, fingerprint)))?.[1] ?? fingerprint;
+      aliases.set(original, groupId(owner, root));
+    }
   }
 
   return {
@@ -248,8 +257,9 @@ function byPriority(a: Group, b: Group): number {
 }
 
 export function deriveGroups(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<Group> {
-  const ordered = withAnsweredOwners(canonical(events));
-  const merges = mergesOf(ordered);
+  const answered = withAnsweredOwners(canonical(events));
+  const ordered = answered.events;
+  const merges = mergesOf(ordered, answered.moved);
   const builders = new Map<string, Builder>();
   const verdicts = new Map<string, VerdictEvent>();
 

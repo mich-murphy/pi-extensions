@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ClassifyOutcome, classifyRecord } from "../classify.ts";
 import { JEV_MODEL, JEV_MODEL_ID, ownerQuestion } from "../jev.ts";
@@ -147,5 +148,31 @@ describe("classifyRecord owner question", () => {
 
     expect(outcome._tag).toBe("classified");
     await expect(stored()).resolves.toStrictEqual([]);
+  });
+  test("counts a classifier that throws before returning a promise", async () => {
+    const classifier = fakeClassifier(webAnswer);
+    const registry = {
+      ...classifier.registry,
+      classify: () => {
+        throw new Error("sync");
+      },
+    };
+
+    await expect(
+      classifyRecord({ registry, ledger, record: vague, ownPackages: OWN }),
+    ).resolves.toStrictEqual(ClassifyOutcome.classified({ calls: 1, failed: 1 }));
+    await expect(stored()).resolves.toStrictEqual([]);
+  });
+
+  test("describes every package in this repository", () => {
+    const packages = readdirSync(fileURLToPath(new URL("../../", import.meta.url))).filter((name) =>
+      name.startsWith("pi-"),
+    );
+    const question = ownerQuestion(packages);
+    assert.ok(question !== undefined);
+
+    expect(Object.keys(question.owner.criteria).toSorted()).toStrictEqual(
+      [...packages, "other", "pi-core"].toSorted(),
+    );
   });
 });

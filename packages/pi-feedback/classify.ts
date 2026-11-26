@@ -125,20 +125,28 @@ function reportState(report: ReportEvent): JsonObject {
 }
 
 async function settledBy(
-  signal: AbortSignal,
-  pending: Promise<ClassifierResult>,
+  timeoutMs: number,
+  start: (signal: AbortSignal) => Promise<ClassifierResult>,
 ): Promise<ClassifierResult | undefined> {
-  const aborted = new Promise<undefined>((resolve) => {
-    signal.addEventListener(
-      "abort",
-      () => {
-        resolve(undefined);
-      },
-      { once: true },
-    );
-  });
+  const controller = new AbortController();
+  const expired = Promise.withResolvers<undefined>();
 
-  return Promise.race([pending.catch(() => undefined), aborted]);
+  const timer = setTimeout(() => {
+    controller.abort();
+    expired.resolve(undefined);
+  }, timeoutMs);
+
+  timer.unref();
+
+  try {
+    const pending = Promise.resolve()
+      .then(async () => start(controller.signal))
+      .catch(() => undefined);
+
+    return await Promise.race([pending, expired.promise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function pairKey(a: string, b: string): string {
@@ -287,10 +295,7 @@ export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome>
 
   const ask: Asker = async (state, questions) => {
     calls += 1;
-    const signal = AbortSignal.timeout(timeoutMs);
-
-    const result = await settledBy(
-      signal,
+    const result = await settledBy(timeoutMs, async (signal) =>
       registry.classify(model, { state, questions }, { signal }),
     );
 

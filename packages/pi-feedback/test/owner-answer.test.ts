@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { groupId } from "../fingerprint.ts";
 import { deriveGroups } from "../queue.ts";
-import { ownerEvent, report, signal } from "./events.ts";
+import { ownerEvent, reopenEvent, report, resolveEvent, signal } from "./events.ts";
 
 const VAGUE = "the search tool/tool_error";
 
@@ -65,5 +65,27 @@ describe("answered owners in the queue", () => {
     expect(
       deriveGroups([named, ownerEvent(2, VAGUE, "pi-web", 0.99)]).map((group) => group.owner),
     ).toStrictEqual(["unattributed"]);
+  });
+  test("applies a resolve that names the report's original unattributed group", () => {
+    const original = groupId("unattributed", VAGUE);
+    const groups = deriveGroups([
+      vague(1, "a"),
+      ownerEvent(2, VAGUE, "pi-web", 0.95),
+      resolveEvent(3, original),
+    ]);
+
+    expect(groups).toMatchObject([{ owner: "pi-web", status: "resolved", records: 0 }]);
+  });
+
+  test("applies a reopen that names the report's original unattributed group", () => {
+    const original = groupId("unattributed", VAGUE);
+    const groups = deriveGroups([
+      vague(1, "a"),
+      ownerEvent(2, VAGUE, "pi-web", 0.95),
+      resolveEvent(3, groupId("pi-web", VAGUE)),
+      reopenEvent(4, original),
+    ]);
+
+    expect(groups).toMatchObject([{ owner: "pi-web", status: "reopened" }]);
   });
 });

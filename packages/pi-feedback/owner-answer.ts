@@ -29,7 +29,12 @@ function preferred(candidate: OwnerEvent, kept: OwnerEvent): boolean {
   );
 }
 
-export function withAnsweredOwners(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<LedgerEvent> {
+export type AnsweredOwners = {
+  readonly events: ReadonlyArray<LedgerEvent>;
+  readonly moved: ReadonlyMap<string, string>;
+};
+
+export function withAnsweredOwners(events: ReadonlyArray<LedgerEvent>): AnsweredOwners {
   const answers = new Map<string, OwnerEvent>();
 
   for (const event of events) {
@@ -44,10 +49,23 @@ export function withAnsweredOwners(events: ReadonlyArray<LedgerEvent>): Readonly
     }
   }
 
-  return events.map((event) => {
-    const answer =
-      event.type === "report" && asksOwner(event) ? answers.get(event.fingerprint) : undefined;
+  const moved = new Map<string, string>();
 
-    return answer === undefined ? event : { ...event, owner: answer.owner };
+  const answered = events.map((event) => {
+    if (event.type !== "report" || !asksOwner(event)) {
+      return event;
+    }
+
+    const answer = answers.get(event.fingerprint);
+
+    if (answer === undefined) {
+      return event;
+    }
+
+    moved.set(event.fingerprint, answer.owner);
+
+    return { ...event, owner: answer.owner };
   });
+
+  return { events: answered, moved };
 }
