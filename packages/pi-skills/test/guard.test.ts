@@ -383,6 +383,27 @@ describe("pi-skills guard", () => {
       ).toBeUndefined();
     });
 
+    test("returns the first loaded resource when duplicates share a repository location", () => {
+      const { main, worktree } = repository();
+      const first = skillResource(join(worktree, ".agents/skills/deploy/SKILL.md"), "first");
+      const second = skillResource(join(main, ".agents/skills/deploy/SKILL.md"), "second");
+      const matcher = disabledResourceMatcher([first, second], emptyOverrides(), new Set());
+
+      expect(matcher.match(second.id)).toBe('skill "first"');
+      expect(matcher.match(first.id)).toBe('skill "first"');
+    });
+
+    test("matches a loaded skill from another worktree by its repository-relative path", () => {
+      const { main, worktree, other } = repository();
+      const deploy = skillResource(join(worktree, ".agents/skills/deploy/SKILL.md"), "deploy");
+      const matcher = disabledResourceMatcher([deploy], emptyOverrides(), new Set());
+
+      expect(matcher.match(join(main, ".agents/skills/deploy/references/steps.md"))).toBe(
+        'skill "deploy"',
+      );
+      expect(matcher.match(join(other, ".agents/skills/deploy/SKILL.md"))).toBeUndefined();
+    });
+
     test("blocks the same repository-relative instruction in every worktree only", () => {
       const { main, worktree, other } = repository();
       const rootAgents = instruction(join(main, "AGENTS.md"));
@@ -643,6 +664,30 @@ describe("pi-skills guard", () => {
       });
       expect(guard.call("read", { path: "web/AGENTS.md" })).toBeUndefined();
       expect(guard.call("read", { path: "README.md" }, subagent)).toBeUndefined();
+    });
+
+    test("applies toggle and loaded resource changes on the next read", () => {
+      const { main } = repository();
+      const skill = deploySkill(main);
+      const choices = new Map<string, ToggleValue>();
+      const current = () => Result.succeed(overrides(Object.fromEntries(choices)));
+      const guard = guarded({ load: current, set: current }, main);
+      guard.start([skill], []);
+
+      expect(guard.call("read", { path: skill.filePath })).toMatchObject({ block: true });
+
+      choices.set(skill.filePath, "enabled");
+
+      expect(guard.call("read", { path: skill.filePath })).toBeUndefined();
+
+      choices.clear();
+      guard.start([], []);
+
+      expect(guard.call("read", { path: skill.filePath })).toBeUndefined();
+
+      guard.start([skill], []);
+
+      expect(guard.call("read", { path: skill.filePath })).toMatchObject({ block: true });
     });
 
     test.each(["AGENTS.MD", "CLAUDE.MD", "custom-context.txt"])(

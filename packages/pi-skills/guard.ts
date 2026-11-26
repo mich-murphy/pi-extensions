@@ -44,7 +44,7 @@ export function disabledResourceMatcher(
       ),
   );
 
-  const loadedIndex = lazy(() => resourceIndex(resources, policy));
+  const loadedIndex = lazy(() => cachedResourceIndex(resources, policy));
 
   const loadedAt = (path: string, kind: ToggleResource["kind"]): ToggleResource | undefined => {
     const { byId, byLocation } = loadedIndex();
@@ -162,6 +162,24 @@ function resourceIndex(
   }
 
   return { byId, byLocation };
+}
+
+const RESOURCE_INDEXES = new WeakMap<ReadonlyArray<ToggleResource>, ResourceIndex>();
+
+function cachedResourceIndex(
+  resources: ReadonlyArray<ToggleResource>,
+  policy: ResourcePolicy,
+): ResourceIndex {
+  const cached = RESOURCE_INDEXES.get(resources);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const index = resourceIndex(resources, policy);
+  RESOURCE_INDEXES.set(resources, index);
+
+  return index;
 }
 
 function persistedPaths(overrides: ToggleOverrides | undefined): ReadonlyArray<string> {
