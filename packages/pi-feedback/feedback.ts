@@ -291,7 +291,15 @@ export function registerFeedback(
     const registry = ctx.modelRegistry;
     schedule(async () => {
       try {
-        const outcome = await classifyRecord({ registry, ledger, record: event, input, clock });
+        const outcome = await classifyRecord({
+          registry,
+          ledger,
+          record: event,
+          input,
+          clock,
+          ownPackages: dependencies.ownPackages,
+        });
+
         unclassified += ClassifyOutcome.$is("classified")(outcome) ? outcome.failed : 0;
       } catch {
         unclassified += 1;

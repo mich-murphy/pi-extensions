@@ -1,6 +1,7 @@
 import { groupId } from "./fingerprint.ts";
 import { THRESHOLDS } from "./jev.ts";
 import type { LedgerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
+import { withAnsweredOwners } from "./owner-answer.ts";
 import { PI_CORE, UNATTRIBUTED } from "./owner.ts";
 import { isExcluded, isPiCore } from "./verdict.ts";
 
@@ -169,7 +170,7 @@ function apply(
     return;
   }
 
-  if (event.type === "same_cause") {
+  if (event.type === "same_cause" || event.type === "owner") {
     return;
   }
 
@@ -247,7 +248,7 @@ function byPriority(a: Group, b: Group): number {
 }
 
 export function deriveGroups(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<Group> {
-  const ordered = canonical(events);
+  const ordered = withAnsweredOwners(canonical(events));
   const merges = mergesOf(ordered);
   const builders = new Map<string, Builder>();
   const verdicts = new Map<string, VerdictEvent>();

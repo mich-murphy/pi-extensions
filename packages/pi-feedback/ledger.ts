@@ -84,6 +84,15 @@ const SameCauseEvent = Schema.Struct({
   sameCause: Score,
 });
 
+const OwnerEvent = Schema.Struct({
+  type: Schema.Literal("owner"),
+  ...stamp,
+  fingerprint: Line,
+  owner: Owner,
+  model: Line,
+  confidence: Score,
+});
+
 const ResolveEvent = Schema.Struct({
   type: Schema.Literal("resolve"),
   ...stamp,
@@ -104,6 +113,7 @@ const LedgerEvent = Schema.Union([
   SignalEvent,
   VerdictEvent,
   SameCauseEvent,
+  OwnerEvent,
   ResolveEvent,
   ReopenEvent,
 ]);
@@ -113,6 +123,8 @@ export type LedgerEvent = typeof LedgerEvent.Type;
 export type RecordEvent = Extract<LedgerEvent, { readonly type: "report" | "signal" }>;
 
 export type VerdictEvent = Extract<LedgerEvent, { readonly type: "verdict" }>;
+
+export type OwnerEvent = Extract<LedgerEvent, { readonly type: "owner" }>;
 
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 

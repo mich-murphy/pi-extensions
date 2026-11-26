@@ -7,7 +7,7 @@ import { groupId } from "../fingerprint.ts";
 import type { LedgerEvent } from "../ledger.ts";
 import { deriveGroups } from "../queue.ts";
 import type { Group } from "../queue.ts";
-import { reopenEvent, report, resolveEvent, signal } from "./events.ts";
+import { ownerEvent, reopenEvent, report, resolveEvent, signal } from "./events.ts";
 
 const OWNERS = ["pi-claude", "pi-skills", "pi-core", "unattributed"] as const;
 const FINGERPRINTS = ["read: ENOENT", "bash: timeout"] as const;
@@ -22,7 +22,8 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
     const owner = tc.draw(sampledFrom([...OWNERS]), "owner");
     const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
     const session = tc.draw(sampledFrom([...SESSIONS]), "session");
-    const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 5 }), "shape");
+    const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 6 }), "shape");
+    const confidence = tc.draw(sampledFrom([0.85, 0.9, 0.95]), "confidence");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
 
@@ -33,6 +34,7 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
       () => report({ ...options, impact: "blocked" }),
       () => resolveEvent(n, group),
       () => reopenEvent(n, group),
+      () => ownerEvent(n, fingerprint, owner, confidence),
     ][fixtureIndex];
 
     assert.ok(make !== undefined);

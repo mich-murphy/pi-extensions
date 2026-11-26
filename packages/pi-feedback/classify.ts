@@ -1,13 +1,14 @@
 import type {
   ClassifierApi,
-  ClassifierBoolQuestion,
   ClassifierContext,
   ClassifierModel,
+  ClassifierQuestion,
   ClassifierResult,
   JsonObject,
 } from "@earendil-works/pi-ai";
 import { Data } from "effect";
 import {
+  CLASSIFY_TIMEOUT_MS,
   ERROR_LIMIT,
   INPUT_LIMIT,
   JEV_CATALOG_ID,
@@ -15,13 +16,16 @@ import {
   JEV_MODEL_ID,
   JEV_PROVIDER,
   MAX_MERGE_COMPARISONS,
+  ownerQuestion,
   RECORD_QUESTIONS,
   SAME_CAUSE_QUESTION,
   THRESHOLDS,
 } from "./jev.ts";
 import type { RecordQuestion } from "./jev.ts";
 import { appendEvent, readLedger } from "./ledger.ts";
-import type { Clock, LedgerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
+import type { Clock, LedgerEvent, OwnerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
+import { asksOwner } from "./owner-answer.ts";
+import type { ReportEvent } from "./owner-answer.ts";
 import { UNATTRIBUTED } from "./owner.ts";
 import { deriveGroups } from "./queue.ts";
 import { redact } from "./redact.ts";
@@ -36,6 +40,7 @@ export type ClassifierRegistry = {
   readonly classify: (
     model: ClassifierModel<ClassifierApi>,
     context: ClassifierContext,
+    options: { readonly signal: AbortSignal },
   ) => Promise<ClassifierResult>;
 };
 
@@ -45,6 +50,8 @@ export type ClassifyJob = {
   readonly record: RecordEvent;
   readonly input?: JsonObject | undefined;
   readonly clock?: Clock | undefined;
+  readonly ownPackages?: ReadonlyArray<string> | undefined;
+  readonly timeoutMs?: number | undefined;
 };
 
 export type ClassifyOutcome =
@@ -58,7 +65,7 @@ type Scores = Pick<VerdictEvent, RecordQuestion>;
 
 type Asker = (
   state: JsonObject,
-  questions: Readonly<Record<string, ClassifierBoolQuestion>>,
+  questions: Readonly<Record<string, ClassifierQuestion>>,
 ) => Promise<ClassifierResult | undefined>;
 
 function clip(text: string, limit: number): string {
@@ -91,6 +98,47 @@ function inputText(input: JsonObject | undefined): JsonObject {
   const text = input === undefined ? undefined : JSON.stringify(input);
 
   return text === undefined ? {} : { input: clip(redact(text), INPUT_LIMIT) };
+}
+
+type OwnerAnswer = Pick<OwnerEvent, "owner" | "confidence">;
+
+function ownerOf(result: ClassifierResult | undefined): OwnerAnswer | undefined {
+  const answer = result?.answers.owner;
+
+  if (answer?.type !== "choice") {
+    return undefined;
+  }
+
+  const confidence = answer.probabilities[answer.choice];
+
+  return confidence === undefined ? undefined : { owner: answer.choice, confidence };
+}
+
+function reportState(report: ReportEvent): JsonObject {
+  return {
+    kind: report.kind,
+    component: report.component,
+    summary: report.summary,
+    expected: clip(report.expected, ERROR_LIMIT),
+    actual: clip(report.actual, ERROR_LIMIT),
+  };
+}
+
+async function settledBy(
+  signal: AbortSignal,
+  pending: Promise<ClassifierResult>,
+): Promise<ClassifierResult | undefined> {
+  const aborted = new Promise<undefined>((resolve) => {
+    signal.addEventListener(
+      "abort",
+      () => {
+        resolve(undefined);
+      },
+      { once: true },
+    );
+  });
+
+  return Promise.race([pending.catch(() => undefined), aborted]);
 }
 
 function pairKey(a: string, b: string): string {
@@ -195,10 +243,34 @@ async function compare(job: ClassifyJob, other: RecordEvent, ask: Asker): Promis
   }
 }
 
+async function ownerFor(
+  job: ClassifyJob,
+  report: ReportEvent,
+  events: ReadonlyArray<LedgerEvent>,
+  ask: Asker,
+  question: Readonly<Record<string, ClassifierQuestion>>,
+): Promise<void> {
+  if (events.some((event) => event.type === "owner" && event.fingerprint === report.fingerprint)) {
+    return;
+  }
+
+  const answer = ownerOf(await ask(reportState(report), question));
+
+  if (answer !== undefined) {
+    await appendEvent(
+      job.ledger,
+      { type: "owner", fingerprint: report.fingerprint, model: JEV_MODEL, ...answer },
+      job.clock,
+    );
+  }
+}
+
 export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome> {
   const { record, registry } = job;
+  const report = asksOwner(record) ? record : undefined;
+  const question = report === undefined ? undefined : ownerQuestion(job.ownPackages ?? []);
 
-  if (!needsClassifying(record)) {
+  if (question === undefined && !needsClassifying(record)) {
     return ClassifyOutcome.skipped();
   }
 
@@ -209,14 +281,20 @@ export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome>
   }
 
   const model = { ...catalog, id: JEV_MODEL_ID };
+  const timeoutMs = job.timeoutMs ?? CLASSIFY_TIMEOUT_MS;
   let calls = 0;
   let failed = 0;
 
   const ask: Asker = async (state, questions) => {
     calls += 1;
-    const result = await registry.classify(model, { state, questions });
+    const signal = AbortSignal.timeout(timeoutMs);
 
-    if (result.stopReason !== "stop") {
+    const result = await settledBy(
+      signal,
+      registry.classify(model, { state, questions }, { signal }),
+    );
+
+    if (result?.stopReason !== "stop") {
       failed += 1;
 
       return undefined;
@@ -226,6 +304,13 @@ export async function classifyRecord(job: ClassifyJob): Promise<ClassifyOutcome>
   };
 
   const { events } = await readLedger(job.ledger);
+
+  if (report !== undefined && question !== undefined) {
+    await ownerFor(job, report, events, ask, question);
+
+    return ClassifyOutcome.classified({ calls, failed });
+  }
+
   const scores = await verdictFor(job, events, ask);
 
   if (scores === undefined || scores.outsideService < THRESHOLDS.excludedOutsideFrom) {
