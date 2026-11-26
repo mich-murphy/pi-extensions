@@ -164,6 +164,28 @@ describe("classifyRecord owner question", () => {
     await expect(stored()).resolves.toStrictEqual([]);
   });
 
+  test("sends the home directory as ~", async () => {
+    const classifier = fakeClassifier(webAnswer);
+    const record = {
+      ...vague,
+      summary: "Read of /home/dev/notes.md failed",
+      actual: "ENOENT /home/dev/a and /home/developer/b and /home/dev",
+    };
+
+    await classifyRecord({
+      registry: classifier.registry,
+      ledger,
+      record,
+      ownPackages: OWN,
+      home: "/home/dev",
+    });
+
+    expect(classifier.calls[0]?.context.state).toMatchObject({
+      summary: "Read of ~/notes.md failed",
+      actual: "ENOENT ~/a and /home/developer/b and ~",
+    });
+  });
+
   test("describes every package in this repository", () => {
     const packages = readdirSync(fileURLToPath(new URL("../../", import.meta.url))).filter((name) =>
       name.startsWith("pi-"),

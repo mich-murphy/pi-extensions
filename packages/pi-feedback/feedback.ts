@@ -298,6 +298,7 @@ export function registerFeedback(
           input,
           clock,
           ownPackages: dependencies.ownPackages,
+          home: dependencies.home,
         });
 
         unclassified += ClassifyOutcome.$is("classified")(outcome) ? outcome.failed : 0;

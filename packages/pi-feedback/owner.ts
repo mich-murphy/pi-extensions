@@ -31,7 +31,7 @@ export type OwnerSettings = {
 
 export type Attribution = { readonly owner: string; readonly evidence?: "pi-path" };
 
-function escapeRegExp(text: string): string {
+export function escapeRegExp(text: string): string {
   return text.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`);
 }
 

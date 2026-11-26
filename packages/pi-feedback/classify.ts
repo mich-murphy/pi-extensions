@@ -26,7 +26,7 @@ import { appendEvent, readLedger } from "./ledger.ts";
 import type { Clock, LedgerEvent, OwnerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
 import { asksOwner } from "./owner-answer.ts";
 import type { ReportEvent } from "./owner-answer.ts";
-import { UNATTRIBUTED } from "./owner.ts";
+import { escapeRegExp, UNATTRIBUTED } from "./owner.ts";
 import { deriveGroups } from "./queue.ts";
 import { redact } from "./redact.ts";
 
@@ -52,6 +52,7 @@ export type ClassifyJob = {
   readonly clock?: Clock | undefined;
   readonly ownPackages?: ReadonlyArray<string> | undefined;
   readonly timeoutMs?: number | undefined;
+  readonly home?: string | undefined;
 };
 
 export type ClassifyOutcome =
@@ -114,13 +115,25 @@ function ownerOf(result: ClassifierResult | undefined): OwnerAnswer | undefined 
   return confidence === undefined ? undefined : { owner: answer.choice, confidence };
 }
 
-function reportState(report: ReportEvent): JsonObject {
+function homeAsTilde(home: string | undefined): (text: string) => string {
+  if (home === undefined || home === "" || home === "/") {
+    return (text) => text;
+  }
+
+  const pattern = new RegExp(`(?<![\\w./-])${escapeRegExp(home)}(?=/|$|[^\\w.-])`, "gu");
+
+  return (text) => text.replaceAll(pattern, "~");
+}
+
+function reportState(report: ReportEvent, home: string | undefined): JsonObject {
+  const tilde = homeAsTilde(home);
+
   return {
     kind: report.kind,
-    component: report.component,
-    summary: report.summary,
-    expected: clip(report.expected, ERROR_LIMIT),
-    actual: clip(report.actual, ERROR_LIMIT),
+    component: tilde(report.component),
+    summary: tilde(report.summary),
+    expected: clip(tilde(report.expected), ERROR_LIMIT),
+    actual: clip(tilde(report.actual), ERROR_LIMIT),
   };
 }
 
@@ -262,7 +275,7 @@ async function ownerFor(
     return;
   }
 
-  const answer = ownerOf(await ask(reportState(report), question));
+  const answer = ownerOf(await ask(reportState(report, job.home), question));
 
   if (answer !== undefined) {
     await appendEvent(

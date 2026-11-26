@@ -56,6 +56,35 @@ describe("answered owners in the queue", () => {
     expect(deriveGroups(events.toReversed())).toStrictEqual(deriveGroups(events));
   });
 
+  test.each([
+    ["pi-core", 0.95],
+    ["other", 0.93],
+  ])(
+    "keeps a vague report unattributed when the most confident answer is %s at %s",
+    (owner, confidence) => {
+      const events = [
+        vague(1, "a"),
+        ownerEvent(2, VAGUE, "pi-web", 0.91),
+        ownerEvent(3, VAGUE, owner, confidence),
+      ];
+      const owners = (order: typeof events) => deriveGroups(order).map((group) => group.owner);
+
+      expect(owners(events)).toStrictEqual(["unattributed"]);
+      expect(owners(events.toReversed())).toStrictEqual(["unattributed"]);
+    },
+  );
+
+  test("moves a vague report to the most confident answer when it passes 0.9", () => {
+    const events = [
+      vague(1, "a"),
+      ownerEvent(2, VAGUE, "pi-peers", 0.85),
+      ownerEvent(3, VAGUE, "pi-web", 0.91),
+    ];
+
+    expect(deriveGroups(events).map((group) => group.owner)).toStrictEqual(["pi-web"]);
+    expect(deriveGroups(events.toReversed()).map((group) => group.owner)).toStrictEqual(["pi-web"]);
+  });
+
   test("leaves a report that names an MCP tool unattributed", () => {
     const named = {
       ...vague(1, "a"),

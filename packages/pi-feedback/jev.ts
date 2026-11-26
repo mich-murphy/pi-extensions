@@ -65,7 +65,7 @@ export const SAME_CAUSE_QUESTION: Readonly<Record<"sameCause", ClassifierBoolQue
 
 const PACKAGE_DESCRIPTIONS = {
   "pi-claude":
-    "Claude provider: runs claude/... models through the Claude Agent SDK and a Claude Code subscription. Turn failure categories (rate-limit, usage-limit, internal-continuation, stream-interrupted, authentication), Claude Code version and login, /claude status|usage, SDK tool validation (pi_claude_sdk_validation_error), Claude scratchpad paths, its bash cat/which guard and base64 output quarantine, the Extra Usage guard, thinking replay, publishing usage-limit reset times",
+    "Claude provider: runs claude/... models through the Claude Agent SDK and a Claude Code subscription. Turn failure categories (rate-limit, usage-limit, internal-continuation, stream-interrupted, authentication), Claude Code version and login, /claude status|usage, SDK tool validation (pi_claude_sdk_validation_error), Claude scratchpad paths, its bash cat/which guard and base64 output quarantine, the Extra Usage guard, thinking replay, publishing usage-limit reset times. Not Pi's own built-in providers (anthropic, openai, google and others) or their API keys and OAuth login",
   "pi-coffee":
     "Keeps the Mac awake while Pi works by running caffeinate (/coffee): system sleep, display, battery, leftover caffeinate processes",
   "pi-feedback":
@@ -86,7 +86,7 @@ const PACKAGE_DESCRIPTIONS = {
 
 export const OUTSIDE_OWNERS = {
   "pi-core":
-    "Pi itself: built-in tools read, bash, edit, write, grep, find and ls; the codemode script runner and its models/tools API; the TUI, editor, themes and scrolling; sessions, tree, compaction, settings, Pi's own provider retries, its own skill discovery and /skill:name commands, bug reports",
+    "Pi itself: built-in tools read, bash, edit, write, grep, find and ls; the codemode script runner and its models/tools API; the TUI, editor, themes and scrolling; sessions, tree, compaction, settings, Pi's built-in providers and their API keys and OAuth login, Pi's own provider retries, its own skill discovery and /skill:name commands, bug reports",
   other:
     "A third-party extension or MCP server not listed here, such as mcp__linear__*, mcp__github__*, Playwright, subagent or todo extensions",
 } as const;

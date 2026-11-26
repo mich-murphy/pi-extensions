@@ -38,7 +38,7 @@ export function withAnsweredOwners(events: ReadonlyArray<LedgerEvent>): Answered
   const answers = new Map<string, OwnerEvent>();
 
   for (const event of events) {
-    if (event.type !== "owner" || acceptedOwner(event) === undefined) {
+    if (event.type !== "owner") {
       continue;
     }
 
@@ -56,15 +56,16 @@ export function withAnsweredOwners(events: ReadonlyArray<LedgerEvent>): Answered
       return event;
     }
 
-    const answer = answers.get(event.fingerprint);
+    const best = answers.get(event.fingerprint);
+    const owner = best === undefined ? undefined : acceptedOwner(best);
 
-    if (answer === undefined) {
+    if (owner === undefined) {
       return event;
     }
 
-    moved.set(event.fingerprint, answer.owner);
+    moved.set(event.fingerprint, owner);
 
-    return { ...event, owner: answer.owner };
+    return { ...event, owner };
   });
 
   return { events: answered, moved };
