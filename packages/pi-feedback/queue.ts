@@ -115,27 +115,33 @@ function mergesOf(events: ReadonlyArray<LedgerEvent>, moved: ReadonlyMap<string,
     }
   }
 
+  const rootOf = (owner: string, fingerprint: string): string =>
+    fingerprintOf.get(find(memberKey(owner, fingerprint)))?.[1] ?? fingerprint;
+
   const aliases = new Map<string, string>();
 
-  for (const [key, [owner, fingerprint]] of fingerprintOf) {
-    const root = fingerprintOf.get(find(key))?.[1] ?? fingerprint;
-    aliases.set(groupId(owner, fingerprint), groupId(owner, root));
+  for (const [owner, fingerprint] of fingerprintOf.values()) {
+    aliases.set(groupId(owner, fingerprint), groupId(owner, rootOf(owner, fingerprint)));
   }
 
-  for (const [fingerprint, owner] of moved) {
-    const original = groupId(UNATTRIBUTED, fingerprint);
+  const members = new Set(fingerprintOf.keys());
 
-    if (!fingerprintOf.has(memberKey(UNATTRIBUTED, fingerprint))) {
-      const root = fingerprintOf.get(find(memberKey(owner, fingerprint)))?.[1] ?? fingerprint;
-      aliases.set(original, groupId(owner, root));
+  return { rootOf, aliases: withMovedAliases(aliases, moved, members, rootOf) };
+}
+
+function withMovedAliases(
+  aliases: Map<string, string>,
+  moved: ReadonlyMap<string, string>,
+  members: ReadonlySet<string>,
+  rootOf: Merges["rootOf"],
+): Map<string, string> {
+  for (const [fingerprint, owner] of moved) {
+    if (!members.has(memberKey(UNATTRIBUTED, fingerprint))) {
+      aliases.set(groupId(UNATTRIBUTED, fingerprint), groupId(owner, rootOf(owner, fingerprint)));
     }
   }
 
-  return {
-    rootOf: (owner, fingerprint) =>
-      fingerprintOf.get(find(memberKey(owner, fingerprint)))?.[1] ?? fingerprint,
-    aliases,
-  };
+  return aliases;
 }
 
 function addRecord(builders: Map<string, Builder>, merges: Merges, event: RecordEvent): void {
