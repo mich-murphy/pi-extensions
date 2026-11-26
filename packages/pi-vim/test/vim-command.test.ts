@@ -1,8 +1,8 @@
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import { testKeybindings, testTui } from "../../../test-support/pi-tui";
+import type { EditorFactory } from "../index";
 import { loadVim, theme } from "./vim-harness";
-import type { EditorFactory } from "./vim-harness";
 
 function expectVimEditor(factory: EditorFactory | undefined): void {
   expect(factory).toBeDefined();

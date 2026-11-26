@@ -1,5 +1,4 @@
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { CustomEditor, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   KeybindingsManager,
   setKeybindings,
@@ -9,7 +8,7 @@ import {
 import type { EditorTheme } from "@earendil-works/pi-tui";
 import { testTui, testKeybindings } from "../../../test-support/pi-tui";
 import vimMode from "../index";
-import type { VimRegistration } from "../index";
+import type { EditorFactory, VimRegistration } from "../index";
 
 const identity = (text: string): string => text;
 
@@ -27,8 +26,6 @@ export const theme: EditorTheme = {
 type SessionStartHandler = Parameters<VimRegistration["on"]>[1];
 
 export type VimCommand = Parameters<VimRegistration["registerCommand"]>[1];
-
-export type EditorFactory = NonNullable<Parameters<ExtensionUIContext["setEditorComponent"]>[0]>;
 
 export type Notice = { readonly message: string; readonly type: string | undefined };
 
@@ -112,13 +109,8 @@ export function createEditor(): CustomEditor {
 
   const tuiDouble = testTui();
   const tuiKeybindings = testKeybindings();
-  const editor = editorFactory(tuiDouble, theme, tuiKeybindings);
 
-  if (!(editor instanceof CustomEditor)) {
-    throw new TypeError("Vim factory returned an unsupported editor");
-  }
-
-  return editor;
+  return editorFactory(tuiDouble, theme, tuiKeybindings);
 }
 
 export type Keyboard = {

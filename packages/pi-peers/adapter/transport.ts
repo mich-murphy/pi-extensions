@@ -14,7 +14,7 @@ export type LinkFrame = Extract<Frame, { op: "link.state" }>;
 
 export type Reply = Extract<Frame, { op: "result" }>;
 
-export class ConnectionFailure extends Error {
+export class ConnectionFailureError extends Error {
   constructor(
     readonly code: "unavailable" | "protocol_error" | "cancelled" | "overloaded",
     readonly possible: boolean,
@@ -32,7 +32,7 @@ type QueuedWrite = { bytes: number; control: boolean; deadline: number };
 type Pending = {
   request: Request;
   resolve: (reply: Reply) => void;
-  reject: (error: ConnectionFailure) => void;
+  reject: (error: ConnectionFailureError) => void;
   cleanup: () => void;
   possible: boolean;
 };
@@ -51,7 +51,7 @@ export async function connectTransport(
     incoming: (request: Request) => Reply;
     event: (event: Extract<Frame, { op: "roster.event" }>) => void;
     link?: (frame: LinkFrame) => void;
-    disconnected: (code: ConnectionFailure["code"]) => void;
+    disconnected: (code: ConnectionFailureError["code"]) => void;
     validateReply: (request: Request, reply: Reply) => void;
   },
   openSocket: (path: string) => Socket = createConnection,
@@ -67,7 +67,7 @@ export async function connectTransport(
   let ready = false;
   const socket = openSocket(options.socketPath);
 
-  const fail = (code: ConnectionFailure["code"], peerClosed = false) => {
+  const fail = (code: ConnectionFailureError["code"], peerClosed = false) => {
     if (closed) {
       return;
     }
@@ -83,7 +83,7 @@ export async function connectTransport(
 
     for (const operation of pending.values()) {
       operation.cleanup();
-      operation.reject(new ConnectionFailure(code, operation.possible, peerClosed));
+      operation.reject(new ConnectionFailureError(code, operation.possible, peerClosed));
     }
 
     pending.clear();
@@ -141,7 +141,7 @@ export async function connectTransport(
       encoded.length > available ||
       ordinaryBytes + controlBytes + encoded.length > CONNECTION_WRITE_BYTES
     ) {
-      throw new ConnectionFailure(closed ? "unavailable" : "overloaded", false);
+      throw new ConnectionFailureError(closed ? "unavailable" : "overloaded", false);
     }
 
     const record = { bytes: encoded.length, control, deadline: performance.now() + 5000 };
@@ -173,7 +173,7 @@ export async function connectTransport(
       });
     } catch {
       fail("unavailable");
-      throw new ConnectionFailure("unavailable", true);
+      throw new ConnectionFailureError("unavailable", true);
     }
   };
 
@@ -193,7 +193,7 @@ export async function connectTransport(
       options.event(frame);
     } else if (frame.op === "link.state") {
       if (options.link === undefined) {
-        throw new ConnectionFailure("protocol_error", false);
+        throw new ConnectionFailureError("protocol_error", false);
       }
 
       options.link(frame);
@@ -241,30 +241,30 @@ export async function connectTransport(
               }, 5000);
       }
     } catch (error) {
-      fail(error instanceof ConnectionFailure ? error.code : "protocol_error");
+      fail(error instanceof ConnectionFailureError ? error.code : "protocol_error");
     }
   });
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(
       () => {
-        finish(new ConnectionFailure("unavailable", false));
+        finish(new ConnectionFailureError("unavailable", false));
       },
       Math.max(1, Math.min(5000, options.deadline - performance.now())),
     );
 
     const aborted = () => {
-      finish(new ConnectionFailure("cancelled", false));
+      finish(new ConnectionFailureError("cancelled", false));
     };
 
     const failed = () => {
-      finish(new ConnectionFailure("unavailable", false));
+      finish(new ConnectionFailureError("unavailable", false));
     };
 
     const connected = () => {
       finish();
     };
 
-    function finish(error?: ConnectionFailure): void {
+    function finish(error?: ConnectionFailureError): void {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", aborted);
       socket.off("error", failed);
@@ -298,7 +298,7 @@ export async function connectTransport(
           deadline <= performance.now() ||
           pending.size >= 8
         ) {
-          let code: ConnectionFailure["code"] = "unavailable";
+          let code: ConnectionFailureError["code"] = "unavailable";
 
           if (signal?.aborted === true) {
             code = "cancelled";
@@ -306,7 +306,7 @@ export async function connectTransport(
             code = "overloaded";
           }
 
-          reject(new ConnectionFailure(code, false));
+          reject(new ConnectionFailureError(code, false));
 
           return;
         }
@@ -327,7 +327,7 @@ export async function connectTransport(
           signal?.removeEventListener("abort", aborted);
         };
 
-        function finish(code: ConnectionFailure["code"]): void {
+        function finish(code: ConnectionFailureError["code"]): void {
           const operation = pending.get(request.rid);
 
           if (operation === undefined) {
@@ -336,7 +336,7 @@ export async function connectTransport(
 
           pending.delete(request.rid);
           cleanup();
-          reject(new ConnectionFailure(code, operation.possible));
+          reject(new ConnectionFailureError(code, operation.possible));
         }
 
         const operation: Pending = { request, resolve, reject, cleanup, possible: false };
@@ -349,9 +349,9 @@ export async function connectTransport(
           pending.delete(request.rid);
           cleanup();
           reject(
-            error instanceof ConnectionFailure
+            error instanceof ConnectionFailureError
               ? error
-              : new ConnectionFailure("protocol_error", false),
+              : new ConnectionFailureError("protocol_error", false),
           );
         }
       }),

@@ -9,7 +9,7 @@ import { Schema } from "effect";
 import type { EnsureGateway } from "../adapter/client.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_WIRE_VERSION } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
-import { Refusal } from "./refusal.js";
+import { RefusalError } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
 const execute = promisify(execFile);
@@ -105,7 +105,7 @@ export async function validateExecutable(
     version.name === "pi-gateway" &&
     !(Array.isArray(version.wireVersions) && version.wireVersions.includes(GATEWAY_WIRE_VERSION))
   ) {
-    throw new Refusal(
+    throw new RefusalError(
       `the gateway program is out of date: it does not speak peers protocol v${String(GATEWAY_WIRE_VERSION)}`,
       "Run pi update to update the gateway, then choose Setup in /peers",
     );
@@ -118,7 +118,7 @@ export async function validateExecutable(
       capabilities.includes(capability),
     )
   ) {
-    throw new Refusal(
+    throw new RefusalError(
       "the gateway program is out of date",
       "Run pi update, then choose Setup in /peers",
     );

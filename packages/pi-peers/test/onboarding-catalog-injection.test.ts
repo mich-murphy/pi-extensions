@@ -26,7 +26,7 @@ if (archOverride !== "") {
 }
 const record = { fetches: [], allowed: [], denied: [], selects: [], notices: [], activated: 0 };
 globalThis.fetch = async (input) => {
-  record.fetches.push(String(input instanceof Request ? input.url : input));
+  record.fetches.push(input);
   throw new Error(sentinel);
 };
 const deny = (name) => (file, args) => {

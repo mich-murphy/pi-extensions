@@ -1,5 +1,5 @@
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { FetchPageBody, UnsupportedBinaryContent } from "../fetch-page";
 import { EmptyHtmlDocument, HtmlConversionFailed } from "../html-conversion";
 import { UTF8, fakePublicWeb, publicUrl, textWebResponse, fetchPageWith } from "./fakes";
@@ -86,7 +86,7 @@ describe("fetchPage", () => {
       );
 
       assert(Result.isFailure(result));
-      assert(result.failure instanceof UnsupportedBinaryContent);
+      assert(Schema.is(UnsupportedBinaryContent)(result.failure));
       expect(result.failure.mime).toBe("application/zip");
     }),
   );
@@ -101,7 +101,7 @@ describe("fetchPage", () => {
       );
 
       assert(Result.isFailure(result));
-      assert(result.failure instanceof UnsupportedBinaryContent);
+      assert(Schema.is(UnsupportedBinaryContent)(result.failure));
       expect(result.failure.mime).toBe("");
       expect(result.failure.message).toBe(
         "Unsupported binary content. Try a more text-oriented URL.",

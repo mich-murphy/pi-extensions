@@ -1,5 +1,5 @@
 import type { Outcome } from "./menu/progress.js";
-import { Refusal } from "./refusal.js";
+import { RefusalError } from "./refusal.js";
 
 const SAFE_REASON = /^[\p{L}\p{N} .,;:()'’—–-]{1,240}$/u;
 
@@ -28,7 +28,7 @@ export function failed(
 }
 
 export function failedWith(what: string, error: Error | undefined, next: string): Outcome {
-  if (error instanceof Refusal) {
+  if (error instanceof RefusalError) {
     return failed(what, error.reason, `${error.fix}.`);
   }
 
@@ -38,7 +38,7 @@ export function failedWith(what: string, error: Error | undefined, next: string)
 }
 
 export function refusalText(error: Error | undefined, fallback: string): string {
-  return error instanceof Refusal ? `${capitalize(error.reason)}. ${error.fix}.` : fallback;
+  return error instanceof RefusalError ? `${capitalize(error.reason)}. ${error.fix}.` : fallback;
 }
 
 function capitalize(text: string): string {
@@ -64,7 +64,7 @@ export async function attempt(
   }
 }
 
-export class NotActive extends Error {}
+export class NotActiveError extends Error {}
 
 export function pendingOutcome(
   what: string,
@@ -75,7 +75,7 @@ export function pendingOutcome(
 }
 
 export function afterSave(error: Error | undefined, technical: readonly string[] = []): Outcome {
-  if (error instanceof NotActive) {
+  if (error instanceof NotActiveError) {
     return pendingOutcome("Settings saved", error.message, technical);
   }
 

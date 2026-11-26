@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { registerTools } from "../adapter/tools.js";
 import type { ToolArguments } from "../adapter/tools.js";
-import { ConnectionFailure } from "../adapter/transport.js";
-import { Refusal } from "../onboarding/refusal.js";
+import { ConnectionFailureError } from "../adapter/transport.js";
+import { RefusalError } from "../onboarding/refusal.js";
 import { toolRecorder } from "./adapter-tool-fixture.js";
 import { toolSession } from "./tool-session-fixture.js";
 
@@ -21,7 +21,7 @@ async function call(name: string, failure: Error, args: ToolArguments = {}) {
   return tools.run(name, args);
 }
 
-const outdated = new Refusal(
+const outdated = new RefusalError(
   "the gateway program is out of date: it does not speak peers protocol v2",
   "Run pi update to update the gateway, then choose Setup in /peers",
 );
@@ -59,7 +59,7 @@ describe("tool recovery failures", () => {
     expect(result.content[0]?.text).toBe(OUTDATED_NOTE);
   });
   test("a connection failure while reconnecting keeps its own code", async () => {
-    const result = await call("peers_list", new ConnectionFailure("protocol_error", false));
+    const result = await call("peers_list", new ConnectionFailureError("protocol_error", false));
     expect(result).toMatchObject({ isError: true, details: { value: { code: "protocol_error" } } });
   });
 });

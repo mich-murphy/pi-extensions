@@ -208,7 +208,7 @@ export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool
       );
 
       if (
-        !(schema instanceof z.ZodObject) ||
+        schema.def.type !== "object" ||
         canonical(source) !==
           canonical(readSchemaObject(z.toJSONSchema(schema, { target: "draft-7", io: "input" })))
       ) {

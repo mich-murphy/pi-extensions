@@ -9,7 +9,7 @@ import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { resourcePathId } from "../resource-path";
 import type { ToggleValue } from "../resources";
-import { ToggleStateFile, ToggleStateMalformed, ToggleStateTooNew } from "../state";
+import { ToggleStateFile } from "../state";
 import type { ToggleStateResult } from "../state";
 import { assertProperty } from "./hegel-property";
 import { timeoutOverTenfold } from "./test-timeouts";
@@ -152,7 +152,7 @@ function assertMalformed(
   entry: string | undefined,
 ): void {
   assert.ok(Result.isFailure(result));
-  assert.ok(result.failure instanceof ToggleStateMalformed, result.failure.message);
+  assert.strictEqual(result.failure._tag, "ToggleStateMalformed", result.failure.message);
   assert.equal(result.failure.path, fixture.statePath);
   assert.equal(result.failure.entry, entry);
 }
@@ -209,7 +209,7 @@ function assertTooNew(fixture: Fixture, whole: number, fractional: boolean): voi
   const version = whole - (fractional ? 0.5 : 0);
   const result = load(fixture, { version, files: {}, repositories: {} });
   assert.ok(Result.isFailure(result));
-  assert.ok(result.failure instanceof ToggleStateTooNew, result.failure.message);
+  assert.strictEqual(result.failure._tag, "ToggleStateTooNew", result.failure.message);
   assert.equal(result.failure.version, version);
   assert.equal(result.failure.path, fixture.statePath);
 }

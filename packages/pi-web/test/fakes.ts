@@ -237,7 +237,7 @@ export function publicWebClientOverTransport(dependencies: {
 }
 
 export function publicWebClientWith(dependencies: {
-  readonly fetchImpl: typeof fetch;
+  readonly fetchImpl: (url: URL, init: RequestInit) => Promise<Response>;
   readonly lookup: TestLookup;
 }): PublicWebClient["Service"] {
   return publicWebClientOverTransport({

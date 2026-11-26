@@ -7,7 +7,7 @@ import type { LinkState } from "./links.js";
 import { validateBoundReply } from "./replies.js";
 import { remainingBudget, sendWithRetries } from "./send.js";
 import type { SendOutcome } from "./send.js";
-import { connectTransport, ConnectionFailure, freshId } from "./transport.js";
+import { connectTransport, ConnectionFailureError, freshId } from "./transport.js";
 import type { Connection, LinkFrame, Reply, Request } from "./transport.js";
 import { waitFor } from "./wait.js";
 
@@ -27,7 +27,7 @@ export type EnsureGateway = (
 
 export type { LinkState } from "./links.js";
 
-function outdated(error: ConnectionFailure): boolean {
+function outdated(error: ConnectionFailureError): boolean {
   return error.possible && (error.peerClosed || error.code === "protocol_error");
 }
 
@@ -70,7 +70,7 @@ export class GatewayClient {
   }
   private link(frame: LinkFrame): void {
     if (frame.rid !== this.registerRid) {
-      throw new ConnectionFailure("protocol_error", false);
+      throw new ConnectionFailureError("protocol_error", false);
     }
 
     if (this.linkTable.apply(frame)) {
@@ -156,11 +156,11 @@ export class GatewayClient {
         : AbortSignal.any([callerSignal, this.lifetime.signal]);
 
     if (this.closed || signal.aborted) {
-      throw new ConnectionFailure("cancelled", false);
+      throw new ConnectionFailureError("cancelled", false);
     }
 
     if (deadline <= performance.now()) {
-      throw new ConnectionFailure("unavailable", false);
+      throw new ConnectionFailureError("unavailable", false);
     }
 
     if (this.connection !== undefined) {
@@ -202,7 +202,7 @@ export class GatewayClient {
       const snapshot = await ensure(deadline, signal);
 
       if (!validGatewaySnapshot(snapshot)) {
-        throw new ConnectionFailure("protocol_error", false);
+        throw new ConnectionFailureError("protocol_error", false);
       }
 
       return snapshot.gatewaySha256;
@@ -274,7 +274,7 @@ export class GatewayClient {
       const reply = await connection.request(this.registration(rid, expected), deadline, signal);
 
       if (!current()) {
-        throw new ConnectionFailure("cancelled", false);
+        throw new ConnectionFailureError("cancelled", false);
       }
 
       return this.registered(connection, reply);
@@ -282,7 +282,7 @@ export class GatewayClient {
       connection.close();
       this.registrationFailed(
         current() && expected !== undefined,
-        current() && error instanceof ConnectionFailure && outdated(error),
+        current() && error instanceof ConnectionFailureError && outdated(error),
       );
       throw error;
     } finally {
@@ -292,11 +292,11 @@ export class GatewayClient {
   private registered(connection: Connection, reply: Reply): Connection {
     if (reply.outcome.tag === "error" && reply.outcome.code === "config_mismatch") {
       this.generationPending = true;
-      throw new ConnectionFailure("unavailable", false);
+      throw new ConnectionFailureError("unavailable", false);
     }
 
     if (reply.forOp !== "register" || reply.outcome.tag !== "ok") {
-      throw new ConnectionFailure("unavailable", false);
+      throw new ConnectionFailureError("unavailable", false);
     }
 
     this.scopes = new Set(reply.outcome.value.scopeIds);
@@ -332,7 +332,7 @@ export class GatewayClient {
       const expected = await this.expectedConfiguration(deadline, signal, current);
 
       if (!current()) {
-        throw new ConnectionFailure("cancelled", false);
+        throw new ConnectionFailureError("cancelled", false);
       }
 
       const connection = await connectTransport({
@@ -364,7 +364,7 @@ export class GatewayClient {
 
       if (!current()) {
         connection.close();
-        throw new ConnectionFailure("cancelled", false);
+        throw new ConnectionFailureError("cancelled", false);
       }
 
       return this.register(connection, { expected, deadline, signal, current });
@@ -380,7 +380,7 @@ export class GatewayClient {
   }
   async operation<A>(run: () => Promise<A>): Promise<A> {
     if (this.closed || this.active >= 8) {
-      throw new ConnectionFailure(this.closed ? "cancelled" : "overloaded", false);
+      throw new ConnectionFailureError(this.closed ? "cancelled" : "overloaded", false);
     }
 
     this.active += 1;
@@ -402,7 +402,7 @@ export class GatewayClient {
   }
   async reconnect(signal?: AbortSignal, fresh = false): Promise<void> {
     if (this.closed || signal?.aborted === true) {
-      throw new ConnectionFailure("cancelled", false);
+      throw new ConnectionFailureError("cancelled", false);
     }
 
     if (this.episode !== undefined && !fresh) {
@@ -437,7 +437,7 @@ export class GatewayClient {
           return;
         } catch (error) {
           if (
-            !(error instanceof ConnectionFailure) ||
+            !(error instanceof ConnectionFailureError) ||
             error.code !== "unavailable" ||
             attempt === 5 ||
             performance.now() >= deadline
@@ -449,7 +449,7 @@ export class GatewayClient {
             // eslint-disable-next-line eslint/no-await-in-loop -- Retry backoff is sequential and consumes the same deadline.
             await delay(Math.min(4000, 100 * 2 ** attempt), undefined, { signal: episodeSignal });
           } catch {
-            throw new ConnectionFailure("cancelled", false);
+            throw new ConnectionFailureError("cancelled", false);
           }
         }
       }
@@ -509,7 +509,7 @@ export class GatewayClient {
     try {
       return await this.operation(run);
     } catch (error) {
-      if (error instanceof ConnectionFailure && error.code === "overloaded") {
+      if (error instanceof ConnectionFailureError && error.code === "overloaded") {
         return {
           tag: "not_admitted",
           messageId,

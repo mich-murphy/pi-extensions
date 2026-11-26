@@ -26,7 +26,7 @@ import { validateExecutable, managedLauncher } from "./managed.js";
 import { replaceOwned } from "./owned-file.js";
 import { defaultChoices } from "./plan.js";
 import type { LocalPlan } from "./plan.js";
-import { Refusal } from "./refusal.js";
+import { RefusalError } from "./refusal.js";
 import { decodeManaged, decodeCached, decodeOwnership, decodeReset, parseJson } from "./schema.js";
 
 export type SetupBackend = {
@@ -194,11 +194,11 @@ export async function applyLocal(
       JSON.stringify(await bootstrapSnapshot(paths, requiredCapabilities)) !==
       JSON.stringify(before)
     ) {
-      throw new Refusal("setup files changed during the download", "Try again");
+      throw new RefusalError("setup files changed during the download", "Try again");
     }
 
     if ((await executableDigest(executable)) !== acquiredDigest) {
-      throw new Refusal("the downloaded gateway changed before it was used", "Try again");
+      throw new RefusalError("the downloaded gateway changed before it was used", "Try again");
     }
 
     const state = await inspectSetup(agentDir);
@@ -208,7 +208,7 @@ export async function applyLocal(
       state.pending ||
       (await regularBytes(join(paths.directory, "repair.json"))) !== undefined
     ) {
-      throw new Refusal(
+      throw new RefusalError(
         "another setup or reset did not finish",
         "Choose Reset in /peers, then Setup again",
       );
@@ -281,7 +281,7 @@ export async function applyLocal(
   });
 }
 
-export class ResetFailure extends Error {
+export class ResetFailureError extends Error {
   constructor(readonly disabled: boolean) {
     super(disabled ? "Reset stopped after turning peers off" : "Reset stopped before any change");
   }
@@ -316,7 +316,10 @@ export async function resetLocal(agentDir: string): Promise<string> {
   const executable = await cachedExecutable(paths);
 
   if (executable === undefined) {
-    throw new Refusal("setup never finished, so peers is not on", "Choose Setup to start again");
+    throw new RefusalError(
+      "setup never finished, so peers is not on",
+      "Choose Setup to start again",
+    );
   }
 
   return withSetupLock(paths.lock, executable, async () => {
@@ -331,7 +334,7 @@ export async function resetLocal(agentDir: string): Promise<string> {
 
       await unlink(join(paths.directory, "reset.json"));
     } catch {
-      throw new ResetFailure(!(await regularBytes(paths.adapter)));
+      throw new ResetFailureError(!(await regularBytes(paths.adapter)));
     }
 
     return (
@@ -359,7 +362,7 @@ async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
   const interrupted = await regularBytes(path);
 
   if (interrupted !== undefined) {
-    const damaged = new Refusal(
+    const damaged = new RefusalError(
       "the record of an earlier reset is damaged",
       `Move ${path} aside, then try again`,
     );
@@ -410,13 +413,16 @@ function matchReset(
   label: string,
 ): void {
   if (bytes !== undefined && !allowed.includes(digest(bytes))) {
-    throw new Refusal(`${label} was edited by hand`, "Undo the edit, then try again");
+    throw new RefusalError(`${label} was edited by hand`, "Undo the edit, then try again");
   }
 }
 
 async function preflightReset(paths: SetupPaths): Promise<void> {
   if ((await regularBytes(join(paths.directory, "repair.json"))) !== undefined) {
-    throw new Refusal("a gateway repair is unfinished", "Choose Setup to finish the repair first");
+    throw new RefusalError(
+      "a gateway repair is unfinished",
+      "Choose Setup to finish the repair first",
+    );
   }
 
   const [metadata, prepared, pending, adapter, gateway, pairing] = await Promise.all(
@@ -433,7 +439,10 @@ async function preflightReset(paths: SetupPaths): Promise<void> {
   const recordBytes = metadata ?? prepared ?? pending;
 
   if (recordBytes === undefined) {
-    throw new Refusal("pi-peers.json was written by hand", "Remove it by hand to turn peers off");
+    throw new RefusalError(
+      "pi-peers.json was written by hand",
+      "Remove it by hand to turn peers off",
+    );
   }
 
   const record = decodeOwnership(parseJson(recordBytes));
@@ -466,7 +475,7 @@ async function validateResetEntries(paths: SetupPaths, entries: ResetEntry[]): P
   );
 
   if (valid.includes(false)) {
-    throw new ResetFailure(!(await regularBytes(paths.adapter)));
+    throw new ResetFailureError(!(await regularBytes(paths.adapter)));
   }
 }
 
@@ -524,7 +533,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
   );
 
   if (projections.some((bytes) => bytes !== undefined)) {
-    throw new Refusal(
+    throw new RefusalError(
       "peers is already set up or a setup did not finish",
       "Open /peers again to review the saved setup",
     );

@@ -2,6 +2,7 @@ import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vites
 import { clearApiKeyCache } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 import { WEB_AUTH_PROVIDERS } from "../authentication";
 import webExtension from "../index";
+import type { HttpFetch } from "../network";
 import { fakePi } from "./fake-pi";
 import { textOf } from "./fakes";
 
@@ -39,10 +40,11 @@ describe("the composed extension", () => {
 
     clearApiKeyCache();
     providerCalls.length = 0;
-    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+
+    const fetchProvider: HttpFetch["Service"]["fetch"] = async (input, init) => {
       providerCalls.push({
-        url: input instanceof Request ? input.url : input.toString(),
-        apiKey: new Headers(init?.headers).get("x-api-key"),
+        url: input.toString(),
+        apiKey: new Headers(init.headers).get("x-api-key"),
       });
 
       return new Response(
@@ -51,7 +53,9 @@ describe("the composed extension", () => {
         }),
         { headers: { "content-type": "application/json" } },
       );
-    });
+    };
+
+    vi.stubGlobal("fetch", fetchProvider);
   });
   afterEach(() => {
     clearApiKeyCache();

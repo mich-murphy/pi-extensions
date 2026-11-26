@@ -7,7 +7,7 @@ import {
   applyLocal,
   inspectSetup,
   resetLocal,
-  ResetFailure,
+  ResetFailureError,
   reusableExecutable,
 } from "./backend.js";
 import type { SetupBackend } from "./backend.js";
@@ -46,7 +46,7 @@ import {
 } from "./outcome.js";
 import { localReview } from "./plan.js";
 import type { LocalPlan } from "./plan.js";
-import { Refusal, UnsafeFolder } from "./refusal.js";
+import { RefusalError, UnsafeFolderError } from "./refusal.js";
 import type { RemoteIntent } from "./remote.js";
 import { remoteReview, prepareRemote } from "./remote.js";
 import { repairRoute } from "./repair.js";
@@ -116,7 +116,7 @@ async function productionBackend(
 
           return result.executable;
         } catch (error) {
-          if (fallback === null || error instanceof UnsafeFolder) {
+          if (fallback === null || error instanceof UnsafeFolderError) {
             throw error;
           }
 
@@ -660,17 +660,17 @@ export async function resetOutcome(
       ],
     };
   } catch (error) {
-    if (error instanceof ResetFailure && error.disabled) {
-      await dispose();
+    if (error instanceof ResetFailureError) {
+      if (error.disabled) {
+        await dispose();
 
-      return failed(
-        "Reset failed",
-        "peers is off, but cleanup did not finish",
-        "Choose Reset again to finish.",
-      );
-    }
+        return failed(
+          "Reset failed",
+          "peers is off, but cleanup did not finish",
+          "Choose Reset again to finish.",
+        );
+      }
 
-    if (error instanceof ResetFailure) {
       return failed(
         "Reset failed",
         "files changed during reset",
@@ -678,7 +678,7 @@ export async function resetOutcome(
       );
     }
 
-    if (error instanceof Refusal) {
+    if (error instanceof RefusalError) {
       return failed("Reset failed", error.reason, `Nothing was turned off. ${error.fix}.`);
     }
 

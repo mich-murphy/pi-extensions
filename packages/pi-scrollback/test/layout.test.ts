@@ -4,10 +4,10 @@ import {
   Container,
   Text,
   TuiAltScreen,
-  VStack,
   stripTerminalSequences,
   visibleWidth,
 } from "@earendil-works/pi-tui";
+import { Predicate, Schema } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 import { createChatViewport } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/chat-viewport";
 import { initTheme } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme";
@@ -16,11 +16,22 @@ import {
   getLayoutNode,
   LAYOUT_NODE,
 } from "../../../node_modules/@earendil-works/pi-tui/dist/layout-node";
+import type { LayoutComponent } from "../../../node_modules/@earendil-works/pi-tui/dist/layout-node";
 import { testTui } from "../../../test-support/pi-tui";
 import { contextRow, selectContext } from "../context";
 import { createHostAdapter } from "../host";
 
 initTheme("dark");
+
+const hasLayoutMethod = Schema.is(
+  Schema.Struct({
+    [LAYOUT_NODE]: Schema.mutableKey(
+      Schema.declare<LayoutComponent[typeof LAYOUT_NODE]>(
+        (value): value is LayoutComponent[typeof LAYOUT_NODE] => Predicate.isFunction(value),
+      ),
+    ),
+  }),
+);
 
 function fixture(firstPrompt = "first prompt") {
   const document = new Container();
@@ -70,7 +81,7 @@ function fixture(firstPrompt = "first prompt") {
   });
 
   const { root } = viewport;
-  assert(root instanceof VStack);
+  assert(hasLayoutMethod(root));
   const tui = new TuiAltScreen(testTui().terminal);
   const request = vi.spyOn(tui, "requestRender").mockImplementation(() => undefined);
   tui.setLayoutRoot(root);
@@ -116,10 +127,9 @@ function visible(component: Component): boolean | undefined {
 describe("native chat viewport", () => {
   test("accepts the pinned fullscreen layout and keeps the historical turn anchored", () => {
     const f = fixture();
-    expect(
-      f.root[LAYOUT_NODE]().entries,
-      "adapter adds a row to the native two-entry stack",
-    ).toHaveLength(3);
+    const layout = getLayoutNode(f.root);
+    assert(layout?.type === "vstack");
+    expect(layout.entries, "adapter adds a row to the native two-entry stack").toHaveLength(3);
     expect(f.transcript.getContentWidth(40)).toBe(40);
     expect(f.transcript.getContentWidth(20)).toBe(20);
     expect(plain(f.tui.render(40)).map((line) => line.trim())).toContain("editor");

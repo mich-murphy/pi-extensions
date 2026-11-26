@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { decodeConfiguration, loadConfiguration } from "../adapter/config.js";
 import { sendWithRetries } from "../adapter/send.js";
-import { ConnectionFailure } from "../adapter/transport.js";
+import { ConnectionFailureError } from "../adapter/transport.js";
 import { waitFor } from "../adapter/wait.js";
 import { decodeGateway } from "../onboarding/schema.js";
 import { fakeDelay } from "./fake-delay.js";
@@ -146,7 +146,7 @@ describe("adapter configuration and retry boundaries", () => {
       await expect(
         sendWithRetries(
           sendOptions(async () => {
-            throw new ConnectionFailure(code, possible);
+            throw new ConnectionFailureError(code, possible);
           }),
         ),
       ).resolves.toMatchObject({ tag, code: expectedCode });
@@ -181,7 +181,7 @@ describe("adapter configuration and retry boundaries", () => {
       queueMicrotask(() => {
         abort.abort();
       });
-      throw new ConnectionFailure("unavailable", true);
+      throw new ConnectionFailureError("unavailable", true);
     });
 
     await expect(sendWithRetries(sendOptions(request, abort.signal))).resolves.toMatchObject({
@@ -196,7 +196,7 @@ describe("adapter configuration and retry boundaries", () => {
 
     const request = vi.fn<Parameters<typeof sendWithRetries>[0]["request"]>(
       async (_rid, _deadline) => {
-        throw new ConnectionFailure("unavailable", true);
+        throw new ConnectionFailureError("unavailable", true);
       },
     );
 

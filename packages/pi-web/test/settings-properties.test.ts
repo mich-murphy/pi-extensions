@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as gs from "@hegeldev/hegel/generators";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import {
@@ -63,7 +63,7 @@ function checkNormalized(entries: [string[], boolean, string][]): void {
 function failureMessage(envName: string, value: string): string {
   const parsed = parseSettings({ [envName]: value });
   assert.ok(Result.isFailure(parsed), `${value} must be rejected`);
-  assert.ok(parsed.failure instanceof InvalidSetting);
+  assert.ok(Schema.is(InvalidSetting)(parsed.failure));
 
   return parsed.failure.message;
 }

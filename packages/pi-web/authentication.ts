@@ -266,7 +266,7 @@ export function createWebAuthentication(
               return Redacted.make(key.trim());
             },
             catch: (error) =>
-              error instanceof CredentialFailure
+              Schema.is(CredentialFailure)(error)
                 ? error
                 : new CredentialFailure({ provider, reason: "resolution" }),
           }).pipe(

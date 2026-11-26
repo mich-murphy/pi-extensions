@@ -455,12 +455,11 @@ describe("provider route isolation", () => {
 
       const outbound: { url: string; headers: Headers; body: string }[] = [];
 
-      const fetchImpl: typeof fetch = async (input, init) => {
-        const url = input instanceof Request ? input.url : String(input);
+      const fetchImpl: HttpFetch["Service"]["fetch"] = async (input, init) => {
         outbound.push({
-          url,
-          headers: new Headers(init?.headers),
-          body: Schema.is(Schema.String)(init?.body) ? init.body : "",
+          url: String(input),
+          headers: new Headers(init.headers),
+          body: Schema.is(Schema.String)(init.body) ? init.body : "",
         });
 
         return new Response(

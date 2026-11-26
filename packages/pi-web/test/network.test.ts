@@ -277,8 +277,8 @@ function recordingClient(
 ) {
   const hops: { readonly url: string; readonly init: RequestInit | undefined }[] = [];
 
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : input.toString();
+  const fetchImpl: Parameters<typeof publicWebClientWith>[0]["fetchImpl"] = async (input, init) => {
+    const url = input.href;
     hops.push({ url, init });
     await Promise.resolve();
 
