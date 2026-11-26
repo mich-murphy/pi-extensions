@@ -46,10 +46,10 @@ const fs = {
   writeFile,
 } satisfies AcquisitionSeams["fs"];
 
-const roots: string[] = [];
+const roots: Array<string> = [];
 const narHash = `sha256-${Buffer.alloc(32, 251).toString("base64")}`;
 
-async function mockNixBuild(_file: string, args: string[]): Promise<string> {
+async function mockNixBuild(_file: string, args: Array<string>): Promise<string> {
   const link = args[args.indexOf("--out-link") + 1];
 
   if (link === undefined) {
@@ -242,7 +242,10 @@ describe("approved gateway acquisition", () => {
 
     await mkdir(stale);
     await writeFile(path.join(stale, "unknown"), "preserve");
-    const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
+
+    const exec =
+      vi.fn<(file: string, args: Array<string>, signal: AbortSignal) => Promise<string>>();
+
     exec.mockRejectedValueOnce(new Error("bounded build failure"));
 
     const plan = {
@@ -378,7 +381,10 @@ describe("approved gateway acquisition", () => {
   );
   test("uses exact Nix source and dedicated out-link, not a default profile", async () => {
     const s = await setup();
-    const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
+
+    const exec =
+      vi.fn<(file: string, args: Array<string>, signal: AbortSignal) => Promise<string>>();
+
     exec.mockImplementationOnce(mockNixBuild);
     exec.mockResolvedValue(s.versionJson);
 
@@ -458,7 +464,7 @@ function attemptPrefix(s: Setup): string {
   return `.gateway-${s.plan.version}-${s.plan.sourceRevision}-native-`;
 }
 
-function only<T>(items: T[]): T {
+function only<T>(items: Array<T>): T {
   const [item] = items;
 
   if (items.length !== 1 || item === undefined) {
@@ -472,7 +478,7 @@ async function mkfifo(filename: string): Promise<void> {
   await promisify(execFile)("/usr/bin/mkfifo", ["-m", "600", filename], { timeout: 5000 });
 }
 
-const stagedReplacements: [string, (filename: string) => Promise<void>][] = [
+const stagedReplacements: Array<[string, (filename: string) => Promise<void>]> = [
   ["FIFO", mkfifo],
   ["directory", async (filename) => mkdir(filename, { mode: 0o700 })],
 ];
@@ -563,7 +569,7 @@ async function writeInstall(directory: string, s: Setup): Promise<void> {
   );
 }
 
-const foreignEntries: [string, (destination: string) => Promise<void>][] = [
+const foreignEntries: Array<[string, (destination: string) => Promise<void>]> = [
   ["empty directory", async (destination) => mkdir(destination, { mode: 0o700 })],
   ["regular file", async (destination) => writeFile(destination, "foreign", { mode: 0o600 })],
   ["symlink", async (destination) => linkFile("foreign-target", destination)],
@@ -584,7 +590,7 @@ async function movedPayload(s: Setup, payload: string): Promise<string> {
   return name;
 }
 
-const unsafeLinks: [string, (s: Setup, payload: string) => Promise<string>][] = [
+const unsafeLinks: Array<[string, (s: Setup, payload: string) => Promise<string>]> = [
   [
     "parent traversal",
     async (s, payload) =>
@@ -658,7 +664,7 @@ describe("exclusive native publication", () => {
   test("rejects a concurrent winner whose binary fails reauthentication", async () => {
     const s = await setup();
     await mkdir(s.plan.installRoot, { mode: 0o700 });
-    const winners: AcquisitionResult[] = [];
+    const winners: Array<AcquisitionResult> = [];
 
     const seam = commitSeam(async () => {
       const winner = await acquireGateway(s.plan, s.options);

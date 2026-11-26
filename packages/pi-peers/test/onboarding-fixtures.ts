@@ -30,8 +30,8 @@ const TOGGLES = ["discover", "push"];
 const GRANT = /^(?:Allow|Deny)$/u;
 
 function toggled(
-  answers: (string | undefined)[],
-  options: readonly string[],
+  answers: Array<string | undefined>,
+  options: ReadonlyArray<string>,
   seen: number,
 ): number {
   let index = seen;
@@ -60,8 +60,8 @@ function field(answer: string | undefined): readonly [string, string] | undefine
 }
 
 function setField(
-  answers: (string | undefined)[],
-  options: readonly string[],
+  answers: Array<string | undefined>,
+  options: ReadonlyArray<string>,
   state: { cycles: number },
 ): string | undefined {
   for (;;) {
@@ -89,11 +89,11 @@ function setField(
   }
 }
 
-function togglesShown(options: readonly string[]): boolean {
+function togglesShown(options: ReadonlyArray<string>): boolean {
   return options.includes("discover: On") || options.includes("discover: Off");
 }
 
-function skipFormless(answers: (string | undefined)[]): void {
+function skipFormless(answers: Array<string | undefined>): void {
   while (answers[0] === LOCAL || answers[0] === "Edit choices") {
     answers.shift();
   }
@@ -102,7 +102,7 @@ function skipFormless(answers: (string | undefined)[]): void {
 function plainOption(
   value: string | undefined,
   form: boolean,
-  options: readonly string[],
+  options: ReadonlyArray<string>,
 ): string | undefined {
   if (form && value === "Permissions") {
     return options.find((option) => option.startsWith("Permissions: "));
@@ -112,8 +112,8 @@ function plainOption(
 }
 
 function scripted(
-  answers: (string | undefined)[],
-  options: readonly string[],
+  answers: Array<string | undefined>,
+  options: ReadonlyArray<string>,
   state: { toggles: number; cycles: number },
 ): string | undefined {
   if (togglesShown(options)) {
@@ -132,7 +132,7 @@ function scripted(
 }
 
 export function dialog(
-  answers: (string | undefined)[],
+  answers: Array<string | undefined>,
   mode: DialogContext["mode"] = "rpc",
 ): DialogContext {
   const cursor = { toggles: 0, cycles: 0 };

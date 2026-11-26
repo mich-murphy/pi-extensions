@@ -56,7 +56,7 @@ function render(
   expanded = false,
   width = 100,
   extra: RenderOptions = {},
-): readonly string[] {
+): ReadonlyArray<string> {
   const renderer = toolPresentation(name);
 
   const context: RenderContext = {
@@ -84,7 +84,7 @@ function stripStyle(value: string): string {
   return value.replaceAll(new RegExp(`${String.fromCodePoint(27)}\\[[0-9;]*m`, "gu"), "");
 }
 
-function compact(lines: readonly string[]): string {
+function compact(lines: ReadonlyArray<string>): string {
   return stripStyle(lines.join("")).replaceAll(/\s+/gu, "");
 }
 
@@ -106,7 +106,7 @@ type RenderCase = {
   summary: string;
 };
 
-const cases: RenderCase[] = [
+const cases: Array<RenderCase> = [
   {
     name: "peers_list",
     args: { scope: "team" },
@@ -383,7 +383,7 @@ describe("presentation-only session tool rendering", () => {
         const args = { to: "s-4f2a", kind: "request", content: body };
         const payload = result({ outcome: admitted, note: body });
         const before = JSON.stringify({ args, payload });
-        const rendered: (readonly string[])[] = [];
+        const rendered: Array<ReadonlyArray<string>> = [];
 
         for (const expanded of [false, true]) {
           for (const slot of ["call", "result"] as const) {

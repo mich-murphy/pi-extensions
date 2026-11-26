@@ -57,7 +57,7 @@ function skill(resource: PromptResource): Skill {
 
 type FixtureSections = { skills: string; project_context?: string };
 
-function head(skills: readonly PromptResource[], withRules = true) {
+function head(skills: ReadonlyArray<PromptResource>, withRules = true) {
   const sections: FixtureSections = {
     skills: formatSkillsForPrompt(skills.map((resource) => skill(resource))).trim(),
   };
@@ -98,7 +98,7 @@ const entryOf = (item: Item) => ({
       : { type: "message", message: item },
 });
 
-const snap = (items: readonly Item[]) =>
+const snap = (items: ReadonlyArray<Item>) =>
   promptSnapshot(
     {
       messages: items.filter(({ role }) => role !== "model_change"),
@@ -107,11 +107,11 @@ const snap = (items: readonly Item[]) =>
     resources,
   );
 
-const view = (messages: readonly { role: string }[]) => [
+const view = (messages: ReadonlyArray<{ role: string }>) => [
   ...modelView(messages, snap(messages).sections, resources),
 ];
 
-const frozen = (messages: readonly { role: string }[], hidden?: readonly string[]) =>
+const frozen = (messages: ReadonlyArray<{ role: string }>, hidden?: ReadonlyArray<string>) =>
   planPrompt({
     ...snap(messages),
     resources,
@@ -120,13 +120,13 @@ const frozen = (messages: readonly { role: string }[], hidden?: readonly string[
       hidden === undefined ? undefined : new Set(hidden.map((id) => resourcePathId(id, cwd))),
   });
 
-const note = (visible: readonly string[]) => ({
+const note = (visible: ReadonlyArray<string>) => ({
   role: "custom",
   customType: TOGGLE_NOTE_TYPE,
   details: { version: 1, visible },
 });
 
-const legacyNote = (visible: readonly string[]) => ({
+const legacyNote = (visible: ReadonlyArray<string>) => ({
   ...note(visible),
   customType: "pi-skill-toggle",
 });
@@ -188,7 +188,7 @@ describe("epoch and model view", () => {
     const checkpoint = { sourceEntry: { type: "compaction" } };
     const messages = [head([skillA]), { role: "compactionSummary" }, assistant];
 
-    const epoch = (entries: readonly { sourceEntry: { type: string } }[]) =>
+    const epoch = (entries: ReadonlyArray<{ sourceEntry: { type: string } }>) =>
       promptSnapshot({ messages, entries }, resources).epoch;
 
     expect(epoch([checkpoint, entryOf(assistant)])).toBe("frozen");
@@ -291,11 +291,11 @@ describe("planPrompt", () => {
   });
 });
 
-const ids = (paths: readonly string[]) => new Set(paths.map((id) => resourcePathId(id, cwd)));
+const ids = (paths: ReadonlyArray<string>) => new Set(paths.map((id) => resourcePathId(id, cwd)));
 
 const planFor = (
-  messages: readonly Item[],
-  hidden: readonly string[],
+  messages: ReadonlyArray<Item>,
+  hidden: ReadonlyArray<string>,
   reader: SkillReader = "read",
 ) => planPrompt({ ...snap(messages), resources, reader, desiredHidden: ids(hidden) });
 

@@ -58,12 +58,17 @@ function plan() {
   return localPlan(defaultChoices("Native Host"), setupPaths(agent).socket);
 }
 
-function ui(answers: (string | undefined)[], mode: DialogContext["mode"] = "rpc"): DialogContext {
-  const select = vi.fn<DialogContext["ui"]["select"]>(async (_title: string, options: string[]) => {
-    const answer = answers.shift();
+function ui(
+  answers: Array<string | undefined>,
+  mode: DialogContext["mode"] = "rpc",
+): DialogContext {
+  const select = vi.fn<DialogContext["ui"]["select"]>(
+    async (_title: string, options: Array<string>) => {
+      const answer = answers.shift();
 
-    return answer === "APPLY" ? options.find((item) => item.startsWith("Apply —")) : answer;
-  });
+      return answer === "APPLY" ? options.find((item) => item.startsWith("Apply —")) : answer;
+    },
+  );
 
   return {
     mode,

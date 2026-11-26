@@ -32,13 +32,13 @@ function systemMessage(fields: Partial<SystemMessage>): SystemMessage {
 }
 
 function requestFor(
-  messages: readonly MessageFixture[],
+  messages: ReadonlyArray<MessageFixture>,
   tools: Context["tools"] = [readTool, bashTool],
 ) {
   return buildAgentRequest(contextFixture({ systemPrompt: "s", messages, tools }));
 }
 
-function userEntries(count: number): MessageFixture[] {
+function userEntries(count: number): Array<MessageFixture> {
   return Array.from({ length: count }, (_, index) => ({ role: "user", content: `entry ${index}` }));
 }
 
@@ -46,16 +46,16 @@ function transcriptOf(request: ReturnType<typeof buildAgentRequest>) {
   return request.promptBlocks.slice(1, -1);
 }
 
-function textsOf(request: ReturnType<typeof buildAgentRequest>): string[] {
+function textsOf(request: ReturnType<typeof buildAgentRequest>): Array<string> {
   return transcriptOf(request).map((block) => block.text);
 }
 
-const results = (...bodies: string[]) => `<results>\n${bodies.join("\n")}\n</results>`;
+const results = (...bodies: Array<string>) => `<results>\n${bodies.join("\n")}\n</results>`;
 
 const result = (id: string, tool: string, body: string, flag = "") =>
   `<result id="${id}" tool="${tool}"${flag}>\n${body}\n</result>`;
 
-function pair(name: string, id: string): MessageFixture[] {
+function pair(name: string, id: string): Array<MessageFixture> {
   return [
     { role: "assistant", content: [{ type: "toolCall", id, name, arguments: { path: "a" } }] },
     {
@@ -518,7 +518,7 @@ describe("rejected tool requests", () => {
 
 describe("stable transcript caching", () => {
   test("keeps the prefix byte-identical (text, images, grouped results) as entries are appended", () => {
-    const base: MessageFixture[] = [
+    const base: Array<MessageFixture> = [
       {
         role: "user",
         content: [
@@ -533,7 +533,7 @@ describe("stable transcript caching", () => {
     const before = requestFor(base);
     const stablePrefix = before.promptBlocks.slice(0, -1);
 
-    const appended: MessageFixture[][] = [
+    const appended: Array<Array<MessageFixture>> = [
       [{ role: "user", content: "more" }],
       [{ role: "assistant", content: [{ type: "text", text: "ok" }] }, ...userEntries(30)],
       [...pair("read", "c9"), ...pair("gone", "c10")],
@@ -551,7 +551,7 @@ describe("stable transcript caching", () => {
   });
 
   test("a mid-conversation prompt or tool change updates preamble and catalog, not entries", () => {
-    const base: MessageFixture[] = [
+    const base: Array<MessageFixture> = [
       systemMessage({
         content: "Base prompt.",
         sections: { rules: "<rules>a</rules>" },

@@ -42,13 +42,13 @@ export function escapeXml(text: string): string {
 
 export function promptResources(
   options: BuildSystemPromptOptions,
-  resources: readonly Pick<ToggleResource, "id" | "editability">[],
-): readonly PromptResource[] {
+  resources: ReadonlyArray<Pick<ToggleResource, "id" | "editability">>,
+): ReadonlyArray<PromptResource> {
   const editable = new Set(
     resources.flatMap(({ editability, id }) => (editability === "editable" ? [id] : [])),
   );
 
-  const entries: readonly PromptResource[] = [
+  const entries: ReadonlyArray<PromptResource> = [
     ...(options.contextFiles ?? []).map<PromptResource>((file) => ({
       id: resourcePathId(file.path, options.cwd),
       kind: "instruction",

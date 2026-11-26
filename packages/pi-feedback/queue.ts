@@ -16,7 +16,7 @@ export type Group = {
   readonly id: string;
   readonly owner: string;
   readonly fingerprint: string;
-  readonly fingerprints: readonly string[];
+  readonly fingerprints: ReadonlyArray<string>;
   readonly status: GroupStatus;
   readonly records: number;
   readonly excluded: number;
@@ -36,7 +36,7 @@ type Builder = {
   readonly fingerprint: string;
   readonly fingerprints: Set<string>;
   status: GroupStatus;
-  live: RecordEvent[];
+  live: Array<RecordEvent>;
   resolution: Resolution | undefined;
 };
 
@@ -47,7 +47,7 @@ type Merges = {
 
 const order = (a: string, b: string): number => Number(a > b) - Number(a < b);
 
-function canonical(events: readonly LedgerEvent[]): readonly LedgerEvent[] {
+function canonical(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<LedgerEvent> {
   const byId = new Map<string, LedgerEvent>();
 
   for (const event of events) {
@@ -69,7 +69,7 @@ function memberKey(owner: string, fingerprint: string): string {
   return JSON.stringify([owner, fingerprint]);
 }
 
-function mergesOf(events: readonly LedgerEvent[]): Merges {
+function mergesOf(events: ReadonlyArray<LedgerEvent>): Merges {
   const firstAt = new Map<string, string>();
   const fingerprintOf = new Map<string, readonly [string, string]>();
 
@@ -246,7 +246,7 @@ function byPriority(a: Group, b: Group): number {
   );
 }
 
-export function deriveGroups(events: readonly LedgerEvent[]): readonly Group[] {
+export function deriveGroups(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<Group> {
   const ordered = canonical(events);
   const merges = mergesOf(ordered);
   const builders = new Map<string, Builder>();

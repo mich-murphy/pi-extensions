@@ -45,7 +45,7 @@ export type AcquisitionPlanCommon = Readonly<{
   installRoot: string;
   deadlineMs: number;
   nixExecutable?: string;
-  requiredCapabilities?: readonly string[];
+  requiredCapabilities?: ReadonlyArray<string>;
 }>;
 
 export type AcquisitionPlanNix = AcquisitionPlanCommon &
@@ -58,8 +58,8 @@ export type AcquisitionPlan = AcquisitionPlanNix | AcquisitionPlanNative;
 
 export type AcquisitionResult = {
   executable: string;
-  ownedPaths: string[];
-  recoveryEffects: string[];
+  ownedPaths: Array<string>;
+  recoveryEffects: Array<string>;
   sourceRevision: string;
   version: string;
 };
@@ -78,7 +78,7 @@ export type AcquisitionSeams = {
     writeFile: typeof writeFile;
   };
   fetch: (url: string, init: RequestInit) => Promise<Response>;
-  exec: (file: string, args: string[], signal: AbortSignal) => Promise<string>;
+  exec: (file: string, args: Array<string>, signal: AbortSignal) => Promise<string>;
 };
 
 const production: AcquisitionSeams = {
@@ -222,7 +222,7 @@ async function readBoundedResponse(
   }
 
   const reader = response.body.getReader();
-  const parts: Uint8Array[] = [];
+  const parts: Array<Uint8Array> = [];
   let size = 0;
 
   try {
@@ -858,7 +858,7 @@ async function publicationCollision(
 function completedAcquisition(
   plan: AcquisitionPlan,
   executable: string,
-  ownedPaths: string[],
+  ownedPaths: Array<string>,
 ): AcquisitionResult {
   return {
     executable,

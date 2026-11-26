@@ -26,9 +26,9 @@ const other = {
   runtimeNonce: "2".repeat(32),
 };
 
-const cleanups: (() => Promise<void>)[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 
-function fakeGateway(path: string, grants: readonly string[], log: Request[]) {
+function fakeGateway(path: string, grants: ReadonlyArray<string>, log: Array<Request>) {
   const sockets = new Set<Socket>();
 
   const server = createServer((socket) => {
@@ -116,10 +116,10 @@ async function tool(tools: ReturnType<typeof toolRecorder>, name: string, args: 
   return { value: result.details.value, isError: result.isError === true };
 }
 
-async function setup(grants: readonly string[], managed = true) {
+async function setup(grants: ReadonlyArray<string>, managed = true) {
   const directory = await mkdtemp(join(tmpdir(), "pc-outage-"));
   const path = join(directory, "g.sock");
-  const log: Request[] = [];
+  const log: Array<Request> = [];
   const state = { server: fakeGateway(path, grants, log) };
   await state.server.listening;
 
@@ -177,7 +177,7 @@ async function setup(grants: readonly string[], managed = true) {
     );
   };
 
-  const restore = async (next: readonly string[]) => {
+  const restore = async (next: ReadonlyArray<string>) => {
     state.server = fakeGateway(path, next, log);
     await state.server.listening;
   };

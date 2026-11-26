@@ -12,7 +12,7 @@ export async function driveRpc(model: MenuModel, ctx: DialogContext): Promise<vo
   }
 }
 
-function heading(model: MenuModel, ...extra: (string | undefined)[]): string {
+function heading(model: MenuModel, ...extra: Array<string | undefined>): string {
   return [
     model.title(),
     ...extra.flatMap((line) => (line === undefined || line === "" ? [] : [visibleText(line)])),

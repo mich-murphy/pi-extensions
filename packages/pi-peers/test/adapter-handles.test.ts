@@ -9,7 +9,7 @@ import { Handles, sessionHandle, TakenIndex } from "../adapter/handles.js";
 import { composeLabel, connectLabel, parentSessionId, readBranch } from "../adapter/label.js";
 
 const run = promisify(execFile);
-const cleanups: (() => Promise<void>)[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 
 function runtime(sessionId: string, nonce = "1", machineId = "beta") {
   return { machineId, sessionId, runtimeNonce: nonce.repeat(32) };

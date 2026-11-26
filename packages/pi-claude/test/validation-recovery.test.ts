@@ -146,7 +146,10 @@ async function* afterBatchStop(
 
 type RecoveryPath = "missing-arguments" | "pre-hook-validation" | "unhooked-valid";
 
-const RECOVERY_SCENARIOS: readonly { readonly path: RecoveryPath; readonly inactive: boolean }[] = [
+const RECOVERY_SCENARIOS: ReadonlyArray<{
+  readonly path: RecoveryPath;
+  readonly inactive: boolean;
+}> = [
   { path: "missing-arguments", inactive: false },
   { path: "pre-hook-validation", inactive: false },
   { path: "unhooked-valid", inactive: false },
@@ -205,7 +208,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
     let executions = 0;
     let replacementExecutions = 0;
     let dangerousExecutions = 0;
-    const records: CacheDiagnostic[] = [];
+    const records: Array<CacheDiagnostic> = [];
 
     const runner = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
@@ -240,7 +243,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
       },
     });
 
-    const tools: AgentTool[] = [
+    const tools: Array<AgentTool> = [
       {
         name: "dangerous",
         label: "Dangerous",
@@ -319,7 +322,7 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
   }
 }
 
-function findRejectedCall(messages: readonly AgentMessage[]) {
+function findRejectedCall(messages: ReadonlyArray<AgentMessage>) {
   return messages
     .flatMap((message) => (message.role === "assistant" ? message.content : []))
     .find((block) => block.type === "toolCall" && block.id === "bad");
@@ -488,7 +491,7 @@ describe("Pi-owned validation recovery", () => {
   });
 
   test("message_start request counts deduplicate IDs and do not equate internal results with requests", async () => {
-    const records: CacheDiagnostic[] = [];
+    const records: Array<CacheDiagnostic> = [];
 
     const runner = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",

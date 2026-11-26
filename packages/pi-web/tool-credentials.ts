@@ -30,8 +30,8 @@ export function credentialNames(
     readonly providerOverride?: SearchProviderName;
     readonly fetchOnly?: boolean;
   } = {},
-): readonly SearchProviderName[] {
-  const candidates: readonly SearchProviderName[] = settings.search.defaultProviders
+): ReadonlyArray<SearchProviderName> {
+  const candidates: ReadonlyArray<SearchProviderName> = settings.search.defaultProviders
     ? [...settings.search.providers, "brave"]
     : settings.search.providers;
 
@@ -73,7 +73,7 @@ export function validateExplicitBrave(
 }
 
 export function createRequestRedactor(redactText: (input: string) => string) {
-  let secrets: readonly string[] = [];
+  let secrets: ReadonlyArray<string> = [];
 
   return {
     capture: (snapshot: CredentialSnapshot): void => {

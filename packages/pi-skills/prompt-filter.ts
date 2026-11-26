@@ -9,7 +9,7 @@ export type PromptFilterResult =
   | {
       readonly _tag: "prompt-filtered";
       readonly systemPrompt: string;
-      readonly unmatched: readonly PromptSection[];
+      readonly unmatched: ReadonlyArray<PromptSection>;
     };
 
 export const PromptFilterResult = Data.taggedEnum<PromptFilterResult>();
@@ -38,13 +38,13 @@ export function hideResources(
 
   const tools = options.selectedTools ?? ["read"];
 
-  const replacements: readonly (readonly [PromptSection, string, string])[] = [
+  const replacements: ReadonlyArray<readonly [PromptSection, string, string]> = [
     ["instructions", renderContext(contextFiles), renderContext(shownContextFiles)],
     ["skills", renderSkills(skills, tools), renderSkills(shownSkills, tools)],
   ];
 
   let { systemPrompt } = event;
-  const unmatched: PromptSection[] = [];
+  const unmatched: Array<PromptSection> = [];
 
   for (const [section, original, replacement] of replacements) {
     if (original === replacement) {
@@ -70,7 +70,7 @@ type PromptSkill = Readonly<Omit<Skill, "sourceInfo">> & {
   readonly sourceInfo: Readonly<SourceInfo>;
 };
 
-function renderContext(contextFiles: readonly ContextFile[]): string {
+function renderContext(contextFiles: ReadonlyArray<ContextFile>): string {
   if (contextFiles.length === 0) {
     return "";
   }
@@ -83,7 +83,7 @@ function renderContext(contextFiles: readonly ContextFile[]): string {
   return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${blocks.join("")}</project_context>\n`;
 }
 
-function renderSkills(skills: readonly PromptSkill[], tools: readonly string[]): string {
+function renderSkills(skills: ReadonlyArray<PromptSkill>, tools: ReadonlyArray<string>): string {
   const reader = (["read", "bash"] as const).find((tool) => tools.includes(tool));
 
   if (!reader) {

@@ -11,7 +11,7 @@ type Field = "sourceRevision" | "manifestSha256" | "narHash";
 const HEX = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-const FOREIGN: Record<Field, readonly string[]> = {
+const FOREIGN: Record<Field, ReadonlyArray<string>> = {
   sourceRevision: ["A", "F", "g", " ", "-", "_", "\n", "é"],
   manifestSha256: ["A", "F", "g", " ", "-", "_", "\n", "é"],
   narHash: [" ", "-", "_", ".", "\n", "é"],

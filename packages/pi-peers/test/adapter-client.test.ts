@@ -36,7 +36,7 @@ const other = {
   runtimeNonce: "2".repeat(32),
 };
 
-const cleanups: (() => Promise<void>)[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 
 type SentNotice = Parameters<ExtensionAPI["sendMessage"]>;
 
@@ -53,8 +53,8 @@ async function gateway(
   const directory = await mkdtemp(join(tmpdir(), "psc-"));
   const sockets = new Set<Socket>();
   let connections = 0;
-  const requests: Request[] = [];
-  const replies: Reply[] = [];
+  const requests: Array<Request> = [];
+  const replies: Array<Reply> = [];
 
   const server = createServer((socket) => {
     connections += 1;
@@ -353,8 +353,8 @@ function restoreAgentDir(previous: string | undefined): void {
 
 function extensionHost(select: PeersContext["ui"]["select"] = async () => undefined) {
   const fixture = extensionFixture();
-  const notifications: string[] = [];
-  const statuses: (string | undefined)[] = [];
+  const notifications: Array<string> = [];
+  const statuses: Array<string | undefined> = [];
 
   const context: PeersContext = {
     mode: "rpc",
@@ -439,7 +439,7 @@ function olderGatewayClose(request: Request, socket: Socket) {
   return undefined;
 }
 
-function generationEnsure(hashes: string[]) {
+function generationEnsure(hashes: Array<string>) {
   return vi.fn<NonNullable<ConstructorParameters<typeof GatewayClient>[0]["ensureGateway"]>>(
     async () => ({ gatewaySha256: hashes.shift() ?? "a".repeat(64) }),
   );
@@ -893,7 +893,7 @@ describe("public adapter transport and notice accounting", () => {
       .mockResolvedValueOnce({ gatewaySha256: "a".repeat(64) })
       .mockImplementation(async () => held.promise);
 
-    const published: string[] = [];
+    const published: Array<string> = [];
 
     const client: GatewayClient = new GatewayClient({
       config: fixture.config,
@@ -1470,8 +1470,8 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("transfers FIFO payloads once, retains receipts, and retires only exact identified notices", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: SentNotice[0][] = [];
-    const wakes: SentNotice[1][] = [];
+    const notices: Array<SentNotice[0]> = [];
+    const wakes: Array<SentNotice[1]> = [];
     let idle = false;
 
     const session: AdapterSession = new AdapterSession(
@@ -1561,7 +1561,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("an unobserved wake notice is never replayed when more messages arrive", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: SentNotice[0][] = [];
+    const notices: Array<SentNotice[0]> = [];
 
     const session: AdapterSession = new AdapterSession(
       fixture.config,
@@ -1604,7 +1604,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("a take that empties the inbox drops the pending wake, and a partial take keeps it", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: SentNotice[0][] = [];
+    const notices: Array<SentNotice[0]> = [];
     let idle = false;
 
     const session: AdapterSession = new AdapterSession(
@@ -1654,7 +1654,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("the footer follows unread mail and waits: ● on arrival, ✓ after take, waiting… while waiting", async () => {
     const fixture = await gateway(() => undefined);
-    const footers: (string | undefined)[] = [];
+    const footers: Array<string | undefined> = [];
 
     const session = new AdapterSession(
       fixture.config,
@@ -1742,7 +1742,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("the wake notice names the sender but never carries the message body", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: SentNotice[0][] = [];
+    const notices: Array<SentNotice[0]> = [];
 
     const session: AdapterSession = new AdapterSession(
       fixture.config,
@@ -1797,7 +1797,7 @@ describe("public adapter transport and notice accounting", () => {
     cleanups.push(async () => {
       session.close();
     });
-    const seen: string[] = [];
+    const seen: Array<string> = [];
 
     const stop = session.onLinkChange((links) => {
       seen.push(links.map((link) => `${link.machineId}:${link.state}`).join(","));
@@ -1989,7 +1989,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("transport bounds pending slots, aborts waits, discards stale results and fails malformed frames", async () => {
     const fixture = await gateway(() => undefined, true);
-    const disconnected: string[] = [];
+    const disconnected: Array<string> = [];
 
     const connection = await connectTransport({
       socketPath: fixture.config.socketPath,
@@ -2081,7 +2081,7 @@ describe("public adapter transport and notice accounting", () => {
   });
   test("adapter answers forwarded state and interest requests with forbidden, without wakes", async () => {
     const fixture = await gateway(() => undefined);
-    const notices: SentNotice[0][] = [];
+    const notices: Array<SentNotice[0]> = [];
 
     const session = new AdapterSession(
       fixture.config,

@@ -63,7 +63,7 @@ const prompts = [
 
 const timestamp = 1_700_000_000_000;
 
-const entries: (SessionHeader | SessionMessageEntry)[] = [
+const entries: Array<SessionHeader | SessionMessageEntry> = [
   {
     type: "session",
     version: 3,
@@ -146,9 +146,9 @@ const tmuxConfig = join(root, "tmux.conf");
 
 writeFileSync(tmuxConfig, "set -g extended-keys on\nset -g extended-keys-format csi-u\n");
 
-const actions: string[][] = [];
+const actions: Array<Array<string>> = [];
 
-function tmux(...args: string[]): string {
+function tmux(...args: Array<string>): string {
   actions.push(args);
 
   return execFileSync("tmux", ["-S", socket, ...args], { env, encoding: "utf8", timeout: 10_000 });
@@ -221,13 +221,13 @@ const noSticky = (screen: string): void => {
   assert.doesNotMatch(first(screen), /^❯ /u);
 };
 
-const passed: string[] = [];
+const passed: Array<string> = [];
 let bottomFirstRow: string;
 
 try {
   process.stdout.write(`Native evidence: ${root}\n`);
 
-  async function launch(argv: string[], captureName: string): Promise<string> {
+  async function launch(argv: Array<string>, captureName: string): Promise<string> {
     tmux(
       "-f",
       tmuxConfig,

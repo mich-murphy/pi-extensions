@@ -41,9 +41,9 @@ async function collect(
   probeModel: Model<Api> = model,
   options: RunnerOptions = {},
   streamOptions?: SimpleStreamOptions,
-): Promise<readonly BridgeEvent[]> {
+): Promise<ReadonlyArray<BridgeEvent>> {
   const runSdkQuery = options.runSdkQuery ?? query;
-  const results: unknown[] = [];
+  const results: Array<unknown> = [];
 
   async function* observedQuery(params: Parameters<RunSdkQuery>[0]): AsyncGenerator {
     for await (const message of runSdkQuery(params)) {
@@ -78,11 +78,11 @@ async function collect(
   return events;
 }
 
-function textOf(events: readonly BridgeEvent[]): string {
+function textOf(events: ReadonlyArray<BridgeEvent>): string {
   return events.flatMap((event) => (event.type === "text_delta" ? [event.text] : [])).join("");
 }
 
-function request(prompt: string, toolNames: readonly string[] = []): AgentRequest {
+function request(prompt: string, toolNames: ReadonlyArray<string> = []): AgentRequest {
   return requestFixture({
     systemPrompt: "You are a live protocol contract probe. Follow the user request exactly.",
     promptBlocks: [textBlock(prompt)],
@@ -292,7 +292,7 @@ describe("installed Claude Agent SDK live contract", () => {
 
   test("serves the advertised model id and limits for every registered selector", async () => {
     for (const entry of models) {
-      const observations: ModelObservation[] = [];
+      const observations: Array<ModelObservation> = [];
 
       const events = await collect(
         request('Reply with exactly "CLAUDE_SDK_MODEL_OK".'),

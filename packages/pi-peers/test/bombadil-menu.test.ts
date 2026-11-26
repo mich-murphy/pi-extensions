@@ -7,7 +7,7 @@ import { outcomeOf, readPeers } from "./bombadil/peers-screen.ts";
 const RULE = "─".repeat(80);
 const CHROME = [RULE, ">", RULE, "~/cwd", "0.0%/200k (auto)", "probe:ok peers ⋯ setting up"];
 
-function screen(menu: readonly string[]): string[] {
+function screen(menu: ReadonlyArray<string>): Array<string> {
   const rows = ["Welcome", RULE, ...menu, RULE, ...CHROME];
 
   return [...rows, ...Array.from({ length: Math.max(0, 20 - rows.length) }, () => "")];
@@ -147,7 +147,7 @@ describe("readPeers", () => {
 
 describe("outcomes and the probe", () => {
   test("outcomeOf recognises every headline by result", () => {
-    const cases: [string, "ok" | "pending" | "fail" | null][] = [
+    const cases: Array<[string, "ok" | "pending" | "fail" | null]> = [
       ["✓ Peers set up — connected as alpha", "ok"],
       ["✓ Settings changed — connected as alpha", "ok"],
       ["✓ Peers turned off", "ok"],
@@ -301,7 +301,7 @@ function defaultLimitSeconds(name: string): number {
   return Number(match.groups.amount) * (match.groups.unit === "m" ? 60 : 1);
 }
 
-function guardSeconds(file: string): number[] {
+function guardSeconds(file: string): Array<number> {
   const source = readFileSync(new URL(`bombadil/${file}`, import.meta.url), "utf8");
 
   return [...source.matchAll(/\.within\(\s*(?<seconds>\d+),\s*"seconds"/gu)].map((match) =>

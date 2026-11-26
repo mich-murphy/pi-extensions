@@ -42,19 +42,19 @@ export function remoteDraft(): RemoteDraft {
 }
 
 export type RemoteOptions = {
-  readonly kinds?: readonly Kind[];
+  readonly kinds?: ReadonlyArray<Kind>;
   readonly peer?: string;
   readonly oldRoot?: string;
   readonly adopt?: (machine: string) => void;
 };
 
-const KINDS: readonly (readonly [Kind, string])[] = [
+const KINDS: ReadonlyArray<readonly [Kind, string]> = [
   ["create", "Create new pair"],
   ["join", "Join a pair"],
   ["existing", "Use existing files"],
 ];
 
-const CREDENTIALS: readonly (readonly [CredentialKey, string, string])[] = [
+const CREDENTIALS: ReadonlyArray<readonly [CredentialKey, string, string]> = [
   ["rootCertificate", "Root certificate", "The pair's trusted root certificate file (DER)."],
   ["certificate", "Leaf certificate", "This computer's own certificate file (DER)."],
   [
@@ -84,7 +84,7 @@ function sha256Row(draft: RemoteDraft): Row {
 
 const isMessage = Schema.is(Schema.String);
 
-function offerRows(draft: RemoteDraft, options: RemoteOptions): Row[] {
+function offerRows(draft: RemoteDraft, options: RemoteOptions): Array<Row> {
   return [
     textField({
       id: "offerPath",
@@ -112,7 +112,7 @@ function offerRows(draft: RemoteDraft, options: RemoteOptions): Row[] {
   ];
 }
 
-function existingRows(draft: RemoteDraft): Row[] {
+function existingRows(draft: RemoteDraft): Array<Row> {
   return [
     ...CREDENTIALS.map(([key, label, description]) =>
       pathField(key, label, description, {
@@ -166,7 +166,7 @@ function peerRow(draft: RemoteDraft, options: RemoteOptions): Row {
   });
 }
 
-export function remoteRows(draft: RemoteDraft, options: RemoteOptions = {}): Row[] {
+export function remoteRows(draft: RemoteDraft, options: RemoteOptions = {}): Array<Row> {
   const kinds = KINDS.filter(([kind]) => options.kinds?.includes(kind) ?? true);
 
   return [
@@ -214,7 +214,7 @@ export function remoteRows(draft: RemoteDraft, options: RemoteOptions = {}): Row
 }
 
 function missing(draft: RemoteDraft): string | undefined {
-  const required: (readonly [string, string])[] = [
+  const required: Array<readonly [string, string]> = [
     ...(draft.kind === "join"
       ? [
           ["Offer file", draft.offer === undefined ? "" : draft.offerPath] as const,

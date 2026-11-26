@@ -17,7 +17,7 @@ export type CacheRequestDiagnostic = {
   readonly blocks: number;
   readonly textCharacters: number;
   readonly imageBase64Characters: number;
-  readonly breakpoints: readonly number[];
+  readonly breakpoints: ReadonlyArray<number>;
   readonly commonPrefixBlocks: number;
   readonly commonPrefixCharacters: number;
   readonly contentFingerprint: string;
@@ -89,8 +89,8 @@ type RequestState = {
   readonly model: string;
   readonly reasoning: string | undefined;
   readonly toolsFingerprint: string | undefined;
-  readonly blocks: readonly BlockStats[];
-  readonly breakpoints: readonly number[];
+  readonly blocks: ReadonlyArray<BlockStats>;
+  readonly breakpoints: ReadonlyArray<number>;
   readonly at: number;
 };
 
@@ -118,11 +118,11 @@ function blockStats(block: PromptBlock): BlockStats {
   };
 }
 
-function fingerprint(blocks: readonly BlockStats[]): string {
+function fingerprint(blocks: ReadonlyArray<BlockStats>): string {
   return sha256(blocks.map((block) => block.digest).join("\n")).slice(0, 16);
 }
 
-function sum(values: readonly number[]): number {
+function sum(values: ReadonlyArray<number>): number {
   return values.reduce((total, value) => total + value, 0);
 }
 

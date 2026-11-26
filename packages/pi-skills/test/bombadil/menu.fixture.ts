@@ -7,7 +7,7 @@ const LONG =
   "Use this when a task needs careful, step-by-step research across several primary sources, " +
   "with citations, cross-checks and a short summary of what remains uncertain at the end.";
 
-const GLOBAL_SKILLS: readonly (readonly [string, string])[] = [
+const GLOBAL_SKILLS: ReadonlyArray<readonly [string, string]> = [
   ["alpha-review", "Review a change for correctness."],
   ["bravo-deploy", "Deploy the service to staging."],
   ["charlie-docs", LONG],
@@ -30,7 +30,7 @@ const GLOBAL_SKILLS: readonly (readonly [string, string])[] = [
   ["a-very-long-skill-name-that-goes-on-and-on-past-sixty-columns", LONG],
 ];
 
-const PROJECT_SKILLS: readonly (readonly [string, string, string])[] = [
+const PROJECT_SKILLS: ReadonlyArray<readonly [string, string, string]> = [
   [".pi/skills", "proj-build", "Build the project with its own scripts."],
   [".pi/skills", "proj-migrate", LONG],
   [".agents/skills", "proj-schema", "Update the database schema."],
@@ -77,7 +77,7 @@ const fixture: BombadilFixture = (root) => {
     skill(join(root.cwd, directory), name, description);
   }
 
-  const git = (...args: string[]): void => {
+  const git = (...args: Array<string>): void => {
     execFileSync("git", ["-C", root.cwd, ...args], {
       stdio: "ignore",
       env: { HOME: root.home, PATH: process.env.PATH ?? "" },

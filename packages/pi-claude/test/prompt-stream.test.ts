@@ -21,8 +21,8 @@ const pngBlock = {
 const bmp = { data: "dW5zdXBwb3J0ZWQ=", mediaType: "image/bmp" };
 
 async function contentOf(
-  blocks: readonly PromptBlock[],
-  cacheBreakpoints: readonly number[] = [],
+  blocks: ReadonlyArray<PromptBlock>,
+  cacheBreakpoints: ReadonlyArray<number> = [],
   ttl?: CacheTtl,
 ) {
   const messages = await drain(buildPromptStream(blocks, cacheBreakpoints, ttl));

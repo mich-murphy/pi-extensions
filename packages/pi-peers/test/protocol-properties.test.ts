@@ -32,7 +32,7 @@ const peerOf = (machineId: string) => ({ machineId, sessionId: "s", runtimeNonce
 
 type Case = { role: BoundaryRole; frame: Schema.JsonObject };
 
-function frameCases(content: string): Case[] {
+function frameCases(content: string): Array<Case> {
   const message = { id: "2".repeat(32), kind: "request", format: "text", content };
   const head = { v: 2, rid };
   const work = { kind: "request", origin: peerOf("alpha"), requestId: rid };
@@ -45,7 +45,7 @@ function frameCases(content: string): Case[] {
     { op: "interest.remove", publisher: peerOf("beta"), scopeId: "team", work },
   ];
 
-  const cases: Case[] = [];
+  const cases: Array<Case> = [];
 
   const add = (role: BoundaryRole, body: Schema.JsonObject) =>
     cases.push({
@@ -135,7 +135,7 @@ function assertSurrogateRejected(prefix: string, surrogate: number): void {
   assert.throws(() => decodeJson(body), ProtocolError);
 }
 
-function at<T>(items: readonly T[], index: number): T {
+function at<T>(items: ReadonlyArray<T>, index: number): T {
   const value = items[index];
   assert.ok(value !== undefined);
 
@@ -143,9 +143,9 @@ function at<T>(items: readonly T[], index: number): T {
 }
 
 function deriveSecond(
-  first: readonly string[],
-  plan: { reuse: boolean[]; fresh: string[]; shift: boolean; field: number; cut: number },
-): string[] {
+  first: ReadonlyArray<string>,
+  plan: { reuse: Array<boolean>; fresh: Array<string>; shift: boolean; field: number; cut: number },
+): Array<string> {
   if (plan.shift) {
     return shiftBoundary(first, plan.field, plan.cut);
   }
@@ -153,7 +153,7 @@ function deriveSecond(
   return first.map((value, index) => (plan.reuse[index] === true ? value : at(plan.fresh, index)));
 }
 
-function shiftBoundary(values: readonly string[], field: number, cut: number): string[] {
+function shiftBoundary(values: ReadonlyArray<string>, field: number, cut: number): Array<string> {
   const joined = `${at(values, field)},${at(values, field + 1)}`;
 
   const commas = Array.from(joined, (character, index) => (character === "," ? index : -1)).filter(
@@ -171,7 +171,7 @@ function shiftBoundary(values: readonly string[], field: number, cut: number): s
   });
 }
 
-function keyOf(values: readonly string[]): string {
+function keyOf(values: ReadonlyArray<string>): string {
   return scopedMessageKey(
     { machineId: at(values, 0), sessionId: at(values, 1), runtimeNonce: at(values, 2) },
     { machineId: at(values, 3), sessionId: at(values, 4), runtimeNonce: at(values, 5) },
@@ -180,7 +180,7 @@ function keyOf(values: readonly string[]): string {
   );
 }
 
-function assertKeyInjective(first: readonly string[], second: readonly string[]): void {
+function assertKeyInjective(first: ReadonlyArray<string>, second: ReadonlyArray<string>): void {
   assert.equal(
     keyOf(first) === keyOf(second),
     first.every((value, index) => value === second[index]),

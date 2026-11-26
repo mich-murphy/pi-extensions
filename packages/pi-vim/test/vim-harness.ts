@@ -30,8 +30,8 @@ export type VimCommand = Parameters<VimRegistration["registerCommand"]>[1];
 export type Notice = { readonly message: string; readonly type: string | undefined };
 
 export type VimSession = {
-  readonly editors: (EditorFactory | undefined)[];
-  readonly notices: Notice[];
+  readonly editors: Array<EditorFactory | undefined>;
+  readonly notices: Array<Notice>;
   readonly command: VimCommand;
   readonly startSession: () => void;
   readonly runCommand: (args: string) => Promise<void>;
@@ -64,8 +64,8 @@ export function loadVim(mode: ExtensionContext["mode"]): VimSession {
     throw new Error("Vim extension did not register /vim");
   }
 
-  const editors: (EditorFactory | undefined)[] = [];
-  const notices: Notice[] = [];
+  const editors: Array<EditorFactory | undefined> = [];
+  const notices: Array<Notice> = [];
 
   const contextDouble = {
     mode,
@@ -129,7 +129,7 @@ export function kittyPress(key: string): string {
   return base === key ? `\u001B[${code}u` : `\u001B[${base.codePointAt(0)}:${code};2u`;
 }
 
-export const KEYBOARDS: readonly Keyboard[] = [
+export const KEYBOARDS: ReadonlyArray<Keyboard> = [
   { name: "legacy", kittyProtocol: false, escape: "\u001B", press: identity },
   { name: "Kitty", kittyProtocol: true, escape: "\u001B[27u", press: kittyPress },
 ];

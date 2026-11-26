@@ -96,7 +96,7 @@ describe("claude SDK failure diagnostics", () => {
       new Error("getaddrinfo ENOTFOUND secret.internal.example"),
     );
 
-    const lines: string[] = [];
+    const lines: Array<string> = [];
 
     writeSdkFailureDiagnostic(error, (line) => {
       lines.push(line);

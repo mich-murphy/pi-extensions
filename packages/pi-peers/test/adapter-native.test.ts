@@ -36,7 +36,7 @@ async function readinessLine(child: ChildProcess, signal: AbortSignal): Promise<
   let bytes = Buffer.alloc(0);
 
   while (!bytes.includes(10)) {
-    const chunk: unknown[] = await once(child.stdout, "data", { signal });
+    const chunk: Array<unknown> = await once(child.stdout, "data", { signal });
     assert(Buffer.isBuffer(chunk[0]));
     bytes = Buffer.concat([bytes, chunk[0]]);
     assert(bytes.length <= 4096, "Bounded readiness record");
@@ -218,7 +218,7 @@ describe("production adapter / native local gateway vertical slice", () => {
     const gateway = await nativeGateway();
     const sender = { machineId: "alpha", sessionId: "sender", runtimeNonce: freshId() };
     const receiver = { machineId: "alpha", sessionId: "receiver", runtimeNonce: freshId() };
-    const notices: { customType: string; details?: unknown }[] = [];
+    const notices: Array<{ customType: string; details?: unknown }> = [];
 
     const left = await createAdapterRuntime(
       gateway.config,

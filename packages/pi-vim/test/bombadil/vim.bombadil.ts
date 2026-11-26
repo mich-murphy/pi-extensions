@@ -14,7 +14,7 @@ type Screen = {
   mode: Mode;
   pending: string;
   width: number;
-  rows: string[][];
+  rows: Array<Array<string>>;
   cursor: { row: number; col: number };
   clipped: boolean;
   labelAtEnd: boolean;
@@ -22,7 +22,7 @@ type Screen = {
 
 const LABEL = /^─.* (?<mode>INSERT|NORMAL)(?: (?<pending>\S+))?$/u;
 
-function labelRow(rows: readonly string[]): number {
+function labelRow(rows: ReadonlyArray<string>): number {
   let index = rows.length - 1;
 
   while (index >= 0 && !LABEL.test(rows[index] ?? "")) {
@@ -32,7 +32,7 @@ function labelRow(rows: readonly string[]): number {
   return index;
 }
 
-function topBorder(rows: readonly string[], bottom: number): number {
+function topBorder(rows: ReadonlyArray<string>, bottom: number): number {
   let index = bottom - 1;
 
   while (index >= 0 && !(rows[index] ?? "").startsWith("─")) {
@@ -42,7 +42,7 @@ function topBorder(rows: readonly string[], bottom: number): number {
   return index;
 }
 
-function rowCells(state: State, index: number): string[] {
+function rowCells(state: State, index: number): Array<string> {
   const cells = state.grid.row(index).map((cell) => cell.contents);
 
   while (cells.length > 0 && cells.at(-1) === " ") {
@@ -60,8 +60,8 @@ function labelParts(row: string): Label {
   return { mode: groups?.mode === "INSERT" ? "INSERT" : "NORMAL", pending: groups?.pending ?? "" };
 }
 
-function textRows(state: State, top: number, bottom: number): string[][] {
-  const text: string[][] = [];
+function textRows(state: State, top: number, bottom: number): Array<Array<string>> {
+  const text: Array<Array<string>> = [];
 
   for (let index = top + 1; index < bottom; index++) {
     text.push(rowCells(state, index));
@@ -170,7 +170,8 @@ export const vimKeys = weighted([
   [60, typeFromSet(CharSet.fromLiterals("x")).when(() => onWide())],
 ]);
 
-const graphemes = (cells: readonly string[]): string[] => cells.filter((cell) => cell !== "");
+const graphemes = (cells: ReadonlyArray<string>): Array<string> =>
+  cells.filter((cell) => cell !== "");
 
 const textOf = (screen: Screen): string =>
   screen.rows
@@ -199,7 +200,7 @@ function onDrawnCharacter(screen: Screen | null): screen is Screen {
   return screen.cursor.col < cells.length && cells[screen.cursor.col] !== "";
 }
 
-function wideColumns(): number[] {
+function wideColumns(): Array<number> {
   const screen = editor.current;
 
   if (!onDrawnCharacter(screen)) {

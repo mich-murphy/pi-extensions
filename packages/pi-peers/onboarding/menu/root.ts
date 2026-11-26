@@ -7,8 +7,8 @@ import { runWithProgress } from "./progress.js";
 import type { Outcome, Step } from "./progress.js";
 
 export type RootState = {
-  readonly status: { readonly value: string; readonly lines: readonly string[] };
-  readonly doctor: readonly string[];
+  readonly status: { readonly value: string; readonly lines: ReadonlyArray<string> };
+  readonly doctor: ReadonlyArray<string>;
   readonly setup: SetupRoute;
   readonly resettable: boolean | undefined;
   readonly busy: boolean;
@@ -37,7 +37,7 @@ function resetValue(state: RootState): string {
   return state.resettable ? "" : "Nothing to reset";
 }
 
-function report(title: string, lines: readonly string[]): Screen {
+function report(title: string, lines: ReadonlyArray<string>): Screen {
   return { kind: "report", title, lines: () => lines };
 }
 
@@ -152,7 +152,7 @@ export function peersMenu(
     };
   };
 
-  const rows = (): Row[] => {
+  const rows = (): Array<Row> => {
     const state = options.state();
 
     return [

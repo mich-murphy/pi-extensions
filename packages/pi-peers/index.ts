@@ -51,7 +51,7 @@ const COMMANDS = [
   { value: "reset", description: "Disable peers for this agent directory" },
 ] as const;
 
-const ACTIONS: readonly string[] = COMMANDS.map((command) => command.value);
+const ACTIONS: ReadonlyArray<string> = COMMANDS.map((command) => command.value);
 
 const STATE_VALUES: Record<StatusState, string> = {
   off: "Not set up",
@@ -79,9 +79,9 @@ function reconnectNext(connected: boolean, after: StatusSummary): string {
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
 
-type Reconnected = { readonly connected: boolean; readonly technical: readonly string[] };
+type Reconnected = { readonly connected: boolean; readonly technical: ReadonlyArray<string> };
 
-function doctorLines(report: DoctorReport): string[] {
+function doctorLines(report: DoctorReport): Array<string> {
   return [
     ...report.rows.map((row) => doctorRowText(row)),
     ...(report.next === undefined ? [] : [`Next: ${report.next}`]),

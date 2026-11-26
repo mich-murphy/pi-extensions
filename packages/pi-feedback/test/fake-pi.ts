@@ -38,13 +38,13 @@ export function fakePi(
   agentDir = "/home/u/.pi/agent",
   modelRegistry: ClassifierRegistry = noClassifier,
 ) {
-  const tools: FeedbackTool[] = [];
+  const tools: Array<FeedbackTool> = [];
   const renderers = new Map<string, NoteRenderer>();
   const commands = new Map<string, Command>();
-  const endHandlers: EndHandler[] = [];
-  const messageHandlers: MessageHandler[] = [];
-  const notes: { customType: string; data: FeedbackNote }[] = [];
-  const notifications: { message: string; level: string | undefined }[] = [];
+  const endHandlers: Array<EndHandler> = [];
+  const messageHandlers: Array<MessageHandler> = [];
+  const notes: Array<{ customType: string; data: FeedbackNote }> = [];
+  const notifications: Array<{ message: string; level: string | undefined }> = [];
   let active = ["read", "bash"];
   let session = "session-a";
 
@@ -134,7 +134,7 @@ export function fakePi(
     },
     call: async (params: Parameters<FeedbackTool["execute"]>[1]) =>
       tool().execute("call-1", params, undefined, undefined, ctx()),
-    batch: (calls: readonly BatchCall[]) => {
+    batch: (calls: ReadonlyArray<BatchCall>) => {
       const message: MessageEndEvent["message"] = {
         role: "assistant",
         content: calls.map((call) => ({

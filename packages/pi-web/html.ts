@@ -73,10 +73,10 @@ const TABLE_PART_TAGS: ReadonlySet<string> = new Set(["thead", "tbody", "tfoot",
 const TABLE_HEADING_MARKUP_TAGS: ReadonlySet<string> = new Set(["caption", "thead", "th"]);
 const TABLE_CELL_TAGS: ReadonlySet<string> = new Set(["td", "th"]);
 
-const CONTENT_SELECTOR_GROUPS: readonly {
+const CONTENT_SELECTOR_GROUPS: ReadonlyArray<{
   readonly bonus: number;
-  readonly selectors: readonly string[];
-}[] = [
+  readonly selectors: ReadonlyArray<string>;
+}> = [
   {
     bonus: 1500,
     selectors: [
@@ -104,7 +104,7 @@ const CONTENT_SELECTOR_GROUPS: readonly {
   },
 ];
 
-const PREFERRED_CONTENT_SELECTORS: readonly string[] = CONTENT_SELECTOR_GROUPS.flatMap(
+const PREFERRED_CONTENT_SELECTORS: ReadonlyArray<string> = CONTENT_SELECTOR_GROUPS.flatMap(
   (group) => group.selectors,
 );
 
@@ -116,7 +116,7 @@ const CONTENT_SELECTOR_BONUSES = CONTENT_SELECTOR_GROUPS.flatMap(({ bonus, selec
 
 type UrlAttributeResolver = (value: string, baseUrl: string) => string | undefined;
 
-const URL_ATTRIBUTE_RESOLVERS: readonly (readonly [string, UrlAttributeResolver])[] = [
+const URL_ATTRIBUTE_RESOLVERS: ReadonlyArray<readonly [string, UrlAttributeResolver]> = [
   ["href", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "reject")],
   ["src", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "allow")],
   ["poster", (value, baseUrl) => resolveAttributeUrl(value, baseUrl, "allow")],
@@ -319,7 +319,7 @@ function sanitizeToReadableRoot(rawHtml: string, baseUrl: string): Element | und
 }
 
 function extractReadableRoot(document: Document): Element | undefined {
-  const buckets: Element[][] = PREFERRED_CONTENT_SELECTORS.map(() => []);
+  const buckets: Array<Array<Element>> = PREFERRED_CONTENT_SELECTORS.map(() => []);
   let body: Element | undefined;
 
   for (const element of document.querySelectorAll("*")) {
@@ -357,7 +357,7 @@ function extractReadableRoot(document: Document): Element | undefined {
   return pickBestCandidate(candidates, stats) ?? fallbackRoot;
 }
 
-function pickPreferredCandidate(candidates: readonly Element[]): Element | undefined {
+function pickPreferredCandidate(candidates: ReadonlyArray<Element>): Element | undefined {
   const [only] = candidates;
 
   if (only === undefined) {
@@ -391,7 +391,7 @@ function pickPreferredCandidate(candidates: readonly Element[]): Element | undef
 }
 
 function pickBestCandidate(
-  candidates: readonly Element[],
+  candidates: ReadonlyArray<Element>,
   stats: ReadonlyMap<Element, ContentStats>,
 ): Element | undefined {
   let best: Element | undefined;
@@ -490,10 +490,10 @@ class ContentStats {
 
 function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredContent {
   const rootStats = new ContentStats(root, false, false);
-  const candidates: Element[] = [];
+  const candidates: Array<Element> = [];
   const stats = new Map([[root, rootStats]]);
 
-  const stack: { readonly stats: ContentStats; nextChild: ChildNode | null }[] = [
+  const stack: Array<{ readonly stats: ContentStats; nextChild: ChildNode | null }> = [
     { stats: rootStats, nextChild: root.firstChild },
   ];
 
@@ -539,20 +539,20 @@ function measureContent(root: Element, isCandidate: CandidateFilter): MeasuredCo
 }
 
 type MeasuredContent = {
-  readonly candidates: Element[];
+  readonly candidates: Array<Element>;
   readonly stats: Map<Element, ContentStats>;
 };
 
 type CandidateFilter = (element: Element, inTemplateContent: boolean) => boolean;
 
 type BoilerplateRemoval = {
-  readonly tables: Element[];
-  readonly links: Element[];
+  readonly tables: Array<Element>;
+  readonly links: Array<Element>;
 };
 
 function removeBoilerplate(root: Element): BoilerplateRemoval {
-  const tables: Element[] = [];
-  const links: Element[] = [];
+  const tables: Array<Element> = [];
+  const links: Array<Element> = [];
   let element = root.firstElementChild;
 
   while (element !== null) {
@@ -593,7 +593,7 @@ function nextElementAfterSubtree(element: Element, root: Element): Element | nul
   return null;
 }
 
-function flattenLayoutTables(tables: readonly Element[], root: Element): void {
+function flattenLayoutTables(tables: ReadonlyArray<Element>, root: Element): void {
   for (let index = tables.length - 1; index >= 0; index -= 1) {
     const table = tables[index];
 
@@ -636,14 +636,14 @@ type TableProfile = {
   readonly root: Element;
   readonly hasHeadingMarkup: boolean;
   readonly hasNestedTable: boolean;
-  readonly ownRows: readonly (readonly Element[])[];
+  readonly ownRows: ReadonlyArray<ReadonlyArray<Element>>;
   readonly ownLinkCount: number;
-  readonly ownParts: readonly Element[];
+  readonly ownParts: ReadonlyArray<Element>;
 };
 
 type TableVerdict = "layout" | "data" | undefined;
 
-const LAYOUT_TABLE_RULES: readonly ((profile: TableProfile) => TableVerdict)[] = [
+const LAYOUT_TABLE_RULES: ReadonlyArray<(profile: TableProfile) => TableVerdict> = [
   headingMarkupRule,
   tableRoleRule,
   hackerNewsRule,
@@ -715,8 +715,8 @@ type TableProfileDraft = {
   hasHeadingMarkup: boolean;
   hasNestedTable: boolean;
   ownLinkCount: number;
-  readonly ownRows: Element[][];
-  readonly ownParts: Element[];
+  readonly ownRows: Array<Array<Element>>;
+  readonly ownParts: Array<Element>;
 };
 
 function hasDescendant(root: Element, predicate: (element: Element) => boolean): boolean {
@@ -733,8 +733,8 @@ function hasDescendant(root: Element, predicate: (element: Element) => boolean):
   return false;
 }
 
-function childCells(row: Element): Element[] {
-  const cells: Element[] = [];
+function childCells(row: Element): Array<Element> {
+  const cells: Array<Element> = [];
 
   for (let child = row.firstElementChild; child !== null; child = child.nextElementSibling) {
     if (TABLE_CELL_TAGS.has(child.localName)) {
@@ -801,7 +801,7 @@ function linkListRule({ ownRows, ownLinkCount }: TableProfile): TableVerdict {
   return averageCellTextLength < 120 ? "layout" : undefined;
 }
 
-function normalizeBlockLinks(links: readonly Element[]): void {
+function normalizeBlockLinks(links: ReadonlyArray<Element>): void {
   for (const link of links) {
     const onlyChild = link.firstElementChild;
 
@@ -1000,12 +1000,12 @@ function stripChunkSentinels(piece: string, edges: ChunkEdges): string | undefin
 }
 
 type WrapperChain = {
-  readonly levels: readonly Element[];
+  readonly levels: ReadonlyArray<Element>;
   readonly container: Element;
 };
 
 function wrapperChain(root: Element): WrapperChain {
-  const levels: Element[] = [root];
+  const levels: Array<Element> = [root];
   let container = root;
 
   for (let wrapper = loneWrapperChild(root); wrapper !== undefined;) {
@@ -1074,9 +1074,9 @@ function isDroppedByTurndown(node: ChildNode): boolean {
   return node.nodeType === TEXT_NODE && COLLAPSIBLE_WHITESPACE_RE.test(node.nodeValue ?? "");
 }
 
-function splitIntoChunks(container: Element): readonly (readonly ChildNode[])[] {
-  const chunks: ChildNode[][] = [];
-  let current: ChildNode[] = [];
+function splitIntoChunks(container: Element): ReadonlyArray<ReadonlyArray<ChildNode>> {
+  const chunks: Array<Array<ChildNode>> = [];
+  let current: Array<ChildNode> = [];
   let size = 0;
 
   for (let node = container.firstChild; node !== null; node = node.nextSibling) {
@@ -1107,8 +1107,8 @@ function detachChildrenLastFirstToAvoidDominoReindexing(container: Element): voi
 }
 
 function buildChunkShell(
-  levels: readonly Element[],
-  chunk: readonly ChildNode[],
+  levels: ReadonlyArray<Element>,
+  chunk: ReadonlyArray<ChildNode>,
   sentinels: { readonly sentinelBefore: boolean; readonly sentinelAfter: boolean },
 ): HTMLElement | undefined {
   let top: Element | undefined;

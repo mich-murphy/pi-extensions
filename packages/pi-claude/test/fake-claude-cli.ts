@@ -6,14 +6,14 @@ import { Option, Schema } from "effect";
 export type FakeClaudeBehaviour = {
   readonly version: string;
   readonly usage?: unknown;
-  readonly turn?: readonly unknown[];
+  readonly turn?: ReadonlyArray<unknown>;
 };
 
 export type FakeClaude = {
   readonly path: string;
   readonly directory: string;
-  readonly spawnedWith: () => readonly (readonly string[])[];
-  readonly controlRequests: () => readonly Schema.JsonObject[];
+  readonly spawnedWith: () => ReadonlyArray<ReadonlyArray<string>>;
+  readonly controlRequests: () => ReadonlyArray<Schema.JsonObject>;
 };
 
 const readControlLine = Schema.decodeUnknownOption(
@@ -97,7 +97,7 @@ export function installFakeClaude(behaviour: FakeClaudeBehaviour): FakeClaude {
         return readFileSync(log, "utf8")
           .split("\n")
           .filter(Boolean)
-          .map((line): readonly string[] => {
+          .map((line): ReadonlyArray<string> => {
             const args: unknown = JSON.parse(line);
 
             return Array.isArray(args) ? args.map(String) : [];

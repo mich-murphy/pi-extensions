@@ -16,7 +16,7 @@ import type { ToggleHandlers } from "../index";
 import { discoverProjectSkillPaths } from "../project-skill-paths";
 import type { ToggleStateStore } from "../state";
 
-const temporaryDirectories: string[] = [];
+const temporaryDirectories: Array<string> = [];
 
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "pi-project-skills-"));
@@ -44,7 +44,7 @@ function project() {
   return { root, cwd, agentDir };
 }
 
-async function pathsFor(cwd: string, agentDir: string): Promise<readonly string[]> {
+async function pathsFor(cwd: string, agentDir: string): Promise<ReadonlyArray<string>> {
   return discoverProjectSkillPaths(cwd, agentDir);
 }
 
@@ -273,7 +273,7 @@ describe("discoverProjectSkillPaths", () => {
       on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
         handlers[name] = handler;
       },
-      getCommands: (): SlashCommandInfo[] =>
+      getCommands: (): Array<SlashCommandInfo> =>
         loader.getSkills().skills.map((skill) => ({
           name: `skill:${skill.name}`,
           description: skill.description,

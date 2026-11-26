@@ -66,7 +66,7 @@ function form(state: SetupDraft, remoteBlocked?: string) {
 const applyRow = (model: MenuModel): Row | undefined =>
   model.top.kind === "list" ? model.top.rows().find((row) => row.id === "apply") : undefined;
 
-const openers = (model: MenuModel): string[] =>
+const openers = (model: MenuModel): Array<string> =>
   model.top.kind === "list"
     ? model.top
         .rows()
@@ -314,7 +314,7 @@ describe("progress and stored outcomes", () => {
 });
 
 function root(busy: { value: boolean }) {
-  const events: string[] = [];
+  const events: Array<string> = [];
 
   const state = (): RootState => ({
     status: { value: "Connected", lines: ["Connected"] },
@@ -360,7 +360,7 @@ async function settled(screen: Screen): Promise<void> {
   }
 }
 
-function listRows(screen: Screen): readonly Row[] {
+function listRows(screen: Screen): ReadonlyArray<Row> {
   return screen.kind === "list" ? screen.rows() : [];
 }
 
@@ -562,8 +562,8 @@ describe("F9: RPC context and no-op feedback", () => {
 });
 
 function fixRoot(resettable: boolean | undefined, setup: Screen) {
-  const started: ActionKind[] = [];
-  const consented: string[] = [];
+  const started: Array<ActionKind> = [];
+  const consented: Array<string> = [];
 
   const state = (): RootState => ({
     status: { value: "Connected", lines: [] },
@@ -622,8 +622,8 @@ describe("F10 and F11: root rows", () => {
 describe("F3: a consent row captured before another action started runs nothing", () => {
   test("stale Reconnect and Turn off peers rows show the busy text and record no consent", () => {
     let busy = false;
-    const consented: string[] = [];
-    const effects: string[] = [];
+    const consented: Array<string> = [];
+    const effects: Array<string> = [];
 
     const model = peersMenu(
       {

@@ -86,7 +86,7 @@ const TAKE_DESCRIPTION =
 const NOT_SCRIPTABLE = "Not callable from codemode scripts; call it directly.";
 
 export type PeerToolLoadout = {
-  readonly declared: readonly Pick<ToolLoadout["declared"][number], "name">[];
+  readonly declared: ReadonlyArray<Pick<ToolLoadout["declared"][number], "name">>;
 };
 
 function directOnly(name: string, description: string) {
@@ -98,10 +98,12 @@ function directOnly(name: string, description: string) {
 
 export type ToolValue =
   | {
-      peers: readonly (Bound &
-        Extract<Static<typeof listOutput>, { ok: true }>["peers"][number] & {
-          linkDown?: boolean;
-        })[];
+      peers: ReadonlyArray<
+        Bound &
+          Extract<Static<typeof listOutput>, { ok: true }>["peers"][number] & {
+            linkDown?: boolean;
+          }
+      >;
     }
   | {
       to: string;
@@ -110,19 +112,19 @@ export type ToolValue =
       outcome: Awaited<ReturnType<AdapterSession["send"]>>;
       note: string;
     }
-  | { messages: ReturnType<typeof takenEntry>[] }
+  | { messages: Array<ReturnType<typeof takenEntry>> }
   | { tag: "error"; code: string; resource?: string; note: string };
 
 type ToolProblem = Extract<ToolValue, { tag: "error" }>;
 
-type ListValue = Extract<ToolValue, { peers: readonly Bound[] }>;
+type ListValue = Extract<ToolValue, { peers: ReadonlyArray<Bound> }>;
 
 type ToolSuccess = Exclude<ToolValue, ToolProblem>;
 
 type Shown<Value extends ToolSuccess = ToolSuccess> = { value: Value | ToolProblem; text: string };
 
 export type ToolResult<Value extends ToolValue = ToolValue> = {
-  content: { type: "text"; text: string }[];
+  content: Array<{ type: "text"; text: string }>;
   details: { value: Value };
   isError?: boolean;
   structuredContent?: Static<typeof listOutput>;
@@ -266,7 +268,7 @@ function listLine(entry: Listed): string {
   return `${head} · ${label}`;
 }
 
-function listText(peers: readonly Listed[]): string {
+function listText(peers: ReadonlyArray<Listed>): string {
   const lines = peers.map((entry) => listLine(entry));
 
   return peers.some((entry) => !entry.self)

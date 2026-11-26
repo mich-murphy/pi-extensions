@@ -60,7 +60,7 @@ export type FeedbackDetails =
   | { readonly status: "duplicate" | "limit" | "off" | "failed" };
 
 export type FeedbackResult = {
-  readonly content: { readonly type: "text"; readonly text: string }[];
+  readonly content: Array<{ readonly type: "text"; readonly text: string }>;
   readonly details: FeedbackDetails;
   readonly isError?: boolean;
 };
@@ -80,7 +80,7 @@ export type FeedbackTool = {
   readonly label: string;
   readonly description: string;
   readonly promptSnippet: string;
-  readonly promptGuidelines: string[];
+  readonly promptGuidelines: Array<string>;
   readonly parameters: typeof FEEDBACK_PARAMETERS;
   readonly annotations: {
     readonly readOnlyHint: boolean;
@@ -121,16 +121,16 @@ export type FeedbackRegistration = {
     (name: "message_end", handler: (event: Pick<MessageEndEvent, "message">) => void): void;
   };
   readonly appendEntry: (customType: string, data: FeedbackNote) => void;
-  readonly getAllTools: () => readonly ToolSource[];
-  readonly getCommands: () => readonly CommandSource[];
-  readonly getActiveTools: () => string[];
-  readonly setActiveTools: (names: string[]) => void;
+  readonly getAllTools: () => ReadonlyArray<ToolSource>;
+  readonly getCommands: () => ReadonlyArray<CommandSource>;
+  readonly getActiveTools: () => Array<string>;
+  readonly setActiveTools: (names: Array<string>) => void;
 };
 
 export type FeedbackDependencies = {
   readonly ledger: string;
   readonly packagesDir: string;
-  readonly ownPackages: readonly string[];
+  readonly ownPackages: ReadonlyArray<string>;
   readonly agentDir: string;
   readonly home: string;
   readonly piVersion: string;
@@ -255,7 +255,7 @@ function signalDraft(
   return { ...signal, ...recordProvenance(ctx, piVersion, attribution) };
 }
 
-function toolCallsOf(message: MessageEndEvent["message"]): readonly BatchCall[] | undefined {
+function toolCallsOf(message: MessageEndEvent["message"]): ReadonlyArray<BatchCall> | undefined {
   if (message.role !== "assistant") {
     return undefined;
   }
@@ -299,7 +299,7 @@ export function registerFeedback(
 
   const owners = createAttribution(pi, dependencies);
   const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
-  let batch: readonly BatchCall[] = [];
+  let batch: ReadonlyArray<BatchCall> = [];
   const filedBySession = new Map<string, Set<string>>();
   let enabled = true;
   let unwritten = 0;

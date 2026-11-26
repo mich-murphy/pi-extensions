@@ -31,11 +31,11 @@ type Menu = {
   cursors: number;
   noMatches: boolean;
   search: string | null;
-  items: Item[];
+  items: Array<Item>;
   counts: string;
 };
 
-function level(rows: readonly string[], top: number, hint: number): Menu["level"] {
+function level(rows: ReadonlyArray<string>, top: number, hint: number): Menu["level"] {
   if (top >= 0) {
     return rows[top] === ROOT_TITLE ? "root" : "list";
   }
@@ -47,7 +47,7 @@ function level(rows: readonly string[], top: number, hint: number): Menu["level"
   return null;
 }
 
-function items(body: readonly string[]): Item[] {
+function items(body: ReadonlyArray<string>): Array<Item> {
   return body.flatMap((row) => {
     const groups = ITEM.exec(row)?.groups;
 
@@ -63,11 +63,11 @@ function items(body: readonly string[]): Item[] {
   });
 }
 
-function bottomBorderBelow(rows: readonly string[], hint: number): boolean {
+function bottomBorderBelow(rows: ReadonlyArray<string>, hint: number): boolean {
   return hint >= 0 && /^─+$/u.test(rows[hint + 1] ?? "");
 }
 
-function readMenu(rows: readonly string[], height: number): Menu {
+function readMenu(rows: ReadonlyArray<string>, height: number): Menu {
   const top = rows.findIndex((row) => row === ROOT_TITLE || LIST_TITLE.test(row));
   const hint = rows.findIndex((row) => ROOT_HINT.test(row) || LIST_HINT.test(row));
   const body = rows.slice(Math.max(0, top), hint === -1 ? rows.length : hint);

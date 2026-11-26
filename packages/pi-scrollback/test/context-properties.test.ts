@@ -17,13 +17,13 @@ const ZONE_START = "\u001B]133;A\u0007";
 const ZONE_END = "\u001B]133;B\u0007";
 const settings = propertySettings(200);
 
-type Block = { kind: "filler" | "prompt"; first: string; body: string[]; pad: number };
+type Block = { kind: "filler" | "prompt"; first: string; body: Array<string>; pad: number };
 
 type Placed = { start: number; lastText: number; text: string };
 
-function layout(blocks: readonly Block[]) {
-  const lines: string[] = [];
-  const placed: Placed[] = [];
+function layout(blocks: ReadonlyArray<Block>) {
+  const lines: Array<string> = [];
+  const placed: Array<Placed> = [];
 
   for (const block of blocks) {
     if (block.kind === "filler") {
@@ -54,7 +54,7 @@ function lastTextRow(block: Block, start: number, lastBody: number): number {
   return block.first.trim() === "" ? -1 : start;
 }
 
-function expectedContext(placed: readonly Placed[], scrollTop: number): string | undefined {
+function expectedContext(placed: ReadonlyArray<Placed>, scrollTop: number): string | undefined {
   const prompt = placed.findLast((span) => span.start <= scrollTop);
 
   return prompt === undefined || prompt.lastText >= scrollTop || prompt.text === ""
@@ -62,7 +62,7 @@ function expectedContext(placed: readonly Placed[], scrollTop: number): string |
     : prompt.text;
 }
 
-function assertSelect(blocks: readonly Block[], raw: number): void {
+function assertSelect(blocks: ReadonlyArray<Block>, raw: number): void {
   const { lines, placed } = layout(blocks);
   const scrollTop = raw % (lines.length + 1);
   const got = selectContext(lines, scrollTop);

@@ -195,7 +195,7 @@ const blockSchema = withFallback(
 
 type WireBlock = typeof blockSchema.Type;
 
-function countBlocks(blocks: readonly WireBlock[], type: string, errorsOnly = false): number {
+function countBlocks(blocks: ReadonlyArray<WireBlock>, type: string, errorsOnly = false): number {
   return blocks.filter((block) => block?.type === type && (!errorsOnly || block.is_error === true))
     .length;
 }

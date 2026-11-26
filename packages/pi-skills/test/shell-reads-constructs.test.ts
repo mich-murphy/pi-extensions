@@ -6,11 +6,11 @@ import { pathsReadByCommand } from "../shell-reads";
 
 const cwd = "/repo";
 
-function reads(command: string): readonly string[] {
+function reads(command: string): ReadonlyArray<string> {
   return pathsReadByCommand(command, cwd).toSorted();
 }
 
-function paths(...names: string[]): readonly string[] {
+function paths(...names: Array<string>): ReadonlyArray<string> {
   return names.map((name) => resolve(cwd, name)).toSorted();
 }
 

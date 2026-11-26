@@ -25,7 +25,7 @@ export function isReadOnlyTool(tool: ToolSource | undefined): boolean {
 const isString = Schema.is(Schema.String);
 const isNonTextScalar = Schema.is(Schema.Union([Schema.Null, Schema.Number, Schema.Boolean]));
 
-function stringsIn(value: JsonValue): string[] {
+function stringsIn(value: JsonValue): Array<string> {
   if (isString(value)) {
     return [value];
   }
@@ -35,7 +35,7 @@ function stringsIn(value: JsonValue): string[] {
     : Object.values<JsonValue>(value).flatMap((item) => stringsIn(item));
 }
 
-function pathsIn(texts: readonly string[]): string[] {
+function pathsIn(texts: ReadonlyArray<string>): Array<string> {
   return texts.flatMap((text) =>
     [...text.matchAll(ABSOLUTE_PATH)].map((match) => match[0].replace(/\.+$/u, "")),
   );
@@ -60,7 +60,7 @@ function deepEnough(directory: string): boolean {
 export function isParallelBatch(
   failing: BatchCall,
   error: string,
-  batch: readonly BatchCall[],
+  batch: ReadonlyArray<BatchCall>,
   readOnly: (name: string) => boolean,
 ): boolean {
   if (!MISSING_PATH.test(error)) {

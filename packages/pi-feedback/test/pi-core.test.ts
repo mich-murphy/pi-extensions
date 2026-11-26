@@ -11,7 +11,7 @@ const PACKAGES = "/repo/packages";
 const HOME = "/home/u";
 const SCRATCH = "/tmp/claude-1/-home-u-dev-x/0a1b/scratchpad";
 
-const tools: readonly ToolSource[] = [
+const tools: ReadonlyArray<ToolSource> = [
   { name: "read", sourceInfo: { path: "builtin:read", source: "builtin" } },
   { name: "bash", sourceInfo: { path: "builtin:bash", source: "builtin" } },
   { name: "edit", sourceInfo: { path: "builtin:edit", source: "builtin" } },
@@ -44,13 +44,13 @@ type Fixture = {
   readonly tool: string;
   readonly error: string;
   readonly scores: Scores;
-  readonly siblings?: readonly BatchCall[];
+  readonly siblings?: ReadonlyArray<BatchCall>;
   readonly args?: BatchCall["args"];
 };
 
 const harnessLike: Scores = { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 };
 
-const FIXTURES: readonly Fixture[] = [
+const FIXTURES: ReadonlyArray<Fixture> = [
   {
     label: "pi-claude rejected tool call",
     piCore: false,
@@ -141,7 +141,7 @@ function stamp(n: number) {
   };
 }
 
-function eventsFor(fixture: Fixture, start: number): LedgerEvent[] {
+function eventsFor(fixture: Fixture, start: number): Array<LedgerEvent> {
   const fingerprint = signalFingerprint(fixture.tool, fixture.error);
   const attribution = owners.forSignal(fixture.tool, fixture.error);
   const failing: BatchCall = { id: "f1", name: fixture.tool, args: fixture.args ?? {} };

@@ -67,7 +67,7 @@ export class PeersMenu implements Component, Focusable {
     this.editor?.input.invalidate();
   }
 
-  render(width: number): string[] {
+  render(width: number): Array<string> {
     const { theme } = this.host;
     const screen = this.model.top;
     const border = new DynamicBorder((text) => theme.fg("accent", text)).render(width);
@@ -140,7 +140,7 @@ export class PeersMenu implements Component, Focusable {
     return Math.max(3, Math.min(12, this.host.tui.terminal.rows - 15));
   }
 
-  private entries(screen: Screen): readonly Entry[] {
+  private entries(screen: Screen): ReadonlyArray<Entry> {
     if (screen.kind === "list") {
       return screen.rows();
     }
@@ -221,7 +221,7 @@ export class PeersMenu implements Component, Focusable {
     return input;
   }
 
-  private body(screen: Screen, width: number): string[] {
+  private body(screen: Screen, width: number): Array<string> {
     if (screen.kind === "list" || screen.kind === "toggle") {
       return this.list(screen, width);
     }
@@ -241,7 +241,7 @@ export class PeersMenu implements Component, Focusable {
     return this.scroll(screen, screen.lines(), width);
   }
 
-  private list(screen: Screen, width: number): string[] {
+  private list(screen: Screen, width: number): Array<string> {
     const entries = this.entries(screen);
 
     const items = entries.map((entry) => {
@@ -271,13 +271,13 @@ export class PeersMenu implements Component, Focusable {
     return list.render(width).slice(0, -SETTINGS_LIST_OWN_HINT_ROWS);
   }
 
-  private wrap(lines: readonly string[], width: number): string[] {
+  private wrap(lines: ReadonlyArray<string>, width: number): Array<string> {
     return lines.flatMap((line) =>
       wrapTextWithAnsi(line, Math.max(10, width - 4)).map((row) => `  ${row}`),
     );
   }
 
-  private scroll(screen: Screen, lines: readonly string[], width: number): string[] {
+  private scroll(screen: Screen, lines: ReadonlyArray<string>, width: number): Array<string> {
     const rows = this.wrap(
       lines.map((line) => visibleText(line)),
       width,

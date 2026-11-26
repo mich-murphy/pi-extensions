@@ -2,13 +2,13 @@
 
 declare module "html-to-text" {
   type HtmlToTextOptions = {
-    baseElements?: { selectors?: string[]; returnDomByDefault?: boolean };
+    baseElements?: { selectors?: Array<string>; returnDomByDefault?: boolean };
     wordwrap?: number | false;
-    selectors?: {
+    selectors?: Array<{
       selector: string;
       format?: string;
       options?: { uppercase?: boolean; uppercaseHeaderCells?: boolean };
-    }[];
+    }>;
   };
 
   export function compile(options: HtmlToTextOptions): (html: string) => string;

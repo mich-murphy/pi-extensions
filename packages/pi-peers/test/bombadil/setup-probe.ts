@@ -14,7 +14,7 @@ const SETTLE_MS = 120_000;
 const SMALL = 65_536;
 const LOG = /(?:^|\/)startup-[0-9a-f]+\.log$/u;
 
-function entriesOrNoneWhenAbsent(root: string): string[] {
+function entriesOrNoneWhenAbsent(root: string): Array<string> {
   try {
     return readdirSync(root, { recursive: true }).map(String);
   } catch {
@@ -22,7 +22,7 @@ function entriesOrNoneWhenAbsent(root: string): string[] {
   }
 }
 
-function paths(roots: readonly string[]): Set<string> {
+function paths(roots: ReadonlyArray<string>): Set<string> {
   const found = new Set<string>();
 
   for (const root of roots) {
@@ -58,7 +58,7 @@ function fingerprint(path: string): string | undefined {
   }
 }
 
-function snapshot(roots: readonly string[]): Map<string, string> {
+function snapshot(roots: ReadonlyArray<string>): Map<string, string> {
   const found = new Map<string, string>();
 
   for (const path of paths(roots)) {
@@ -111,7 +111,7 @@ function settlingScope(agentDir: string, home: string): (path: string) => boolea
 type Settling = { print: string; quietSince: number; since: number };
 
 function createProbe(
-  roots: readonly string[],
+  roots: ReadonlyArray<string>,
   scope: (path: string) => boolean,
   shown: (path: string) => string,
   show: (text: string) => void,

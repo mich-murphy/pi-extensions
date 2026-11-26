@@ -98,7 +98,7 @@ function checkPaging(text: string, startAt: number): void {
   const firstOffset = startAt >= Buffer.byteLength(text) ? 0 : startAt;
   const all = Buffer.from(text, "utf8");
   const first = firstOffset > 0 ? boundaryAtOrAfter(all, firstOffset) : 0;
-  const collected: Buffer[] = [];
+  const collected: Array<Buffer> = [];
   let offset = firstOffset;
   let expectedStart = first;
   let finished = false;
@@ -125,7 +125,7 @@ function checkPaging(text: string, startAt: number): void {
   assert.ok(Buffer.concat(collected).equals(all.subarray(first)), "no gap and no overlap");
 }
 
-function checkWindow(shown: string, all: Buffer, expectedStart: number, collected: Buffer[]) {
+function checkWindow(shown: string, all: Buffer, expectedStart: number, collected: Array<Buffer>) {
   const match = NOTICE.exec(shown)?.groups;
   assert.ok(match);
   const { from: fromText, to: toText } = match;
@@ -174,7 +174,7 @@ describe("webfetch paging properties", () => {
 const SECRETS = ["a.b", "a*b", "(x)", "[y]", "$&", "\\", " ", "p|q", "^s$", "k+", "k+k+", "a.bb"];
 const SAFE = ["ab", "axb", "aab", "zz", "hello", "é😀"];
 
-function checkRedaction(parts: string[], secrets: string[]): void {
+function checkRedaction(parts: Array<string>, secrets: Array<string>): void {
   const input = parts.join("");
   const output = redactSecrets(input, secrets);
 
@@ -190,12 +190,12 @@ function checkRedaction(parts: string[], secrets: string[]): void {
   }
 }
 
-function checkLiteral(parts: string[], secrets: string[]): void {
+function checkLiteral(parts: Array<string>, secrets: Array<string>): void {
   const input = parts.join("");
   assert.equal(redactSecrets(input, secrets), input);
 }
 
-function checkOverlap(reverse: boolean, parts: string[]): void {
+function checkOverlap(reverse: boolean, parts: Array<string>): void {
   const base = ["k+", "k+k+", "a.b", "a.bb"];
   const secrets = reverse ? base.toReversed() : base;
   const input = parts.join("|");

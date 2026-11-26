@@ -62,7 +62,7 @@ export class GatewayClient {
       await this.reconnect(this.lifetime.signal);
     }
   }
-  links(): readonly LinkState[] {
+  links(): ReadonlyArray<LinkState> {
     return this.linkTable.list();
   }
   linkDown(machineId: string): boolean {
@@ -522,7 +522,7 @@ export class GatewayClient {
     }
   }
   async discover(
-    scopeIds: readonly string[],
+    scopeIds: ReadonlyArray<string>,
     watch: boolean,
     signal?: AbortSignal,
   ): Promise<Reply> {

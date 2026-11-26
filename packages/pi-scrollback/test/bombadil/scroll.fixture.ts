@@ -16,10 +16,10 @@ const USAGE = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-function sessionLines(cwd: string): string[] {
+function sessionLines(cwd: string): Array<string> {
   const time = new Date(TIMESTAMP).toISOString();
 
-  const entries: (SessionHeader | SessionMessageEntry)[] = [
+  const entries: Array<SessionHeader | SessionMessageEntry> = [
     { type: "session", version: 3, id: "scroll-bombadil", timestamp: time, cwd },
   ];
 

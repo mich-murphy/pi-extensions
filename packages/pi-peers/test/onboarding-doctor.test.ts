@@ -6,7 +6,7 @@ import { decodeConfiguration, SOCKET_PATH_MAX_BYTES } from "../adapter/config.js
 import { doctor, doctorReport, doctorRowText } from "../onboarding/doctor.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 
-const directories: string[] = [];
+const directories: Array<string> = [];
 
 async function fixture(content?: string) {
   const directory = await mkdtemp(join(tmpdir(), "pi-peers-doctor-"));

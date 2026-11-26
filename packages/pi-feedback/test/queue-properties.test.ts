@@ -14,9 +14,9 @@ const FINGERPRINTS = ["read: ENOENT", "bash: timeout"] as const;
 const SESSIONS = ["a", "b", "c"] as const;
 const settings = propertySettings(200);
 
-function drawEvents(tc: TestCase): LedgerEvent[] {
+function drawEvents(tc: TestCase): Array<LedgerEvent> {
   const count = tc.draw(integers({ minValue: 0, maxValue: 14 }), "count");
-  const events: LedgerEvent[] = [];
+  const events: Array<LedgerEvent> = [];
 
   for (let n = 1; n <= count; n += 1) {
     const owner = tc.draw(sampledFrom([...OWNERS]), "owner");
@@ -57,7 +57,7 @@ function assertGroupInvariants(group: Group): void {
   assert.equal(group.rank === 0, group.status === "resolved" || group.records === 0);
 }
 
-function assertPriorityOrder(groups: readonly Group[]): void {
+function assertPriorityOrder(groups: ReadonlyArray<Group>): void {
   for (const [index, after] of groups.entries()) {
     const before = groups[index - 1] ?? after;
     assert.ok(Number(before.ready) >= Number(after.ready));

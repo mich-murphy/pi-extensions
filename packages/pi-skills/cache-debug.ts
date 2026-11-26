@@ -63,7 +63,7 @@ export function cacheDebugSink(
   };
 }
 
-export function fingerprint(lines: readonly string[]): string {
+export function fingerprint(lines: ReadonlyArray<string>): string {
   return createHash("sha256").update(lines.join("\0")).digest("hex").slice(0, 16);
 }
 
@@ -72,7 +72,7 @@ export type RunDiagnostics = {
   readonly model: ModelRef | undefined;
   readonly snapshot: PromptSnapshot;
   readonly plan: PromptPlan;
-  readonly resources: readonly PromptResource[];
+  readonly resources: ReadonlyArray<PromptResource>;
   readonly desiredHidden: ReadonlySet<ResourcePath> | undefined;
   readonly options: BuildSystemPromptOptions;
   readonly durationMs: number;
@@ -149,6 +149,6 @@ function modelName(model: ModelRef | undefined): string | null {
   return model === undefined ? null : `${model.provider}/${model.id}`;
 }
 
-function sorted(ids: Iterable<string>): readonly string[] {
+function sorted(ids: Iterable<string>): ReadonlyArray<string> {
   return [...ids].toSorted(compareText);
 }

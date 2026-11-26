@@ -23,7 +23,7 @@ const EXA_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default);
 const EXA_FETCH_MAX_CHARACTERS = 60_000;
 
 export type ExaTextResults = {
-  readonly results: readonly NormalizedSearchResult[];
+  readonly results: ReadonlyArray<NormalizedSearchResult>;
   readonly discardedSections: number;
 };
 
@@ -35,7 +35,7 @@ export function parseExaSearchText(input: string): ExaTextResults {
   }
 
   const sections = splitSearchSections(trimmed);
-  const results: NormalizedSearchResult[] = [];
+  const results: Array<NormalizedSearchResult> = [];
   let discardedSections = 0;
 
   for (const section of sections) {
@@ -52,10 +52,10 @@ export function parseExaSearchText(input: string): ExaTextResults {
   return { results, discardedSections };
 }
 
-function splitSearchSections(input: string): string[] {
+function splitSearchSections(input: string): Array<string> {
   const lines = input.split("\n");
-  const sections: string[] = [];
-  let current: string[] = [];
+  const sections: Array<string> = [];
+  let current: Array<string> = [];
   let sawUrlOrText = false;
 
   for (const line of lines) {
@@ -98,7 +98,7 @@ type LastUsableHeaderRule =
       readonly normalize: (raw: string) => number | undefined;
     };
 
-const EXA_LAST_USABLE_HEADER_RULES: readonly LastUsableHeaderRule[] = [
+const EXA_LAST_USABLE_HEADER_RULES: ReadonlyArray<LastUsableHeaderRule> = [
   { prefix: "Title: ", field: "title", normalize: normalizeNonEmpty },
   { prefix: "URL: ", field: "url", normalize: normalizeNonEmpty },
   { prefix: "Published Date: ", field: "publishedAt", normalize: normalizeMetadataValue },
@@ -150,7 +150,7 @@ function parseSearchSection(section: string): NormalizedSearchResult | undefined
   };
 }
 
-function readLastUsableSectionHeaders(lines: readonly string[]): ExaSectionHeaders {
+function readLastUsableSectionHeaders(lines: ReadonlyArray<string>): ExaSectionHeaders {
   const headers: ExaSectionHeaders = {
     title: undefined,
     url: undefined,
@@ -277,7 +277,7 @@ export class ExaMcpSearchProvider implements SearchProvider {
 
   constructor(private readonly mcp: McpClient) {}
 
-  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+  search(input: SearchInput): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError> {
     return this.mcp
       .callTool("web_search_exa", {
         query: input.query,
@@ -341,7 +341,7 @@ export class ExaApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+  search(input: SearchInput): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError> {
     return readProviderJson(
       this.http.postJson({
         url: EXA_API_SEARCH_URL,

@@ -91,7 +91,7 @@ type QueryWiring = {
   readonly ttl: CacheTtl;
   readonly onFallback: () => void;
   readonly createMcpServer: typeof createSdkMcpServer;
-  readonly catalog: readonly CatalogTool[];
+  readonly catalog: ReadonlyArray<CatalogTool>;
 };
 
 type QueryCapture = {
@@ -102,7 +102,7 @@ type QueryCapture = {
 };
 
 function createQueryCapture(
-  catalog: readonly CatalogTool[],
+  catalog: ReadonlyArray<CatalogTool>,
   controller: AbortController,
   validationRecovery: RunnerOptions["validationRecovery"],
 ): QueryCapture {
@@ -287,7 +287,7 @@ function failedResultEvent(
 
 function terminalEvent(
   result: TurnResult | undefined,
-  calls: readonly DeferredCall[],
+  calls: ReadonlyArray<DeferredCall>,
   apiError: string | undefined,
   batchStopped = false,
   rejectedWindow = false,
@@ -543,7 +543,10 @@ function step(
   capture: QueryCapture,
   callerSignal: AbortSignal | undefined,
   extraUsage: boolean,
-): (progress: QueryProgress, item: QueryItem) => readonly [QueryProgress, readonly QueryStep[]] {
+): (
+  progress: QueryProgress,
+  item: QueryItem,
+) => readonly [QueryProgress, ReadonlyArray<QueryStep>] {
   return (progress, item) => {
     if (!Result.isResult(item)) {
       return [progress, [settle(capture, progress, callerSignal)]];

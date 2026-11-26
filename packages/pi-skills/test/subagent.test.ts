@@ -103,7 +103,7 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
       id = next;
       handlers.session_start?.({ type: "session_start", reason: "startup" }, ctx);
     },
-    freeze(skills: readonly Skill[]) {
+    freeze(skills: ReadonlyArray<Skill>) {
       const head = {
         role: "system",
         content: "",
@@ -117,7 +117,7 @@ function session(store: ToggleStateStore, options: { id: string; cwd: string; pa
 
       projection = { messages: [head, { role: "assistant" }], entries: [] };
     },
-    run(skills: readonly Skill[]) {
+    run(skills: ReadonlyArray<Skill>) {
       const systemPromptOptions = {
         cwd: options.cwd,
         sections: {},

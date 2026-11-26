@@ -14,7 +14,7 @@ import { encodeFrame } from "../protocol/wire.js";
 import { fakeDelay } from "./fake-delay.js";
 
 class BlockedSocket extends Socket {
-  readonly chunks: Buffer[] = [];
+  readonly chunks: Array<Buffer> = [];
   private complete: ((error?: Error | null) => void) | undefined;
   constructor() {
     super();
@@ -84,7 +84,7 @@ function sending(rid: string): Request {
 
 async function fixture() {
   const socket = new BlockedSocket();
-  const disconnected: string[] = [];
+  const disconnected: Array<string> = [];
 
   const connecting = connectTransport(
     {

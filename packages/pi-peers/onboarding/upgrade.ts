@@ -229,7 +229,7 @@ async function rebuilder(
   }
 }
 
-function changed(plan: LocalPlan): [string, string][] {
+function changed(plan: LocalPlan): Array<[string, string]> {
   return [
     ["Machine", visibleText(plan.choices.machineId)],
     ["Scope", visibleText(plan.choices.scopeId)],
@@ -293,7 +293,7 @@ async function editWork(manage: Manage, plan: LocalPlan, step: Step): Promise<Ou
   };
 }
 
-function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
+function editDetails(manage: Manage, plan: LocalPlan | undefined): Array<string> {
   return withTechnical(
     [
       "Applies to every project on this account. Peer messages may wake the model, which costs provider usage.",
@@ -314,7 +314,7 @@ function editDetails(manage: Manage, plan: LocalPlan | undefined): string[] {
   );
 }
 
-function actionRows(manage: Manage, progress: Progress): Row[] {
+function actionRows(manage: Manage, progress: Progress): Array<Row> {
   const { setup, reconnect, pair } = manage;
 
   return [

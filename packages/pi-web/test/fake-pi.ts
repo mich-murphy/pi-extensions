@@ -2,21 +2,21 @@ import type { RegisteredWebTool, WebToolsHandlers, WebToolsRegistration } from "
 import { nativeAuthFixture } from "./native-auth-fixture";
 
 type HandlerLists = {
-  session_start: WebToolsHandlers["session_start"][];
-  session_shutdown: WebToolsHandlers["session_shutdown"][];
+  session_start: Array<WebToolsHandlers["session_start"]>;
+  session_shutdown: Array<WebToolsHandlers["session_shutdown"]>;
 };
 
 export async function fakePi() {
   const fixture = await nativeAuthFixture({ register: false });
   const { registry } = fixture;
-  const tools: RegisteredWebTool[] = [];
+  const tools: Array<RegisteredWebTool> = [];
 
   const handlers: HandlerLists = {
     session_start: [],
     session_shutdown: [],
   };
 
-  const notifications: string[] = [];
+  const notifications: Array<string> = [];
 
   const api: WebToolsRegistration = {
     registerProvider: registry.registerProvider.bind(registry),

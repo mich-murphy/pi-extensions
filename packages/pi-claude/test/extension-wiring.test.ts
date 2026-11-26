@@ -36,16 +36,16 @@ function loadExtension() {
   return { commands, handlers, providers };
 }
 
-async function notices(command: Command | undefined, args = ""): Promise<string[]> {
+async function notices(command: Command | undefined, args = ""): Promise<Array<string>> {
   assert(command !== undefined, "test setup: command not registered");
-  const texts: string[] = [];
+  const texts: Array<string> = [];
   await command(args, { hasUI: true, ui: { notify: (text) => texts.push(text) } });
 
   return texts;
 }
 
 describe("extension wiring", () => {
-  const scratch: string[] = [];
+  const scratch: Array<string> = [];
 
   afterEach(() => {
     vi.unstubAllEnvs();

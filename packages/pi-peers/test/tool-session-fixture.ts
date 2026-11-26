@@ -20,7 +20,7 @@ const config: Configuration = {
 
 export type Listed = { readonly peer: PeerRef; readonly label: string };
 
-export function discoverReply(peers: readonly Listed[]): Reply {
+export function discoverReply(peers: ReadonlyArray<Listed>): Reply {
   return {
     v: 2,
     op: "result",

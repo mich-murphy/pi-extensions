@@ -38,7 +38,7 @@ const INVALID_LIMITS = [null, 0, -1, 1.5, "64000", Number.NaN, Number.POSITIVE_I
 const count = optional(integers({ minValue: 0, maxValue: 6 }));
 const maybeCount = oneOf(count, just(undefined));
 
-function lastReported(values: readonly (number | null | undefined)[]): number | undefined {
+function lastReported(values: ReadonlyArray<number | null | undefined>): number | undefined {
   return values.findLast((value) => Schema.is(Schema.Number)(value));
 }
 

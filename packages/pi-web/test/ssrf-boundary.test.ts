@@ -12,13 +12,13 @@ import {
 const PUBLIC_V4: ApprovedAddress = { address: "93.184.216.34", family: 4 };
 const PAGE = `<html><body><article><p>${"Public page text. ".repeat(20)}</p></article></body></html>`;
 
-type Dns = (hostname: string, call: number) => readonly ApprovedAddress[];
+type Dns = (hostname: string, call: number) => ReadonlyArray<ApprovedAddress>;
 
-const toDispose: { dispose: () => Promise<void> }[] = [];
+const toDispose: Array<{ dispose: () => Promise<void> }> = [];
 
-const LOOPBACK: readonly ApprovedAddress[] = [{ address: "127.0.0.1", family: 4 }];
+const LOOPBACK: ReadonlyArray<ApprovedAddress> = [{ address: "127.0.0.1", family: 4 }];
 
-function answerBy(table: Readonly<Record<string, readonly ApprovedAddress[]>>): Dns {
+function answerBy(table: Readonly<Record<string, ReadonlyArray<ApprovedAddress>>>): Dns {
   return (hostname) => table[hostname] ?? [PUBLIC_V4];
 }
 
@@ -37,10 +37,12 @@ function harness(
     readonly respond?: (url: URL) => Response;
   } = {},
 ) {
-  const lookups: string[] = [];
+  const lookups: Array<string> = [];
 
-  const connections: { readonly url: string; readonly addresses: readonly ApprovedAddress[] }[] =
-    [];
+  const connections: Array<{
+    readonly url: string;
+    readonly addresses: ReadonlyArray<ApprovedAddress>;
+  }> = [];
 
   const transport: PublicWebTransport["Service"] = {
     get: async (url, addresses) => {
@@ -144,7 +146,7 @@ describe("webfetch SSRF boundary", () => {
 
   describe("webfetch pins the connection to the validated addresses", () => {
     test("connects to exactly the addresses it approved, in resolver order", async () => {
-      const answer: readonly ApprovedAddress[] = [
+      const answer: ReadonlyArray<ApprovedAddress> = [
         PUBLIC_V4,
         { address: "2606:2800:220:1::1", family: 6 },
       ];
@@ -164,7 +166,7 @@ describe("webfetch SSRF boundary", () => {
     });
 
     test("every redirect hop validates and pins its own addresses", async () => {
-      const second: readonly ApprovedAddress[] = [{ address: "151.101.1.69", family: 4 }];
+      const second: ReadonlyArray<ApprovedAddress> = [{ address: "151.101.1.69", family: 4 }];
 
       const { tool, lookups, connections } = harness({
         dns: answerBy({ "b.example": second }),

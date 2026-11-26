@@ -96,7 +96,7 @@ export function resolveClaudeExecutable(
 function executableNames(
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform,
-): readonly string[] {
+): ReadonlyArray<string> {
   if (platform !== "win32") {
     return ["claude"];
   }

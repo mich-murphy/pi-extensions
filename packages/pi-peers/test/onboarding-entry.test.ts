@@ -13,9 +13,9 @@ import { extensionFixture } from "./extension-fixture.js";
 import { dialog, nativeAddress, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 function extensionHost(testBackend?: { backend: SetupBackend; description: string }) {
-  const notifications: string[] = [];
-  const entries: string[] = [];
-  const answers: (string | undefined)[] = [];
+  const notifications: Array<string> = [];
+  const entries: Array<string> = [];
+  const answers: Array<string | undefined> = [];
   let idle = true;
   const ui = dialog(answers);
 
@@ -59,7 +59,7 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
     },
     event: async (type: "session_start" | "session_shutdown") =>
       fixture.event(type, { type }, context),
-    command: async (args: string, next: (string | undefined)[] = []) => {
+    command: async (args: string, next: Array<string | undefined> = []) => {
       answers.push(...next);
       const start = notifications.length;
       await fixture.command("peers", args, context);
@@ -74,7 +74,7 @@ function extensionHost(testBackend?: { backend: SetupBackend; description: strin
   };
 }
 
-function identity(messages: string[]) {
+function identity(messages: Array<string>) {
   const status = messages.find((message) => message.includes("Exact runtime:"));
 
   const groups = status?.match(

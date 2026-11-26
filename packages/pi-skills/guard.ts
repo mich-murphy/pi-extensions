@@ -23,7 +23,7 @@ export type ResourceMatcher = {
 type SkillOwner = { readonly resource: ToggleResource } | { readonly disabledSkill: string };
 
 export function disabledResourceMatcher(
-  resources: readonly ToggleResource[],
+  resources: ReadonlyArray<ToggleResource>,
   overrides: ToggleOverrides | undefined,
   manualSkills: ReadonlySet<string>,
   decide?: (resource: ToggleResource) => boolean | undefined,
@@ -133,7 +133,7 @@ export function disabledResourceMatcher(
   };
 }
 
-function persistedPaths(overrides: ToggleOverrides | undefined): readonly string[] {
+function persistedPaths(overrides: ToggleOverrides | undefined): ReadonlyArray<string> {
   return [
     ...(overrides?.files.keys() ?? []),
     ...[...(overrides?.repositories ?? [])].flatMap(([repository, choices]) =>
@@ -152,8 +152,8 @@ function fileIdentity(path: string): string | undefined {
   }
 }
 
-function hardLinkIndex(paths: Iterable<string>): ReadonlyMap<string, readonly ResourcePath[]> {
-  const index = new Map<string, ResourcePath[]>();
+function hardLinkIndex(paths: Iterable<string>): ReadonlyMap<string, ReadonlyArray<ResourcePath>> {
+  const index = new Map<string, Array<ResourcePath>>();
 
   for (const path of new Set(paths)) {
     const identity = fileIdentity(path);

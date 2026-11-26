@@ -84,8 +84,8 @@ function artifactMetadata(target: string) {
   };
 }
 
-export function tar(members: [string, Buffer, number][]): Buffer {
-  const parts: Buffer[] = [];
+export function tar(members: Array<[string, Buffer, number]>): Buffer {
+  const parts: Array<Buffer> = [];
 
   for (const [name, bytes, mode] of members) {
     const header = Buffer.alloc(512);

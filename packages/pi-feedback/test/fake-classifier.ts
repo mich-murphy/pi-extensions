@@ -21,7 +21,7 @@ const jevLatest: ClassifierModel<ClassifierApi> = {
 };
 
 export function fakeClassifier(answer: FakeAnswer, configured = true) {
-  const calls: { model: string; context: ClassifierContext }[] = [];
+  const calls: Array<{ model: string; context: ClassifierContext }> = [];
 
   const registry: ClassifierRegistry = {
     getProviderAuthStatus: () => ({ configured }),

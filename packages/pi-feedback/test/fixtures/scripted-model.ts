@@ -17,7 +17,7 @@ const Script = Schema.Array(
   ),
 );
 
-function stepCalls(index: number): readonly ToolCall[] {
+function stepCalls(index: number): ReadonlyArray<ToolCall> {
   const file = env.PI_FEEDBACK_SCRIPT;
 
   if (file === undefined || file === "") {

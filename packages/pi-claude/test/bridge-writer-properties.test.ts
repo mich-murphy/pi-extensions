@@ -17,7 +17,7 @@ const context = contextFixture({
   tools: [],
 });
 
-const TERMINALS: readonly BridgeEvent[] = [
+const TERMINALS: ReadonlyArray<BridgeEvent> = [
   { type: "done", reason: "stop" },
   { type: "done", reason: "length" },
   { type: "tool_calls", calls: [{ id: "c1", name: "read", arguments: {} }] },
@@ -55,12 +55,12 @@ function drawEvent(tc: TestCase): BridgeEvent {
   return { type: kind, text: tc.draw(sampledFrom(["a", "b", "", "ab"])) };
 }
 
-function deltas(events: readonly BridgeEvent[], kind: "text_delta" | "thinking_delta"): string {
+function deltas(events: ReadonlyArray<BridgeEvent>, kind: "text_delta" | "thinking_delta"): string {
   return events.flatMap((event) => (event.type === kind ? [event.text] : [])).join("");
 }
 
 function checkRun(
-  before: readonly BridgeEvent[],
+  before: ReadonlyArray<BridgeEvent>,
   terminal: BridgeEvent,
   out: Awaited<ReturnType<typeof collect>>,
 ): void {
@@ -94,7 +94,7 @@ function checkRun(
   );
 }
 
-async function collect(events: readonly BridgeEvent[]) {
+async function collect(events: ReadonlyArray<BridgeEvent>) {
   async function* run(): AsyncGenerator<BridgeEvent> {
     yield* events;
   }

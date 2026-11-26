@@ -21,10 +21,10 @@ export function caffeinateSpawner(
   killGraceMs: number,
   startChild: (
     file: string,
-    args: readonly string[],
+    args: ReadonlyArray<string>,
     options: SpawnOptions,
   ) => ChildProcess = spawn,
-): (args: readonly string[]) => CaffeinateProcess {
+): (args: ReadonlyArray<string>) => CaffeinateProcess {
   return (args) => {
     let child: ChildProcess;
 

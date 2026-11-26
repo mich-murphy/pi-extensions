@@ -20,7 +20,7 @@ const HASHED = /^mcp__pi__pi_[0-9a-f]{48}$/u;
 const SEPARATORS = [".", "_", "-", " ", "/", ":", "日", "é", "😀", ""];
 const COMPAT = ["ａ", "Ａ", "ﬁ", "①", "é", "\u0065\u0301", "ǆ", "Ǆ", "İ", "ß", "a", "A", "."];
 
-const VARIANTS: readonly ((name: string) => string)[] = [
+const VARIANTS: ReadonlyArray<(name: string) => string> = [
   (name) => name.toUpperCase(),
   (name) => name.toLowerCase(),
   (name) => name.normalize("NFKC"),
@@ -61,7 +61,7 @@ const nameGen = oneOf(
   }),
 );
 
-function drawNames(tc: TestCase): string[] {
+function drawNames(tc: TestCase): Array<string> {
   const drawn = tc.draw(arrays(nameGen, { minSize: 1, maxSize: 6 }));
   const picks = tc.draw(arrays(integers({ minValue: 0, maxValue: 4 }), { maxSize: 4 }));
   const variants = picks.map((pick, index) => VARIANTS[pick]?.(drawn[index % drawn.length] ?? "x"));
@@ -71,11 +71,11 @@ function drawNames(tc: TestCase): string[] {
   );
 }
 
-function compile(names: readonly string[]): readonly CatalogTool[] {
+function compile(names: ReadonlyArray<string>): ReadonlyArray<CatalogTool> {
   return compileToolCatalog(names.map((name) => ({ name, description: "fixture", parameters })));
 }
 
-function assertDistinctAndWellFormed(names: readonly string[]): void {
+function assertDistinctAndWellFormed(names: ReadonlyArray<string>): void {
   const catalog = compile(names);
   assert.deepEqual(
     catalog.map((entry) => entry.declaration.name),
@@ -99,7 +99,7 @@ function assertDistinctAndWellFormed(names: readonly string[]): void {
   }
 }
 
-function assertOrderIndependent(names: readonly string[]): void {
+function assertOrderIndependent(names: ReadonlyArray<string>): void {
   const forward = new Map(compile(names).map((entry) => [entry.declaration.name, entry.sdkName]));
   const again = new Map(compile(names).map((entry) => [entry.declaration.name, entry.sdkName]));
 
@@ -116,7 +116,7 @@ function assertOrderIndependent(names: readonly string[]): void {
   );
 }
 
-function assertRoundTrip(names: readonly string[]): void {
+function assertRoundTrip(names: ReadonlyArray<string>): void {
   const catalog = compile(names);
   const capture = createDeferredCallCapture(catalog);
 

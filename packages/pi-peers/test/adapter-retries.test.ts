@@ -39,7 +39,7 @@ describe("retryOf window", () => {
     const last = lastRetryMoment();
     expect(retryAllowedAt(last + 1)).toBe(false);
     let now = 0;
-    const offered: unknown[] = [];
+    const offered: Array<unknown> = [];
 
     const state = createState({
       peer: receiver,

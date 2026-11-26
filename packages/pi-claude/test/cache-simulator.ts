@@ -56,18 +56,18 @@ function breakpointTtlMs(cacheControl: SdkPromptBlock["cache_control"]): number 
   return cacheControl.ttl === "1h" ? ONE_HOUR_MS : FIVE_MINUTES_MS;
 }
 
-async function wireBlocks(request: AgentRequest, ttl: CacheTtl): Promise<WireBlock[]> {
+async function wireBlocks(request: AgentRequest, ttl: CacheTtl): Promise<Array<WireBlock>> {
   const [message] = await drain(
     buildPromptStream(request.promptBlocks, request.cacheBreakpoints, ttl),
   );
 
-  const content: CacheContentBlock[] = [
+  const content: Array<CacheContentBlock> = [
     { type: "tools", text: request.toolDescription },
     { type: "system", text: request.systemPrompt },
     ...sdkContentRecords(message),
   ];
 
-  const blocks: WireBlock[] = [];
+  const blocks: Array<WireBlock> = [];
   let key = "";
   let end = 0;
 
@@ -88,7 +88,7 @@ function liveEntry(store: CacheStore, key: string, now: number): CacheEntry | un
 
 function longestHit(
   store: CacheStore,
-  blocks: readonly WireBlock[],
+  blocks: ReadonlyArray<WireBlock>,
   breakpoint: Breakpoint,
   now: number,
 ) {
@@ -107,8 +107,8 @@ function longestHit(
 
 function readCached(
   store: CacheStore,
-  blocks: readonly WireBlock[],
-  breakpoints: readonly Breakpoint[],
+  blocks: ReadonlyArray<WireBlock>,
+  breakpoints: ReadonlyArray<Breakpoint>,
   now: number,
 ): number {
   let read = 0;
@@ -125,7 +125,11 @@ function readCached(
   return read;
 }
 
-function writeUncached(store: CacheStore, breakpoints: readonly Breakpoint[], now: number): number {
+function writeUncached(
+  store: CacheStore,
+  breakpoints: ReadonlyArray<Breakpoint>,
+  now: number,
+): number {
   let furthest = 0;
 
   for (const { key, end, ttlMs } of breakpoints) {

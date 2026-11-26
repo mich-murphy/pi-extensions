@@ -43,7 +43,7 @@ const deploy: Skill = {
 
 const options: BuildSystemPromptOptions = { cwd, skills: [research] };
 
-const temporaryDirectories: string[] = [];
+const temporaryDirectories: Array<string> = [];
 
 type CommandOptions = Parameters<ToggleRegistration["registerCommand"]>[1];
 
@@ -51,7 +51,7 @@ async function selectFirstDialogItem(
   factory: ToggleDialogFactory,
   width = 120,
   group = 1,
-): Promise<readonly string[]> {
+): Promise<ReadonlyArray<string>> {
   initTheme();
   const component = await factory(testTui(), testTheme(), testKeybindings(), () => undefined);
 
@@ -68,10 +68,10 @@ async function selectFirstDialogItem(
 
 async function driveDialog(
   factory: ToggleDialogFactory,
-  keys: readonly string[],
+  keys: ReadonlyArray<string>,
   width = 120,
   group = 1,
-): Promise<{ readonly closed: boolean; readonly rendered: readonly string[] }> {
+): Promise<{ readonly closed: boolean; readonly rendered: ReadonlyArray<string> }> {
   initTheme();
   let closed = false;
 
@@ -96,11 +96,11 @@ const ESCAPE = "\u001b";
 const DOWN = "\u001b[B";
 const SGR = new RegExp(String.raw`${ESCAPE}\[[0-9;]*m`, "gu");
 
-function plain(lines: readonly string[]): string[] {
+function plain(lines: ReadonlyArray<string>): Array<string> {
   return lines.map((line) => line.replaceAll(SGR, ""));
 }
 
-function hintLines(lines: readonly string[]): string[] {
+function hintLines(lines: ReadonlyArray<string>): Array<string> {
   return plain(lines).filter((line) => /\bEsc\b/u.test(line));
 }
 
@@ -114,9 +114,9 @@ function overrides(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleO
 }
 
 function storeWith(entries: Readonly<Record<string, ToggleValue>> = {}): ToggleStateStore & {
-  readonly writes: (readonly [string, ToggleValue | "default"])[];
+  readonly writes: Array<readonly [string, ToggleValue | "default"]>;
 } {
-  const writes: (readonly [string, ToggleValue | "default"])[] = [];
+  const writes: Array<readonly [string, ToggleValue | "default"]> = [];
 
   return {
     writes,
@@ -143,7 +143,7 @@ function failure(operation: "load" | "update"): ToggleStateResult {
 function harness(store: ToggleStateStore, projectDirectory = cwd) {
   const handlers: Partial<ToggleHandlers> = {};
   const commands = new Map<string, CommandOptions>();
-  const notifications: string[] = [];
+  const notifications: Array<string> = [];
 
   const piMock = {
     on<K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) {
@@ -370,7 +370,7 @@ describe("extension lifecycle", () => {
   });
 
   test("restores the row and reports once when persistence fails", async () => {
-    let rendered: readonly string[] = [];
+    let rendered: ReadonlyArray<string> = [];
 
     const testHarness = harness({
       load: () => Result.succeed(overrides({ [skillPath]: "disabled" })),
@@ -392,7 +392,7 @@ describe("extension lifecycle", () => {
 
   test("shows manual-only skills as read-only rows even with a stale enabled override", async () => {
     const store = storeWith({ [skillPath]: "enabled" });
-    let rendered: readonly string[] = [];
+    let rendered: ReadonlyArray<string> = [];
 
     await harness(store).runCommand("", {
       promptOptions: { cwd, skills: [{ ...research, disableModelInvocation: true }] },
@@ -586,7 +586,7 @@ describe("extension lifecycle", () => {
       };
     });
 
-    const screens: (readonly [string, readonly string[], string])[] = [];
+    const screens: Array<readonly [string, ReadonlyArray<string>, string]> = [];
 
     for (const [name, keys, hint] of [
       ["open", [], "  Type to search · Enter toggle · Esc back"],
@@ -642,7 +642,7 @@ describe("extension lifecycle", () => {
 
   test("Esc with an empty search closes the menu without writing", async () => {
     const store = storeWith();
-    const closed: boolean[] = [];
+    const closed: Array<boolean> = [];
 
     await harness(store).runCommand("", {
       custom: async (factory) => {
@@ -662,7 +662,7 @@ describe("extension lifecycle", () => {
   });
 
   test("a failed save restores every row to the persisted policy", async () => {
-    let rendered: readonly string[] = [];
+    let rendered: ReadonlyArray<string> = [];
 
     const testHarness = harness({
       load: () => Result.succeed(overrides({ [skillPath]: "disabled", [projectPath]: "enabled" })),
@@ -705,7 +705,7 @@ describe("extension lifecycle", () => {
       sourceInfo: { ...repo.skill.sourceInfo, scope: "project" },
     };
 
-    const descriptions: string[] = [];
+    const descriptions: Array<string> = [];
 
     for (const skill of [homeSkill, repoSkill]) {
       await harness(storeWith()).runCommand("", {

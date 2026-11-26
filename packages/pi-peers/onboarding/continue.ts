@@ -46,15 +46,15 @@ const PUBLIC = [
 
 const isString = Schema.is(Schema.String);
 
-function publicFacts(available: Schema.JsonObject): [string, string][] {
-  return PUBLIC.flatMap(([key, label]): [string, string][] => {
+function publicFacts(available: Schema.JsonObject): Array<[string, string]> {
+  return PUBLIC.flatMap(([key, label]): Array<[string, string]> => {
     const value = available[key];
 
     return isString(value) ? [[label, visibleText(value)]] : [];
   });
 }
 
-export function exchangeFacts(pairing: Pairing): [string, string][] {
+export function exchangeFacts(pairing: Pairing): Array<[string, string]> {
   return publicFacts({ ...pairing.output, ...pairing.inspection });
 }
 
@@ -64,7 +64,7 @@ export function exchangeNext(pairing: Pairing): string {
     : "Send the request file and its SHA256 to the computer that made the pair. When its bundle arrives, choose Setup › Import public bundle.";
 }
 
-function exchangeLines(pairing: Pairing): string[] {
+function exchangeLines(pairing: Pairing): Array<string> {
   return withTechnical(
     [
       `Peer: ${visibleText(pairing.intent.peerMachineId)}. These files are public; never send a private key.`,
@@ -254,7 +254,7 @@ async function maintain(context: PairContext, action: Maintenance, step: Step): 
   };
 }
 
-function maintenanceDetails(context: PairContext, operation: PairOperation): string[] {
+function maintenanceDetails(context: PairContext, operation: PairOperation): Array<string> {
   const activates = operation !== "export";
 
   return withTechnical(
@@ -278,7 +278,7 @@ type MaintenanceForm = {
   readonly note: string;
   readonly operation: PairOperation;
   readonly label: string;
-  readonly rows?: () => readonly Row[];
+  readonly rows?: () => ReadonlyArray<Row>;
   readonly gate: () => Gate<Maintenance>;
 };
 
@@ -590,7 +590,7 @@ function oldRoot(pairing: Pairing): string | undefined {
     : (pairing.intent.confirmedRootSha256 ?? pairing.intent.existing?.confirmedRootSha256);
 }
 
-function renewalLines(pairing: Pairing): string[] {
+function renewalLines(pairing: Pairing): Array<string> {
   return withTechnical(
     [
       `Send the request file ${visibleText(join(pairing.runtimeDir, "request.json"))} and its SHA256 to the computer that made the pair.`,
@@ -607,7 +607,7 @@ function renewalLines(pairing: Pairing): string[] {
   );
 }
 
-export function pairRows(context: PairContext, progress: Progress): Row[] {
+export function pairRows(context: PairContext, progress: Progress): Array<Row> {
   const { pairing } = context;
 
   return [

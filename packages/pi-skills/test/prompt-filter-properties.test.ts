@@ -25,7 +25,7 @@ function skillAt(index: number, description: string): Skill {
   };
 }
 
-function renderContext(files: readonly ContextFile[]): string {
+function renderContext(files: ReadonlyArray<ContextFile>): string {
   if (files.length === 0) {
     return "";
   }
@@ -38,13 +38,13 @@ function renderContext(files: readonly ContextFile[]): string {
   return `\n\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${blocks.join("")}</project_context>\n`;
 }
 
-function renderSkills(skills: readonly Skill[]): string {
+function renderSkills(skills: ReadonlyArray<Skill>): string {
   return formatSkillsForPrompt([...skills], "read");
 }
 
 type Scenario = {
-  readonly files: readonly ContextFile[];
-  readonly skills: readonly Skill[];
+  readonly files: ReadonlyArray<ContextFile>;
+  readonly skills: ReadonlyArray<Skill>;
   readonly head: string;
   readonly middle: string;
   readonly tail: string;
@@ -71,11 +71,15 @@ function drawScenario(tc: TestCase): Scenario {
   };
 }
 
-function promptOf(scenario: Scenario, files: readonly ContextFile[], skills: readonly Skill[]) {
+function promptOf(
+  scenario: Scenario,
+  files: ReadonlyArray<ContextFile>,
+  skills: ReadonlyArray<Skill>,
+) {
   return `${scenario.head}${renderContext(files)}${scenario.middle}${renderSkills(skills)}${scenario.tail}`;
 }
 
-function legacyOptions(files: readonly ContextFile[], skills: readonly Skill[]) {
+function legacyOptions(files: ReadonlyArray<ContextFile>, skills: ReadonlyArray<Skill>) {
   const options: BuildSystemPromptOptions = {
     cwd: "/work",
     contextFiles: [...files],
@@ -96,8 +100,8 @@ function shown(scenario: Scenario, hidden: ReadonlySet<string>) {
 function legacyPrompt(
   scenario: Scenario,
   systemPrompt: string,
-  files: readonly ContextFile[],
-  skills: readonly Skill[],
+  files: ReadonlyArray<ContextFile>,
+  skills: ReadonlyArray<Skill>,
   hidden: ReadonlySet<string>,
 ): string {
   const options = legacyOptions(files, skills);

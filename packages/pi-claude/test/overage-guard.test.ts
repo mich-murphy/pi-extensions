@@ -20,7 +20,7 @@ function limit(info: RateLimitInfo) {
   return { type: "rate_limit_event", rate_limit_info: info, uuid: "u", session_id: "s" };
 }
 
-async function run(messages: readonly unknown[], allow: boolean) {
+async function run(messages: ReadonlyArray<unknown>, allow: boolean) {
   let signal: AbortSignal | undefined;
 
   async function* query(params: Parameters<RunSdkQuery>[0]) {
@@ -39,7 +39,7 @@ async function run(messages: readonly unknown[], allow: boolean) {
   return { events, signal };
 }
 
-function lastFailure(events: readonly BridgeEvent[]) {
+function lastFailure(events: ReadonlyArray<BridgeEvent>) {
   const last = events.at(-1);
 
   if (last?.type !== "failed") {
@@ -49,7 +49,7 @@ function lastFailure(events: readonly BridgeEvent[]) {
   return last.error;
 }
 
-function failureTags(events: readonly BridgeEvent[]): string[] {
+function failureTags(events: ReadonlyArray<BridgeEvent>): Array<string> {
   return events.flatMap((event) => (event.type === "failed" ? [event.error._tag] : []));
 }
 

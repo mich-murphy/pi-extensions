@@ -191,13 +191,13 @@ function withLoader(run: (load: Loader) => void): void {
 
 type Action = "enabled" | "disabled" | "default" | "toggle-file" | "probe";
 
-const ACTIONS: readonly Action[] = ["enabled", "disabled", "default", "toggle-file", "probe"];
+const ACTIONS: ReadonlyArray<Action> = ["enabled", "disabled", "default", "toggle-file", "probe"];
 const SLOTS = 4;
 
 type Fixture = {
   readonly statePath: string;
   readonly store: ToggleStateFile;
-  readonly paths: readonly ResourcePath[];
+  readonly paths: ReadonlyArray<ResourcePath>;
   readonly repository: string;
   readonly root: string;
   readonly model: Map<ResourcePath, ToggleValue>;
@@ -278,7 +278,7 @@ function probe(fixture: Fixture, path: ResourcePath): void {
 type Workspace = {
   readonly statePath: string;
   readonly root: string;
-  readonly paths: readonly ResourcePath[];
+  readonly paths: ReadonlyArray<ResourcePath>;
 };
 
 function withWorkspace(run: (workspace: Workspace) => void): void {
@@ -305,7 +305,10 @@ function resetWorkspace(workspace: Workspace): void {
   }
 }
 
-function assertSequence(workspace: Workspace, steps: readonly (readonly [number, Action])[]): void {
+function assertSequence(
+  workspace: Workspace,
+  steps: ReadonlyArray<readonly [number, Action]>,
+): void {
   resetWorkspace(workspace);
   const { statePath, root, paths } = workspace;
 
@@ -341,7 +344,7 @@ function applyAction(fixture: Fixture, path: ResourcePath, action: Action): void
   }
 }
 
-function drawSteps(tc: TestCase): (readonly [number, Action])[] {
+function drawSteps(tc: TestCase): Array<readonly [number, Action]> {
   return tc.draw(
     arrays(tuples(integers({ minValue: 0, maxValue: SLOTS - 1 }), sampledFrom(ACTIONS)), {
       maxSize: 14,

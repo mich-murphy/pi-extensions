@@ -24,7 +24,7 @@ export class PublicWebTransport extends Context.Service<
   {
     readonly get: (
       url: URL,
-      addresses: readonly ApprovedAddress[],
+      addresses: ReadonlyArray<ApprovedAddress>,
       request: {
         readonly headers: Readonly<Record<string, string>>;
         readonly signal: AbortSignal;
@@ -42,7 +42,7 @@ export class PublicWebTransport extends Context.Service<
 
 async function sendAddressBoundRequest(
   url: URL,
-  addresses: readonly ApprovedAddress[],
+  addresses: ReadonlyArray<ApprovedAddress>,
   request: AddressBoundRequest,
 ): Promise<Response> {
   assertConnectionTarget(url, addresses);
@@ -74,7 +74,7 @@ async function sendAddressBoundRequest(
   });
 }
 
-function assertConnectionTarget(url: URL, addresses: readonly ApprovedAddress[]): void {
+function assertConnectionTarget(url: URL, addresses: ReadonlyArray<ApprovedAddress>): void {
   if (addresses.length === 0) {
     throw Object.assign(new Error("No approved address is available"), { code: "ENOTFOUND" });
   }
@@ -94,7 +94,7 @@ function assertConnectionTarget(url: URL, addresses: readonly ApprovedAddress[])
   }
 }
 
-function approvedAddressLookup(addresses: readonly ApprovedAddress[]): LookupFunction {
+function approvedAddressLookup(addresses: ReadonlyArray<ApprovedAddress>): LookupFunction {
   return (_hostname, options, callback) => {
     const requestedFamily = options.family === 4 || options.family === 6 ? options.family : 0;
 
@@ -184,7 +184,7 @@ type ContentDecodingPlan =
   | { readonly kind: "untouched" }
   | {
       readonly kind: "decode";
-      readonly codings: readonly [CompressionCoding, ...CompressionCoding[]];
+      readonly codings: readonly [CompressionCoding, ...Array<CompressionCoding>];
     };
 
 function contentDecodingPlan(contentEncoding: string | null): ContentDecodingPlan {
@@ -194,7 +194,7 @@ function contentDecodingPlan(contentEncoding: string | null): ContentDecodingPla
       .map((encoding) => encoding.trim().toLowerCase())
       .filter(Boolean) ?? [];
 
-  const codings: CompressionCoding[] = [];
+  const codings: Array<CompressionCoding> = [];
 
   for (const encoding of encodings) {
     switch (encoding) {

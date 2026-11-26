@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const CLI = new URL("../cli.ts", import.meta.url).pathname;
 const claudeGroup = groupId("pi-claude", "read: ENOENT");
 
-function write(file: string, events: readonly LedgerEvent[]): void {
+function write(file: string, events: ReadonlyArray<LedgerEvent>): void {
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, events.map((event) => `${JSON.stringify(event)}\n`).join(""));
 }
@@ -24,7 +24,7 @@ describe("pi-feedback commands", () => {
   let root: string;
   let io: CliIo & { stdout: string; stderr: string };
 
-  async function run(...args: string[]): Promise<number> {
+  async function run(...args: Array<string>): Promise<number> {
     io.stdout = "";
     io.stderr = "";
 

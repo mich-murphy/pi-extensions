@@ -84,7 +84,7 @@ export type ToggleHandlers = {
   readonly resources_discover: (
     event: ResourcesDiscoverEvent,
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-  ) => Promise<{ skillPaths: string[] } | undefined>;
+  ) => Promise<{ skillPaths: Array<string> } | undefined>;
   readonly before_agent_start: (event: PromptFilterEvent, ctx: PromptContext) => PromptFilterResult;
   readonly tool_call: (
     event: GuardedToolCall,
@@ -196,7 +196,7 @@ function createFailureReporter(): (ctx: UiContext, failure: string | undefined) 
 
 class PiSkills {
   private contributedSkills: ReadonlySet<ResourcePath> = new Set();
-  private resources: readonly ToggleResource[] = [];
+  private resources: ReadonlyArray<ToggleResource> = [];
   private readonly manualSkills = new Set<string>();
   private readonly reportStateFailure = createFailureReporter();
   private readonly reportPromptFailure = createFailureReporter();
@@ -222,7 +222,7 @@ class PiSkills {
 
   async discover(
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-  ): Promise<{ skillPaths: string[] } | undefined> {
+  ): Promise<{ skillPaths: Array<string> } | undefined> {
     const started = performance.now();
     const result = await this.contributeProjectSkills(ctx);
     this.debug?.({
@@ -237,7 +237,7 @@ class PiSkills {
 
   async contributeProjectSkills(
     ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
-  ): Promise<{ skillPaths: string[] } | undefined> {
+  ): Promise<{ skillPaths: Array<string> } | undefined> {
     if (!ctx.isProjectTrusted()) {
       this.contributedSkills = new Set();
 
@@ -595,13 +595,13 @@ class PiSkills {
     );
   }
 
-  private readPath(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
+  private readPath(event: GuardedToolCall, ctx: GuardContext): ReadonlyArray<string> {
     return event.toolName === "read" && isReadInput(event.input)
       ? [toolPath(event.input.path, ctx.cwd)]
       : [];
   }
 
-  private subagentShellReads(event: GuardedToolCall, ctx: GuardContext): readonly string[] {
+  private subagentShellReads(event: GuardedToolCall, ctx: GuardContext): ReadonlyArray<string> {
     return isShellInput(event.input) && isSubagentSession(ctx)
       ? pathsReadByCommand(event.input.command, ctx.cwd)
       : [];
@@ -609,8 +609,8 @@ class PiSkills {
 
   private async nestedInstructions(
     cwd: string,
-    loaded: readonly ToggleResource[],
-  ): Promise<readonly ToggleResource[]> {
+    loaded: ReadonlyArray<ToggleResource>,
+  ): Promise<ReadonlyArray<ToggleResource>> {
     const root = new RepositoryLocator().worktreeRoot(resourcePathId(cwd, cwd));
 
     if (root === undefined) {
@@ -702,7 +702,7 @@ function okValue(result: ToggleStateResult): ToggleOverrides | undefined {
 
 function disabledIds(
   loaded: ToggleOverrides,
-  resources: readonly ToggleResource[],
+  resources: ReadonlyArray<ToggleResource>,
 ): ReadonlySet<ResourcePath> {
   const policy = new ResourcePolicy(loaded);
 
@@ -712,9 +712,9 @@ function disabledIds(
 }
 
 function withNestedInstructions(
-  loaded: readonly ToggleResource[],
-  nested: readonly ToggleResource[],
-): readonly ToggleResource[] {
+  loaded: ReadonlyArray<ToggleResource>,
+  nested: ReadonlyArray<ToggleResource>,
+): ReadonlyArray<ToggleResource> {
   const index = loaded.findIndex(
     (resource) => resource.origin === "project" && resource.kind === "skill",
   );

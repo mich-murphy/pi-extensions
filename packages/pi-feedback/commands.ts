@@ -24,7 +24,7 @@ function isLayer(value: string | undefined): value is Layer {
   return LAYERS.some((layer) => layer === value);
 }
 
-async function readAll(files: readonly string[]): Promise<LedgerRead> {
+async function readAll(files: ReadonlyArray<string>): Promise<LedgerRead> {
   const reads = await Promise.all(files.map(async (file) => readLedger(file)));
 
   return {
@@ -33,7 +33,7 @@ async function readAll(files: readonly string[]): Promise<LedgerRead> {
   };
 }
 
-function row(group: Group): string[] {
+function row(group: Group): Array<string> {
   return [
     group.ready ? "yes" : "no",
     String(group.rank),
@@ -46,7 +46,7 @@ function row(group: Group): string[] {
   ];
 }
 
-function formatGroups(groups: readonly Group[]): string {
+function formatGroups(groups: ReadonlyArray<Group>): string {
   if (groups.length === 0) {
     return "No open groups.\n";
   }
@@ -68,7 +68,7 @@ function formatGroups(groups: readonly Group[]): string {
   return `${lines.join("\n")}\n`;
 }
 
-async function queue(args: readonly string[], io: CliIo): Promise<number> {
+async function queue(args: ReadonlyArray<string>, io: CliIo): Promise<number> {
   const options = new Set(args.filter((arg) => arg.startsWith("--")));
   const unknown = [...options].find((option) => !QUEUE_OPTIONS.has(option));
 
@@ -106,7 +106,7 @@ async function knownGroup(io: CliIo, group: string): Promise<boolean> {
   return false;
 }
 
-async function resolve(args: readonly string[], io: CliIo): Promise<number> {
+async function resolve(args: ReadonlyArray<string>, io: CliIo): Promise<number> {
   const [group, commit, layer, ...extra] = args;
 
   if (group === undefined || commit === undefined || !isLayer(layer) || extra.length > 0) {
@@ -125,7 +125,7 @@ async function resolve(args: readonly string[], io: CliIo): Promise<number> {
   return 0;
 }
 
-async function reopen(args: readonly string[], io: CliIo): Promise<number> {
+async function reopen(args: ReadonlyArray<string>, io: CliIo): Promise<number> {
   const [group, ...words] = args;
   const reason = words.join(" ").trim();
 
@@ -147,7 +147,7 @@ async function reopen(args: readonly string[], io: CliIo): Promise<number> {
 
 const COMMANDS = new Map(Object.entries({ queue, resolve, reopen }));
 
-export async function runCli(args: readonly string[], io: CliIo): Promise<number> {
+export async function runCli(args: ReadonlyArray<string>, io: CliIo): Promise<number> {
   const [command = "help", ...rest] = args;
   const run = COMMANDS.get(command);
 

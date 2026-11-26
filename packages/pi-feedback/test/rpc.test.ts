@@ -47,7 +47,7 @@ const decodeAddress = Schema.decodeUnknownOption(Schema.Struct({ port: Schema.Nu
 async function answer(
   request: IncomingMessage,
   response: ServerResponse,
-  requests: ClassifierRequest[],
+  requests: Array<ClassifierRequest>,
 ): Promise<void> {
   const parsed = Schema.decodeUnknownSync(Schema.fromJsonString(ClassifierRequest))(
     await text(request),
@@ -63,7 +63,7 @@ async function answer(
   response.end(JSON.stringify({ answers }));
 }
 
-function stubTypeSafe(requests: ClassifierRequest[]): Server {
+function stubTypeSafe(requests: Array<ClassifierRequest>): Server {
   return createServer((request: IncomingMessage, response: ServerResponse) => {
     void answer(request, response, requests);
   });
@@ -79,10 +79,10 @@ async function listen(server: Server): Promise<number> {
 
 async function ledgerUntil(
   file: string,
-  done: (events: readonly LedgerEvent[]) => boolean,
-): Promise<readonly LedgerEvent[]> {
+  done: (events: ReadonlyArray<LedgerEvent>) => boolean,
+): Promise<ReadonlyArray<LedgerEvent>> {
   const deadline = Date.now() + TIMEOUT / 2;
-  let events: readonly LedgerEvent[] = [];
+  let events: ReadonlyArray<LedgerEvent> = [];
 
   while (Date.now() < deadline) {
     ({ events } = await readLedger(file));
@@ -100,16 +100,16 @@ async function ledgerUntil(
 }
 
 function ofType<T extends LedgerEvent["type"]>(
-  events: readonly LedgerEvent[],
+  events: ReadonlyArray<LedgerEvent>,
   type: T,
-): Extract<LedgerEvent, { readonly type: T }>[] {
+): Array<Extract<LedgerEvent, { readonly type: T }>> {
   return events.filter(
     (event): event is Extract<LedgerEvent, { readonly type: T }> => event.type === type,
   );
 }
 
 describe("pi-feedback in a real Pi over RPC", () => {
-  const requests: ClassifierRequest[] = [];
+  const requests: Array<ClassifierRequest> = [];
   const server = stubTypeSafe(requests);
   let root: string;
   let agentDir: string;

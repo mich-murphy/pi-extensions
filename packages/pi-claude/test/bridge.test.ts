@@ -17,9 +17,9 @@ const context = contextFixture({
 });
 
 async function piEvents(
-  events: readonly BridgeEvent[],
+  events: ReadonlyArray<BridgeEvent>,
   options: SimpleStreamOptions = {},
-): Promise<AssistantMessageEvent[]> {
+): Promise<Array<AssistantMessageEvent>> {
   async function* run(): AsyncGenerator<BridgeEvent> {
     yield* events;
   }
@@ -57,11 +57,11 @@ function streamOf(event: BridgeEvent): AssistantMessageEventStream {
   return createAgentSdkStream({ model: sonnet, context, options: {}, run });
 }
 
-function contentIndexes(events: readonly AssistantMessageEvent[]): number[] {
+function contentIndexes(events: ReadonlyArray<AssistantMessageEvent>): Array<number> {
   return events.flatMap((event) => ("contentIndex" in event ? [event.contentIndex] : []));
 }
 
-function terminalOf(events: readonly AssistantMessageEvent[]) {
+function terminalOf(events: ReadonlyArray<AssistantMessageEvent>) {
   const terminal = events.at(-1);
 
   if (terminal?.type === "done") {

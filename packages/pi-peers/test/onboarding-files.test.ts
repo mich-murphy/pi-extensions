@@ -22,7 +22,7 @@ try {
 }
 `;
 
-const roots: string[] = [];
+const roots: Array<string> = [];
 
 async function fixtureRoot(): Promise<string> {
   const root = await mkdtemp(path.join(await realpath(os.tmpdir()), "pi-files-test-"));

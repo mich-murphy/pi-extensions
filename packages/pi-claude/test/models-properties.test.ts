@@ -8,7 +8,7 @@ import { minimumCacheableTokensFor, undatedModelId } from "../models";
 
 const settings = propertySettings(200);
 
-const KNOWN: readonly (readonly [string, number])[] = [
+const KNOWN: ReadonlyArray<readonly [string, number]> = [
   ["claude-5.5-sonnet", 512],
   ["claude-5.5-opus", 512],
   ["claude-5.2-fable", 512],

@@ -86,7 +86,7 @@ export function gatewayEnvironment(): NodeJS.ProcessEnv {
 
 export async function validateExecutable(
   executable: string,
-  requiredCapabilities: readonly string[] = GATEWAY_LOCAL_SETUP_CAPABILITIES,
+  requiredCapabilities: ReadonlyArray<string> = GATEWAY_LOCAL_SETUP_CAPABILITIES,
 ): Promise<void> {
   if (!isAbsolute(executable)) {
     throw new Error("Gateway executable must be absolute");

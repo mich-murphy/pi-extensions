@@ -8,7 +8,7 @@ const WORD_END = /[\s;&|()<>]/u;
 const FILE_DESCRIPTOR = /\d+(?=[<>])/uy;
 const GROUP_PREFIXES = new Set(["!", "if", "then", "elif", "else", "do", "while", "until"]);
 
-type WrapperOptions = { flags: readonly string[]; values: readonly string[] };
+type WrapperOptions = { flags: ReadonlyArray<string>; values: ReadonlyArray<string> };
 
 const WRAPPERS = new Map<string, WrapperOptions>(
   Object.entries({
@@ -29,7 +29,7 @@ function assignment(word: Word | undefined): boolean {
   return word !== undefined && /^[A-Za-z_]\w*=/u.test(word.text);
 }
 
-function wrapperEnd(words: readonly Word[], start: number, name: string): number {
+function wrapperEnd(words: ReadonlyArray<Word>, start: number, name: string): number {
   const options = WRAPPERS.get(name);
 
   if (!options) {
@@ -62,7 +62,7 @@ function wrapperEnd(words: readonly Word[], start: number, name: string): number
 }
 
 function optionWidth(
-  words: readonly Word[],
+  words: ReadonlyArray<Word>,
   offset: number,
   name: string,
   options: WrapperOptions,
@@ -76,7 +76,7 @@ function optionWidth(
   return options.values.includes(text) && words[offset + 1] !== undefined ? 2 : 0;
 }
 
-function commandWords(words: readonly Word[]): readonly Word[] {
+function commandWords(words: ReadonlyArray<Word>): ReadonlyArray<Word> {
   let offset = 0;
   let shellPrefixes = true;
 
@@ -109,7 +109,7 @@ function commandWords(words: readonly Word[]): readonly Word[] {
   return words.slice(offset);
 }
 
-function isDiscovery(words: readonly Word[]): boolean {
+function isDiscovery(words: ReadonlyArray<Word>): boolean {
   const name = words[0]?.text.split("/").at(-1);
 
   if (name === "which") {
@@ -149,10 +149,10 @@ class ShellScan {
       return { discovered: false, blocked: true };
     }
 
-    let words: Word[] = [];
+    let words: Array<Word> = [];
     let discovered = false;
-    const heredocs: Heredoc[] = [];
-    const inputs: Word[] = [];
+    const heredocs: Array<Heredoc> = [];
+    const inputs: Array<Word> = [];
 
     const finish = () => {
       const executable = commandWords(words);
@@ -200,7 +200,7 @@ class ShellScan {
     return { discovered, blocked: this.blocked };
   }
 
-  private reservedBrace(word: Word, words: readonly Word[]): boolean {
+  private reservedBrace(word: Word, words: ReadonlyArray<Word>): boolean {
     return (
       !word.quoted &&
       word.text === "{" &&
@@ -210,8 +210,8 @@ class ShellScan {
 
   private skipToken(
     character: string,
-    heredocs: Heredoc[],
-    inputs: Word[],
+    heredocs: Array<Heredoc>,
+    inputs: Array<Word>,
     depth: number,
   ): boolean {
     FILE_DESCRIPTOR.lastIndex = this.position;
@@ -438,7 +438,7 @@ class ShellScan {
     return { discovered, blocked: this.blocked };
   }
 
-  private readHeredocs(heredocs: Heredoc[], depth: number): void {
+  private readHeredocs(heredocs: Array<Heredoc>, depth: number): void {
     for (const heredoc of heredocs.splice(0)) {
       const body = this.heredocBody(heredoc);
 
@@ -458,7 +458,7 @@ class ShellScan {
   }
 
   private heredocBody(heredoc: Heredoc): string {
-    const lines: string[] = [];
+    const lines: Array<string> = [];
 
     while (this.position < this.source.length) {
       let line = this.line();

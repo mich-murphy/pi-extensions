@@ -14,7 +14,7 @@ const LABELS = ["evil", "notevil", "com", "org", "a", "b", "EVIL", "Com"];
 const labelsGenerator = (minSize: number, maxSize: number) =>
   arrays(sampledFrom(LABELS), { minSize, maxSize });
 
-function toUrl(labels: readonly string[], trailingDot: boolean) {
+function toUrl(labels: ReadonlyArray<string>, trailingDot: boolean) {
   const parsed = parsePublicHttpUrl(`https://${labels.join(".")}${trailingDot ? "." : ""}/x`);
 
   if (Result.isFailure(parsed)) {
@@ -24,9 +24,9 @@ function toUrl(labels: readonly string[], trailingDot: boolean) {
   return parsed.success;
 }
 
-const lower = (labels: readonly string[]) => labels.map((label) => label.toLowerCase());
+const lower = (labels: ReadonlyArray<string>) => labels.map((label) => label.toLowerCase());
 
-function matches(host: readonly string[], entry: readonly string[]): boolean {
+function matches(host: ReadonlyArray<string>, entry: ReadonlyArray<string>): boolean {
   const h = lower(host);
   const e = lower(entry);
 
@@ -35,7 +35,11 @@ function matches(host: readonly string[], entry: readonly string[]): boolean {
   );
 }
 
-function expectedAllowed(host: readonly string[], allow: string[][], deny: string[][]): boolean {
+function expectedAllowed(
+  host: ReadonlyArray<string>,
+  allow: Array<Array<string>>,
+  deny: Array<Array<string>>,
+): boolean {
   if (deny.some((entry) => matches(host, entry))) {
     return false;
   }
@@ -43,21 +47,26 @@ function expectedAllowed(host: readonly string[], allow: string[][], deny: strin
   return allow.length === 0 || allow.some((entry) => matches(host, entry));
 }
 
-const toPolicy = (allow: string[][], deny: string[][]): DomainPolicy => ({
+const toPolicy = (allow: Array<Array<string>>, deny: Array<Array<string>>): DomainPolicy => ({
   allow: allow.map((entry) => entry.join(".").toLowerCase()),
   deny: deny.map((entry) => entry.join(".").toLowerCase()),
 });
 
-type Names = string[][];
+type Names = Array<Array<string>>;
 
 const okFor = (url: ReturnType<typeof toUrl>, allow: Names, deny: Names) =>
   Result.isSuccess(checkDomainPolicy(url, toPolicy(allow, deny)));
 
-function checkVerdict(host: string[], allow: Names, deny: Names, dot: boolean): void {
+function checkVerdict(host: Array<string>, allow: Names, deny: Names, dot: boolean): void {
   assert.equal(okFor(toUrl(host, dot), allow, deny), expectedAllowed(host, allow, deny));
 }
 
-function checkMonotonic(host: string[], allow: Names, deny: Names, extra: string[]): void {
+function checkMonotonic(
+  host: Array<string>,
+  allow: Names,
+  deny: Names,
+  extra: Array<string>,
+): void {
   const url = toUrl(host, false);
 
   if (!okFor(url, allow, deny)) {

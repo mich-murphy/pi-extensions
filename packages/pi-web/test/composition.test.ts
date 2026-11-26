@@ -31,7 +31,7 @@ async function composedExtension() {
 }
 
 describe("the composed extension", () => {
-  const providerCalls: ProviderCall[] = [];
+  const providerCalls: Array<ProviderCall> = [];
 
   beforeEach(() => {
     for (const variable of ["EXA_API_KEY", "PARALLEL_API_KEY", "BRAVE_API_KEY"]) {

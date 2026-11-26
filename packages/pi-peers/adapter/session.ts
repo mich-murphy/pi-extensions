@@ -37,7 +37,7 @@ export function isWakeNotice(customType: string | undefined): boolean {
   return customType === NOTICE_TYPE || customType === LEGACY_NOTICE_TYPE;
 }
 
-export type TakenMessages<Item = Delivery> = { messages: readonly Item[] };
+export type TakenMessages<Item = Delivery> = { messages: ReadonlyArray<Item> };
 
 export type Waited = "message" | "timed_out" | "cancelled" | "disconnected" | "closed" | "busy";
 
@@ -51,14 +51,14 @@ export class AdapterSession {
   readonly unsure = new UnsureSends();
   readonly aliases = new MessageAliases();
   readonly receipts = new SentReceipts();
-  private readonly inbox: Waiting[] = [];
+  private readonly inbox: Array<Waiting> = [];
   private waiter: ((result: Waited) => void) | undefined;
   private readonly abort = new AbortController();
   private wakeNeeded = false;
   private notice: { id: string; at: number } | undefined;
   private deferred: ReturnType<typeof setImmediate> | undefined;
   private disposed = false;
-  private readonly linkListeners = new Set<(links: readonly LinkState[]) => void>();
+  private readonly linkListeners = new Set<(links: ReadonlyArray<LinkState>) => void>();
   constructor(
     readonly config: Configuration,
     readonly peer: PeerRef,
@@ -128,10 +128,10 @@ export class AdapterSession {
   async reconnect(fresh = false): Promise<void> {
     return this.client.reconnect(this.abort.signal, fresh);
   }
-  linkStates(): readonly LinkState[] {
+  linkStates(): ReadonlyArray<LinkState> {
     return this.client.links();
   }
-  onLinkChange(listener: (links: readonly LinkState[]) => void): () => void {
+  onLinkChange(listener: (links: ReadonlyArray<LinkState>) => void): () => void {
     this.linkListeners.add(listener);
 
     return () => {
@@ -313,7 +313,7 @@ export class AdapterSession {
     }
 
     return new Promise<Waited>((resolve) => {
-      const timers: ReturnType<typeof setTimeout>[] = [];
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
 
       const aborted = () => {
         finish("cancelled");
@@ -341,7 +341,7 @@ export class AdapterSession {
     });
   }
   take(limit: number): TakenMessages {
-    const messages: Delivery[] = [];
+    const messages: Array<Delivery> = [];
 
     for (let index = 0; index < limit; index += 1) {
       const key = this.inbox.shift()?.key;

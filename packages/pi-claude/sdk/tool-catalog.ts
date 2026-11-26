@@ -45,7 +45,7 @@ function isJsonArray(input: Schema.Json): input is Schema.JsonArray {
   return Array.isArray(input);
 }
 
-function schemaChildren(key: string, value: Schema.Json): readonly Schema.Json[] {
+function schemaChildren(key: string, value: Schema.Json): ReadonlyArray<Schema.Json> {
   switch (key) {
     case "properties": {
       return schemaEntries(schemaObject(value)).map(([, child]) => child);
@@ -186,7 +186,7 @@ export function sdkToolName(piName: string): string {
   return `mcp__pi__${mcpToolName(piName)}`;
 }
 
-export function compileToolCatalog(tools: readonly Tool[]): readonly CatalogTool[] {
+export function compileToolCatalog(tools: ReadonlyArray<Tool>): ReadonlyArray<CatalogTool> {
   const seen = new Set<string>();
 
   return tools.map((declaration) => {

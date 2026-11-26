@@ -21,7 +21,7 @@ import { ToggleStateFile } from "../state";
 import type { ToggleStateResult } from "../state";
 import { timeoutOverTenfold } from "./test-timeouts";
 
-const directories: string[] = [];
+const directories: Array<string> = [];
 
 function value(result: ToggleStateResult) {
   if (Result.isFailure(result)) {
@@ -31,7 +31,7 @@ function value(result: ToggleStateResult) {
   return result.success;
 }
 
-function git(...args: string[]): string {
+function git(...args: Array<string>): string {
   return execFileSync(
     "git",
     ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args],
@@ -338,7 +338,7 @@ describe(
       const first = join(repo.child, "AGENTS.md");
       const second = join(repo.second, "AGENTS.md");
 
-      const orders: Record<string, string>[] = [
+      const orders: Array<Record<string, string>> = [
         { [second]: "enabled", [first]: "disabled" },
         { [first]: "disabled", [second]: "enabled" },
       ];

@@ -93,7 +93,7 @@ function fixture(firstPrompt = "first prompt") {
   return { ...viewport, root, document, output, tui, adapter, render, request };
 }
 
-const plain = (lines: readonly string[]) => lines.map((line) => stripTerminalSequences(line));
+const plain = (lines: ReadonlyArray<string>) => lines.map((line) => stripTerminalSequences(line));
 
 function driftedRoot(native: Component, which: "transcript" | "dock", change: StackEntryOptions) {
   const node = getLayoutNode(native);

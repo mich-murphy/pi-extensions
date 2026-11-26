@@ -44,7 +44,7 @@ const label = text(128, false);
 
 const scopeIds = (maximum: number) =>
   Schema.Array(key).check(
-    Schema.makeFilter<readonly string[]>(
+    Schema.makeFilter<ReadonlyArray<string>>(
       (values) =>
         values.length > 0 && values.length <= maximum && new Set(values).size === values.length,
     ),
@@ -52,7 +52,7 @@ const scopeIds = (maximum: number) =>
 
 const boundedArray = <S extends Schema.Constraint>(item: S, maximum: number) =>
   Schema.Array(item).check(
-    Schema.makeFilter<readonly S["Type"][]>((values) => values.length <= maximum),
+    Schema.makeFilter<ReadonlyArray<S["Type"]>>((values) => values.length <= maximum),
   );
 
 const Peer = Schema.Struct({
@@ -199,7 +199,7 @@ const deliveryCodes = [
 
 const sendCodes = [...deliveryCodes, "protocol_error", "cancelled"] as const;
 
-function failure<const C extends readonly string[]>(codes: C) {
+function failure<const C extends ReadonlyArray<string>>(codes: C) {
   return Schema.Union([
     Schema.Struct({ tag: Schema.Literal("error"), code: Schema.Literals(codes) }),
     Schema.Struct({ tag: Schema.Literal("error"), code: Schema.Literal("overloaded"), resource }),
@@ -220,7 +220,7 @@ function refused<const O extends string>(op: O) {
 function result<
   const O extends string,
   S extends Schema.Constraint,
-  const C extends readonly string[],
+  const C extends ReadonlyArray<string>,
 >(op: O, value: S, codes: C) {
   return Schema.Struct({
     ...head,

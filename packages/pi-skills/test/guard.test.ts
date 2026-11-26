@@ -27,7 +27,7 @@ import type { ToggleOverrides, ToggleResource, ToggleValue } from "../resources"
 import { ToggleStateFile, ToggleStateUnavailable } from "../state";
 import type { ToggleStateStore } from "../state";
 
-const temporaryDirectories: string[] = [];
+const temporaryDirectories: Array<string> = [];
 
 function temporaryFileSystemIgnoresCase(): boolean {
   const directory = mkdtempSync(join(tmpdir(), "pi-skills-case-"));
@@ -119,7 +119,7 @@ const header = (parentSession?: string): Pick<GuardContext, "sessionManager"> =>
 
 function guarded(stateStore: ToggleStateStore, cwd: string) {
   const handlers: Partial<ToggleHandlers> = {};
-  const notifications: string[] = [];
+  const notifications: Array<string> = [];
   registerPiSkills(
     {
       on: <K extends keyof ToggleHandlers>(name: K, handler: ToggleHandlers[K]) => {
@@ -138,7 +138,7 @@ function guarded(stateStore: ToggleStateStore, cwd: string) {
     sessionManager: { getHeader: () => (parentSession === undefined ? {} : { parentSession }) },
   });
 
-  const start = (skills: readonly Skill[], contextPaths: readonly string[]) =>
+  const start = (skills: ReadonlyArray<Skill>, contextPaths: ReadonlyArray<string>) =>
     handlers.before_agent_start?.(
       {
         systemPrompt: `base${formatSkillsForPrompt([...skills])}`,
@@ -896,8 +896,8 @@ describe("pi-skills guard", () => {
 
     test("lists nested instructions Pi did not load and stores their toggles", async () => {
       const { main } = repository();
-      const writes: (readonly [string, string])[] = [];
-      const execCalls: (readonly string[])[] = [];
+      const writes: Array<readonly [string, string]> = [];
+      const execCalls: Array<ReadonlyArray<string>> = [];
       let command: Parameters<ToggleRegistrationForTest["registerCommand"]>[1] | undefined;
       registerPiSkills(
         {
@@ -927,7 +927,7 @@ describe("pi-skills guard", () => {
           },
         },
       );
-      let rendered: readonly string[] = [];
+      let rendered: ReadonlyArray<string> = [];
 
       const custom = async (factory: ToggleDialogFactory) => {
         initTheme();

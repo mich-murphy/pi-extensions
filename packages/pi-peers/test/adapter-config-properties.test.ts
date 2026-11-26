@@ -17,11 +17,11 @@ const everyPermission = [...livePermissions, ...retired];
 type Policy = {
   machineId: string;
   scopeId: string;
-  permissions: string[];
+  permissions: Array<string>;
   direction: "outgoing" | "incoming";
 };
 
-function drawPolicies(tc: TestCase): Policy[] {
+function drawPolicies(tc: TestCase): Array<Policy> {
   return tc.draw(
     arrays(
       sampledFrom(["alpha", "beta"]).flatMap((machineId) =>
@@ -40,7 +40,7 @@ function drawPolicies(tc: TestCase): Policy[] {
   );
 }
 
-function grants(policies: readonly Policy[]): string[] {
+function grants(policies: ReadonlyArray<Policy>): Array<string> {
   return policies
     .flatMap((policy) =>
       policy.permissions

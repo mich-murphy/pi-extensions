@@ -28,7 +28,7 @@ export type CredentialOutcome = Result.Result<Redacted.Redacted | undefined, Cre
 
 export type CredentialSnapshot = {
   readonly outcomes: Readonly<Record<SearchProviderName, CredentialOutcome>>;
-  readonly secrets: readonly string[];
+  readonly secrets: ReadonlyArray<string>;
 };
 
 function validateCredential(provider: SearchProviderName, value: string | undefined) {
@@ -85,7 +85,7 @@ export class CredentialResolver extends Context.Service<
 }
 
 export function resolveCredentialSnapshot(
-  names: readonly SearchProviderName[],
+  names: ReadonlyArray<SearchProviderName>,
 ): Effect.Effect<CredentialSnapshot, never, CredentialResolver> {
   return Effect.gen(function* () {
     const resolver = yield* CredentialResolver;
@@ -96,7 +96,7 @@ export function resolveCredentialSnapshot(
       brave: Result.succeed(undefined),
     };
 
-    const secrets: string[] = [];
+    const secrets: Array<string> = [];
 
     for (const provider of new Set(names)) {
       const outcome = yield* Effect.result(resolver.resolve(provider));

@@ -120,7 +120,7 @@ export function lenientArray<S extends Schema.Constraint & Schema.ConstraintDeco
 
   return Schema.Array(Schema.Unknown).pipe(
     Schema.decodeTo(Schema.Array(Schema.toType(item)), {
-      decode: SchemaGetter.transform((items: readonly unknown[]) =>
+      decode: SchemaGetter.transform((items: ReadonlyArray<unknown>) =>
         items.flatMap((entry) => Option.toArray(decodeItem(entry))),
       ),
       encode: SchemaGetter.passthrough({ strict: false }),
@@ -180,7 +180,7 @@ export type SearchProvider = {
   readonly freeTier?: true;
   readonly search: (
     input: SearchInput,
-  ) => Effect.Effect<readonly NormalizedSearchResult[], ProviderError>;
+  ) => Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError>;
 };
 
 export type FetchProvider = {

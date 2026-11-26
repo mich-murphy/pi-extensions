@@ -4,7 +4,7 @@ import type { OwnerSettings, ToolSource } from "../owner.ts";
 
 const PACKAGES = "/repo/packages";
 
-const tools: readonly ToolSource[] = [
+const tools: ReadonlyArray<ToolSource> = [
   { name: "read", sourceInfo: { path: "builtin:read", source: "builtin" } },
   { name: "bash", sourceInfo: { path: "builtin:bash", source: "builtin" } },
   { name: "webfetch", sourceInfo: { path: `${PACKAGES}/pi-web/index.ts`, source: "local" } },

@@ -59,22 +59,22 @@ type Compound = {
   readonly tag: string | undefined;
   readonly id: string | undefined;
   readonly className: string | undefined;
-  readonly conditions: readonly ElementPredicate[];
+  readonly conditions: ReadonlyArray<ElementPredicate>;
 };
 
 export type SelectorSetMatcher = (element: Element, onMatch: (index: number) => void) => void;
 
 const CLASS_TOKEN_SEPARATOR_RE = /\s+/u;
 
-export function compileSelectorSet(selectorLists: readonly string[]): SelectorSetMatcher {
+export function compileSelectorSet(selectorLists: ReadonlyArray<string>): SelectorSetMatcher {
   type Entry = { readonly index: number; readonly matches: ElementPredicate };
 
-  const byId = new Map<string, Entry[]>();
-  const byClass = new Map<string, Entry[]>();
-  const byTag = new Map<string, Entry[]>();
-  const unindexed: Entry[] = [];
+  const byId = new Map<string, Array<Entry>>();
+  const byClass = new Map<string, Array<Entry>>();
+  const byTag = new Map<string, Array<Entry>>();
+  const unindexed: Array<Entry> = [];
 
-  const add = (map: Map<string, Entry[]>, key: string, entry: Entry) => {
+  const add = (map: Map<string, Array<Entry>>, key: string, entry: Entry) => {
     const entries = map.get(key);
 
     if (entries) {
@@ -102,9 +102,9 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
   }
 
   return (element, onMatch) => {
-    const reported: number[] = [];
+    const reported: Array<number> = [];
 
-    const test = (entries: readonly Entry[] | undefined) => {
+    const test = (entries: ReadonlyArray<Entry> | undefined) => {
       if (entries === undefined) {
         return;
       }
@@ -145,7 +145,7 @@ export function compileSelectorSet(selectorLists: readonly string[]): SelectorSe
 
 export function compileSelector(selectorList: string): ElementPredicate {
   const tags = new Set<string>();
-  const compounds: ElementPredicate[] = [];
+  const compounds: Array<ElementPredicate> = [];
 
   for (const source of selectorList.split(",")) {
     const compound = parseCompound(source.trim(), selectorList);
@@ -189,7 +189,7 @@ function parseCompound(source: string, selectorList: string): Compound {
     throw new Error(`Unsupported selector: ${JSON.stringify(selectorList)}`);
   }
 
-  const conditions: ElementPredicate[] = [];
+  const conditions: Array<ElementPredicate> = [];
   let requiredId: string | undefined;
   let requiredClass: string | undefined;
 

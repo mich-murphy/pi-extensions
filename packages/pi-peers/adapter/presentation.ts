@@ -23,7 +23,7 @@ function fields(value: Schema.Json | undefined): Schema.JsonObject {
   return isFields(value) ? value : {};
 }
 
-function items(value: Schema.Json | undefined): readonly Schema.Json[] {
+function items(value: Schema.Json | undefined): ReadonlyArray<Schema.Json> {
   return isItems(value) ? value : [];
 }
 
@@ -35,7 +35,10 @@ function preview(value: Schema.Json | undefined, fallback = "…"): string {
   return truncateToWidth(visibleText(text(value, fallback)).replaceAll(/\s+/gu, " "), 96);
 }
 
-function listing(values: readonly Schema.Json[], render: (value: Schema.Json) => string): string[] {
+function listing(
+  values: ReadonlyArray<Schema.Json>,
+  render: (value: Schema.Json) => string,
+): Array<string> {
   return [
     ...values.slice(0, 3).map((value) => render(value)),
     ...(values.length > 3 ? [`… ${values.length - 3} more (expand)`] : []),
@@ -76,7 +79,7 @@ function callSummary(name: string, args: Schema.JsonObject): string {
   }
 }
 
-function resultSummary(name: string, raw: Schema.Json | undefined): string[] {
+function resultSummary(name: string, raw: Schema.Json | undefined): Array<string> {
   const result = fields(raw);
 
   if (result.tag === "error") {
@@ -162,7 +165,7 @@ function full(value: Schema.Json | RenderPayload | undefined): string {
 }
 
 function hasHiddenPreview(
-  summary: string[],
+  summary: Array<string>,
   raw: Schema.Json | undefined,
   args: Schema.JsonObject,
 ): boolean {
@@ -252,7 +255,7 @@ export function toolPresentation(name: string) {
   };
 }
 
-const ACTIVATION_PENDING_DETAILS: readonly string[] = [
+const ACTIVATION_PENDING_DETAILS: ReadonlyArray<string> = [
   "Saved but not active yet. Passive reconnect never restarts a gateway; nothing is resent.",
   "/peers setup, then Activate saved configuration, restarts it once.",
   "Existing sessions may still use old trust.",
@@ -262,7 +265,7 @@ export type StatusSnapshot = {
   readonly enabled?: boolean;
   readonly status?: string;
   readonly peer?: PeerRef;
-  readonly scopes?: readonly string[];
+  readonly scopes?: ReadonlyArray<string>;
   readonly watching?: boolean;
   readonly inboxMessages?: number;
   readonly inboxBytes?: number;
@@ -271,7 +274,7 @@ export type StatusSnapshot = {
   readonly relations?: number;
   readonly notice?: string;
   readonly waiting?: boolean;
-  readonly links?: readonly LinkState[];
+  readonly links?: ReadonlyArray<LinkState>;
 };
 
 export function diagnostics(status: StatusSnapshot | undefined, diagnostic: string): string {
@@ -306,9 +309,9 @@ export type StatusState = "off" | "connected" | "pending" | "unavailable" | "fai
 export type StatusSummary = {
   readonly state: StatusState;
   readonly headline: string;
-  readonly rows: [label: string, value: string][];
+  readonly rows: Array<[label: string, value: string]>;
   readonly next?: string;
-  readonly technical: string[];
+  readonly technical: Array<string>;
 };
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -328,7 +331,7 @@ function plural(amount: number, one: string, many: string): string {
   return `${amount} ${amount === 1 ? one : many}`;
 }
 
-function runtimeTechnical(status: StatusSnapshot): string[] {
+function runtimeTechnical(status: StatusSnapshot): Array<string> {
   const { peer } = status;
   const notice = text(status.notice, "none");
 
@@ -418,7 +421,7 @@ export function statusSummary(
 
   const inbox = tally(status.inboxMessages);
 
-  const rows: [string, string][] = [
+  const rows: Array<[string, string]> = [
     ["Machine", machine],
     ["Scopes", scopes.join(", ") || "none"],
     [
@@ -448,7 +451,7 @@ function clock(value: number | undefined): string {
     : "";
 }
 
-function linkRows(value: readonly LinkState[] = []): [string, string][] {
+function linkRows(value: ReadonlyArray<LinkState> = []): Array<[string, string]> {
   return value.flatMap((link) => {
     const machine = plain(link.machineId, 32);
     const word = LINK_WORDS[link.state];
@@ -476,9 +479,9 @@ function linkRows(value: readonly LinkState[] = []): [string, string][] {
 
 type LiveFacts = {
   readonly machine: string;
-  readonly scopes: readonly string[];
-  readonly rows: [string, string][];
-  readonly technical: string[];
+  readonly scopes: ReadonlyArray<string>;
+  readonly rows: Array<[string, string]>;
+  readonly technical: Array<string>;
 };
 
 function liveSummary(code: string, facts: LiveFacts, options: PresentationOptions): StatusSummary {
@@ -565,7 +568,7 @@ export type FooterState =
   | "offline"
   | "setup_failed";
 
-const FOOTER_PARTS: Record<FooterState, readonly (readonly [FooterTone, string])[]> = {
+const FOOTER_PARTS: Record<FooterState, ReadonlyArray<readonly [FooterTone, string]>> = {
   connected: [["success", "✓"]],
   waiting: [
     ["success", "✓"],
@@ -577,7 +580,7 @@ const FOOTER_PARTS: Record<FooterState, readonly (readonly [FooterTone, string])
   setup_failed: [["error", "✕ setup failed"]],
 };
 
-function styled(parts: readonly (readonly [FooterTone, string])[], theme?: FooterTheme): string {
+function styled(parts: ReadonlyArray<readonly [FooterTone, string]>, theme?: FooterTheme): string {
   return [["dim", "peers "] as const, ...parts]
     .map(([tone, part]) => (theme === undefined ? part : theme.fg(tone, part)))
     .join("");
@@ -587,7 +590,7 @@ export function footerLine(state: FooterState, theme?: FooterTheme): string {
   return styled(FOOTER_PARTS[state], theme);
 }
 
-function downLinks(value: readonly LinkState[] = []): (readonly [FooterTone, string])[] {
+function downLinks(value: ReadonlyArray<LinkState> = []): Array<readonly [FooterTone, string]> {
   const down = value.flatMap((link) => {
     if (link.state === "down" || link.state === "probing") {
       const machine = plain(link.machineId, 32);

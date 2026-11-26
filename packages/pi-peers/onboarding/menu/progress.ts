@@ -15,14 +15,14 @@ function clean(value: string, limit = 2000): string {
 export type Outcome = {
   readonly ok: boolean;
   readonly headline: string;
-  readonly facts: readonly (readonly [string, string])[];
+  readonly facts: ReadonlyArray<readonly [string, string]>;
   readonly next?: string;
-  readonly technical?: readonly string[];
+  readonly technical?: ReadonlyArray<string>;
 };
 
 export type Step = (message: string) => void;
 
-export function outcomeLines(outcome: Outcome): string[] {
+export function outcomeLines(outcome: Outcome): Array<string> {
   return [
     clean(outcome.headline),
     ...(outcome.next === undefined ? [] : [`Next: ${clean(outcome.next)}`]),
@@ -79,7 +79,7 @@ function restoreOutcome({
 
   const outcome: Omit<Outcome, "next" | "technical"> & {
     next?: string;
-    technical?: readonly string[];
+    technical?: ReadonlyArray<string>;
   } = { ok, headline: clean(headline, MAX_TEXT), facts: rows };
 
   if (isString(next)) {
@@ -118,12 +118,12 @@ function ignoreReportFailureAfterUiIsGone(): undefined {
 export async function runWithProgress(
   model: MenuModel,
   title: string,
-  planned: readonly string[],
+  planned: ReadonlyArray<string>,
   work: (step: Step) => Promise<Outcome>,
   finished: (outcome: Outcome, hidden: boolean) => void,
   result = "Result",
 ): Promise<void> {
-  const steps: Running[] = [];
+  const steps: Array<Running> = [];
 
   const step: Step = (text) => {
     const last = steps.at(-1);
@@ -142,7 +142,7 @@ export async function runWithProgress(
     model.refresh();
   };
 
-  const lines = (): string[] => [
+  const lines = (): Array<string> => [
     ...steps.map((item) =>
       item.ended === undefined
         ? `… ${clean(item.text)} (${Math.round((Date.now() - item.started) / 1000)}s)`

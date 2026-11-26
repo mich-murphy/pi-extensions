@@ -6,7 +6,7 @@ import { timeoutOverTenfold } from "./test-timeouts";
 
 const cwd = "/repo";
 
-function reads(command: string): readonly string[] {
+function reads(command: string): ReadonlyArray<string> {
   return pathsReadByCommand(command, cwd).toSorted();
 }
 

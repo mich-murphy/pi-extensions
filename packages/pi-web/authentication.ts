@@ -142,7 +142,7 @@ export function createWebAuthentication(
         "exa",
         "parallel",
         "brave",
-      ] as const satisfies readonly SearchProviderName[];
+      ] as const satisfies ReadonlyArray<SearchProviderName>;
 
       for (const provider of providers) {
         const metadata = WEB_AUTH_PROVIDERS[provider];

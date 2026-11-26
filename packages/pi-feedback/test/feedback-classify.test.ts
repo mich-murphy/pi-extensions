@@ -21,7 +21,7 @@ function answer(context: ClassifierContext) {
 describe("harness feedback classification", () => {
   let root: string;
   let ledger: string;
-  let tasks: Promise<void>[];
+  let tasks: Array<Promise<void>>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "pi-feedback-classify-ext-"));

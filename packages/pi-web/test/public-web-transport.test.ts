@@ -85,7 +85,7 @@ async function withLocalServer<A>(
 
 describe("PublicWebTransport", () => {
   test("connects through the supplied address while retaining the original Host name", async () => {
-    const seenHosts: string[] = [];
+    const seenHosts: Array<string> = [];
     await withLocalServer(
       (request, response) => {
         seenHosts.push(String(request.headers.host));

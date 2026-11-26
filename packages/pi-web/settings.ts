@@ -7,13 +7,13 @@ export const WEB_FETCH_FORMATS = [
   "markdown",
   "text",
   "html",
-] as const satisfies readonly WebFetchFormat[];
+] as const satisfies ReadonlyArray<WebFetchFormat>;
 
 export const SEARCH_PROVIDERS = [
   "exa",
   "parallel",
   "brave",
-] as const satisfies readonly SearchProviderName[];
+] as const satisfies ReadonlyArray<SearchProviderName>;
 
 const SEARCH_PROVIDER_NAMES: ReadonlySet<string> = new Set(SEARCH_PROVIDERS);
 
@@ -80,11 +80,11 @@ export type WebToolsSettings = {
     readonly maxResponseBytes: number;
     readonly maxRedirects: number;
     readonly rescue: boolean;
-    readonly allowDomains: readonly string[];
-    readonly denyDomains: readonly string[];
+    readonly allowDomains: ReadonlyArray<string>;
+    readonly denyDomains: ReadonlyArray<string>;
   };
   readonly search: {
-    readonly providers: readonly SearchProviderName[];
+    readonly providers: ReadonlyArray<SearchProviderName>;
     readonly defaultProviders: boolean;
     readonly timeout: Duration.Duration;
     readonly defaultMaxResults: number;
@@ -137,7 +137,7 @@ function parseOnOff(value: string | undefined, fallback: boolean): boolean {
 
 function parseProviderList(
   value: string | undefined,
-): Result.Result<readonly SearchProviderName[], SettingsError> {
+): Result.Result<ReadonlyArray<SearchProviderName>, SettingsError> {
   if (value === undefined || !value.trim()) {
     return Result.succeed(["exa", "parallel"]);
   }
@@ -197,7 +197,7 @@ function isBareHostname(name: string): boolean {
 function parseDomainList(
   value: string | undefined,
   envName: string,
-): Result.Result<readonly string[], SettingsError> {
+): Result.Result<ReadonlyArray<string>, SettingsError> {
   if (value === undefined) {
     return Result.succeed([]);
   }

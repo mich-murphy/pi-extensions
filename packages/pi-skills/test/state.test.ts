@@ -25,7 +25,7 @@ import {
 import type { ToggleStateError, ToggleStateResult } from "../state";
 
 const FILE_NAME_MAX_BYTES = 255;
-const temporaryDirectories: string[] = [];
+const temporaryDirectories: Array<string> = [];
 
 type StateDocument = typeof Schema.Json.Type;
 

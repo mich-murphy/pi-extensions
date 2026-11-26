@@ -30,7 +30,7 @@ const FAKE_STORE = `/nix/store/${"a".repeat(32)}-pi-gateway-0.1.0/bin/pi-gateway
 
 type Outcome = { code: number | null; signal: string | null; stdout: string; stderr: string };
 
-async function cli(args: string[]): Promise<Outcome> {
+async function cli(args: Array<string>): Promise<Outcome> {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
@@ -67,8 +67,8 @@ function refused(outcome: Outcome, pattern: RegExp): void {
   expect(outcome.stderr).toMatch(pattern);
 }
 
-const temps: string[] = [];
-const created: string[] = [];
+const temps: Array<string> = [];
+const created: Array<string> = [];
 
 async function ownedTemp(prefix: string): Promise<string> {
   const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));

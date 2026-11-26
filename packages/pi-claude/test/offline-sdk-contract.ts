@@ -33,9 +33,9 @@ type Proof = {
   readonly scenario: Scenario;
   readonly session: SessionManager;
   readonly controller: AbortController;
-  readonly executions: string[];
-  readonly terminals: number[];
-  readonly released: string[][];
+  readonly executions: Array<string>;
+  readonly terminals: Array<number>;
+  readonly released: Array<Array<string>>;
   requests: number;
   queries: number;
   preHooks: number;
@@ -59,7 +59,7 @@ function isMessage(message: AgentMessage): message is Message {
   return ["system", "user", "assistant", "toolResult"].includes(message.role);
 }
 
-function persisted(session: SessionManager): Message[] {
+function persisted(session: SessionManager): Array<Message> {
   const file = session.getSessionFile();
   assert(file !== undefined);
 
@@ -74,7 +74,7 @@ function recovering(scenario: Scenario): boolean {
   return scenario === "schema" || scenario === "malformed";
 }
 
-function assertAdvertised(chunks: readonly Buffer[]): void {
+function assertAdvertised(chunks: ReadonlyArray<Buffer>): void {
   const payload = z
     .object({
       tools: z.array(
@@ -178,7 +178,7 @@ function emitResponse(emit: Emit, proof: Proof): void {
 async function startTransport(proof: Proof) {
   const server = createServer((request, response) => {
     let bytes = 0;
-    const chunks: Buffer[] = [];
+    const chunks: Array<Buffer> = [];
     request.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
       chunks.push(chunk);
@@ -311,7 +311,7 @@ function observedQuery(proof: Proof): RunSdkQuery {
   };
 }
 
-function toolsFor(proof: Proof): AgentTool[] {
+function toolsFor(proof: Proof): Array<AgentTool> {
   return [
     {
       name: "probe",

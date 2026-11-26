@@ -75,7 +75,7 @@ async function createRoot(runnerTemp: string): Promise<Root> {
 async function requireOwnedExecutable(
   executable: string,
   installRoot: string,
-  ownedPaths: string[],
+  ownedPaths: Array<string>,
 ) {
   const canonical = (await realpath(executable)) === executable;
 
@@ -86,7 +86,11 @@ async function requireOwnedExecutable(
   }
 }
 
-function inInstallLayout(executable: string, installRoot: string, ownedPaths: string[]): boolean {
+function inInstallLayout(
+  executable: string,
+  installRoot: string,
+  ownedPaths: Array<string>,
+): boolean {
   const inside = (file: string) => path.dirname(file) === installRoot;
 
   return (
@@ -127,7 +131,7 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
       stdio: ["ignore", "pipe", "ignore"],
     });
 
-    const chunks: Buffer[] = [];
+    const chunks: Array<Buffer> = [];
     let size = 0;
     let failure: Error | undefined;
     let abandon: NodeJS.Timeout | undefined;
@@ -176,7 +180,7 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
   });
 }
 
-async function requireEmpty(...dirs: string[]): Promise<void> {
+async function requireEmpty(...dirs: Array<string>): Promise<void> {
   const entries = await Promise.all(dirs.map(async (dir) => readdir(dir)));
 
   if (entries.some((list) => list.length > 0)) {

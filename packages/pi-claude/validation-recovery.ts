@@ -71,7 +71,7 @@ export const validationRecoveryTool: ToolDefinition = {
 
 export function normalizeValidationResult(
   message: MessageEndEvent["message"],
-  history: readonly MessageEndEvent["message"][],
+  history: ReadonlyArray<MessageEndEvent["message"]>,
 ): MessageEndEventResult | undefined {
   if (
     message.role !== "toolResult" ||

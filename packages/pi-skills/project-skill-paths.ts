@@ -8,7 +8,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-function supplementalSkillDirectories(cwd: string): readonly string[] {
+function supplementalSkillDirectories(cwd: string): ReadonlyArray<string> {
   return directoriesThroughGitRoot(cwd).flatMap((directory) => [
     ...(directory === cwd ? [] : [join(directory, CONFIG_DIR_NAME, "skills")]),
     join(directory, ".claude", "skills"),
@@ -24,7 +24,7 @@ type NativeSkillReservations = {
 function skillNamesAtPaths(
   cwd: string,
   agentDir: string,
-  skillPaths: string[],
+  skillPaths: Array<string>,
 ): ReadonlySet<string> {
   return new Set(
     loadSkills({ cwd, agentDir, skillPaths, includeDefaults: false }).skills.map(
@@ -60,7 +60,7 @@ export async function discoverProjectSkillPaths(
   cwd: string,
   agentDir = getAgentDir(),
   loadedNativeNames: ReadonlySet<string> = new Set(),
-): Promise<readonly string[]> {
+): Promise<ReadonlyArray<string>> {
   const roots = supplementalSkillDirectories(cwd).filter((path) => existsSync(path));
 
   if (roots.length === 0) {
@@ -95,8 +95,8 @@ export async function discoverProjectSkillPaths(
     .map((skill) => skill.filePath);
 }
 
-function directoriesThroughGitRoot(cwd: string): readonly string[] {
-  const directories: string[] = [];
+function directoriesThroughGitRoot(cwd: string): ReadonlyArray<string> {
+  const directories: Array<string> = [];
 
   for (let directory = cwd; ; directory = dirname(directory)) {
     directories.push(directory);

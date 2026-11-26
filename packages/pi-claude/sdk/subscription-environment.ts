@@ -28,7 +28,7 @@ const STRIPPED_VARIABLE_GROUPS = {
     "CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS",
     "CLAUDE_CODE_OVERLOADED_RETRY_MAX_WAIT_MS",
   ],
-} as const satisfies Readonly<Record<string, readonly string[]>>;
+} as const satisfies Readonly<Record<string, ReadonlyArray<string>>>;
 
 const STRIPPED_VARIABLES: ReadonlySet<string> = new Set(
   Object.values(STRIPPED_VARIABLE_GROUPS).flat(),

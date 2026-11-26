@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 const SIGNAL_TEXT_LIMIT = 96;
 const GROUP_ID_LENGTH = 12;
 
-const NORMALIZERS: readonly (readonly [RegExp, string])[] = [
+const NORMALIZERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/[a-z][a-z0-9+.-]*:\/\/\S+/giu, "<url>"],
   [/(?<![\w/])(?:~|\.{1,2})?\/[^\s'"`,;:()[\]{}<>]+/gu, "<path>"],
   [/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/giu, "<id>"],

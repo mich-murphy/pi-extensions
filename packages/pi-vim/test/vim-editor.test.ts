@@ -201,7 +201,7 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
 
   test("cancels a pending command on a control key without passing it to Pi", () => {
     const editor = normalMode("one", "d");
-    const submissions: string[] = [];
+    const submissions: Array<string> = [];
     editor.onSubmit = (text) => {
       submissions.push(text);
     };
@@ -222,7 +222,7 @@ describe("vimEditor inside Pi", () => {
 
   test("returns to Insert mode after Pi accepts a submission", () => {
     const editor = legacyNormalMode("submit me");
-    const submissions: string[] = [];
+    const submissions: Array<string> = [];
     editor.onSubmit = (text) => {
       submissions.push(text);
     };
@@ -275,7 +275,7 @@ describe("vimEditor inside Pi", () => {
 
   test("passes invalid or modified xterm encodings to Pi as control input", () => {
     const editor = legacyNormalMode("one");
-    const claimed: string[] = [];
+    const claimed: Array<string> = [];
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
 
@@ -329,7 +329,7 @@ describe("vimEditor inside Pi", () => {
 
   test("performs commands without offering their input to app or extension shortcuts", () => {
     const editor = legacyNormalMode("one two");
-    const claimed: string[] = [];
+    const claimed: Array<string> = [];
     editor.onExtensionShortcut = (data) => {
       claimed.push(data);
 
@@ -382,7 +382,7 @@ describe("vimEditor inside Pi", () => {
     };
 
     const editor = createEditor();
-    const claimed: string[] = [];
+    const claimed: Array<string> = [];
     editor.setAutocompleteProvider(provider);
     editor.handleInput(kittyPress("/"));
     await vi.waitFor(() => {

@@ -19,7 +19,7 @@ const failureOf = (start: StartClaudeUsageQuery, timeout?: number) =>
 
 const afterAdvancing = Effect.fnUntraced(function* <A, E>(
   effect: Effect.Effect<A, E>,
-  steps: readonly Duration.Input[],
+  steps: ReadonlyArray<Duration.Input>,
 ) {
   const fiber = yield* Effect.forkChild(effect);
 

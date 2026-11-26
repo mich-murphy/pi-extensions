@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-const hooks: string[] = [];
+const hooks: Array<string> = [];
 
 describe("vitest fail-stop cleanup", () => {
   describe("a fixture whose beforeEach refuses after a prior cleanup failure", () => {

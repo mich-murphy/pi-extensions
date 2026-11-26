@@ -22,7 +22,7 @@ const LABELS = ["a", "evil", "Com", "x-y", "1", "xn--p1ai", "Mixed-Case"];
 const entryLabels = arrays(sampledFrom(LABELS), { minSize: 1, maxSize: 4 });
 const entry = tuples(entryLabels, booleans(), sampledFrom(["", " ", "\t "]));
 
-const DEFECTS: readonly (readonly [string, (name: string) => string])[] = [
+const DEFECTS: ReadonlyArray<readonly [string, (name: string) => string]> = [
   ["wildcard", (name) => `*.${name}`],
   ["leading dot", (name) => `.${name}`],
   ["scheme", (name) => `https://${name}`],
@@ -37,7 +37,7 @@ const DEFECTS: readonly (readonly [string, (name: string) => string])[] = [
 
 type Defect = (typeof DEFECTS)[number];
 
-function checkKeysIgnored(keys: string[], base: Record<string, string>): void {
+function checkKeysIgnored(keys: Array<string>, base: Record<string, string>): void {
   const withKeys = {
     ...base,
     [EXA_API_KEY_ENV]: keys[0],
@@ -48,7 +48,7 @@ function checkKeysIgnored(keys: string[], base: Record<string, string>): void {
   assert.deepStrictEqual(parseSettings(withKeys), parseSettings(base));
 }
 
-function checkNormalized(entries: [string[], boolean, string][]): void {
+function checkNormalized(entries: Array<[Array<string>, boolean, string]>): void {
   const raw = entries
     .map(([labels, dot, pad]) => `${pad}${labels.join(".")}${dot ? "." : ""}${pad}`)
     .join(",");
@@ -68,7 +68,7 @@ function failureMessage(envName: string, value: string): string {
   return parsed.failure.message;
 }
 
-function checkMalformed(labels: string[], defect: Defect, neighbour: string, envName: string) {
+function checkMalformed(labels: Array<string>, defect: Defect, neighbour: string, envName: string) {
   const bad = defect[1](labels.join("."));
   const message = failureMessage(envName, `${neighbour}, ${bad}`);
   assert.ok(message.includes(envName));

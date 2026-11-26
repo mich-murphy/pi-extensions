@@ -24,9 +24,9 @@ const isReference = Schema.is(
 const isMap = Schema.is(Schema.instanceOf(Map<Inspectable, Inspectable>));
 const isSet = Schema.is(Schema.instanceOf(Set<Inspectable>));
 
-type Walk = { readonly seen: Set<Reference>; readonly out: string[] };
+type Walk = { readonly seen: Set<Reference>; readonly out: Array<string> };
 
-function collectError(value: Reference, out: string[]): void {
+function collectError(value: Reference, out: Array<string>): void {
   if (value instanceof Error) {
     out.push(value.name, value.message, value.stack ?? "");
   }
@@ -77,7 +77,7 @@ function collect(value: Inspectable, walk: Walk, depth: number): void {
 }
 
 export function observableText(value: ReturnType<typeof decodeInspectable>): string {
-  const out: string[] = [];
+  const out: Array<string> = [];
   collect(value, { seen: new Set(), out }, 0);
   out.push(inspect(value, { depth: null, showHidden: true }));
 
@@ -86,7 +86,7 @@ export function observableText(value: ReturnType<typeof decodeInspectable>): str
 
 export function expectNoLeak(
   value: ReturnType<typeof decodeInspectable>,
-  ...fragments: readonly string[]
+  ...fragments: ReadonlyArray<string>
 ): void {
   const text = observableText(value);
 

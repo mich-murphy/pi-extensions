@@ -24,7 +24,7 @@ const readTool = {
 };
 
 type Step = {
-  readonly input: readonly MessageFixture[];
+  readonly input: ReadonlyArray<MessageFixture>;
   readonly reply: MessageFixture;
   readonly gapMs?: number;
   readonly reset?: boolean;
@@ -66,24 +66,24 @@ function chatStep(turn: number, extra: Partial<Step> = {}): Step {
   };
 }
 
-function steadyChat(turns: number, first = 1): Step[] {
+function steadyChat(turns: number, first = 1): Array<Step> {
   return Array.from({ length: turns }, (_, index) => chatStep(first + index));
 }
 
-function withInputAt(steps: readonly Step[], at: number, message: MessageFixture): Step[] {
+function withInputAt(steps: ReadonlyArray<Step>, at: number, message: MessageFixture): Array<Step> {
   return steps.map((step, index) =>
     index === at ? { ...step, input: [message, ...step.input] } : step,
   );
 }
 
-function toolLoop(steps: number): Step[] {
+function toolLoop(steps: number): Array<Step> {
   return Array.from({ length: steps }, (_, index) => ({
     input: index === 0 ? [user("Read the sources")] : [toolResult(`call-${index - 1}`, 1200)],
     reply: { role: "assistant", content: [toolCall(`call-${index}`)] },
   }));
 }
 
-function fanOut(turns: number, width: number): Step[] {
+function fanOut(turns: number, width: number): Array<Step> {
   const callIds = (turn: number) =>
     Array.from({ length: width }, (_, index) => `turn-${turn}-call-${index}`);
 
@@ -102,8 +102,8 @@ const imageMessage: MessageFixture = {
   ],
 };
 
-function requestsFor(steps: readonly Step[]) {
-  let history: MessageFixture[] = [];
+function requestsFor(steps: ReadonlyArray<Step>) {
+  let history: Array<MessageFixture> = [];
 
   return steps.map((step) => {
     const messages = [...(step.reset === true ? [] : history), ...step.input];
@@ -114,10 +114,13 @@ function requestsFor(steps: readonly Step[]) {
   });
 }
 
-async function simulate(steps: readonly Step[], retention?: CacheRetention): Promise<Run[]> {
+async function simulate(
+  steps: ReadonlyArray<Step>,
+  retention?: CacheRetention,
+): Promise<Array<Run>> {
   let now = 0;
   const simulator = createCacheSimulator(() => now);
-  const runs: Run[] = [];
+  const runs: Array<Run> = [];
 
   for (const { request, gapMs } of requestsFor(steps)) {
     now += gapMs;
@@ -127,7 +130,7 @@ async function simulate(steps: readonly Step[], retention?: CacheRetention): Pro
   return runs;
 }
 
-function runAt(runs: readonly Run[], index: number): Run {
+function runAt(runs: ReadonlyArray<Run>, index: number): Run {
   const run = runs[index];
 
   if (run === undefined) {
@@ -137,15 +140,15 @@ function runAt(runs: readonly Run[], index: number): Run {
   return run;
 }
 
-function usageAt(runs: readonly Run[], index: number): CacheUsage {
+function usageAt(runs: ReadonlyArray<Run>, index: number): CacheUsage {
   return runAt(runs, index).usage;
 }
 
-function shares(runs: readonly Run[]): number[] {
+function shares(runs: ReadonlyArray<Run>): Array<number> {
   return runs.map(({ usage }) => readShare(usage));
 }
 
-function aggregateShare(runs: readonly Run[]): number {
+function aggregateShare(runs: ReadonlyArray<Run>): number {
   return readShare({
     read: runs.reduce((total, { usage }) => total + usage.read, 0),
     write: runs.reduce((total, { usage }) => total + usage.write, 0),
@@ -288,7 +291,7 @@ describe("synthetic prompt-cache benchmark", () => {
 
 const bigBlock = textBlock("x".repeat(8000));
 
-function handRequest(count: number, cacheBreakpoints: readonly number[]): AgentRequest {
+function handRequest(count: number, cacheBreakpoints: ReadonlyArray<number>): AgentRequest {
   const entries = Array.from({ length: count - 1 }, (_, index) => textBlock(`entry ${index}`));
 
   return requestFixture({ promptBlocks: [bigBlock, ...entries], cacheBreakpoints });
@@ -304,9 +307,9 @@ async function readsAt(
   clock: { now: number },
   simulator: CacheSimulator,
   request: AgentRequest,
-  minutes: readonly number[],
-): Promise<number[]> {
-  const reads: number[] = [];
+  minutes: ReadonlyArray<number>,
+): Promise<Array<number>> {
+  const reads: Array<number> = [];
 
   for (const minute of minutes) {
     clock.now = minute * MINUTE_MS;

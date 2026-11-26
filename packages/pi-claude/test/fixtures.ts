@@ -20,8 +20,8 @@ import { Type } from "typebox";
 import type { AgentRequest, ImageAttachment, PromptBlock } from "../agent-request";
 import type { RunSdkQuery } from "../sdk/runner";
 
-export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
+export async function drain<T>(iterable: AsyncIterable<T>): Promise<Array<T>> {
+  const items: Array<T> = [];
 
   for await (const item of iterable) {
     items.push(item);
@@ -32,7 +32,7 @@ export async function drain<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 export function contextFixture(input: {
   readonly systemPrompt?: string;
-  readonly messages: readonly MessageFixture[];
+  readonly messages: ReadonlyArray<MessageFixture>;
   readonly tools?: NonNullable<Context["tools"]>;
 }): TranscriptContext {
   return normalizeContext({ ...input, messages: input.messages.map(messageFixture) });
@@ -68,7 +68,7 @@ function messageFixture(input: MessageFixture): Message {
   return { timestamp: 0, ...input };
 }
 
-export function transcriptFixture(messages: readonly MessageFixture[]): TranscriptContext {
+export function transcriptFixture(messages: ReadonlyArray<MessageFixture>): TranscriptContext {
   return contextFixture({ messages });
 }
 
@@ -110,7 +110,7 @@ export async function unsettled<T>(): Promise<T> {
   return Promise.withResolvers<T>().promise;
 }
 
-export function textBlock(text: string, images: readonly ImageAttachment[] = []): PromptBlock {
+export function textBlock(text: string, images: ReadonlyArray<ImageAttachment> = []): PromptBlock {
   return { text, images };
 }
 
@@ -172,7 +172,7 @@ export async function deliverToolUse(
 
 export async function deliverToolUses(
   hook: HookCallback,
-  toolUses: readonly ToolUse[],
+  toolUses: ReadonlyArray<ToolUse>,
 ): Promise<void> {
   for (const toolUse of toolUses) {
     await deliverToolUse(hook, toolUse);
@@ -261,7 +261,7 @@ const sdkPromptBlock = Schema.Struct({
 
 export type SdkPromptBlock = typeof sdkPromptBlock.Type;
 
-export function sdkContentRecords(message: SDKUserMessage | undefined): SdkPromptBlock[] {
+export function sdkContentRecords(message: SDKUserMessage | undefined): Array<SdkPromptBlock> {
   const content = message?.message.content;
 
   if (!Schema.is(Schema.Array(Schema.Unknown))(content)) {

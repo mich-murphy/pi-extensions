@@ -18,13 +18,13 @@ export type CommandSource = {
 };
 
 export type OwnerSources = {
-  readonly getAllTools: () => readonly ToolSource[];
-  readonly getCommands: () => readonly CommandSource[];
+  readonly getAllTools: () => ReadonlyArray<ToolSource>;
+  readonly getCommands: () => ReadonlyArray<CommandSource>;
 };
 
 export type OwnerSettings = {
   readonly packagesDir: string;
-  readonly ownPackages: readonly string[];
+  readonly ownPackages: ReadonlyArray<string>;
   readonly agentDir: string;
   readonly home: string;
 };

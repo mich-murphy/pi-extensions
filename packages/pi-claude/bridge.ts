@@ -32,7 +32,7 @@ export type ReadonlyJsonValue =
   | boolean
   | number
   | string
-  | readonly ReadonlyJsonValue[]
+  | ReadonlyArray<ReadonlyJsonValue>
   | ReadonlyJsonObject;
 
 export type ReadonlyJsonObject = { readonly [key: string]: ReadonlyJsonValue };
@@ -47,7 +47,7 @@ export type BridgeEvent =
   | { readonly type: "text_delta" | "thinking_delta"; readonly text: string }
   | { readonly type: "usage"; readonly usage: TokenUsage }
   | { readonly type: "done"; readonly reason: "stop" | "length" }
-  | { readonly type: "tool_calls"; readonly calls: readonly DeferredCall[] }
+  | { readonly type: "tool_calls"; readonly calls: ReadonlyArray<DeferredCall> }
   | { readonly type: "failed"; readonly error: SdkRunError };
 
 export type AgentSdkRun = (

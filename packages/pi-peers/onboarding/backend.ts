@@ -346,7 +346,7 @@ export async function resetLocal(agentDir: string): Promise<string> {
 
 type SetupPaths = ReturnType<typeof setupPaths>;
 
-function resetPaths(paths: SetupPaths): string[] {
+function resetPaths(paths: SetupPaths): Array<string> {
   return [
     paths.adapter,
     paths.gateway,
@@ -357,7 +357,7 @@ function resetPaths(paths: SetupPaths): string[] {
   ];
 }
 
-async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
+async function resetEntries(paths: SetupPaths): Promise<Array<ResetEntry>> {
   const path = join(paths.directory, "reset.json");
   const interrupted = await regularBytes(path);
 
@@ -367,7 +367,7 @@ async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
       `Move ${path} aside, then try again`,
     );
 
-    let entries: ResetEntry[];
+    let entries: Array<ResetEntry>;
 
     try {
       entries = [...decodeReset(parseJson(interrupted))];
@@ -409,7 +409,7 @@ async function resetEntries(paths: SetupPaths): Promise<ResetEntry[]> {
 
 function matchReset(
   bytes: Buffer | undefined,
-  allowed: (string | undefined)[],
+  allowed: Array<string | undefined>,
   label: string,
 ): void {
   if (bytes !== undefined && !allowed.includes(digest(bytes))) {
@@ -460,7 +460,7 @@ async function preflightReset(paths: SetupPaths): Promise<void> {
   matchReset(pairing, [record.pairingSha256, transition?.pairingSha256], "pairing.json");
 }
 
-async function validateResetEntries(paths: SetupPaths, entries: ResetEntry[]): Promise<void> {
+async function validateResetEntries(paths: SetupPaths, entries: Array<ResetEntry>): Promise<void> {
   const valid = await Promise.all(
     entries.map(async (entry) => {
       const [source, backup] = await Promise.all([
@@ -487,7 +487,7 @@ async function archiveResetEntry(entry: ResetEntry): Promise<void> {
 
 export async function reusableExecutable(
   agentDir: string,
-  requiredCapabilities: readonly string[] = GATEWAY_LOCAL_SETUP_CAPABILITIES,
+  requiredCapabilities: ReadonlyArray<string> = GATEWAY_LOCAL_SETUP_CAPABILITIES,
 ): Promise<string | undefined> {
   const cached = await regularBytes(setupPaths(agentDir).installed);
 
@@ -518,7 +518,7 @@ export async function reusableExecutable(
   return installed.executable;
 }
 
-async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readonly string[]) {
+async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: ReadonlyArray<string>) {
   const projections = await Promise.all(
     [
       paths.adapter,
@@ -584,7 +584,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: readon
 
 async function supportsCapabilities(
   executable: string,
-  requiredCapabilities: readonly string[],
+  requiredCapabilities: ReadonlyArray<string>,
 ): Promise<boolean> {
   try {
     await validateExecutable(executable, requiredCapabilities);
@@ -604,7 +604,7 @@ async function setupExecutable(
   backend: SetupBackend,
   progress: (message: string) => void,
   cached: string | undefined,
-  requiredCapabilities: readonly string[],
+  requiredCapabilities: ReadonlyArray<string>,
 ): Promise<string> {
   if (cached !== undefined) {
     await validateExecutable(cached, requiredCapabilities);

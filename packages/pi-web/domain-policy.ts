@@ -2,8 +2,8 @@ import { Result, Schema } from "effect";
 import type { PublicHttpUrl } from "./types";
 
 export type DomainPolicy = {
-  readonly allow: readonly string[];
-  readonly deny: readonly string[];
+  readonly allow: ReadonlyArray<string>;
+  readonly deny: ReadonlyArray<string>;
 };
 
 export class DomainDenied extends Schema.TaggedError<DomainDenied>()("DomainDenied", {

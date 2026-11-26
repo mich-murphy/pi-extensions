@@ -48,7 +48,7 @@ type SeenRequest = {
 };
 
 function recordingFetch(reply: () => Response) {
-  const seen: SeenRequest[] = [];
+  const seen: Array<SeenRequest> = [];
 
   const fetchImpl: typeof fetch = async (_input, init) => {
     seen.push({
@@ -115,7 +115,7 @@ describe("fetchProviderHttpClient", () => {
       response.end("must not be reached");
     });
 
-    const sourceHeaders: string[] = [];
+    const sourceHeaders: Array<string> = [];
 
     const source = await startLocalServer((incoming, response) => {
       sourceHeaders.push(
@@ -189,7 +189,7 @@ describe("fetchProviderHttpClient", () => {
 
   it.effect("a request outliving timeoutMs fails with ProviderTimedOut and aborts the fetch", () =>
     Effect.gen(function* () {
-      const inits: (RequestInit | undefined)[] = [];
+      const inits: Array<RequestInit | undefined> = [];
 
       const client = providerHttpWith(async (_input, init) => {
         inits.push(init);

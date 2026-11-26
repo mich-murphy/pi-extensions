@@ -154,7 +154,7 @@ const PROVIDER_BUILDERS: Record<
   },
 };
 
-function buildProviderPairs(composition: ProviderComposition): readonly ProviderPair[] {
+function buildProviderPairs(composition: ProviderComposition): ReadonlyArray<ProviderPair> {
   const { settings, snapshot } = composition;
   const brave = snapshot.outcomes.brave;
 
@@ -169,7 +169,7 @@ function buildProviderPairs(composition: ProviderComposition): readonly Provider
 class ProviderPairs extends Context.Service<
   ProviderPairs,
   {
-    readonly forRequest: (snapshot: CredentialSnapshot) => readonly ProviderPair[];
+    readonly forRequest: (snapshot: CredentialSnapshot) => ReadonlyArray<ProviderPair>;
   }
 >()("pi-web/search/ProviderPairs") {
   static readonly layer = Layer.effect(
@@ -205,7 +205,7 @@ class ProviderPairs extends Context.Service<
 export class SearchProviders extends Context.Service<
   SearchProviders,
   {
-    readonly forRequest: (snapshot: CredentialSnapshot) => readonly SearchProvider[];
+    readonly forRequest: (snapshot: CredentialSnapshot) => ReadonlyArray<SearchProvider>;
   }
 >()("pi-web/search/SearchProviders") {
   static readonly layer: Layer.Layer<
@@ -226,7 +226,7 @@ export class SearchProviders extends Context.Service<
 
 export class FetchRescueProviders extends Context.Service<
   FetchRescueProviders,
-  { readonly forRequest: (snapshot: CredentialSnapshot) => readonly FetchProvider[] }
+  { readonly forRequest: (snapshot: CredentialSnapshot) => ReadonlyArray<FetchProvider> }
 >()("pi-web/search/FetchRescueProviders") {
   static readonly layer: Layer.Layer<
     FetchRescueProviders,
@@ -246,8 +246,8 @@ export class FetchRescueProviders extends Context.Service<
 
 export type SearchChainSuccess = {
   readonly provider: SearchProviderName;
-  readonly attemptedProviders: readonly SearchProviderName[];
-  readonly results: readonly NormalizedSearchResult[];
+  readonly attemptedProviders: ReadonlyArray<SearchProviderName>;
+  readonly results: ReadonlyArray<NormalizedSearchResult>;
 };
 
 export class UnknownProvider extends Schema.TaggedError<UnknownProvider>()("UnknownProvider", {
@@ -329,7 +329,7 @@ function attemptReason(error: ProviderError): string {
 export type SearchChainError = UnknownProvider | AllProvidersFailed;
 
 export function searchWithFallback(
-  providers: readonly SearchProvider[],
+  providers: ReadonlyArray<SearchProvider>,
   input: { readonly query: SearchQuery; readonly maxResults: number },
   options: { readonly providerOverride?: SearchProviderName | undefined } = {},
 ): Effect.Effect<SearchChainSuccess, SearchChainError> {
@@ -354,12 +354,12 @@ export function searchWithFallback(
 }
 
 const runChain = Effect.fnUntraced(function* (
-  providers: readonly SearchProvider[],
+  providers: ReadonlyArray<SearchProvider>,
   input: { readonly query: SearchQuery; readonly maxResults: number },
 ): Effect.fn.Return<SearchChainSuccess, AllProvidersFailed> {
-  const failures: string[] = [];
-  const freeTierRateLimited: SearchProviderName[] = [];
-  const attempted: SearchProviderName[] = [];
+  const failures: Array<string> = [];
+  const freeTierRateLimited: Array<SearchProviderName> = [];
+  const attempted: Array<SearchProviderName> = [];
 
   for (const provider of providers) {
     attempted.push(provider.name);

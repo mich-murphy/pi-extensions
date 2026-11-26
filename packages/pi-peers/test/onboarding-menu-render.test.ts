@@ -81,7 +81,7 @@ function menu(rows: number, start?: "setup" | "reset") {
     },
   });
 
-  const press = (...keys: string[]) => {
+  const press = (...keys: Array<string>) => {
     for (const key of keys) {
       component.handleInput(key);
     }
@@ -96,7 +96,7 @@ async function settled(screen: Screen): Promise<void> {
   }
 }
 
-function contract(lines: readonly string[], width: number, cursors: number) {
+function contract(lines: ReadonlyArray<string>, width: number, cursors: number) {
   const text = lines.map((line) => stripVTControlCharacters(line).trim());
   expect(text[0]).toMatch(/^─+$/u);
   expect(text.at(-1)).toMatch(/^─+$/u);

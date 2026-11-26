@@ -22,7 +22,7 @@ function summary(end: CaffeinateNotice): string {
 describe("caffeinate child errors", () => {
   test("keeps reporting every error: a second one must not crash Pi as unhandled", async () => {
     const startChild = vi.fn<NonNullable<Parameters<typeof caffeinateSpawner>[2]>>(spawn);
-    const ends: CaffeinateNotice[] = [];
+    const ends: Array<CaffeinateNotice> = [];
 
     const adapter = caffeinateSpawner(
       process.execPath,

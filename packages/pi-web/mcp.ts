@@ -20,7 +20,7 @@ import { WEB_VERSION } from "./types";
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 
 export type McpToolCallResult = {
-  readonly text: readonly string[];
+  readonly text: ReadonlyArray<string>;
   readonly structuredContent?: ProviderJson | undefined;
 };
 
@@ -28,7 +28,7 @@ export type McpClient = {
   readonly callTool: (
     name: string,
     args: Schema.JsonObject,
-    secrets?: readonly string[],
+    secrets?: ReadonlyArray<string>,
   ) => Effect.Effect<McpToolCallResult, ProviderError>;
 };
 
@@ -156,7 +156,7 @@ function makeSessionPerToolCallMcpHttpClient(
     function* (
       name: string,
       args: Schema.JsonObject,
-      secrets: readonly string[] = [],
+      secrets: ReadonlyArray<string> = [],
     ): Effect.fn.Return<McpToolCallResult, ProviderError> {
       let sessionId: string | null = null;
 
@@ -278,7 +278,7 @@ const MAX_TOOL_ERROR_DETAIL = 200;
 
 export function parseMcpToolResult(
   payload: ProviderJson,
-  secrets: readonly (string | undefined)[] = [],
+  secrets: ReadonlyArray<string | undefined> = [],
 ): Result.Result<McpToolCallResult, ProviderError> {
   const parsed = decodeToolCallResponse(payload);
 
@@ -305,7 +305,7 @@ export function parseMcpToolResult(
   return Result.succeed({ text, structuredContent: result.structuredContent });
 }
 
-function toolErrorDetail(text: string, secrets: readonly (string | undefined)[]): string {
+function toolErrorDetail(text: string, secrets: ReadonlyArray<string | undefined>): string {
   const scrubbed = redactSecrets(text, secrets)
     .replaceAll(/https?:\/\/[^\s]+/giu, "[URL omitted]")
     .replaceAll(/\p{Cc}|\p{Bidi_Control}/gu, " ")
@@ -317,10 +317,10 @@ function toolErrorDetail(text: string, secrets: readonly (string | undefined)[])
     : `${scrubbed.slice(0, MAX_TOOL_ERROR_DETAIL - 3).trimEnd()}...`;
 }
 
-function parseSseDataLines(input: string): string[] {
+function parseSseDataLines(input: string): Array<string> {
   const lines = input.replaceAll("\r\n", "\n").split("\n");
-  const chunks: string[] = [];
-  let current: string[] = [];
+  const chunks: Array<string> = [];
+  let current: Array<string> = [];
 
   for (const line of lines) {
     if (line.startsWith("data:")) {

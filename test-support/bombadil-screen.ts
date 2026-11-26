@@ -1,8 +1,8 @@
 import type { State } from "@antithesishq/bombadil/terminal";
 import { Schema } from "effect";
 
-export function screenRows(state: State): string[] {
-  const rows: string[] = [];
+export function screenRows(state: State): Array<string> {
+  const rows: Array<string> = [];
 
   for (let index = 0; index < state.grid.size.rows; index++) {
     rows.push(state.grid.rowText(index).trimEnd());

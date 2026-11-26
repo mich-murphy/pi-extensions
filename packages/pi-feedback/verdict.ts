@@ -6,10 +6,10 @@ const PI_CORE_MIN_SESSIONS = 2;
 
 export type PiCoreCandidate = {
   readonly owner: string;
-  readonly live: readonly RecordEvent[];
-  readonly excluded: readonly RecordEvent[];
+  readonly live: ReadonlyArray<RecordEvent>;
+  readonly excluded: ReadonlyArray<RecordEvent>;
   readonly sessions: number;
-  readonly verdicts: readonly (VerdictEvent | undefined)[];
+  readonly verdicts: ReadonlyArray<VerdictEvent | undefined>;
 };
 
 function isBatchOrdered(record: RecordEvent): boolean {

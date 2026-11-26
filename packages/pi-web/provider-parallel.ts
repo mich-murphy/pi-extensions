@@ -28,7 +28,7 @@ const PARALLEL_SEARCH_TIMEOUT = Duration.seconds(SEARCH_TIMEOUT_SECONDS.default)
 
 const excerptsSchema = orFallback(lenientArray(Schema.String), []);
 
-function joinExcerpts(excerpts: readonly string[]): string | undefined {
+function joinExcerpts(excerpts: ReadonlyArray<string>): string | undefined {
   return excerpts.join("\n\n").trim() || undefined;
 }
 
@@ -64,7 +64,7 @@ const decodeParallelFetchPayload = Schema.decodeUnknownOption(
 
 export function parseParallelResults(
   payload: ProviderJson,
-): Result.Result<readonly NormalizedSearchResult[], string> {
+): Result.Result<ReadonlyArray<NormalizedSearchResult>, string> {
   const parsed = decodeParallelResultsPayload(payload);
 
   return Result.isSuccess(parsed)
@@ -74,7 +74,7 @@ export function parseParallelResults(
 
 export function parseParallelMcpPayload(
   toolResult: McpToolCallResult,
-): Result.Result<readonly NormalizedSearchResult[], string> {
+): Result.Result<ReadonlyArray<NormalizedSearchResult>, string> {
   if (toolResult.structuredContent !== undefined) {
     return parseParallelResults(toolResult.structuredContent);
   }
@@ -101,7 +101,7 @@ export class ParallelMcpSearchProvider implements SearchProvider {
     private readonly sessionId: string,
   ) {}
 
-  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+  search(input: SearchInput): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError> {
     return this.mcp
       .callTool("web_search", {
         objective: input.query,
@@ -123,7 +123,7 @@ export class ParallelApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+  search(input: SearchInput): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError> {
     return readProviderJson(
       this.http.postJson({
         url: PARALLEL_API_SEARCH_URL,
@@ -144,9 +144,9 @@ export class ParallelApiSearchProvider implements SearchProvider {
 }
 
 function limitedResults(
-  parsed: Result.Result<readonly NormalizedSearchResult[], string>,
+  parsed: Result.Result<ReadonlyArray<NormalizedSearchResult>, string>,
   maxResults: number,
-): Effect.Effect<readonly NormalizedSearchResult[], ProviderProtocolInvalid> {
+): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderProtocolInvalid> {
   return Result.isSuccess(parsed)
     ? Effect.succeed(parsed.success.slice(0, maxResults))
     : Effect.fail(new ProviderProtocolInvalid({ reason: parsed.failure }));

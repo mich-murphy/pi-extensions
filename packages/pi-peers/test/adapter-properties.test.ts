@@ -187,7 +187,7 @@ function assertControlNamesRejected(allowed: boolean, code: number, kind: number
   assert.throws(() => decodeConfiguration(injectControl(allowed, field, injected)));
 }
 
-type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+type Json = null | boolean | number | string | Array<Json> | { [key: string]: Json };
 
 const jsonLeaf = oneOf<Json>(
   just(null),
@@ -228,7 +228,7 @@ function renderLines(
   args: Json,
   payload: RenderPayload,
   options: { expanded: boolean; isError: boolean; width: number },
-): readonly string[] {
+): ReadonlyArray<string> {
   const theme = { fg: (_token: string, value: string) => value };
 
   const context: RenderContext = {

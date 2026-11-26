@@ -21,7 +21,7 @@ import type {
 import type { ResourcePolicy, ToggleResource, ToggleValue } from "./resources";
 
 export type MenuOptions = {
-  readonly resources: readonly ToggleResource[];
+  readonly resources: ReadonlyArray<ToggleResource>;
   readonly policy: () => ResourcePolicy;
   readonly save: (id: string, value: ToggleValue) => void;
   readonly tui: TUI;
@@ -39,7 +39,7 @@ const ROWS_BESIDE_LIST = MENU_CHROME_ROWS + PI_FOOTER_ROWS + CHAT_ROWS_ABOVE_MEN
 const MIN_LIST_ROWS = 3;
 const MAX_LIST_ROWS = 16;
 
-const GROUPS: readonly Group[] = [
+const GROUPS: ReadonlyArray<Group> = [
   { title: "Global instructions", origin: "global", kind: "instruction" },
   { title: "Global skills", origin: "global", kind: "skill" },
   { title: "Project instructions", origin: "project", kind: "instruction" },
@@ -110,7 +110,7 @@ class ContextMenu implements Component, Focusable {
     }
   }
 
-  render(width: number): string[] {
+  render(width: number): Array<string> {
     const { theme } = this.options;
     const border = new DynamicBorder((text) => theme.fg("accent", text));
     const title = this.active?.title() ?? "Context";
@@ -143,7 +143,7 @@ class ContextMenu implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
-  private count(group: Group, resources: readonly ToggleResource[]): string {
+  private count(group: Group, resources: ReadonlyArray<ToggleResource>): string {
     const policy = this.options.policy();
     const enabled = resources.filter((r) => policy.value(r) === "enabled").length;
 
@@ -168,7 +168,7 @@ class ResourceList implements Component, Focusable {
   constructor(
     private readonly options: MenuOptions,
     private readonly group: Group,
-    private readonly resources: readonly ToggleResource[],
+    private readonly resources: ReadonlyArray<ToggleResource>,
     private readonly back: () => void,
   ) {
     this.list = this.createList();
@@ -198,7 +198,7 @@ class ResourceList implements Component, Focusable {
     return `${this.group.title} · ${repositoryResources === 0 ? "per path" : "mixed scope"}`;
   }
 
-  render(width: number): string[] {
+  render(width: number): Array<string> {
     this.width = width;
     this.list = this.createList();
     const { theme } = this.options;
@@ -267,7 +267,7 @@ class ResourceList implements Component, Focusable {
     this.list = this.createList();
   }
 
-  private filtered(): readonly ToggleResource[] {
+  private filtered(): ReadonlyArray<ToggleResource> {
     return fuzzyFilter([...this.resources], this.search.getValue(), (r) => r.label);
   }
 

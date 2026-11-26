@@ -1,6 +1,6 @@
 export const REDACTED = "<secret>";
 
-const TOKENS: readonly RegExp[] = [
+const TOKENS: ReadonlyArray<RegExp> = [
   /(?<![A-Za-z0-9])sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}/gu,
   /(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{20,}/gu,
   /(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{20,}/gu,

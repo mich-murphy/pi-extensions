@@ -34,14 +34,14 @@ function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
   return config;
 }
 
-function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds?: number) {
+function fixture(initial: Array<{ peer: typeof beta; label: string }>, maxWaitSeconds?: number) {
   let roster = initial.map((entry) => ({ ...entry, scopeIds: ["team"] }));
-  const waits: number[] = [];
+  const waits: Array<number> = [];
   let waited: Waited = "timed_out";
   let clock = 0;
-  const outcomes: "unknown"[] = [];
-  const sent: Sent[] = [];
-  const inbox: Incoming[] = [];
+  const outcomes: Array<"unknown"> = [];
+  const sent: Array<Sent> = [];
+  const inbox: Array<Incoming> = [];
   const taken = new TakenIndex();
   const down = new Set<string>();
 
@@ -112,7 +112,7 @@ function fixture(initial: { peer: typeof beta; label: string }[], maxWaitSeconds
     setWaited: (next: Waited) => {
       waited = next;
     },
-    setRoster: (next: { peer: typeof beta; label: string }[]) => {
+    setRoster: (next: Array<{ peer: typeof beta; label: string }>) => {
       roster = next.map((entry) => ({ ...entry, scopeIds: ["team"] }));
     },
   };
