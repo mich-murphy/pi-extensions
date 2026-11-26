@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import { createNestedTracker } from "../nested.ts";
@@ -10,15 +10,15 @@ type Step = { readonly id: string; readonly kind: "start" | "end"; readonly fail
 const PARENT = "p";
 const settings = propertySettings(200);
 
-function drawSteps(tc: TestCase): Step[] {
-  const count = tc.draw(gs.integers({ minValue: 1, maxValue: 6 }), "count");
+function drawSteps(tc: TestCase): Array<Step> {
+  const count = tc.draw(integers({ minValue: 1, maxValue: 6 }), "count");
   const waiting = Array.from({ length: count }, (_, n) => `${PARENT}/${n + 1}`);
-  const running: string[] = [];
-  const steps: Step[] = [];
+  const running: Array<string> = [];
+  const steps: Array<Step> = [];
 
   while (waiting.length + running.length > 0) {
     const pick = tc.draw(
-      gs.integers({ minValue: 0, maxValue: waiting.length + running.length - 1 }),
+      integers({ minValue: 0, maxValue: waiting.length + running.length - 1 }),
       "pick",
     );
 
@@ -31,15 +31,15 @@ function drawSteps(tc: TestCase): Step[] {
       waiting.unshift(...(next === undefined ? [] : [next]));
       const [ending] = running.splice(pick - waiting.length, 1);
       assert.ok(ending !== undefined);
-      steps.push({ id: ending, kind: "end", failed: tc.draw(gs.booleans(), "failed") });
+      steps.push({ id: ending, kind: "end", failed: tc.draw(booleans(), "failed") });
     }
   }
 
   return steps;
 }
 
-function replay(steps: readonly Step[], tracker: ReturnType<typeof createNestedTracker>) {
-  const batches = new Map<string, readonly string[]>();
+function replay(steps: ReadonlyArray<Step>, tracker: ReturnType<typeof createNestedTracker>) {
+  const batches = new Map<string, ReadonlyArray<string>>();
 
   for (const step of steps) {
     if (step.kind === "start") {
@@ -61,7 +61,7 @@ function replay(steps: readonly Step[], tracker: ReturnType<typeof createNestedT
   return batches;
 }
 
-function expectedBatch(steps: readonly Step[], id: string): string[] {
+function expectedBatch(steps: ReadonlyArray<Step>, id: string): Array<string> {
   const at = (kind: Step["kind"], target: string): number =>
     steps.findIndex((step) => step.kind === kind && step.id === target);
 

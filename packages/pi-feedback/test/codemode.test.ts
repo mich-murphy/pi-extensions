@@ -1,10 +1,12 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { registerFeedback } from "../feedback.ts";
+import { FEEDBACK_TOOL, registerFeedback } from "../feedback.ts";
 import type { FeedbackParams, FeedbackResult } from "../feedback.ts";
 import { ledgerPath, readLedger } from "../ledger.ts";
+import { FEEDBACK_OUTPUT } from "../output.ts";
 import { fakeClock } from "./events.ts";
 import { fakePi } from "./fake-pi.ts";
 
@@ -57,7 +59,7 @@ describe("harness feedback under codemode", () => {
   test("gives scripts every status as structured content and keeps the text", async () => {
     mkdirSync(dirname(ledger), { recursive: true });
     chmodSync(dirname(ledger), 0o500);
-    const results: FeedbackResult[] = [await pi.call(report)];
+    const results: Array<FeedbackResult> = [await pi.call(report)];
     chmodSync(dirname(ledger), 0o700);
     results.push(await pi.call(report), await pi.call(report));
 
@@ -79,6 +81,10 @@ describe("harness feedback under codemode", () => {
       "limit",
       "off",
     ]);
+    expect(
+      results.map((result) => Value.Check(FEEDBACK_OUTPUT, result.structuredContent)),
+    ).toStrictEqual([true, true, true, true, true]);
+    expect(Value.Check(FEEDBACK_OUTPUT, { status: "lost" })).toBe(false);
     expect(results[1]?.structuredContent).toMatchObject({ owner: "pi-claude" });
     expect(results[1]?.content[0]?.text).toMatch(
       /^Recorded in group [0-9a-f]{12} \(owner pi-claude\)/u,
@@ -124,6 +130,16 @@ describe("harness feedback under codemode", () => {
       { tool: "codemode", error: "Script failed\nScript error:\nboom" },
       { tool: "codemode", error: "Script failed\nScript error:\nagain" },
     ]);
+  });
+
+  test("records a script failure when its only failed call was harness_feedback", async () => {
+    pi.nestedStart("cm", "cm/1", FEEDBACK_TOOL, {});
+    await pi.nestedEnd("cm", "cm/1", FEEDBACK_TOOL, true, "Could not write the ledger");
+    await pi.end("codemode", true, "Script failed\nScript error:\nboom", "cm");
+    await expect(signals(ledger)).resolves.toMatchObject([
+      { tool: "codemode", error: "Script failed\nScript error:\nboom" },
+    ]);
+    await expect(signals(ledger)).resolves.toHaveLength(1);
   });
 
   test("keeps the message batch for direct calls", async () => {

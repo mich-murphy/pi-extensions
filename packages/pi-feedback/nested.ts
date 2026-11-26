@@ -14,7 +14,7 @@ type Scope = { readonly calls: Map<string, Tracked>; failed: boolean };
 
 export type NestedEnd = {
   readonly suppressed: boolean;
-  readonly batch: readonly BatchCall[] | undefined;
+  readonly batch: ReadonlyArray<BatchCall> | undefined;
 };
 
 const decodeArgs = Schema.decodeUnknownOption(Schema.JsonObject);

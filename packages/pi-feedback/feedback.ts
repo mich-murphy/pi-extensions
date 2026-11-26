@@ -416,7 +416,10 @@ export function registerFeedback(
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    const ended = nested.end(event);
+    const ended = nested.end({
+      ...event,
+      isError: event.isError && event.toolName !== FEEDBACK_TOOL,
+    });
 
     if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL || ended.suppressed) {
       return;
