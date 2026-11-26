@@ -2,8 +2,8 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
 import type { LayoutNode } from "@earendil-works/pi-tui/dist/layout-node";
 import { Option, Predicate, Schema } from "effect";
-import { contextRow, indexPrompts, selectPrompt } from "./context";
-import type { PromptIndex } from "./context";
+import { contextRow, labelPrompts, promptSpans, selectPrompt } from "./context";
+import type { PromptIndex, PromptSpan } from "./context";
 
 const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
 
@@ -91,22 +91,100 @@ function* userComponents(component: RenderComponent): Generator<RenderComponent>
   }
 }
 
-function nativeTexts(document: RenderComponent, rendered: ReadonlyArray<string>, width: number) {
-  const texts: Array<string> = [];
-  const lines = rendered.map((line) => stripTerminalSequences(line));
-  let cursor = 0;
+type UserRecord = {
+  readonly component: RenderComponent;
+  readonly block: ReadonlyArray<string>;
+  readonly start: number;
+  readonly source: string | undefined;
+  readonly text: string;
+};
 
-  for (const component of userComponents(document)) {
-    const block = component.render(width);
+type UserBlock = { readonly component: RenderComponent; readonly block: ReadonlyArray<string> };
 
-    while (
-      cursor < rendered.length &&
-      !block.every((line, offset) => rendered[cursor + offset] === line)
+type PromptState = {
+  readonly document: RenderComponent;
+  readonly width: number;
+  readonly raw: ReadonlyArray<string>;
+  readonly lines: Array<string>;
+  readonly users: ReadonlyArray<UserRecord>;
+  readonly spans: ReadonlyArray<PromptSpan>;
+  readonly index: PromptIndex;
+};
+
+function firstDifference(previous: ReadonlyArray<string>, next: ReadonlyArray<string>): number {
+  const limit = Math.min(previous.length, next.length);
+  let index = 0;
+
+  while (index < limit && previous[index] === next[index]) {
+    index++;
+  }
+
+  return index;
+}
+
+function sameLines(previous: ReadonlyArray<string>, next: ReadonlyArray<string>): boolean {
+  return (
+    previous === next ||
+    (previous.length === next.length && previous.every((line, index) => line === next[index]))
+  );
+}
+
+function promptSource(component: RenderComponent): string | undefined {
+  return hasText(component) ? component.text : undefined;
+}
+
+function promptText(source: string | undefined): string {
+  return source === undefined ? "" : source.replaceAll(/\s+/gu, " ").trim();
+}
+
+function keptUsers(
+  previous: ReadonlyArray<UserRecord>,
+  blocks: ReadonlyArray<UserBlock>,
+  changed: number,
+): Array<UserRecord> {
+  const kept: Array<UserRecord> = [];
+
+  for (const [position, record] of previous.entries()) {
+    const next = blocks[position];
+
+    if (
+      next?.component !== record.component ||
+      !sameLines(record.block, next.block) ||
+      record.start < 0 ||
+      record.start + record.block.length > changed
     ) {
+      break;
+    }
+
+    const source = promptSource(next.component);
+    kept.push(
+      source === record.source
+        ? { ...record, block: next.block }
+        : { ...record, block: next.block, source, text: promptText(source) },
+    );
+  }
+
+  return kept;
+}
+
+function placeUsers(
+  blocks: ReadonlyArray<UserBlock>,
+  raw: ReadonlyArray<string>,
+  lines: Array<string>,
+  from: number,
+): Array<UserRecord> {
+  const placed: Array<UserRecord> = [];
+  let cursor = from;
+
+  for (const { component, block } of blocks) {
+    while (cursor < raw.length && !block.every((line, offset) => raw[cursor + offset] === line)) {
       cursor++;
     }
 
-    if (cursor >= rendered.length || block.length === 0) {
+    const source = promptSource(component);
+
+    if (cursor >= raw.length || block.length === 0) {
+      placed.push({ component, block, start: -1, source, text: "" });
       continue;
     }
 
@@ -114,30 +192,82 @@ function nativeTexts(document: RenderComponent, rendered: ReadonlyArray<string>,
       lines[cursor + offset] = line;
     }
 
+    placed.push({ component, block, start: cursor, source, text: promptText(source) });
     cursor += block.length;
-    texts.push(hasText(component) ? component.text.replaceAll(/\s+/gu, " ").trim() : "");
   }
 
-  return { lines, texts };
+  return placed;
 }
 
-type PromptCache = {
-  document: RenderComponent;
-  lines: ReadonlyArray<string>;
-  width: number;
-  index: PromptIndex;
-};
+function stableLength(
+  previous: PromptState | undefined,
+  raw: ReadonlyArray<string>,
+  kept: number,
+): number {
+  if (previous === undefined) {
+    return 0;
+  }
 
-function promptIndexCache() {
-  let cache: PromptCache | undefined;
+  const changed = firstDifference(previous.raw, raw);
+  const stale = previous.users.slice(kept).find((record) => record.start >= 0);
+
+  return Math.min(changed, stale?.start ?? changed);
+}
+
+function keptSpans(previous: PromptState | undefined, stable: number) {
+  const spans = previous?.spans ?? [];
+
+  return spans.slice(0, spans.findLastIndex((span) => span.end < stable) + 1);
+}
+
+function buildPrompts(
+  previous: PromptState | undefined,
+  document: RenderComponent,
+  raw: ReadonlyArray<string>,
+  width: number,
+): PromptState {
+  const usable = previous?.document === document && previous.width === width ? previous : undefined;
+
+  const blocks = Array.from(userComponents(document), (component) => ({
+    component,
+    block: component.render(width),
+  }));
+
+  const kept =
+    usable === undefined ? [] : keptUsers(usable.users, blocks, firstDifference(usable.raw, raw));
+
+  const stable = stableLength(usable, raw, kept.length);
+  const lines = usable?.lines ?? [];
+  lines.length = stable;
+
+  for (let index = stable; index < raw.length; index++) {
+    lines.push(stripTerminalSequences(raw[index] ?? ""));
+  }
+
+  const last = kept.at(-1);
+  const from = last === undefined ? 0 : last.start + last.block.length;
+  const users = [...kept, ...placeUsers(blocks.slice(kept.length), raw, lines, from)];
+  const reused = keptSpans(usable, stable);
+  const scanFrom = (reused.at(-1)?.end ?? -1) + 1;
+  const spans = [...reused, ...promptSpans(lines, scanFrom)];
+  const texts = users.flatMap((record) => (record.start >= 0 ? [record.text] : []));
+
+  return { document, width, raw, lines, users, spans, index: labelPrompts(spans, texts) };
+}
+
+export function promptIndexCache(): (
+  document: Pick<Component, "render">,
+  lines: ReadonlyArray<string>,
+  width: number,
+) => PromptIndex {
+  let state: PromptState | undefined;
 
   return (document: RenderComponent, lines: ReadonlyArray<string>, width: number) => {
-    if (cache?.document !== document || cache.lines !== lines || cache.width !== width) {
-      const prompts = nativeTexts(document, lines, width);
-      cache = { document, lines, width, index: indexPrompts(prompts.lines, prompts.texts) };
+    if (state?.document !== document || state.raw !== lines || state.width !== width) {
+      state = buildPrompts(state, document, lines, width);
     }
 
-    return cache.index;
+    return state.index;
   };
 }
 

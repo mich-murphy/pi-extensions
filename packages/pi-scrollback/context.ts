@@ -3,7 +3,12 @@ import { stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil
 const ZONE_START = "\u001B]133;A\u0007";
 const ZONE_END = "\u001B]133;B\u0007";
 
-type PromptSpan = { start: number; lastText: number; text: string };
+export type PromptSpan = {
+  readonly start: number;
+  readonly end: number;
+  readonly lastText: number;
+  readonly text: string;
+};
 
 export type PromptIndex = ReadonlyArray<{
   readonly start: number;
@@ -11,13 +16,15 @@ export type PromptIndex = ReadonlyArray<{
   readonly text: string;
 }>;
 
-function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
+export function promptSpans(lines: ReadonlyArray<string>, from = 0): Array<PromptSpan> {
   const spans: Array<PromptSpan> = [];
   let start: number | undefined;
   let lastText = -1;
   let parts: Array<string> = [];
 
-  for (const [index, line] of lines.entries()) {
+  for (let index = from; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+
     if (line.startsWith(ZONE_START) && line !== ZONE_START) {
       start = index;
       parts = [];
@@ -36,7 +43,7 @@ function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
     }
 
     if (line.startsWith(ZONE_END) || line.startsWith(ZONE_START + ZONE_END)) {
-      spans.push({ start, lastText, text: parts.join(" ") });
+      spans.push({ start, end: index, lastText, text: parts.join(" ") });
       start = undefined;
     }
   }
@@ -44,14 +51,18 @@ function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
   return spans;
 }
 
-export function indexPrompts(
-  lines: ReadonlyArray<string>,
+export function labelPrompts(
+  spans: ReadonlyArray<PromptSpan>,
   texts?: ReadonlyArray<string>,
 ): PromptIndex {
-  return promptSpans(lines).map((span, index) => ({
+  return spans.map((span, index) => ({
     ...span,
     text: texts?.[index] ?? span.text,
   }));
+}
+
+function indexPrompts(lines: ReadonlyArray<string>, texts?: ReadonlyArray<string>): PromptIndex {
+  return labelPrompts(promptSpans(lines), texts);
 }
 
 export function selectPrompt(index: PromptIndex, scrollTop: number): string | undefined {
