@@ -23,7 +23,7 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
     const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
     const session = tc.draw(sampledFrom([...SESSIONS]), "session");
     const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 6 }), "shape");
-    const confidence = tc.draw(sampledFrom([0.85, 0.9, 0.95]), "confidence");
+    const probability = tc.draw(sampledFrom([0.85, 0.9, 0.95]), "probability");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
 
@@ -34,7 +34,7 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
       () => report({ ...options, impact: "blocked" }),
       () => resolveEvent(n, group),
       () => reopenEvent(n, group),
-      () => ownerEvent(n, fingerprint, owner, confidence),
+      () => ownerEvent(n, fingerprint, owner, probability),
     ][fixtureIndex];
 
     assert.ok(make !== undefined);

@@ -101,7 +101,7 @@ function inputText(input: JsonObject | undefined): JsonObject {
   return text === undefined ? {} : { input: clip(redact(text), INPUT_LIMIT) };
 }
 
-type OwnerAnswer = Pick<OwnerEvent, "owner" | "confidence">;
+type OwnerAnswer = Pick<OwnerEvent, "owner" | "probability">;
 
 function ownerOf(result: ClassifierResult | undefined): OwnerAnswer | undefined {
   const answer = result?.answers.owner;
@@ -110,9 +110,9 @@ function ownerOf(result: ClassifierResult | undefined): OwnerAnswer | undefined 
     return undefined;
   }
 
-  const confidence = answer.probabilities[answer.choice];
+  const chosen = answer.probabilities[answer.choice];
 
-  return confidence === undefined ? undefined : { owner: answer.choice, confidence };
+  return chosen === undefined ? undefined : { owner: answer.choice, probability: chosen };
 }
 
 function homeAsTilde(home: string | undefined): (text: string) => string {

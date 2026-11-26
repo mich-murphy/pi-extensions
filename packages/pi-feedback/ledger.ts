@@ -90,7 +90,7 @@ const OwnerEvent = Schema.Struct({
   fingerprint: Line,
   owner: Owner,
   model: Line,
-  confidence: Score,
+  probability: Score,
 });
 
 const ResolveEvent = Schema.Struct({

@@ -124,7 +124,7 @@ describe("harness feedback classification", () => {
     impact: "slowed",
   } as const;
 
-  test("moves a vague report to the package Jev names with confidence", async () => {
+  test("moves a vague report to the package Jev names with a high probability", async () => {
     const { pi, classifier } = setup(() => ({
       owner: { choice: "pi-web", probabilities: { "pi-web": 0.96, "pi-core": 0.04 } },
     }));
@@ -133,7 +133,7 @@ describe("harness feedback classification", () => {
     const events = await settled();
     expect(events).toMatchObject([
       { type: "report", owner: "unattributed" },
-      { type: "owner", owner: "pi-web", confidence: 0.96 },
+      { type: "owner", owner: "pi-web", probability: 0.96 },
     ]);
     expect(classifier.calls).toHaveLength(1);
     expect(deriveGroups(events).map((group) => group.owner)).toStrictEqual(["pi-web"]);

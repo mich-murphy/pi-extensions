@@ -56,7 +56,7 @@ describe("classifyRecord owner question", () => {
       ClassifyOutcome.classified({ calls: 1, failed: 0 }),
     );
     await expect(stored()).resolves.toMatchObject([
-      { fingerprint: VAGUE, owner: "pi-web", confidence: 0.95, model: JEV_MODEL },
+      { fingerprint: VAGUE, owner: "pi-web", probability: 0.95, model: JEV_MODEL },
     ]);
 
     const [call] = classifier.calls;

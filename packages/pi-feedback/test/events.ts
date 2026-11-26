@@ -123,7 +123,7 @@ export function ownerEvent(
   n: number,
   fingerprint: string,
   owner: string,
-  confidence: number,
+  probability: number,
 ): LedgerEvent {
   return {
     type: "owner",
@@ -132,6 +132,6 @@ export function ownerEvent(
     fingerprint,
     owner,
     model: "typesafe/jev-1.14.0",
-    confidence,
+    probability,
   };
 }

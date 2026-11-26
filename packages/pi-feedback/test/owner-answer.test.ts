@@ -26,8 +26,8 @@ describe("answered owners in the queue", () => {
     ["below 0.9", "pi-web", 0.89],
     ["pi-core", "pi-core", 0.99],
     ["other", "other", 0.99],
-  ])("keeps a vague report unattributed for an answer %s", (_name, owner, confidence) => {
-    const groups = deriveGroups([vague(1, "a"), ownerEvent(2, VAGUE, owner, confidence)]);
+  ])("keeps a vague report unattributed for an answer %s", (_name, owner, probability) => {
+    const groups = deriveGroups([vague(1, "a"), ownerEvent(2, VAGUE, owner, probability)]);
 
     expect(groups.map((group) => group.owner)).toStrictEqual(["unattributed"]);
   });
@@ -45,7 +45,7 @@ describe("answered owners in the queue", () => {
     ]);
   });
 
-  test("uses the most confident answer when machines disagree", () => {
+  test("uses the answer with the highest probability when machines disagree", () => {
     const events = [
       vague(1, "a"),
       ownerEvent(2, VAGUE, "pi-web", 0.91),
@@ -60,12 +60,12 @@ describe("answered owners in the queue", () => {
     ["pi-core", 0.95],
     ["other", 0.93],
   ])(
-    "keeps a vague report unattributed when the most confident answer is %s at %s",
-    (owner, confidence) => {
+    "keeps a vague report unattributed when the answer with the highest probability is %s at %s",
+    (owner, probability) => {
       const events = [
         vague(1, "a"),
         ownerEvent(2, VAGUE, "pi-web", 0.91),
-        ownerEvent(3, VAGUE, owner, confidence),
+        ownerEvent(3, VAGUE, owner, probability),
       ];
       const owners = (order: typeof events) => deriveGroups(order).map((group) => group.owner);
 
@@ -74,7 +74,7 @@ describe("answered owners in the queue", () => {
     },
   );
 
-  test("moves a vague report to the most confident answer when it passes 0.9", () => {
+  test("moves a vague report to the answer with the highest probability when it passes 0.9", () => {
     const events = [
       vague(1, "a"),
       ownerEvent(2, VAGUE, "pi-peers", 0.85),

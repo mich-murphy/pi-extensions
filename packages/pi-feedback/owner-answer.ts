@@ -16,15 +16,15 @@ export function asksOwner(record: RecordEvent): record is ReportEvent {
 }
 
 function acceptedOwner(answer: OwnerEvent): string | undefined {
-  return answer.confidence >= THRESHOLDS.owner && !Object.hasOwn(OUTSIDE_OWNERS, answer.owner)
+  return answer.probability >= THRESHOLDS.owner && !Object.hasOwn(OUTSIDE_OWNERS, answer.owner)
     ? answer.owner
     : undefined;
 }
 
 function preferred(candidate: OwnerEvent, kept: OwnerEvent): boolean {
   return (
-    candidate.confidence > kept.confidence ||
-    (candidate.confidence === kept.confidence &&
+    candidate.probability > kept.probability ||
+    (candidate.probability === kept.probability &&
       (candidate.owner < kept.owner || (candidate.owner === kept.owner && candidate.id < kept.id)))
   );
 }
