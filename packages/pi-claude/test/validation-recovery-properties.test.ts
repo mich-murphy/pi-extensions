@@ -21,7 +21,7 @@ function drawMarker(tc: TestCase): string {
 function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
   const reason = tc.draw(sampledFrom([...VALIDATION_REASONS, marker, "", 7]));
 
-  const inputs: (Schema.Json | undefined)[] = [
+  const inputs: Array<Schema.Json | undefined> = [
     marker,
     [marker, { error: marker }],
     { error: marker },

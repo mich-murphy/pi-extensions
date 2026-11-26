@@ -1,7 +1,7 @@
 import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
 
-export const permissions: readonly Permission[] = ["discover", "push"];
+export const permissions: ReadonlyArray<Permission> = ["discover", "push"];
 
 const consent =
   "Other participating Pi sessions on this OS account, including other projects, can discover this session and send it messages within the reviewed grants. Authorized new messages can wake the model and incur provider usage. Peer content is untrusted. This does not automatically share files or the whole transcript, execute patches, or grant filesystem access.";
@@ -13,7 +13,7 @@ export type LocalChoices = {
   readonly machineId: string;
   readonly scopeId: string;
   readonly label: string;
-  readonly permissions: readonly Permission[];
+  readonly permissions: ReadonlyArray<Permission>;
 };
 
 export type LocalPlan = {
@@ -28,20 +28,20 @@ export type LocalPlan = {
         readonly mode: "connect" | "listen";
         readonly address: string;
       };
-      readonly rootCertificates: readonly string[];
-      readonly certificateChain: readonly string[];
-      readonly issuerCertificates: readonly string[];
+      readonly rootCertificates: ReadonlyArray<string>;
+      readonly certificateChain: ReadonlyArray<string>;
+      readonly issuerCertificates: ReadonlyArray<string>;
       readonly privateKey: string;
-      readonly crls: readonly string[];
+      readonly crls: ReadonlyArray<string>;
       readonly revocationState: string;
     };
-    readonly scopeIds: readonly string[];
-    readonly policies: readonly {
+    readonly scopeIds: ReadonlyArray<string>;
+    readonly policies: ReadonlyArray<{
       readonly machineId: string;
       readonly scopeId: string;
-      readonly permissions: readonly Permission[];
+      readonly permissions: ReadonlyArray<Permission>;
       readonly direction: "outgoing" | "incoming";
-    }[];
+    }>;
   };
 };
 

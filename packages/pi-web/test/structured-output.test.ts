@@ -30,7 +30,7 @@ const SETTINGS = settingsFrom({ EXA_API_KEY: SECRET });
 
 function fetchTool(
   outcome: Result.Result<PublicWebResponse, PublicWebError>,
-  fetchProviders: readonly FetchProvider[] = [],
+  fetchProviders: ReadonlyArray<FetchProvider> = [],
 ) {
   return createWebFetchTool({
     settings: SETTINGS,

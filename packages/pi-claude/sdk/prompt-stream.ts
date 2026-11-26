@@ -72,8 +72,8 @@ function toContentBlocks(block: PromptBlock, ttl: CacheTtl | undefined) {
 }
 
 export async function* buildPromptStream(
-  promptBlocks: readonly PromptBlock[],
-  cacheBreakpoints: readonly number[],
+  promptBlocks: ReadonlyArray<PromptBlock>,
+  cacheBreakpoints: ReadonlyArray<number>,
   ttl: CacheTtl = "5m",
 ): AsyncGenerator<SDKUserMessage> {
   const marked = new Set(cacheBreakpoints);

@@ -61,15 +61,15 @@ const DEFAULT_KEYBINDINGS = new KeybindingsManager(TUI_KEYBINDINGS);
 
 type Command = {
   readonly mode: "insert" | "normal";
-  readonly steps: (view: View) => readonly ActionName[];
+  readonly steps: (view: View) => ReadonlyArray<ActionName>;
 };
 
-const insert = (...steps: readonly ActionName[]): Command => ({
+const insert = (...steps: ReadonlyArray<ActionName>): Command => ({
   mode: "insert",
   steps: () => steps,
 });
 
-const normal = (...steps: readonly ActionName[]): Command => ({
+const normal = (...steps: ReadonlyArray<ActionName>): Command => ({
   mode: "normal",
   steps: () => steps,
 });
@@ -197,7 +197,7 @@ class VimEditor extends CustomEditor {
     }
   }
 
-  override render(width: number): string[] {
+  override render(width: number): Array<string> {
     const lines = super.render(width);
     const lastLine = lines.at(-1);
     const label = modeLabel(this.vimState);

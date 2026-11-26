@@ -43,7 +43,7 @@ type SearchCase = {
   readonly expected: (leak: string) => ProviderJson;
 };
 
-const SEARCH_CASES: readonly SearchCase[] = [
+const SEARCH_CASES: ReadonlyArray<SearchCase> = [
   {
     name: "Brave API",
     make: (leak) =>
@@ -183,7 +183,7 @@ const SEARCH_CASES: readonly SearchCase[] = [
   },
 ];
 
-function searchTool(...providers: readonly SearchProvider[]) {
+function searchTool(...providers: ReadonlyArray<SearchProvider>) {
   return createWebSearchTool({
     settings: SETTINGS,
     redactText: redactorFor(SECRET),
@@ -215,7 +215,7 @@ type RescueCase = {
   readonly make: (markdown: string) => FetchProvider;
 };
 
-const RESCUE_CASES: readonly RescueCase[] = [
+const RESCUE_CASES: ReadonlyArray<RescueCase> = [
   {
     name: "Exa MCP",
     make: (markdown) =>

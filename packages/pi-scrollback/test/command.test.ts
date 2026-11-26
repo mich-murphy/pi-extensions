@@ -16,7 +16,7 @@ initTheme("dark");
 type Installed = { renders: MockInstance<() => void> };
 
 function setup(mode = "tui") {
-  const adapters: Installed[] = [];
+  const adapters: Array<Installed> = [];
   const handlers = new Map<string, Handler>();
   const commands = new Map<string, Command>();
   scrollback({

@@ -23,7 +23,7 @@ export type SdkModelConfig = {
   readonly minimumCacheableTokens: number;
 } & ChatModelConfig;
 
-export const models: readonly SdkModelConfig[] = [
+export const models: ReadonlyArray<SdkModelConfig> = [
   {
     id: "claude-5.5-sonnet",
     name: "Claude Sonnet 5.5 (official Agent SDK)",

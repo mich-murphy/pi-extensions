@@ -22,7 +22,7 @@ import { expectNoLeak } from "./leaks";
 import { nativeAuthFixture } from "./native-auth-fixture";
 import type { AuthStorageData } from "./native-auth-fixture";
 
-const cleanup: (() => Promise<void>)[] = [];
+const cleanup: Array<() => Promise<void>> = [];
 const pageUrl = "https://example.com/page";
 
 type SearchRequest = { query: string; provider?: SearchProviderName };
@@ -45,14 +45,14 @@ async function tools(
 ) {
   const native = await nativeAuthFixture(options.initial ? { initial: options.initial } : {});
   const settings = settingsFrom(options.settings);
-  const requests: ProviderHttpRequest[] = [];
+  const requests: Array<ProviderHttpRequest> = [];
 
-  const calls: {
+  const calls: Array<{
     endpoint: string;
     name: string;
     args: Parameters<McpClient["callTool"]>[1];
-    secrets: readonly string[];
-  }[] = [];
+    secrets: ReadonlyArray<string>;
+  }> = [];
 
   const respond = (request: ProviderHttpRequest) =>
     Effect.suspend(() => {
@@ -387,7 +387,7 @@ describe("native-auth integration", () => {
       });
 
       await t.login("exa", "old-synthetic-key");
-      const updates: unknown[] = [];
+      const updates: Array<unknown> = [];
       const controller = new AbortController();
 
       const old = t.search.execute(
@@ -444,7 +444,7 @@ describe("native-auth integration", () => {
       });
 
       await t.login("exa", secret);
-      const updates: unknown[] = [];
+      const updates: Array<unknown> = [];
 
       const result = await t.fetch.execute(
         "spill",

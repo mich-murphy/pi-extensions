@@ -50,8 +50,8 @@ const FETCH_OPTIONS = {
 function fakeFetchProvider(
   name: "exa" | "parallel",
   markdown: string | undefined,
-): FetchProvider & { readonly calls: readonly string[] } {
-  const calls: string[] = [];
+): FetchProvider & { readonly calls: ReadonlyArray<string> } {
+  const calls: Array<string> = [];
 
   return {
     name,
@@ -76,7 +76,7 @@ function articleResponse(paragraph: string) {
 function makeTool(
   env: Readonly<Record<string, string>>,
   fetchOutcome: Parameters<typeof fakePublicWeb>[0],
-  providers: readonly FetchProvider[],
+  providers: ReadonlyArray<FetchProvider>,
 ) {
   const settings = settingsFrom(env);
 
@@ -462,7 +462,7 @@ describe("webfetch tool", () => {
       runtime: toolRuntimeWith({ settings, secret: "sekrit-key", fetchPage }),
     });
 
-    const updates: unknown[] = [];
+    const updates: Array<unknown> = [];
 
     const result = await tool.execute(
       "t1",
@@ -581,7 +581,7 @@ describe("webfetch error messages", () => {
   });
 });
 
-function hangingTool(providers: readonly FetchProvider[] = []) {
+function hangingTool(providers: ReadonlyArray<FetchProvider> = []) {
   return createWebFetchTool({
     settings: DEFAULT_SETTINGS,
     redactText: redactorFor(),

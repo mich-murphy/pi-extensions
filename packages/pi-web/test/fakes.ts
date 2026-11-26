@@ -94,8 +94,10 @@ type RecordedMcpCall = {
   readonly args: Parameters<McpClient["callTool"]>[1];
 };
 
-export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult, ProviderError>[]) {
-  const calls: RecordedMcpCall[] = [];
+export function fakeMcpClient(
+  results: ReadonlyArray<Result.Result<McpToolCallResult, ProviderError>>,
+) {
+  const calls: Array<RecordedMcpCall> = [];
   let index = 0;
 
   const client: McpClient = {
@@ -113,9 +115,9 @@ export function fakeMcpClient(results: readonly Result.Result<McpToolCallResult,
 }
 
 export function fakeProviderHttp(
-  results: readonly Result.Result<ProviderHttpResponse, ProviderError>[],
+  results: ReadonlyArray<Result.Result<ProviderHttpResponse, ProviderError>>,
 ) {
-  const requests: ProviderHttpRequest[] = [];
+  const requests: Array<ProviderHttpRequest> = [];
   let index = 0;
 
   const respond = (request: ProviderHttpRequest) =>
@@ -136,7 +138,7 @@ export function fakeProviderHttp(
 }
 
 export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWebError>) {
-  const requests: PublicWebRequest[] = [];
+  const requests: Array<PublicWebRequest> = [];
 
   const client: PublicWebClient["Service"] = {
     get: (request) =>
@@ -150,18 +152,18 @@ export function fakePublicWeb(result: Result.Result<PublicWebResponse, PublicWeb
   return { client, requests };
 }
 
-export function redactorFor(...secrets: readonly string[]): (input: string) => string {
+export function redactorFor(...secrets: ReadonlyArray<string>): (input: string) => string {
   return (input) => redactSecrets(input, secrets);
 }
 
 export function textOf(result: {
-  readonly content: readonly { readonly type: string; readonly text?: string }[];
+  readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
 }): string {
   return getTextContent(result.content);
 }
 
 export function renderText(component: {
-  readonly render: (width: number) => readonly string[];
+  readonly render: (width: number) => ReadonlyArray<string>;
 }): string {
   return component
     .render(200)
@@ -196,7 +198,7 @@ function fakeHttpFetch(fetchImpl: typeof fetch): Layer.Layer<HttpFetch> {
 
 export type TestLookup = (
   hostname: string,
-) => Promise<readonly { readonly address: string; readonly family?: 4 | 6 }[]>;
+) => Promise<ReadonlyArray<{ readonly address: string; readonly family?: 4 | 6 }>>;
 
 function resolverFrom(lookup: TestLookup): Layer.Layer<DnsLookup> {
   return Layer.succeed(
@@ -278,7 +280,7 @@ export function mcpClientWith(
 }
 
 export function recordingMcpClients() {
-  const endpoints: PublicHttpUrl[] = [];
+  const endpoints: Array<PublicHttpUrl> = [];
   const live = serviceFrom(McpClients, McpClients.layer.pipe(Layer.provide(HttpFetch.layer)));
 
   const layer = Layer.succeed(
@@ -329,8 +331,8 @@ export function toolRuntimeWith(services: {
   readonly settings: WebToolsSettings;
   readonly secret?: string;
   readonly credentials?: CredentialResolver["Service"];
-  readonly searchProviders?: readonly SearchProvider[];
-  readonly fetchProviders?: readonly FetchProvider[];
+  readonly searchProviders?: ReadonlyArray<SearchProvider>;
+  readonly fetchProviders?: ReadonlyArray<FetchProvider>;
   readonly fetchPage?: FetchPage["Service"];
   readonly testClock?: boolean;
 }): ToolRuntime<

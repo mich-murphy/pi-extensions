@@ -6,11 +6,11 @@ import { pathsReadByCommand } from "../shell-reads";
 
 const cwd = "/repo";
 
-function reads(command: string): readonly string[] {
+function reads(command: string): ReadonlyArray<string> {
   return pathsReadByCommand(command, cwd).toSorted();
 }
 
-function paths(...names: string[]): readonly string[] {
+function paths(...names: Array<string>): ReadonlyArray<string> {
   return names.map((name) => resolve(cwd, name)).toSorted();
 }
 
@@ -57,7 +57,7 @@ describe("escapes inside backticks", () => {
 });
 
 describe("parameter expansions", () => {
-  const hidden: readonly string[] = [
+  const hidden: ReadonlyArray<string> = [
     'echo ${x:-"}"} ; cat secret',
     'echo ${x:-"a } b"} ; cat secret',
     "echo ${x:-$(cat secret)}",
@@ -76,7 +76,7 @@ describe("parameter expansions", () => {
     assert.deepEqual(reads(command), paths("secret"));
   });
 
-  const exact: readonly string[] = [
+  const exact: ReadonlyArray<string> = [
     "echo ${x:-}} ; cat secret",
     "echo $((1+2)) ; cat secret",
     'echo ${x:-"a b"} ; cat secret',
@@ -104,7 +104,7 @@ describe("parameter expansions", () => {
 });
 
 describe("arithmetic expansions and heredoc bodies", () => {
-  const hidden: readonly string[] = [
+  const hidden: ReadonlyArray<string> = [
     "echo $(( $(cat secret) + 1 ))",
     "echo $(( `cat secret` + 1 ))",
     "echo $((x[$(cat secret)]))",
@@ -126,7 +126,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
     assert.deepEqual(reads(command), paths("secret"));
   });
 
-  const seen: readonly string[] = [
+  const seen: ReadonlyArray<string> = [
     "echo $[ $(cat secret) ]",
     "echo <(cat secret)",
     "x=$(cat secret)",
@@ -141,7 +141,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
     assert.deepEqual(reads(command), paths("secret"));
   });
 
-  const literal: readonly string[] = [
+  const literal: ReadonlyArray<string> = [
     "cat <<'EOF'\n$(cat secret)\nEOF",
     'cat <<"EOF"\n$(cat secret)\nEOF',
     "cat <<\\EOF\n$(cat secret)\nEOF",
@@ -166,7 +166,7 @@ describe("arithmetic expansions and heredoc bodies", () => {
 });
 
 describe("ordinary commands keep their results", () => {
-  const benign: readonly (readonly [string, readonly string[]])[] = [
+  const benign: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
     [String.raw`git commit -m "say \"hi\""`, []],
     ['echo "$(date)"', []],
     [String.raw`cat "a b" | grep "x\"y"`, ["a b"]],

@@ -30,7 +30,7 @@ function printable(text: string): string {
   return text.replaceAll(/\p{Cc}/gu, " ").trim();
 }
 
-function withoutFrontmatter(content: string): readonly string[] {
+function withoutFrontmatter(content: string): ReadonlyArray<string> {
   const lines = content.replace(/^\uFEFF/u, "").split(/\r\n|[\r\n]/u);
 
   if (lines[0] !== "---") {

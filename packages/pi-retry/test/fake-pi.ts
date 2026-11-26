@@ -89,10 +89,10 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
   const channels = new Map<string, Parameters<RetryRegistration["events"]["on"]>[1]>();
   const commands = new Map<string, Command>();
   const renderers = new Map<string, MarkerRenderer>();
-  const notifications: { message: string; level: string | undefined }[] = [];
-  const sent: Sent[] = [];
-  const appended: { customType: string; data: unknown }[] = [];
-  const stderr: string[] = [];
+  const notifications: Array<{ message: string; level: string | undefined }> = [];
+  const sent: Array<Sent> = [];
+  const appended: Array<{ customType: string; data: unknown }> = [];
+  const stderr: Array<string> = [];
   const widgets = new Map<string, WidgetFactory>();
   const timers = new Set<() => void>();
   let clock = 0;
@@ -183,7 +183,10 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
     navigateTree: () => {
       handler("session_tree")({ type: "session_tree" });
     },
-    settle: (outcome: "completed" | "aborted" | "error", contextEntries: ProjectedSessionEntry[]) =>
+    settle: (
+      outcome: "completed" | "aborted" | "error",
+      contextEntries: Array<ProjectedSessionEntry>,
+    ) =>
       handler("agent_before_settle")(
         {
           type: "agent_before_settle",
@@ -200,7 +203,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
       ),
     input: (source: "interactive" | "rpc" | "extension") =>
       handler("input")({ type: "input", source }, ctx),
-    context: (messages: AgentMessage[]) => handler("context")({ type: "context", messages }),
+    context: (messages: Array<AgentMessage>) => handler("context")({ type: "context", messages }),
     shutdown: () => {
       handler("session_shutdown")({ type: "session_shutdown" });
     },

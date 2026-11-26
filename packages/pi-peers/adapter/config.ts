@@ -28,7 +28,7 @@ const configuration = Schema.Struct({
     ),
   ),
   scopeIds: Schema.Array(scope).check(
-    Schema.makeFilter<readonly string[]>(
+    Schema.makeFilter<ReadonlyArray<string>>(
       (items) => items.length >= 1 && items.length <= 4 && new Set(items).size === items.length,
     ),
   ),
@@ -48,7 +48,7 @@ const configuration = Schema.Struct({
       scopeId: scope,
       permissions: Schema.Array(Schema.Literals(["discover", "push"])),
     }),
-  ).check(Schema.makeFilter<readonly unknown[]>((items) => items.length <= 256)),
+  ).check(Schema.makeFilter<ReadonlyArray<unknown>>((items) => items.length <= 256)),
   shareBranch: Schema.optionalKey(Schema.Boolean),
   maxWaitSeconds: Schema.optionalKey(
     Schema.Number.check(
@@ -59,7 +59,7 @@ const configuration = Schema.Struct({
 
 export type Configuration = typeof configuration.Type;
 
-export const configurationKeys: readonly string[] = Object.keys(configuration.fields);
+export const configurationKeys: ReadonlyArray<string> = Object.keys(configuration.fields);
 
 export type Permission = Configuration["policies"][number]["permissions"][number];
 
@@ -67,7 +67,7 @@ const decodeJsonObject = Schema.decodeUnknownOption(Schema.JsonObject);
 const isJsonArray = Schema.is(Schema.Array(Schema.Json));
 const isRetiredPermission = Schema.is(Schema.Literals(["read", "interest"]));
 
-function withoutRetired(policy: Schema.Json): Schema.Json[] {
+function withoutRetired(policy: Schema.Json): Array<Schema.Json> {
   const fields = Option.getOrUndefined(decodeJsonObject(policy));
 
   if (fields === undefined) {

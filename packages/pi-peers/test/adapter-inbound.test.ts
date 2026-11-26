@@ -24,10 +24,10 @@ function rosterRemoval(sessionIdLength: number): Uint8Array {
   return encodeFrame(frame, "adapter-delivery");
 }
 
-function framesTotalling(total: number): Uint8Array[] {
+function framesTotalling(total: number): Array<Uint8Array> {
   const smallest = rosterRemoval(1).length;
   const largest = rosterRemoval(256).length;
-  const frames: Uint8Array[] = [];
+  const frames: Array<Uint8Array> = [];
   let remaining = total;
 
   while (remaining > 0) {
@@ -50,8 +50,8 @@ function framesTotalling(total: number): Uint8Array[] {
 
 async function fixture() {
   const socket = new Socket();
-  const disconnected: string[] = [];
-  const events: Frame[] = [];
+  const disconnected: Array<string> = [];
+  const events: Array<Frame> = [];
 
   const connecting = connectTransport(
     {

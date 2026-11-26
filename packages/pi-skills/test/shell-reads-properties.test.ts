@@ -16,7 +16,7 @@ import { assertProperty } from "./hegel-property";
 
 const cwd = "/repo";
 
-function reads(command: string): readonly string[] {
+function reads(command: string): ReadonlyArray<string> {
   return pathsReadByCommand(command, cwd).toSorted();
 }
 
@@ -24,7 +24,7 @@ const SAFE = /^[a-z0-9._]$/u;
 const escapeBackslash = (char: string): string => `\\${char}`;
 const escapeDouble = (char: string): string => ('$`"\\'.includes(char) ? `\\${char}` : char);
 
-function encodeChunk(chunk: readonly string[], scheme: number): string {
+function encodeChunk(chunk: ReadonlyArray<string>, scheme: number): string {
   const safe = chunk.every((char) => SAFE.test(char));
   const escaped = chunk.map((char) => escapeBackslash(char));
 
@@ -73,7 +73,7 @@ const quoted = composite((tc): Quoted => {
   return { word: chars.join(""), source };
 });
 
-type Braced = { readonly source: string; readonly words: readonly string[] };
+type Braced = { readonly source: string; readonly words: ReadonlyArray<string> };
 
 function braced(depth: number): ReturnType<typeof composite<Braced>> {
   return composite((tc): Braced => {
@@ -125,7 +125,7 @@ function sequence(tc: TestCase): Braced {
   const render = (value: number): string =>
     letters ? String.fromCodePoint(97 + value) : `${value}`;
 
-  const words: string[] = [];
+  const words: Array<string> = [];
   const direction = to < from ? -step : step;
 
   for (let value = from; direction > 0 ? value <= to : value >= to; value += direction) {
@@ -180,7 +180,7 @@ function inSingleQuotes(script: string): string {
   return `'${script.replaceAll("'", String.raw`'\''`)}'`;
 }
 
-const WRAPS: readonly ((command: string) => string)[] = [
+const WRAPS: ReadonlyArray<(command: string) => string> = [
   (command) => `${command}; true`,
   (command) => `true && ${command}`,
   (command) => `true\n${command}\ntrue`,

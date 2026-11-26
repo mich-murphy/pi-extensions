@@ -128,7 +128,7 @@ export const resize = actions(() => [
   { Resize: { columns: 140, rows: 50 } },
 ]);
 
-export const towardApply = actions((): ActionTemplate[] => {
+export const towardApply = actions((): Array<ActionTemplate> => {
   const shown = screenNow();
 
   if (shown?.titleShown !== true) {
@@ -142,11 +142,14 @@ export const towardApply = actions((): ActionTemplate[] => {
   return shown.kind === "list" ? towardConsent(shown.rows, shown.selected) : [];
 });
 
-function readyConsent(rows: readonly ListRow[]): string | undefined {
+function readyConsent(rows: ReadonlyArray<ListRow>): string | undefined {
   return rows.find((row) => CONSENT_ROWS.has(row.label) && !NOT_READY.test(row.value))?.label;
 }
 
-function towardConsent(rows: readonly ListRow[], selected: string | null): ActionTemplate[] {
+function towardConsent(
+  rows: ReadonlyArray<ListRow>,
+  selected: string | null,
+): Array<ActionTemplate> {
   const target = readyConsent(rows);
 
   if (target === undefined) {

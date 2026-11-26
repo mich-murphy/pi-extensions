@@ -14,7 +14,7 @@ function harness(limits: Partial<Limits> = {}) {
   let now = 0;
   let authorized = true;
   let available = true;
-  const offered: Delivery[] = [];
+  const offered: Array<Delivery> = [];
 
   const state = createState({
     peer,

@@ -162,7 +162,7 @@ function fakeMcpEndpoint(
   replies: Readonly<Record<string, () => Response>>,
   otherwise: () => Response,
 ) {
-  const requests: RecordedRequest[] = [];
+  const requests: Array<RecordedRequest> = [];
 
   const fetchImpl: typeof fetch = async (_input, init) => {
     const httpMethod = init?.method ?? "GET";
@@ -341,7 +341,7 @@ describe("mcpHttpClient", () => {
   );
 });
 
-function detailOf(payload: ProviderJson, secrets: readonly string[] = []) {
+function detailOf(payload: ProviderJson, secrets: ReadonlyArray<string> = []) {
   const result = parseMcpToolResult(payload, secrets);
   assert(Result.isFailure(result));
   assert(Predicate.isTagged("ProviderToolError")(result.failure));
@@ -424,7 +424,7 @@ const HANDSHAKE = {
   "notifications/initialized": initializedAccepted,
 };
 
-function deletes(requests: readonly RecordedRequest[]) {
+function deletes(requests: ReadonlyArray<RecordedRequest>) {
   return requests.filter((request) => request.httpMethod === "DELETE");
 }
 

@@ -30,7 +30,7 @@ export async function nativeAuthFixture(
 
   if (options.register !== false) {
     const refresh = runtime.refresh.bind(runtime);
-    const refreshesToSettleBeforeCallersRewriteModelsJson: ReturnType<typeof refresh>[] = [];
+    const refreshesToSettleBeforeCallersRewriteModelsJson: Array<ReturnType<typeof refresh>> = [];
 
     const spy = vi.spyOn(runtime, "refresh").mockImplementation(async (refreshOptions) => {
       const result = refresh(refreshOptions);

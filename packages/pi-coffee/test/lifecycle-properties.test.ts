@@ -49,7 +49,7 @@ type Model = { heldChildIndex: number | undefined; budget: number; spawns: numbe
 
 function setup() {
   const pi = fakePi();
-  const children: Child[] = [];
+  const children: Array<Child> = [];
   registerCoffee(pi.pi, {
     platform: "darwin",
     processIdCaffeinateExitsWith: 1,
@@ -133,7 +133,7 @@ function apply(
   run[action]();
 }
 
-function assertLifecycle(actions: readonly { action: Action; pick: number }[]): void {
+function assertLifecycle(actions: ReadonlyArray<{ action: Action; pick: number }>): void {
   const env = setup();
   const model: Model = { heldChildIndex: undefined, budget: 0, spawns: 0, notes: 0 };
 

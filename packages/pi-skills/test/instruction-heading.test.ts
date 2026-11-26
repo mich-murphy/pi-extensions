@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { instructionHeading, readInstructionHeading } from "../instruction-heading";
 
-const directories: string[] = [];
+const directories: Array<string> = [];
 
 describe("instruction headings", () => {
   afterEach(() => {

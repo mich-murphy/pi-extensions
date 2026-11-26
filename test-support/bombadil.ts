@@ -10,10 +10,10 @@ export type BombadilRoot = {
 };
 
 export type BombadilLaunch = {
-  readonly args?: readonly string[];
+  readonly args?: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string>>;
   readonly settings?: Readonly<ReturnType<SettingsManager["getSettings"]>>;
-  readonly omitDefaults?: readonly string[];
+  readonly omitDefaults?: ReadonlyArray<string>;
   readonly session?: string;
   readonly dispose?: () => Promise<void> | void;
 };

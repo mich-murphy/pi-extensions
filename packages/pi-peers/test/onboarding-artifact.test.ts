@@ -87,7 +87,7 @@ describe("bounded authenticated artifacts", () => {
       ],
       "Embedded metadata mismatch",
     ],
-  ] satisfies [string, [string, "binary" | "emptyObject", number][], string][])(
+  ] satisfies Array<[string, Array<[string, "binary" | "emptyObject", number]>, string]>)(
     "rejects %s",
     (_name, members, message) => {
       const f = fixture();

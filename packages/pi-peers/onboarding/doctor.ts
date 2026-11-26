@@ -25,7 +25,7 @@ type Inspection =
   | {
       readonly kind: "invalid-fields";
       readonly path: string;
-      readonly fields: readonly string[];
+      readonly fields: ReadonlyArray<string>;
     }
   | {
       readonly kind: "valid";
@@ -46,12 +46,12 @@ const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
 const isJsonObject = Schema.is(Schema.JsonObject);
 const isNumber = Schema.is(Schema.Number);
 
-export function invalidFields(value: Schema.Json): string[] {
+export function invalidFields(value: Schema.Json): Array<string> {
   if (!isJsonObject(value)) {
     return ["root (expected an object)"];
   }
 
-  const fields: string[] = [];
+  const fields: Array<string> = [];
 
   for (const key of keys) {
     try {
@@ -138,9 +138,9 @@ export type DoctorRow = {
 
 export type DoctorReport = {
   readonly ok: boolean;
-  readonly rows: DoctorRow[];
+  readonly rows: Array<DoctorRow>;
   readonly next?: string;
-  readonly technical: string[];
+  readonly technical: Array<string>;
 };
 
 type Check = { readonly row?: DoctorRow; readonly detail: string };
@@ -151,7 +151,7 @@ function line(label: string, value: string, level: DoctorLevel = "ok"): DoctorRo
 
 export type DoctorOptions = {
   readonly inMenu?: boolean;
-  readonly liveLinks?: readonly { readonly machineId: string; readonly state: string }[];
+  readonly liveLinks?: ReadonlyArray<{ readonly machineId: string; readonly state: string }>;
 };
 
 function liveLinkText(options: DoctorOptions): string | undefined {
@@ -181,7 +181,7 @@ export async function doctorReport(
   const { active, ignored } = stateLocations(agentDir);
   const path = visibleText(inspection.path);
   const technical = [`User-agent config: ${path}`, ...stateSetLines(active, ignored)];
-  const rows: DoctorRow[] = [];
+  const rows: Array<DoctorRow> = [];
 
   switch (inspection.kind) {
     case "missing": {
@@ -309,7 +309,7 @@ function stateSetRow(active: StateSet, ignored: StateSet | undefined): DoctorRow
       );
 }
 
-function stateSetLines(active: StateSet, ignored: StateSet | undefined): string[] {
+function stateSetLines(active: StateSet, ignored: StateSet | undefined): Array<string> {
   if (active.kind === "legacy") {
     return [
       `State set: legacy (session-communication.json, ${visibleText(active.directory)}, ~/.pi/comms). It keeps working as a whole and is never moved, rewritten or deleted.`,
@@ -362,7 +362,7 @@ async function describeValid(
   config: Configuration,
   agentDir: string,
   options: DoctorOptions,
-): Promise<{ rows: DoctorRow[]; technical: string[] }> {
+): Promise<{ rows: Array<DoctorRow>; technical: Array<string> }> {
   const technical = [
     "Configuration: valid (on disk; a running session may still use an earlier copy).",
     `Socket: ${visibleText(config.socketPath)}`,
@@ -376,7 +376,7 @@ async function describeValid(
 
   const socket = await socketCheck(config.socketPath);
   technical.push(socket.detail);
-  const actions: readonly Permission[] = ["discover", "push"];
+  const actions: ReadonlyArray<Permission> = ["discover", "push"];
 
   const missing = config.scopeIds.filter(
     (scope) => !actions.every((action) => permits(config, config.machineId, scope, action)),

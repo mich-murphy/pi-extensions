@@ -18,7 +18,7 @@ function definitions(): Map<string, Definition> {
   return tools;
 }
 
-function loadoutOf(...names: string[]): PeerToolLoadout {
+function loadoutOf(...names: Array<string>): PeerToolLoadout {
   return { declared: names.map((name) => ({ name })) };
 }
 

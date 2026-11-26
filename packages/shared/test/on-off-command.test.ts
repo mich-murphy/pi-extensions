@@ -5,8 +5,8 @@ import type { OnOffContext, OnOffOptions } from "../on-off-command";
 type Notice = readonly [string, "info" | "warning"];
 
 function harness(note?: (enabled: boolean) => string) {
-  const notices: Notice[] = [];
-  const applied: boolean[] = [];
+  const notices: Array<Notice> = [];
+  const applied: Array<boolean> = [];
   let state = true;
 
   const options: Omit<OnOffOptions<OnOffContext>, "note"> & {
@@ -73,7 +73,7 @@ describe("onOffCommand", () => {
   });
 
   test("applies the new state before showing its confirmation", async () => {
-    const order: string[] = [];
+    const order: Array<string> = [];
 
     const command = onOffCommand({
       name: "demo",

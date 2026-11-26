@@ -4,8 +4,8 @@ import { models, undatedModelId } from "../models";
 import type { SdkModelConfig } from "../models";
 
 export function assertModelMetadata(
-  supportedModels: readonly ModelInfo[],
-  advertisedModels: readonly SdkModelConfig[] = models,
+  supportedModels: ReadonlyArray<ModelInfo>,
+  advertisedModels: ReadonlyArray<SdkModelConfig> = models,
 ): void {
   for (const entry of advertisedModels) {
     const direct = supportedModels.find(

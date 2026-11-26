@@ -9,7 +9,7 @@ export type Read<T> = () => T | null | undefined;
 export function escapeGoesBack<T extends MenuView>(
   view: Read<T>,
   lastKey: Read<string>,
-  expected: (before: T) => readonly (string | null)[] | undefined,
+  expected: (before: T) => ReadonlyArray<string | null> | undefined,
 ): Formula {
   return always(() => {
     const before = view();

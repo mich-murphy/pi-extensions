@@ -15,7 +15,7 @@ import {
 
 const peer = { machineId: "dev-01", sessionId: "s".repeat(36), runtimeNonce: "a".repeat(32) };
 
-function arrows(text: string): string[] {
+function arrows(text: string): Array<string> {
   return text.split("\n").filter((line) => line.includes("→"));
 }
 

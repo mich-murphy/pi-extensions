@@ -206,7 +206,7 @@ describe("schema-faithful deferred tools", () => {
   });
 
   test("the degraded-schema diagnostic is written once per tool per process", () => {
-    const writes: string[] = [];
+    const writes: Array<string> = [];
 
     const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
       writes.push(String(chunk));

@@ -13,7 +13,7 @@ import { nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
 
 type Runtime = Awaited<ReturnType<typeof createAdapterRuntime>>;
 
-type RuntimeObservations = { during: (() => Promise<void>) | undefined; disposed: boolean[] };
+type RuntimeObservations = { during: (() => Promise<void>) | undefined; disposed: Array<boolean> };
 
 const runtimes: RuntimeObservations = {
   during: undefined,
@@ -38,13 +38,13 @@ async function observedRuntime(...args: Parameters<typeof createAdapterRuntime>)
 
 type Answer = (
   title: string,
-  options: readonly string[],
+  options: ReadonlyArray<string>,
 ) => string | undefined | Promise<string | undefined>;
 
-type Shown = { readonly title: string; readonly options: readonly string[] };
+type Shown = { readonly title: string; readonly options: ReadonlyArray<string> };
 
-function rpcHost(acquire: () => Promise<string>, consented: string[]) {
-  const notifications: string[] = [];
+function rpcHost(acquire: () => Promise<string>, consented: Array<string>) {
+  const notifications: Array<string> = [];
   const sessionId = freshId();
   const fixture = extensionFixture();
   communication(fixture.api, {
@@ -56,7 +56,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
 
   const context = (
     answer: Answer,
-    shown: Shown[],
+    shown: Array<Shown>,
     mode: PeersContext["mode"] = "rpc",
   ): PeersContext => ({
     mode,
@@ -70,7 +70,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
       getHeader: () => null,
     },
     ui: {
-      select: async (title: string, options: string[]) => {
+      select: async (title: string, options: Array<string>) => {
         shown.push({ title, options });
 
         return answer(title, options);
@@ -94,7 +94,7 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
     command: async (
       args: string,
       answer: Answer = () => undefined,
-      shown: Shown[] = [],
+      shown: Array<Shown> = [],
       mode: PeersContext["mode"] = "rpc",
     ) => {
       const start = notifications.length;
@@ -105,8 +105,12 @@ function rpcHost(acquire: () => Promise<string>, consented: string[]) {
   };
 }
 
-function staleApply(titles: string[], start: () => Promise<string[]>, ready: Promise<unknown>) {
-  let other: Promise<string[]> | undefined;
+function staleApply(
+  titles: Array<string>,
+  start: () => Promise<Array<string>>,
+  ready: Promise<unknown>,
+) {
+  let other: Promise<Array<string>> | undefined;
 
   const answer: Answer = async (title, options) => {
     titles.push(title);
@@ -137,7 +141,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
   let agent: string;
   let release: () => void;
   let acquiring: Promise<undefined>;
-  let consented: string[];
+  let consented: Array<string>;
   let host: ReturnType<typeof rpcHost>;
   beforeEach(async () => {
     fixture = await nativeFixture();
@@ -179,7 +183,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
     await expect(host.command("reset", applyOnce)).resolves.toStrictEqual([
       expect.stringContaining("Peers is busy with another action"),
     ]);
-    const shown: Shown[] = [];
+    const shown: Array<Shown> = [];
     await host.command("", () => undefined, shown);
     expect(shown[0]?.options).toStrictEqual(
       expect.arrayContaining(["Setup: Applying…", "Reset: Busy"]),
@@ -192,7 +196,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
   });
 
   test("a stale consent row chosen while another Apply runs does nothing and records no consent", async () => {
-    const titles: string[] = [];
+    const titles: Array<string> = [];
     const race = staleApply(titles, async () => host.command("setup", applyOnce), acquiring);
     await host.command("setup", race.answer);
     expect(consented).toStrictEqual(["Apply"]);
@@ -206,7 +210,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
   });
 
   test("a session_shutdown during Apply saves settings but activates nothing", async () => {
-    const shown: Shown[] = [];
+    const shown: Array<Shown> = [];
     const first = host.command("setup", applyOnce, shown);
     await acquiring;
     await host.event("session_shutdown");
@@ -226,7 +230,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
   test("a session_shutdown while the runtime starts disposes it and activates nothing", async () => {
     release();
     runtimes.during = async () => host.event("session_shutdown");
-    const shown: Shown[] = [];
+    const shown: Array<Shown> = [];
     await host.command("setup", applyOnce, shown);
     const outcome = shown.find((item) => item.options.includes("Close"));
     expect(outcome?.title).toContain("! Settings saved but not active yet");
@@ -240,7 +244,7 @@ describe("registerCommunication: actions while an Apply runs", () => {
 describe("registerCommunication: commands outside an Apply", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let host: ReturnType<typeof rpcHost>;
-  let consented: string[];
+  let consented: Array<string>;
   beforeEach(async () => {
     fixture = await nativeFixture();
     vi.stubEnv("HOME", fixture.root);

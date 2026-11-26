@@ -394,7 +394,7 @@ function readCapped(
     Effect.sync(() => body.getReader()),
     (reader) =>
       Effect.gen(function* () {
-        const chunks: Buffer[] = [];
+        const chunks: Array<Buffer> = [];
         let bytes = 0;
 
         while (true) {
@@ -433,11 +433,9 @@ function readCapped(
   );
 }
 
-const NON_PUBLIC_RANGES: readonly (readonly [
-  network: string,
-  prefixLength: number,
-  family: "ipv4" | "ipv6",
-])[] = [
+const NON_PUBLIC_RANGES: ReadonlyArray<
+  readonly [network: string, prefixLength: number, family: "ipv4" | "ipv6"]
+> = [
   ["0.0.0.0", 8, "ipv4"],
   ["10.0.0.0", 8, "ipv4"],
   ["100.64.0.0", 10, "ipv4"],
@@ -485,7 +483,7 @@ export function isPrivateOrLocalIp(input: string): boolean {
   return embedded !== undefined && NON_PUBLIC_ADDRESSES.check(embedded, "ipv4");
 }
 
-function ipv6Groups(ip: string): number[] {
+function ipv6Groups(ip: string): Array<number> {
   let text = ip.split("%")[0] ?? ip;
   const tail = /(?<a>\d+)\.(?<b>\d+)\.(?<c>\d+)\.(?<d>\d+)$/u.exec(text)?.groups;
 
@@ -507,7 +505,7 @@ function ipv6Groups(ip: string): number[] {
 function embeddedIpv4(ip: string): string | undefined {
   const g = ipv6Groups(ip);
   const siit = g.slice(0, 4).every((group) => group === 0) && g[4] === 0xff_ff && g[5] === 0;
-  let pair: (number | undefined)[] = [];
+  let pair: Array<number | undefined> = [];
 
   if (siit) {
     pair = [g[6], g[7]];
@@ -548,7 +546,7 @@ export class HttpFetch extends Context.Service<
 export class DnsLookup extends Context.Service<
   DnsLookup,
   {
-    readonly lookup: (hostname: string) => Promise<readonly ApprovedAddress[]>;
+    readonly lookup: (hostname: string) => Promise<ReadonlyArray<ApprovedAddress>>;
   }
 >()("pi-web/network/DnsLookup") {
   static readonly layer = Layer.succeed(
@@ -586,7 +584,7 @@ export class PublicWebClient extends Context.Service<
       const approvedAddresses = (
         url: URL,
       ): Effect.Effect<
-        readonly ApprovedAddress[],
+        ReadonlyArray<ApprovedAddress>,
         PublicWebRequestFailed | PrivateHostBlocked | PrivateIpBlocked
       > => {
         const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
@@ -637,7 +635,7 @@ export class PublicWebClient extends Context.Service<
         yield* Effect.fromResult(checkDomainPolicy(url, request.domainPolicy));
         const hostname = stripIpv6Brackets(url.hostname);
         const literalFamily = isIP(hostname);
-        let addresses: readonly ApprovedAddress[];
+        let addresses: ReadonlyArray<ApprovedAddress>;
 
         if (request.blockPrivateHosts) {
           addresses = yield* approvedAddresses(url);

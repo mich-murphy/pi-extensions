@@ -13,7 +13,7 @@ const segment = oneOf(
 const segments = arrays(segment, { maxSize: 4 });
 const absolute = textGen({ alphabet: "/.ab", maxSize: 12 }).map((text) => `/${text}`);
 
-function assertContainment(parent: string, first: string[], second: string[]): void {
+function assertContainment(parent: string, first: Array<string>, second: Array<string>): void {
   const middle = join(parent, ...first);
   const leaf = join(middle, ...second);
 

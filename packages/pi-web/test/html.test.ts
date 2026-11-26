@@ -320,7 +320,7 @@ describe("htmlToMarkdown tables", () => {
 describe("layout table detection", () => {
   const grid = "<tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr>";
 
-  const cases: readonly (readonly [string, "data" | "layout", string])[] = [
+  const cases: ReadonlyArray<readonly [string, "data" | "layout", string]> = [
     ["a caption", "data", `<table border="1"><caption>c</caption>${grid}</table>`],
     ["a thead", "data", `<table border="1"><thead></thead>${grid}</table>`],
     ["a th", "data", `<table border="1"><tr><th>h</th><th>i</th></tr>${grid}</table>`],

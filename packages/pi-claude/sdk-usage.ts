@@ -52,7 +52,7 @@ export type ClaudeUsageWindow = {
 export type ClaudeUsageStatus = {
   readonly subscriptionType: string | null;
   readonly rateLimitsAvailable: boolean;
-  readonly windows: readonly ClaudeUsageWindow[];
+  readonly windows: ReadonlyArray<ClaudeUsageWindow>;
   readonly extraUsageEnabled: boolean | null;
 };
 

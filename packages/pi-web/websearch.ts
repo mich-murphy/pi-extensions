@@ -172,7 +172,7 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
 
     renderResult(
       result: {
-        readonly content: readonly { readonly type: string; readonly text?: string }[];
+        readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
         readonly details?: WebSearchDetails;
         readonly isError?: boolean;
       },

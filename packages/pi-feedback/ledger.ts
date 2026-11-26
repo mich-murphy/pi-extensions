@@ -117,7 +117,7 @@ export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omi
 
 export type EventDraft = DistributiveOmit<LedgerEvent, "id" | "at">;
 
-export type LedgerRead = { readonly events: readonly LedgerEvent[]; readonly skipped: number };
+export type LedgerRead = { readonly events: ReadonlyArray<LedgerEvent>; readonly skipped: number };
 
 export type Clock = { readonly now: () => Date; readonly id: () => string };
 
@@ -168,7 +168,7 @@ export async function appendEvent(
 }
 
 export function parseLedger(text: string): LedgerRead {
-  const events: LedgerEvent[] = [];
+  const events: Array<LedgerEvent> = [];
   let skipped = 0;
 
   for (const line of text.split("\n")) {

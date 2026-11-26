@@ -42,7 +42,10 @@ function parametersLine(parameters: Tool["parameters"]): string {
   return `\nParameters (JSON Schema): ${bounded}`;
 }
 
-export function createDeferredPiTools(catalog: readonly CatalogTool[], onFallback?: () => void) {
+export function createDeferredPiTools(
+  catalog: ReadonlyArray<CatalogTool>,
+  onFallback?: () => void,
+) {
   return catalog.map(({ declaration, mcpName, schema, degraded }) => ({
     name: mcpName,
     description:
@@ -64,14 +67,16 @@ export type DeferredCallCapture = {
   readonly batchHook: HookCallback;
   readonly batchStopped: boolean;
 
-  readonly calls: readonly DeferredCall[];
+  readonly calls: ReadonlyArray<DeferredCall>;
   readonly invalidGatewayCalls: number;
   readonly unexpectedToolCalls: number;
   readonly uncapturedBatchCalls: number;
   readonly sdkRejectedCalls: number;
 };
 
-export function createDeferredCallCapture(catalog: readonly CatalogTool[]): DeferredCallCapture {
+export function createDeferredCallCapture(
+  catalog: ReadonlyArray<CatalogTool>,
+): DeferredCallCapture {
   const calls = new Map<string, DeferredCall>();
   let invalidCalls = 0;
   let unexpectedToolCalls = 0;

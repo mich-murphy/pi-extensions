@@ -9,7 +9,7 @@ import { ClaudeSdkVersionSources, inspectClaudeSdkVersions } from "../sdk-versio
 
 const settings = propertySettings(200);
 
-const NOISE: readonly ((version: string) => string)[] = [
+const NOISE: ReadonlyArray<(version: string) => string> = [
   (version) => version,
   (version) => `${version} (Claude Code)`,
   (version) => `v${version}`,

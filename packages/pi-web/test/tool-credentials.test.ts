@@ -51,7 +51,7 @@ describe("credential wait lifecycle", () => {
     },
   );
   test("webfetch never resolves the Brave credential, which only search can use", async () => {
-    const resolved: string[] = [];
+    const resolved: Array<string> = [];
     const settings = settingsFrom();
 
     const credentials = CredentialResolver.of({
@@ -135,7 +135,7 @@ describe("credential wait lifecycle", () => {
     });
 
     const tool = createWebSearchTool({ settings, runtime, redactText: (input) => input });
-    const updates: unknown[] = [];
+    const updates: Array<unknown> = [];
 
     const outcome = tool
       .execute("pending", { query: "query" }, undefined, (update) => {

@@ -15,7 +15,7 @@ export type OnOffOptions<C extends OnOffContext> = {
 
 export type OnOffCommand<C extends OnOffContext> = {
   readonly description: string;
-  readonly getArgumentCompletions: (prefix: string) => AutocompleteItem[];
+  readonly getArgumentCompletions: (prefix: string) => Array<AutocompleteItem>;
   readonly handler: (args: string, ctx: C) => Promise<void>;
 };
 

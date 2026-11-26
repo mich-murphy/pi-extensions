@@ -3,7 +3,7 @@ import { assert, describe, expect, test } from "vitest";
 import { models } from "../models";
 import { assertModelMetadata } from "./sdk-model-metadata";
 
-function catalog(): ModelInfo[] {
+function catalog(): Array<ModelInfo> {
   return models.map((entry) => {
     const info: ModelInfo = {
       value: entry.sdkModel === "claude-fable-5-2" ? "fable" : entry.sdkModel,
@@ -22,14 +22,14 @@ function catalog(): ModelInfo[] {
   });
 }
 
-function rowAt(rows: ModelInfo[], index: number): ModelInfo {
+function rowAt(rows: Array<ModelInfo>, index: number): ModelInfo {
   const row = rows.at(index);
   assert(row !== undefined, "missing fixture row");
 
   return row;
 }
 
-function fableRow(rows: ModelInfo[]): ModelInfo {
+function fableRow(rows: Array<ModelInfo>): ModelInfo {
   return rowAt(rows, 2);
 }
 

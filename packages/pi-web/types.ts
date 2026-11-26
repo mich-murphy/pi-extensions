@@ -71,7 +71,7 @@ export type WebSearchDetails = {
   readonly query: string;
   readonly maxResults: number;
   readonly provider: SearchProviderName;
-  readonly attemptedProviders: readonly SearchProviderName[];
+  readonly attemptedProviders: ReadonlyArray<SearchProviderName>;
   readonly resultCount: number;
   readonly truncated?: boolean | undefined;
   readonly fullOutputPath?: string | undefined;

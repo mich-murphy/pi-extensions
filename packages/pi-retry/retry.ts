@@ -42,7 +42,7 @@ const TRANSIENT_ERROR_MESSAGES: ReadonlySet<string> = new Set([
 
 export type TransientSettings = {
   readonly enabled: boolean;
-  readonly delaysMinutes: readonly number[];
+  readonly delaysMinutes: ReadonlyArray<number>;
   readonly maxAttempts: number;
   readonly windowMinutes: number;
 };

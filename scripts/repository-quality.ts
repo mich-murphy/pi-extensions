@@ -12,7 +12,7 @@ const extensions = new Map(
   }),
 );
 
-type Tool = { name: string; options: string[]; pathPrefix: string; retry: string };
+type Tool = { name: string; options: Array<string>; pathPrefix: string; retry: string };
 
 const tools = new Map(
   Object.entries({
@@ -33,7 +33,7 @@ const tools = new Map(
   } satisfies Record<string, Tool>),
 );
 
-function git(args: string[], cwd: string): string {
+function git(args: Array<string>, cwd: string): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   const advice = "Git query failed; run from a Git checkout with a readable index.";
 
@@ -75,7 +75,7 @@ function checkedStat(root: string, path: string, component: string, stats: PathS
 }
 
 function existingFile(root: string, path: string, stats: PathStats): boolean {
-  const components: string[] = [];
+  const components: Array<string> = [];
   let stat: ReturnType<typeof indexedStat>;
 
   for (const part of path.split("/")) {
@@ -94,7 +94,7 @@ function indexedEntry(entry: string) {
   return { path: entry.slice(entry.indexOf("\t") + 1), symlink: entry.startsWith("120000 ") };
 }
 
-function indexedFiles(root: string, extension: RegExp): string[] {
+function indexedFiles(root: string, extension: RegExp): Array<string> {
   const indexed = git(["ls-files", "--cached", "--stage", "-z"], root);
   const stats: PathStats = new Map();
 
@@ -151,7 +151,7 @@ function toolExecutable(root: string, tool: Tool): string {
   }
 }
 
-function runBatch(root: string, tool: Tool, files: string[]): number {
+function runBatch(root: string, tool: Tool, files: Array<string>): number {
   const paths = files.map((path) => `${tool.pathPrefix}${path}`);
 
   const result = spawnSync(toolExecutable(root, tool), [...tool.options, ...paths], {
@@ -168,7 +168,7 @@ function runBatch(root: string, tool: Tool, files: string[]): number {
 
 const MAX_PATHS_PER_TOOL_RUN = 64;
 
-function runBatches(root: string, tool: Tool, files: string[]): number {
+function runBatches(root: string, tool: Tool, files: Array<string>): number {
   for (let start = 0; start < files.length; start += MAX_PATHS_PER_TOOL_RUN) {
     const status = runBatch(root, tool, files.slice(start, start + MAX_PATHS_PER_TOOL_RUN));
 

@@ -39,7 +39,7 @@ type Req = {
   readonly reasoning: string | undefined;
   readonly tools: string | undefined;
   readonly ttl: Ttl | undefined;
-  readonly blocks: readonly PromptBlock[];
+  readonly blocks: ReadonlyArray<PromptBlock>;
 };
 
 type Pending = {
@@ -53,12 +53,12 @@ type Pending = {
 type Machine = {
   readonly tracker: CacheDiagnosticTracker;
   readonly clock: ManualClock;
-  readonly events: CacheDiagnostic[];
+  readonly events: Array<CacheDiagnostic>;
   previous: Req | undefined;
   previousAt: number;
   turn: number;
   now: number;
-  readonly pending: Pending[];
+  readonly pending: Array<Pending>;
 };
 
 type ManualClock = { time: number };
@@ -78,7 +78,7 @@ function manualClockService(state: ManualClock): Clock.Clock {
 }
 
 function createMachine(): Machine {
-  const events: CacheDiagnostic[] = [];
+  const events: Array<CacheDiagnostic> = [];
   const clock: ManualClock = { time: 0 };
 
   const tracker = Effect.runSync(
@@ -120,7 +120,7 @@ function drawBlock(tc: TestCase): PromptBlock {
   return { text, images: images.map((data) => ({ data, mediaType: "image/png" })) };
 }
 
-function drawBlocks(tc: TestCase): PromptBlock[] {
+function drawBlocks(tc: TestCase): Array<PromptBlock> {
   return tc.draw(integers({ minValue: 0, maxValue: 4 })) === 0
     ? []
     : Array.from({ length: tc.draw(integers({ minValue: 1, maxValue: 4 })) }, () => drawBlock(tc));
@@ -145,7 +145,7 @@ function sameBlock(left: PromptBlock | undefined, right: PromptBlock | undefined
   );
 }
 
-function commonPrefix(previous: Req | undefined, blocks: readonly PromptBlock[]): number {
+function commonPrefix(previous: Req | undefined, blocks: ReadonlyArray<PromptBlock>): number {
   let count = 0;
 
   while (count < blocks.length && sameBlock(blocks[count], previous?.blocks[count])) {
@@ -155,7 +155,7 @@ function commonPrefix(previous: Req | undefined, blocks: readonly PromptBlock[])
   return count;
 }
 
-function characters(blocks: readonly PromptBlock[], images: boolean): number {
+function characters(blocks: ReadonlyArray<PromptBlock>, images: boolean): number {
   return blocks.reduce(
     (total, block) =>
       total +
@@ -264,7 +264,7 @@ function expectedCauses(
   pending: Pending,
   usage: TokenUsage,
   prompt: number,
-): readonly (string | undefined)[] {
+): ReadonlyArray<string | undefined> {
   if (pending.ttl === "none") {
     return ["caching-disabled"];
   }
@@ -347,7 +347,7 @@ function ensureRequest(tc: TestCase, machine: Machine): Req {
   return previousOf(machine);
 }
 
-function rewriteBlocks(tc: TestCase, previous: Req): readonly PromptBlock[] {
+function rewriteBlocks(tc: TestCase, previous: Req): ReadonlyArray<PromptBlock> {
   if (previous.blocks.length === 0) {
     return [drawBlock(tc)];
   }

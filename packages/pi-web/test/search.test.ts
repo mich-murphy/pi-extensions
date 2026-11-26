@@ -122,7 +122,7 @@ describe("searchWithFallback", () => {
 
   it.effect("renders every provider failure as a safe reason", () =>
     Effect.gen(function* () {
-      const errors: ProviderError[] = [
+      const errors: Array<ProviderError> = [
         new ProviderRequestFailed({ hostname: "mcp.exa.ai" }),
         new ProviderRequestFailed({
           hostname: "mcp.exa.ai",
@@ -159,7 +159,7 @@ describe("searchWithFallback", () => {
 
   it.effect("tries providers in order, stopping at the first success", () =>
     Effect.gen(function* () {
-      const order: string[] = [];
+      const order: Array<string> = [];
 
       const tracked = (provider: SearchProvider): SearchProvider => ({
         ...provider,
@@ -453,7 +453,7 @@ describe("provider route isolation", () => {
         PI_WEB_PARALLEL_ENDPOINT: "https://override.example/mcp",
       };
 
-      const outbound: { url: string; headers: Headers; body: string }[] = [];
+      const outbound: Array<{ url: string; headers: Headers; body: string }> = [];
 
       const fetchImpl: HttpFetch["Service"]["fetch"] = async (input, init) => {
         outbound.push({

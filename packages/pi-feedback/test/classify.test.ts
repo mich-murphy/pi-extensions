@@ -38,7 +38,7 @@ describe("classifyRecord", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  async function seed(events: readonly LedgerEvent[]): Promise<void> {
+  async function seed(events: ReadonlyArray<LedgerEvent>): Promise<void> {
     const clock = fakeClock(1000);
 
     for (const event of events) {
@@ -47,7 +47,7 @@ describe("classifyRecord", () => {
     }
   }
 
-  async function stored(type: LedgerEvent["type"]): Promise<LedgerEvent[]> {
+  async function stored(type: LedgerEvent["type"]): Promise<Array<LedgerEvent>> {
     const { events } = await readLedger(ledger);
 
     return events.filter((event) => event.type === type);

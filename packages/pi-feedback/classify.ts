@@ -105,7 +105,7 @@ function needsClassifying(record: RecordEvent): boolean {
 
 async function verdictFor(
   job: ClassifyJob,
-  events: readonly LedgerEvent[],
+  events: ReadonlyArray<LedgerEvent>,
   ask: Asker,
 ): Promise<Scores | undefined> {
   const { record } = job;
@@ -134,7 +134,10 @@ async function verdictFor(
   return scores;
 }
 
-function comparisonsFor(record: RecordEvent, events: readonly LedgerEvent[]): RecordEvent[] {
+function comparisonsFor(
+  record: RecordEvent,
+  events: ReadonlyArray<LedgerEvent>,
+): Array<RecordEvent> {
   const answered = new Set(
     events.flatMap((event) =>
       event.type === "same_cause" && event.owner === record.owner

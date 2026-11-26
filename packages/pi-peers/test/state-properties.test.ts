@@ -201,9 +201,9 @@ function applyStep(state: SessionState, model: Model, step: Step): void {
   assert.equal(stats.inboxBytes, activeBytes(model));
 }
 
-function assertAdmissionTrace(steps: readonly Step[]): void {
+function assertAdmissionTrace(steps: ReadonlyArray<Step>): void {
   const model: Model = { now: 0, authorized: true, queue: true, offers: 0, entries: new Map() };
-  const offers: Delivery[] = [];
+  const offers: Array<Delivery> = [];
 
   const state = createState({
     peer: receiver,
@@ -278,7 +278,7 @@ describe("Hegel bounded state/fault traces against independent models", () => {
     () => {
       new Hegel((tc) => {
         const count = tc.draw(integers({ minValue: 0, maxValue: 40 }), "length");
-        const steps: Step[] = [];
+        const steps: Array<Step> = [];
 
         for (let index = 0; index < count; index++) {
           steps.push({

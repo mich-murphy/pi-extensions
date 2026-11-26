@@ -9,7 +9,7 @@ const credentialEffect = Effect.gen(function* () {
 
 describe("credential boundary", () => {
   test("snapshots trim keys, deduplicate requests and leave unrequested providers absent", async () => {
-    const calls: string[] = [];
+    const calls: Array<string> = [];
 
     const snapshot = await Effect.runPromise(
       resolveCredentialSnapshot(["exa", "exa", "brave"]).pipe(
@@ -72,7 +72,7 @@ describe("credential boundary", () => {
   });
 
   test("captured failure telemetry retains neither rejected values nor raw causes", async () => {
-    const messages: string[] = [];
+    const messages: Array<string> = [];
 
     const logger = Logger.make((options) => {
       messages.push(observableText(decodeInspectable(options.message)));

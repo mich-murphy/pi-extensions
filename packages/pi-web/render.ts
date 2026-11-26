@@ -12,7 +12,7 @@ const isTextContent = Schema.is(
 );
 
 export function getTextContent(
-  content: readonly { readonly type: string; readonly text?: string }[] | undefined,
+  content: ReadonlyArray<{ readonly type: string; readonly text?: string }> | undefined,
 ): string {
   if (!content) {
     return "";

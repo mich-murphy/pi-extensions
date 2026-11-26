@@ -165,8 +165,8 @@ export function applyState(
 function localRows(
   choices: () => LocalChoices,
   set: (next: LocalChoices) => void,
-  fields: readonly Field[] = ["machineId", "scopeId", "label"],
-): Row[] {
+  fields: ReadonlyArray<Field> = ["machineId", "scopeId", "label"],
+): Array<Row> {
   return fields.map((field) =>
     textField({
       id: field,
@@ -231,7 +231,7 @@ function permissionsRow(
   };
 }
 
-function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
+function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Array<Row> {
   if (!draft.socketRequired) {
     return [];
   }
@@ -263,11 +263,11 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Row[] {
   ];
 }
 
-function applyRows(options: Readonly<SetupFormOptions>): Row[] {
+function applyRows(options: Readonly<SetupFormOptions>): Array<Row> {
   const { draft } = options;
   const state = applyState(draft, options.blocked, options.remoteBlocked);
 
-  const details = (): string[] => {
+  const details = (): Array<string> => {
     if (state.kind === "ready") {
       return options.details(state.value).split("\n");
     }
@@ -388,9 +388,9 @@ export type ManageFormOptions = {
   peer?: string;
   rebuild?: (choices: LocalChoices) => LocalPlan;
   readonly shared: () => boolean;
-  readonly details: (plan: LocalPlan | undefined) => readonly string[];
+  readonly details: (plan: LocalPlan | undefined) => ReadonlyArray<string>;
   readonly apply: (plan: LocalPlan) => void;
-  readonly actions: () => readonly Row[];
+  readonly actions: () => ReadonlyArray<Row>;
 };
 
 export function manageForm(options: Readonly<ManageFormOptions>): Screen {
@@ -403,7 +403,7 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
 
   const { fixedMachine, peer } = options;
 
-  const fixed = (field: Field, reason: string | undefined): Row[] =>
+  const fixed = (field: Field, reason: string | undefined): Array<Row> =>
     reason === undefined
       ? localRows(choices, set, [field])
       : [

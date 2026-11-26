@@ -24,10 +24,14 @@ const settings = propertySettings(200);
 
 type Step = { jump: number; event: "none" | "tree" | "shutdown" };
 
-type Plan = { delaysMinutes: number[]; maxAttempts: number; windowMinutes: number };
+type Plan = { delaysMinutes: Array<number>; maxAttempts: number; windowMinutes: number };
 
-function expectedOutcomes(plan: Plan, times: readonly number[], resets: readonly boolean[]) {
-  const out: { gaveUp: boolean; attempt: number; resetsAt: number }[] = [];
+function expectedOutcomes(
+  plan: Plan,
+  times: ReadonlyArray<number>,
+  resets: ReadonlyArray<boolean>,
+) {
+  const out: Array<{ gaveUp: boolean; attempt: number; resetsAt: number }> = [];
   let attempts = 0;
   let first = 0;
 
@@ -69,8 +73,8 @@ function failOnce(pi: ReturnType<typeof setup>, at: number): string {
   return message;
 }
 
-function assertSchedule(plan: Plan, steps: readonly Step[]): void {
-  const times: number[] = [];
+function assertSchedule(plan: Plan, steps: ReadonlyArray<Step>): void {
+  const times: Array<number> = [];
   let at = 0;
 
   for (const { jump } of steps) {
@@ -126,7 +130,7 @@ function drawPlan(tc: TestCase): Plan {
   };
 }
 
-type SettingsLeaf = number | string | boolean | null | number[];
+type SettingsLeaf = number | string | boolean | null | Array<number>;
 
 type FieldName = keyof TransientSettings;
 
@@ -159,7 +163,7 @@ function checkValid(result: TransientSettings): void {
   ]);
 }
 
-function assertReader(settingsCase: number, fields: TestFields, junkKeys: string[]): void {
+function assertReader(settingsCase: number, fields: TestFields, junkKeys: Array<string>): void {
   const transient = fields;
   const plain = unpollutedSettings(settingsCase, transient, fields);
 

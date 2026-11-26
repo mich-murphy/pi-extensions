@@ -10,7 +10,7 @@ const repo = resolve(import.meta.dirname, "..");
 const host = join(repo, "node_modules/@earendil-works/pi-coding-agent");
 const { bin } = readManifest(join(host, "package.json"));
 
-const extensions: string[] = [];
+const extensions: Array<string> = [];
 let fixturePath: string | undefined;
 const argv = process.argv.slice(2);
 

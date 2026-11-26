@@ -24,7 +24,7 @@ const runner = resolve(checkout, "scripts/repository-quality.ts");
 function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), "repository quality-"));
 
-  function git(...args: string[]) {
+  function git(...args: Array<string>) {
     const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
 

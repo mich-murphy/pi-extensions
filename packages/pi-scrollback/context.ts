@@ -5,11 +5,11 @@ const ZONE_END = "\u001B]133;B\u0007";
 
 type PromptSpan = { start: number; lastText: number; text: string };
 
-function promptSpans(lines: readonly string[]): PromptSpan[] {
-  const spans: PromptSpan[] = [];
+function promptSpans(lines: ReadonlyArray<string>): Array<PromptSpan> {
+  const spans: Array<PromptSpan> = [];
   let start: number | undefined;
   let lastText = -1;
-  let parts: string[] = [];
+  let parts: Array<string> = [];
 
   for (const [index, line] of lines.entries()) {
     if (line.startsWith(ZONE_START) && line !== ZONE_START) {
@@ -39,9 +39,9 @@ function promptSpans(lines: readonly string[]): PromptSpan[] {
 }
 
 export function selectContext(
-  lines: readonly string[],
+  lines: ReadonlyArray<string>,
   scrollTop: number,
-  texts?: readonly string[],
+  texts?: ReadonlyArray<string>,
 ): string | undefined {
   const spans = promptSpans(lines);
   const prompt = spans.findLast((span) => span.start <= scrollTop);

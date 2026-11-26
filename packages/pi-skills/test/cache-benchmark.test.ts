@@ -128,14 +128,14 @@ type Step = {
 type Scenario = {
   readonly name: string;
   readonly initial?: (store: MemoryStore, fixture: Fixture) => void;
-  readonly steps: readonly Step[];
+  readonly steps: ReadonlyArray<Step>;
 };
 
 type Rendering = "midConvo" | "collapsed" | "claudeSdk";
 
-const RENDERINGS: readonly Rendering[] = ["midConvo", "collapsed", "claudeSdk"];
+const RENDERINGS: ReadonlyArray<Rendering> = ["midConvo", "collapsed", "claudeSdk"];
 
-type Rendered = { readonly text: string; readonly blocks?: readonly string[] };
+type Rendered = { readonly text: string; readonly blocks?: ReadonlyArray<string> };
 
 function renderMessage(message: Message, head: boolean): string {
   if (message.role === "system") {
@@ -149,7 +149,7 @@ function renderMessage(message: Message, head: boolean): string {
   return `${message.role}:${JSON.stringify(message.content)}`;
 }
 
-function renderMessages(messages: readonly Message[]): string {
+function renderMessages(messages: ReadonlyArray<Message>): string {
   return messages.map((message, index) => renderMessage(message, index === 0)).join("\n\n");
 }
 
@@ -226,7 +226,7 @@ type RenderingSummary = {
   readonly reusedChars: number;
   readonly unreusedChars: number;
   readonly reuseRatio: number;
-  readonly perRequest: readonly RequestReuse[];
+  readonly perRequest: ReadonlyArray<RequestReuse>;
 };
 
 type ScenarioReport = {
@@ -240,7 +240,10 @@ type ScenarioReport = {
   readonly renderings: Readonly<Record<Rendering, RenderingSummary>>;
 };
 
-function summarize(contexts: readonly TranscriptContext[], rendering: Rendering): RenderingSummary {
+function summarize(
+  contexts: ReadonlyArray<TranscriptContext>,
+  rendering: Rendering,
+): RenderingSummary {
   const rendered = contexts.map((context) => render(context, rendering));
   const perRequest = rendered.map((current, index) => reuse(rendered[index - 1], current));
   const later = perRequest.slice(1);
@@ -269,7 +272,7 @@ type Run = {
   readonly store: MemoryStore;
   readonly faux: Faux;
   readonly session: AgentSession;
-  readonly contexts: TranscriptContext[];
+  readonly contexts: Array<TranscriptContext>;
 };
 
 async function startSession(fixture: Fixture, store: MemoryStore): Promise<Run> {
@@ -392,7 +395,7 @@ function contentChars(content: NoteMessage["content"]): number {
   return content.length;
 }
 
-function toggleNotes(messages: readonly SessionMessage[]): readonly NoteMessage[] {
+function toggleNotes(messages: ReadonlyArray<SessionMessage>): ReadonlyArray<NoteMessage> {
   return messages.filter(
     (message): message is NoteMessage =>
       message.role === "custom" && message.customType === NOTE_TYPE,
@@ -400,8 +403,8 @@ function toggleNotes(messages: readonly SessionMessage[]): readonly NoteMessage[
 }
 
 function systemPatches(
-  contexts: readonly TranscriptContext[],
-): readonly Extract<Message, { role: "system" }>[] {
+  contexts: ReadonlyArray<TranscriptContext>,
+): ReadonlyArray<Extract<Message, { role: "system" }>> {
   return (contexts.at(-1)?.messages ?? []).filter(
     (message, index): message is Extract<Message, { role: "system" }> =>
       index > 0 && message.role === "system",
@@ -431,7 +434,10 @@ function buildReport(name: string, run: Run, compaction: string | undefined): Sc
 async function runScenario(
   fixture: Fixture,
   scenario: Scenario,
-): Promise<{ readonly report: ScenarioReport; readonly contexts: readonly TranscriptContext[] }> {
+): Promise<{
+  readonly report: ScenarioReport;
+  readonly contexts: ReadonlyArray<TranscriptContext>;
+}> {
   const store = new MemoryStore(fixture);
   scenario.initial?.(store, fixture);
   const run = await startSession(fixture, store);
@@ -457,7 +463,7 @@ const projectSkill = (fixture: Fixture, name: string): string =>
 const plain: Step = {};
 const withTool: Step = { toolCall: true };
 
-function stepsWith(at: number, step: Step, count = 6): readonly Step[] {
+function stepsWith(at: number, step: Step, count = 6): ReadonlyArray<Step> {
   return Array.from({ length: count }, (_, index) => {
     if (index === at) {
       return step;
@@ -467,7 +473,7 @@ function stepsWith(at: number, step: Step, count = 6): readonly Step[] {
   });
 }
 
-const SCENARIOS: readonly Scenario[] = [
+const SCENARIOS: ReadonlyArray<Scenario> = [
   { name: "a-steady", steps: stepsWith(-1, plain) },
   {
     name: "b-global-skill-off",
@@ -567,7 +573,7 @@ const SCENARIOS: readonly Scenario[] = [
 
 const NON_TOGGLE_SCENARIOS = new Set(["a-steady", "k-toggle-before-first-prompt"]);
 
-function toggleMeans(reports: readonly ScenarioReport[]): Readonly<Record<Rendering, number>> {
+function toggleMeans(reports: ReadonlyArray<ScenarioReport>): Readonly<Record<Rendering, number>> {
   const toggles = reports.filter((report) => !NON_TOGGLE_SCENARIOS.has(report.name));
 
   const mean = (rendering: Rendering): number =>
@@ -579,13 +585,13 @@ function toggleMeans(reports: readonly ScenarioReport[]): Readonly<Record<Render
 
 const percent = (ratio: number): string => `${(ratio * 100).toFixed(1)}%`;
 
-function summaryRows(reports: readonly ScenarioReport[]): readonly string[][] {
+function summaryRows(reports: ReadonlyArray<ScenarioReport>): ReadonlyArray<Array<string>> {
   const means = toggleMeans(reports);
 
   return RENDERINGS.map((rendering) => ["mean-toggle", rendering, percent(means[rendering])]);
 }
 
-function table(reports: readonly ScenarioReport[]): string {
+function table(reports: ReadonlyArray<ScenarioReport>): string {
   const rows = reports.flatMap((report) =>
     RENDERINGS.map((rendering) => {
       const summary = report.renderings[rendering];
@@ -625,13 +631,13 @@ function table(reports: readonly ScenarioReport[]): string {
   return [header, ...rows, ...summaryRows(reports)].map((row) => row.join("\t")).join("\n");
 }
 
-function firstRequestTexts(contexts: readonly TranscriptContext[]): readonly string[] {
+function firstRequestTexts(contexts: ReadonlyArray<TranscriptContext>): ReadonlyArray<string> {
   const [first] = contexts;
 
   return first === undefined ? [] : RENDERINGS.map((rendering) => render(first, rendering).text);
 }
 
-function steadyReuseViolations(report: ScenarioReport | undefined): readonly string[] {
+function steadyReuseViolations(report: ScenarioReport | undefined): ReadonlyArray<string> {
   if (report === undefined) {
     return ["missing a-steady report"];
   }
@@ -652,7 +658,7 @@ function steadyReuseViolations(report: ScenarioReport | undefined): readonly str
   );
 }
 
-function writeReport(reports: readonly ScenarioReport[]): void {
+function writeReport(reports: ReadonlyArray<ScenarioReport>): void {
   const out = process.env.PI_SKILL_TOGGLE_BENCH_OUT;
 
   if (out !== undefined && out !== "") {
@@ -663,7 +669,7 @@ function writeReport(reports: readonly ScenarioReport[]): void {
 
 describe("pi-skills prompt-cache benchmark", () => {
   let fixture: Fixture;
-  const reports: ScenarioReport[] = [];
+  const reports: Array<ScenarioReport> = [];
 
   beforeAll(() => {
     fixture = createFixture();

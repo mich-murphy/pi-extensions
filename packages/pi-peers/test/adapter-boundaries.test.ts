@@ -10,7 +10,7 @@ import { decodeGateway } from "../onboarding/schema.js";
 import { fakeDelay } from "./fake-delay.js";
 
 describe("adapter configuration and retry boundaries", () => {
-  const directories: string[] = [];
+  const directories: Array<string> = [];
   afterEach(async () => {
     vi.useRealTimers();
 

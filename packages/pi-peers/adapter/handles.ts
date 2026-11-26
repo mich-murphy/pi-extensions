@@ -57,7 +57,9 @@ export class Handles {
       }
     }
   }
-  list<T extends Bound>(entries: readonly T[]): (T & { handle: string; restarted: boolean })[] {
+  list<T extends Bound>(
+    entries: ReadonlyArray<T>,
+  ): Array<T & { handle: string; restarted: boolean }> {
     const listed = entries.map((entry) => entry.peer);
     const kept = entries.map((entry) => this.kept(entry.peer));
     const taken = new Set(kept.filter((handle) => handle !== undefined));
@@ -72,7 +74,11 @@ export class Handles {
       return { ...entry, handle, restarted: own === undefined && previous !== undefined };
     });
   }
-  private vacant(peer: PeerRef, taken: ReadonlySet<string>, listed: readonly PeerRef[]): string {
+  private vacant(
+    peer: PeerRef,
+    taken: ReadonlySet<string>,
+    listed: ReadonlyArray<PeerRef>,
+  ): string {
     const base = this.base(peer);
 
     for (let count = 1; ; count += 1) {

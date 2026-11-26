@@ -135,7 +135,7 @@ describe("recovery hook overhead", () => {
 
 describe("usage limit notices", () => {
   test("publishes the reset time on the shared usage-limit channel", () => {
-    const emitted: { channel: string; data: unknown }[] = [];
+    const emitted: Array<{ channel: string; data: unknown }> = [];
 
     const publish = usageLimitPublisher({
       emit: (channel, data) => {
@@ -203,12 +203,12 @@ describe("bash output safety hooks", () => {
 
   test("quarantines suspicious bash results and warns when a UI is attached", () => {
     const { emit } = loadExtension();
-    const notifications: (readonly unknown[])[] = [];
+    const notifications: Array<ReadonlyArray<unknown>> = [];
 
     const ui = {
       hasUI: true,
       ui: {
-        notify: (...args: readonly unknown[]) => {
+        notify: (...args: ReadonlyArray<unknown>) => {
           notifications.push(args);
         },
       },

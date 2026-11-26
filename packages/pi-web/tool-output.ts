@@ -43,7 +43,7 @@ export class ToolOutputStore extends Context.Service<
   );
 }
 
-export function redactSecrets(input: string, secrets: readonly (string | undefined)[]): string {
+export function redactSecrets(input: string, secrets: ReadonlyArray<string | undefined>): string {
   const unique = [
     ...new Set(secrets.filter((secret): secret is string => secret !== undefined && secret !== "")),
   ];
@@ -69,7 +69,7 @@ export type PiImageContent = {
 };
 
 export type PiToolResult<Details> = {
-  readonly content: (PiTextContent | PiImageContent)[];
+  readonly content: Array<PiTextContent | PiImageContent>;
   readonly details: Details;
   readonly structuredContent: JsonValue;
 };
@@ -233,7 +233,7 @@ function fetchTextStructure(page: FetchTextPage): StructureOutput {
 
 export function formatSearchResults(
   query: string,
-  results: readonly NormalizedSearchResult[],
+  results: ReadonlyArray<NormalizedSearchResult>,
 ): string {
   if (results.length === 0) {
     return `Search results for: ${query}\n\nNo results found.`;
@@ -281,7 +281,7 @@ export function projectFetchResult(
   result: FetchPageResult,
   options: {
     readonly store: ToolOutputStore["Service"];
-    readonly secrets: readonly (string | undefined)[];
+    readonly secrets: ReadonlyArray<string | undefined>;
     readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
@@ -390,7 +390,7 @@ export function projectProviderFetchedPage(
   page: ProviderFetchedPage,
   options: {
     readonly store: ToolOutputStore["Service"];
-    readonly secrets: readonly (string | undefined)[];
+    readonly secrets: ReadonlyArray<string | undefined>;
     readonly offset?: number;
   },
 ): Effect.Effect<PiToolResult<WebFetchDetails>, ToolOutputStoreError> {
@@ -421,12 +421,12 @@ export function projectProviderFetchedPage(
 export function projectSearchResults(
   search: {
     readonly query: string;
-    readonly results: readonly NormalizedSearchResult[];
+    readonly results: ReadonlyArray<NormalizedSearchResult>;
     readonly details: Omit<WebSearchDetails, "truncated" | "fullOutputPath">;
   },
   options: {
     readonly store: ToolOutputStore["Service"];
-    readonly secrets: readonly (string | undefined)[];
+    readonly secrets: ReadonlyArray<string | undefined>;
   },
 ): Effect.Effect<PiToolResult<WebSearchDetails>, ToolOutputStoreError> {
   return projectTextOutput({
@@ -444,10 +444,10 @@ export function projectSearchResults(
 function searchStructure(
   search: {
     readonly query: string;
-    readonly results: readonly NormalizedSearchResult[];
+    readonly results: ReadonlyArray<NormalizedSearchResult>;
     readonly details: { readonly provider: string };
   },
-  secrets: readonly (string | undefined)[],
+  secrets: ReadonlyArray<string | undefined>,
 ): JsonValue {
   const redact = (input: string) => redactSecrets(input, secrets);
 

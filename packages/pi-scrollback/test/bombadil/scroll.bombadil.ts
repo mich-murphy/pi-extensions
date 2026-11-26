@@ -33,7 +33,7 @@ type View = {
   readonly context: string | null;
   readonly contextTurn: number;
   readonly contextRows: number;
-  readonly transcript: string[];
+  readonly transcript: Array<string>;
   readonly behind: boolean;
 };
 
@@ -74,7 +74,7 @@ const exitStatus = extract((state: State) => state.exitStatus);
 
 const squash = (text: string): string => text.replaceAll(/\s+/gu, "");
 
-function firstMarker(transcript: readonly string[]): Marker | null {
+function firstMarker(transcript: ReadonlyArray<string>): Marker | null {
   for (const row of transcript) {
     const found = marker(row);
 

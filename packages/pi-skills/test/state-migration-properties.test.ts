@@ -63,7 +63,7 @@ type Version = 4 | 5 | 6;
 
 type Fixture = { readonly statePath: string; readonly skill: (name: string) => string };
 
-const BODIES: readonly JsonObject[] = [{}, { resources: 5 }, { overrides: DECOY }];
+const BODIES: ReadonlyArray<JsonObject> = [{}, { resources: 5 }, { overrides: DECOY }];
 
 function badValues(version: Version): PrintableGenerator<JsonValue> {
   return sampledFrom<JsonValue>(version === 6 ? BAD_TOGGLES : BAD_LEGACY);
@@ -109,7 +109,7 @@ function legacyEntry(version: Version, value: ToggleValue, extra: FixtureExtra) 
   return version === 6 ? value : { enabled: value === "enabled", ...extra };
 }
 
-function expectedToggles(fixture: Fixture, picks: readonly Choice[]): Map<string, ToggleValue> {
+function expectedToggles(fixture: Fixture, picks: ReadonlyArray<Choice>): Map<string, ToggleValue> {
   const expected = new Map<string, ToggleValue>();
 
   for (const [index, pick] of picks.entries()) {
@@ -124,7 +124,7 @@ function expectedToggles(fixture: Fixture, picks: readonly Choice[]): Map<string
 function validEntries(
   fixture: Fixture,
   version: Version,
-  picks: readonly Choice[],
+  picks: ReadonlyArray<Choice>,
   extra: FixtureExtra,
 ) {
   const entries = new Map<string, JsonValue>();
@@ -161,7 +161,7 @@ function assertMalformed(
 function assertMigrates(
   fixture: Fixture,
   version: Version,
-  picks: readonly Choice[],
+  picks: ReadonlyArray<Choice>,
   extra: FixtureExtra,
 ): void {
   const expected = expectedToggles(fixture, picks);
@@ -179,7 +179,7 @@ function assertMigrates(
 function assertBadEntry(
   fixture: Fixture,
   version: Version,
-  picks: readonly Choice[],
+  picks: ReadonlyArray<Choice>,
   bad: { readonly keyIsBad: boolean; readonly key: string; readonly value: JsonValue },
   slot: number,
 ): void {

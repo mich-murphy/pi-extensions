@@ -10,7 +10,7 @@ const LEGACY_TOGGLE_NOTE_TYPE = "pi-skill-toggle";
 
 export type ToggleNoteDetails = {
   readonly version: 1;
-  readonly visible: readonly ResourcePath[];
+  readonly visible: ReadonlyArray<ResourcePath>;
 };
 
 export type ToggleNote = {
@@ -21,12 +21,12 @@ export type ToggleNote = {
 };
 
 export type ToggleChanges = {
-  readonly enabled: readonly PromptResource[];
-  readonly disabled: readonly PromptResource[];
+  readonly enabled: ReadonlyArray<PromptResource>;
+  readonly disabled: ReadonlyArray<PromptResource>;
 };
 
 export type ToggleNoteInput = {
-  readonly resources: readonly PromptResource[];
+  readonly resources: ReadonlyArray<PromptResource>;
   readonly view: ReadonlySet<ResourcePath>;
   readonly desired: ReadonlySet<ResourcePath>;
   readonly changes: ToggleChanges;
@@ -60,7 +60,7 @@ export function noteView(message: { readonly role: string }): ReadonlySet<string
 }
 
 export function toggleChanges(
-  resources: readonly PromptResource[],
+  resources: ReadonlyArray<PromptResource>,
   baseline: ReadonlySet<ResourcePath>,
   desired: ReadonlySet<ResourcePath>,
 ): ToggleChanges {
@@ -118,7 +118,7 @@ export function renderToggleNote(changes: ToggleChanges, reader: SkillReader): s
   ].join("\n");
 }
 
-function renderSkills(skills: readonly PromptResource[], reader: SkillReader): string {
+function renderSkills(skills: ReadonlyArray<PromptResource>, reader: SkillReader): string {
   return formatSkillsForPrompt(
     skills.map((skill) => promptSkill(skill)),
     reader,
@@ -142,22 +142,22 @@ function promptSkill(skill: PromptResource): Skill {
 }
 
 function block(
-  resources: readonly PromptResource[],
-  render: (resources: readonly PromptResource[]) => readonly string[],
-): readonly string[] {
+  resources: ReadonlyArray<PromptResource>,
+  render: (resources: ReadonlyArray<PromptResource>) => ReadonlyArray<string>,
+): ReadonlyArray<string> {
   return resources.length === 0 ? [] : render(resources);
 }
 
 function byKind(
-  resources: readonly PromptResource[],
-): readonly [readonly PromptResource[], readonly PromptResource[]] {
+  resources: ReadonlyArray<PromptResource>,
+): readonly [ReadonlyArray<PromptResource>, ReadonlyArray<PromptResource>] {
   return [
     resources.filter(({ kind }) => kind === "skill"),
     resources.filter(({ kind }) => kind === "instruction"),
   ];
 }
 
-function sortResources(resources: readonly PromptResource[]): readonly PromptResource[] {
+function sortResources(resources: ReadonlyArray<PromptResource>): ReadonlyArray<PromptResource> {
   return resources.toSorted(
     (left, right) => compareText(left.name, right.name) || compareText(left.id, right.id),
   );

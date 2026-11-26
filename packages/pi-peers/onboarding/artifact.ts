@@ -54,7 +54,7 @@ const isJsonObject = Schema.is(Schema.JsonObject);
 
 export type VerifiedManifest = {
   manifest: Omit<typeof manifestHeader.Type, "artifacts"> & {
-    readonly artifacts: ArtifactRecord[];
+    readonly artifacts: Array<ArtifactRecord>;
   };
   record: ArtifactRecord;
 };
@@ -157,7 +157,7 @@ function validateArtifactIdentities(manifest: ArtifactManifest, pin: GatewayRele
 }
 
 function validateArtifactContentClaims(item: ArtifactRecord): void {
-  const sizes: [number, number][] = [
+  const sizes: Array<[number, number]> = [
     [item.size, MAX_ARCHIVE],
     [item.binarySize, MAX_BINARY],
   ];

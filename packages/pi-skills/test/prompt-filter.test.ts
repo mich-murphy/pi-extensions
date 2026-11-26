@@ -5,12 +5,12 @@ import { hideResources, PromptFilterResult } from "../prompt-filter";
 
 const skillFileSuffix = /\/SKILL\.md$/u;
 
-function hiding(...paths: readonly string[]): (path: string) => boolean {
+function hiding(...paths: ReadonlyArray<string>): (path: string) => boolean {
   return (path) => paths.includes(path);
 }
 
 function renderProjectContext(
-  contextFiles: readonly { readonly path: string; readonly content: string }[],
+  contextFiles: ReadonlyArray<{ readonly path: string; readonly content: string }>,
 ): string {
   const instructions = contextFiles
     .map(

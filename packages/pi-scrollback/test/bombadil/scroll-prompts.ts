@@ -1,6 +1,6 @@
 const FILLER = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod";
 
-export const PROMPTS: readonly string[] = [
+export const PROMPTS: ReadonlyArray<string> = [
   "P01: alpha",
   `P02: ${"long ascii prompt that wraps ".repeat(6)}end`,
   "P03: 漢字かな混じり 日本語 文章 中文 汉字 한국어 wide characters",
@@ -15,7 +15,7 @@ export const PROMPTS: readonly string[] = [
   `P12: LATEST ${"final prompt text ".repeat(4)}`,
 ];
 
-const REPLY_LINES: readonly number[] = [4, 30, 12, 2, 45, 8, 20, 3, 35, 10, 6, 25];
+const REPLY_LINES: ReadonlyArray<number> = [4, 30, 12, 2, 45, 8, 20, 3, 35, 10, 6, 25];
 
 const pad = (value: number, width: number): string => String(value).padStart(width, "0");
 

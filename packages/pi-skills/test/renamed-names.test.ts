@@ -17,7 +17,7 @@ import { ToggleStateFile, ToggleStateInvalidJson } from "../state";
 import type { ToggleStateError, ToggleStateResult } from "../state";
 import { noteView, TOGGLE_NOTE_TYPE } from "../toggle-note";
 
-const directories: string[] = [];
+const directories: Array<string> = [];
 
 function writeState(path: string, overrides: Readonly<Record<string, string>>): string {
   const text = `${JSON.stringify({ version: 7, files: overrides, repositories: {} }, null, 2)}\n`;

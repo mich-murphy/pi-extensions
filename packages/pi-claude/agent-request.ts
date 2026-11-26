@@ -19,16 +19,16 @@ export type ImageAttachment = {
 
 export type PromptBlock = {
   readonly text: string;
-  readonly images: readonly ImageAttachment[];
+  readonly images: ReadonlyArray<ImageAttachment>;
 };
 
 export type AgentRequest = {
   readonly systemPrompt: string;
-  readonly promptBlocks: readonly PromptBlock[];
-  readonly cacheBreakpoints: readonly number[];
+  readonly promptBlocks: ReadonlyArray<PromptBlock>;
+  readonly cacheBreakpoints: ReadonlyArray<number>;
   readonly toolDescription: string;
   readonly toolNames: ReadonlySet<string>;
-  readonly tools: readonly Tool[];
+  readonly tools: ReadonlyArray<Tool>;
 };
 
 export const MAX_CACHE_BREAKPOINTS = 4;
@@ -51,7 +51,7 @@ const TRANSCRIPT_HEADER = [
   String.raw`Bodies are raw text; a backslash after < (<\tag) is escaped tag text, not structure.`,
 ].join("");
 
-type MessageContent = string | readonly (TextContent | ImageContent)[];
+type MessageContent = string | ReadonlyArray<TextContent | ImageContent>;
 
 type AssistantContent = AssistantMessage["content"];
 
@@ -66,11 +66,11 @@ type HistoryItem =
       readonly content: MessageContent;
     };
 
-function normalizeHistory(messages: readonly Message[]): HistoryItem[] {
-  const items: HistoryItem[] = [];
+function normalizeHistory(messages: ReadonlyArray<Message>): Array<HistoryItem> {
+  const items: Array<HistoryItem> = [];
   const skippedCalls = new Set<string>();
   const synthesised = new Set<string>();
-  let pending: { readonly id: string; readonly name: string }[] = [];
+  let pending: Array<{ readonly id: string; readonly name: string }> = [];
   let answered = new Set<string>();
 
   const closePending = (): void => {
@@ -169,7 +169,7 @@ function attribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function bodyOf(content: MessageContent, images: ImageAttachment[]): string {
+function bodyOf(content: MessageContent, images: Array<ImageAttachment>): string {
   const blocks = Schema.is(Schema.String)(content)
     ? [{ type: "text" as const, text: content }]
     : content;
@@ -197,7 +197,7 @@ function rejectionNote(
 
 function assistantBody(content: AssistantContent, available: ReadonlySet<string>): string {
   return content
-    .flatMap((block): string[] => {
+    .flatMap((block): Array<string> => {
       if (block.type === "text") {
         return block.text.length === 0 ? [] : [escapeText(block.text)];
       }
@@ -223,10 +223,10 @@ function assistantBody(content: AssistantContent, available: ReadonlySet<string>
 type TranscriptEntry = { readonly role: Message["role"]; readonly block: PromptBlock };
 
 function resultsBlock(
-  results: readonly Extract<HistoryItem, { kind: "result" }>[],
+  results: ReadonlyArray<Extract<HistoryItem, { kind: "result" }>>,
   available: ReadonlySet<string>,
 ): PromptBlock | undefined {
-  const images: ImageAttachment[] = [];
+  const images: Array<ImageAttachment> = [];
 
   const rendered = results.flatMap((result) => {
     if (result.name === VALIDATION_ERROR_TOOL) {
@@ -248,11 +248,11 @@ function resultsBlock(
 }
 
 function transcriptEntries(
-  messages: readonly Message[],
+  messages: ReadonlyArray<Message>,
   available: ReadonlySet<string>,
-): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  const results: Extract<HistoryItem, { kind: "result" }>[] = [];
+): Array<TranscriptEntry> {
+  const entries: Array<TranscriptEntry> = [];
+  const results: Array<Extract<HistoryItem, { kind: "result" }>> = [];
 
   const flushResults = (): void => {
     const block = resultsBlock(results, available);
@@ -272,7 +272,7 @@ function transcriptEntries(
     flushResults();
 
     if (item.kind === "user") {
-      const images: ImageAttachment[] = [];
+      const images: Array<ImageAttachment> = [];
       const body = bodyOf(item.content, images);
       entries.push({ role: "user", block: { text: `<user>\n${body}\n</user>`, images } });
     } else {
@@ -360,8 +360,8 @@ function wireBlocks(block: PromptBlock): number {
 }
 
 function lookbackBreakpoint(
-  wire: readonly number[],
-  breakpoints: readonly number[],
+  wire: ReadonlyArray<number>,
+  breakpoints: ReadonlyArray<number>,
 ): number | undefined {
   for (let index = breakpoints.length - 1; index > 0; index -= 1) {
     const lower = breakpoints[index - 1] ?? 0;
@@ -396,9 +396,9 @@ function blockOfEntry(entry: number): number {
 }
 
 function placeCacheBreakpoints(
-  transcript: readonly PromptBlock[],
-  roles: readonly Message["role"][],
-): number[] {
+  transcript: ReadonlyArray<PromptBlock>,
+  roles: ReadonlyArray<Message["role"]>,
+): Array<number> {
   if (roles.length === 0) {
     return [0];
   }

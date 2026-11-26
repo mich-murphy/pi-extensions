@@ -22,7 +22,7 @@ function textOf(content: UserMessage["content"]): string {
     : content;
 }
 
-function markedLines(text: string, marker: string): string[] {
+function markedLines(text: string, marker: string): Array<string> {
   return text.split("\n").flatMap((line) => {
     const at = line.indexOf(marker);
 
@@ -30,7 +30,7 @@ function markedLines(text: string, marker: string): string[] {
   });
 }
 
-function fileAndShellCalls(text: string): ScriptedCall[] {
+function fileAndShellCalls(text: string): Array<ScriptedCall> {
   return [
     ...markedLines(text, READ_FILES).flatMap((line) =>
       line
@@ -43,8 +43,8 @@ function fileAndShellCalls(text: string): ScriptedCall[] {
 }
 
 function scriptedCalls(
-  messages: readonly TranscriptContext["messages"][number][],
-): readonly ScriptedCall[] {
+  messages: ReadonlyArray<TranscriptContext["messages"][number]>,
+): ReadonlyArray<ScriptedCall> {
   let lastAssistant = -1;
 
   for (const [position, { role }] of messages.entries()) {

@@ -57,7 +57,7 @@ const tools = ["read", "bash", VALIDATION_ERROR_TOOL].map((name) => ({
   parameters: Type.Object({}),
 }));
 
-function drawText(tc: TestCase, fragments: readonly string[] = FRAGMENTS): string {
+function drawText(tc: TestCase, fragments: ReadonlyArray<string> = FRAGMENTS): string {
   return tc.draw(arrays(sampledFrom(fragments), { maxSize: 4 })).join("");
 }
 
@@ -72,9 +72,9 @@ type CallModel = {
 };
 
 type Generated = {
-  readonly messages: MessageFixture[];
-  readonly calls: CallModel[];
-  readonly orphans: string[];
+  readonly messages: Array<MessageFixture>;
+  readonly calls: Array<CallModel>;
+  readonly orphans: Array<string>;
   users: number;
 };
 
@@ -105,7 +105,7 @@ function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generate
 type DrawState = {
   readonly tc: TestCase;
   readonly out: Generated;
-  readonly unanswered: CallModel[];
+  readonly unanswered: Array<CallModel>;
   readonly names: Map<string, string>;
   readonly unique: boolean;
   serial: number;
@@ -115,7 +115,7 @@ const poolId = (tc: TestCase) => tc.draw(sampledFrom(POOL));
 
 type ImageBlock = { type: "image"; data: string; mimeType: string };
 
-function drawImages(tc: TestCase): ImageBlock[] {
+function drawImages(tc: TestCase): Array<ImageBlock> {
   return tc.draw(
     arrays(
       composite((inner) => ({
@@ -159,7 +159,7 @@ function drawAssistant(draw: DrawState): void {
   out.messages.push({ role: "assistant", content, stopReason });
 }
 
-function nameFor(draw: DrawState, id: string, candidates: readonly string[]): string {
+function nameFor(draw: DrawState, id: string, candidates: ReadonlyArray<string>): string {
   const name = draw.names.get(id) ?? draw.tc.draw(sampledFrom(candidates));
   draw.names.set(id, name);
 
@@ -202,7 +202,7 @@ function drawToolResult(draw: DrawState, kind: number): void {
   });
 }
 
-const build = (messages: readonly MessageFixture[]) =>
+const build = (messages: ReadonlyArray<MessageFixture>) =>
   buildAgentRequest(contextFixture({ systemPrompt: "system", messages, tools }));
 
 function property(body: (tc: TestCase) => void): void {
@@ -221,7 +221,7 @@ const OPEN_ATTR =
 
 const CLOSE = /^<\/(?<name>user|assistant|call|past-call|results|result|past-result)>$/u;
 
-const CHILDREN = new Map<string, readonly string[]>(
+const CHILDREN = new Map<string, ReadonlyArray<string>>(
   Object.entries({
     user: [],
     assistant: ["call", "past-call"],
@@ -235,9 +235,9 @@ function nestingAllowed(parent: string | undefined, name: string): boolean {
     : (CHILDREN.get(parent)?.includes(name) ?? false);
 }
 
-function assertWellFormed(block: string): string[] {
-  const stack: string[] = [];
-  const opened: string[] = [];
+function assertWellFormed(block: string): Array<string> {
+  const stack: Array<string> = [];
+  const opened: Array<string> = [];
 
   for (const [token] of block.matchAll(TOKEN)) {
     const open = (OPEN_BARE.exec(token) ?? OPEN_ATTR.exec(token))?.groups?.name;
@@ -261,13 +261,13 @@ function assertWellFormed(block: string): string[] {
   return opened;
 }
 
-const entryBlocks = (blocks: readonly { text: string }[]) =>
+const entryBlocks = (blocks: ReadonlyArray<{ text: string }>) =>
   blocks.slice(1, -1).map((block) => block.text);
 
-const entryBlocksWithImages = <B>(blocks: readonly B[]) => blocks.slice(1, -1);
+const entryBlocksWithImages = <B>(blocks: ReadonlyArray<B>) => blocks.slice(1, -1);
 const countMatches = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
 
-function assertBreakpoints(blockCount: number, points: readonly number[]): void {
+function assertBreakpoints(blockCount: number, points: ReadonlyArray<number>): void {
   assert.equal(points[0], 0);
   assert.ok(points.length <= MAX_CACHE_BREAKPOINTS, points.join(","));
 
@@ -302,7 +302,7 @@ function resultTag(id: string): RegExp {
   );
 }
 
-function isTimely(call: CallModel, messages: readonly MessageFixture[]): boolean {
+function isTimely(call: CallModel, messages: ReadonlyArray<MessageFixture>): boolean {
   return (
     call.resultAt !== undefined &&
     messages.slice(call.at + 1, call.resultAt).every((message) => message.role === "toolResult")
@@ -363,7 +363,7 @@ function assertPrefixStable(tc: TestCase): void {
 
 function assertLongBreakpoints(tc: TestCase): void {
   const count = tc.draw(integers({ minValue: 0, maxValue: 70 }), "entries");
-  const messages: MessageFixture[] = [];
+  const messages: Array<MessageFixture> = [];
 
   for (let index = 0; index < count; index += 1) {
     messages.push(
@@ -402,7 +402,7 @@ function assertHostileAttributes(tc: TestCase): void {
   assert.deepEqual(opened, ["user", "assistant", "past-call", "results", "past-result"]);
 }
 
-function assertCallRoundtrip(call: CallModel, lines: readonly string[]): void {
+function assertCallRoundtrip(call: CallModel, lines: ReadonlyArray<string>): void {
   const line = lines.find((candidate) => candidate.includes(`id="${call.id}" tool=`));
   assert.ok(line !== undefined, `no call line for ${call.id}`);
 

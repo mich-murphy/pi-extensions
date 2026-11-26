@@ -40,7 +40,7 @@ export class LinkTable {
 
     return changed;
   }
-  list(): readonly LinkState[] {
+  list(): ReadonlyArray<LinkState> {
     return [...this.entries.values()];
   }
   down(machineId: string): boolean {

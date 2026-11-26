@@ -19,7 +19,7 @@ const FACT = /^[A-Z][A-Za-z ]{0,30}: /u;
 
 export type OutcomeKind = "ok" | "pending" | "fail";
 
-export const HEADLINES: Readonly<Record<OutcomeKind, readonly string[]>> = {
+export const HEADLINES: Readonly<Record<OutcomeKind, ReadonlyArray<string>>> = {
   ok: [
     "✓ Peers set up — connected as",
     "✓ Settings changed — connected as",
@@ -87,14 +87,14 @@ export type ListRow = { label: string; value: string };
 export type PeersView = MenuView & {
   kind: PeersKind | null;
   esc: "back" | "close" | "hide" | null;
-  rows: ListRow[];
+  rows: Array<ListRow>;
   scrollTop: number;
   headline: string | null;
   outcome: OutcomeKind | null;
   nextFollows: boolean | null;
   editorText: string | null;
   steps: { done: number; running: number; pending: number };
-  reported: string[];
+  reported: Array<string>;
   statusOff: boolean;
   footer: string | null;
   probe: string | null;
@@ -103,7 +103,7 @@ export type PeersView = MenuView & {
   height: number;
 };
 
-function listRows(body: readonly string[]): ListRow[] {
+function listRows(body: ReadonlyArray<string>): Array<ListRow> {
   const start = body.indexOf("");
   const rest = body.slice(start + 1);
   const end = rest.indexOf("");
@@ -118,7 +118,7 @@ function listRows(body: readonly string[]): ListRow[] {
 }
 
 function outcomeFields(
-  body: readonly string[],
+  body: ReadonlyArray<string>,
   shown: PeersKind | null,
 ): Pick<PeersView, "scrollTop" | "headline" | "outcome" | "nextFollows"> {
   const lines = body.filter((row) => row !== "");
@@ -134,26 +134,28 @@ function outcomeFields(
   };
 }
 
-function nextFollows(lines: readonly string[]): boolean | null {
+function nextFollows(lines: ReadonlyArray<string>): boolean | null {
   const next = lines.findIndex((row) => row.startsWith("Next:"));
 
   return next < 0 ? null : !lines.slice(1, next).some((row) => FACT.test(row));
 }
 
-function stepCounts(body: readonly string[], shown: PeersKind | null): PeersView["steps"] {
+function stepCounts(body: ReadonlyArray<string>, shown: PeersKind | null): PeersView["steps"] {
   const count = (mark: string): number =>
     shown === "progress" ? body.filter((row) => row.startsWith(`${mark} `)).length : 0;
 
   return { done: count("✓"), running: count("…"), pending: count("·") };
 }
 
-function editorValue(body: readonly string[], shown: PeersKind | null): string | null {
+function editorValue(body: ReadonlyArray<string>, shown: PeersKind | null): string | null {
   const editor = shown === "editor" ? body.find((row) => /^>(?: |$)/u.test(row)) : undefined;
 
   return editor === undefined ? null : editor.slice(1).trim();
 }
 
-function probeFields(rows: readonly string[]): Pick<PeersView, "probe" | "consent" | "reports"> {
+function probeFields(
+  rows: ReadonlyArray<string>,
+): Pick<PeersView, "probe" | "consent" | "reports"> {
   const probe = rows.find((row) => row.startsWith("probe:")) ?? null;
   const consent = CONSENT.exec(probe ?? "")?.groups;
   const reports = REPORTS.exec(probe ?? "")?.groups?.count;
@@ -169,9 +171,9 @@ function probeFields(rows: readonly string[]): Pick<PeersView, "probe" | "consen
 }
 
 function statusOffShown(
-  rows: readonly string[],
+  rows: ReadonlyArray<string>,
   shown: PeersKind | null,
-  list: readonly ListRow[],
+  list: ReadonlyArray<ListRow>,
 ): boolean {
   const rootOff =
     shown === "root" && list.some((row) => row.label === "Status" && row.value === "Not set up");
@@ -179,7 +181,7 @@ function statusOffShown(
   return rootOff || rows.some((row) => STATUS_OFF.test(row));
 }
 
-function shownRows(body: readonly string[], shown: PeersKind | null): ListRow[] {
+function shownRows(body: ReadonlyArray<string>, shown: PeersKind | null): Array<ListRow> {
   return shown === "root" || shown === "list" || shown === "toggle" ? listRows(body) : [];
 }
 
@@ -187,11 +189,11 @@ function escWord(esc: string | undefined): PeersView["esc"] {
   return esc === "back" || esc === "close" || esc === "hide" ? esc : null;
 }
 
-function footerOf(rows: readonly string[]): string | null {
+function footerOf(rows: ReadonlyArray<string>): string | null {
   return rows.map((row) => FOOTER.exec(row)?.[0]).find((found) => found !== undefined) ?? null;
 }
 
-export function readPeers(rows: readonly string[], height: number): PeersView {
+export function readPeers(rows: ReadonlyArray<string>, height: number): PeersView {
   const menu = readMenu(rows, PEERS_MENU_PATTERNS);
   const { keys, esc } = menu.hintGroups;
   const shown = kind(keys, esc);

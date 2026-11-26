@@ -71,7 +71,7 @@ type Observed = { params?: SdkQueryParameters; consumedAfterRetry: boolean };
 const DEFAULT_ENVIRONMENT = { PATH: "/bin" };
 
 async function runMessages(
-  messages: readonly unknown[],
+  messages: ReadonlyArray<unknown>,
   options: SimpleStreamOptions = {},
   sdkEnvironment: ReturnType<typeof subscriptionEnvironment> = DEFAULT_ENVIRONMENT,
 ) {
@@ -97,7 +97,7 @@ async function runMessages(
   return { events, observed };
 }
 
-function failure(events: readonly BridgeEvent[]): SdkTurnFailure {
+function failure(events: ReadonlyArray<BridgeEvent>): SdkTurnFailure {
   const last = events.at(-1);
 
   if (last?.type !== "failed") {
@@ -115,13 +115,13 @@ function expectInterruption(
   expect(error.evidence).toBe(evidence);
 }
 
-async function failureOf(messages: readonly unknown[]): Promise<SdkTurnFailure> {
+async function failureOf(messages: ReadonlyArray<unknown>): Promise<SdkTurnFailure> {
   const { events } = await runMessages(messages);
 
   return failure(events);
 }
 
-function textsOf(events: readonly BridgeEvent[]): string[] {
+function textsOf(events: ReadonlyArray<BridgeEvent>): Array<string> {
   return events.flatMap((event) => (event.type === "text_delta" ? [event.text] : []));
 }
 
@@ -358,7 +358,7 @@ const failuresByTag = {
     new SdkProviderDefect({ reason: "no-terminal-event" }),
     new SdkProviderDefect({ reason: "run-rejected" }),
   ],
-} satisfies Readonly<Record<SdkTurnFailure["_tag"], readonly SdkTurnFailure[]>>;
+} satisfies Readonly<Record<SdkTurnFailure["_tag"], ReadonlyArray<SdkTurnFailure>>>;
 
 function intendedRetry(error: SdkTurnFailure): boolean {
   return (

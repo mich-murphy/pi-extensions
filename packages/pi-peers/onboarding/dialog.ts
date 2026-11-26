@@ -31,7 +31,7 @@ export function requireAttendedUI(ctx: DialogContext): void {
 export async function selectChoice(
   ctx: DialogContext,
   title: string,
-  options: readonly string[],
+  options: ReadonlyArray<string>,
 ): Promise<string | undefined> {
   requireAttendedUI(ctx);
 

@@ -70,14 +70,14 @@ function drawCase(tc: TestCase): Case {
   return tc.draw(booleans()) ? drawBinaryCase(tc) : drawBase64Case(tc);
 }
 
-function toBlocks(tc: TestCase, text: string, split: boolean): Block[] {
+function toBlocks(tc: TestCase, text: string, split: boolean): Array<Block> {
   if (!split) {
     return [{ type: "text", text }];
   }
 
   const lines = text.split("\n");
   const size = tc.draw(integers({ minValue: 1, maxValue: 60 }));
-  const blocks: Block[] = [];
+  const blocks: Array<Block> = [];
 
   for (let index = 0; index < lines.length; index += size) {
     blocks.push({ type: "text", text: lines.slice(index, index + size).join("\n") }, IMAGE);
@@ -86,7 +86,7 @@ function toBlocks(tc: TestCase, text: string, split: boolean): Block[] {
   return blocks;
 }
 
-function noticeOf(content: readonly Block[]): string {
+function noticeOf(content: ReadonlyArray<Block>): string {
   assert.equal(content.length, 1);
   const [block] = content;
   assert.equal(block?.type, "text");
@@ -94,7 +94,7 @@ function noticeOf(content: readonly Block[]): string {
   return block?.type === "text" ? block.text : "";
 }
 
-function assertVerdict(blocks: readonly Block[], found: Case): void {
+function assertVerdict(blocks: ReadonlyArray<Block>, found: Case): void {
   const result = sanitizeBashContent(blocks);
   assert.equal(result.detected, found.expected);
 
@@ -125,10 +125,10 @@ function assertSanitizes(tc: TestCase): void {
 
 const BAD = `${"\0".repeat(20)}${prose(5000)}`;
 const stamp = { toolCallId: "t", isError: false, timestamp: 0 };
-const BAD_BLOCKS: Block[] = [{ type: "text", text: BAD }];
-const SAFE_BLOCKS: Block[] = [{ type: "text", text: prose(5000) }, IMAGE];
+const BAD_BLOCKS: Array<Block> = [{ type: "text", text: BAD }];
+const SAFE_BLOCKS: Array<Block> = [{ type: "text", text: prose(5000) }, IMAGE];
 
-const MESSAGE_KINDS: readonly { readonly make: () => Message; readonly flagged: boolean }[] = [
+const MESSAGE_KINDS: ReadonlyArray<{ readonly make: () => Message; readonly flagged: boolean }> = [
   { make: () => ({ role: "user", content: "hi", timestamp: 0 }), flagged: false },
   {
     make: () => ({ role: "toolResult", toolName: "read", content: BAD_BLOCKS, ...stamp }),

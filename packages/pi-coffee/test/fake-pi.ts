@@ -5,7 +5,7 @@ type Events = { [K in keyof CoffeeHandlers]: { readonly type: K } };
 type Command = Parameters<CoffeeRegistration["registerCommand"]>[1];
 
 export function fakePi(hasUI = true) {
-  const handlers = new Map<string, (() => void | Promise<void>)[]>();
+  const handlers = new Map<string, Array<() => void | Promise<void>>>();
 
   const events: Events = {
     agent_start: { type: "agent_start" },
@@ -15,7 +15,7 @@ export function fakePi(hasUI = true) {
 
   const registered = new Set<keyof CoffeeHandlers>();
   const commands = new Map<string, Command>();
-  const notifications: { message: string; level: string }[] = [];
+  const notifications: Array<{ message: string; level: string }> = [];
   let idle = true;
 
   const ctx = {

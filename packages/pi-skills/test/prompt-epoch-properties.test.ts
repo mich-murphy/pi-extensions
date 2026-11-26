@@ -37,9 +37,9 @@ type Item =
   | ({ readonly role: "custom" } & ToggleNote);
 
 type World = {
-  readonly resources: readonly PromptResource[];
+  readonly resources: ReadonlyArray<PromptResource>;
   readonly hidden: Set<ResourcePath>;
-  readonly items: Item[];
+  readonly items: Array<Item>;
   selected: number;
 };
 
@@ -68,7 +68,7 @@ function skillOf(resource: PromptResource): Skill {
 
 function renderSection(
   kind: PromptResource["kind"],
-  resources: readonly PromptResource[],
+  resources: ReadonlyArray<PromptResource>,
   visible: ReadonlySet<string>,
 ): string {
   const shown = resources.filter((resource) => resource.kind === kind && visible.has(resource.id));
@@ -81,7 +81,7 @@ function renderSection(
 }
 
 function systemMessage(
-  resources: readonly PromptResource[],
+  resources: ReadonlyArray<PromptResource>,
   visible: ReadonlySet<string>,
   kinds: ReadonlySet<string>,
 ): Item {
@@ -124,7 +124,7 @@ function desiredVisible(world: World): Set<string> {
   return new Set(world.resources.filter(({ id }) => !world.hidden.has(id)).map(({ id }) => id));
 }
 
-function ids(resources: readonly { readonly id: string }[]): string[] {
+function ids(resources: ReadonlyArray<{ readonly id: string }>): Array<string> {
   return resources.map(({ id }) => id).toSorted();
 }
 

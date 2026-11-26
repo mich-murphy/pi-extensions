@@ -30,7 +30,7 @@ export type Screen =
       readonly kind: "list";
       readonly title: string;
       readonly note?: string;
-      readonly rows: () => readonly Row[];
+      readonly rows: () => ReadonlyArray<Row>;
     }
   | {
       readonly kind: "text";
@@ -43,20 +43,24 @@ export type Screen =
   | {
       readonly kind: "toggle";
       readonly title: string;
-      readonly items: () => readonly ToggleItem[];
+      readonly items: () => ReadonlyArray<ToggleItem>;
       readonly toggle: (id: string) => void;
     }
-  | { readonly kind: "report"; readonly title: string; readonly lines: () => readonly string[] }
+  | { readonly kind: "report"; readonly title: string; readonly lines: () => ReadonlyArray<string> }
   | {
       readonly kind: "progress";
       readonly title: string;
-      readonly lines: () => readonly string[];
+      readonly lines: () => ReadonlyArray<string>;
       readonly done: Promise<void>;
     }
-  | { readonly kind: "outcome"; readonly title: string; readonly lines: () => readonly string[] };
+  | {
+      readonly kind: "outcome";
+      readonly title: string;
+      readonly lines: () => ReadonlyArray<string>;
+    };
 
 export class MenuModel {
-  private readonly stack: Screen[];
+  private readonly stack: Array<Screen>;
   private open = true;
   error: string | undefined;
   acted = false;

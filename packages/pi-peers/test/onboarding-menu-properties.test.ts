@@ -17,9 +17,9 @@ import { NO_CHANGES } from "../onboarding/route.js";
 const ids = ["setup", "mode", "machineId", "scopeId", "label", "permissions", "review", "apply"];
 const texts = ["", "ok-host", "BAD VALUE", "team", "x".repeat(200)];
 
-type Run = { blocked: boolean; events: string[]; depths: number[] };
+type Run = { blocked: boolean; events: Array<string>; depths: Array<number> };
 
-function unconsented(events: readonly string[]): number[] {
+function unconsented(events: ReadonlyArray<string>): Array<number> {
   return events.flatMap((event, index) =>
     event === "effect" && events[index - 1] !== "consent:Apply" ? [index] : [],
   );
@@ -41,8 +41,8 @@ function press(model: MenuModel, tc: TestCase): void {
 
 function run(tc: TestCase): Run {
   const blocked = tc.draw(booleans());
-  const events: string[] = [];
-  const depths: number[] = [];
+  const events: Array<string> = [];
+  const depths: Array<number> = [];
 
   const options: SetupFormOptions = {
     draft: {
@@ -99,7 +99,7 @@ const routeIds = [
   "review",
 ];
 
-function existingScreen(blockedRepair: boolean, events: string[]) {
+function existingScreen(blockedRepair: boolean, events: Array<string>) {
   return (progress: Progress) => {
     const effect = (name: string) => () => {
       progress(name, [], async () => {
@@ -182,8 +182,8 @@ function existingScreen(blockedRepair: boolean, events: string[]) {
 
 function runExisting(tc: TestCase) {
   const blockedRepair = tc.draw(booleans());
-  const events: string[] = [];
-  const depths: number[] = [];
+  const events: Array<string> = [];
+  const depths: Array<number> = [];
 
   const state = (): RootState => ({
     status: { value: "Connected", lines: ["Connected"] },
@@ -233,7 +233,7 @@ function runExisting(tc: TestCase) {
   return { blockedRepair, events, depths };
 }
 
-function unconsentedAny(events: readonly string[]): number[] {
+function unconsentedAny(events: ReadonlyArray<string>): Array<number> {
   return events.flatMap((event, index) =>
     event.startsWith("effect:") && !(events[index - 1] ?? "").startsWith("consent:") ? [index] : [],
   );

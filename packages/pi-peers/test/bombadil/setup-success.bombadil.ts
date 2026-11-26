@@ -113,7 +113,7 @@ function successMenuKey(view: Screen | undefined): ActionTemplate {
     : key(ESCAPE);
 }
 
-const afterSuccess = actions((): ActionTemplate[] => {
+const afterSuccess = actions((): Array<ActionTemplate> => {
   const seen = facts();
 
   if (seen?.succeeded !== true) {

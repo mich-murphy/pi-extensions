@@ -72,13 +72,13 @@ async function floor(profile: Profile): Promise<string> {
   return value.revocationState;
 }
 
-async function sameEpoch(profiles: Profile[], value: number): Promise<boolean> {
+async function sameEpoch(profiles: Array<Profile>, value: number): Promise<boolean> {
   const epochs = await Promise.all(profiles.map(async (profile) => epoch(profile)));
 
   return epochs.every((actual) => actual === value);
 }
 
-function firstPath(paths: readonly string[]): string {
+function firstPath(paths: ReadonlyArray<string>): string {
   const value = paths[0];
 
   if (value === undefined) {
@@ -126,12 +126,12 @@ const ISSUER_ACTIONS = "Issuer actions";
 
 describe("guided remote actions with actual native crypto and loopback mTLS", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
-  let profiles: Profile[];
+  let profiles: Array<Profile>;
   let creator: Profile;
   let joiner: Profile;
   let address: string;
 
-  async function command(profile: Profile, answers: string[]) {
+  async function command(profile: Profile, answers: Array<string>) {
     await setupCommand(
       profile.agent,
       dialog(answers),

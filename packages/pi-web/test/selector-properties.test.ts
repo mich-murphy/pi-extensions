@@ -88,8 +88,8 @@ const listGen = composite((tc) => {
   return compounds.join(tc.draw(sampledFrom([",", ", ", " ,  "]), "separator"));
 });
 
-function assertListsAgree(element: Element, lists: readonly string[]): void {
-  const expectedIndexes: number[] = [];
+function assertListsAgree(element: Element, lists: ReadonlyArray<string>): void {
+  const expectedIndexes: Array<number> = [];
 
   for (const [index, list] of lists.entries()) {
     const expected = element.matches(list);
@@ -100,7 +100,7 @@ function assertListsAgree(element: Element, lists: readonly string[]): void {
     }
   }
 
-  const reported: number[] = [];
+  const reported: Array<number> = [];
   compileSelectorSet(lists)(element, (index) => reported.push(index));
   assert.deepEqual(
     reported.toSorted((a, b) => a - b),
@@ -111,7 +111,7 @@ function assertListsAgree(element: Element, lists: readonly string[]): void {
 
 const recaseFlags = arrays(booleans(), { minSize: 8, maxSize: 8 });
 
-function recase(value: string, flags: readonly boolean[]): string {
+function recase(value: string, flags: ReadonlyArray<boolean>): string {
   return Array.from({ length: value.length }, (_, i) =>
     flags[i] === true ? value.charAt(i).toUpperCase() : value.charAt(i).toLowerCase(),
   ).join("");

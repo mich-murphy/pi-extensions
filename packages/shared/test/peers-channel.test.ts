@@ -18,9 +18,9 @@ const withId = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }));
 
 const withMessageId = Schema.decodeUnknownSync(Schema.Struct({ messageId: Schema.String }));
 
-function answering(foreign: readonly string[]) {
+function answering(foreign: ReadonlyArray<string>) {
   const bus = createEventBus();
-  const requests: unknown[] = [];
+  const requests: Array<unknown> = [];
   bus.on(PEERS_REQUEST_CHANNEL, (data) => {
     requests.push(data);
 
@@ -66,7 +66,7 @@ describe("peersClient", () => {
   });
   test("an already aborted call is cancelled without emitting; a later abort is unavailable", async () => {
     const bus = createEventBus();
-    const seen: unknown[] = [];
+    const seen: Array<unknown> = [];
     bus.on(PEERS_REQUEST_CHANNEL, (data) => seen.push(data));
     const controller = new AbortController();
     controller.abort();
@@ -85,7 +85,7 @@ describe("peersClient", () => {
   });
   test("an unanswered send returns the messageId it used so a retry is safe", async () => {
     const bus = createEventBus();
-    const seen: unknown[] = [];
+    const seen: Array<unknown> = [];
     bus.on(PEERS_REQUEST_CHANNEL, (data) => seen.push(data));
 
     const result = await peersClient(bus, { timeoutMs: 5 }).send({
@@ -106,7 +106,7 @@ describe("peersClient", () => {
   });
   test("a caller messageId is sent unchanged", async () => {
     const bus = createEventBus();
-    const seen: unknown[] = [];
+    const seen: Array<unknown> = [];
     bus.on(PEERS_REQUEST_CHANNEL, (data) => seen.push(data));
     const messageId = "f".repeat(32);
     await peersClient(bus, { timeoutMs: 5 }).send({

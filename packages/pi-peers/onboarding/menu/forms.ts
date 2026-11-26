@@ -5,7 +5,7 @@ import type { Outcome, Step } from "./progress.js";
 
 export type Progress = (
   title: string,
-  planned: readonly string[],
+  planned: ReadonlyArray<string>,
   work: (step: Step) => Promise<Outcome>,
   result?: string,
   kind?: "reconnect",
@@ -29,12 +29,12 @@ export function gateText<T>(gate: Gate<T>): string {
   return gate.kind === "unchanged" ? "No changes" : `${PREFIX[gate.kind]}: ${gate.reason}`;
 }
 
-export function report(title: string, lines: () => readonly string[]): Screen {
+export function report(title: string, lines: () => ReadonlyArray<string>): Screen {
   return { kind: "report", title, lines };
 }
 
 export function detailsRow(
-  lines: () => readonly string[],
+  lines: () => ReadonlyArray<string>,
   description = "Everything Apply will download, write and start.",
 ): Row {
   return {
@@ -100,7 +100,7 @@ export type CycleField<T extends string> = {
   readonly id: string;
   readonly label: string;
   readonly description: string;
-  readonly options: readonly (readonly [T, string])[];
+  readonly options: ReadonlyArray<readonly [T, string]>;
   readonly get: () => T;
   readonly set: (value: T) => void;
 };
@@ -181,7 +181,7 @@ export function consentRow<T>(spec: ConsentSpec<T>): Row {
 }
 
 export function missingField(
-  fields: readonly (readonly [label: string, value: string])[],
+  fields: ReadonlyArray<readonly [label: string, value: string]>,
 ): Gate<never> | undefined {
   const absent = fields.find(([, value]) => value === "")?.[0];
 
@@ -191,8 +191,8 @@ export function missingField(
 export type ActionForm<T> = {
   readonly title: string;
   readonly note?: string;
-  readonly rows?: () => readonly Row[];
-  readonly details: () => readonly string[];
+  readonly rows?: () => ReadonlyArray<Row>;
+  readonly details: () => ReadonlyArray<string>;
   readonly detailsDescription?: string;
   readonly consent: () => ConsentSpec<T>;
 };
@@ -216,7 +216,10 @@ export function actionForm<T>(form: ActionForm<T>): Screen {
   };
 }
 
-export function withTechnical(lines: readonly string[], technical: readonly string[]): string[] {
+export function withTechnical(
+  lines: ReadonlyArray<string>,
+  technical: ReadonlyArray<string>,
+): Array<string> {
   return technical.length === 0
     ? [...lines]
     : [...lines, "Technical details:", ...technical.map((line) => `  ${line}`)];

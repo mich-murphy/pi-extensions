@@ -11,9 +11,9 @@ type Word = {
 type Piece = Word & { readonly plain: boolean };
 
 type Command = {
-  readonly words: readonly Word[];
-  readonly inputs: readonly Word[];
-  readonly substitutions: readonly string[];
+  readonly words: ReadonlyArray<Word>;
+  readonly inputs: ReadonlyArray<Word>;
+  readonly substitutions: ReadonlyArray<string>;
   readonly heredoc: HereDocument;
 };
 
@@ -32,12 +32,12 @@ type Frame = {
   subshell?: true;
 };
 
-type Options = { readonly short: string; readonly long: readonly string[] };
+type Options = { readonly short: string; readonly long: ReadonlyArray<string> };
 
 type Arguments = {
   readonly flags: ReadonlySet<string>;
   readonly values: ReadonlyMap<string, string>;
-  readonly positionals: readonly Word[];
+  readonly positionals: ReadonlyArray<Word>;
 };
 
 const MAX_DEPTH = 3;
@@ -181,7 +181,7 @@ const WRAPPERS: ReadonlyMap<string, { readonly options: Options; readonly skip: 
 
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "mksh", "ash"]);
 
-export function pathsReadByCommand(command: string, cwd: string): readonly string[] {
+export function pathsReadByCommand(command: string, cwd: string): ReadonlyArray<string> {
   const reads = new Set<string>();
 
   if (command.length > FAIL_OPEN_ABOVE_COMMAND_LENGTH) {
@@ -209,7 +209,7 @@ const QUOTED_BACKTICK_ESCAPE = /\\(?<char>[`$"\\])/gu;
 type Open = "(" | "{" | '"';
 
 type Scan = {
-  readonly open: Open[];
+  readonly open: Array<Open>;
   parens: number;
   span: number;
 };
@@ -217,18 +217,18 @@ type Scan = {
 type HereDocument = { body: string | undefined };
 
 class Lexer {
-  readonly items: Item[] = [];
-  private substitutions: string[] = [];
+  readonly items: Array<Item> = [];
+  private substitutions: Array<string> = [];
   private index = 0;
-  private words: Word[] = [];
-  private inputs: Word[] = [];
+  private words: Array<Word> = [];
+  private inputs: Array<Word> = [];
   private heredoc: HereDocument = { body: undefined };
-  private readonly pending: {
+  private readonly pending: Array<{
     readonly heredoc: HereDocument;
     readonly delimiter: string;
     readonly quoted: boolean;
-    readonly substitutions: string[];
-  }[] = [];
+    readonly substitutions: Array<string>;
+  }> = [];
 
   private braceBudget = MAX_BRACE_WORDS_PER_COMMAND;
 
@@ -347,7 +347,7 @@ class Lexer {
 
   private readHeredocBodies(): void {
     for (const { heredoc, delimiter, quoted, substitutions } of this.pending.splice(0)) {
-      const lines: string[] = [];
+      const lines: Array<string> = [];
 
       while (this.index < this.source.length) {
         const end = this.source.indexOf("\n", this.index);
@@ -375,9 +375,9 @@ class Lexer {
     return second === undefined && first !== undefined ? first : { text: "", literal: false };
   }
 
-  private wordList(): readonly Word[] {
+  private wordList(): ReadonlyArray<Word> {
     const start = this.index;
-    const pieces: Piece[] = [];
+    const pieces: Array<Piece> = [];
 
     while (this.index < this.source.length && !WORD_END.has(this.source.charAt(this.index))) {
       const char = this.source.charAt(this.index);
@@ -401,7 +401,7 @@ class Lexer {
     return expansion.map((expanded) => joinPieces(expanded));
   }
 
-  private single(pieces: readonly Piece[], start: number): Word {
+  private single(pieces: ReadonlyArray<Piece>, start: number): Word {
     const word = joinPieces(pieces);
 
     return { ...word, variable: this.variableOf(this.source.slice(start, this.index), word) };
@@ -538,7 +538,7 @@ class Lexer {
     }
   }
 
-  static expansionsIn(text: string): readonly string[] {
+  static expansionsIn(text: string): ReadonlyArray<string> {
     const lexer = new Lexer(text);
 
     while (lexer.index < text.length) {
@@ -625,7 +625,7 @@ class Lexer {
     }
 
     const lexer = new Lexer(text, this.nesting + 1);
-    const pieces: Word[] = [];
+    const pieces: Array<Word> = [];
     let splits = false;
 
     while (lexer.index < text.length) {
@@ -782,7 +782,7 @@ function home(name: string): Word {
   return name === "HOME" ? { text: homedir(), literal: true } : { text: "", literal: false };
 }
 
-function joinPieces(pieces: readonly Piece[]): Word {
+function joinPieces(pieces: ReadonlyArray<Piece>): Word {
   return {
     text: pieces.map((piece) => piece.text).join(""),
     literal: pieces.every((piece) => piece.literal),
@@ -790,9 +790,9 @@ function joinPieces(pieces: readonly Piece[]): Word {
   };
 }
 
-type Expansion = readonly (readonly Piece[])[];
+type Expansion = ReadonlyArray<ReadonlyArray<Piece>>;
 
-function expandBraces(pieces: readonly Piece[], depth: number): Expansion | undefined {
+function expandBraces(pieces: ReadonlyArray<Piece>, depth: number): Expansion | undefined {
   if (pieces.length > MAX_BRACE_PIECES || depth > MAX_BRACE_NESTING) {
     return undefined;
   }
@@ -821,9 +821,9 @@ function expandBraces(pieces: readonly Piece[], depth: number): Expansion | unde
   return [pieces];
 }
 
-function matchingBraces(pieces: readonly Piece[]): readonly number[] {
+function matchingBraces(pieces: ReadonlyArray<Piece>): ReadonlyArray<number> {
   const closes = pieces.map(() => -1);
-  const opens: number[] = [];
+  const opens: Array<number> = [];
 
   for (const [index, piece] of pieces.entries()) {
     if (piece.plain && piece.text === "{") {
@@ -836,8 +836,10 @@ function matchingBraces(pieces: readonly Piece[]): readonly number[] {
   return closes;
 }
 
-function braceAlternatives(inner: readonly Piece[]): readonly (readonly Piece[])[] | undefined {
-  const options: Piece[][] = [[]];
+function braceAlternatives(
+  inner: ReadonlyArray<Piece>,
+): ReadonlyArray<ReadonlyArray<Piece>> | undefined {
+  const options: Array<Array<Piece>> = [[]];
   let depth = 0;
   let commas = 0;
 
@@ -856,7 +858,7 @@ function braceAlternatives(inner: readonly Piece[]): readonly (readonly Piece[])
   return commas === 0 ? undefined : options;
 }
 
-function braceSequence(inner: readonly Piece[]): Expansion | null | undefined {
+function braceSequence(inner: ReadonlyArray<Piece>): Expansion | null | undefined {
   if (!inner.every((piece) => piece.plain && piece.text.length === 1)) {
     return undefined;
   }
@@ -903,7 +905,7 @@ function sequencePiece(text: string): Piece {
   return { text, literal: true, plain: false };
 }
 
-function sequenceValues(from: number, to: number, step: string): readonly number[] | undefined {
+function sequenceValues(from: number, to: number, step: string): ReadonlyArray<number> | undefined {
   const size = Math.abs(Number(step)) || 1;
   const count = Math.floor(Math.abs(to - from) / size) + 1;
 
@@ -917,12 +919,12 @@ function sequenceValues(from: number, to: number, step: string): readonly number
 }
 
 function combineBraces(
-  before: readonly Piece[],
+  before: ReadonlyArray<Piece>,
   options: Expansion,
-  after: readonly Piece[],
+  after: ReadonlyArray<Piece>,
   depth: number,
 ): Expansion | undefined {
-  const middle: (readonly Piece[])[] = [];
+  const middle: Array<ReadonlyArray<Piece>> = [];
 
   for (const option of options) {
     const expanded = expandBraces(option, depth + 1);
@@ -944,9 +946,12 @@ function combineBraces(
 }
 
 class Evaluator {
-  private readonly directories: (string | undefined)[];
-  private readonly frames: Frame[];
-  private readonly loops: { readonly variable?: string | undefined; list: readonly Word[] }[] = [];
+  private readonly directories: Array<string | undefined>;
+  private readonly frames: Array<Frame>;
+  private readonly loops: Array<{
+    readonly variable?: string | undefined;
+    list: ReadonlyArray<Word>;
+  }> = [];
 
   constructor(
     cwd: string | undefined,
@@ -957,7 +962,7 @@ class Evaluator {
     this.frames = [{ list: cwd, pipe: cwd, piped: false }];
   }
 
-  run(items: readonly Item[]): void {
+  run(items: ReadonlyArray<Item>): void {
     for (const item of items) {
       if (item.kind === "open") {
         this.directories.push(this.cwd);
@@ -1038,7 +1043,7 @@ class Evaluator {
     }
   }
 
-  private coproc(words: readonly Word[], command: Command): void {
+  private coproc(words: ReadonlyArray<Word>, command: Command): void {
     const [, name, third] = words;
 
     const named =
@@ -1061,7 +1066,7 @@ class Evaluator {
     this.directories.pop();
   }
 
-  private evaluateWords(words: readonly Word[], command: Command): void {
+  private evaluateWords(words: ReadonlyArray<Word>, command: Command): void {
     if (this.loopBoundary(words)) {
       return;
     }
@@ -1098,7 +1103,7 @@ class Evaluator {
     }
   }
 
-  private withoutKeywords(words: readonly Word[]): readonly Word[] {
+  private withoutKeywords(words: ReadonlyArray<Word>): ReadonlyArray<Word> {
     const start = words.findIndex((word) => !(word.literal && KEYWORDS.has(word.text)));
     const keywords = start === -1 ? words : words.slice(0, start);
 
@@ -1115,7 +1120,7 @@ class Evaluator {
     return start === -1 ? [] : words.slice(start);
   }
 
-  private loopBoundary(words: readonly Word[]): boolean {
+  private loopBoundary(words: ReadonlyArray<Word>): boolean {
     const [first, binding, third] = words;
 
     if (first?.literal !== true) {
@@ -1144,7 +1149,7 @@ class Evaluator {
     return true;
   }
 
-  private builtin(name: string, args: readonly Word[], command: Command): boolean {
+  private builtin(name: string, args: ReadonlyArray<Word>, command: Command): boolean {
     if (name === "cd" || name === "pushd") {
       this.changeDirectory(args);
     } else if (SHELLS.has(name)) {
@@ -1164,7 +1169,7 @@ class Evaluator {
     return true;
   }
 
-  private trapAction(args: readonly Word[]): void {
+  private trapAction(args: ReadonlyArray<Word>): void {
     const { flags, positionals } = parseArguments(args, NO_OPTIONS);
     const [action, signal] = positionals;
 
@@ -1181,7 +1186,7 @@ class Evaluator {
     }
   }
 
-  private changeDirectory(args: readonly Word[]): void {
+  private changeDirectory(args: ReadonlyArray<Word>): void {
     let index = 0;
 
     while (args[index]?.literal === true) {
@@ -1219,7 +1224,7 @@ class Evaluator {
     this.directories[this.directories.length - 1] = next;
   }
 
-  private add(words: readonly Word[]): void {
+  private add(words: ReadonlyArray<Word>): void {
     for (const word of words) {
       const binding =
         word.variable === undefined
@@ -1249,13 +1254,13 @@ class Evaluator {
   }
 }
 
-function leadingAssignments(words: readonly Word[]): number {
+function leadingAssignments(words: ReadonlyArray<Word>): number {
   const index = words.findIndex((word) => !ASSIGNMENT.test(word.text));
 
   return index === -1 ? words.length : index;
 }
 
-function unwrap(words: readonly Word[]): readonly Word[] {
+function unwrap(words: ReadonlyArray<Word>): ReadonlyArray<Word> {
   let remaining = words;
 
   for (;;) {
@@ -1283,13 +1288,13 @@ function unwrap(words: readonly Word[]): readonly Word[] {
 }
 
 function parseArguments(
-  args: readonly Word[],
+  args: ReadonlyArray<Word>,
   options: Options,
   stopAtPositional = false,
 ): Arguments {
   const flags = new Set<string>();
   const values = new Map<string, string>();
-  const positionals: Word[] = [];
+  const positionals: Array<Word> = [];
   let ended = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -1366,7 +1371,7 @@ function shortCluster(
   return 0;
 }
 
-function fileArguments(name: string, args: readonly Word[]): readonly Word[] | undefined {
+function fileArguments(name: string, args: ReadonlyArray<Word>): ReadonlyArray<Word> | undefined {
   const printer = PRINTERS.get(name);
 
   if (printer !== undefined) {
@@ -1408,7 +1413,7 @@ function fileArguments(name: string, args: readonly Word[]): readonly Word[] | u
   return undefined;
 }
 
-function ddInputs(args: readonly Word[]): readonly Word[] {
+function ddInputs(args: ReadonlyArray<Word>): ReadonlyArray<Word> {
   return args.flatMap((word) =>
     word.literal && word.text.startsWith("if=")
       ? [{ text: word.text.slice(3), literal: true }]
@@ -1416,13 +1421,16 @@ function ddInputs(args: readonly Word[]): readonly Word[] {
   );
 }
 
-function withoutProgram(parsed: Arguments, programOptions: readonly string[]): readonly Word[] {
+function withoutProgram(
+  parsed: Arguments,
+  programOptions: ReadonlyArray<string>,
+): ReadonlyArray<Word> {
   return programOptions.some((option) => parsed.values.has(option))
     ? parsed.positionals
     : parsed.positionals.slice(1);
 }
 
-function shellScript(args: readonly Word[], heredoc: string | undefined): string | undefined {
+function shellScript(args: ReadonlyArray<Word>, heredoc: string | undefined): string | undefined {
   const parsed = parseArguments(args, { short: "o", long: [] });
 
   if (parsed.flags.has("-c")) {

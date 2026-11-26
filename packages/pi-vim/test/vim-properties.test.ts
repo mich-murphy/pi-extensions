@@ -86,7 +86,7 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 
 type Snapshot = {
   readonly text: string;
-  readonly lines: readonly string[];
+  readonly lines: ReadonlyArray<string>;
   readonly line: number;
   readonly col: number;
   readonly label: string;
@@ -219,8 +219,8 @@ function trackUndo(
 
 function runTrace(
   keyboard: Keyboard,
-  lines: readonly (readonly string[])[],
-  tokens: readonly string[],
+  lines: ReadonlyArray<ReadonlyArray<string>>,
+  tokens: ReadonlyArray<string>,
 ): void {
   setKittyProtocolActive(keyboard.kittyProtocol);
   const editor = createEditor();

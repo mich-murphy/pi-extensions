@@ -91,7 +91,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
   const plan = () => localPlan(defaultChoices("Capabilities"), setupPaths(agent).socket);
 
   async function versionOnlyCache(
-    capabilities: readonly string[],
+    capabilities: ReadonlyArray<string>,
     afterReset = false,
     delegateLock = false,
   ) {
@@ -270,7 +270,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
   });
 
-  async function maskCommitted(capabilities: readonly string[]) {
+  async function maskCommitted(capabilities: ReadonlyArray<string>) {
     const masked = await versionOnlyCache(capabilities, false, true);
     const prior = decodeManaged(parseJson(await readFile(masked.paths.metadata)));
     const cache = decodeCached(parseJson(masked.installed));
@@ -280,7 +280,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     return { ...masked, record };
   }
 
-  async function committedMask(capabilities: readonly string[]) {
+  async function committedMask(capabilities: ReadonlyArray<string>) {
     await applyLocal(agent, plan(), { acquire: async () => fixture.executable }, () => undefined);
 
     return maskCommitted(capabilities);

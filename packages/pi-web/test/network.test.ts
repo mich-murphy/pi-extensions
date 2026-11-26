@@ -111,7 +111,7 @@ describe("isPrivateOrLocalIp", () => {
   });
 });
 
-const RANGES: readonly (readonly [cidr: string, purpose: string])[] = [
+const RANGES: ReadonlyArray<readonly [cidr: string, purpose: string]> = [
   ["0.0.0.0/8", "RFC 791 this network"],
   ["10.0.0.0/8", "RFC 1918 private use"],
   ["100.64.0.0/10", "RFC 6598 carrier-grade NAT"],
@@ -174,12 +174,12 @@ const PARSED_RANGES = RANGES.map(([cidr]) => parseCidr(cidr));
 const covered = (v6: boolean, value: bigint): boolean =>
   PARSED_RANGES.some((range) => range.v6 === v6 && value >= range.first && value <= range.last);
 
-function edgeCases(cidr: string): readonly (readonly [string, string, boolean])[] {
+function edgeCases(cidr: string): ReadonlyArray<readonly [string, string, boolean]> {
   const range = parseCidr(cidr);
   const format = range.v6 ? formatV6 : formatV4;
   const max = (1n << (range.v6 ? 128n : 32n)) - 1n;
 
-  const cases: [string, string, boolean][] = [
+  const cases: Array<[string, string, boolean]> = [
     [`${cidr} first`, format(range.first), true],
     [`${cidr} last`, format(range.last), true],
   ];
@@ -271,11 +271,11 @@ function trackedResponse(
 
 function recordingClient(
   respond: (url: string) => Response,
-  lookup: () => Promise<readonly { address: string }[]> = async () => [
+  lookup: () => Promise<ReadonlyArray<{ address: string }>> = async () => [
     { address: "93.184.216.34" },
   ],
 ) {
-  const hops: { readonly url: string; readonly init: RequestInit | undefined }[] = [];
+  const hops: Array<{ readonly url: string; readonly init: RequestInit | undefined }> = [];
 
   const fetchImpl: Parameters<typeof publicWebClientWith>[0]["fetchImpl"] = async (input, init) => {
     const url = input.href;
@@ -288,7 +288,7 @@ function recordingClient(
   return { client: publicWebClientWith({ fetchImpl, lookup }), hops };
 }
 
-function inOrder(...replies: readonly (() => Response)[]): () => Response {
+function inOrder(...replies: ReadonlyArray<() => Response>): () => Response {
   let index = 0;
 
   return () => {
@@ -450,11 +450,11 @@ describe("fetchPublicWebClient hop checks", () => {
 });
 
 describe("fetchPublicWebClient fetch failures", () => {
-  const cases: readonly {
+  const cases: ReadonlyArray<{
     readonly name: string;
     readonly cause: unknown;
     readonly message: string;
-  }[] = [
+  }> = [
     {
       name: "a bare network error",
       cause: new TypeError("fetch failed"),
@@ -489,7 +489,7 @@ describe("fetchPublicWebClient fetch failures", () => {
   it.effect("a caller deadline interrupts a hanging fetch and aborts its signal", () =>
     Effect.gen(function* () {
       const fetchStarted = Promise.withResolvers<undefined>();
-      const inits: (RequestInit | undefined)[] = [];
+      const inits: Array<RequestInit | undefined> = [];
 
       const client = publicWebClientWith({
         lookup: async () => [{ address: "93.184.216.34" }],

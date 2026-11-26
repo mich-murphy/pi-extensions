@@ -27,7 +27,7 @@ type TurnRecord = {
   readonly resultPromptTokens: number | undefined;
   readonly numTurns: number | undefined;
   readonly modelUsagePromptTokens: number;
-  readonly modelUsageKeys: readonly string[];
+  readonly modelUsageKeys: ReadonlyArray<string>;
   readonly resultUsage: SDKResultMessage["usage"] | undefined;
 };
 
@@ -36,14 +36,14 @@ type ModelUsageCheck = {
   readonly resultPrompt: number | undefined;
   readonly numTurns: number | undefined;
   readonly modelUsagePrompt: number;
-  readonly models: readonly string[];
+  readonly models: ReadonlyArray<string>;
 };
 
 type CheckValue =
   | number
   | undefined
-  | readonly (string | number | undefined)[]
-  | readonly ModelUsageCheck[];
+  | ReadonlyArray<string | number | undefined>
+  | ReadonlyArray<ModelUsageCheck>;
 
 type Check = {
   readonly status: "passed" | "failed";
@@ -132,16 +132,16 @@ const zeroUsage = {
 const BLOCKED_CATEGORIES = new Set(["authentication", "usage-limit"]);
 const BLOCKED_TEXT = /usage limit|rate limit|authentication|allowance|sign in|log in/iu;
 
-const turns: TurnRecord[] = [];
+const turns: Array<TurnRecord> = [];
 
 async function runTurn(
   session: string,
   turn: number,
-  messages: readonly Message[],
+  messages: ReadonlyArray<Message>,
 ): Promise<TurnRecord> {
   lastResult = undefined;
   const context = normalizeContext({ systemPrompt, tools, messages: [...messages] });
-  const events: BridgeEvent[] = [];
+  const events: Array<BridgeEvent> = [];
 
   for await (const event of run(buildAgentRequest(context), model, { reasoning: "low" })) {
     events.push(event);
@@ -216,9 +216,13 @@ async function runTurn(
   return record;
 }
 
-async function runSession(session: string, count: number, fanout: number): Promise<TurnRecord[]> {
-  const messages: Message[] = [];
-  const records: TurnRecord[] = [];
+async function runSession(
+  session: string,
+  count: number,
+  fanout: number,
+): Promise<Array<TurnRecord>> {
+  const messages: Array<Message> = [];
+  const records: Array<TurnRecord> = [];
   let callId = 0;
 
   for (let turn = 1; turn <= count; turn += 1) {
@@ -280,7 +284,7 @@ type ProbeReport = {
   packageDir: string;
   nonce: string;
   systemPromptCharacters: number;
-  turns: readonly TurnRecord[];
+  turns: ReadonlyArray<TurnRecord>;
   checks?: Readonly<Record<string, Check>>;
   status?: "passed" | "failed" | "blocked";
   error?: string;

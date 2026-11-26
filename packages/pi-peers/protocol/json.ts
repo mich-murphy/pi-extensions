@@ -20,7 +20,7 @@ function requireValid(condition: boolean): void {
   }
 }
 
-export type ObjectBytesVisitor = (path: readonly (string | number)[], byteLength: number) => void;
+export type ObjectBytesVisitor = (path: ReadonlyArray<string | number>, byteLength: number) => void;
 
 class JsonEvidence {
   private position = 0;
@@ -66,7 +66,7 @@ class JsonEvidence {
     throw new ProtocolError();
   }
 
-  private object(depth: number, path: readonly (string | number)[]): void {
+  private object(depth: number, path: ReadonlyArray<string | number>): void {
     const start = this.position;
     this.consume("{");
     const keys = new Set<string>();
@@ -87,7 +87,7 @@ class JsonEvidence {
     this.onObject?.(path, Buffer.byteLength(this.text.slice(start, this.position), "utf8"));
   }
 
-  private array(depth: number, path: readonly (string | number)[]): void {
+  private array(depth: number, path: ReadonlyArray<string | number>): void {
     this.consume("[");
     let count = 0;
     this.whitespace();
@@ -119,7 +119,7 @@ class JsonEvidence {
     this.position += token.length;
   }
 
-  private value(parentDepth: number, path: readonly (string | number)[]): void {
+  private value(parentDepth: number, path: ReadonlyArray<string | number>): void {
     this.whitespace();
     const next = this.text[this.position];
 

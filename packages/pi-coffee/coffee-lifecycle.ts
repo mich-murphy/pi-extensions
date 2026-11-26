@@ -36,7 +36,7 @@ export type CaffeinateProcess = {
 export type CoffeeDependencies = {
   readonly platform: NodeJS.Platform;
   readonly processIdCaffeinateExitsWith: number;
-  readonly spawnCaffeinate: (args: readonly string[]) => CaffeinateProcess;
+  readonly spawnCaffeinate: (args: ReadonlyArray<string>) => CaffeinateProcess;
 };
 
 export type CoffeeContext = Pick<ExtensionContext, "hasUI" | "isIdle"> & {

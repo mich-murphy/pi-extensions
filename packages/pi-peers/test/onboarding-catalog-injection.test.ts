@@ -109,7 +109,7 @@ function hostExpectation(version: string, supported: boolean) {
   };
 }
 
-async function entriesIfPresent(directory: string): Promise<string[]> {
+async function entriesIfPresent(directory: string): Promise<Array<string>> {
   return existsSync(directory) ? readdir(directory) : [];
 }
 
@@ -130,7 +130,7 @@ const hostCases = [
   },
 ];
 
-const roots: string[] = [];
+const roots: Array<string> = [];
 
 describe("setupCommand trusted catalog injection", () => {
   afterEach(async () => {

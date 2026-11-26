@@ -11,7 +11,7 @@ const words = textGen({ alphabet: "abcd ", minSize: 1, maxSize: 12 })
   .map((text) => text.trim())
   .filter((text) => text !== "" && text.toLowerCase() !== basename(path).toLowerCase());
 
-const PREFIXES: readonly string[] = [
+const PREFIXES: ReadonlyArray<string> = [
   "```\n# Fenced\n```\n",
   "~~~~\n# Tilde\n~~~~\n",
   "<!--\n# Commented\n-->\n",

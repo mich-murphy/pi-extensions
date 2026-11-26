@@ -46,7 +46,7 @@ describe("cache diagnostics", () => {
 
     const first = buildAgentRequest(base);
     const second = buildAgentRequest(grown);
-    const events: CacheDiagnostic[] = [];
+    const events: Array<CacheDiagnostic> = [];
 
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
@@ -83,7 +83,7 @@ describe("cache diagnostics", () => {
   });
 
   test("fingerprints equal prompts equally and a changed block differently", () => {
-    const events: CacheDiagnostic[] = [];
+    const events: Array<CacheDiagnostic> = [];
 
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
@@ -116,7 +116,7 @@ describe("cache diagnostics", () => {
 
   it.effect("classifies prefix changes and the likely cause of a low cache read", () =>
     Effect.gen(function* () {
-      const events: CacheDiagnostic[] = [];
+      const events: Array<CacheDiagnostic> = [];
 
       const tracker = yield* createCacheDiagnosticTracker((event) => {
         events.push(event);
@@ -190,7 +190,7 @@ describe("cache diagnostics", () => {
   ] as const)(
     "uses the model minimum for %s with %i prompt tokens",
     (model, input, minimum, cause) => {
-      const events: CacheDiagnostic[] = [];
+      const events: Array<CacheDiagnostic> = [];
 
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
@@ -225,7 +225,7 @@ describe("cache diagnostics", () => {
   ] as const)(
     "prefers observed model %s over the requested moving alias",
     (observedModel, minimum, cause) => {
-      const events: CacheDiagnostic[] = [];
+      const events: Array<CacheDiagnostic> = [];
 
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
@@ -253,7 +253,7 @@ describe("cache diagnostics", () => {
   ])(
     "does not infer below-minimum from zero usage or contradict actual cache activity: %j",
     (usage) => {
-      const events: CacheDiagnostic[] = [];
+      const events: Array<CacheDiagnostic> = [];
 
       const tracker = Effect.runSync(
         createCacheDiagnosticTracker((event) => {
@@ -270,7 +270,7 @@ describe("cache diagnostics", () => {
   );
 
   test("disabled caching takes precedence over the model minimum", () => {
-    const events: CacheDiagnostic[] = [];
+    const events: Array<CacheDiagnostic> = [];
 
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
@@ -287,7 +287,7 @@ describe("cache diagnostics", () => {
   });
 
   test("captures each turn's model even if final usage arrives after a later request", () => {
-    const events: CacheDiagnostic[] = [];
+    const events: Array<CacheDiagnostic> = [];
 
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
@@ -316,7 +316,7 @@ describe("cache diagnostics", () => {
   });
 
   test("attributes a low read to the lookback window when no breakpoint reaches the previous write", () => {
-    const events: CacheDiagnostic[] = [];
+    const events: Array<CacheDiagnostic> = [];
 
     const tracker = Effect.runSync(
       createCacheDiagnosticTracker((event) => {
@@ -349,7 +349,7 @@ describe("query diagnostic records", () => {
   };
 
   test("correlates no-usage outcomes with their request and does not invent zero counts", () => {
-    const records: CacheDiagnostic[] = [];
+    const records: Array<CacheDiagnostic> = [];
     const tracker = Effect.runSync(createCacheDiagnosticTracker((record) => records.push(record)));
 
     const record = tracker("sonnet", {

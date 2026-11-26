@@ -15,7 +15,7 @@ import {
 import { expectNoLeak } from "./leaks";
 
 function recordingTracer() {
-  const spans: Tracer.NativeSpan[] = [];
+  const spans: Array<Tracer.NativeSpan> = [];
 
   const tracer = Tracer.make({
     span(options) {
@@ -29,7 +29,7 @@ function recordingTracer() {
   return { spans, tracer };
 }
 
-function exportedSpans(spans: readonly Tracer.NativeSpan[]): string {
+function exportedSpans(spans: ReadonlyArray<Tracer.NativeSpan>): string {
   return inspect(
     spans.map((span) => ({
       name: span.name,

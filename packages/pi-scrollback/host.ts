@@ -89,8 +89,8 @@ function* userComponents(component: RenderComponent): Generator<RenderComponent>
   }
 }
 
-function nativeTexts(document: RenderComponent, rendered: readonly string[], width: number) {
-  const texts: string[] = [];
+function nativeTexts(document: RenderComponent, rendered: ReadonlyArray<string>, width: number) {
+  const texts: Array<string> = [];
   const lines = rendered.map((line) => stripTerminalSequences(line));
   let cursor = 0;
 

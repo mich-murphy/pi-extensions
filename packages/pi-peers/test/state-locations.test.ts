@@ -17,7 +17,7 @@ const config = {
 };
 
 describe("saved-state set selection", () => {
-  const roots: string[] = [];
+  const roots: Array<string> = [];
   afterEach(async () => {
     vi.unstubAllEnvs();
 

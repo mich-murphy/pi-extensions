@@ -58,7 +58,7 @@ async function readStoreExecutable(executable: string): Promise<Buffer> {
   return bytes;
 }
 
-async function run(file: string, args: string[], home: string): Promise<string> {
+async function run(file: string, args: Array<string>, home: string): Promise<string> {
   const { stdout } = await promisify(execFile)(file, args, {
     timeout: 10_000,
     maxBuffer: 65_536,
@@ -442,7 +442,7 @@ const commands = new Map<string, Command>([
   ],
 ]);
 
-function selectCommand(args: string[]): Command {
+function selectCommand(args: Array<string>): Command {
   const [command = "", ...extra] = args;
   const handler = commands.get(command);
 

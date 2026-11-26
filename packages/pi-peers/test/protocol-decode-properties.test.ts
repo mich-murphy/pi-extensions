@@ -19,7 +19,7 @@ import { decodeFrame, encodeFrame } from "../protocol/wire.js";
 
 const settings = propertySettings(200);
 
-const roles: readonly BoundaryRole[] = [
+const roles: ReadonlyArray<BoundaryRole> = [
   "local-client",
   "gateway-forward",
   "adapter-delivery",
@@ -30,7 +30,7 @@ const nonce = "a".repeat(32);
 const rid = "1".repeat(32);
 const peer = { machineId: "beta", sessionId: "s", runtimeNonce: nonce };
 
-const validFrames: readonly { role: BoundaryRole; frame: Frame }[] = [
+const validFrames: ReadonlyArray<{ role: BoundaryRole; frame: Frame }> = [
   {
     role: "local-client",
     frame: {
@@ -106,7 +106,11 @@ function arbitraryBytes(raw: Uint8Array, fixPrefix: boolean): Uint8Array {
   return fixPrefix ? withPrefix(raw) : raw;
 }
 
-function mutated(index: number, edits: readonly (readonly [number, number])[], fixPrefix: boolean) {
+function mutated(
+  index: number,
+  edits: ReadonlyArray<readonly [number, number]>,
+  fixPrefix: boolean,
+) {
   const entry = validFrames[index];
   assert.ok(entry !== undefined);
   const { role, frame } = entry;
@@ -119,7 +123,7 @@ function mutated(index: number, edits: readonly (readonly [number, number])[], f
   return { bytes: fixPrefix ? withPrefix(bytes.subarray(4)) : bytes, role };
 }
 
-const utf8Pieces: readonly Uint8Array[] = [
+const utf8Pieces: ReadonlyArray<Uint8Array> = [
   [0xc0, 0x80],
   [0xc1, 0xbf],
   [0xe0, 0x80, 0x80],
@@ -144,7 +148,7 @@ const utf8Pieces: readonly Uint8Array[] = [
   [0x7a, 0x20],
 ].map((piece) => Uint8Array.from(piece));
 
-function assertUtf8Agreement(pieces: readonly Uint8Array[]): void {
+function assertUtf8Agreement(pieces: ReadonlyArray<Uint8Array>): void {
   const body = Buffer.concat([Buffer.from('{"a":"'), ...pieces, Buffer.from('"}')]);
   let valid = true;
 

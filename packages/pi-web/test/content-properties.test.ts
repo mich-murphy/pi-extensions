@@ -24,7 +24,7 @@ import { publicUrl, publicWebClientWith } from "./fakes";
 
 const settings = propertySettings(200);
 
-const KNOWN_KINDS: readonly (readonly [string, string])[] = [
+const KNOWN_KINDS: ReadonlyArray<readonly [string, string]> = [
   ["text/html", "html"],
   ["application/xhtml+xml", "html"],
   ["image/png", "raster-image"],
@@ -56,7 +56,7 @@ const TOKEN = textGen({
 const caseFlags = arrays(booleans(), { minSize: 40, maxSize: 40 });
 const padding = tuples(sampledFrom(PADDING), sampledFrom(PADDING));
 
-function mixCase(value: string, flags: readonly boolean[]): string {
+function mixCase(value: string, flags: ReadonlyArray<boolean>): string {
   return value
     .split("")
     .map((char, index) => (flags[index] === true ? char.toUpperCase() : char))
@@ -66,13 +66,13 @@ function mixCase(value: string, flags: readonly boolean[]): string {
 function assertKind(
   mime: string,
   expected: string,
-  flags: readonly boolean[],
+  flags: ReadonlyArray<boolean>,
   [left, right]: readonly [string, string],
 ): void {
   assert.equal(classifyMimeType(`${left}${mixCase(mime, flags)}${right}`), expected, mime);
 }
 
-const SUFFIX_FAMILIES: readonly (readonly [string, string])[] = [
+const SUFFIX_FAMILIES: ReadonlyArray<readonly [string, string]> = [
   ["text/", ""],
   ["application/", "+xml"],
   ["application/", "+json"],
@@ -81,7 +81,7 @@ const SUFFIX_FAMILIES: readonly (readonly [string, string])[] = [
 function assertSuffixIsText(
   family: readonly [string, string],
   token: string,
-  flags: readonly boolean[],
+  flags: ReadonlyArray<boolean>,
   pad: readonly [string, string],
 ): void {
   const mime = `${family[0]}${token}${family[1]}`;
@@ -97,7 +97,7 @@ function assertSuffixIsText(
 
 function assertUnlistedIsBinary(
   token: string,
-  flags: readonly boolean[],
+  flags: ReadonlyArray<boolean>,
   pad: readonly [string, string],
 ): void {
   const mime = `application/${token}`;
@@ -216,8 +216,8 @@ const bodyBytes = binary({ maxSize: 80 });
 const chunkSizes = arrays(integers({ minValue: 0, maxValue: 30 }), { maxSize: 12 });
 const cap = integers({ minValue: 0, maxValue: 40 });
 
-function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
-  const views: Uint8Array[] = [];
+function chunkViews(bytes: Uint8Array, sizes: ReadonlyArray<number>): Array<Uint8Array> {
+  const views: Array<Uint8Array> = [];
   let position = 0;
 
   for (const size of [...sizes, bytes.length]) {
@@ -233,7 +233,7 @@ function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
 
 function chunkedResponse(
   bytes: Uint8Array,
-  sizes: readonly number[],
+  sizes: ReadonlyArray<number>,
   contentType: string,
 ): Response {
   const views = chunkViews(bytes, sizes);
@@ -253,7 +253,7 @@ function chunkedResponse(
 
 async function assertFailModeRead(
   bytes: Uint8Array,
-  sizes: readonly number[],
+  sizes: ReadonlyArray<number>,
   max: number,
 ): Promise<void> {
   const response = chunkedResponse(bytes, sizes, "application/octet-stream");
@@ -284,7 +284,7 @@ function requestWithCap(maxResponseBytes: number): PublicWebRequest {
 
 async function readThroughClient(
   bytes: Uint8Array,
-  sizes: readonly number[],
+  sizes: ReadonlyArray<number>,
   max: number,
   contentType: string,
 ) {
@@ -298,7 +298,7 @@ async function readThroughClient(
 
 async function assertTruncateModeRead(
   bytes: Uint8Array,
-  sizes: readonly number[],
+  sizes: ReadonlyArray<number>,
   max: number,
 ): Promise<void> {
   const result = await readThroughClient(bytes, sizes, max, "text/plain");
@@ -311,7 +311,7 @@ async function assertTruncateModeRead(
 
 async function assertBinaryKeepsHardCap(
   bytes: Uint8Array,
-  sizes: readonly number[],
+  sizes: ReadonlyArray<number>,
   max: number,
 ): Promise<void> {
   const result = await readThroughClient(bytes, sizes, max, "image/png");

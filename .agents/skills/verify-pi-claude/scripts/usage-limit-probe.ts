@@ -137,10 +137,10 @@ const settings = SettingsManager.inMemory({
   cacheWarming: "off",
 });
 
-let notices: unknown[] = [];
-let order: string[] = [];
+let notices: Array<unknown> = [];
+let order: Array<string> = [];
 let isolatedErrors = 0;
-const unexpectedErrors: unknown[] = [];
+const unexpectedErrors: Array<unknown> = [];
 
 const loader = new DefaultResourceLoader({
   cwd: work,
@@ -179,7 +179,7 @@ const loader = new DefaultResourceLoader({
   ],
 });
 
-const reports: unknown[] = [];
+const reports: Array<unknown> = [];
 let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 
 try {

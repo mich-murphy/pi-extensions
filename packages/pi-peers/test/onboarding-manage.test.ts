@@ -141,7 +141,7 @@ describe("Manage on a paired setup", () => {
       "Apply: Ready",
     ];
 
-    const shown: { title: string; options: readonly string[] }[] = [];
+    const shown: Array<{ title: string; options: ReadonlyArray<string> }> = [];
 
     const ctx: DialogContext = {
       mode: "rpc",

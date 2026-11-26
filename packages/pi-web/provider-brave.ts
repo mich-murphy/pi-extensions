@@ -51,7 +51,7 @@ export class BraveApiSearchProvider implements SearchProvider {
     private readonly http: ProviderHttpClient["Service"],
   ) {}
 
-  search(input: SearchInput): Effect.Effect<readonly NormalizedSearchResult[], ProviderError> {
+  search(input: SearchInput): Effect.Effect<ReadonlyArray<NormalizedSearchResult>, ProviderError> {
     const url = new URL(BRAVE_API_SEARCH_URL);
     url.searchParams.set("q", input.query);
     url.searchParams.set("count", String(input.maxResults));

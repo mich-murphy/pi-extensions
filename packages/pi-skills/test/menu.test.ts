@@ -43,14 +43,14 @@ const projectInstruction = resource("AGENTS.md", "instruction", "project", "Work
 const projectSkill = resource("deploy", "skill", "project", "Ship carefully.");
 
 function menu(
-  resources: readonly ToggleResource[],
-  disabled: readonly ToggleResource[] = [],
+  resources: ReadonlyArray<ToggleResource>,
+  disabled: ReadonlyArray<ToggleResource> = [],
   keys: KeybindingsManager = testKeybindings(),
   rows = 40,
 ) {
   initTheme();
   const files = new Map<ToggleResource["id"], ToggleValue>(disabled.map((r) => [r.id, "disabled"]));
-  const writes: (readonly [string, ToggleValue])[] = [];
+  const writes: Array<readonly [string, ToggleValue]> = [];
   let closed = false;
 
   const component = createContextMenu({
@@ -78,7 +78,7 @@ function menu(
       .map((line) => stripVTControlCharacters(line))
       .join("\n");
 
-  const press = (...inputs: readonly string[]) => {
+  const press = (...inputs: ReadonlyArray<string>) => {
     for (const data of inputs) {
       component.handleInput?.(data);
     }

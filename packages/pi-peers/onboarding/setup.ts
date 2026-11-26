@@ -188,7 +188,7 @@ function blockedNotice(acquisition: Acquisition): Notice {
 function reportRoute(
   value: string,
   description: string,
-  lines: readonly string[],
+  lines: ReadonlyArray<string>,
   notice: Notice,
 ): SetupRoute {
   return {

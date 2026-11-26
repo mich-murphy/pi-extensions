@@ -22,7 +22,7 @@ export function failed(
   what: string,
   reason: string,
   next: string,
-  technical: readonly string[] = [],
+  technical: ReadonlyArray<string> = [],
 ): Outcome {
   return { ok: false, headline: `✗ ${what}: ${reason}`, facts: [], next, technical };
 }
@@ -69,12 +69,15 @@ export class NotActiveError extends Error {}
 export function pendingOutcome(
   what: string,
   next: string = SAVED_NEXT,
-  technical: readonly string[] = [],
+  technical: ReadonlyArray<string> = [],
 ): Outcome {
   return { ok: false, headline: `! ${what} but not active yet`, facts: [], next, technical };
 }
 
-export function afterSave(error: Error | undefined, technical: readonly string[] = []): Outcome {
+export function afterSave(
+  error: Error | undefined,
+  technical: ReadonlyArray<string> = [],
+): Outcome {
   if (error instanceof NotActiveError) {
     return pendingOutcome("Settings saved", error.message, technical);
   }

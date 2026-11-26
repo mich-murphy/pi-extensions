@@ -65,7 +65,7 @@ async function readBounded(
   handle: FileHandle,
   filename: string,
   maximum: number,
-  chunks: Buffer[],
+  chunks: Array<Buffer>,
 ): Promise<Buffer> {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
 
@@ -216,7 +216,7 @@ const nestedErrors = Schema.decodeUnknownSync(Schema.Array(Schema.Unknown));
 
 export function describeFailure(cause: unknown, includeAggregates: boolean): string {
   const pending = [cause];
-  const messages: string[] = [];
+  const messages: Array<string> = [];
 
   while (pending.length > 0 && messages.length < 8) {
     const item = pending.shift();

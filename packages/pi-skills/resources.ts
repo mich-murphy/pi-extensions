@@ -92,7 +92,7 @@ export function defaultToggleValue(resource: Pick<ToggleResource, "kind" | "orig
 export function toggleResources(
   options: BuildSystemPromptOptions,
   contributedSkills: ReadonlySet<ResourcePath>,
-): readonly ToggleResource[] {
+): ReadonlyArray<ToggleResource> {
   const cwd = resourcePathId(options.cwd, options.cwd);
   const agentDirectory = resourcePathId(getAgentDir(), cwd);
   const globalSkillRoots = [join(agentDirectory, "skills"), join(homedir(), ".agents", "skills")];
@@ -190,7 +190,7 @@ function skillOrigin({
 }: {
   readonly sourceInfo: Readonly<SourceInfo>;
   readonly id: ResourcePath;
-  readonly globalSkillRoots: readonly string[];
+  readonly globalSkillRoots: ReadonlyArray<string>;
   readonly contributedSkills: ReadonlySet<ResourcePath>;
 }): ToggleResource["origin"] | undefined {
   if (sourceInfo.origin !== "top-level") {

@@ -33,7 +33,7 @@ class FakeCaffeinate {
 
 function harness(platform: NodeJS.Platform = "darwin", hasUI = true, exitsWhenStopped = true) {
   const pi = fakePi(hasUI);
-  const spawned: { args: readonly string[]; child: FakeCaffeinate }[] = [];
+  const spawned: Array<{ args: ReadonlyArray<string>; child: FakeCaffeinate }> = [];
   registerCoffee(pi.pi, {
     platform,
     processIdCaffeinateExitsWith: 9876,

@@ -78,10 +78,10 @@ function drawWindow(tc: TestCase): Window | null | undefined {
 
 async function assertDedupe(tc: TestCase): Promise<void> {
   const rateLimits: Partial<Record<(typeof FIXED)[number][0], Window | null>> & {
-    model_scoped?: { display_name: string; utilization: number | null; resets_at: null }[];
+    model_scoped?: Array<{ display_name: string; utilization: number | null; resets_at: null }>;
   } = {};
 
-  const candidates: Candidate[] = [];
+  const candidates: Array<Candidate> = [];
 
   for (const [key, name] of FIXED) {
     const window = drawWindow(tc);

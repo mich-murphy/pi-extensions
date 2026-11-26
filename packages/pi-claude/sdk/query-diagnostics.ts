@@ -15,7 +15,7 @@ export type QueryDiagnostics = {
   readonly outcome: "completed" | "failed";
   readonly numTurns?: number;
   readonly modelRequests?: number;
-  readonly models: readonly QueryModelDiagnostic[];
+  readonly models: ReadonlyArray<QueryModelDiagnostic>;
   readonly modelEntriesOmitted: number;
   readonly apiError?: string;
   readonly assistantToolUses: number;

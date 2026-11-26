@@ -23,15 +23,15 @@ export type PromptSnapshot = {
 export type ProjectedEntry = { readonly sourceEntry: { readonly type: string } };
 
 export type SessionProjection = {
-  readonly messages: readonly TranscriptMessage[];
-  readonly entries: readonly ProjectedEntry[];
+  readonly messages: ReadonlyArray<TranscriptMessage>;
+  readonly entries: ReadonlyArray<ProjectedEntry>;
 };
 
 type Selection = { readonly provider: string; readonly modelId: string };
 
 export function promptSnapshot(
   projection: SessionProjection,
-  resources: readonly PromptResource[],
+  resources: ReadonlyArray<PromptResource>,
 ): PromptSnapshot {
   const { messages, entries } = projection;
   const system = getCurrentSystemMessage(messages);
@@ -44,7 +44,7 @@ export function promptSnapshot(
   };
 }
 
-function laterEpoch(entries: readonly ProjectedEntry[]): Epoch {
+function laterEpoch(entries: ReadonlyArray<ProjectedEntry>): Epoch {
   const answer = entries.findLastIndex(({ sourceEntry }) => responseModel(sourceEntry) !== null);
   const response = entries[answer];
   const selected = latestSelection(entries.slice(answer + 1));
@@ -62,7 +62,7 @@ function sameSelection(left: Selection, right: Selection): boolean {
   return left.provider === right.provider && left.modelId === right.modelId;
 }
 
-function latestSelection(entries: readonly ProjectedEntry[]): Selection | undefined {
+function latestSelection(entries: ReadonlyArray<ProjectedEntry>): Selection | undefined {
   return entries
     .map(({ sourceEntry }) => modelChange(sourceEntry))
     .findLast((selection) => selection !== undefined);
@@ -92,9 +92,9 @@ function responseModel(entry: ProjectedEntry["sourceEntry"]): Selection | null |
 }
 
 export function modelView(
-  messages: readonly TranscriptMessage[],
+  messages: ReadonlyArray<TranscriptMessage>,
   sections: PromptSections,
-  resources: readonly PromptResource[],
+  resources: ReadonlyArray<PromptResource>,
 ): ReadonlySet<ResourcePath> {
   const noteIndex = messages.findLastIndex((message) => noteView(message) !== undefined);
   const latest = messages[noteIndex];
@@ -109,7 +109,7 @@ export function modelView(
   return new Set(visible.map(({ id }) => id));
 }
 
-function lastSetting(messages: readonly TranscriptMessage[], section: string): number {
+function lastSetting(messages: ReadonlyArray<TranscriptMessage>, section: string): number {
   return messages.findLastIndex((message) => {
     if (message.role !== "system" || !("sections" in message)) {
       return false;
@@ -122,7 +122,7 @@ function lastSetting(messages: readonly TranscriptMessage[], section: string): n
 }
 
 export type PromptPlanInput = PromptSnapshot & {
-  readonly resources: readonly PromptResource[];
+  readonly resources: ReadonlyArray<PromptResource>;
   readonly desiredHidden: ReadonlySet<ResourcePath> | undefined;
   readonly reader: SkillReader;
 };

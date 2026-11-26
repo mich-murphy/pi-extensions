@@ -37,7 +37,7 @@ const context = contextFixture({
 
 const payload = { promptBlocks: [textBlock("replacement")], cacheBreakpoints: [0] };
 
-function terminalOf(events: readonly AssistantMessageEvent[]) {
+function terminalOf(events: ReadonlyArray<AssistantMessageEvent>) {
   const terminal = events.at(-1);
   assert(terminal?.type === "done" || terminal?.type === "error");
 
@@ -62,7 +62,7 @@ async function turn(
   return terminalOf(events);
 }
 
-function messagesQuery(...messages: readonly unknown[]): RunSdkQuery {
+function messagesQuery(...messages: ReadonlyArray<unknown>): RunSdkQuery {
   return async function* () {
     yield* messages;
   };
@@ -110,14 +110,14 @@ function phaseOptions(phase: string, hook: () => Promise<undefined>): SimpleStre
   return phase === "payload" ? { onPayload: hook } : { onProviderStreamEvent: hook };
 }
 
-function safeError(message: ReturnType<typeof terminalOf>, lines: readonly string[]) {
+function safeError(message: ReturnType<typeof terminalOf>, lines: ReadonlyArray<string>) {
   expect(message.stopReason).toBe("error");
   expect(message.errorMessage?.length).toBeLessThan(180);
   expect(JSON.stringify([message, lines])).not.toContain(PRIVATE);
 }
 
 function captureDiagnostics() {
-  const lines: string[] = [];
+  const lines: Array<string> = [];
   vi.spyOn(process.stderr, "write").mockImplementation((line) => {
     lines.push(String(line));
 
@@ -355,7 +355,7 @@ describe("public SDK-adapted instrumentation", () => {
   });
 
   test("awaits payload once and every parsed SDK object in order before normalization; HTTP facts remain unavailable", async () => {
-    const order: string[] = [];
+    const order: Array<string> = [];
     let responseCalls = 0;
     const sdkEvents = [{ type: "system", subtype: "init" }, textDelta("hello"), resultMessage()];
 
@@ -411,8 +411,8 @@ describe("public SDK-adapted instrumentation", () => {
   test.each([false, true])(
     "honors %s mutation/replacement and tracks the applied prompt and breakpoint",
     async (replace) => {
-      const diagnostics: CacheDiagnostic[] = [];
-      let wire: SdkPromptBlock[] = [];
+      const diagnostics: Array<CacheDiagnostic> = [];
+      let wire: Array<SdkPromptBlock> = [];
 
       const message = await turn(
         async function* ({ prompt, options }) {
@@ -463,7 +463,7 @@ describe("public SDK-adapted instrumentation", () => {
   );
 
   test("forwards validated replacement images and null cache boundary", async () => {
-    let wire: SdkPromptBlock[] = [];
+    let wire: Array<SdkPromptBlock> = [];
     await turn(
       async function* ({ prompt }) {
         const [message] = await drain(sdkPromptFixture(prompt));
@@ -673,7 +673,7 @@ describe("public SDK-adapted instrumentation", () => {
 
   test("observes a malformed parsed SDK event before provider validation", async () => {
     const raw = { type: "result", is_error: PRIVATE };
-    const seen: unknown[] = [];
+    const seen: Array<unknown> = [];
 
     const message = await turn(messagesQuery(raw), {
       onProviderStreamEvent: async (event) => {

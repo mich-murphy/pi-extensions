@@ -121,8 +121,8 @@ type JourneyReport = {
   case: string;
   faultInjected: boolean;
   transport: string;
-  queryReports: QueryReport[];
-  diagnostics?: readonly Extract<CacheDiagnostic, { type: "usage" | "query" }>["query"][];
+  queryReports: Array<QueryReport>;
+  diagnostics?: ReadonlyArray<Extract<CacheDiagnostic, { type: "usage" | "query" }>["query"]>;
   executions?: number;
   durableBeforeCorrection?: boolean;
   injected?: number;
@@ -137,7 +137,7 @@ type ProbeReport =
       Awaited<ReturnType<typeof startParserTransport>>["summary"]
     >);
 
-const reports: ProbeReport[] = [];
+const reports: Array<ProbeReport> = [];
 const isText = Schema.is(Schema.String);
 const isCorrectedInput = Schema.is(Schema.Struct({ value: Schema.Literal("corrected") }));
 
@@ -169,8 +169,8 @@ async function journey() {
   let executions = 0;
   let injected = 0;
   let durableBeforeCorrection = false;
-  const records: CacheDiagnostic[] = [];
-  const queryReports: QueryReport[] = [];
+  const records: Array<CacheDiagnostic> = [];
+  const queryReports: Array<QueryReport> = [];
 
   const report: JourneyReport = {
     case: kind,
@@ -361,7 +361,7 @@ async function journey() {
     ),
   });
 
-  const tools: AgentTool[] = [
+  const tools: Array<AgentTool> = [
     {
       name: "contract_probe",
       label: "Pure contract probe",

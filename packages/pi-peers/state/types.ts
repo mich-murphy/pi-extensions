@@ -48,7 +48,7 @@ export type AdmitInput = Omit<Delivery, "key" | "correlation" | "bytes"> & {
 
 export type Options = {
   peer: PeerRef;
-  scopeIds: readonly string[];
+  scopeIds: ReadonlyArray<string>;
   clock: () => number;
   authorize: Policy;
   offer: (delivery: Delivery) => boolean;

@@ -157,7 +157,7 @@ describe("websearch tool", () => {
       }),
     });
 
-    const updates: unknown[] = [];
+    const updates: Array<unknown> = [];
 
     const result = await tool.execute("t1", { query: "find sekrit-key" }, undefined, (update) => {
       updates.push(update);

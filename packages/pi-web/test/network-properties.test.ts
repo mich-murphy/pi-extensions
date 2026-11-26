@@ -21,7 +21,7 @@ const settings = propertySettings(200);
 const ipv4Value = (a: number, b: number, c: number, d: number) =>
   ((a * 256 + b) * 256 + c) * 256 + d;
 
-const IANA_NON_GLOBAL_V4: readonly (readonly [number, number])[] = [
+const IANA_NON_GLOBAL_V4: ReadonlyArray<readonly [number, number]> = [
   [ipv4Value(0, 0, 0, 0), 8],
   [ipv4Value(10, 0, 0, 0), 8],
   [ipv4Value(100, 64, 0, 0), 10],
@@ -46,10 +46,10 @@ function v4NonGlobal(value: number): boolean {
   });
 }
 
-const toBig = (groups: readonly number[]) =>
+const toBig = (groups: ReadonlyArray<number>) =>
   groups.reduce((acc, group) => (acc << 16n) | BigInt(group), 0n);
 
-function inV6(groups: readonly number[], base: readonly number[], length: number): boolean {
+function inV6(groups: ReadonlyArray<number>, base: ReadonlyArray<number>, length: number): boolean {
   const shift = BigInt(128 - length);
 
   return toBig(groups) >> shift === toBig(base) >> shift;
@@ -57,7 +57,7 @@ function inV6(groups: readonly number[], base: readonly number[], length: number
 
 const embedded = (high: number, low: number) => high * 65_536 + low;
 
-function v6NonGlobal(g: readonly number[]): boolean {
+function v6NonGlobal(g: ReadonlyArray<number>): boolean {
   const mappedOrSiit =
     inV6(g, [0, 0, 0, 0, 0, 0xff_ff, 0, 0], 96) || inV6(g, [0, 0, 0, 0, 0xff_ff, 0, 0, 0], 96);
 
@@ -71,7 +71,7 @@ function v6NonGlobal(g: readonly number[]): boolean {
     return v4NonGlobal(embedded(g[1] ?? 0, g[2] ?? 0));
   }
 
-  const ranges: readonly (readonly [number[], number])[] = [
+  const ranges: ReadonlyArray<readonly [Array<number>, number]> = [
     [[0, 0, 0, 0, 0, 0, 0, 0], 96],
     [[0x64, 0xff_9b, 0, 0, 0, 0, 0, 0], 96],
     [[0x64, 0xff_9b, 1, 0, 0, 0, 0, 0], 48],
@@ -110,7 +110,7 @@ const edgeOctets = composite((tc) => {
 
 const ipv4Octets = oneOf(randomOctets, edgeOctets);
 
-const toGroups = (o: readonly number[]) => [
+const toGroups = (o: ReadonlyArray<number>) => [
   (o[0] ?? 0) * 256 + (o[1] ?? 0),
   (o[2] ?? 0) * 256 + (o[3] ?? 0),
 ];
@@ -147,13 +147,13 @@ const v6Groups = composite((tc) => {
   return result;
 });
 
-const hex = (groups: readonly number[], upper: boolean) => {
+const hex = (groups: ReadonlyArray<number>, upper: boolean) => {
   const text = groups.map((g) => g.toString(16)).join(":");
 
   return upper ? text.toUpperCase() : text;
 };
 
-const dottedTail = (groups: readonly number[]) => {
+const dottedTail = (groups: ReadonlyArray<number>) => {
   const [high = 0, low = 0] = [groups[6], groups[7]];
 
   return `${groups
@@ -162,7 +162,7 @@ const dottedTail = (groups: readonly number[]) => {
     .join(":")}:${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 };
 
-function checkV4(o: number[]): void {
+function checkV4(o: Array<number>): void {
   const [a = 0, b = 0, c = 0, d = 0] = o;
   assert.equal(isPrivateOrLocalIp(o.join(".")), v4NonGlobal(ipv4Value(a, b, c, d)));
 }
@@ -179,14 +179,14 @@ function checkEdge(index: number, atEnd: boolean, delta: number): void {
   assert.equal(isPrivateOrLocalIp(octets.join(".")), v4NonGlobal(value), octets.join("."));
 }
 
-type Spelling = (octets: readonly number[]) => string;
+type Spelling = (octets: ReadonlyArray<number>) => string;
 
-const whole = (octets: readonly number[]) => octets.reduce((acc, part) => acc * 256 + part, 0);
+const whole = (octets: ReadonlyArray<number>) => octets.reduce((acc, part) => acc * 256 + part, 0);
 
-const tail = (octets: readonly number[], keep: number) =>
+const tail = (octets: ReadonlyArray<number>, keep: number) =>
   octets.slice(keep).reduce((acc, part) => acc * 256 + part, 0);
 
-const NUMERIC_SPELLINGS: readonly Spelling[] = [
+const NUMERIC_SPELLINGS: ReadonlyArray<Spelling> = [
   (o) => String(whole(o)),
   (o) => `0x${whole(o).toString(16)}`,
   (o) => `0${whole(o).toString(8)}`,

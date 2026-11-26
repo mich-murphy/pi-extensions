@@ -4,7 +4,7 @@ import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from
 
 function bashResult(
   toolCallId: string,
-  content: readonly { readonly type: "text"; readonly text: string }[],
+  content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>,
 ) {
   return {
     role: "toolResult" as const,

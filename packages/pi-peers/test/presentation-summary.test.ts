@@ -64,7 +64,7 @@ function drawStatus(tc: TestCase) {
   return { value, authored: [scope, machine] };
 }
 
-function assertPlain(text: string, authored: string[]): void {
+function assertPlain(text: string, authored: Array<string>): void {
   assert.equal(hasControl(text), false, `control character in ${JSON.stringify(text)}`);
   let own = text;
 
@@ -81,7 +81,7 @@ function primary(status: StatusSnapshot | undefined, diagnostic: string): string
   return [summary.headline, ...summary.rows.flat(), summary.next ?? ""].join("\n");
 }
 
-function links(...states: [string, LinkState["state"]][]) {
+function links(...states: Array<[string, LinkState["state"]]>) {
   return states.map(([machineId, state]) => ({ machineId, state, since: 0 }));
 }
 

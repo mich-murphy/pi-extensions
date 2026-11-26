@@ -15,8 +15,8 @@ const SESSIONS = ["a", "b", "c"] as const;
 const settings = propertySettings(200);
 
 type Drawn = {
-  readonly events: readonly LedgerEvent[];
-  readonly records: readonly Extract<LedgerEvent, { readonly type: "signal" }>[];
+  readonly events: ReadonlyArray<LedgerEvent>;
+  readonly records: ReadonlyArray<Extract<LedgerEvent, { readonly type: "signal" }>>;
 };
 
 function drawScore(tc: TestCase, label: string): number {
@@ -25,8 +25,8 @@ function drawScore(tc: TestCase, label: string): number {
 
 function drawEvents(tc: TestCase): Drawn {
   const count = tc.draw(integers({ minValue: 0, maxValue: 12 }), "count");
-  const records: Extract<LedgerEvent, { readonly type: "signal" }>[] = [];
-  const verdicts: LedgerEvent[] = [];
+  const records: Array<Extract<LedgerEvent, { readonly type: "signal" }>> = [];
+  const verdicts: Array<LedgerEvent> = [];
 
   for (let n = 1; n <= count; n += 1) {
     const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");

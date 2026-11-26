@@ -56,7 +56,7 @@ type ProjectionOptions = Omit<Parameters<typeof projectFetchResult>[1], "offset"
 async function project(
   text: string,
   offset?: number,
-  secrets: readonly string[] = [],
+  secrets: ReadonlyArray<string> = [],
   responseTruncated = false,
 ) {
   const page = textResult(text);

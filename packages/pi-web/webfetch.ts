@@ -228,7 +228,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
 
     renderResult(
       result: {
-        readonly content: readonly { readonly type: string; readonly text?: string }[];
+        readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
         readonly details?: WebFetchDetails;
         readonly isError?: boolean;
       },
@@ -361,7 +361,7 @@ const runWebFetch = Effect.fnUntraced(
 
 const tryProviderRescue = Effect.fnUntraced(function* (
   url: PublicHttpUrl,
-  providers: readonly FetchProvider[],
+  providers: ReadonlyArray<FetchProvider>,
 ): Effect.fn.Return<ProviderFetchedPage | undefined> {
   for (const provider of providers) {
     const markdown = yield* provider.fetchMarkdown(url);

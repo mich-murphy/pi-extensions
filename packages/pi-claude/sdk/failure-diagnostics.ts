@@ -34,7 +34,7 @@ export type SdkFailureDiagnostic = {
   readonly streamInterruption?: SdkStreamInterruptedError["evidence"];
 };
 
-const TEXT_KINDS: readonly (readonly [kind: SdkFailureKind, pattern: RegExp])[] = [
+const TEXT_KINDS: ReadonlyArray<readonly [kind: SdkFailureKind, pattern: RegExp]> = [
   [
     "usage-limit",
     /(?:credits_required|extra usage|individual spend limit|out of (?:extra )?usage|usage limit)/iu,

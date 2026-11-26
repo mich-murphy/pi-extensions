@@ -14,7 +14,7 @@ import type { PeerRef } from "../protocol/schema.js";
 
 const settings = propertySettings(200);
 
-const runtimes: PeerRef[] = ["x", "y"].flatMap((sessionId) =>
+const runtimes: Array<PeerRef> = ["x", "y"].flatMap((sessionId) =>
   ["1", "2", "3", "4"].map((nonce) => ({
     machineId: "beta",
     sessionId,
@@ -41,7 +41,7 @@ function bind(model: Model, handle: string, peer: PeerRef): void {
   model.bound.set(handle, peer);
 }
 
-function listStep(handles: Handles, model: Model, indices: readonly number[]): void {
+function listStep(handles: Handles, model: Model, indices: ReadonlyArray<number>): void {
   const listed = indices.flatMap((index) => {
     const peer = runtimes[index];
 

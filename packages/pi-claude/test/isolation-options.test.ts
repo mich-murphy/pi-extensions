@@ -17,14 +17,14 @@ import {
 
 type SdkQueryParameters = Parameters<RunSdkQuery>[0];
 
-const scratch: string[] = [];
+const scratch: Array<string> = [];
 
 async function startedWith(
   collaborators: RunnerOptions,
   streamOptions: SimpleStreamOptions = {},
   request = requestFixture(),
 ): Promise<SdkQueryParameters> {
-  const captured: SdkQueryParameters[] = [];
+  const captured: Array<SdkQueryParameters> = [];
 
   const runner = createClaudeAgentSdkRunner({
     ...collaborators,

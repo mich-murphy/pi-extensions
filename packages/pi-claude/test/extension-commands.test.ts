@@ -42,18 +42,18 @@ function loadExtension() {
   return { commands, completions, handlers };
 }
 
-async function runCommand(args: string, hasUI = true): Promise<Notice[]> {
+async function runCommand(args: string, hasUI = true): Promise<Array<Notice>> {
   const { commands } = loadExtension();
   const command = commands.get("claude");
   assert(command !== undefined, "test setup: /claude is not registered");
-  const notices: Notice[] = [];
+  const notices: Array<Notice> = [];
   await command(args, { hasUI, ui: { notify: (text, level) => notices.push({ text, level }) } });
 
   return notices;
 }
 
 describe("provider commands", () => {
-  const scratch: string[] = [];
+  const scratch: Array<string> = [];
 
   afterEach(() => {
     vi.unstubAllEnvs();

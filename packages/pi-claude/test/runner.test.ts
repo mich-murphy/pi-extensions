@@ -108,7 +108,7 @@ async function runTurn(
   runSdkQuery: RunSdkQuery,
   request: AgentRequest = requestFixture(),
   options: SimpleStreamOptions & RunnerOptions = {},
-): Promise<BridgeEvent[]> {
+): Promise<Array<BridgeEvent>> {
   return drain(
     createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
@@ -119,18 +119,21 @@ async function runTurn(
   );
 }
 
-function toolUses(toolInputs: readonly unknown[]): ToolUse[] {
+function toolUses(toolInputs: ReadonlyArray<unknown>): Array<ToolUse> {
   return toolInputs.map((input, index) => ({ id: `toolu_${index}`, input }));
 }
 
-function queryWith(toolInputs: readonly unknown[], ...messages: readonly unknown[]): RunSdkQuery {
+function queryWith(
+  toolInputs: ReadonlyArray<unknown>,
+  ...messages: ReadonlyArray<unknown>
+): RunSdkQuery {
   return async function* fakeQuery(params) {
     await deliverToolUses(installedHook(params), toolUses(toolInputs));
     yield* messages;
   };
 }
 
-function failureOf(events: readonly BridgeEvent[]) {
+function failureOf(events: ReadonlyArray<BridgeEvent>) {
   expect(events).toHaveLength(1);
   const [event] = events;
 
@@ -163,7 +166,7 @@ async function capturedParameters(
   model = sonnet,
   options: SimpleStreamOptions = {},
 ): Promise<SdkQueryParameters> {
-  const captured: SdkQueryParameters[] = [];
+  const captured: Array<SdkQueryParameters> = [];
 
   const runner = createClaudeAgentSdkRunner({
     claudeExecutable: "/usr/bin/claude",
@@ -200,7 +203,7 @@ async function effortFor(id: string, reasoning: SimpleStreamOptions["reasoning"]
   return options && "effort" in options ? options.effort : "omitted";
 }
 
-async function runWithHistory(history: readonly MessageFixture[]): Promise<BridgeEvent[]> {
+async function runWithHistory(history: ReadonlyArray<MessageFixture>): Promise<Array<BridgeEvent>> {
   return runTurn(
     async function* fakeQuery({ prompt }) {
       await drain(sdkPromptFixture(prompt));
@@ -210,8 +213,8 @@ async function runWithHistory(history: readonly MessageFixture[]): Promise<Bridg
   );
 }
 
-async function observeModels(...messages: readonly unknown[]) {
-  const observations: ModelObservation[] = [];
+async function observeModels(...messages: ReadonlyArray<unknown>) {
+  const observations: Array<ModelObservation> = [];
 
   const events = await runTurn(queryWith([], ...messages), requestFixture(), {
     modelObserver: (observation) => {
@@ -225,20 +228,20 @@ async function observeModels(...messages: readonly unknown[]) {
 async function runAllowing(
   toolName: string,
   allowed: string,
-  ...messages: readonly unknown[]
-): Promise<BridgeEvent[]> {
+  ...messages: ReadonlyArray<unknown>
+): Promise<Array<BridgeEvent>> {
   return runTurn(
     queryWith([{ name: toolName, arguments: { path: "fixture" } }], ...messages),
     requestFixture({ toolNames: new Set([allowed]) }),
   );
 }
 
-async function diagnose(...messages: readonly unknown[]): Promise<CacheDiagnostic[]> {
+async function diagnose(...messages: ReadonlyArray<unknown>): Promise<Array<CacheDiagnostic>> {
   return diagnoseQuery(queryWith([], ...messages));
 }
 
-async function diagnoseQuery(runSdkQuery: RunSdkQuery): Promise<CacheDiagnostic[]> {
-  const diagnostics: CacheDiagnostic[] = [];
+async function diagnoseQuery(runSdkQuery: RunSdkQuery): Promise<Array<CacheDiagnostic>> {
+  const diagnostics: Array<CacheDiagnostic> = [];
   await runTurn(runSdkQuery, requestFixture({ cacheBreakpoints: [0] }), {
     cacheDiagnostics: Effect.runSync(
       createCacheDiagnosticTracker((diagnostic) => {
@@ -444,7 +447,7 @@ describe("turn streaming", () => {
   });
 
   test("clears per-call cache splits from cumulative diagnostics and Pi usage when terminal split is absent", async () => {
-    const diagnostics: CacheDiagnostic[] = [];
+    const diagnostics: Array<CacheDiagnostic> = [];
 
     const run = createClaudeAgentSdkRunner({
       claudeExecutable: "/usr/bin/claude",
@@ -609,7 +612,7 @@ describe("turn streaming", () => {
   });
 
   test("an unsupported image kept in transcript history does not throw on a later turn", async () => {
-    const messages: MessageFixture[] = [
+    const messages: Array<MessageFixture> = [
       {
         role: "user",
         content: [
@@ -670,8 +673,8 @@ describe("model observation", () => {
   });
 });
 
-async function observeUsageLimits(...messages: readonly unknown[]) {
-  const observations: UsageLimitObservation[] = [];
+async function observeUsageLimits(...messages: ReadonlyArray<unknown>) {
+  const observations: Array<UsageLimitObservation> = [];
 
   const events = await runTurn(queryWith([], ...messages), requestFixture(), {
     usageLimitObserver: (observation) => {
@@ -782,7 +785,7 @@ describe("usage limit observation", () => {
   test.each(["eof", "iterate", "protocol", "cancelled"] as const)(
     "does not notify when a rejected window is followed by %s instead of a usage-limit result",
     async (ending) => {
-      const observations: UsageLimitObservation[] = [];
+      const observations: Array<UsageLimitObservation> = [];
       const controller = new AbortController();
 
       const events = await runTurn(
@@ -865,7 +868,7 @@ describe("usage limit observation", () => {
   );
 
   test("notifies before yielding the failure and does not retain reset times across queries", async () => {
-    const order: string[] = [];
+    const order: Array<string> = [];
 
     const queries = [
       [rateLimitEvent({ status: "rejected", resetsAt: 1_792_548_000 }), usageLimitResult],
@@ -924,7 +927,7 @@ describe("deferred tool calls", () => {
         return server;
       };
 
-      const records: CacheDiagnostic[] = [];
+      const records: Array<CacheDiagnostic> = [];
       {
         const events = await runTurn(
           async function* fakeQuery(params) {
@@ -1624,7 +1627,7 @@ describe("SDK isolation options", () => {
   });
 });
 
-function failedOf(events: readonly BridgeEvent[]) {
+function failedOf(events: ReadonlyArray<BridgeEvent>) {
   const failed = events.filter((event) => event.type === "failed");
   expect(failed).toHaveLength(1);
   const [event] = failed;

@@ -12,7 +12,11 @@ import { decodeConfiguration } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { invalidFields } from "../onboarding/doctor.js";
 
-type Field = { required: boolean; valid: readonly Schema.Json[]; invalid: readonly Schema.Json[] };
+type Field = {
+  required: boolean;
+  valid: ReadonlyArray<Schema.Json>;
+  invalid: ReadonlyArray<Schema.Json>;
+};
 
 const fields = {
   machineId: { required: true, valid: ["host", "a-1"], invalid: ["Host", "", 3] },
@@ -66,7 +70,7 @@ function accepted(value: Schema.Json): boolean {
 
 function assertDoctorMatchesAdapter(tc: TestCase): void {
   const value: Record<string, Schema.Json> = {};
-  const expected: string[] = [];
+  const expected: Array<string> = [];
 
   for (const [name, field] of Object.entries<Field>(fields)) {
     const choice = tc.draw(sampledFrom(["absent", "valid", "invalid"] as const), name);

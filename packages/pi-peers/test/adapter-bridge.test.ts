@@ -21,7 +21,7 @@ type BridgeOptions = {
 };
 
 function fixture(options: BridgeOptions = {}) {
-  const sent: Sent[] = [];
+  const sent: Array<Sent> = [];
 
   const base = toolSession({
     recoverForTool: async () => {
@@ -115,7 +115,7 @@ describe("peers extension bridge", () => {
   });
   test("a malformed request names the field and sends nothing", async () => {
     const fx = fixture();
-    const replies: unknown[] = [];
+    const replies: Array<unknown> = [];
     fx.bus.on("pi-peers:reply", (data) => replies.push(data));
     fx.bus.emit("pi-peers:request", { id: "r1", op: "send", scope: "team", message: {} });
     fx.bus.emit("pi-peers:request", { op: "list" });

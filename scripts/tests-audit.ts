@@ -11,9 +11,9 @@ type Finding = {
 type Report = {
   readonly path: string;
   readonly completion: string;
-  readonly noDetection: readonly Finding[];
-  readonly noKills: readonly string[];
-  readonly incomplete: readonly string[];
+  readonly noDetection: ReadonlyArray<Finding>;
+  readonly noKills: ReadonlyArray<string>;
+  readonly incomplete: ReadonlyArray<string>;
 };
 
 const Kills = Schema.Array(Schema.Unknown);
@@ -86,7 +86,7 @@ function findingRow(finding: Finding): string {
   return `| ${cell(finding.test)} | ${finding.kills} | ${finding.sharedWithTargets} | ${evidence} |`;
 }
 
-function findingTable(findings: readonly Finding[]): readonly string[] {
+function findingTable(findings: ReadonlyArray<Finding>): ReadonlyArray<string> {
   if (findings.length === 0) {
     return [];
   }
@@ -99,7 +99,7 @@ function findingTable(findings: readonly Finding[]): readonly string[] {
   ];
 }
 
-function bulletList(heading: string, items: readonly string[]): readonly string[] {
+function bulletList(heading: string, items: ReadonlyArray<string>): ReadonlyArray<string> {
   if (items.length === 0) {
     return [];
   }
@@ -107,7 +107,7 @@ function bulletList(heading: string, items: readonly string[]): readonly string[
   return [heading, "", ...items.map((item) => `- ${cell(item)}`), ""];
 }
 
-function reportSection(report: Report): readonly string[] {
+function reportSection(report: Report): ReadonlyArray<string> {
   const clean = report.noDetection.length + report.noKills.length === 0;
 
   return [
@@ -122,7 +122,7 @@ function reportSection(report: Report): readonly string[] {
   ];
 }
 
-function render(reports: readonly Report[]): string {
+function render(reports: ReadonlyArray<Report>): string {
   const intro =
     reports.length === 0
       ? ["No test file changed this week."]

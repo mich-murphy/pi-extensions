@@ -50,7 +50,7 @@ const SELECTORS = [
 
 const elements = () => [...parseHTML(DOCUMENT).document.querySelectorAll("*")];
 
-function matchingSelectorIndexes(element: Element): number[] {
+function matchingSelectorIndexes(element: Element): Array<number> {
   return SELECTORS.flatMap((selector, index) => (element.matches(selector) ? [index] : []));
 }
 
@@ -75,7 +75,7 @@ describe("compileSelectorSet", () => {
     const match = compileSelectorSet(SELECTORS);
 
     const reportedFor = (element: Element) => {
-      const reported: number[] = [];
+      const reported: Array<number> = [];
       match(element, (index) => {
         reported.push(index);
       });

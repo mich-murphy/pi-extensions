@@ -59,12 +59,12 @@ function quarantineNotice(kind: SuspiciousOutputKind, characters: number): strin
 }
 
 export type SanitizedBashContent = {
-  readonly content: (TextContent | ImageContent)[];
+  readonly content: Array<TextContent | ImageContent>;
   readonly detected: SuspiciousOutputKind | undefined;
 };
 
 export function sanitizeBashContent(
-  content: readonly (TextContent | ImageContent)[],
+  content: ReadonlyArray<TextContent | ImageContent>,
 ): SanitizedBashContent {
   const combinedText = content
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
@@ -97,8 +97,12 @@ export type ContextMessage =
 export function sanitizeContextMessages(
   messages: Readonly<ContextEvent["messages"]>,
 ): ContextEvent["messages"];
-export function sanitizeContextMessages(messages: readonly ContextMessage[]): ContextMessage[];
-export function sanitizeContextMessages(messages: readonly ContextMessage[]): ContextMessage[] {
+export function sanitizeContextMessages(
+  messages: ReadonlyArray<ContextMessage>,
+): Array<ContextMessage>;
+export function sanitizeContextMessages(
+  messages: ReadonlyArray<ContextMessage>,
+): Array<ContextMessage> {
   return messages.map((message) => {
     if (message.role !== "toolResult" || message.toolName !== "bash") {
       return message;

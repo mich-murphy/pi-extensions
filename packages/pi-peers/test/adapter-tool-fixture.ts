@@ -6,7 +6,7 @@ type CapturedTool = Pick<PeerTool, "name" | "execute"> & {
 };
 
 export function toolRecorder() {
-  const tools: CapturedTool[] = [];
+  const tools: Array<CapturedTool> = [];
 
   const registerTool: ToolHost["registerTool"] = (tool) => {
     tools.push({
