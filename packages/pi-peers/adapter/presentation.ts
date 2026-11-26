@@ -126,7 +126,9 @@ function resultSummary(name: string, raw: Schema.Json | undefined): Array<string
           const listed = fields(entry);
           const marks = `${listed.self === true ? " (you)" : ""}${listed.restarted === true ? " (restarted)" : ""}`;
 
-          return `${preview(listed.handle)}${marks}${listed.label === undefined ? "" : ` · label (authored): ${preview(listed.label)}`}`;
+          const machine = listed.machine === undefined ? "" : ` · ${preview(listed.machine)}`;
+
+          return `${preview(listed.handle)}${marks}${machine}${listed.label === undefined ? "" : ` · label (authored): ${preview(listed.label)}`}`;
         }),
       ];
     }

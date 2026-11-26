@@ -310,16 +310,24 @@ describe("presentation-only session tool rendering", () => {
     expect(output).toContain("64 peers");
     expect(output).toContain("61 more");
     expect(output).toContain("s-4f2a · label (authored): alpha/admin (you)");
+    expect(
+      render(
+        "peers_list",
+        "result",
+        {},
+        result({ peers: [{ handle: "s-2", machine: "dev-01", label: "api" }] }),
+      ).join("\n"),
+    ).toContain("s-2 · dev-01 · label (authored): api");
     expect(output).not.toContain("s-4f2a (you)");
 
     const marked = render(
       "peers_list",
       "result",
       {},
-      result({ peers: [{ handle: "s-1", self: true, restarted: true }] }),
+      result({ peers: [{ handle: "s-1", machine: "laptop", self: true, restarted: true }] }),
     ).join("\n");
 
-    expect(marked).toContain("s-1 (you) (restarted)");
+    expect(marked).toContain("s-1 (you) (restarted) · laptop");
     expect(marked).not.toContain("label");
   });
   test("expanded output includes full body, sender runtime, IDs and scope", () => {

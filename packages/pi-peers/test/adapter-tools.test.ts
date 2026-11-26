@@ -14,6 +14,7 @@ import { toolRecorder } from "./adapter-tool-fixture.js";
 const self = { machineId: "alpha", sessionId: "me", runtimeNonce: "a".repeat(32) };
 const beta = { machineId: "beta", sessionId: "them", runtimeNonce: "b".repeat(32) };
 const restarted = { ...beta, runtimeNonce: "c".repeat(32) };
+const neighbour = { machineId: "alpha", sessionId: "next", runtimeNonce: "d".repeat(32) };
 
 type Incoming = { from: PeerRef; to: PeerRef; scopeId: string; message: Message };
 
@@ -25,7 +26,10 @@ function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
     socketPath: "/tmp/pi-peers-test.sock",
     label: "Pi",
     scopeIds: ["team"],
-    policies: [{ machineId: "beta", scopeId: "team", permissions: ["discover", "push"] }],
+    policies: [
+      { machineId: "alpha", scopeId: "team", permissions: ["discover"] },
+      { machineId: "beta", scopeId: "team", permissions: ["discover", "push"] },
+    ],
   };
 
   if (maxWaitSeconds !== undefined) {
@@ -132,6 +136,7 @@ function textOf(result: ToolResult): string {
 
 const handle = sessionHandle("beta", "them");
 const mine = sessionHandle("alpha", "me");
+const local = sessionHandle("alpha", "next");
 
 describe("peers_list", () => {
   test("self is decided by PeerRef, never by a label that claims it", async () => {
@@ -144,11 +149,13 @@ describe("peers_list", () => {
     expect(result.structuredContent).toStrictEqual({
       ok: true,
       peers: [
-        { handle: mine, label: "Pi · repo", self: true, restarted: false },
-        { handle, label: "Pi (you)", self: false, restarted: false },
+        { handle: mine, machine: "alpha", label: "Pi · repo", self: true, restarted: false },
+        { handle, machine: "beta", label: "Pi (you)", self: false, restarted: false },
       ],
     });
-    expect(result.content[0]?.text).toBe(`${mine} (you) · Pi · repo\n${handle} · Pi (you)`);
+    expect(result.content[0]?.text).toBe(
+      `${mine} (you) · alpha · Pi · repo\n${handle} · beta · Pi (you)`,
+    );
   });
   test("a restarted session is marked in prose and structured output", async () => {
     const fx = fixture([{ peer: beta, label: "Pi" }]);
@@ -157,7 +164,7 @@ describe("peers_list", () => {
     const result = await fx.call("peers_list");
     expect(result.structuredContent).toMatchObject({ peers: [{ handle, restarted: true }] });
     expect(result.content[0]?.text).toBe(
-      `${handle} (restarted: unread inbox and receipts reset) · Pi`,
+      `${handle} (restarted: unread inbox and receipts reset) · beta · Pi`,
     );
   });
   test("a peer behind a down link is marked, and the mark clears when the link is up", async () => {
@@ -169,10 +176,37 @@ describe("peers_list", () => {
     fx.setLinkDown("beta", true);
     fx.setLinkDown("alpha", true);
     const down = await fx.call("peers_list");
-    expect(down.content[0]?.text).toBe(`${mine} (you) · Me\n${handle} (link down) · Pi`);
+    expect(down.content[0]?.text).toBe(
+      `${mine} (you) · alpha · Me\n${handle} (link down) · beta · Pi`,
+    );
     fx.setLinkDown("beta", false);
     const up = await fx.call("peers_list");
-    expect(up.content[0]?.text).toBe(`${mine} (you) · Me\n${handle} · Pi`);
+    expect(up.content[0]?.text).toBe(`${mine} (you) · alpha · Me\n${handle} · beta · Pi`);
+  });
+  test("self, local and remote entries show their machine before the label", async () => {
+    const fx = fixture([
+      { peer: self, label: "Me" },
+      { peer: neighbour, label: "dev-01 reviewer" },
+      { peer: beta, label: "api" },
+    ]);
+
+    fx.setLinkDown("beta", true);
+    const result = await fx.call("peers_list");
+    expect(result.content[0]?.text).toBe(
+      [
+        `${mine} (you) · alpha · Me`,
+        `${local} · alpha · dev-01 reviewer`,
+        `${handle} (link down) · beta · api`,
+      ].join("\n"),
+    );
+    expect(result.structuredContent).toMatchObject({
+      peers: [{ machine: "alpha" }, { machine: "alpha" }, { machine: "beta" }],
+    });
+  });
+  test("the label budget counts the machine in the head", async () => {
+    const result = await fixture([{ peer: beta, label: "x".repeat(100) }]).call("peers_list");
+    const [line = ""] = textOf(result).split("\n");
+    expect(line).toBe(`${handle} · beta · ${"x".repeat(80 - handle.length - 10 - 1)}…`);
   });
   test("an empty listing says so", async () => {
     const empty = await fixture([]).call("peers_list");
