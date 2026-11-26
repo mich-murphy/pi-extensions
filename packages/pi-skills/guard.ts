@@ -44,11 +44,17 @@ export function disabledResourceMatcher(
       ),
   );
 
-  const loadedAt = (path: string, kind: ToggleResource["kind"]): ToggleResource | undefined =>
-    resources.find(
-      (resource) =>
-        resource.kind === kind && policy.sameResource(path, resource.id, resource.origin),
-    ) ?? loadedOnDisk().get(onDiskKey(kind, canonical(path)));
+  const loadedIndex = lazy(() => resourceIndex(resources, policy));
+
+  const loadedAt = (path: string, kind: ToggleResource["kind"]): ToggleResource | undefined => {
+    const { byId, byLocation } = loadedIndex();
+    const location = policy.locationKey(path);
+    const exact = byId.get(onDiskKey(kind, path));
+    const located = location === undefined ? undefined : byLocation.get(onDiskKey(kind, location));
+    const index = Math.min(exact ?? Infinity, located ?? Infinity);
+
+    return resources[index] ?? loadedOnDisk().get(onDiskKey(kind, canonical(path)));
+  };
 
   const skillOwner = (id: string): SkillOwner | undefined => {
     const exact = loadedAt(id, "skill");
@@ -131,6 +137,31 @@ export function disabledResourceMatcher(
       return matchId(id) ?? (onDisk === id ? undefined : matchId(onDisk)) ?? hardLinkMatch(onDisk);
     },
   };
+}
+
+type ResourceIndex = {
+  readonly byId: ReadonlyMap<string, number>;
+  readonly byLocation: ReadonlyMap<string, number>;
+};
+
+function resourceIndex(
+  resources: ReadonlyArray<ToggleResource>,
+  policy: ResourcePolicy,
+): ResourceIndex {
+  const byId = new Map<string, number>();
+  const byLocation = new Map<string, number>();
+
+  for (const [index, resource] of resources.entries()) {
+    const location = resource.origin === "global" ? undefined : policy.locationKey(resource.id);
+    const target = location === undefined ? byId : byLocation;
+    const key = onDiskKey(resource.kind, location ?? resource.id);
+
+    if (!target.has(key)) {
+      target.set(key, index);
+    }
+  }
+
+  return { byId, byLocation };
 }
 
 function persistedPaths(overrides: ToggleOverrides | undefined): ReadonlyArray<string> {
