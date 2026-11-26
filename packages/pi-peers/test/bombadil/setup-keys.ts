@@ -208,10 +208,22 @@ export const escapeGoesBack: Formula = escapeLandsOn(
   },
 );
 
+const LOADING = "Checking…";
+
+const SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT = [null, "Peers"];
+
 export const escapeClosesRoot: Formula = escapeLandsOn(
   () => ui.current,
   () => lastKey.current,
-  (before) => (before.kind === "root" ? [null] : undefined),
+  (before) => {
+    if (before.kind !== "root") {
+      return undefined;
+    }
+
+    return before.rows.some((row) => row.value === LOADING)
+      ? SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT
+      : [null];
+  },
 );
 
 export const hintMatchesDepth: Formula = always(() => {
