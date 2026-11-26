@@ -1,6 +1,6 @@
 # pi-gateway
 
-A foreground routing process that connects Pi sessions on one machine, and optionally to one gateway on another machine over mutual TLS. It keeps no messages. It never installs a service or starts itself.
+A foreground routing process that connects Pi sessions on one machine, and optionally to one gateway on another machine over mutual TLS with pinned Ed25519 keys. It keeps no messages. It never installs a service or starts itself.
 
 ## Build
 
@@ -17,12 +17,10 @@ The binary is `target/release/pi-gateway`. For a two-machine setup, see [remote 
 | `--config` | Absolute path to the JSON config | Runs the gateway until stopped. Prints one `ready` line on stdout once bound. |
 | `--managed --config` | Absolute path to the JSON config | Runs while registered local sessions participate, with bounded startup and disconnect grace periods. |
 | `--version [--json]` | None | Prints the version and exits without reading configuration or starting a gateway. JSON also reports supported wire versions and capabilities. |
-| `--diagnose` | Absolute config path | Read-only credential/floor snapshot; never evidence of a running gateway or live link. |
+| `--diagnose` | Absolute config path | Read-only key and configuration snapshot; never evidence of a running gateway or live link. |
 | `key generate\|show --input` | Absolute strict JSON input path `{"version":1,"privateKey":"/abs/key.der"}` | `generate` creates a new owner-only Ed25519 key (refusing an existing file); `show` reads one. Both print `{"version":1,"operation":…,"publicKey":"<64 hex>"}`. See [pinned keys](#pinned-keys). |
-| `pair OP --input` | Absolute strict JSON input path | Explicit create/join/issue/import/renew/revoke/export/inspect or import-existing; public-only JSON output. See [native provisioning](PAIRING.md). |
 | `--setup-lock` | Absolute permanent private lock path | Holds the exclusive setup flock while stdin stays open; emits a locked acknowledgement. Never unlink this lock. |
 | `--request-restart` | Absolute config path | One machine-bound local managed restart request. Requires exact acknowledgement and disconnect; unknown outcomes are not retried. |
-| `--initialize-revocation-floor` | Absolute path for the new floor file | Creates the floor file and exits. It refuses to overwrite existing state. |
 
 Choose one command form. `--managed` is valid only before `--config`.
 
@@ -64,70 +62,50 @@ The config is strict JSON, 32 KiB or smaller, with no unknown fields.
 | `remote` | Optional object | One peer gateway. |
 | `remote.machineId` | Machine pattern, not your own | Peer name. It must have a policy. |
 | `remote.endpoint` | `{"mode":"listen"\|"connect","address":"IP:port"}` | One side listens, the other connects. A listener may use port `0`: the OS picks a free port and `ready` reports it. A connector must name a real port. |
-| `remote.peerPublicKey` | 64 lowercase hex characters | Pinned mode: the peer's public key. Excludes every certificate, CRL and floor field below. |
-| `remote.rootCertificates` | 1–4 paths | Trusted roots. |
-| `remote.certificateChain` | 1–8 paths | Your chain, leaf first, without the root. |
-| `remote.issuerCertificates` | 0–8 paths | Extra issuers used only to verify a CRL. They add no trust. |
-| `remote.privateKey` | Path | Your leaf's private key, or in pinned mode your Ed25519 key. |
-| `remote.crls` | 1–16 paths | One complete CRL per issuer. |
-| `remote.revocationState` | Path | Floor file from `--initialize-revocation-floor`. |
+| `remote.privateKey` | Absolute path | Your Ed25519 key file from `key generate`. |
+| `remote.peerPublicKey` | 64 lowercase hex characters | The peer's public key, from its `key show`. It must not be your own. |
 
 ## Pinned keys
 
-Pinned mode (capability `pinned-keys-v1`) replaces certificates with one Ed25519 key per
-gateway, like SSH `known_hosts`: each side pins the other's public key and nothing else.
-
-```json
-"remote": {"machineId":"dev-01","endpoint":{"mode":"connect","address":"100.64.0.2:7443"},
-           "privateKey":"/abs/key.der","peerPublicKey":"<peer's 64 hex>"}
-```
+Each gateway has one Ed25519 key, and each pins the other's public key, like SSH
+`known_hosts` (capability `pinned-keys-v1`). There is no CA, certificate, CRL,
+revocation floor or expiry.
 
 The handshake is TLS 1.3 with RFC 7250 raw public keys in both directions and Ed25519
-signatures only. A peer is accepted only when it presents exactly the pinned key; a
-certificate-presenting peer, any other key and a connection reflected back to its own
-gateway are refused. Pinning the gateway's own key fails startup with reason `identity`.
-Nothing expires: the link lasts until ping/close liveness or loss ends it. The key file is
-the PKCS#8 v2 document from `key generate`, under the same file rules as other
-credentials below. `--diagnose` reports
-`{"state":"configured","trust":"pinned","publicKey":"<own 64 hex>"}`.
-
-## Credential files
+signatures only; TLS 1.2 is refused. A peer is accepted only when it presents exactly the
+pinned key; a certificate-presenting peer, any other key and a connection reflected back
+to its own gateway are refused. Nothing expires: the link lasts until ping/close liveness
+or loss ends it. Reachability is separate: run the link inside Tailscale or an SSH forward
+(see [remote setup](../docs/remote-setup.md)).
 
 | Requirement | Detail |
 | --- | --- |
-| Format | DER, not PEM. |
-| Size | 1–65,536 bytes each. Roots and CRLs together 512 KiB or less. |
+| Format | PKCS#8 v2 Ed25519 DER, as written by `key generate`. |
 | Paths | Absolute, with no symlinks in any directory. |
 | Permissions | Parent directory owned by you with mode `0700`. File owned by you with no group or other access and a single hard link. |
-| Chain | Leaf first. |
-| SAN | Exactly one DNS name, `gateway.<machineId>.pi.internal`. |
-| CRLs | Current, complete, signed by a known issuer, with a CRL number and `nextUpdate`. |
 
-Remote credential problems (expired/missing/invalid leaf or CRL, missing/corrupt or
-rolled-back floor) close the remote side, **not** the local Unix gateway. Structural
-configuration errors remain hard startup errors. Known remote TCP bind failures
-(address in use/unavailable or permission denied) also leave local service running,
-with startup stderr reason `remote degraded: remote-listen-unavailable`; there is
-no background rebind. Other listener defects remain fatal. Run
-`--diagnose ABS_CONFIG` for sanitized reason codes and earliest credential expiry
-warnings. It reads a snapshot without floor locks or writes, including while a
-running gateway owns its floor. It does not bind or know actual startup bind
-status: configured credentials are not listener or live-link readiness.
+`--diagnose` reports `{"state":"configured","trust":"pinned","publicKey":"<own 64 hex>"}`
+for a usable key. An unusable key file (`private-key`) or a pin equal to the own key
+(`identity`) closes the remote side, **not** the local Unix gateway, and `--diagnose`
+reports `{"state":"degraded","reason":…}`. Structural configuration errors remain hard
+startup errors. Known remote TCP bind failures (address in use/unavailable or permission
+denied) also leave local service running, with startup stderr reason
+`remote degraded: remote-listen-unavailable`; there is no background rebind. Other
+listener defects remain fatal. `--diagnose` does not bind or know actual startup bind
+status: a configured key is not listener or live-link readiness.
 
-Pairing keeps the pair-specific issuer key in a separate private directory, never in
-runtime config or the long-running gateway. Same-account directory separation is
-not privilege isolation; root/account compromise requires new-root re-pairing on
-both hosts, not floor rollback. Leaves last 90 days, CRLs 30 days, roots 365 days.
-See [provisioning and maintenance](PAIRING.md) for confirmation and custody details.
+A config whose `remote` still has the retired certificate fields (`rootCertificates`,
+`certificateChain`, `issuerCertificates`, `crls`, `revocationState`) from gateway 0.3
+never starts. `--diagnose` reports it as `{"state":"retired-certificates"}` so setup can
+guide re-linking with keys.
 
 ## Timers and limits
 
 | Item | Value |
 | --- | --- |
-| TLS handshake and floor commit | 5 s |
+| TLS handshake | 5 s |
 | Ping after silence | 30 s |
 | Close after silence | 90 s |
-| Link age cap | 24 h, or the earliest certificate or CRL expiry; none for pinned keys |
 | Reconnect | 6 attempts per 60 s, with backoff from 250 ms, then the breaker opens |
 | Breaker probe | 30 s doubling to 240 s, plus up to 25% jitter (always 30 s–5 min), forever |
 | Pending inbound handshakes | 4 |
@@ -137,22 +115,19 @@ See [provisioning and maintenance](PAIRING.md) for confirmation and custody deta
 | Operations per connection, total | 8, 256 |
 | Remote sessions imported | 30 |
 | Buffers | 8 MiB total, 256 KiB per local connection, 1 MiB for the remote link |
-| Revocation floors | 64 issuers, 1 MiB |
 
 Local Unix connections have no heartbeat.
 
 ## Signals and restart
 
-`SIGTERM` and `SIGINT` stop the gateway and remove its own socket. Changes to the config, roots, CRLs or policies take effect only after a restart. Restart needs the existing floor file. Existing pair imports stage validated immutable
-credentials without advancing the live floor, returning activationRequired=true.
+`SIGTERM` and `SIGINT` stop the gateway and remove its own socket. Changes to the config, keys or policies take effect only after a restart.
 Update the config under the setup lock, then request a managed restart. Surviving
-sessions must recover/re-register without replaying uncertain sends. Startup commits
-the staged CRL floor before enabling remote service. Neither staging nor a restart
-acknowledgement claims remote connectivity.
+sessions must recover/re-register without replaying uncertain sends. A restart
+acknowledgement does not claim remote connectivity.
 
 ## Output
 
-Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A gateway whose remote endpoint listens adds `"remoteListenAddress":"IP:port"`, the socket address it actually bound. With a configured port of `0` this is the only way to learn the port. Gateways without a remote, and connectors, omit the field. Stderr has coalesced JSON events, at most one per kind every 30 s, with `suppressed` counting the ones folded in: `{"event":"link_state","machineId":"…","state":"up|down|probing"}`, `{"event":"forward_timeout","remote":true|false}` and `{"event":"overloaded","resource":"…","op":"…"}`. They never contain payloads, paths or credentials. After 6 failed attempts in 60 s the link circuit breaker opens: sends to that machine fail at once with `link_down` for sessions that opted in, and the gateway keeps probing every 30 s to 5 min until a handshake succeeds. A local registration in a remote scope brings the next probe forward. It never stays down for good. Structural/bind startup failures print `Error:` and exit non-zero. Operational remote credential failures leave local service available; `--diagnose` reports their sanitized degraded reason.
+Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A gateway whose remote endpoint listens adds `"remoteListenAddress":"IP:port"`, the socket address it actually bound. With a configured port of `0` this is the only way to learn the port. Gateways without a remote, and connectors, omit the field. Stderr has coalesced JSON events, at most one per kind every 30 s, with `suppressed` counting the ones folded in: `{"event":"link_state","machineId":"…","state":"up|down|probing"}`, `{"event":"forward_timeout","remote":true|false}` and `{"event":"overloaded","resource":"…","op":"…"}`. They never contain payloads, paths or credentials. After 6 failed attempts in 60 s the link circuit breaker opens: sends to that machine fail at once with `link_down` for sessions that opted in, and the gateway keeps probing every 30 s to 5 min until a handshake succeeds. A local registration in a remote scope brings the next probe forward. It never stays down for good. Structural/bind startup failures print `Error:` and exit non-zero. Operational remote key failures leave local service available; `--diagnose` reports their sanitized degraded reason.
 
 ## Troubleshooting
 
@@ -161,10 +136,9 @@ Stdout has one line, `{"event":"ready","socketPath":"…","machineId":"…"}`. A
 | `invalid gateway configuration` | Unknown field, bad identifier, duplicate entry or an over-limit array. A `remote` without a matching policy fails too. |
 | `private path ancestry rejected` | A directory on the path is a symlink, or is writable by others without the sticky bit. The socket's parent is not owned by you or is not `0700`. |
 | `socket path too long` | Shorten `socketPath` to 100 bytes or fewer. |
-| `remote credentials rejected` | Wrong format or permissions, wrong SAN, expired certificate or CRL, a revoked leaf, or a CRL older than the floor. |
-| `revocation commit busy` | Another gateway holds the floor file. Use one file per gateway. |
+| `remote credentials rejected` | Wrong key format or permissions, or a pinned key that is not the peer's. |
 | `ready` but no link | Check the address, the open port and the roles. Exactly one side must listen. |
-| `link_state` `down` repeating | Handshakes keep failing. Check the address, port and credentials with `--diagnose`; the gateway keeps probing on its own. |
+| `link_state` `down` repeating | Handshakes keep failing. Check the address, port and both pinned keys with `--diagnose`; the gateway keeps probing on its own. |
 
 ## Link state events
 
@@ -200,11 +174,11 @@ configuration bytes have different fingerprints. The fingerprint is internal and
 cannot be supplied through configuration JSON. In-memory `Config::parse` alone has
 no loaded-file fingerprint and cannot satisfy guarded registration.
 
-This proves only which configuration bytes were loaded, not PKI-content freshness
-or live remote-link readiness. Supported onboarding writes immutable credential
-paths for each generation, so trust updates change configuration bytes. The guard
+This proves only which configuration bytes were loaded, not key-file freshness
+or live remote-link readiness. A pinned peer key lives in the configuration itself,
+so changing the pin changes configuration bytes. The guard
 does not retire old links serving surviving participants: the old daemon must exit.
-An uncertain restart can leave old trust serving existing sessions. Passive clients
+An uncertain restart can leave an old pin serving existing sessions. Passive clients
 must never automatically restart it or retry registration without the guard.
 Managed restart remains a separate, single machine-bound request with unchanged
 acknowledgement/uncertainty semantics; no hash is added to control requests.

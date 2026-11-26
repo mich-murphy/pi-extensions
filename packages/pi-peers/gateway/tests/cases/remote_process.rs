@@ -1,5 +1,5 @@
-//! Real foreground gateway pairs over isolated loopback TCP and generated private PKI.
-use super::{Authority, CredentialDirectory};
+//! Real foreground gateway pairs over isolated loopback TCP, linked by pinned keys.
+use super::Dir;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -13,34 +13,68 @@ use serde_json::{Value, json};
 const ANY: std::net::SocketAddr =
     std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0);
 
+/// One Ed25519 key per machine name, generated on first use in an owner-only directory.
+struct Keys(Dir);
+impl Keys {
+    fn new() -> Self {
+        Self(Dir::new())
+    }
+    /// The key path and public key text of `machine`.
+    fn key(&self, machine: &str) -> (PathBuf, String) {
+        let path = self.0.path(&format!("{machine}.key"));
+        let public = if path.exists() {
+            pi_gateway::keys::show(&path)
+        } else {
+            pi_gateway::keys::generate(&path)
+        }
+        .expect("isolated generated test key");
+        (path, public)
+    }
+    /// `own`'s remote settings, pinning `peer`'s key.
+    fn remote(&self, own: &str, peer: &str, mode: &str, address: std::net::SocketAddr) -> Value {
+        json!({"machineId":peer,"endpoint":{"mode":mode,"address":address.to_string()},"privateKey":self.key(own).0,"peerPublicKey":self.key(peer).1})
+    }
+    fn settings(
+        &self,
+        own: &str,
+        peer: &str,
+        mode: &str,
+        address: std::net::SocketAddr,
+    ) -> pi_gateway::remote::Settings {
+        pi_gateway::remote::Settings::parse(
+            &serde_json::to_vec(&self.remote(own, peer, mode, address)).expect("settings JSON"),
+        )
+        .expect("strict pinned settings")
+    }
+}
+
 struct Process {
     child: Child,
     bound: Option<std::net::SocketAddr>,
-    directory: CredentialDirectory,
+    directory: Dir,
 }
 impl Process {
     fn start(
-        ca: &Authority,
+        keys: &Keys,
         own: &str,
         peer: &str,
         mode: &str,
         address: std::net::SocketAddr,
         policies: &Value,
     ) -> Self {
-        let directory = CredentialDirectory::new();
-        drop(directory.settings(ca, own, peer, mode, address));
+        let directory = Dir::new();
         let base = &directory.0;
-        let config = json!({"machineId":own,"socketPath":base.join("s"),"scopeIds":["team","private"],"policies":policies,"remote":{"machineId":peer,"endpoint":{"mode":mode,"address":address.to_string()},"rootCertificates":[base.join("root.der")],"certificateChain":[base.join("leaf.der")],"privateKey":base.join("key.der"),"crls":[base.join("current.crl")],"revocationState":base.join("floors.json")}});
+        let config = json!({"machineId":own,"socketPath":base.join("s"),"scopeIds":["team","private"],"policies":policies,"remote":keys.remote(own, peer, mode, address)});
         let path = base.join("config.json");
         fs::write(
             &path,
             serde_json::to_vec(&config)
-                .expect("isolated generated-PKI process fixture and bounded framed I/O"),
+                .expect("isolated pinned-key process fixture and bounded framed I/O"),
         )
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
         Self::spawn(directory, &path)
     }
-    fn spawn(directory: CredentialDirectory, config: &PathBuf) -> Self {
+    fn spawn(directory: Dir, config: &PathBuf) -> Self {
         let (child, bound) = Self::child(config);
         Self {
             child,
@@ -60,53 +94,38 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("isolated generated-PKI process fixture and bounded framed I/O");
+            .expect("isolated pinned-key process fixture and bounded framed I/O");
         let mut ready = String::new();
         BufReader::new(
             child
                 .stdout
                 .take()
-                .expect("isolated generated-PKI process fixture and bounded framed I/O"),
+                .expect("isolated pinned-key process fixture and bounded framed I/O"),
         )
         .read_line(&mut ready)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
         assert!(
             !ready.is_empty(),
             "remote-enabled foreground process must reach readiness: {:?}",
             child.try_wait()
         );
         let parsed: Value = serde_json::from_str(&ready)
-            .expect("isolated generated-PKI process fixture and bounded framed I/O");
+            .expect("isolated pinned-key process fixture and bounded framed I/O");
         assert_eq!(parsed["event"], "ready", "foreground readiness");
         let bound = parsed["remoteListenAddress"]
             .as_str()
             .map(|address| address.parse().expect("ready reports a socket address"));
         (child, bound)
     }
-    fn terminate(&mut self) {
-        let pid = rustix::process::Pid::from_raw(
-            i32::try_from(self.child.id()).expect("test process PID fits OS pid_t"),
-        )
-        .expect("positive child PID");
-        rustix::process::kill_process(pid, rustix::process::Signal::TERM)
-            .expect("terminate isolated foreground fixture");
-        assert!(
-            self.child.wait().expect("wait fixture").success(),
-            "controlled shutdown exits normally"
-        );
-    }
-    fn restart(&mut self) {
-        (self.child, self.bound) = Self::child(&self.directory.0.join("config.json"));
-    }
     fn connect(&self) -> UnixStream {
         let stream = UnixStream::connect(self.directory.0.join("s"))
-            .expect("isolated generated-PKI process fixture and bounded framed I/O");
+            .expect("isolated pinned-key process fixture and bounded framed I/O");
         stream
             .set_read_timeout(Some(Duration::from_secs(8)))
-            .expect("isolated generated-PKI process fixture and bounded framed I/O");
+            .expect("isolated pinned-key process fixture and bounded framed I/O");
         stream
             .set_write_timeout(Some(Duration::from_secs(3)))
-            .expect("isolated generated-PKI process fixture and bounded framed I/O");
+            .expect("isolated pinned-key process fixture and bounded framed I/O");
         stream
     }
     fn stop(&mut self) {
@@ -124,17 +143,17 @@ fn rid(n: u32) -> String {
 }
 fn write(stream: &mut UnixStream, value: &Value) {
     let bytes = serde_json::to_vec(value)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
     stream
         .write_all(
             &u32::try_from(bytes.len())
-                .expect("isolated generated-PKI process fixture and bounded framed I/O")
+                .expect("isolated pinned-key process fixture and bounded framed I/O")
                 .to_be_bytes(),
         )
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
     stream
         .write_all(&bytes)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
 }
 /// Reads the next frame other than a pushed `link.state`, which every local session now receives.
 fn read(stream: &mut UnixStream) -> Value {
@@ -149,15 +168,15 @@ fn read_any(stream: &mut UnixStream) -> Value {
     let mut header = [0; 4];
     stream
         .read_exact(&mut header)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
     let length = pi_gateway::wire::body_length(header)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
     let mut bytes = vec![0; length];
     stream
         .read_exact(&mut bytes)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O");
+        .expect("isolated pinned-key process fixture and bounded framed I/O");
     pi_gateway::wire::decode_body(&bytes, pi_gateway::wire::Role::AdapterDelivery)
-        .expect("isolated generated-PKI process fixture and bounded framed I/O")
+        .expect("isolated pinned-key process fixture and bounded framed I/O")
 }
 fn register(stream: &mut UnixStream, session: &str, n: u32) -> Value {
     write(
@@ -183,7 +202,7 @@ fn watch(stream: &mut UnixStream, n: u32) -> Value {
 fn await_peer(stream: &mut UnixStream, snapshot: &Value, peer: &Value) {
     if let Some(descriptor) = snapshot["outcome"]["value"]["peers"]
         .as_array()
-        .expect("isolated generated-PKI process fixture and bounded framed I/O")
+        .expect("isolated pinned-key process fixture and bounded framed I/O")
         .iter()
         .find(|descriptor| descriptor["peer"] == *peer)
     {
@@ -223,12 +242,12 @@ fn send(stream: &mut UnixStream, to: &Value, n: u32) {
 
 #[test]
 fn two_real_daemons_route_exact_receipts_refuse_retired_requests_and_withdraw_without_replay() {
-    let ca = Authority::new("two-process private test CA");
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let mut beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta-session", 1);
-    let mut alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
+    let mut alpha = Process::start(&keys, "alpha", "beta", "connect", address, &grants("beta"));
     let mut a = alpha.connect();
     let alpha_peer = register(&mut a, "alpha-session", 2);
     let mut observer = alpha.connect();
@@ -284,14 +303,14 @@ fn two_real_daemons_route_exact_receipts_refuse_retired_requests_and_withdraw_wi
 
 #[test]
 fn real_pair_push_only_does_not_require_discover_and_incoming_ceiling_is_independent() {
-    let ca = Authority::new("push-only two-process CA");
+    let keys = Keys::new();
     let beta_policy = json!([{"machineId":"alpha","scopeId":"team","permissions":["discover","read","push"]},{"machineId":"alpha","scopeId":"team","direction":"incoming","permissions":["push"]}]);
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &beta_policy);
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &beta_policy);
     let address = beta.address();
     let mut b = beta.connect();
     let beta_peer = register(&mut b, "beta", 20);
     let alpha_policy = json!([{"machineId":"beta","scopeId":"team","permissions":["push","read"]},{"machineId":"beta","scopeId":"team","direction":"incoming","permissions":["read"]}]);
-    let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &alpha_policy);
+    let alpha = Process::start(&keys, "alpha", "beta", "connect", address, &alpha_policy);
     let mut a = alpha.connect();
     let alpha_peer = register(&mut a, "alpha", 21);
     let mut observer = beta.connect();
@@ -351,16 +370,15 @@ fn descriptor(machine: &str) -> Value {
 #[tokio::test]
 async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_unadvertised_source()
  {
-    let ca = Authority::new("adversarial process CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     for case in 0..5 {
-        let directory = CredentialDirectory::new();
-        let prepared = directory
-            .settings(&ca, "alpha", "beta", "connect", address)
-            .prepare("alpha")
+        let prepared = keys
+            .settings("alpha", "beta", "connect", address)
+            .prepare()
             .unwrap();
-        let (mut stream, _lease) = prepared.connect().await.unwrap().into_parts();
+        let mut stream = prepared.connect().await.unwrap().into_stream();
         let discover = remote_read(&mut stream).await.unwrap();
         assert_eq!(discover["op"], "discover");
         let mut advertised = descriptor("alpha");
@@ -396,30 +414,29 @@ async fn real_daemon_rejects_third_machine_private_scope_pre_snapshot_event_and_
 
 #[tokio::test]
 async fn real_daemon_authenticates_identity_and_rejects_transit_but_keeps_valid_link() {
-    let ca = Authority::new("identity and transit process CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
-    let impostor_directory = CredentialDirectory::new();
-    let impostor = impostor_directory
-        .settings(&ca, "impostor", "beta", "connect", address)
-        .prepare("impostor")
+    // The impostor pins beta correctly, but beta pins only alpha's key.
+    let impostor = keys
+        .settings("impostor", "beta", "connect", address)
+        .prepare()
         .unwrap();
     if let Ok(authenticated) = impostor.connect().await {
-        let (mut stream, _lease) = authenticated.into_parts();
+        let mut stream = authenticated.into_stream();
         assert!(
             tokio::time::timeout(Duration::from_secs(3), remote_read(&mut stream))
                 .await
                 .unwrap()
                 .is_err(),
-            "trusted wrong client SAN cannot become an application link"
+            "an unpinned client key cannot become an application link"
         );
     }
-    let directory = CredentialDirectory::new();
-    let prepared = directory
-        .settings(&ca, "alpha", "beta", "connect", address)
-        .prepare("alpha")
+    let prepared = keys
+        .settings("alpha", "beta", "connect", address)
+        .prepare()
         .unwrap();
-    let (mut stream, _lease) = prepared.connect().await.unwrap().into_parts();
+    let mut stream = prepared.connect().await.unwrap().into_stream();
     let discover = remote_read(&mut stream).await.unwrap();
     let advertised = descriptor("alpha");
     remote_write(&mut stream,&json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[advertised],"watching":true}}})).await;
@@ -434,165 +451,10 @@ async fn real_daemon_authenticates_identity_and_rejects_transit_but_keeps_valid_
     drop(beta);
 }
 
-fn replace_leaf(process: &Process, ca: &Authority, serial: u64, seconds: i64) {
-    let mut params = rcgen::CertificateParams::new(vec!["gateway.beta.pi.internal".to_owned()])
-        .expect("fixed beta SAN");
-    params.not_before = time::OffsetDateTime::now_utc() - time::Duration::hours(1);
-    params.not_after = time::OffsetDateTime::now_utc() + time::Duration::seconds(seconds);
-    params.serial_number = Some(serial.into());
-    params.extended_key_usages = vec![
-        rcgen::ExtendedKeyUsagePurpose::ClientAuth,
-        rcgen::ExtendedKeyUsagePurpose::ServerAuth,
-    ];
-    let (chain, key) = ca.sign_leaf(&params);
-    fs::write(process.directory.0.join("leaf.der"), &chain[0])
-        .expect("replace only generated beta certificate");
-    fs::write(process.directory.0.join("key.der"), key)
-        .expect("replace only generated beta private key");
-}
-
-#[test]
-fn real_pair_active_credential_expiry_withdraws_routes_and_possible_admission_stays_unknown() {
-    let ca = Authority::new("active expiry process CA");
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
-    beta.terminate();
-    replace_leaf(&beta, &ca, 43, 4);
-    beta.restart();
-    let mut b = beta.connect();
-    let beta_peer = register(&mut b, "beta", 900);
-    let address = beta.address();
-    let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
-    let mut a = alpha.connect();
-    register(&mut a, "alpha", 901);
-    let mut observer = alpha.connect();
-    register(&mut observer, "observer", 902);
-    let snapshot = watch(&mut observer, 903);
-    await_peer(&mut observer, &snapshot, &beta_peer);
-    send(&mut a, &beta_peer, 904);
-    let _delivery = read(&mut b);
-    assert_eq!(
-        read(&mut a)["outcome"]["tag"],
-        "unknown",
-        "active credential expiry cannot retract a forwarded operation"
-    );
-    assert_eq!(
-        read(&mut observer)["event"]["tag"],
-        "remove",
-        "actual leased TLS process link must withdraw imported routes"
-    );
-    send(&mut a, &beta_peer, 905);
-    assert_eq!(
-        read(&mut a)["outcome"]["code"],
-        "link_down",
-        "with the link gone, every session is told the link is down"
-    );
-}
-
-#[test]
-fn controlled_restart_installs_revocation_even_when_no_peer_can_authenticate_and_rejects_rollback()
-{
-    let ca = Authority::new("controlled revocation process CA");
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
-    beta.terminate();
-    replace_leaf(&beta, &ca, 43, 3600);
-    beta.restart();
-    let mut b = beta.connect();
-    let beta_peer = register(&mut b, "beta", 910);
-    let address = beta.address();
-    let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
-    let mut a = alpha.connect();
-    register(&mut a, "alpha", 911);
-    let mut observer = alpha.connect();
-    register(&mut observer, "observer", 912);
-    let snapshot = watch(&mut observer, 913);
-    await_peer(&mut observer, &snapshot, &beta_peer);
-    let older = fs::read(beta.directory.0.join("current.crl")).unwrap();
-    beta.terminate();
-    assert_eq!(
-        read(&mut observer)["event"]["tag"],
-        "remove",
-        "applying authenticated updates by restart invalidates old links"
-    );
-    let revoked = rcgen::RevokedCertParams {
-        serial_number: 42_u64.into(),
-        revocation_time: time::OffsetDateTime::now_utc() - time::Duration::minutes(1),
-        reason_code: None,
-        invalidity_date: None,
-    };
-    let newer = ca.crl(
-        2,
-        time::OffsetDateTime::now_utc() - time::Duration::minutes(1),
-        time::OffsetDateTime::now_utc() + time::Duration::hours(1),
-        vec![revoked],
-    );
-    fs::write(beta.directory.0.join("current.crl"), newer).unwrap();
-    beta.restart();
-    let floors: Value =
-        serde_json::from_slice(&fs::read(beta.directory.0.join("floors.json")).unwrap()).unwrap();
-    assert_eq!(
-        floors["issuers"][0]["number"],
-        json!([2]),
-        "new revocation floor must be durable BEFORE any successful peer handshake"
-    );
-    beta.terminate();
-    fs::write(beta.directory.0.join("current.crl"), older).unwrap();
-    let protected = fs::read(beta.directory.0.join("floors.json")).unwrap();
-    beta.restart();
-    assert!(
-        beta.bound.is_none(),
-        "rolled-back policy must never bind a remote listener"
-    );
-    let mut local = beta.connect();
-    register(&mut local, "rollback-local", 914);
-    let diagnostic = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
-        .arg("--diagnose")
-        .arg(beta.directory.0.join("config.json"))
-        .output()
-        .unwrap();
-    assert!(
-        diagnostic.status.success(),
-        "credential degradation is a read-only diagnostic"
-    );
-    let diagnostic: Value = serde_json::from_slice(&diagnostic.stdout).unwrap();
-    assert_eq!(
-        diagnostic["remote"]["state"], "degraded",
-        "local readiness is not remote readiness"
-    );
-    assert_eq!(diagnostic["remote"]["reason"], "revocation-floor-rejected");
-    assert_eq!(
-        protected,
-        fs::read(beta.directory.0.join("floors.json")).unwrap(),
-        "rollback must not reset protected floors"
-    );
-}
-
-#[test]
-fn explicit_floor_cli_initializes_once_without_resetting_existing_state() {
-    let directory = CredentialDirectory::new();
-    let path = directory.0.join("new-floors.json");
-    let initialize = || {
-        Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
-            .arg("--initialize-revocation-floor")
-            .arg(&path)
-            .output()
-            .expect("isolated explicit floor CLI")
-    };
-    assert!(
-        initialize().status.success(),
-        "explicit operator bootstrap creates new private state"
-    );
-    let bytes = fs::read(&path).unwrap();
-    assert!(
-        !initialize().status.success(),
-        "repeat initialization must not erase protected floors"
-    );
-    assert_eq!(fs::read(&path).unwrap(), bytes);
-}
-
 #[test]
 fn real_daemon_bounds_pending_unauthenticated_handshakes_and_closes_on_five_second_deadline() {
-    let ca = Authority::new("pending handshake cap CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     let mut pending: Vec<_> = (0..4)
         .map(|_| std::net::TcpStream::connect(address).expect("isolated pending TCP handshake"))
@@ -616,85 +478,34 @@ fn real_daemon_bounds_pending_unauthenticated_handshakes_and_closes_on_five_seco
     );
 }
 
-#[test]
-fn real_pair_active_crl_expiry_withdraws_routes_and_possible_admission_stays_unknown() {
-    let ca = Authority::new("active CRL expiry process CA");
-    let mut beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
-    beta.terminate();
-    replace_leaf(&beta, &ca, 43, 3600);
-    let current = time::OffsetDateTime::now_utc();
-    fs::write(
-        beta.directory.0.join("current.crl"),
-        ca.crl(
-            2,
-            current - time::Duration::minutes(1),
-            current + time::Duration::seconds(4),
-            vec![],
-        ),
-    )
-    .unwrap();
-    beta.restart();
-    let mut b = beta.connect();
-    let beta_peer = register(&mut b, "beta", 900);
-    let address = beta.address();
-    let alpha = Process::start(&ca, "alpha", "beta", "connect", address, &grants("beta"));
-    let mut a = alpha.connect();
-    register(&mut a, "alpha", 901);
-    let mut observer = alpha.connect();
-    register(&mut observer, "observer", 902);
-    let snapshot = watch(&mut observer, 903);
-    await_peer(&mut observer, &snapshot, &beta_peer);
-    send(&mut a, &beta_peer, 904);
-    let _delivery = read(&mut b);
-    assert_eq!(
-        read(&mut a)["outcome"]["tag"],
-        "unknown",
-        "active credential expiry cannot retract a forwarded operation"
-    );
-    assert_eq!(
-        read(&mut observer)["event"]["tag"],
-        "remove",
-        "actual leased TLS process link must withdraw imported routes"
-    );
-    send(&mut a, &beta_peer, 905);
-    assert_eq!(
-        read(&mut a)["outcome"]["code"],
-        "link_down",
-        "with the link gone, every session is told the link is down"
-    );
-}
-
 fn imported(index: u32) -> Value {
     json!({"peer":{"machineId":"alpha","sessionId":format!("remote-{index}"),"runtimeNonce":rid(2000 + index)},"label":"remote fixture","scopeIds":["team"]})
 }
 
 /// Opens an authenticated raw link to `beta` and answers its roster watch with `snapshot` peers.
 async fn link_with_snapshot(
-    ca: &Authority,
+    keys: &Keys,
     address: std::net::SocketAddr,
     snapshot: u32,
 ) -> (
     impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
     Value,
-    CredentialDirectory,
-    pi_gateway::lease::LinkLease,
 ) {
-    let directory = CredentialDirectory::new();
-    let prepared = directory
-        .settings(ca, "alpha", "beta", "connect", address)
-        .prepare("alpha")
-        .expect("alpha credentials prepare");
-    let (mut stream, lease) = prepared
+    let prepared = keys
+        .settings("alpha", "beta", "connect", address)
+        .prepare()
+        .expect("alpha key prepares");
+    let mut stream = prepared
         .connect()
         .await
         .expect("authenticated link")
-        .into_parts();
+        .into_stream();
     let discover = remote_read(&mut stream)
         .await
         .expect("roster watch request");
     let peers: Vec<_> = (0..snapshot).map(imported).collect();
     remote_write(&mut stream,&json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":peers,"watching":true}}})).await;
-    (stream, discover["rid"].clone(), directory, lease)
+    (stream, discover["rid"].clone())
 }
 
 async fn link_is_alive<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
@@ -708,15 +519,14 @@ async fn link_is_alive<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
 
 #[tokio::test]
 async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_thirty_first() {
-    let ca = Authority::new("imported session cap CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     // Snapshot sizes 30 and 31, then a live upsert taking a 29-session roster to 30 and to 31.
     for (snapshot, upserts, survives) in
         [(30, 0, true), (31, 0, false), (29, 1, true), (30, 1, false)]
     {
-        let (mut stream, watch, _directory, _lease) =
-            link_with_snapshot(&ca, address, snapshot).await;
+        let (mut stream, watch) = link_with_snapshot(&keys, address, snapshot).await;
         for index in 0..upserts {
             remote_write(&mut stream,&json!({"v":2,"op":"roster.event","rid":watch,"event":{"tag":"upsert","peer":imported(snapshot + index)}})).await;
         }
@@ -732,12 +542,12 @@ async fn real_daemon_imports_thirty_remote_sessions_and_closes_the_link_on_the_t
 
 #[tokio::test]
 async fn real_daemon_refuses_retired_requests_from_an_older_remote_gateway_and_keeps_the_link() {
-    let ca = Authority::new("retired operation CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     let mut receiver = beta.connect();
     let target = register(&mut receiver, "receiver", 1);
-    let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
+    let (mut stream, _watch) = link_with_snapshot(&keys, address, 1).await;
     let origin = imported(0)["peer"].clone();
     let work = json!({"kind":"request","origin":origin,"requestId":rid(6100)});
     let retired = [
@@ -775,12 +585,12 @@ async fn real_daemon_refuses_retired_requests_from_an_older_remote_gateway_and_k
 
 #[tokio::test]
 async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overloaded() {
-    let ca = Authority::new("operation cap CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let address = beta.address();
     let mut receiver = beta.connect();
     let target = register(&mut receiver, "receiver", 1);
-    let (mut stream, _watch, _directory, _lease) = link_with_snapshot(&ca, address, 1).await;
+    let (mut stream, _watch) = link_with_snapshot(&keys, address, 1).await;
     let origin = imported(0)["peer"].clone();
     let send_from_remote = |number: u32| json!({"v":2,"op":"send","rid":rid(4000 + number),"from":origin,"to":target,"scopeId":"team","budgetMs":15000,"message":{"id":rid(5000 + number),"kind":"request","content":"queued","format":"text"}});
     // One operation at a time: the delivery proves the gateway registered it before the next
@@ -808,8 +618,8 @@ async fn real_daemon_admits_256_remote_operations_and_refuses_the_257th_as_overl
 
 #[test]
 fn listener_on_port_zero_reports_a_nonzero_bound_address_that_accepts_connections() {
-    let ca = Authority::new("port zero CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let bound = beta.address();
     assert_eq!(bound.ip(), ANY.ip(), "the bound IP is the configured IP");
     assert_ne!(bound.port(), 0, "ready reports the port the OS chose");
@@ -818,9 +628,9 @@ fn listener_on_port_zero_reports_a_nonzero_bound_address_that_accepts_connection
 
 #[test]
 fn concurrent_listeners_on_port_zero_receive_distinct_ports() {
-    let ca = Authority::new("concurrent port zero CA");
-    let first = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
-    let second = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let first = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let second = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     assert_ne!(first.address(), second.address());
     std::net::TcpStream::connect(first.address()).expect("first listener is live");
     std::net::TcpStream::connect(second.address()).expect("second listener is live");
@@ -828,10 +638,10 @@ fn concurrent_listeners_on_port_zero_receive_distinct_ports() {
 
 #[test]
 fn connecting_process_reports_no_remote_listen_address() {
-    let ca = Authority::new("connector readiness CA");
-    let beta = Process::start(&ca, "beta", "alpha", "listen", ANY, &grants("alpha"));
+    let keys = Keys::new();
+    let beta = Process::start(&keys, "beta", "alpha", "listen", ANY, &grants("alpha"));
     let alpha = Process::start(
-        &ca,
+        &keys,
         "alpha",
         "beta",
         "connect",
@@ -846,10 +656,9 @@ fn connecting_process_reports_no_remote_listen_address() {
 
 #[test]
 fn port_zero_is_valid_for_a_listener_and_rejected_for_a_dialed_address() {
-    let directory = CredentialDirectory::new();
+    let keys = Keys::new();
     let settings = |mode: &str| {
-        serde_json::to_vec(&json!({"machineId":"beta","endpoint":{"mode":mode,"address":"127.0.0.1:0"},"rootCertificates":[directory.0.join("root.der")],"certificateChain":[directory.0.join("leaf.der")],"privateKey":directory.0.join("key.der"),"crls":[directory.0.join("current.crl")],"revocationState":directory.0.join("floors.json")}))
-        .expect("settings encoding")
+        serde_json::to_vec(&keys.remote("alpha", "beta", mode, ANY)).expect("settings encoding")
     };
     assert!(pi_gateway::remote::Settings::parse(&settings("listen")).is_ok());
     assert!(

@@ -1,137 +1,80 @@
 # Connect two machines
 
-Link two gateways, `alpha` and `beta`, over mutual TLS with a private CA. One gateway listens and the other connects.
+Link two gateways, `alpha` and `beta`. One gateway listens and the other connects.
+
+Each gateway has one Ed25519 key. Each pins the other's public key, as SSH pins a
+host in `known_hosts`. The link is TLS 1.3 with raw public keys in both directions:
+a gateway accepts the peer only when it presents exactly the pinned key. There is
+no CA, certificate, CRL, revocation floor or expiry to manage.
 
 ```mermaid
-flowchart TD
-  CA["Private CA"] --> Root["root.der"]
-  CA --> LA["alpha leaf, SAN gateway.alpha.pi.internal"]
-  CA --> LB["beta leaf, SAN gateway.beta.pi.internal"]
-  CA --> CRL["issuer.crl"]
-  Root --> G["Both gateways trust the root and the CRL"]
-  CRL --> G
-  LA --> GA["Gateway alpha presents its leaf"]
-  LB --> GB["Gateway beta presents its leaf"]
+flowchart LR
+  KA["alpha key.der"] --> PA["alpha public key"]
+  KB["beta key.der"] --> PB["beta public key"]
+  PA -- "pinned in beta's config" --> GB["Gateway beta"]
+  PB -- "pinned in alpha's config" --> GA["Gateway alpha"]
+  GA <-- "TLS 1.3, raw public keys" --> GB
 ```
 
-Both machines need a correct clock and an installed pi-gateway. Native pairing
-requires neither OpenSSL nor a third signer. The manual recipe below additionally
-uses OpenSSL 3 and a local Rust/Nix build.
+The key is identity; the network path only provides reachability. Run the link
+inside Tailscale (recommended) or an SSH forward rather than exposing the port to
+the internet.
 
 ## Guided setup
 
 On each machine, type `/peers`, choose **Setup** and set **Mode** to
-`One remote peer`. More rows appear:
+`One remote peer`. Setup creates this machine's key, shows its public key to send
+to the other machine, and asks for the other machine's public key, its name, which
+side listens and the address. It writes the same configuration as the manual
+recipe below. `/peers doctor` reports whether the key and configuration are usable;
+it does not prove the live link is up.
 
-| Row | Values |
-| --- | --- |
-| Trust | `Create new pair` on the first machine, `Join a pair` on the second, or `Use existing files`. |
-| Peer machine | The other machine's name. It must differ from this machine. |
-| Connection | `Listen for peer` on one side, `Connect to peer` on the other. |
-| Address | An IP address and port, for example `192.0.2.10:7443`. |
-| Offer path, Root SHA256 | Join only: the public offer from the first machine and its full 64-character hash. Confirm the hash out of band. |
-| Credential paths, floor, Root SHA256 | Existing files only: absolute paths to your DER material. |
+Public keys are not secret, but confirm the peer's key over a channel you trust
+(read it aloud, compare it in person, or send it over an authenticated chat). A
+wrong key is the only way to link to the wrong machine.
 
-Each row is checked as you edit it. The Apply row shows `Missing: <field>` until
-everything required is filled in. Esc goes back one level without applying.
-After Apply, the result screen lists the remote link and the next step, such as
-issuing the peer's certificate. `/peers doctor` reports whether the remote
-credentials look valid and when the pairing expires; it does not prove the live
-link is up. The footer shows `peers ✓` once this session reaches its
-local gateway, and `peers ! activation pending` while the gateway still runs older
-settings.
+## Choose the network path
 
-To change a remote setup later, choose **Setup** again. It reads `Manage` and
-opens `Peers › Setup` with the saved Label and Permissions as editable rows.
-Machine is read-only because the pair's certificates name it, and Scope is
-read-only because the paired computer uses it; re-pair to change either.
-Permissions are also the paired computer's grants, so changing them also changes
-what it may do with this Pi; the Permissions row, the Apply row and Review
-details say so. Apply reads `No changes` until you edit a row. The same screen lists the pairing actions:
+### Tailscale (recommended)
 
-| Row | Opens |
-| --- | --- |
-| View public exchange instructions | `Peers › Setup › Exchange`: the public files to send and the next step. |
-| Activate saved configuration | `Peers › Setup › Activate`: one gateway restart so it uses the saved settings. |
-| Import public bundle | `Peers › Setup › Import`: bundle file and its root SHA256. |
-| Issuer actions | Creator only. `Peers › Setup › Issuer` with Issue peer CSR, Renew leaves and CRL, Revoke a leaf and Export latest public bundle. |
-| Request renewal instructions | Joiner only. How to ask the creator to renew. |
-| Re-pair with new root | `Peers › Setup › Re-pair`: a new pair for the same two machines. |
+Put both machines on the same tailnet. On the listening machine, bind the gateway
+to its tailnet address, never `0.0.0.0`:
 
-Each step has Review details and one consent row; its result screen says what
-changed and what to send next. To stop using peers,
-choose **Reset**, review, then `Turn off peers`; keys and revocation state are
-kept.
+```sh
+tailscale ip -4   # for example 100.64.0.1
+```
 
-## Native pair setup
+Use `100.64.0.1:7443` as the listener's address and as the connector's address.
+Restrict the port in the tailnet policy file so only the peer can reach it, for
+example:
 
-Use the gateway's `pair OP --input ABS_JSON` commands, or the extension's guided
-setup when available. [The exact input/output contract](../gateway/PAIRING.md)
-includes every JSON field and the returned configuration paths. Exchanges are
-public-only bounded data; never paste private keys into Pi, a model or a transcript.
+```json
+{
+  "grants": [
+    { "src": ["beta-host"], "dst": ["alpha-host"], "ip": ["tcp:7443"] }
+  ]
+}
+```
 
-| Step | Host | Action |
-| --- | --- | --- |
-| Create | Initiator | create names exactly two machines, creates a separate issuerDir and runtimeDir, and returns public offerPath/rootSha256 plus its credential paths. |
-| Join | Peer | Independently confirm the full root SHA256 out of band; join generates the peer key and signed CSR locally. Transfer only the public request. |
-| Issue | Initiator | Independently confirm the peer's full request SHA256 out of band, then issue its leaf and numbered CRL. Transfer the public bundle. |
-| Import | Both | Initiator imports with floorMode=existing; pending peer imports with floorMode=new. Use the returned paths, not assumed filenames. |
-| Activate | Both | Under the native setup lock, write the gateway config and request a machine-bound managed restart. Reconnect/verify local registration and remote link separately. |
+Tailscale encrypts and authenticates the path; the pinned keys still authenticate
+the gateways, so a compromised or misrouted tailnet node cannot impersonate either.
 
-The initial directories must not exist and their parent must be private (0700).
-Generated files are 0600. The issuer key is pair-specific and stays outside runtime
-files; it is never loaded by the running gateway. A separate directory is **not**
-protection from code running as the same Unix account. Optionally offload the entire
-issuer directory to protected offline storage after provisioning. No mandatory
-third host is involved. Reusing the root for unrelated peers is unsupported.
+### SSH forward
 
-Leaves last 90 days, CRLs 30 days, roots 365 days. inspect reports public root/leaf/CRL
-expiry and warns at seven days to the earliest bound. Before expiry, renew on the
-custody host using the original pinned signed request and independently confirmed
-full request hash, then transfer/import on both hosts. Renewal reuses local keys;
-key replacement is not an implicit renewal. Expired leaves may be renewed only by
-this explicit offline authorization, not through unauthenticated TLS. Root expiry
-or issuer/account compromise requires a fresh root and re-pair on both hosts.
+Without Tailscale, let the listener bind loopback (`127.0.0.1:7443`) and forward it
+from the connecting machine:
 
-Existing import stages immutable credentials and checks both the durable floor and
-any newer already-staged CRL; activationRequired=true is **not** active renewal.
-It does not take the live runtime's floor lock or mutate its floor. Normal managed
-restart persists the newer floor before remote activation, and disconnects local
-sessions so their bounded recovery can re-register. Never replay uncertain sends.
-A failed/unknown restart response requires inspection, not blind retry or PID kills.
+```sh
+ssh -N -L 127.0.0.1:7443:127.0.0.1:7443 alpha-host
+```
 
-To revoke a bound machine, revoke all its issued serials on the custody host,
-transfer/import on the remaining host and activate. The revoked host cannot get a
-new leaf under that pair root. Lost/compromised issuer keys require re-pairing,
-never deletion/reset of floors. Missing existing floors disable remote service;
-local communication stays available. New-floor initialization is create-only and
-an interrupted owned import resumes only its exact bundle without resetting state.
-The validated canonical public bundle is durably retained under runtimeDir before
-the pending record. If the transferred source is lost or overwritten, native
-`pair inspect` returns a hash-verified `pendingBundlePath`; explicitly import that
-path with the original confirmed root/floor mode. A different requested bundle is
-never silently replaced by the cache, and missing pending floors are never repaired.
+Set the connector's address to `127.0.0.1:7443`. TLS still runs inside the tunnel.
+Keep the tunnel running, for example with `autossh` or a user service; the
+connector retries on its own while the tunnel is down.
 
-Known remote TCP listen failures leave local communication available and emit
-`remote degraded: remote-listen-unavailable` on startup stderr. There is no
-background rebind: correct the endpoint and restart. `--diagnose` only validates
-static credentials/floors and cannot prove bind status, so configured is not live
-listener/link readiness.
+## Manual setup
 
-For existing local DER material, import-existing has explicit new/existing floor
-semantics and never puts the private key into a public exchange. See the contract
-for supported direct-root material and absolute path fields.
-
-## Manual material recipe
-
-The following is an alternative expert provisioning recipe, not a prerequisite for
-native setup. Its optional offline CA custody remains supported.
-
-## Which side listens
-
-The listener binds an address and port. Open that TCP port to the connecting machine, for example 7443. The connector dials it and retries on failure. Identity comes from the certificate, not the address, so you can also forward the port over SSH. Run `ssh -N -L 127.0.0.1:7443:127.0.0.1:7443 listener-host` on the connector's machine and set the connector's address to `127.0.0.1:7443`. TLS still runs inside the tunnel.
-
-## 1. Build the gateway
+### 1. Build the gateway
 
 ```sh
 cd packages/pi-peers/gateway
@@ -141,80 +84,32 @@ cargo build --locked --release
 
 The binary is `target/release/pi-gateway`.
 
-## 2. Create a private CA
+### 2. Generate a key on each machine
 
-Pick a private working directory. Keep the socket paths short, since they must stay under 100 bytes. For this manual offline recipe, keep `ca/ca.key` off the gateway machines; native initiator custody above does not require a third host.
-
-```sh
-W=$HOME/pi-peers-pki
-mkdir -m 700 "$W" && cd "$W"
-mkdir ca && cd ca && touch index.txt && echo 01 > crlnumber
-cat > ca.cnf <<'CNF'
-[ca]
-default_ca = CA_default
-[CA_default]
-dir = .
-database = ./index.txt
-crlnumber = ./crlnumber
-default_md = sha256
-default_crl_days = 30
-crl_extensions = crl_ext
-[v3_ca]
-basicConstraints = critical,CA:true
-keyUsage = critical,keyCertSign,cRLSign
-subjectKeyIdentifier = hash
-[crl_ext]
-authorityKeyIdentifier = keyid:always
-CNF
-openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ca.key
-openssl req -x509 -new -key ca.key -sha256 -days 365 -subj "/CN=pi-peers private CA" \
-  -config ca.cnf -extensions v3_ca -out ca.pem
-```
-
-## 3. Issue one leaf per gateway
-
-Each leaf has exactly one SAN, `gateway.<machineId>.pi.internal`, with the same `machineId` as in the gateway config.
+Pick an owner-only directory. Keep the socket path under 100 bytes.
 
 ```sh
-cd "$W/ca"
-for m in alpha beta; do
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out $m.key
-  openssl req -new -key $m.key -subj "/CN=gateway.$m.pi.internal" -out $m.csr
-  printf 'basicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth,clientAuth\nsubjectAltName=DNS:gateway.%s.pi.internal\nauthorityKeyIdentifier=keyid\nsubjectKeyIdentifier=hash\n' $m > $m.ext
-  openssl x509 -req -in $m.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 90 -sha256 -extfile $m.ext -out $m.pem
-done
+D=$HOME/pi-peers
+mkdir -m 700 "$D" "$D/keys" "$D/run"
+printf '{"version":1,"privateKey":"%s/keys/gateway.key"}' "$D" > "$D/key.json"
+./target/release/pi-gateway key generate --input "$D/key.json"
 ```
 
-## 4. Issue a CRL
+It prints one line, for example:
 
-Gateways require a current, complete CRL from the CA, even when nothing is revoked.
-
-```sh
-cd "$W/ca"
-openssl ca -config ca.cnf -keyfile ca.key -cert ca.pem -gencrl -out ca.crl.pem
+```json
+{"version":1,"operation":"generate","publicKey":"3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"}
 ```
 
-The CRL expires after 30 days. Run the command again before then and restart the gateways.
+`generate` refuses to replace an existing file, so a key is never overwritten by
+accident. The key file is `0600` in a `0700` directory and never leaves the
+machine. To print the public key again, run `key show` with the same input file.
 
-## 5. Convert to DER and lock down
+Send only the `publicKey` value to the other machine, and confirm it out of band.
 
-```sh
-cd "$W"
-mkdir creds && chmod 700 creds
-openssl x509 -in ca/ca.pem -outform DER -out creds/root.der
-openssl crl -in ca/ca.crl.pem -outform DER -out creds/issuer.crl
-for m in alpha beta; do
-  openssl x509 -in ca/$m.pem -outform DER -out creds/$m.der
-  openssl pkey -in ca/$m.key -outform DER -out creds/$m-key.der
-done
-chmod 600 creds/*
-```
+### 3. Write the gateway configs
 
-Copy `root.der`, `issuer.crl`, and that machine's `<m>.der` and `<m>-key.der` into a `0700` directory on each machine. Create a `0700` `run/` directory beside it for the Unix socket.
-
-## 6. Write the gateway configs
-
-Both configs carry the full `remote` object. This is alpha, the listener. Replace `/home/me/pi-peers` with your directory.
+This is alpha, the listener. Replace the paths and the peer's key.
 
 ```json
 {
@@ -228,45 +123,70 @@ Both configs carry the full `remote` object. This is alpha, the listener. Replac
   ],
   "remote": {
     "machineId": "beta",
-    "endpoint": { "mode": "listen", "address": "0.0.0.0:7443" },
-    "rootCertificates": ["/home/me/pi-peers/creds/root.der"],
-    "certificateChain": ["/home/me/pi-peers/creds/alpha.der"],
-    "privateKey": "/home/me/pi-peers/creds/alpha-key.der",
-    "crls": ["/home/me/pi-peers/creds/issuer.crl"],
-    "revocationState": "/home/me/pi-peers/creds/alpha-floors.json"
+    "endpoint": { "mode": "listen", "address": "100.64.0.1:7443" },
+    "privateKey": "/home/me/pi-peers/keys/gateway.key",
+    "peerPublicKey": "<beta's 64-character public key>"
   }
 }
 ```
 
-For beta, the connector, swap the machine names. Set `endpoint` to `{ "mode": "connect", "address": "ALPHA_IP:7443" }`, and change the certificate, key and floor paths to `beta`. A `direction` of `outgoing` (the default) covers your local sessions acting on that machine. `incoming` covers that machine acting on yours. See the [gateway reference](../gateway/README.md) for every field.
+For beta, the connector, swap the machine names, set `endpoint` to
+`{ "mode": "connect", "address": "100.64.0.1:7443" }` and pin alpha's public key.
+A `direction` of `outgoing` (the default) covers your local sessions acting on that
+machine; `incoming` covers that machine acting on yours. See the
+[gateway reference](../gateway/README.md) for every field.
 
-## 7. Initialise the revocation floor
+The gateway refuses a config that pins its own key (`--diagnose` reports reason
+`identity`), because a connection reflected back to itself would otherwise pass.
 
-Run once per gateway, with a private directory. It never overwrites existing state.
-
-```sh
-./target/release/pi-gateway --initialize-revocation-floor /home/me/pi-peers/creds/alpha-floors.json
-```
-
-## 8. Start the listener, then the connector
+### 4. Start the listener, then the connector
 
 ```sh
 ./target/release/pi-gateway --config /home/me/pi-peers/alpha.json
 ./target/release/pi-gateway --config /home/me/pi-peers/beta.json
 ```
 
-## 9. Check the ready line
+Each gateway prints one `ready` line on stdout once it is bound. A listener adds
+`"remoteListenAddress"` with the address it bound; with a configured port of `0`
+this is where you read the port the OS chose. A connector never accepts port `0`.
 
-Each gateway prints one line on stdout once it is bound:
+`ready` does not announce the link. The connector retries up to six times per
+minute, then probes every 30 seconds to 5 minutes until it connects. Each change
+writes a `link_state` event to stderr, and `/peers status` shows a
+`Link to <machine>` row.
 
-```json
-{"event":"ready","machineId":"alpha","socketPath":"/home/me/pi-peers/run/alpha.sock"}
+### 5. Check the configuration
+
+```sh
+./target/release/pi-gateway --diagnose /home/me/pi-peers/alpha.json
 ```
 
-A listening gateway adds `"remoteListenAddress"` with the address it bound, for example `"0.0.0.0:7443"`. If you set the listener's port to `0`, the OS picks a free port and this field is where you read it. Give that address to the connector. A connector never accepts port `0`.
+A usable setup reports
+`{"state":"configured","trust":"pinned","publicKey":"<this machine's key>"}`.
+Compare that key with the one pinned on the other machine. An unusable key file
+reports `{"state":"degraded","reason":"private-key"}`; local sessions keep working
+while the remote side is closed.
 
-`ready` does not announce the link. To confirm it, run `lsof -nP -iTCP:7443` and look for an `ESTABLISHED` connection. The connector retries up to six times per minute, then probes every 30 seconds to 5 minutes until it connects. Each change writes a `link_state` event to stderr, and `/peers status` shows a `Link to <machine>` row.
+### 6. Point each Pi at its socket
 
-## 10. Point each Pi at its socket
+In each machine's `pi-peers.json`, set `socketPath` to the local gateway's socket
+and `machineId` to match. Add `policies` for the remote machine, or sessions cannot
+discover or message it. Reload Pi, then run `/peers status`. The gateway's grants
+and the Pi policies must both allow an action.
 
-In each machine's `pi-peers.json`, set `socketPath` to the local gateway's socket and `machineId` to match. Add `policies` for the remote machine, or sessions cannot discover or message it. Reload Pi, then run `/peers status`. The gateway's grants and the Pi policies must both allow an action.
+## Replace or revoke a key
+
+There is nothing to renew. To replace a key (a lost or exposed machine, or a
+routine change), generate a new key file on that machine, send its public key to
+the peer, update `peerPublicKey` there and `privateKey` here, and restart both
+gateways. The old key stops working as soon as the peer restarts with the new pin.
+To cut a machine off entirely, remove `remote` from the other gateway's config and
+restart it.
+
+## Upgrading from certificates
+
+Gateway 0.4.0 no longer supports the private CA, CRLs, revocation floors or the
+`pair` command. A config whose `remote` still has `rootCertificates`,
+`certificateChain`, `crls` or `revocationState` fails to start, and `--diagnose`
+reports `{"state":"retired-certificates"}`. Re-link both machines with keys as
+above; the old certificate and floor files can then be deleted.

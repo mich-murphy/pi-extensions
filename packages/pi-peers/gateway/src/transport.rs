@@ -69,12 +69,10 @@ pub(crate) struct ForwardPermit {
     source: watch::Receiver<bool>,
     target: Option<watch::Receiver<bool>>,
     authority: Option<watch::Receiver<bool>>,
-    expires: Option<Instant>,
 }
 impl ForwardPermit {
     pub(crate) fn bind_target(&mut self, target: Self) {
         self.target = Some(target.source);
-        self.expires = self.expires.into_iter().chain(target.expires).min();
         if target.authority.is_some() {
             self.authority = target.authority;
         }
@@ -82,12 +80,8 @@ impl ForwardPermit {
     pub(crate) fn bind_authority(&mut self, authority: Self) {
         self.authority = Some(authority.source);
     }
-    pub(crate) fn expire_at(&mut self, deadline: Instant) {
-        self.expires = Some(deadline);
-    }
     fn revoked(&self) -> bool {
-        self.expires.is_some_and(|expiry| expiry <= Instant::now())
-            || !*self.source.borrow()
+        !*self.source.borrow()
             || self.target.as_ref().is_some_and(|target| !*target.borrow())
             || self
                 .authority
@@ -124,7 +118,6 @@ impl SourceEpoch {
             source: self.0.subscribe(),
             target: None,
             authority: None,
-            expires: None,
         }
     }
     pub(crate) fn active(&self) -> bool {
@@ -210,13 +203,7 @@ pub(crate) async fn connection<S: AsyncRead + AsyncWrite + Unpin>(
             // AsyncWrite may accept plaintext while retaining ciphertext internally.
             // Flush shares the original enqueue deadline and withdrawal guard; only
             // then may Written release watch quota or the serialized-byte charge.
-            let deadline = frame
-                .source
-                .as_ref()
-                .and_then(|permit| permit.expires)
-                .map_or(frame.enqueued + PROGRESS, |expiry| {
-                    expiry.min(frame.enqueued + PROGRESS)
-                });
+            let deadline = frame.enqueued + PROGRESS;
             let write = tokio::time::timeout_at(deadline, async {
                 writer.write_all(&frame.bytes).await?;
                 writer.flush().await
@@ -558,61 +545,6 @@ mod tests {
             "only the already-forwarded byte can survive withdrawal"
         );
         assert!(received.try_recv().is_err());
-        assert_eq!(accounting.0.lock().expect("ledger").retained_bytes(), 0);
-        drop(send);
-    }
-    #[tokio::test(start_paused = true)]
-    async fn credential_expiry_bounds_existing_flush_timer_even_before_router_observes_link_end() {
-        let accounting = Accounting::default();
-        let id = ConnectionId(1);
-        accounting
-            .open(id, ConnectionKind::Local)
-            .expect("fresh destination");
-        let authority = SourceEpoch::new();
-        let source = SourceEpoch::new();
-        let mut permit = source.permit();
-        permit.bind_authority(authority.permit());
-        permit.expire_at(Instant::now() + Duration::from_secs(3));
-        let reservation = accounting
-            .reserve(id, BufferClass::Data, 8)
-            .expect("frame charge");
-        let (send, receive) = mpsc::channel(1);
-        send.try_send(Output {
-            bytes: vec![1; 8],
-            enqueued: Instant::now(),
-            reservation,
-            watch: Some(7),
-            finish: false,
-            source: Some(permit),
-        })
-        .expect("bounded output");
-        let (stream, mut peer) = tokio::io::duplex(1);
-        let buffered = tokio::io::BufStream::with_capacity(32, 32, stream);
-        let (events, mut received) = mpsc::channel(2);
-        let task = tokio::spawn(connection(
-            id,
-            buffered,
-            accounting.clone(),
-            events,
-            receive,
-        ));
-        tokio::task::yield_now().await;
-        tokio::time::advance(Duration::from_secs(3)).await;
-        task.await
-            .expect("credential expiry ends pending flush before five-second write timeout");
-        assert!(
-            authority.active(),
-            "test intentionally delays route-owner withdrawal observation"
-        );
-        let mut bytes = Vec::new();
-        peer.read_to_end(&mut bytes)
-            .await
-            .expect("expired buffered stream closed");
-        assert_eq!(bytes, vec![1]);
-        assert!(
-            received.try_recv().is_err(),
-            "expired flush cannot report successful forwarding"
-        );
         assert_eq!(accounting.0.lock().expect("ledger").retained_bytes(), 0);
         drop(send);
     }
