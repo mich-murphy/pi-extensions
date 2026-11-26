@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import { models, undatedModelId } from "../models";
 import type { ModelUsage } from "./messages";
 import { safeApiError } from "./result-failure";
@@ -44,14 +45,14 @@ function safeCount(count: number | undefined): number | undefined {
   return count !== undefined && Number.isSafeInteger(count) && count >= 0 ? count : undefined;
 }
 
-type ModelDiagnostic = { -readonly [Key in keyof QueryModelDiagnostic]: QueryModelDiagnostic[Key] };
-
 function modelDiagnostic(
   key: string,
   usage: ModelUsage[string],
   index: number,
 ): QueryModelDiagnostic {
-  const diagnostic: ModelDiagnostic = { model: publicModel(key) ?? `unknown-${index + 1}` };
+  const diagnostic: Types.Mutable<QueryModelDiagnostic> = {
+    model: publicModel(key) ?? `unknown-${index + 1}`,
+  };
 
   const canonicalModel =
     usage.canonicalModel === undefined ? undefined : publicModel(usage.canonicalModel);
@@ -87,8 +88,6 @@ function modelDiagnostic(
   return diagnostic;
 }
 
-type ApiErrorDiagnostic = { apiError?: string };
-
 export function queryDiagnostics(
   metadata: Omit<QueryDiagnostics, "models" | "modelEntriesOmitted"> & {
     readonly modelUsage: ModelUsage;
@@ -97,18 +96,17 @@ export function queryDiagnostics(
   const { modelUsage, apiError, ...counters } = metadata;
   const entries = Object.entries(modelUsage);
   const safeError = safeApiError(apiError);
-  const report: ApiErrorDiagnostic = {};
-
-  if (safeError !== undefined) {
-    report.apiError = safeError;
-  }
-
-  return {
+  const diagnostic: Types.Mutable<QueryDiagnostics> = {
     ...counters,
-    ...report,
     models: entries
       .slice(0, MAX_MODEL_ENTRIES)
       .map(([key, usage], index) => modelDiagnostic(key, usage, index)),
     modelEntriesOmitted: Math.max(0, entries.length - MAX_MODEL_ENTRIES),
   };
+
+  if (safeError !== undefined) {
+    diagnostic.apiError = safeError;
+  }
+
+  return diagnostic;
 }

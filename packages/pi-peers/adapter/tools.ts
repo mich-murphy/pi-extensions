@@ -3,7 +3,7 @@ import type {
   ToolLoadout,
   ToolLoadoutChanges,
 } from "@earendil-works/pi-coding-agent";
-import type { Schema } from "effect";
+import type { Schema, Types } from "effect";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -409,10 +409,7 @@ function route(session: ToolSession, args: SendArguments): Route | InvalidRoute 
 }
 
 function outgoingMessage(args: SendArguments, replyTo: Message["replyTo"]): Message {
-  const message: Omit<Message, "status" | "replyTo"> & {
-    status?: NonNullable<Message["status"]>;
-    replyTo?: NonNullable<Message["replyTo"]>;
-  } = {
+  const message: Types.Mutable<Message> = {
     id: freshId(),
     kind: args.kind,
     content: args.content,

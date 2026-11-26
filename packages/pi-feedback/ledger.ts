@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, chmod, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Option, Schema } from "effect";
+import { errnoCode } from "../shared/errno.ts";
 import { redact } from "./redact.ts";
 
 export const FIELD_LIMIT = 2000;
@@ -190,7 +191,7 @@ export async function readLedger(file: string): Promise<LedgerRead> {
   try {
     return parseLedger(await readFile(file, "utf8"));
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+    if (errnoCode(error) === "ENOENT") {
       return { events: [], skipped: 0 };
     }
 

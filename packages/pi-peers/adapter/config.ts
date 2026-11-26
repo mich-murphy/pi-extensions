@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { Option, Schema } from "effect";
-import { isMissingFile, stateLocations } from "./locations.js";
+import { errnoCode } from "../../shared/errno.js";
+import { stateLocations } from "./locations.js";
 
 function hasControls(value: string): boolean {
   // eslint-disable-next-line typescript/no-misused-spread -- Inspect Unicode code points only for forbidden control ranges.
@@ -121,7 +122,7 @@ export async function loadConfiguration(agentDir: string): Promise<Configuration
 
     content = bytes.toString("utf8");
   } catch (error) {
-    if (isMissingFile(error)) {
+    if (errnoCode(error) === "ENOENT") {
       return undefined;
     }
 

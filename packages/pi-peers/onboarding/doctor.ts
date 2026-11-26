@@ -1,6 +1,7 @@
 import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Schema } from "effect";
+import { errnoCode } from "../../shared/errno.js";
 import {
   configurationKeys,
   decodeConfiguration,
@@ -10,7 +11,7 @@ import {
   visibleText,
 } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
-import { isMissingFile, stateLocations } from "../adapter/locations.js";
+import { stateLocations } from "../adapter/locations.js";
 import type { StateSet } from "../adapter/locations.js";
 import { readManaged } from "./backend.js";
 import { regularBytes } from "./files.js";
@@ -121,7 +122,7 @@ async function inspectConfiguration(agentDir: string): Promise<Inspection> {
     return { kind: "valid", path, config: decodeConfiguration(value) };
   } catch (error) {
     return {
-      kind: isMissingFile(error) ? "missing" : "unreadable",
+      kind: errnoCode(error) === "ENOENT" ? "missing" : "unreadable",
       path,
     };
   }

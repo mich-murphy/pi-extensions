@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { Result, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
+import { errnoCode } from "../shared/errno";
 import { diagnosticText } from "./diagnostic-text";
 import { RepositoryLocator } from "./repository";
 import { parseResourcePath } from "./resource-path";
@@ -226,8 +227,10 @@ function fileSystem<A>(
   try {
     return Result.succeed(run());
   } catch (error) {
-    if (error instanceof Error && "syscall" in error && "code" in error) {
-      return Result.fail(new ToggleStateUnavailable(operation, path, String(error.code), error));
+    const code = errnoCode(error);
+
+    if (code !== undefined && Predicate.hasProperty(error, "syscall")) {
+      return Result.fail(new ToggleStateUnavailable(operation, path, code, error));
     }
 
     throw error;
@@ -238,8 +241,10 @@ function resourceExistsOrIsUnverifiable(path: ResourcePath): boolean {
   try {
     return statSync(path, { throwIfNoEntry: false }) !== undefined;
   } catch (error) {
-    if (error instanceof Error && "syscall" in error && "code" in error) {
-      return error.code !== "ENOENT" && error.code !== "ENOTDIR";
+    const code = errnoCode(error);
+
+    if (code !== undefined && Predicate.hasProperty(error, "syscall")) {
+      return code !== "ENOENT" && code !== "ENOTDIR";
     }
 
     throw error;

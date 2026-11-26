@@ -1,4 +1,5 @@
 import { Option, Result, Schema, SchemaIssue } from "effect";
+import type { Types } from "effect";
 import type { TokenUsage } from "../bridge";
 import { undatedModelId } from "../models";
 import { SdkProtocolError, SdkResultError } from "./errors";
@@ -165,14 +166,12 @@ function messageParser<S extends Schema.ConstraintDecoder<unknown>>(
 
 type ObservedUsage = Extract<SdkMessage, { type: "usage" }>;
 
-type UsageMessage = { -readonly [Key in keyof ObservedUsage]: ObservedUsage[Key] };
-
 function usageMessage(
   { model, usage }: typeof modelCallSchema.Type,
   apiError: string | undefined,
-): UsageMessage {
+): Types.Mutable<ObservedUsage> {
   const safeError = safeApiError(apiError);
-  const message: UsageMessage = { type: "usage", usage };
+  const message: Types.Mutable<ObservedUsage> = { type: "usage", usage };
 
   if (model !== undefined) {
     message.model = model;
@@ -223,29 +222,26 @@ function rateLimitMessage(input: unknown): Result.Result<SdkMessage, string> {
   const info = Option.getOrUndefined(decodeRateLimit(input))?.rate_limit_info;
   const overageReset = info?.overageResetsAt ?? info?.resetsAt;
 
-  const overage =
-    info?.isUsingOverage === true ||
-    (info?.rateLimitType === "overage" && info.status !== "rejected")
-      ? {
-          overage: {
-            resetsAt:
-              overageReset === undefined ? undefined : overageReset * MILLISECONDS_PER_SECOND,
-          },
-        }
-      : {};
-
-  return Result.succeed({
+  const message: Types.Mutable<Extract<SdkMessage, { type: "usage_limit" }>> = {
     type: "usage_limit",
     rejected: info?.status === "rejected",
     resetsAt:
       info?.status === "rejected" && info.resetsAt !== undefined
         ? info.resetsAt * MILLISECONDS_PER_SECOND
         : undefined,
-    ...overage,
-  });
-}
+  };
 
-type ResultUsage = { usage?: ReportedUsage };
+  if (
+    info?.isUsingOverage === true ||
+    (info?.rateLimitType === "overage" && info.status !== "rejected")
+  ) {
+    message.overage = {
+      resetsAt: overageReset === undefined ? undefined : overageReset * MILLISECONDS_PER_SECOND,
+    };
+  }
+
+  return Result.succeed(message);
+}
 
 const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, MessageParser>([
   [
@@ -294,7 +290,7 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
         }),
       }),
       ({ event }) => {
-        const message: UsageMessage = { type: "usage", usage: event.usage };
+        const message: Types.Mutable<ObservedUsage> = { type: "usage", usage: event.usage };
         const stopReason = event.delta?.stop_reason;
 
         if (stopReason !== undefined && stopReason !== null && stopReason !== "") {
@@ -354,20 +350,15 @@ const MESSAGE_PARSERS: ReadonlyMap<string, MessageParser> = new Map<string, Mess
         return Result.fail("unsupported stop_reason");
       }
 
-      const reported: ResultUsage = {};
-
-      if (result.usage !== undefined) {
-        reported.usage = result.usage;
-      }
-
-      const message: Omit<Extract<SdkMessage, { type: "result" }>, "numTurns"> & {
-        numTurns?: number;
-      } = {
+      const message: Types.Mutable<Extract<SdkMessage, { type: "result" }>> = {
         type: "result",
         result: turn,
-        ...reported,
         modelUsage: result.modelUsage ?? {},
       };
+
+      if (result.usage !== undefined) {
+        message.usage = result.usage;
+      }
 
       if (result.num_turns !== undefined) {
         message.numTurns = result.num_turns;
@@ -440,37 +431,31 @@ export function applyUsage(
 ): TokenUsage {
   const prior = previous ?? NO_USAGE;
 
-  return {
+  const usage: Types.Mutable<TokenUsage> = {
     input: reported.input_tokens ?? prior.input,
     output: reported.output_tokens ?? prior.output,
     cacheRead: reported.cache_read_input_tokens ?? prior.cacheRead,
     cacheWrite: reported.cache_creation_input_tokens ?? prior.cacheWrite,
-    ...cacheWriteSplit(reported.cache_creation ?? {}, scope === "turn" ? NO_USAGE : prior),
   };
-}
 
-const NO_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-
-type CacheWriteSplit = { cacheWrite1h?: number; cacheWrite5m?: number };
-
-function cacheWriteSplit(
-  creation: NonNullable<ReportedUsage["cache_creation"]>,
-  prior: TokenUsage,
-): CacheWriteSplit {
-  const cacheWrite1h = creation.ephemeral_1h_input_tokens ?? prior.cacheWrite1h;
-  const cacheWrite5m = creation.ephemeral_5m_input_tokens ?? prior.cacheWrite5m;
-  const split: CacheWriteSplit = {};
+  const priorSplit = scope === "turn" ? NO_USAGE : prior;
+  const cacheWrite1h =
+    reported.cache_creation?.ephemeral_1h_input_tokens ?? priorSplit.cacheWrite1h;
+  const cacheWrite5m =
+    reported.cache_creation?.ephemeral_5m_input_tokens ?? priorSplit.cacheWrite5m;
 
   if (cacheWrite1h !== undefined) {
-    split.cacheWrite1h = cacheWrite1h;
+    usage.cacheWrite1h = cacheWrite1h;
   }
 
   if (cacheWrite5m !== undefined) {
-    split.cacheWrite5m = cacheWrite5m;
+    usage.cacheWrite5m = cacheWrite5m;
   }
 
-  return split;
+  return usage;
 }
+
+const NO_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 function modelLimitFor(
   modelUsage: ModelUsage,

@@ -4,6 +4,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
+import type { Types } from "effect";
 import { samePeer } from "../protocol/identity.js";
 import { retiredOps } from "../protocol/schema.js";
 import type { Message, PeerRef } from "../protocol/schema.js";
@@ -67,17 +68,9 @@ export class AdapterSession {
     private readonly signalPump: () => void,
     ensureGateway?: EnsureGateway,
   ) {
-    const clientOptions: Pick<ClientOptions, "config" | "peer" | "ensureGateway"> = {
+    const clientOptions: Types.Mutable<ClientOptions> = {
       config,
       peer,
-    };
-
-    if (ensureGateway !== undefined) {
-      clientOptions.ensureGateway = ensureGateway;
-    }
-
-    this.client = new GatewayClient({
-      ...clientOptions,
       incoming: (request) => this.incoming(request),
       linkChanged: () => {
         this.updateStatus();
@@ -94,7 +87,13 @@ export class AdapterSession {
           this.waiter?.("disconnected");
         }
       },
-    });
+    };
+
+    if (ensureGateway !== undefined) {
+      clientOptions.ensureGateway = ensureGateway;
+    }
+
+    this.client = new GatewayClient(clientOptions);
     this.state = createState({
       peer,
       scopeIds: config.scopeIds,

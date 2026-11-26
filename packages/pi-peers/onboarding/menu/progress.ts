@@ -1,4 +1,5 @@
 import { flow, Option, Schema } from "effect";
+import type { Types } from "effect";
 import { visibleText } from "../../adapter/config.js";
 import type { MenuModel } from "./model.js";
 
@@ -76,10 +77,7 @@ function restoreOutcome({
       isFact(row) ? [[clean(row[0], MAX_TEXT), clean(row[1], MAX_TEXT)] as const] : [],
     );
 
-  const outcome: Omit<Outcome, "next" | "technical"> & {
-    next?: string;
-    technical?: ReadonlyArray<string>;
-  } = { ok, headline: clean(headline, MAX_TEXT), facts: rows };
+  const outcome: Types.Mutable<Outcome> = { ok, headline: clean(headline, MAX_TEXT), facts: rows };
 
   if (typeof next === "string") {
     outcome.next = clean(next, MAX_TEXT * 2);

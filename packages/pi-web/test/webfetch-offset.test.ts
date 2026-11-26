@@ -1,4 +1,5 @@
 import { Effect, Result, Schema } from "effect";
+import type { Types } from "effect";
 import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";
 import { FetchPageBody } from "../fetch-page";
@@ -49,10 +50,6 @@ function textResult(text: string): FetchPageResult {
   };
 }
 
-type ProjectionOptions = Omit<Parameters<typeof projectFetchResult>[1], "offset"> & {
-  offset?: number;
-};
-
 async function project(
   text: string,
   offset?: number,
@@ -61,7 +58,7 @@ async function project(
 ) {
   const page = textResult(text);
 
-  const options: ProjectionOptions = {
+  const options: Types.Mutable<Parameters<typeof projectFetchResult>[1]> = {
     store: liveToolOutputStore(),
     secrets,
   };

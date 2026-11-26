@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import { describe, expect, test } from "vitest";
 import { onOffCommand } from "../on-off-command";
 import type { OnOffContext, OnOffOptions } from "../on-off-command";
@@ -9,9 +10,7 @@ function harness(note?: (enabled: boolean) => string) {
   const applied: Array<boolean> = [];
   let state = true;
 
-  const options: Omit<OnOffOptions<OnOffContext>, "note"> & {
-    note?: (enabled: boolean) => string;
-  } = {
+  const options: Types.Mutable<OnOffOptions<OnOffContext>> = {
     name: "demo",
     label: "Demo",
     description: "Turn demo on or off",

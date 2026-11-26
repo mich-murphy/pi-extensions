@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import { describe, expect, test } from "vitest";
 import { MessageAliases } from "../adapter/aliases.js";
 import type { Configuration } from "../adapter/config.js";
@@ -19,7 +20,7 @@ type Incoming = { from: PeerRef; to: PeerRef; scopeId: string; message: Message 
 type Sent = { to: PeerRef; scopeId: string; message: Message };
 
 function fixtureConfig(maxWaitSeconds: number | undefined): Configuration {
-  const config: Omit<Configuration, "maxWaitSeconds"> & { maxWaitSeconds?: number } = {
+  const config: Types.Mutable<Configuration> = {
     machineId: "alpha",
     socketPath: "/tmp/pi-peers-test.sock",
     label: "Pi",

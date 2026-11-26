@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import type { Schema } from "effect";
+import type { Schema, Types } from "effect";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { readManaged, setupPaths } from "./backend.js";
@@ -281,9 +281,7 @@ type MaintenanceForm = {
 };
 
 function maintenanceForm(context: PairContext, progress: Progress, form: MaintenanceForm): Screen {
-  const options: Omit<ActionForm<Maintenance>, "rows"> & {
-    rows?: NonNullable<MaintenanceForm["rows"]>;
-  } = {
+  const options: Types.Mutable<ActionForm<Maintenance>> = {
     title: form.title,
     note: form.note,
     details: () => maintenanceDetails(context, form.operation),
@@ -533,7 +531,7 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
   const peer = pairing.intent.peerMachineId;
   const root = oldRoot(pairing);
 
-  const options: Omit<RemoteOptions, "oldRoot"> & { oldRoot?: string } = {
+  const options: Types.Mutable<RemoteOptions> = {
     kinds: ["create", "join"],
     peer,
   };

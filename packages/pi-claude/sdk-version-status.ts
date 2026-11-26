@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { promisify } from "node:util";
 import { Context, Effect, Layer, Predicate, Schema } from "effect";
+import { errnoCode } from "../shared/errno";
 import {
   isBelowMinimumClaudeCode,
   MIN_CLAUDE_CODE_VERSION,
@@ -126,7 +127,7 @@ async function defaultReadInstalledClaudeVersion(): Promise<string> {
 }
 
 function classifyInstalledVersionFailure(cause: unknown): InstalledVersionFailure {
-  if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
+  if (errnoCode(cause) === "ENOENT") {
     return "not-installed";
   }
 

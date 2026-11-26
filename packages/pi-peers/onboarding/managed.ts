@@ -6,6 +6,7 @@ import { createConnection } from "node:net";
 import { isAbsolute, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Schema } from "effect";
+import type { Types } from "effect";
 import type { EnsureGateway } from "../adapter/client.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_WIRE_VERSION } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
@@ -55,16 +56,16 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
   }
 
   const { state, reason } = value.remote;
-  const snapshot: Pick<ManagedSnapshot, "state"> & { reason?: string } = { state };
+  const snapshot: Types.Mutable<ManagedSnapshot> = {
+    state,
+    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
+  };
 
   if (reason !== undefined) {
     snapshot.reason = reason;
   }
 
-  return {
-    ...snapshot,
-    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
-  };
+  return snapshot;
 }
 
 export async function diagnoseManaged(setup: ManagedSetup): Promise<string> {

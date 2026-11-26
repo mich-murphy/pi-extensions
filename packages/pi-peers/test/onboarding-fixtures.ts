@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Schema } from "effect";
 import { vi } from "vitest";
+import { errnoCode } from "../../shared/errno.js";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
 import type { DialogContext } from "../onboarding/dialog.js";
 import type { Progress } from "../onboarding/menu/forms.js";
@@ -198,7 +199,7 @@ export async function nativeIncarnation(path: string): Promise<string | undefine
 
     return `${value.dev}:${value.ino}:${value.ctimeNs}`;
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+    if (errnoCode(error) === "ENOENT") {
       return undefined;
     }
 

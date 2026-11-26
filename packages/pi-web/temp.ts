@@ -2,6 +2,7 @@ import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Predicate, Schema } from "effect";
+import { errnoCode } from "../shared/errno";
 
 const FS_ERROR_DESCRIPTIONS = new Map(
   Object.entries({
@@ -56,22 +57,14 @@ function attempt<A>(
   run: () => Promise<A>,
 ): Effect.Effect<A, OutputStoreError> {
   return Effect.tryPromise({ try: run, catch: (cause) => cause }).pipe(
-    Effect.catch((error) =>
-      isNodeSystemError(error)
-        ? Effect.fail(new OutputStoreError({ operation, path, code: error.code, cause: error }))
-        : Effect.die(error),
-    ),
-  );
-}
+    Effect.catch((error) => {
+      const code = errnoCode(error);
 
-function isNodeSystemError(
-  value: unknown,
-): value is Error & { readonly code: string; readonly syscall: string } {
-  return (
-    value instanceof Error &&
-    Predicate.hasProperty(value, "code") &&
-    Predicate.isString(value.code) &&
-    Predicate.hasProperty(value, "syscall") &&
-    Predicate.isString(value.syscall)
+      return code !== undefined &&
+        Predicate.hasProperty(error, "syscall") &&
+        Predicate.isString(error.syscall)
+        ? Effect.fail(new OutputStoreError({ operation, path, code, cause: error }))
+        : Effect.die(error);
+    }),
   );
 }

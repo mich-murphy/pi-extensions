@@ -4,7 +4,7 @@ import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Data, Effect, Result, Stream } from "effect";
-import type { Scope } from "effect";
+import type { Scope, Types } from "effect";
 import { absurd } from "effect/Function";
 import type { AgentRequest } from "../agent-request";
 import type { AgentSdkRun, BridgeEvent, DeferredCall, TokenUsage } from "../bridge";
@@ -718,49 +718,41 @@ function conclude(
   return checkedTerminal;
 }
 
-type ObservedModelFields = { observedModel?: string };
-
-type QueryResultFields = { numTurns?: number; apiError?: string };
-
 function queryUsageMetadata(
   terminal: BridgeEvent,
   progress: QueryProgress,
   capture: QueryCapture,
 ): CacheUsageMetadata {
   const { observedModel, result, apiError } = progress;
-  const observed: ObservedModelFields = {};
-
-  if (observedModel !== undefined) {
-    observed.observedModel = observedModel;
-  }
-
-  const resultFields: QueryResultFields = {};
+  const queryInput: Types.Mutable<Parameters<typeof queryDiagnostics>[0]> = {
+    outcome: terminal.type === "failed" ? "failed" : "completed",
+    modelUsage: result?.modelUsage ?? {},
+    modelRequests: progress.modelRequests,
+    assistantToolUses: progress.assistantToolUses,
+    maxAssistantToolUses: progress.maxAssistantToolUses,
+    errorToolResults: progress.errorToolResults,
+    invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
+    unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
+    uncapturedBatchCalls: capture.deferred.uncapturedBatchCalls,
+    sdkRejectedCalls: capture.deferred.sdkRejectedCalls,
+    fallbackCalls: capture.fallbackCalls,
+  };
 
   if (result?.numTurns !== undefined) {
-    resultFields.numTurns = result.numTurns;
+    queryInput.numTurns = result.numTurns;
   }
 
   if (apiError !== undefined) {
-    resultFields.apiError = apiError;
+    queryInput.apiError = apiError;
   }
 
-  return {
-    ...observed,
-    query: queryDiagnostics({
-      outcome: terminal.type === "failed" ? "failed" : "completed",
-      ...resultFields,
-      modelUsage: result?.modelUsage ?? {},
-      modelRequests: progress.modelRequests,
-      assistantToolUses: progress.assistantToolUses,
-      maxAssistantToolUses: progress.maxAssistantToolUses,
-      errorToolResults: progress.errorToolResults,
-      invalidGatewayCalls: capture.deferred.invalidGatewayCalls,
-      unexpectedToolCalls: capture.deferred.unexpectedToolCalls,
-      uncapturedBatchCalls: capture.deferred.uncapturedBatchCalls,
-      sdkRejectedCalls: capture.deferred.sdkRejectedCalls,
-      fallbackCalls: capture.fallbackCalls,
-    }),
-  };
+  const metadata: Types.Mutable<CacheUsageMetadata> = { query: queryDiagnostics(queryInput) };
+
+  if (observedModel !== undefined) {
+    metadata.observedModel = observedModel;
+  }
+
+  return metadata;
 }
 
 function startedApiFailure(terminal: BridgeEvent, progress: QueryProgress): BridgeEvent {

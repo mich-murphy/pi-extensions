@@ -1,4 +1,5 @@
 import { isAbsolute, normalize } from "node:path";
+import type { Types } from "effect";
 import { SOCKET_PATH_MAX_BYTES, visibleText } from "../../adapter/config.js";
 import { localPlan, permissions } from "../plan.js";
 import type { LocalChoices, LocalPlan } from "../plan.js";
@@ -150,7 +151,7 @@ export function applyState(
     return remote;
   }
 
-  const choice: Omit<SetupChoice, "remote"> & { remote?: RemoteIntent } = {
+  const choice: Types.Mutable<SetupChoice> = {
     plan: local.value,
     shared: draft.shared,
   };

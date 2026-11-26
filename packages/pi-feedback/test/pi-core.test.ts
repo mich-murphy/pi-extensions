@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import { describe, expect, test } from "vitest";
 import { isParallelBatch, isReadOnlyTool } from "../batch.ts";
 import type { BatchCall } from "../batch.ts";
@@ -156,10 +157,7 @@ function eventsFor(fixture: Fixture, start: number): Array<LedgerEvent> {
   const signals = ["a", "b", "c"].map((session, index): LedgerEvent => {
     type Signal = Extract<LedgerEvent, { type: "signal" }>;
 
-    const event: Omit<Signal, "cause" | "evidence"> & {
-      cause?: NonNullable<Signal["cause"]>;
-      evidence?: NonNullable<Signal["evidence"]>;
-    } = {
+    const event: Types.Mutable<Signal> = {
       type: "signal",
       ...stamp(start + index),
       session,

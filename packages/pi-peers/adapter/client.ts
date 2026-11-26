@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { Schema } from "effect";
+import type { Types } from "effect";
 import type { Frame, Message, PeerRef } from "../protocol/schema.js";
 import type { Configuration } from "./config.js";
 import { LinkTable } from "./links.js";
@@ -234,16 +235,15 @@ export class GatewayClient {
   private registration(rid: string, expected: string | undefined): Request {
     type Registration = Extract<Request, { op: "register" }>;
 
-    const request: Omit<Registration, "expectedConfigSha256"> & { expectedConfigSha256?: string } =
-      {
-        v: 2,
-        op: "register",
-        rid,
-        sessionId: this.options.peer.sessionId,
-        runtimeNonce: this.options.peer.runtimeNonce,
-        scopeIds: this.options.config.scopeIds,
-        label: this.options.config.label,
-      };
+    const request: Types.Mutable<Registration> = {
+      v: 2,
+      op: "register",
+      rid,
+      sessionId: this.options.peer.sessionId,
+      runtimeNonce: this.options.peer.runtimeNonce,
+      scopeIds: this.options.config.scopeIds,
+      label: this.options.config.label,
+    };
 
     if (expected !== undefined) {
       request.expectedConfigSha256 = expected;
