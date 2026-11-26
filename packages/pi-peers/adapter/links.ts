@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import type { LinkFrame } from "./transport.js";
 
 export type LinkState = {
@@ -19,7 +20,7 @@ function same(left: LinkState | undefined, right: LinkState): boolean {
 export class LinkTable {
   private readonly entries = new Map<string, LinkState>();
   apply(frame: Omit<LinkFrame, "v" | "op" | "rid">): boolean {
-    const next: Omit<LinkState, "nextProbe"> & { nextProbe?: number } = {
+    const next: Types.Mutable<LinkState> = {
       machineId: frame.machineId,
       state: frame.state,
       since: frame.since,

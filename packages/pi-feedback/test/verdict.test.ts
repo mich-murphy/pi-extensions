@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import { describe, expect, test } from "vitest";
 import { THRESHOLDS } from "../jev.ts";
 import type { RecordEvent, VerdictEvent } from "../ledger.ts";
@@ -22,10 +23,7 @@ function record(session: string, options: RecordOptions = {}): RecordEvent {
 
   type Signal = Extract<RecordEvent, { type: "signal" }>;
 
-  const event: Omit<Signal, "evidence" | "cause"> & {
-    evidence?: NonNullable<Signal["evidence"]>;
-    cause?: NonNullable<Signal["cause"]>;
-  } = {
+  const event: Types.Mutable<Signal> = {
     type: "signal",
     id: `00000000-0000-4000-8000-${session.padStart(12, "0")}`,
     at: "2026-11-25T00:00:00.000Z",

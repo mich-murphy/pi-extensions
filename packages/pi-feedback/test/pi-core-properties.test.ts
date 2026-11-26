@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
 import { booleans, floats, integers, sampledFrom } from "@hegeldev/hegel/generators";
+import type { Types } from "effect";
 import { describe, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import type { LedgerEvent } from "../ledger.ts";
@@ -33,10 +34,7 @@ function drawEvents(tc: TestCase): Drawn {
     const piPath = tc.draw(booleans(), "piPath");
     const batchOrdered = tc.draw(booleans(), "batchOrdered");
 
-    const options: Omit<SignalOptions, "evidence" | "cause"> & {
-      evidence?: NonNullable<SignalOptions["evidence"]>;
-      cause?: NonNullable<SignalOptions["cause"]>;
-    } = {
+    const options: Types.Mutable<SignalOptions> = {
       n,
       session: tc.draw(sampledFrom([...SESSIONS]), "session"),
       owner: tc.draw(sampledFrom([...OWNERS]), "owner"),

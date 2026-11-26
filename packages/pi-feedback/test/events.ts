@@ -1,3 +1,4 @@
+import type { Types } from "effect";
 import type { Clock, LedgerEvent } from "../ledger.ts";
 
 function eventId(n: number): string {
@@ -39,10 +40,7 @@ export function signal({
 }: SignalOptions): LedgerEvent {
   type Signal = Extract<LedgerEvent, { type: "signal" }>;
 
-  const event: Omit<Signal, "evidence" | "cause"> & {
-    evidence?: NonNullable<Signal["evidence"]>;
-    cause?: NonNullable<Signal["cause"]>;
-  } = {
+  const event: Types.Mutable<Signal> = {
     type: "signal",
     id: eventId(n),
     at: eventAt(n),

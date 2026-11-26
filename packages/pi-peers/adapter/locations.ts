@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { Schema } from "effect";
+import { errnoCode } from "../../shared/errno.js";
 
 const NAMES = {
   current: { config: "pi-peers.json", directory: "pi-peers", socketRoot: "pi-peers" },
@@ -18,19 +18,15 @@ export type StateSet = {
   readonly id: string;
 };
 
-export const isMissingFile = Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }));
-
-export const isMissingPath = Schema.is(
-  Schema.Struct({ code: Schema.Literals(["ENOENT", "ENOTDIR"]) }),
-);
-
 function present(path: string): boolean {
   try {
     lstatSync(path);
 
     return true;
   } catch (error) {
-    return !isMissingPath(error);
+    const code = errnoCode(error);
+
+    return code !== "ENOENT" && code !== "ENOTDIR";
   }
 }
 

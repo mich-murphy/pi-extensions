@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Clock, Effect } from "effect";
+import type { Types } from "effect";
 import { CACHE_LOOKBACK_BLOCKS } from "./agent-request";
 import type { AgentRequest, PromptBlock } from "./agent-request";
 import type { TokenUsage } from "./bridge";
@@ -204,10 +205,6 @@ function likelyMissCause(
   return context.lookbackExceeded ? "lookback" : undefined;
 }
 
-type UsageQueryFields = { query?: QueryDiagnostics };
-
-type PromptUsage = { promptTokens: number; minimumCacheableTokens?: number };
-
 function usageDiagnostic(
   turn: number,
   usage: TokenUsage,
@@ -223,30 +220,23 @@ function usageDiagnostic(
       ? likelyMissCause(context, usage, promptTokens, minimumCacheableTokens)
       : undefined;
 
-  const queryFields: UsageQueryFields = {};
-
-  if (metadata.query !== undefined) {
-    queryFields.query = metadata.query;
-  }
-
-  const prompt: PromptUsage = { promptTokens };
-
-  if (minimumCacheableTokens !== undefined) {
-    prompt.minimumCacheableTokens = minimumCacheableTokens;
-  }
-
-  const diagnostic: Omit<CacheUsageDiagnostic, "likelyMissCause"> & {
-    likelyMissCause?: MissCause;
-  } = {
+  const diagnostic: Types.Mutable<CacheUsageDiagnostic> = {
     type: "usage",
     turn,
     ...usage,
-    ...queryFields,
-    ...prompt,
+    promptTokens,
     cacheReadPercent: Math.round(cacheReadShare * 10_000) / 100,
     possibleCollapse: promptTokens >= 20_000 && cacheReadShare < 0.5,
     expectedReusableCharacters: context.expectedReusableCharacters,
   };
+
+  if (metadata.query !== undefined) {
+    diagnostic.query = metadata.query;
+  }
+
+  if (minimumCacheableTokens !== undefined) {
+    diagnostic.minimumCacheableTokens = minimumCacheableTokens;
+  }
 
   if (cause !== undefined) {
     diagnostic.likelyMissCause = cause;
@@ -260,15 +250,6 @@ type RequestComparison = Pick<
   "ttl" | "prefixChange" | "msSincePreviousRequest" | "expectedReusableCharacters"
 >;
 
-type RequestModelFields = { model: string; minimumCacheableTokens?: number; reasoning?: string };
-
-type RequestFingerprints = {
-  contentFingerprint: string;
-  systemFingerprint: string;
-  toolsFingerprint?: string;
-  reusablePrefixFingerprint?: string;
-};
-
 function requestDiagnostic(
   turn: number,
   current: RequestState,
@@ -277,41 +258,10 @@ function requestDiagnostic(
 ): CacheRequestDiagnostic {
   const { blocks, breakpoints, model } = current;
 
-  const modelFields: RequestModelFields = {
-    model,
-  };
-
-  const minimumCacheableTokens = minimumCacheableTokensFor(model);
-
-  if (minimumCacheableTokens !== undefined) {
-    modelFields.minimumCacheableTokens = minimumCacheableTokens;
-  }
-
-  if (current.reasoning !== undefined) {
-    modelFields.reasoning = current.reasoning;
-  }
-
-  const fingerprints: RequestFingerprints = {
-    contentFingerprint: fingerprint(blocks),
-    systemFingerprint: fingerprint(blocks.slice(0, 1)),
-  };
-
-  if (current.toolsFingerprint !== undefined) {
-    fingerprints.toolsFingerprint = current.toolsFingerprint;
-  }
-
-  const lastBreakpoint = breakpoints.at(-1);
-
-  if (lastBreakpoint !== undefined) {
-    fingerprints.reusablePrefixFingerprint = fingerprint(blocks.slice(0, lastBreakpoint + 1));
-  }
-
-  const diagnostic: Omit<CacheRequestDiagnostic, "msSincePreviousRequest"> & {
-    msSincePreviousRequest?: number;
-  } = {
+  const diagnostic: Types.Mutable<CacheRequestDiagnostic> = {
     type: "request",
     turn,
-    ...modelFields,
+    model,
     ttl: comparison.ttl,
     blocks: blocks.length,
     textCharacters: sum(blocks.map((block) => block.textCharacters)),
@@ -319,9 +269,29 @@ function requestDiagnostic(
     breakpoints,
     commonPrefixBlocks,
     commonPrefixCharacters: comparison.expectedReusableCharacters,
-    ...fingerprints,
+    contentFingerprint: fingerprint(blocks),
+    systemFingerprint: fingerprint(blocks.slice(0, 1)),
     prefixChange: comparison.prefixChange,
   };
+
+  const minimumCacheableTokens = minimumCacheableTokensFor(model);
+  const lastBreakpoint = breakpoints.at(-1);
+
+  if (minimumCacheableTokens !== undefined) {
+    diagnostic.minimumCacheableTokens = minimumCacheableTokens;
+  }
+
+  if (current.reasoning !== undefined) {
+    diagnostic.reasoning = current.reasoning;
+  }
+
+  if (current.toolsFingerprint !== undefined) {
+    diagnostic.toolsFingerprint = current.toolsFingerprint;
+  }
+
+  if (lastBreakpoint !== undefined) {
+    diagnostic.reusablePrefixFingerprint = fingerprint(blocks.slice(0, lastBreakpoint + 1));
+  }
 
   if (comparison.msSincePreviousRequest !== undefined) {
     diagnostic.msSincePreviousRequest = comparison.msSincePreviousRequest;

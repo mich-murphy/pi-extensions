@@ -13,8 +13,8 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { errnoCode } from "../../shared/errno.js";
 import { GatewayClient } from "../adapter/client.js";
-import { isMissingFile } from "../adapter/locations.js";
 import { freshId } from "../adapter/transport.js";
 import { MAX_BINARY } from "../onboarding/artifact.js";
 import type { SetupBackend } from "../onboarding/backend.js";
@@ -286,7 +286,7 @@ async function changedProjection(path: string): Promise<string> {
   try {
     original = await readFile(path, "utf8");
   } catch (error) {
-    if (!isMissingFile(error)) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
 

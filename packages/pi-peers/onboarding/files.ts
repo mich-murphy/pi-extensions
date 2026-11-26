@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, unlink } from "node:fs/promises";
 import { dirname, parse, resolve as absolutePath, join } from "node:path";
-import { isMissingFile } from "../adapter/locations.js";
+import { errnoCode } from "../../shared/errno.js";
 import { foreignFolder, linkedFolder, openFolder, SETUP_BUSY } from "./refusal.js";
 import { decodeRecord, parseJson } from "./schema.js";
 
@@ -44,7 +44,7 @@ export async function regularBytes(path: string, follow = false): Promise<Buffer
       await file.close();
     }
   } catch (error) {
-    if (isMissingFile(error)) {
+    if (errnoCode(error) === "ENOENT") {
       return undefined;
     }
 
@@ -67,7 +67,7 @@ export async function privateDirectory(path: string): Promise<void> {
         throw linkedFolder(current);
       }
     } catch (error) {
-      if (!isMissingFile(error)) {
+      if (errnoCode(error) !== "ENOENT") {
         throw error;
       }
 

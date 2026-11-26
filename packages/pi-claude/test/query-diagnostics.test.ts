@@ -1,28 +1,26 @@
+import type { Types } from "effect";
 import { describe, expect, test } from "vitest";
 import type { ModelUsage } from "../sdk/messages";
 import { queryDiagnostics } from "../sdk/query-diagnostics";
 
-type ApiErrorFixture = { apiError?: string };
-
 function diagnostic(modelUsage: ModelUsage, apiError?: string) {
-  const api: ApiErrorFixture = {};
-
-  if (apiError !== undefined) {
-    api.apiError = apiError;
-  }
-
-  return queryDiagnostics({
+  const input: Types.Mutable<Parameters<typeof queryDiagnostics>[0]> = {
     outcome: "completed",
     numTurns: 3,
     modelUsage,
-    ...api,
     assistantToolUses: 4,
     maxAssistantToolUses: 2,
     errorToolResults: 1,
     invalidGatewayCalls: 1,
     unexpectedToolCalls: 1,
     fallbackCalls: 0,
-  });
+  };
+
+  if (apiError !== undefined) {
+    input.apiError = apiError;
+  }
+
+  return queryDiagnostics(input);
 }
 
 describe("safe query diagnostics", () => {

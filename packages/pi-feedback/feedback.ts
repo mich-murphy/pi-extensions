@@ -11,6 +11,7 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import { Option, Schema } from "effect";
+import type { Types } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { onOffCommand } from "../shared/on-off-command.ts";
@@ -155,7 +156,7 @@ const decodeNote = Schema.decodeUnknownOption(
 );
 
 function result(text: string, details: FeedbackDetails, isError = false): FeedbackResult {
-  const response: Omit<FeedbackResult, "isError"> & { isError?: boolean } = {
+  const response: Types.Mutable<FeedbackResult> = {
     content: [{ type: "text", text }],
     details,
   };
@@ -181,25 +182,21 @@ export function errorText(toolResult: unknown): string {
     : "";
 }
 
-function recordProvenance(ctx: FeedbackContext, piVersion: string, attribution: Attribution) {
-  type RecordEvidence = { evidence?: NonNullable<Attribution["evidence"]> };
-
-  const evidence: RecordEvidence = {};
-
+function recordProvenance(
+  draft: Types.Mutable<Pick<RecordEvent, "evidence" | "piVersion" | "model">>,
+  ctx: FeedbackContext,
+  piVersion: string,
+  attribution: Attribution,
+): void {
   if (attribution.evidence !== undefined) {
-    evidence.evidence = attribution.evidence;
+    draft.evidence = attribution.evidence;
   }
 
-  const provenance: typeof evidence & { piVersion: string; model?: string } = {
-    ...evidence,
-    piVersion,
-  };
+  draft.piVersion = piVersion;
 
   if (ctx.model !== undefined) {
-    provenance.model = `${ctx.model.provider}/${ctx.model.id}`;
+    draft.model = `${ctx.model.provider}/${ctx.model.id}`;
   }
-
-  return provenance;
 }
 
 function reportDraft(
@@ -210,7 +207,7 @@ function reportDraft(
 ): EventDraft {
   type ReportDraft = Extract<EventDraft, { type: "report" }>;
 
-  const report: Omit<ReportDraft, "workaround" | "impact"> & { workaround?: string } = {
+  const report: Types.Mutable<ReportDraft> = {
     type: "report",
     session: record.session,
     owner: record.attribution.owner,
@@ -220,17 +217,16 @@ function reportDraft(
     summary: params.summary,
     expected: params.expected,
     actual: params.actual,
+    impact: params.impact,
   };
 
   if (params.workaround !== undefined) {
     report.workaround = params.workaround;
   }
 
-  return {
-    ...report,
-    impact: params.impact,
-    ...recordProvenance(ctx, piVersion, record.attribution),
-  };
+  recordProvenance(report, ctx, piVersion, record.attribution);
+
+  return report;
 }
 
 function signalDraft(
@@ -243,7 +239,7 @@ function signalDraft(
 
   const { tool, error, ordered } = failure;
 
-  const signal: Omit<SignalDraft, "cause"> & { cause?: NonNullable<SignalDraft["cause"]> } = {
+  const signal: Types.Mutable<SignalDraft> = {
     type: "signal",
     session: ctx.sessionManager.getSessionId(),
     owner: attribution.owner,
@@ -256,7 +252,9 @@ function signalDraft(
     signal.cause = "parallel-batch";
   }
 
-  return { ...signal, ...recordProvenance(ctx, piVersion, attribution) };
+  recordProvenance(signal, ctx, piVersion, attribution);
+
+  return signal;
 }
 
 function toolCallsOf(message: MessageEndEvent["message"]): ReadonlyArray<BatchCall> | undefined {

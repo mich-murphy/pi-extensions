@@ -1,4 +1,5 @@
 import { Match } from "effect";
+import type { Types } from "effect";
 import { writeRedirectedDiagnostic } from "../diagnostic-output";
 import type {
   SdkQueryError,
@@ -106,12 +107,8 @@ const failureKind = Match.type<SdkTurnFailure>().pipe(
   }),
 );
 
-type FailureDiagnostic = {
-  -readonly [Key in keyof SdkFailureDiagnostic]: SdkFailureDiagnostic[Key];
-};
-
 export function diagnoseSdkRunError(error: SdkTurnFailure): SdkFailureDiagnostic {
-  const diagnostic: FailureDiagnostic = {
+  const diagnostic: Types.Mutable<SdkFailureDiagnostic> = {
     schemaVersion: 1,
     kind: failureKind(error),
     errorTag: error._tag,

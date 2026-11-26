@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Result, Schema } from "effect";
+import type { Types } from "effect";
 import { absurd } from "effect/Function";
 import type { DomainPolicy } from "./domain-policy";
 import { htmlToMarkdownWithTextFallback, htmlToText } from "./html";
@@ -130,7 +131,7 @@ function projectResponse(
     return Result.fail(new UnsupportedBinaryContent({ mime: parsedContentType.mime }));
   }
 
-  const meta: Omit<FetchPageMeta, "responseTruncated"> & { responseTruncated?: true } = {
+  const meta: Types.Mutable<FetchPageMeta> = {
     requestedUrl: response.requestedUrl,
     finalUrl: response.finalUrl,
     format,

@@ -2,6 +2,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { STATUS_CODES } from "node:http";
 import { BlockList, isIP } from "node:net";
 import { Context, Effect, Layer, Option, Schema } from "effect";
+import type { Types } from "effect";
 import { absurd } from "effect/Function";
 import { checkDomainPolicy } from "./domain-policy";
 import type { DomainPolicy, DomainPolicyError } from "./domain-policy";
@@ -758,9 +759,7 @@ export class PublicWebClient extends Context.Service<
             ),
           );
 
-          const result: Omit<PublicWebResponse, "responseTruncated"> & {
-            responseTruncated?: true;
-          } = {
+          const result: Types.Mutable<PublicWebResponse> = {
             requestedUrl: request.url,
             finalUrl,
             status: response.status,

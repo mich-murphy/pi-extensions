@@ -1,5 +1,6 @@
 import { AbortError } from "@anthropic-ai/claude-agent-sdk";
-import { Match, Option, Predicate, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
+import { errnoCode } from "../../shared/errno";
 import { MIN_CLAUDE_CODE_VERSION } from "./claude-executable";
 import { lenientOptional } from "./lenient-schema";
 import {
@@ -97,7 +98,7 @@ function classifyQueryCause(cause: unknown): SdkQueryFailureReason {
     return { _tag: "Cancelled" };
   }
 
-  if (cause instanceof Error && Predicate.hasProperty(cause, "code") && cause.code === "ENOENT") {
+  if (errnoCode(cause) === "ENOENT") {
     return { _tag: "ExecutableNotFound" };
   }
 

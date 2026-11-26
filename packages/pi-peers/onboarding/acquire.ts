@@ -16,8 +16,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Schema } from "effect";
-import { isMissingFile } from "../adapter/locations.js";
+import { errnoCode } from "../../shared/errno.js";
 import {
   MAX_ARCHIVE,
   MAX_BINARY,
@@ -279,7 +278,7 @@ async function ensureSafeAncestor(current: string, io: AcquisitionSeams["fs"]): 
     const stat = await io.lstat(current);
     validateAncestorStat(current, stat);
   } catch (error) {
-    if (!(error instanceof Error && isMissingFile(error))) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
 
@@ -438,7 +437,7 @@ async function entryExists(filename: string, io: AcquisitionSeams["fs"]): Promis
 
     return true;
   } catch (error) {
-    if (error instanceof Error && isMissingFile(error)) {
+    if (errnoCode(error) === "ENOENT") {
       return false;
     }
 
@@ -669,8 +668,6 @@ async function probeGateway(
   }
 }
 
-const isExistingFile = Schema.is(Schema.Struct({ code: Schema.Literal("EEXIST") }));
-
 function validateAncestorStat(folder: string, stat: Stats): void {
   const uid = process.getuid?.();
 
@@ -835,7 +832,7 @@ async function publicationCollision(
     });
   }
 
-  if (!(cause instanceof Error && isExistingFile(cause))) {
+  if (errnoCode(cause) !== "EEXIST") {
     throw cause;
   }
 

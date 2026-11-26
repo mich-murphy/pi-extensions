@@ -3,9 +3,10 @@ import { constants, realpathSync } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { errnoCode } from "../../shared/errno.js";
 import { loadConfiguration } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
-import { isMissingFile, isMissingPath, stateLocations } from "../adapter/locations.js";
+import { stateLocations } from "../adapter/locations.js";
 import { MAX_BINARY } from "./artifact.js";
 import {
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
@@ -134,7 +135,7 @@ export async function inspectSetup(agentDir: string, socketPath?: string) {
     await lstat(paths.adapter);
     existing = true;
   } catch (error) {
-    if (!isMissingFile(error)) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
   }
@@ -145,7 +146,7 @@ export async function inspectSetup(agentDir: string, socketPath?: string) {
     const socket = await lstat(socketPath ?? paths.socket);
     sharedInstance = socket.isSocket();
   } catch (error) {
-    if (!isMissingFile(error)) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
   }
@@ -299,7 +300,9 @@ export async function hasResetTarget(agentDir: string): Promise<boolean> {
 
         return true;
       } catch (error) {
-        if (isMissingPath(error)) {
+        const code = errnoCode(error);
+
+        if (code === "ENOENT" || code === "ENOTDIR") {
           return false;
         }
 
@@ -566,7 +569,7 @@ async function bootstrapSnapshot(paths: SetupPaths, requiredCapabilities: Readon
       sha256,
     };
   } catch (error) {
-    if (!isMissingFile(error)) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
   }
