@@ -74,10 +74,17 @@ Untracked files are not part of these three checks, even if they are production 
 
 The native adapter test needs the built gateway, which `npm run check:rust` builds. In a fresh clone, run it or `cd packages/pi-peers/gateway && cargo build --locked` before `npx vitest run`, or that test fails and names the missing binary.
 
+### Lint policy
+
+[`oxlint.config.ts`](oxlint.config.ts) extends [`@cloudflare/oxlint-config`](https://www.npmjs.com/package/@cloudflare/oxlint-config) and keeps `oxlint-tsgolint` as the type-aware backend. The preset's `quality` plugin provides 12 rules from anti-slop. The [vendored plugins](config/oxlint/anti-slop/UPSTREAM.md) supply only the rules the preset lacks. When updating either the preset or the vendored plugins, enable new rules and fix their findings in the same change.
+
+Pi extensions share the TUI process, so console output can corrupt the screen and exiting kills Pi. Default exports are allowed where Pi or a tool loads them. Tests can sequence awaits to pin down ordering, and `@effect/vitest`'s `it.effect` and `it.live` count as test blocks without allowing plain `it`.
+
+Small maps favor immutable values over in-place mutation. `unicorn/throw-new-error` would flag Effect's `Schema.TaggedError` factory; `unicorn/new-for-builtins` still catches calls to `Error` without `new`, and TypeScript catches calls to classes without `new`.
+
 Fix findings rather than silencing them:
 
 - Suppress a lint rule only on the offending line, with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
-- Keep the rules in [`config/oxlint/anti-slop/`](config/oxlint/anti-slop/UPSTREAM.md) byte-identical to upstream and enable every exported rule. Enable new rules and fix their findings in the same change as the upstream update.
 - Replace type assertions with an Effect Schema decode, `satisfies`, or a type annotation. If an assertion is unavoidable, use `// oxlint-disable-next-line typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion -- <checked invariant>`, never a `SAFETY:` comment.
 - Test any `Schema.declare` guard that checks less than its type claims against the real producer. See [`packages/pi-scrollback/test/`](packages/pi-scrollback/test/) and [`packages/pi-claude/test/sdk-release-contract.test.ts`](packages/pi-claude/test/sdk-release-contract.test.ts).
 - Do not add `fallow-ignore` comments, raise thresholds or exclude files.

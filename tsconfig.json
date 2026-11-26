@@ -26,6 +26,7 @@
     }
   },
   "include": [
+    "oxlint.config.ts",
     "packages/**/*.ts",
     "vitest.config.ts",
     "vitest.live.config.ts",
