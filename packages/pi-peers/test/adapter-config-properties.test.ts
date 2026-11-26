@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import {
   assertHegel,
@@ -23,10 +23,10 @@ type Policy = {
 
 function drawPolicies(tc: TestCase): Policy[] {
   return tc.draw(
-    gs.arrays(
-      gs.sampledFrom(["alpha", "beta"]).flatMap((machineId) =>
-        gs.sampledFrom(["outgoing", "incoming"] as const).flatMap((direction) =>
-          gs.arrays(gs.sampledFrom(everyPermission), { unique: true }).map((permissions) => ({
+    arrays(
+      sampledFrom(["alpha", "beta"]).flatMap((machineId) =>
+        sampledFrom(["outgoing", "incoming"] as const).flatMap((direction) =>
+          arrays(sampledFrom(everyPermission), { unique: true }).map((permissions) => ({
             machineId,
             scopeId: "team",
             permissions,

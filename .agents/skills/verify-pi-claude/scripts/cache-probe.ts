@@ -7,11 +7,13 @@ import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import type { Message } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import type * as AgentRequestModule from "../../../../packages/pi-claude/agent-request";
+import type { buildAgentRequest as buildAgentRequestExport } from "../../../../packages/pi-claude/agent-request";
 import type { BridgeEvent, TokenUsage } from "../../../../packages/pi-claude/bridge";
-import type * as ModelsModule from "../../../../packages/pi-claude/models";
-import type * as RunnerModule from "../../../../packages/pi-claude/sdk/runner";
-import type { RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
+import type { models as modelsExport } from "../../../../packages/pi-claude/models";
+import type {
+  RunSdkQuery,
+  createClaudeAgentSdkRunner as createClaudeAgentSdkRunnerExport,
+} from "../../../../packages/pi-claude/sdk/runner";
 import { snapshotLoader, snapshotModel } from "./snapshot";
 
 type TurnRecord = {
@@ -61,9 +63,16 @@ const { values } = parseArgs({
 const packageDir = path.resolve(values.package ?? "packages/pi-claude");
 const modelId = values.model;
 const load = snapshotLoader(packageDir);
-const { buildAgentRequest } = await load<typeof AgentRequestModule>("agent-request.ts");
-const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runner.ts");
-const { models } = await load<typeof ModelsModule>("models.ts");
+
+const { buildAgentRequest } = await load<{ buildAgentRequest: typeof buildAgentRequestExport }>(
+  "agent-request.ts",
+);
+
+const { createClaudeAgentSdkRunner } = await load<{
+  createClaudeAgentSdkRunner: typeof createClaudeAgentSdkRunnerExport;
+}>("sdk/runner.ts");
+
+const { models } = await load<{ models: typeof modelsExport }>("models.ts");
 
 const entry = models.find((candidate) => candidate.id === modelId);
 

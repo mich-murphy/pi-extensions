@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  integers,
+  oneOf,
+  record,
+  sampledFrom,
+  text as textGen,
+} from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { contextRow, selectContext } from "../context";
@@ -74,17 +81,17 @@ function assertRow(text: string, width: number): void {
   }
 }
 
-const word = gs
-  .text({ minSize: 1, maxSize: 6, codec: "ascii" })
-  .filter((s) => /^[a-z]+$/iu.test(s));
+const word = textGen({ minSize: 1, maxSize: 6, codec: "ascii" }).filter((s) =>
+  /^[a-z]+$/iu.test(s),
+);
 
-const spaces = gs.sampledFrom(["", "   ", " "]);
+const spaces = sampledFrom(["", "   ", " "]);
 
-const block = gs.record({
-  kind: gs.sampledFrom(["filler", "prompt"] as const),
-  first: gs.oneOf(word, word, spaces),
-  body: gs.arrays(gs.oneOf(word, spaces), { maxSize: 4 }),
-  pad: gs.integers({ minValue: 0, maxValue: 3 }),
+const block = record({
+  kind: sampledFrom(["filler", "prompt"] as const),
+  first: oneOf(word, word, spaces),
+  body: arrays(oneOf(word, spaces), { maxSize: 4 }),
+  pad: integers({ minValue: 0, maxValue: 3 }),
 });
 
 const fragments = [
@@ -104,8 +111,8 @@ const fragments = [
 describe("scroll context properties", () => {
   test("selectContext returns the last prompt starting at or above scrollTop", () => {
     new Hegel((tc) => {
-      const blocks = tc.draw(gs.arrays(block, { maxSize: 8 }));
-      const raw = tc.draw(gs.integers({ minValue: 0, maxValue: 200 }));
+      const blocks = tc.draw(arrays(block, { maxSize: 8 }));
+      const raw = tc.draw(integers({ minValue: 0, maxValue: 200 }));
       assertSelect(blocks, raw);
     })
       .settings(settings)
@@ -115,12 +122,10 @@ describe("scroll context properties", () => {
   test("contextRow is exactly width cells with no escapes or controls", () => {
     new Hegel((tc) => {
       const text = tc
-        .draw(
-          gs.arrays(gs.oneOf(gs.sampledFrom(fragments), gs.text({ maxSize: 4 })), { maxSize: 12 }),
-        )
+        .draw(arrays(oneOf(sampledFrom(fragments), textGen({ maxSize: 4 })), { maxSize: 12 }))
         .join("");
 
-      const width = tc.draw(gs.integers({ minValue: 3, maxValue: 40 }));
+      const width = tc.draw(integers({ minValue: 3, maxValue: 40 }));
       assertRow(text, width);
     })
       .settings(settings)

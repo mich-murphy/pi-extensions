@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  integers,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+} from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -24,16 +31,16 @@ function prose(length: number): string {
 
 function drawNear(tc: TestCase, near: number, low: number, high: number): number {
   return tc.draw(
-    gs.oneOf(
-      gs.integers({ minValue: near - 6, maxValue: near + 6 }),
-      gs.integers({ minValue: low, maxValue: high }),
+    oneOf(
+      integers({ minValue: near - 6, maxValue: near + 6 }),
+      integers({ minValue: low, maxValue: high }),
     ),
   );
 }
 
 function drawBinaryCase(tc: TestCase): Case {
   const length = drawNear(tc, 4096, 3900, 10_000);
-  const controls = tc.draw(gs.integers({ minValue: 0, maxValue: 24 }));
+  const controls = tc.draw(integers({ minValue: 0, maxValue: 24 }));
   const text = "\0".repeat(controls) + prose(length - controls);
   const flagged = length >= 4096 && controls >= 8 && controls * 500 >= length;
 
@@ -42,11 +49,11 @@ function drawBinaryCase(tc: TestCase): Case {
 
 function drawBase64Case(tc: TestCase): Case {
   const run = drawNear(tc, 8192, 1000, 12_000);
-  const pad = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
-  const spaces = tc.draw(gs.integers({ minValue: 0, maxValue: 900 }));
-  const space = tc.draw(gs.sampledFrom([" ", "\n", "\t"]));
-  const noise = tc.draw(gs.booleans());
-  const chunk = tc.draw(gs.arrays(gs.sampledFrom(B64_CHARS), { minSize: 1, maxSize: 9 })).join("");
+  const pad = tc.draw(integers({ minValue: 0, maxValue: 2 }));
+  const spaces = tc.draw(integers({ minValue: 0, maxValue: 900 }));
+  const space = tc.draw(sampledFrom([" ", "\n", "\t"]));
+  const noise = tc.draw(booleans());
+  const chunk = tc.draw(arrays(sampledFrom(B64_CHARS), { minSize: 1, maxSize: 9 })).join("");
   let body = chunk.repeat(Math.ceil(run / chunk.length)).slice(0, run - pad);
 
   if (noise) {
@@ -60,7 +67,7 @@ function drawBase64Case(tc: TestCase): Case {
 }
 
 function drawCase(tc: TestCase): Case {
-  return tc.draw(gs.booleans()) ? drawBinaryCase(tc) : drawBase64Case(tc);
+  return tc.draw(booleans()) ? drawBinaryCase(tc) : drawBase64Case(tc);
 }
 
 function toBlocks(tc: TestCase, text: string, split: boolean): Block[] {
@@ -69,7 +76,7 @@ function toBlocks(tc: TestCase, text: string, split: boolean): Block[] {
   }
 
   const lines = text.split("\n");
-  const size = tc.draw(gs.integers({ minValue: 1, maxValue: 60 }));
+  const size = tc.draw(integers({ minValue: 1, maxValue: 60 }));
   const blocks: Block[] = [];
 
   for (let index = 0; index < lines.length; index += size) {
@@ -156,7 +163,7 @@ function assertFlaggedReplaced(before: Message | undefined, after: Message | und
 }
 
 function assertContext(tc: TestCase): void {
-  const kinds = tc.draw(gs.arrays(gs.integers({ minValue: 0, maxValue: 4 }), { maxSize: 8 }));
+  const kinds = tc.draw(arrays(integers({ minValue: 0, maxValue: 4 }), { maxSize: 8 }));
   const input = kinds.map((kind) => makeMessage(kind));
   const output = sanitizeContextMessages(input);
   assert.equal(output.length, input.length);
@@ -185,20 +192,20 @@ const SUBSTITUTIONS = [
 const GAPS = ["", " ", " -n ", " 2>/dev/null "];
 
 function assertCatDetection(tc: TestCase): void {
-  const gap = tc.draw(gs.sampledFrom(GAPS));
-  const sub = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
-  const sep = tc.draw(gs.sampledFrom(SEPARATORS));
-  const head = tc.draw(gs.sampledFrom(["", "echo hi; "]));
+  const gap = tc.draw(sampledFrom(GAPS));
+  const sub = tc.draw(sampledFrom(SUBSTITUTIONS));
+  const sep = tc.draw(sampledFrom(SEPARATORS));
+  const head = tc.draw(sampledFrom(["", "echo hi; "]));
   const separated = `${head}cat${gap}${sep}${gap}${sub}`;
   assert.equal(inspectBashCommand(separated), undefined);
-  const quote = tc.draw(gs.sampledFrom(["", '"']));
+  const quote = tc.draw(sampledFrom(["", '"']));
   const direct = `${head}cat ${gap}${quote}${sub}${quote}`;
   assert.equal(inspectBashCommand(direct)?.includes('file "$(which COMMAND)"'), true);
 }
 
 function assertShellData(tc: TestCase): void {
-  const sub = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
-  const padding = tc.draw(gs.text({ maxSize: 100 }));
+  const sub = tc.draw(sampledFrom(SUBSTITUTIONS));
+  const padding = tc.draw(textGen({ maxSize: 100 }));
   const data = `${padding} cat ${sub}`;
   const quoted = `'${data.replaceAll("'", `'"'"'`)}'`;
   assert.equal(inspectBashCommand(`printf '%s' ${quoted}`), undefined);
@@ -213,13 +220,13 @@ function assertShellData(tc: TestCase): void {
 }
 
 function assertReviewSyntax(tc: TestCase): void {
-  const value = tc.draw(gs.integers({ minValue: 0, maxValue: 1000 }));
+  const value = tc.draw(integers({ minValue: 0, maxValue: 1000 }));
 
   const delimiter = tc
-    .draw(gs.arrays(gs.sampledFrom("ABCDEF".split("")), { minSize: 1, maxSize: 12 }))
+    .draw(arrays(sampledFrom("ABCDEF".split("")), { minSize: 1, maxSize: 12 }))
     .join("");
 
-  const substitution = tc.draw(gs.sampledFrom(SUBSTITUTIONS));
+  const substitution = tc.draw(sampledFrom(SUBSTITUTIONS));
   assert.equal(inspectBashCommand(`cat "$((which + (${value})))"`), undefined);
   assert.notEqual(inspectBashCommand(`echo "$((1 + $(cat ${substitution})))"`), undefined);
   assert.notEqual(inspectBashCommand(`{ cat ${substitution}; }`), undefined);
@@ -230,8 +237,8 @@ function assertReviewSyntax(tc: TestCase): void {
 }
 
 function assertNeverThrows(tc: TestCase): void {
-  const text = tc.draw(gs.text({ maxSize: 200 }));
-  const mixed = tc.draw(gs.arrays(gs.sampledFrom(["cat ", "$(", "`", "which", ")", ";", "\n"])));
+  const text = tc.draw(textGen({ maxSize: 200 }));
+  const mixed = tc.draw(arrays(sampledFrom(["cat ", "$(", "`", "which", ")", ";", "\n"])));
 
   for (const command of [text, mixed.join("")]) {
     const verdict = inspectBashCommand(command);

@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  just,
+  oneOf,
+  optional,
+  sampledFrom,
+} from "@hegeldev/hegel/generators";
 import { Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -26,8 +35,8 @@ const COUNT_KEYS = [
 
 const INVALID_LIMITS = [null, 0, -1, 1.5, "64000", Number.NaN, Number.POSITIVE_INFINITY];
 
-const count = gs.optional(gs.integers({ minValue: 0, maxValue: 6 }));
-const maybeCount = gs.oneOf(count, gs.just(undefined));
+const count = optional(integers({ minValue: 0, maxValue: 6 }));
+const maybeCount = oneOf(count, just(undefined));
 
 function lastReported(values: readonly (number | null | undefined)[]): number | undefined {
   return values.findLast((value) => Schema.is(Schema.Number)(value));
@@ -35,9 +44,9 @@ function lastReported(values: readonly (number | null | undefined)[]): number | 
 
 function drawReport(tc: TestCase): ReportedUsage {
   const creation = tc.draw(
-    gs.oneOf(
-      gs.just(undefined),
-      gs.composite((inner) => ({
+    oneOf(
+      just(undefined),
+      composite((inner) => ({
         ephemeral_1h_input_tokens: inner.draw(maybeCount),
         ephemeral_5m_input_tokens: inner.draw(maybeCount),
       })),
@@ -61,7 +70,7 @@ function creationOf(
 }
 
 function assertUsageFold(tc: TestCase): void {
-  const reports = tc.draw(gs.arrays(gs.composite(drawReport), { maxSize: 6 }));
+  const reports = tc.draw(arrays(composite(drawReport), { maxSize: 6 }));
   let folded: ReturnType<typeof applyUsage> | undefined;
 
   for (const report of reports) {
@@ -81,8 +90,8 @@ function assertUsageFold(tc: TestCase): void {
 }
 
 function assertTurnScopeSplit(tc: TestCase): void {
-  const before = tc.draw(gs.composite(drawReport));
-  const final = tc.draw(gs.composite(drawReport));
+  const before = tc.draw(composite(drawReport));
+  const final = tc.draw(composite(drawReport));
   const prior = applyUsage(undefined, before);
   const turn = applyUsage(prior, final, "turn");
   assert.equal(turn.cacheWrite1h, creationOf(final, "ephemeral_1h_input_tokens") ?? undefined);
@@ -130,15 +139,15 @@ function validLimit(value: number | string | null): number | undefined {
 }
 
 function assertLimitLookup(tc: TestCase): void {
-  const base = tc.draw(gs.sampledFrom(["claude-haiku-4-5", "claude-fable-5-1", "claude-x-2"]));
-  const date = tc.draw(gs.integers({ minValue: 20_200_101, maxValue: 20_991_231 }));
-  const good = gs.integers({ minValue: 1, maxValue: 2_000_000 });
-  const context = tc.draw(gs.oneOf(good, gs.sampledFrom(INVALID_LIMITS)));
-  const output = tc.draw(gs.oneOf(good, gs.sampledFrom(INVALID_LIMITS)));
-  const keyDated = tc.draw(gs.booleans());
+  const base = tc.draw(sampledFrom(["claude-haiku-4-5", "claude-fable-5-1", "claude-x-2"]));
+  const date = tc.draw(integers({ minValue: 20_200_101, maxValue: 20_991_231 }));
+  const good = integers({ minValue: 1, maxValue: 2_000_000 });
+  const context = tc.draw(oneOf(good, sampledFrom(INVALID_LIMITS)));
+  const output = tc.draw(oneOf(good, sampledFrom(INVALID_LIMITS)));
+  const keyDated = tc.draw(booleans());
   const key = keyDated ? `${base}-${date}` : base;
   const modelUsage = limitsFor(context, output, base, key);
-  const other = tc.draw(gs.booleans());
+  const other = tc.draw(booleans());
   const modelUsage2 = other ? modelUsage : limitsFor(context, output, base, key);
 
   for (const model of [base, `${base}-${date}`, `${base}-20251001`]) {

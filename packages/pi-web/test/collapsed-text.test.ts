@@ -1,5 +1,5 @@
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { CollapsedTextLength, normalizedTextLength } from "../collapsed-text";
@@ -30,9 +30,7 @@ const ALPHABET = [
   "\uFEFF",
 ];
 
-const textGenerator = gs
-  .arrays(gs.sampledFrom(ALPHABET), { maxSize: 14 })
-  .map((parts) => parts.join(""));
+const textGenerator = arrays(sampledFrom(ALPHABET), { maxSize: 14 }).map((parts) => parts.join(""));
 
 const settings = propertySettings(200);
 
@@ -63,7 +61,7 @@ describe("collapsedTextLength", () => {
 
   test("appending measures of pieces measures their concatenation", () => {
     new Hegel((tc) => {
-      const pieces = tc.draw(gs.arrays(textGenerator, { minSize: 1, maxSize: 4 }), "pieces");
+      const pieces = tc.draw(arrays(textGenerator, { minSize: 1, maxSize: 4 }), "pieces");
       const combined = new CollapsedTextLength();
 
       for (const piece of pieces) {

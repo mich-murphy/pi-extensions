@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  binary,
+  booleans,
+  integers,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
@@ -157,17 +166,17 @@ function assertUtf8Agreement(pieces: readonly Uint8Array[]): void {
   assert.equal(accepted, valid);
 }
 
-const jsonish = gs.oneOf(
-  gs.text({ maxSize: 60 }),
-  gs.text({ maxSize: 60, alphabet: '{}[]":,0123456789truefalsn\\u-.eE \n' }),
+const jsonish = oneOf(
+  textGen({ maxSize: 60 }),
+  textGen({ maxSize: 60, alphabet: '{}[]":,0123456789truefalsn\\u-.eE \n' }),
 );
 
 describe("Hegel decoder totality", () => {
   test("decodeFrame on arbitrary bytes returns a frame or throws ProtocolError", () => {
     new Hegel((tc) => {
-      const raw = tc.draw(gs.binary({ maxSize: 200 }), "bytes");
-      const fix = tc.draw(gs.booleans(), "fix-prefix");
-      const role = tc.draw(gs.sampledFrom(roles), "role");
+      const raw = tc.draw(binary({ maxSize: 200 }), "bytes");
+      const fix = tc.draw(booleans(), "fix-prefix");
+      const role = tc.draw(sampledFrom(roles), "role");
       assertTotal(arbitraryBytes(raw, fix), role);
     })
       .settings(settings)
@@ -176,24 +185,21 @@ describe("Hegel decoder totality", () => {
 
   test("decodeFrame on mutated valid frames is total and re-encodes stably", () => {
     new Hegel((tc) => {
-      const index = tc.draw(
-        gs.integers({ minValue: 0, maxValue: validFrames.length - 1 }),
-        "frame",
-      );
+      const index = tc.draw(integers({ minValue: 0, maxValue: validFrames.length - 1 }), "frame");
 
       const edits = tc.draw(
-        gs.arrays(
-          gs.tuples(
-            gs.integers({ minValue: 0, maxValue: 400 }),
-            gs.integers({ minValue: 0, maxValue: 255 }),
+        arrays(
+          tuples(
+            integers({ minValue: 0, maxValue: 400 }),
+            integers({ minValue: 0, maxValue: 255 }),
           ),
           { minSize: 1, maxSize: 3 },
         ),
         "edits",
       );
 
-      const fix = tc.draw(gs.booleans(), "fix-prefix");
-      const role = tc.draw(gs.sampledFrom(roles), "role");
+      const fix = tc.draw(booleans(), "fix-prefix");
+      const role = tc.draw(sampledFrom(roles), "role");
       const sample = mutated(index, edits, fix);
       assertTotal(sample.bytes, role);
       assertTotal(sample.bytes, sample.role);
@@ -205,7 +211,7 @@ describe("Hegel decoder totality", () => {
   test("decodeJson on arbitrary strings and bytes is total", () => {
     new Hegel((tc) => {
       const text = tc.draw(jsonish, "text");
-      const raw = tc.draw(gs.binary({ maxSize: 100 }), "bytes");
+      const raw = tc.draw(binary({ maxSize: 100 }), "bytes");
       assertJsonTotal(Buffer.from(text, "utf8"));
       assertJsonTotal(raw);
     })
@@ -215,10 +221,7 @@ describe("Hegel decoder totality", () => {
 
   test("decodeJson accepts string bodies iff fatal UTF-8 decoding does", () => {
     new Hegel((tc) => {
-      const pieces = tc.draw(
-        gs.arrays(gs.sampledFrom(utf8Pieces), { minSize: 1, maxSize: 6 }),
-        "pieces",
-      );
+      const pieces = tc.draw(arrays(sampledFrom(utf8Pieces), { minSize: 1, maxSize: 6 }), "pieces");
 
       assertUtf8Agreement(pieces);
     })

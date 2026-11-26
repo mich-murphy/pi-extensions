@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
-import * as gs from "@hegeldev/hegel/generators";
+import { sampledFrom } from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
@@ -119,12 +119,12 @@ describe("peersClient", () => {
   });
   test("generated requests decode unchanged", () => {
     assertHegel(propertySettings(200), (tc) => {
-      const kind = tc.draw(gs.sampledFrom(["request", "reply", "update"] as const), "kind");
-      const content = tc.draw(gs.sampledFrom(["x", "é", "line\nbreak", "🙂"]), "content");
-      const scope = tc.draw(gs.sampledFrom(["team", "a-b_c", "Z9"]), "scope");
+      const kind = tc.draw(sampledFrom(["request", "reply", "update"] as const), "kind");
+      const content = tc.draw(sampledFrom(["x", "é", "line\nbreak", "🙂"]), "content");
+      const scope = tc.draw(sampledFrom(["team", "a-b_c", "Z9"]), "scope");
 
       const request = {
-        id: tc.draw(gs.sampledFrom(["1", "abc", "a-b_c"]), "id"),
+        id: tc.draw(sampledFrom(["1", "abc", "a-b_c"]), "id"),
         op: "send",
         to: beta,
         scope,

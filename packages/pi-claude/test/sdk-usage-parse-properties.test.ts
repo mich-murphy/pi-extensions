@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  floats,
+  integers,
+  oneOf,
+  optional,
+  sampledFrom,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import type { Schema } from "effect";
 import { Effect } from "effect";
 import { describe, test } from "vitest";
@@ -53,7 +61,7 @@ async function inspect(rateLimits: Schema.Json): Promise<Outcome> {
 }
 
 function drawWindow(tc: TestCase): Window | null | undefined {
-  const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
+  const kind = tc.draw(integers({ minValue: 0, maxValue: 2 }));
 
   if (kind === 0) {
     return undefined;
@@ -63,7 +71,7 @@ function drawWindow(tc: TestCase): Window | null | undefined {
     return null;
   }
 
-  const utilization = tc.draw(gs.optional(gs.integers({ minValue: 0, maxValue: 100 })));
+  const utilization = tc.draw(optional(integers({ minValue: 0, maxValue: 100 })));
 
   return { utilization, resets_at: null };
 }
@@ -88,13 +96,9 @@ async function assertDedupe(tc: TestCase): Promise<void> {
   }
 
   const scoped = tc.draw(
-    gs.arrays(
-      gs.tuples(
-        gs.sampledFrom(SCOPED_NAMES),
-        gs.optional(gs.integers({ minValue: 0, maxValue: 100 })),
-      ),
-      { maxSize: 6 },
-    ),
+    arrays(tuples(sampledFrom(SCOPED_NAMES), optional(integers({ minValue: 0, maxValue: 100 }))), {
+      maxSize: 6,
+    }),
   );
 
   rateLimits.model_scoped = scoped.map(([display_name, utilization]) => ({
@@ -126,14 +130,14 @@ async function assertDedupe(tc: TestCase): Promise<void> {
 
 async function assertUtilizationBounds(tc: TestCase): Promise<void> {
   const bad = tc.draw(
-    gs.oneOf(
-      gs.floats({ minValue: 100.001, maxValue: 1e9 }),
-      gs.floats({ minValue: -1e9, maxValue: -0.001 }),
+    oneOf(
+      floats({ minValue: 100.001, maxValue: 1e9 }),
+      floats({ minValue: -1e9, maxValue: -0.001 }),
     ),
   );
 
-  const where = tc.draw(gs.sampledFrom(["five_hour", "seven_day_opus", "model_scoped"]));
-  const good = tc.draw(gs.integers({ minValue: 0, maxValue: 100 }));
+  const where = tc.draw(sampledFrom(["five_hour", "seven_day_opus", "model_scoped"]));
+  const good = tc.draw(integers({ minValue: 0, maxValue: 100 }));
   const window = { utilization: bad, resets_at: null };
   const goodWindow = { utilization: good, resets_at: null };
 
@@ -148,7 +152,7 @@ async function assertUtilizationBounds(tc: TestCase): Promise<void> {
       : { seven_day: goodWindow, [where]: window };
 
   assert.deepEqual(await inspect(limits), { failed: "parse" });
-  const edge = tc.draw(gs.sampledFrom([0, 100]));
+  const edge = tc.draw(sampledFrom([0, 100]));
   const accepted = await inspect({ five_hour: { utilization: edge, resets_at: null } });
   assert.ok("status" in accepted);
 }
@@ -168,21 +172,16 @@ function isRealDate(year: number, month: number, day: number): boolean {
 
 async function assertResetDate(tc: TestCase): Promise<void> {
   const year = tc.draw(
-    gs.oneOf(
-      gs.integers({ minValue: 0, maxValue: 9999 }),
-      gs.sampledFrom([1900, 2000, 2024, 2100, 2023, 1600, 2400, 0]),
+    oneOf(
+      integers({ minValue: 0, maxValue: 9999 }),
+      sampledFrom([1900, 2000, 2024, 2100, 2023, 1600, 2400, 0]),
     ),
   );
 
-  const month = tc.draw(
-    gs.oneOf(gs.integers({ minValue: 0, maxValue: 13 }), gs.sampledFrom([2, 2, 4, 12])),
-  );
+  const month = tc.draw(oneOf(integers({ minValue: 0, maxValue: 13 }), sampledFrom([2, 2, 4, 12])));
 
   const day = tc.draw(
-    gs.oneOf(
-      gs.integers({ minValue: 0, maxValue: 32 }),
-      gs.integers({ minValue: 28, maxValue: 31 }),
-    ),
+    oneOf(integers({ minValue: 0, maxValue: 32 }), integers({ minValue: 28, maxValue: 31 })),
   );
 
   const resets = `${pad(year, 4)}-${pad(month)}-${pad(day)}T12:00:00Z`;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, floats, sampledFrom, text, tuples } from "@hegeldev/hegel/generators";
 import { Result, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
@@ -19,8 +19,8 @@ const ALLOW_ENV = "PI_WEB_FETCH_ALLOW_DOMAINS";
 const DENY_ENV = "PI_WEB_FETCH_DENY_DOMAINS";
 
 const LABELS = ["a", "evil", "Com", "x-y", "1", "xn--p1ai", "Mixed-Case"];
-const entryLabels = gs.arrays(gs.sampledFrom(LABELS), { minSize: 1, maxSize: 4 });
-const entry = gs.tuples(entryLabels, gs.booleans(), gs.sampledFrom(["", " ", "\t "]));
+const entryLabels = arrays(sampledFrom(LABELS), { minSize: 1, maxSize: 4 });
+const entry = tuples(entryLabels, booleans(), sampledFrom(["", " ", "\t "]));
 
 const DEFECTS: readonly (readonly [string, (name: string) => string])[] = [
   ["wildcard", (name) => `*.${name}`],
@@ -104,15 +104,15 @@ describe("parseSettings properties", () => {
   test("API keys never influence the parsed settings", () => {
     assertHegel(settings, (tc) => {
       checkKeysIgnored(
-        tc.draw(gs.arrays(gs.text({ maxSize: 24 }), { minSize: 3, maxSize: 3 }), "keys"),
-        tc.draw(gs.sampledFrom([{}, { [PROVIDERS_ENV]: "parallel, exa" }]), "base"),
+        tc.draw(arrays(text({ maxSize: 24 }), { minSize: 3, maxSize: 3 }), "keys"),
+        tc.draw(sampledFrom([{}, { [PROVIDERS_ENV]: "parallel, exa" }]), "base"),
       );
     });
   });
 
   test("domain entries normalize to lowercase names without a trailing dot", () => {
     assertHegel(settings, (tc) => {
-      checkNormalized(tc.draw(gs.arrays(entry, { maxSize: 5 }), "entries"));
+      checkNormalized(tc.draw(arrays(entry, { maxSize: 5 }), "entries"));
     });
   });
 
@@ -120,9 +120,9 @@ describe("parseSettings properties", () => {
     assertHegel(settings, (tc) => {
       checkMalformed(
         tc.draw(entryLabels, "labels"),
-        tc.draw(gs.sampledFrom(DEFECTS), "defect"),
+        tc.draw(sampledFrom(DEFECTS), "defect"),
         tc.draw(entryLabels, "neighbour").join("."),
-        tc.draw(gs.sampledFrom([ALLOW_ENV, DENY_ENV]), "env"),
+        tc.draw(sampledFrom([ALLOW_ENV, DENY_ENV]), "env"),
       );
     });
   });
@@ -133,8 +133,8 @@ describe("clampInteger properties", () => {
   test("stays in bounds, is idempotent and monotonic", () => {
     assertHegel(settings, (tc) => {
       checkClamp(
-        tc.draw(gs.floats({ minValue: -5, maxValue: 130 }), "a"),
-        tc.draw(gs.floats({ minValue: -1e6, maxValue: 1e6 }), "b"),
+        tc.draw(floats({ minValue: -5, maxValue: 130 }), "a"),
+        tc.draw(floats({ minValue: -1e6, maxValue: 1e6 }), "b"),
       );
     });
   });

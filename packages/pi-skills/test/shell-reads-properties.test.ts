@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { isAbsolute, resolve } from "node:path";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+} from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { pathsReadByCommand } from "../shell-reads";
 import { assertProperty } from "./hegel-property";
@@ -49,15 +57,15 @@ function encodeChunk(chunk: readonly string[], scheme: number): string {
 
 type Quoted = { readonly word: string; readonly source: string };
 
-const quoted = gs.composite((tc): Quoted => {
-  const first = tc.draw(gs.sampledFrom("abc/.~*{$".split("")));
-  const rest = tc.draw(gs.text({ alphabet: "abc/. *?[{}~$`'\"\\#;&|<>()=,", maxSize: 8 }));
+const quoted = composite((tc): Quoted => {
+  const first = tc.draw(sampledFrom("abc/.~*{$".split("")));
+  const rest = tc.draw(textGen({ alphabet: "abc/. *?[{}~$`'\"\\#;&|<>()=,", maxSize: 8 }));
   const chars = (first + rest).split("");
   let source = "";
 
   for (let index = 0; index < chars.length;) {
-    const size = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
-    const scheme = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }));
+    const size = tc.draw(integers({ minValue: 1, maxValue: 3 }));
+    const scheme = tc.draw(integers({ minValue: 0, maxValue: 5 }));
     source += encodeChunk(chars.slice(index, index + size), scheme);
     index += size;
   }
@@ -67,22 +75,22 @@ const quoted = gs.composite((tc): Quoted => {
 
 type Braced = { readonly source: string; readonly words: readonly string[] };
 
-function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
-  return gs.composite((tc): Braced => {
+function braced(depth: number): ReturnType<typeof composite<Braced>> {
+  return composite((tc): Braced => {
     const text = (): Braced => {
-      const value = tc.draw(gs.text({ alphabet: "abc", maxSize: 2 }));
+      const value = tc.draw(textGen({ alphabet: "abc", maxSize: 2 }));
 
       return { source: value, words: [value] };
     };
 
     const group = (): Braced => {
-      const kind = tc.draw(gs.integers({ minValue: 0, maxValue: depth > 0 ? 2 : 1 }));
+      const kind = tc.draw(integers({ minValue: 0, maxValue: depth > 0 ? 2 : 1 }));
 
       if (kind === 0) {
         return sequence(tc);
       }
 
-      const size = tc.draw(gs.integers({ minValue: 2, maxValue: 3 }));
+      const size = tc.draw(integers({ minValue: 2, maxValue: 3 }));
 
       const options = Array.from({ length: size }, () =>
         kind === 1 ? text() : tc.draw(braced(depth - 1)),
@@ -94,7 +102,7 @@ function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
       };
     };
 
-    const parts = [text(), group(), text(), ...(tc.draw(gs.booleans()) ? [group()] : [])];
+    const parts = [text(), group(), text(), ...(tc.draw(booleans()) ? [group()] : [])];
     let joined: Braced = { source: "", words: [""] };
 
     for (const part of parts) {
@@ -109,10 +117,10 @@ function braced(depth: number): ReturnType<typeof gs.composite<Braced>> {
 }
 
 function sequence(tc: TestCase): Braced {
-  const letters = tc.draw(gs.booleans());
-  const from = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
-  const to = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
-  const step = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
+  const letters = tc.draw(booleans());
+  const from = tc.draw(integers({ minValue: 0, maxValue: 6 }));
+  const to = tc.draw(integers({ minValue: 0, maxValue: 6 }));
+  const step = tc.draw(integers({ minValue: 1, maxValue: 3 }));
 
   const render = (value: number): string =>
     letters ? String.fromCodePoint(97 + value) : `${value}`;
@@ -127,8 +135,8 @@ function sequence(tc: TestCase): Braced {
   return { source: `{${render(from)}..${render(to)}..${step}}`, words };
 }
 
-const directory = gs.text({ alphabet: "abcdefg", minSize: 1, maxSize: 4 });
-const plain = gs.text({ alphabet: "abc.", maxSize: 4 });
+const directory = textGen({ alphabet: "abcdefg", minSize: 1, maxSize: 4 });
+const plain = textGen({ alphabet: "abc.", maxSize: 4 });
 const SHELL_NOISE = "cat ab'\"\\$`(){}<>|&;#~*?[]\n-=!,.";
 
 const TOKENS = [
@@ -197,9 +205,9 @@ describe("pathsReadByCommand properties", () => {
       "never throws and only returns absolute normalized paths",
       (tc) => {
         const source = tc.draw(
-          gs.oneOf(
-            gs.text({ alphabet: SHELL_NOISE, maxSize: 60 }),
-            gs.arrays(gs.sampledFrom(TOKENS), { maxSize: 14 }).map((parts) => parts.join(" ")),
+          oneOf(
+            textGen({ alphabet: SHELL_NOISE, maxSize: 60 }),
+            arrays(sampledFrom(TOKENS), { maxSize: 14 }).map((parts) => parts.join(" ")),
           ),
           "source",
         );
@@ -234,7 +242,7 @@ describe("pathsReadByCommand properties", () => {
       "wrappers, sequencing and substitution leave the read set unchanged",
       (tc) => {
         const { word, source } = tc.draw(quoted, "word");
-        const wrap = tc.draw(gs.integers({ minValue: 0, maxValue: WRAPS.length - 1 }), "wrapper");
+        const wrap = tc.draw(integers({ minValue: 0, maxValue: WRAPS.length - 1 }), "wrapper");
         const command = wrapped(wrap, `cat ${source}`);
         assert.deepEqual(reads(command), [resolve(cwd, word)], command);
       },
@@ -247,8 +255,8 @@ describe("pathsReadByCommand properties", () => {
       "a parameter expansion default keeps its quoting and its substitutions",
       (tc) => {
         const { word, source } = tc.draw(quoted, "word");
-        const name = tc.draw(gs.sampledFrom(["x", "y1", "_v"]), "name");
-        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", ":?", ":+", "+"]), "operator");
+        const name = tc.draw(sampledFrom(["x", "y1", "_v"]), "name");
+        const operator = tc.draw(sampledFrom([":-", "-", ":=", ":?", ":+", "+"]), "operator");
         const tail = tc.draw(directory, "tail");
         const expansion = `\${${name}${operator}${source}}`;
         const nested = `\${${name}${operator}\${y${operator}$(cat ${source})}}`;
@@ -271,8 +279,8 @@ describe("pathsReadByCommand properties", () => {
       "a substitution in arithmetic or an unquoted heredoc runs, in a quoted heredoc it does not",
       (tc) => {
         const { word, source } = tc.draw(quoted, "word");
-        const literal = tc.draw(gs.sampledFrom(["'EOF'", '"EOF"', String.raw`\EOF`]), "delimiter");
-        const dash = tc.draw(gs.sampledFrom(["<<", "<<-"]), "dash");
+        const literal = tc.draw(sampledFrom(["'EOF'", '"EOF"', String.raw`\EOF`]), "delimiter");
+        const dash = tc.draw(sampledFrom(["<<", "<<-"]), "dash");
         const read = [resolve(cwd, word)];
         const substitution = `$(cat ${source})`;
         assert.deepEqual(reads(`echo $(( ${substitution} + 1 ))`), read, "arithmetic");
@@ -319,7 +327,7 @@ describe("pathsReadByCommand properties", () => {
       const after = tc.draw(plain, "after");
 
       const special = tc.draw(
-        gs.sampledFrom(["*", "?", "[ab]", "$V", "${V}", "$(echo x)", "`echo x`"]),
+        sampledFrom(["*", "?", "[ab]", "$V", "${V}", "$(echo x)", "`echo x`"]),
         "special",
       );
 
@@ -332,7 +340,7 @@ describe("pathsReadByCommand properties", () => {
   test("a brace without a comma or range stays literal", () => {
     assertProperty("shell-reads", "a brace without a comma or range stays literal", (tc) => {
       const before = tc.draw(plain, "before");
-      const inner = tc.draw(gs.text({ alphabet: "abc", maxSize: 4 }), "inner");
+      const inner = tc.draw(textGen({ alphabet: "abc", maxSize: 4 }), "inner");
       const word = `${before}{${inner}}x`;
       assert.deepEqual(reads(`cat ${word}`), [resolve(cwd, word)]);
     });
@@ -345,8 +353,8 @@ describe("pathsReadByCommand properties", () => {
       (tc) => {
         const { word, source } = tc.draw(quoted, "word");
         const read = [resolve(cwd, word)];
-        const signal = tc.draw(gs.sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
-        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", "="]), "operator");
+        const signal = tc.draw(sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
+        const operator = tc.draw(sampledFrom([":-", "-", ":=", "="]), "operator");
         assert.deepEqual(reads(`trap ${inSingleQuotes(`cat ${source}`)} ${signal}`), read);
         assert.deepEqual(reads(`trap -- ${inSingleQuotes(`cat ${source}`)} ${signal}`), read);
         assert.deepEqual(reads(`coproc cat ${source}`), read);
@@ -364,8 +372,8 @@ describe("pathsReadByCommand properties", () => {
       "shell-reads",
       "a default or alternative word in double quotes is reported",
       (tc) => {
-        const word = tc.draw(gs.text({ alphabet: "abc./ ", minSize: 1, maxSize: 6 }), "word");
-        const operator = tc.draw(gs.sampledFrom([":-", "-", ":=", "=", ":+", "+"]), "operator");
+        const word = tc.draw(textGen({ alphabet: "abc./ ", minSize: 1, maxSize: 6 }), "word");
+        const operator = tc.draw(sampledFrom([":-", "-", ":=", "=", ":+", "+"]), "operator");
         assert.deepEqual(reads(`cat "\${x${operator}${word}}"`), [resolve(cwd, word)]);
       },
     );
@@ -374,7 +382,7 @@ describe("pathsReadByCommand properties", () => {
   test("a trap that resets, ignores or lists reads nothing", () => {
     assertProperty("shell-reads", "a trap that resets, ignores or lists reads nothing", (tc) => {
       const { source } = tc.draw(quoted, "word");
-      const signal = tc.draw(gs.sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
+      const signal = tc.draw(sampledFrom(["EXIT", "INT", "TERM", "0"]), "signal");
       assert.deepEqual(reads(`trap - ${signal} ${source}`), []);
       assert.deepEqual(reads(`trap '' ${signal} ${source}`), []);
       assert.deepEqual(reads(`trap -p ${signal}`), []);
@@ -411,7 +419,7 @@ describe("pathsReadByCommand properties", () => {
       "shell-reads",
       "a brace expansion past the cap reads nothing and a plain word still does",
       (tc) => {
-        const count = tc.draw(gs.integers({ minValue: 257, maxValue: 1_000_000_000 }), "count");
+        const count = tc.draw(integers({ minValue: 257, maxValue: 1_000_000_000 }), "count");
         const { word, source } = tc.draw(quoted, "word");
         assert.deepEqual(reads(`cat {1..${count}}`), []);
         assert.deepEqual(reads(`cat {1..${count}} ${source}`), [resolve(cwd, word)]);
@@ -422,11 +430,11 @@ describe("pathsReadByCommand properties", () => {
   test("commands that print no file content read nothing", () => {
     assertProperty("shell-reads", "commands that print no file content read nothing", (tc) => {
       const name = tc.draw(
-        gs.sampledFrom(["echo", "ls", "git", "wc", "stat", "test", "true", "printf", "find", "cp"]),
+        sampledFrom(["echo", "ls", "git", "wc", "stat", "test", "true", "printf", "find", "cp"]),
         "name",
       );
 
-      const args = tc.draw(gs.arrays(quoted, { maxSize: 4 }), "args");
+      const args = tc.draw(arrays(quoted, { maxSize: 4 }), "args");
       assert.deepEqual(reads(`${name} ${args.map((arg) => arg.source).join(" ")}`), []);
     });
   });

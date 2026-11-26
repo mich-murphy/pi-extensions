@@ -1,7 +1,20 @@
-import type * as SDK from "@anthropic-ai/claude-agent-sdk";
+import type {
+  AbortError as SdkAbortError,
+  createSdkMcpServer as sdkCreateMcpServer,
+  tool as sdkTool,
+} from "@anthropic-ai/claude-agent-sdk";
 
 declare global {
-  var piUsageLimitBoundary: { sdk: typeof SDK; query: () => AsyncIterable<unknown> } | undefined;
+  var piUsageLimitBoundary:
+    | {
+        sdk: {
+          AbortError: typeof SdkAbortError;
+          createSdkMcpServer: typeof sdkCreateMcpServer;
+          tool: typeof sdkTool;
+        };
+        query: () => AsyncIterable<unknown>;
+      }
+    | undefined;
 }
 
 const boundary = globalThis.piUsageLimitBoundary;

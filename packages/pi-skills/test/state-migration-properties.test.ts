@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, integers, sampledFrom } from "@hegeldev/hegel/generators";
+import type { PrintableGenerator } from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import type { Schema } from "effect";
 import { describe, test } from "vitest";
@@ -64,13 +65,13 @@ type Fixture = { readonly statePath: string; readonly skill: (name: string) => s
 
 const BODIES: readonly JsonObject[] = [{}, { resources: 5 }, { overrides: DECOY }];
 
-function badValues(version: Version): gs.PrintableGenerator<JsonValue> {
-  return gs.sampledFrom<JsonValue>(version === 6 ? BAD_TOGGLES : BAD_LEGACY);
+function badValues(version: Version): PrintableGenerator<JsonValue> {
+  return sampledFrom<JsonValue>(version === 6 ? BAD_TOGGLES : BAD_LEGACY);
 }
 
-const versions = gs.sampledFrom<Version>([4, 5, 6]);
+const versions = sampledFrom<Version>([4, 5, 6]);
 
-const choices = gs.arrays(gs.sampledFrom<Choice>(["absent", "enabled", "disabled"]), {
+const choices = arrays(sampledFrom<Choice>(["absent", "enabled", "disabled"]), {
   minSize: NAMES.length,
   maxSize: NAMES.length,
 });
@@ -223,7 +224,7 @@ describe(
         assertProperty("migration", "legacy-meaning", (tc) => {
           const version = tc.draw(versions);
           const picks = tc.draw(choices);
-          const extra = tc.draw(gs.sampledFrom(EXTRAS));
+          const extra = tc.draw(sampledFrom(EXTRAS));
           assertMigrates(fixture, version, picks, extra);
         });
       });
@@ -234,10 +235,10 @@ describe(
         assertProperty("migration", "malformed-entry", (tc) => {
           const version = tc.draw(versions);
           const picks = tc.draw(choices);
-          const keyIsBad = tc.draw(gs.booleans());
-          const key = tc.draw(gs.sampledFrom(BAD_KEYS));
+          const keyIsBad = tc.draw(booleans());
+          const key = tc.draw(sampledFrom(BAD_KEYS));
           const value = tc.draw(badValues(version));
-          const slot = tc.draw(gs.integers({ minValue: 0, maxValue: NAMES.length - 1 }));
+          const slot = tc.draw(integers({ minValue: 0, maxValue: NAMES.length - 1 }));
           assertBadEntry(fixture, version, picks, { keyIsBad, key, value }, slot);
         });
       });
@@ -249,7 +250,7 @@ describe(
           assertBadContainer(
             fixture,
             tc.draw(versions),
-            tc.draw(gs.sampledFrom<JsonValue | undefined>(BAD_CONTAINERS)),
+            tc.draw(sampledFrom<JsonValue | undefined>(BAD_CONTAINERS)),
           );
         });
       });
@@ -258,8 +259,8 @@ describe(
     test("integer versions below 4 load as empty toggles whatever the body", () => {
       withFixture((fixture) => {
         assertProperty("migration", "ancient-version", (tc) => {
-          const version = tc.draw(gs.integers({ minValue: -100_000, maxValue: 3 }));
-          const body = tc.draw(gs.sampledFrom(BODIES));
+          const version = tc.draw(integers({ minValue: -100_000, maxValue: 3 }));
+          const body = tc.draw(sampledFrom(BODIES));
           assertEmpty(load(fixture, { ...body, version }));
         });
       });
@@ -268,8 +269,8 @@ describe(
     test("versions above 7 are too new and carry the version and path", () => {
       withFixture((fixture) => {
         assertProperty("migration", "too-new", (tc) => {
-          const whole = tc.draw(gs.integers({ minValue: 8, maxValue: 100_000 }));
-          assertTooNew(fixture, whole, tc.draw(gs.booleans()));
+          const whole = tc.draw(integers({ minValue: 8, maxValue: 100_000 }));
+          assertTooNew(fixture, whole, tc.draw(booleans()));
         });
       });
     });
@@ -277,12 +278,12 @@ describe(
     test("fractional versions up to 7, non-number versions and non-object documents are malformed", () => {
       withFixture((fixture) => {
         assertProperty("migration", "bad-version", (tc) => {
-          const half = tc.draw(gs.integers({ minValue: -100_000, maxValue: 6 })) + 0.5;
+          const half = tc.draw(integers({ minValue: -100_000, maxValue: 6 })) + 0.5;
           assertMalformed(load(fixture, { version: half, resources: {} }), fixture, undefined);
-          const odd = tc.draw(gs.sampledFrom<JsonValue>(BAD_VERSIONS));
+          const odd = tc.draw(sampledFrom<JsonValue>(BAD_VERSIONS));
           assertMalformed(load(fixture, { version: odd, resources: {} }), fixture, undefined);
           assertMalformed(
-            load(fixture, tc.draw(gs.sampledFrom<JsonValue>(BAD_DOCUMENTS))),
+            load(fixture, tc.draw(sampledFrom<JsonValue>(BAD_DOCUMENTS))),
             fixture,
             undefined,
           );

@@ -11,7 +11,19 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  none,
+  oneOf,
+  recursive,
+  sampledFrom,
+  text,
+  tuples,
+} from "@hegeldev/hegel/generators";
+import type { PrintableGenerator, RecursiveOptions } from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
@@ -62,28 +74,23 @@ const RELATIVE = [
 const VERSIONS = [-1, 0, 3, 4, 5, 6, 7, 8, 1.5, 7.5, "7", null, true];
 const TOGGLES = ["enabled", "disabled", "default", "", 1];
 
-const pairs = (key: gs.PrintableGenerator<string>, value: gs.PrintableGenerator<unknown>) =>
-  gs.composite((tc) =>
-    Object.fromEntries(tc.draw(gs.arrays(gs.tuples(key, value), { maxSize: 4 }))),
-  );
+const pairs = (key: PrintableGenerator<string>, value: PrintableGenerator<unknown>) =>
+  composite((tc) => Object.fromEntries(tc.draw(arrays(tuples(key, value), { maxSize: 4 }))));
 
-const jsonWith = (options: gs.RecursiveOptions): gs.PrintableGenerator<unknown> =>
-  gs.recursive<unknown>(
-    gs.oneOf<unknown>(
-      gs.none(),
-      gs.booleans(),
-      gs.integers(),
-      gs.text({ maxSize: 8 }),
-      gs.sampledFrom(KEYS),
-      gs.sampledFrom(PATHS),
+const jsonWith = (options: RecursiveOptions): PrintableGenerator<unknown> =>
+  recursive<unknown>(
+    oneOf<unknown>(
+      none(),
+      booleans(),
+      integers(),
+      text({ maxSize: 8 }),
+      sampledFrom(KEYS),
+      sampledFrom(PATHS),
     ),
     (children) =>
-      gs.oneOf<unknown>(
-        gs.arrays(children, { maxSize: 4 }),
-        pairs(
-          gs.oneOf(gs.sampledFrom(KEYS), gs.sampledFrom(PATHS), gs.text({ maxSize: 4 })),
-          children,
-        ),
+      oneOf<unknown>(
+        arrays(children, { maxSize: 4 }),
+        pairs(oneOf(sampledFrom(KEYS), sampledFrom(PATHS), text({ maxSize: 4 })), children),
       ),
     options,
   );
@@ -91,28 +98,28 @@ const jsonWith = (options: gs.RecursiveOptions): gs.PrintableGenerator<unknown> 
 const json = jsonWith({});
 const entryJson = jsonWith({ maxLeaves: 8 });
 
-const toggleish = gs.oneOf<unknown>(
-  gs.sampledFrom(TOGGLES),
+const toggleish = oneOf<unknown>(
+  sampledFrom(TOGGLES),
   entryJson,
-  pairs(gs.sampledFrom(KEYS), entryJson),
+  pairs(sampledFrom(KEYS), entryJson),
 );
 
-const fileish = gs.oneOf<unknown>(entryJson, pairs(gs.sampledFrom(PATHS), toggleish));
+const fileish = oneOf<unknown>(entryJson, pairs(sampledFrom(PATHS), toggleish));
 
-const repositoryish = gs.oneOf<unknown>(
+const repositoryish = oneOf<unknown>(
   entryJson,
-  pairs(gs.sampledFrom(PATHS), pairs(gs.sampledFrom(RELATIVE), toggleish)),
+  pairs(sampledFrom(PATHS), pairs(sampledFrom(RELATIVE), toggleish)),
 );
 
-const documentLike = gs.composite((tc) => ({
-  version: tc.draw(gs.sampledFrom<unknown>(VERSIONS)),
+const documentLike = composite((tc) => ({
+  version: tc.draw(sampledFrom<unknown>(VERSIONS)),
   files: tc.draw(fileish),
   repositories: tc.draw(repositoryish),
   overrides: tc.draw(fileish),
   resources: tc.draw(fileish),
 }));
 
-const document = gs.oneOf<unknown>(json, documentLike);
+const document = oneOf<unknown>(json, documentLike);
 
 const stats = { ok: 0, err: 0 };
 
@@ -336,12 +343,9 @@ function applyAction(fixture: Fixture, path: ResourcePath, action: Action): void
 
 function drawSteps(tc: TestCase): (readonly [number, Action])[] {
   return tc.draw(
-    gs.arrays(
-      gs.tuples(gs.integers({ minValue: 0, maxValue: SLOTS - 1 }), gs.sampledFrom(ACTIONS)),
-      {
-        maxSize: 14,
-      },
-    ),
+    arrays(tuples(integers({ minValue: 0, maxValue: SLOTS - 1 }), sampledFrom(ACTIONS)), {
+      maxSize: 14,
+    }),
   );
 }
 
@@ -364,7 +368,7 @@ describe("state properties", () => {
     () => {
       withLoader((load) => {
         assertProperty("state", "load-text", (tc) => {
-          assertWellFormed(load(tc.draw(gs.text({ maxSize: 40 }))));
+          assertWellFormed(load(tc.draw(text({ maxSize: 40 }))));
         });
       });
     },

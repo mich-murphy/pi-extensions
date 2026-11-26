@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers, permutations, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import { groupId } from "../fingerprint.ts";
@@ -15,14 +15,14 @@ const SESSIONS = ["a", "b", "c"] as const;
 const settings = propertySettings(200);
 
 function drawEvents(tc: TestCase): LedgerEvent[] {
-  const count = tc.draw(gs.integers({ minValue: 0, maxValue: 14 }), "count");
+  const count = tc.draw(integers({ minValue: 0, maxValue: 14 }), "count");
   const events: LedgerEvent[] = [];
 
   for (let n = 1; n <= count; n += 1) {
-    const owner = tc.draw(gs.sampledFrom([...OWNERS]), "owner");
-    const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
-    const session = tc.draw(gs.sampledFrom([...SESSIONS]), "session");
-    const fixtureIndex = tc.draw(gs.integers({ minValue: 0, maxValue: 5 }), "shape");
+    const owner = tc.draw(sampledFrom([...OWNERS]), "owner");
+    const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
+    const session = tc.draw(sampledFrom([...SESSIONS]), "session");
+    const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 5 }), "shape");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
 
@@ -69,7 +69,7 @@ describe("deriveGroups properties", () => {
   test("does not depend on the order ledgers are read in", () => {
     assertHegel(settings, (tc) => {
       const events = drawEvents(tc);
-      const shuffled = tc.draw(gs.permutations(events), "shuffled");
+      const shuffled = tc.draw(permutations(events), "shuffled");
       assert.deepEqual(deriveGroups(shuffled), deriveGroups(events));
     });
   });
@@ -77,7 +77,7 @@ describe("deriveGroups properties", () => {
   test("does not count a copied event twice", () => {
     assertHegel(settings, (tc) => {
       const events = drawEvents(tc);
-      const copies = events.filter(() => tc.draw(gs.booleans(), "copy"));
+      const copies = events.filter(() => tc.draw(booleans(), "copy"));
       assert.deepEqual(deriveGroups([...events, ...copies]), deriveGroups(events));
     });
   });

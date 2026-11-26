@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import type { BigIntStats } from "node:fs";
-import * as fs from "node:fs/promises";
+import { lstat, mkdir, open } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { Predicate, Schema } from "effect";
 import {
@@ -43,7 +44,7 @@ export async function readRegular(
   maximum: number,
   policy: ReadPolicy,
 ): Promise<{ bytes: Buffer; stat: BigIntStats }> {
-  const handle = await fs.open(filename, READ_FLAGS);
+  const handle = await open(filename, READ_FLAGS);
 
   try {
     const stat = await handle.stat({ bigint: true });
@@ -61,7 +62,7 @@ export async function readRegular(
 }
 
 async function readBounded(
-  handle: fs.FileHandle,
+  handle: FileHandle,
   filename: string,
   maximum: number,
   chunks: Buffer[],
@@ -105,7 +106,7 @@ export type RecordWriter = {
   close: () => Promise<void>;
 };
 
-async function writeAll(handle: fs.FileHandle, bytes: Buffer, offset: number): Promise<void> {
+async function writeAll(handle: FileHandle, bytes: Buffer, offset: number): Promise<void> {
   if (offset >= bytes.length) {
     return;
   }
@@ -123,7 +124,7 @@ async function requireStillNamedCheckedNonAtomicallyAfterWrite(
   filename: string,
   created: BigIntStats,
 ): Promise<void> {
-  const visible = await fs.lstat(filename, { bigint: true });
+  const visible = await lstat(filename, { bigint: true });
 
   if (!visible.isFile() || !sameFile(visible, created)) {
     throw new Error(`Record path ${filename} was replaced; this run's record is not visible there`);
@@ -131,7 +132,7 @@ async function requireStillNamedCheckedNonAtomicallyAfterWrite(
 }
 
 export async function createRecord(filename: string): Promise<RecordWriter> {
-  const handle = await fs.open(filename, CREATE_FLAGS, 0o644);
+  const handle = await open(filename, CREATE_FLAGS, 0o644);
   let created: BigIntStats;
 
   try {
@@ -153,7 +154,7 @@ export async function createRecord(filename: string): Promise<RecordWriter> {
 
 export async function requireAbsent(filename: string): Promise<void> {
   try {
-    await fs.lstat(filename);
+    await lstat(filename);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return;
@@ -176,7 +177,7 @@ export async function privateProfile(root: string) {
     installRoot: path.join(root, "install"),
   };
 
-  await Promise.all(Object.values(dirs).map(async (dir) => fs.mkdir(dir, { mode: 0o700 })));
+  await Promise.all(Object.values(dirs).map(async (dir) => mkdir(dir, { mode: 0o700 })));
   process.env.HOME = dirs.home;
   process.env.TMPDIR = dirs.tmp;
 

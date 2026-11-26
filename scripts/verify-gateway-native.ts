@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { BigIntStats } from "node:fs";
-import * as fs from "node:fs/promises";
+import { lstat, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { acquireGateway } from "../packages/pi-peers/onboarding/acquire.js";
@@ -57,10 +57,10 @@ async function createRoot(runnerTemp: string): Promise<Root> {
     throw new Error("--runner-temp must be absolute");
   }
 
-  const root = await fs.mkdtemp(path.join(await fs.realpath(runnerTemp), ROOT_PREFIX));
+  const root = await mkdtemp(path.join(await realpath(runnerTemp), ROOT_PREFIX));
 
   try {
-    const stat = await fs.lstat(root, { bigint: true });
+    const stat = await lstat(root, { bigint: true });
 
     if (!isPrivateDirectory(stat, currentUid())) {
       throw new Error("not a private directory");
@@ -77,7 +77,7 @@ async function requireOwnedExecutable(
   installRoot: string,
   ownedPaths: string[],
 ) {
-  const canonical = (await fs.realpath(executable)) === executable;
+  const canonical = (await realpath(executable)) === executable;
 
   if (!canonical || !inInstallLayout(executable, installRoot, ownedPaths)) {
     throw new Error(
@@ -177,7 +177,7 @@ async function probeVersion(executable: string, home: string, tmp: string): Prom
 }
 
 async function requireEmpty(...dirs: string[]): Promise<void> {
-  const entries = await Promise.all(dirs.map(async (dir) => fs.readdir(dir)));
+  const entries = await Promise.all(dirs.map(async (dir) => readdir(dir)));
 
   if (entries.some((list) => list.length > 0)) {
     throw new Error("Private HOME or TMPDIR was modified");
@@ -193,14 +193,14 @@ function isSameRootDirectory(stat: BigIntStats, owned: Root): boolean {
 }
 
 async function removeRoot(owned: Root, runnerTemp: string): Promise<{ removed: string }> {
-  const stat = await fs.lstat(owned.root, { bigint: true });
-  const parent = await fs.realpath(runnerTemp);
+  const stat = await lstat(owned.root, { bigint: true });
+  const parent = await realpath(runnerTemp);
 
   if (!isRootPathIn(owned.root, parent) || !isSameRootDirectory(stat, owned)) {
     throw new Error(`Root ${owned.root} identity, ownership or mode changed; retained`);
   }
 
-  await fs.rm(owned.root, { recursive: true });
+  await rm(owned.root, { recursive: true });
   await requireAbsent(owned.root);
 
   return { removed: owned.root };

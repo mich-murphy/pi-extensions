@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { basename } from "node:path";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers, text as textGen } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { instructionHeading } from "../instruction-heading";
 import { assertProperty } from "./hegel-property";
 
 const path = "/repo/README.md";
 
-const words = gs
-  .text({ alphabet: "abcd ", minSize: 1, maxSize: 12 })
+const words = textGen({ alphabet: "abcd ", minSize: 1, maxSize: 12 })
   .map((text) => text.trim())
   .filter((text) => text !== "" && text.toLowerCase() !== basename(path).toLowerCase());
 
@@ -40,7 +39,7 @@ describe("instruction heading properties", () => {
       "never throws and returns a clean heading for arbitrary text",
       (tc) => {
         const content = tc.draw(
-          gs.text({ alphabet: "#=- \t\r\n`~<!>ab.md", maxSize: 60 }),
+          textGen({ alphabet: "#=- \t\r\n`~<!>ab.md", maxSize: 60 }),
           "content",
         );
 
@@ -55,13 +54,8 @@ describe("instruction heading properties", () => {
       "prefixes, CRLF and a BOM do not change the heading",
       (tc) => {
         const heading = tc.draw(words, "heading");
-        const prefix = tc.draw(gs.integers({ minValue: 0, maxValue: PREFIXES.length }), "prefix");
-        assertStable(
-          heading,
-          prefix,
-          tc.draw(gs.booleans(), "bom"),
-          tc.draw(gs.booleans(), "crlf"),
-        );
+        const prefix = tc.draw(integers({ minValue: 0, maxValue: PREFIXES.length }), "prefix");
+        assertStable(heading, prefix, tc.draw(booleans(), "bom"), tc.draw(booleans(), "crlf"));
       },
     );
   });

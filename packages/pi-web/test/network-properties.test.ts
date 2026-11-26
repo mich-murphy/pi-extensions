@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { Result, Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
@@ -81,30 +90,25 @@ const BOUNDARY_OCTETS = [
   172, 173, 191, 192, 193, 197, 198, 199, 200, 203, 204, 223, 224, 239, 240, 254, 255,
 ];
 
-const octet = gs.oneOf(
-  gs.sampledFrom(BOUNDARY_OCTETS),
-  gs.integers({ minValue: 0, maxValue: 255 }),
+const octet = oneOf(sampledFrom(BOUNDARY_OCTETS), integers({ minValue: 0, maxValue: 255 }));
+
+const group = oneOf(
+  sampledFrom([0, 1, 0xff_ff, 0x20_02, 0xd_b8, 0x20_01, 0x64, 0xff_9b, 0xfe_80, 0xfc_00, 0xff_00]),
+  integers({ minValue: 0, maxValue: 0xff_ff }),
 );
 
-const group = gs.oneOf(
-  gs.sampledFrom([
-    0, 1, 0xff_ff, 0x20_02, 0xd_b8, 0x20_01, 0x64, 0xff_9b, 0xfe_80, 0xfc_00, 0xff_00,
-  ]),
-  gs.integers({ minValue: 0, maxValue: 0xff_ff }),
-);
+const randomOctets = arrays(octet, { minSize: 4, maxSize: 4 });
 
-const randomOctets = gs.arrays(octet, { minSize: 4, maxSize: 4 });
-
-const edgeOctets = gs.composite((tc) => {
-  const [base, length] = tc.draw(gs.sampledFrom(IANA_NON_GLOBAL_V4), "range");
+const edgeOctets = composite((tc) => {
+  const [base, length] = tc.draw(sampledFrom(IANA_NON_GLOBAL_V4), "range");
   const size = 2 ** (32 - length);
-  const offset = tc.draw(gs.sampledFrom([-1, 0, 1, size - 1, size, size + 1]), "offset");
+  const offset = tc.draw(sampledFrom([-1, 0, 1, size - 1, size, size + 1]), "offset");
   const value = Math.min(Math.max(base + offset, 0), 2 ** 32 - 1);
 
   return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
 });
 
-const ipv4Octets = gs.oneOf(randomOctets, edgeOctets);
+const ipv4Octets = oneOf(randomOctets, edgeOctets);
 
 const toGroups = (o: readonly number[]) => [
   (o[0] ?? 0) * 256 + (o[1] ?? 0),
@@ -128,10 +132,10 @@ const V6_PREFIX_TEMPLATES = {
 
 const V6_PREFIXES = Object.values(V6_PREFIX_TEMPLATES);
 
-const v6Groups = gs.composite((tc) => {
-  const prefix = tc.draw(gs.sampledFrom(V6_PREFIXES), "prefix");
-  const free = tc.draw(gs.arrays(group, { minSize: 8, maxSize: 8 }), "free");
-  const tailV4 = tc.draw(gs.booleans(), "v4Tail");
+const v6Groups = composite((tc) => {
+  const prefix = tc.draw(sampledFrom(V6_PREFIXES), "prefix");
+  const free = tc.draw(arrays(group, { minSize: 8, maxSize: 8 }), "free");
+  const tailV4 = tc.draw(booleans(), "v4Tail");
   const result = free.map((value, index) => prefix[index] ?? value);
 
   if (tailV4 && prefix.length >= 3) {
@@ -198,9 +202,9 @@ describe("isPrivateOrLocalIp properties", () => {
   test("IPv4 verdict is right at every range edge", () => {
     assertHegel(settings, (tc) => {
       checkEdge(
-        tc.draw(gs.integers({ minValue: 0, maxValue: IANA_NON_GLOBAL_V4.length - 1 }), "range"),
-        tc.draw(gs.booleans(), "atEnd"),
-        tc.draw(gs.sampledFrom([-1, 0, 1]), "delta"),
+        tc.draw(integers({ minValue: 0, maxValue: IANA_NON_GLOBAL_V4.length - 1 }), "range"),
+        tc.draw(booleans(), "atEnd"),
+        tc.draw(sampledFrom([-1, 0, 1]), "delta"),
       );
     });
   });
@@ -225,7 +229,7 @@ describe("isPrivateOrLocalIp properties", () => {
   test("every legacy numeric spelling of an IPv4 host gets the dotted-quad verdict", () => {
     assertHegel(settings, (tc) => {
       const octets = tc.draw(ipv4Octets, "octets");
-      const spelling = tc.draw(gs.sampledFrom(NUMERIC_SPELLINGS), "spelling");
+      const spelling = tc.draw(sampledFrom(NUMERIC_SPELLINGS), "spelling");
       const [a = 0, b = 0, c = 0, d = 0] = octets;
       const parsed = parsePublicHttpUrl(`http://${spelling(octets)}/`);
       assert.ok(Result.isSuccess(parsed), `${spelling(octets)} did not parse`);
@@ -237,7 +241,7 @@ describe("isPrivateOrLocalIp properties", () => {
 
   test("arbitrary text never throws and non-IPs are not private", () => {
     assertHegel(settings, (tc) => {
-      const text = tc.draw(gs.text({ maxSize: 40 }), "text");
+      const text = tc.draw(textGen({ maxSize: 40 }), "text");
       expect(isPrivateOrLocalIp(text)).toSatisfy(Schema.is(Schema.Boolean));
       expect(isPrivateOrLocalIp(`x${text}`)).toBe(false);
     });
@@ -250,12 +254,12 @@ describe("parseContentType charset properties", () => {
   test("only a parameter named exactly charset sets the charset", () => {
     assertHegel(settings, (tc) => {
       const params = tc.draw(
-        gs.arrays(
-          gs.tuples(
-            gs.sampledFrom(NAMES),
-            gs.sampledFrom(VALUES),
-            gs.sampledFrom(["", '"', "'"]),
-            gs.sampledFrom(["", " "]),
+        arrays(
+          tuples(
+            sampledFrom(NAMES),
+            sampledFrom(VALUES),
+            sampledFrom(["", '"', "'"]),
+            sampledFrom(["", " "]),
           ),
           { maxSize: 4 },
         ),

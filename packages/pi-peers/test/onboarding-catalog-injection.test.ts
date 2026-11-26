@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import * as fs from "node:fs/promises";
+import { chmod, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -110,7 +110,7 @@ function hostExpectation(version: string, supported: boolean) {
 }
 
 async function entriesIfPresent(directory: string): Promise<string[]> {
-  return existsSync(directory) ? fs.readdir(directory) : [];
+  return existsSync(directory) ? readdir(directory) : [];
 }
 
 const unsupportedArch = process.platform === "darwin" ? "x64" : "ia32";
@@ -135,7 +135,7 @@ const roots: string[] = [];
 describe("setupCommand trusted catalog injection", () => {
   afterEach(async () => {
     for (const root of roots.splice(0)) {
-      await fs.rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -143,9 +143,9 @@ describe("setupCommand trusted catalog injection", () => {
     "a supplied non-empty catalog is validated by real setup $name",
     { timeout: 90_000 },
     async ({ arch, archOverride, supported }) => {
-      const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "pc-"));
+      const root = await mkdtemp(path.join(await realpath(os.tmpdir()), "pc-"));
       roots.push(root);
-      await fs.chmod(root, 0o700);
+      await chmod(root, 0o700);
       const agent = path.join(root, "agent");
 
       const pin = {
@@ -197,7 +197,7 @@ describe("setupCommand trusted catalog injection", () => {
       expect(entries.filter((name) => !name.startsWith("install-"))).toStrictEqual([]);
 
       const installed = await Promise.all(
-        entries.map(async (name) => fs.readdir(path.join(comms, name))),
+        entries.map(async (name) => readdir(path.join(comms, name))),
       );
 
       expect(installed.flat()).toStrictEqual([]);

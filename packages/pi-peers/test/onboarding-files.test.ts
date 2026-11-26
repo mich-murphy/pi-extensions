@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import * as fs from "node:fs/promises";
+import { lstat, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -25,7 +25,7 @@ try {
 const roots: string[] = [];
 
 async function fixtureRoot(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "pi-files-test-"));
+  const root = await mkdtemp(path.join(await realpath(os.tmpdir()), "pi-files-test-"));
   roots.push(root);
 
   return root;
@@ -34,7 +34,7 @@ async function fixtureRoot(): Promise<string> {
 describe("syncDirectory", () => {
   afterEach(async () => {
     for (const root of roots.splice(0)) {
-      await fs.rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -46,10 +46,10 @@ describe("syncDirectory", () => {
   test("refuses a regular file and a symlink without following it", async () => {
     const root = await fixtureRoot();
     const file = path.join(root, "file");
-    await fs.writeFile(file, "x", { mode: 0o600 });
+    await writeFile(file, "x", { mode: 0o600 });
     await expect(syncDirectory(file)).rejects.toThrow("Expected directory");
     const link = path.join(root, "link");
-    await fs.symlink(root, link);
+    await symlink(root, link);
     await expect(syncDirectory(link)).rejects.toMatchObject({ code: "ELOOP" });
   });
 
@@ -65,7 +65,7 @@ describe("syncDirectory", () => {
     );
 
     expect(JSON.parse(stdout)).toStrictEqual({ error: "Expected directory" });
-    const stat = await fs.lstat(fifo);
+    const stat = await lstat(fifo);
     expect(stat.isFIFO()).toBe(true);
   });
 });

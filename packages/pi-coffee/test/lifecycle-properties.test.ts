@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, integers, record, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { CaffeinateNotice, CaffeinateProcessError, registerCoffee } from "../coffee-lifecycle";
@@ -167,10 +167,10 @@ describe("coffee lifecycle properties", () => {
   test("random event sequences match the held-child model", () => {
     new Hegel((tc) => {
       const actions = tc.draw(
-        gs.arrays(
-          gs.record({
-            action: gs.sampledFrom([...ACTIONS]),
-            pick: gs.integers({ minValue: 0, maxValue: 20 }),
+        arrays(
+          record({
+            action: sampledFrom([...ACTIONS]),
+            pick: integers({ minValue: 0, maxValue: 20 }),
           }),
           { maxSize: 40 },
         ),

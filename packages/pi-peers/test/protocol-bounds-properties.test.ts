@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers } from "@hegeldev/hegel/generators";
 import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -25,7 +25,7 @@ const settings = propertySettings(200);
 const rid = "1".repeat(32);
 const nonce = "a".repeat(32);
 
-const edge = gs.integers({ minValue: -3, maxValue: 3 });
+const edge = integers({ minValue: -3, maxValue: 3 });
 
 function accepts(run: () => void): boolean {
   try {
@@ -180,9 +180,9 @@ describe("Hegel size-bound edges", () => {
   test("the sum of content, label and locator bytes is accepted iff <= MAX_AUTHORED_BYTES", () => {
     property("aggregate", (tc) => {
       const offset = tc.draw(edge, "offset");
-      const label = tc.draw(gs.integers({ minValue: 4, maxValue: 128 }), "label bytes");
-      const locator = tc.draw(gs.integers({ minValue: 4, maxValue: 1024 }), "locator bytes");
-      const wide = tc.draw(gs.booleans(), "multi-byte text");
+      const label = tc.draw(integers({ minValue: 4, maxValue: 128 }), "label bytes");
+      const locator = tc.draw(integers({ minValue: 4, maxValue: 1024 }), "locator bytes");
+      const wide = tc.draw(booleans(), "multi-byte text");
       const content = MAX_AUTHORED_BYTES + offset - label - locator;
       assertFrameEdge(
         authoredFrame({ content, label, locator, wide }),
@@ -230,7 +230,7 @@ describe("Hegel size-bound edges", () => {
     const once = oncePerKey();
     property("body", (tc) => {
       const offset = tc.draw(edge, "offset");
-      const low = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "low");
+      const low = tc.draw(integers({ minValue: 0, maxValue: 4 }), "low");
       once(`${offset}/${low}`, () => {
         assert.equal(
           accepts(() => decodeJson(paddedBody(MAX_BODY_BYTES + offset))),

@@ -1,7 +1,18 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import * as fs from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -45,7 +56,7 @@ async function cli(args: string[]): Promise<Outcome> {
 
 async function mkfifo(filename: string): Promise<void> {
   await promisify(execFile)("mkfifo", ["-m", "0600", filename], { timeout: 5000 });
-  const stat = await fs.lstat(filename);
+  const stat = await lstat(filename);
   expect(stat.isFIFO()).toBe(true);
 }
 
@@ -60,7 +71,7 @@ const temps: string[] = [];
 const created: string[] = [];
 
 async function ownedTemp(prefix: string): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)));
+  const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
   temps.push(dir);
   created.push(dir);
 
@@ -69,8 +80,8 @@ async function ownedTemp(prefix: string): Promise<string> {
 
 async function ownedRun() {
   const runnerTemp = await ownedTemp("nix-cli-test-");
-  const root = await fs.mkdtemp(path.join(runnerTemp, "gateway-nix-"));
-  const stat = await fs.lstat(root, { bigint: true });
+  const root = await mkdtemp(path.join(runnerTemp, "gateway-nix-"));
+  const stat = await lstat(root, { bigint: true });
 
   const identity = {
     root,
@@ -81,17 +92,17 @@ async function ownedRun() {
   };
 
   const marker = path.join(root, "owner.json");
-  await fs.writeFile(marker, JSON.stringify(identity), { flag: "wx", mode: 0o400 });
+  await writeFile(marker, JSON.stringify(identity), { flag: "wx", mode: 0o400 });
   const record = path.join(runnerTemp, "record.json");
   const acquired = { ...identity, status: "acquired", executable: FAKE_STORE };
-  await fs.writeFile(record, JSON.stringify({ ...acquired, binarySha256: "b".repeat(64) }));
+  await writeFile(record, JSON.stringify({ ...acquired, binarySha256: "b".repeat(64) }));
   const native = Buffer.from("authenticated native fixture bytes");
   const work = path.join(runnerTemp, "consumer");
-  await fs.mkdir(work, { mode: 0o700 });
+  await mkdir(work, { mode: 0o700 });
   const fixture = path.join(work, "pi-gateway");
-  await fs.writeFile(fixture, native, { mode: 0o500 });
+  await writeFile(fixture, native, { mode: 0o500 });
   const extracted = path.join(work, "extracted.json");
-  await fs.writeFile(extracted, JSON.stringify({ binarySha256: sha256(native) }));
+  await writeFile(extracted, JSON.stringify({ binarySha256: sha256(native) }));
   const common = ["--record", record, "--runner-temp", runnerTemp];
 
   return { runnerTemp, root, marker, record, fixture, extracted, work, native, common };
@@ -105,7 +116,7 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Pr
   const runnerTemp = await ownedTemp("nix-cli-out-");
   const out = path.join(runnerTemp, "record.json");
   await plant(out);
-  const before = await fs.lstat(out, { bigint: true });
+  const before = await lstat(out, { bigint: true });
 
   const outcome = await cli([
     "prepare",
@@ -121,18 +132,18 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Pr
     outcome,
     /Cannot exclusively create record .*; owned Nix root .*gateway-nix-\w{6} retained/u,
   );
-  const after = await fs.lstat(out, { bigint: true });
+  const after = await lstat(out, { bigint: true });
   expect([after.ino, after.mtimeNs, after.size]).toStrictEqual([
     before.ino,
     before.mtimeNs,
     before.size,
   ]);
-  const names = await fs.readdir(runnerTemp);
+  const names = await readdir(runnerTemp);
   const roots = names.filter((name) => name.startsWith("gateway-nix-"));
   expect(roots).toHaveLength(1);
   const root = path.join(runnerTemp, roots[0] ?? "");
   expect(outcome.stderr).toContain(root);
-  const entries = await fs.readdir(root);
+  const entries = await readdir(root);
   expect(entries.toSorted()).toStrictEqual(["owner.json"]);
 
   return out;
@@ -140,7 +151,7 @@ async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Pr
 
 const WRITER_CHILD = `
 import { execFileSync } from "node:child_process";
-import * as fs from "node:fs/promises";
+import { readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { createJiti } from "jiti";
 const [helper, dir, kind, recordsJson] = process.argv.slice(1);
 const { createRecord } = await createJiti(import.meta.url).import(helper);
@@ -150,13 +161,13 @@ const writer = await createRecord(out);
 try {
   for (const record of JSON.parse(recordsJson)) {
     await writer.write(record);
-    report.contents.push(await fs.readFile(out, "utf8"));
+    report.contents.push(await readFile(out, "utf8"));
   }
-  await fs.rename(out, dir + "/own.json");
-  if (kind === "regular") await fs.writeFile(out, "foreign\\n");
+  await rename(out, dir + "/own.json");
+  if (kind === "regular") await writeFile(out, "foreign\\n");
   if (kind === "symlink") {
-    await fs.writeFile(dir + "/target", "foreign\\n");
-    await fs.symlink(dir + "/target", out);
+    await writeFile(dir + "/target", "foreign\\n");
+    await symlink(dir + "/target", out);
   }
   if (kind === "fifo") execFileSync("mkfifo", ["-m", "0600", out]);
   report.replaced = await writer.write({ status: "acquired" }).then(() => "accepted", (e) => e.message);
@@ -180,7 +191,7 @@ function serialized(record: Schema.Json): string {
 describe("verify-gateway-nix consumer CLI", () => {
   afterEach(async () => {
     await Promise.all(
-      temps.splice(0).map(async (dir) => fs.rm(dir, { recursive: true, force: true })),
+      temps.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })),
     );
   });
 
@@ -230,17 +241,17 @@ describe("verify-gateway-nix consumer CLI", () => {
         /Refusing owned read/u,
       );
 
-      await fs.rm(run.marker, { force: true });
+      await rm(run.marker, { force: true });
       await mkfifo(run.marker);
       refused(await cli(["cleanup", ...run.common]), /Refusing owned read/u);
-      const root = await fs.lstat(run.root);
+      const root = await lstat(run.root);
       expect(root.isDirectory()).toBe(true);
     });
 
     test("refuses a fixture reached through a symlinked parent directory", async () => {
       const run = await ownedRun();
       const alias = path.join(run.runnerTemp, "alias");
-      await fs.symlink(run.work, alias);
+      await symlink(run.work, alias);
 
       const outcome = await cli([
         "install-fixture",
@@ -252,14 +263,14 @@ describe("verify-gateway-nix consumer CLI", () => {
       ]);
 
       refused(outcome, /Fixture directory is not canonical/u);
-      await expect(fs.readFile(run.fixture)).resolves.toStrictEqual(run.native);
+      await expect(readFile(run.fixture)).resolves.toStrictEqual(run.native);
     });
 
     test("cleanup removes exactly the owned root and proves it absent; forged markers are refused", async () => {
       const forged = await ownedRun();
-      await fs.chmod(forged.marker, 0o600);
-      const marker = jsonObject(parseJson(await fs.readFile(forged.marker)));
-      await fs.writeFile(
+      await chmod(forged.marker, 0o600);
+      const marker = jsonObject(parseJson(await readFile(forged.marker)));
+      await writeFile(
         forged.marker,
         JSON.stringify({ ...Object.fromEntries(Object.entries(marker)), nonce: "c".repeat(32) }),
       );
@@ -271,30 +282,30 @@ describe("verify-gateway-nix consumer CLI", () => {
       expect(outcome).toMatchObject({ code: 0, signal: null });
       expect(JSON.parse(outcome.stdout)).toStrictEqual({ removed: run.root });
       expect(existsSync(run.root)).toBe(false);
-      await expect(fs.readFile(run.fixture)).resolves.toStrictEqual(run.native);
+      await expect(readFile(run.fixture)).resolves.toStrictEqual(run.native);
       expect(existsSync(run.record)).toBe(true);
     });
 
     test.each([
-      ["regular file", async (out: string) => fs.writeFile(out, "foreign record\n")],
+      ["regular file", async (out: string) => writeFile(out, "foreign record\n")],
       [
         "symlink to a foreign file",
         async (out: string) => {
-          await fs.writeFile(`${out}.target`, "foreign record\n");
-          await fs.symlink(`${out}.target`, out);
+          await writeFile(`${out}.target`, "foreign record\n");
+          await symlink(`${out}.target`, out);
         },
       ],
     ])(
       "prepare never opens, follows or replaces an existing --out (%s) and names its retained root",
       async (_kind, plant) => {
         const out = await prepareRefusesExisting(plant);
-        await expect(fs.readFile(out, "utf8")).resolves.toBe("foreign record\n");
+        await expect(readFile(out, "utf8")).resolves.toBe("foreign record\n");
       },
     );
 
     test("prepare never opens an existing FIFO --out and names its retained root", async () => {
       const out = await prepareRefusesExisting(mkfifo);
-      const stat = await fs.lstat(out);
+      const stat = await lstat(out);
       expect(stat.isFIFO()).toBe(true);
     });
   });
@@ -304,21 +315,21 @@ describe("verify-gateway-nix consumer CLI", () => {
       [
         "regular",
         async (out: string) => {
-          await expect(fs.readFile(out, "utf8")).resolves.toBe("foreign\n");
+          await expect(readFile(out, "utf8")).resolves.toBe("foreign\n");
         },
       ],
       [
         "symlink",
         async (out: string) => {
-          const link = await fs.lstat(out);
+          const link = await lstat(out);
           expect(link.isSymbolicLink()).toBe(true);
-          await expect(fs.readFile(out, "utf8")).resolves.toBe("foreign\n");
+          await expect(readFile(out, "utf8")).resolves.toBe("foreign\n");
         },
       ],
       [
         "fifo",
         async (out: string) => {
-          const fifo = await fs.lstat(out);
+          const fifo = await lstat(out);
           expect(fifo.isFIFO()).toBe(true);
         },
       ],
@@ -351,7 +362,7 @@ describe("verify-gateway-nix consumer CLI", () => {
 
         expect(report.contents).toStrictEqual(PREPARING.map((record) => serialized(record)));
         expect(report.replaced).toMatch(/Record path .*record\.json was replaced/u);
-        await expect(fs.readFile(path.join(dir, "own.json"), "utf8")).resolves.toBe(
+        await expect(readFile(path.join(dir, "own.json"), "utf8")).resolves.toBe(
           serialized({ status: "acquired" }),
         );
         expect(report.afterClose).toBe("EBADF");

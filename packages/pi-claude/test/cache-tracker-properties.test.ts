@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { stateful } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, integers, just, oneOf, sampledFrom } from "@hegeldev/hegel/generators";
 import { Clock, Effect } from "effect";
 import { describe, test } from "vitest";
 import {
@@ -114,26 +114,24 @@ function lastRequest(machine: Machine): CacheRequestDiagnostic {
 }
 
 function drawBlock(tc: TestCase): PromptBlock {
-  const text = tc.draw(gs.arrays(gs.sampledFrom(["a", "b"]), { maxSize: 2 })).join("");
-  const images = tc.draw(gs.arrays(gs.sampledFrom(["x", "yy"]), { maxSize: 1 }));
+  const text = tc.draw(arrays(sampledFrom(["a", "b"]), { maxSize: 2 })).join("");
+  const images = tc.draw(arrays(sampledFrom(["x", "yy"]), { maxSize: 1 }));
 
   return { text, images: images.map((data) => ({ data, mediaType: "image/png" })) };
 }
 
 function drawBlocks(tc: TestCase): PromptBlock[] {
-  return tc.draw(gs.integers({ minValue: 0, maxValue: 4 })) === 0
+  return tc.draw(integers({ minValue: 0, maxValue: 4 })) === 0
     ? []
-    : Array.from({ length: tc.draw(gs.integers({ minValue: 1, maxValue: 4 })) }, () =>
-        drawBlock(tc),
-      );
+    : Array.from({ length: tc.draw(integers({ minValue: 1, maxValue: 4 })) }, () => drawBlock(tc));
 }
 
 function drawSettings(tc: TestCase): Omit<Req, "blocks"> {
   return {
-    model: tc.draw(gs.sampledFrom(MODELS)),
-    reasoning: tc.draw(gs.sampledFrom([undefined, "low", "high"])),
-    tools: tc.draw(gs.sampledFrom([undefined, "t1", "t2"])),
-    ttl: tc.draw(gs.sampledFrom([undefined, "none", "5m", "1h"] as const)),
+    model: tc.draw(sampledFrom(MODELS)),
+    reasoning: tc.draw(sampledFrom([undefined, "low", "high"])),
+    tools: tc.draw(sampledFrom([undefined, "t1", "t2"])),
+    ttl: tc.draw(sampledFrom([undefined, "none", "5m", "1h"] as const)),
   };
 }
 
@@ -327,11 +325,11 @@ function report(machine: Machine, index: number, usage: TokenUsage): void {
 
 function drawTokens(tc: TestCase, name: string): number {
   return tc.draw(
-    gs.oneOf(
-      gs.just(0),
-      gs.sampledFrom([19_999, 20_000, 20_001, 10_000, 5000]),
-      gs.integers({ minValue: 0, maxValue: 1000 }),
-      gs.integers({ minValue: 0, maxValue: 2_000_000 }),
+    oneOf(
+      just(0),
+      sampledFrom([19_999, 20_000, 20_001, 10_000, 5000]),
+      integers({ minValue: 0, maxValue: 1000 }),
+      integers({ minValue: 0, maxValue: 2_000_000 }),
     ),
     name,
   );
@@ -354,7 +352,7 @@ function rewriteBlocks(tc: TestCase, previous: Req): readonly PromptBlock[] {
     return [drawBlock(tc)];
   }
 
-  const at = tc.draw(gs.integers({ minValue: 0, maxValue: previous.blocks.length - 1 }));
+  const at = tc.draw(integers({ minValue: 0, maxValue: previous.blocks.length - 1 }));
 
   return previous.blocks.map((block, index) => (index === at ? drawBlock(tc) : block));
 }
@@ -382,7 +380,7 @@ const machineSpec: stateful.StateMachine<Machine> = {
       submit(machine, { ...ensureRequest(tc, machine), ...drawSettings(tc) });
     },
     tick: (tc, machine) => {
-      const ms = tc.draw(gs.sampledFrom([0, 1000, 300_000, 300_001, 3_600_000, 3_600_001]));
+      const ms = tc.draw(sampledFrom([0, 1000, 300_000, 300_001, 3_600_000, 3_600_001]));
       machine.clock.time += ms;
       machine.now += ms;
     },
@@ -391,14 +389,14 @@ const machineSpec: stateful.StateMachine<Machine> = {
         submit(machine, drawRequest(tc));
       }
 
-      const index = tc.draw(gs.integers({ minValue: 0, maxValue: machine.pending.length - 1 }));
-      const boundary = tc.draw(gs.booleans(), "boundary");
+      const index = tc.draw(integers({ minValue: 0, maxValue: machine.pending.length - 1 }));
+      const boundary = tc.draw(booleans(), "boundary");
       report(
         machine,
         index,
         boundary
           ? {
-              input: tc.draw(gs.sampledFrom([19_999, 20_000, 20_001]), "input"),
+              input: tc.draw(sampledFrom([19_999, 20_000, 20_001]), "input"),
               output: drawTokens(tc, "output"),
               cacheRead: 0,
               cacheWrite: 0,

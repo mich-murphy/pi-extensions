@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import * as fs from "node:fs/promises";
+import { lstat, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { Option, Schema } from "effect";
@@ -45,7 +45,7 @@ async function canonicalTemp(runnerTemp: string): Promise<string> {
     throw new Error("--runner-temp must be absolute");
   }
 
-  return fs.realpath(runnerTemp);
+  return realpath(runnerTemp);
 }
 
 async function readStoreExecutable(executable: string): Promise<Buffer> {
@@ -77,10 +77,10 @@ async function namingRoot<T>(root: string, step: string, action: () => Promise<T
 }
 
 async function createOwnedRoot(runnerTemp: string, out: string) {
-  const root = await fs.mkdtemp(path.join(await canonicalTemp(runnerTemp), "gateway-nix-"));
+  const root = await mkdtemp(path.join(await canonicalTemp(runnerTemp), "gateway-nix-"));
 
   const stat = await namingRoot(root, "Cannot inspect fresh root", async () =>
-    fs.lstat(root, { bigint: true }),
+    lstat(root, { bigint: true }),
   );
 
   if (!isPrivateDirectory(stat, currentUid())) {
@@ -96,7 +96,7 @@ async function createOwnedRoot(runnerTemp: string, out: string) {
   };
 
   await namingRoot(root, "Cannot create owner marker", async () =>
-    fs.writeFile(path.join(root, "owner.json"), JSON.stringify(identity), {
+    writeFile(path.join(root, "owner.json"), JSON.stringify(identity), {
       flag: "wx",
       mode: 0o400,
     }),
@@ -267,7 +267,7 @@ function recordRoot(record: Schema.JsonObject, runnerTemp: string) {
 type RecordedFileIdentity = { dev: Schema.Json | undefined; ino: Schema.Json | undefined };
 
 async function rootIdentity(root: string, uid: number, recorded: RecordedFileIdentity) {
-  const stat = await fs.lstat(root, { bigint: true });
+  const stat = await lstat(root, { bigint: true });
   const dev = String(stat.dev);
   const ino = String(stat.ino);
 
@@ -351,8 +351,8 @@ function isWriterPrivate(stat: BigIntStats): boolean {
 
 async function requireFixtureParent(fixture: string): Promise<void> {
   const parentPath = path.dirname(fixture);
-  const parent = await fs.lstat(parentPath, { bigint: true });
-  const canonical = await fs.realpath(parentPath);
+  const parent = await lstat(parentPath, { bigint: true });
+  const canonical = await realpath(parentPath);
 
   if (canonical !== parentPath || !isWriterPrivate(parent)) {
     throw new Error("Fixture directory is not canonical, owned and private from other writers");
@@ -360,14 +360,14 @@ async function requireFixtureParent(fixture: string): Promise<void> {
 }
 
 async function replaceFixture(fixture: string, verified: BigIntStats, binary: Buffer) {
-  const again = await fs.lstat(fixture, { bigint: true });
+  const again = await lstat(fixture, { bigint: true });
 
   if (!sameFile(again, verified)) {
     throw new Error("Fixture changed while being verified");
   }
 
-  await fs.unlink(fixture);
-  await fs.writeFile(fixture, binary, { flag: "wx", mode: 0o500 });
+  await unlink(fixture);
+  await writeFile(fixture, binary, { flag: "wx", mode: 0o500 });
 }
 
 async function installFixture(record: NixRecord, extractedPath: string, fixture: string) {
@@ -434,7 +434,7 @@ const commands = new Map<string, Command>([
     "cleanup",
     async () => {
       const { root } = await owned();
-      await fs.rm(root, { recursive: true });
+      await rm(root, { recursive: true });
       await requireAbsent(root);
 
       return { removed: root };
