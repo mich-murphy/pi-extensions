@@ -44,7 +44,6 @@ const baseline = {
 const keys = Object.keys(baseline);
 const optionalKeys = configurationKeys.filter((key) => !keys.includes(key));
 const isJsonObject = Schema.is(Schema.JsonObject);
-const isNumber = Schema.is(Schema.Number);
 
 export function invalidFields(value: Schema.Json): Array<string> {
   if (!isJsonObject(value)) {
@@ -498,7 +497,7 @@ async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<C
     const value = decodePairing(parseJson(bytes));
 
     const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
-      isNumber(value.inspection?.[key]) ? [[key, value.inspection[key]] as const] : [],
+      typeof value.inspection?.[key] === "number" ? [[key, value.inspection[key]] as const] : [],
     );
 
     if (deadlines.length === 0) {

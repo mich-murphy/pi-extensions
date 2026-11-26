@@ -9,7 +9,6 @@ import {
   sampledFrom,
   text as textGen,
 } from "@hegeldev/hegel/generators";
-import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { inspectBashCommand, sanitizeBashContent, sanitizeContextMessages } from "../output-safety";
@@ -242,7 +241,7 @@ function assertNeverThrows(tc: TestCase): void {
 
   for (const command of [text, mixed.join("")]) {
     const verdict = inspectBashCommand(command);
-    assert.ok(verdict === undefined || Schema.is(Schema.String)(verdict));
+    assert.ok(verdict === undefined || typeof verdict === "string");
   }
 }
 

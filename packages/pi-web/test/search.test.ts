@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Duration, Effect, Layer, Result, Schema } from "effect";
+import { Duration, Effect, Layer, Result } from "effect";
 import { CredentialFailure } from "../credentials";
 import type { CredentialSnapshot } from "../credentials";
 import { McpClients } from "../mcp";
@@ -459,7 +459,7 @@ describe("provider route isolation", () => {
         outbound.push({
           url: String(input),
           headers: new Headers(init.headers),
-          body: Schema.is(Schema.String)(init.body) ? init.body : "",
+          body: typeof init.body === "string" ? init.body : "",
         });
 
         return new Response(

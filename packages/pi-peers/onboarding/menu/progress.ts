@@ -51,7 +51,6 @@ const isFact = Schema.is(
   Schema.TupleWithRest(Schema.Tuple([Schema.String, Schema.String]), [Schema.Unknown]),
 );
 
-const isString = Schema.is(Schema.String);
 const decodeRows = Schema.decodeUnknownOption(Schema.Array(Schema.Unknown));
 
 const StoredReport = Schema.Struct({
@@ -82,14 +81,14 @@ function restoreOutcome({
     technical?: ReadonlyArray<string>;
   } = { ok, headline: clean(headline, MAX_TEXT), facts: rows };
 
-  if (isString(next)) {
+  if (typeof next === "string") {
     outcome.next = clean(next, MAX_TEXT * 2);
   }
 
   if (lines !== undefined) {
     outcome.technical = lines
       .slice(0, MAX_TECHNICAL)
-      .flatMap((line) => (isString(line) ? [clean(line, MAX_TEXT * 4)] : []));
+      .flatMap((line) => (typeof line === "string" ? [clean(line, MAX_TEXT * 4)] : []));
   }
 
   return outcome;

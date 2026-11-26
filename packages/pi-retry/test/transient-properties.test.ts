@@ -12,7 +12,6 @@ import {
   sampledFrom,
   text,
 } from "@hegeldev/hegel/generators";
-import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { readTransientSettings, registerRetry } from "../retry";
@@ -150,7 +149,7 @@ const leaf = oneOf<SettingsLeaf>(
 );
 
 function checkValid(result: TransientSettings): void {
-  assert.ok(Schema.is(Schema.Boolean)(result.enabled));
+  assert.ok(typeof result.enabled === "boolean");
   assert.ok(Number.isInteger(result.maxAttempts) && result.maxAttempts > 0);
   assert.ok(Number.isFinite(result.windowMinutes) && result.windowMinutes > 0);
   assert.ok(result.delaysMinutes.length > 0);

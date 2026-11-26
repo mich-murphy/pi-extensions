@@ -37,7 +37,7 @@ export function effectiveCredential(
 
   const legacy = readLegacy(legacyId);
 
-  if (legacy?.type !== "api_key" || !Schema.is(Schema.String)(legacy.key)) {
+  if (legacy?.type !== "api_key" || typeof legacy.key !== "string") {
     return undefined;
   }
 
@@ -48,7 +48,7 @@ export function effectiveCredential(
 
 function usable(value: string | undefined): value is string {
   return (
-    Schema.is(Schema.String)(value) &&
+    typeof value === "string" &&
     value.trim() !== "" &&
     !value
       .trim()

@@ -11,7 +11,7 @@ import {
   optional,
   sampledFrom,
 } from "@hegeldev/hegel/generators";
-import { Result, Schema } from "effect";
+import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import {
@@ -39,7 +39,7 @@ const count = optional(integers({ minValue: 0, maxValue: 6 }));
 const maybeCount = oneOf(count, just(undefined));
 
 function lastReported(values: ReadonlyArray<number | null | undefined>): number | undefined {
-  return values.findLast((value) => Schema.is(Schema.Number)(value));
+  return values.findLast((value) => typeof value === "number");
 }
 
 function drawReport(tc: TestCase): ReportedUsage {
@@ -133,9 +133,7 @@ function limitsFor(
 }
 
 function validLimit(value: number | string | null): number | undefined {
-  return Schema.is(Schema.Number)(value) && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function assertLimitLookup(tc: TestCase): void {

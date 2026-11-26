@@ -1,4 +1,3 @@
-import { Schema } from "effect";
 import { visibleText } from "../../adapter/config.js";
 import { addressError, machineError, readOffer } from "../remote.js";
 import type { OfferPreview, RemoteIntent } from "../remote.js";
@@ -82,8 +81,6 @@ function sha256Row(draft: RemoteDraft): Row {
   });
 }
 
-const isMessage = Schema.is(Schema.String);
-
 function offerRows(draft: RemoteDraft, options: RemoteOptions): Array<Row> {
   return [
     textField({
@@ -95,7 +92,7 @@ function offerRows(draft: RemoteDraft, options: RemoteOptions): Array<Row> {
       save: async (value) => {
         const offer = await readOffer(value);
 
-        if (isMessage(offer)) {
+        if (typeof offer === "string") {
           return { error: offer };
         }
 

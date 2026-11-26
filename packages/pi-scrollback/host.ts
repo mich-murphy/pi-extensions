@@ -1,5 +1,6 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { Component, ScrollView, StackEntry, TUI } from "@earendil-works/pi-tui";
+import type { LayoutNode } from "@earendil-works/pi-tui/dist/layout-node";
 import { Option, Predicate, Schema } from "effect";
 import { contextRow, selectContext } from "./context";
 
@@ -7,7 +8,7 @@ const LAYOUT_NODE = Symbol.for("@earendil-works/pi-tui/layout-node");
 
 type RenderComponent = Pick<Component, "render">;
 
-type LayoutRoot = RenderComponent & { [LAYOUT_NODE]: () => typeof Schema.Unknown.Type };
+type LayoutRoot = RenderComponent & { [LAYOUT_NODE]: () => LayoutNode };
 
 const Render = Schema.declare<Component["render"]>((value): value is Component["render"] =>
   Predicate.isFunction(value),

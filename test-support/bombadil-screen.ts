@@ -11,8 +11,6 @@ export function screenRows(state: State): Array<string> {
   return rows;
 }
 
-const isText = Schema.is(Schema.String);
-
 const hasTypeText = Schema.is(
   Schema.Struct({
     TypeText: Schema.Union([Schema.String, Schema.Struct({ text: Schema.String })]),
@@ -26,5 +24,5 @@ export function typedText(state: State): string | null {
     return null;
   }
 
-  return isText(action.TypeText) ? action.TypeText : action.TypeText.text;
+  return typeof action.TypeText === "string" ? action.TypeText : action.TypeText.text;
 }

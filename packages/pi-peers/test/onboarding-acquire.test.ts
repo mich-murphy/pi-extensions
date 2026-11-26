@@ -62,7 +62,7 @@ async function mockNixBuild(_file: string, args: Array<string>): Promise<string>
 }
 
 const failCompletionWrite: typeof writeFile = async (filename, content, options) => {
-  if (isString(filename) && filename.endsWith("installed.json")) {
+  if (typeof filename === "string" && filename.endsWith("installed.json")) {
     throw new Error("simulated completion failure");
   }
 
@@ -496,8 +496,6 @@ function replacingOpen(replace: (filename: string) => Promise<void>): typeof ope
     return openFile(filename, flags, mode);
   };
 }
-
-const isString = Schema.is(Schema.String);
 
 function ioError(code: string): Error {
   return Object.assign(new Error(`simulated ${code}`), { code });

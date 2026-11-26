@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 import type { JsonObject, JsonValue } from "@earendil-works/pi-ai";
-import { Schema } from "effect";
 import type { ToolSource } from "./owner.ts";
 
 const READ_ONLY_BUILTINS: ReadonlySet<string> = new Set(["read", "ls", "grep", "find"]);
@@ -22,17 +21,14 @@ export function isReadOnlyTool(tool: ToolSource | undefined): boolean {
   );
 }
 
-const isString = Schema.is(Schema.String);
-const isNonTextScalar = Schema.is(Schema.Union([Schema.Null, Schema.Number, Schema.Boolean]));
-
 function stringsIn(value: JsonValue): Array<string> {
-  if (isString(value)) {
+  if (typeof value === "string") {
     return [value];
   }
 
-  return isNonTextScalar(value)
-    ? []
-    : Object.values<JsonValue>(value).flatMap((item) => stringsIn(item));
+  return typeof value === "object" && value !== null
+    ? Object.values<JsonValue>(value).flatMap((item) => stringsIn(item))
+    : [];
 }
 
 function pathsIn(texts: ReadonlyArray<string>): Array<string> {

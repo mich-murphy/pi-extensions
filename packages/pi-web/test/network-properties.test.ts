@@ -9,7 +9,7 @@ import {
   text as textGen,
   tuples,
 } from "@hegeldev/hegel/generators";
-import { Result, Schema } from "effect";
+import { Result } from "effect";
 import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import { isPrivateOrLocalIp, parseContentType } from "../network";
@@ -242,7 +242,7 @@ describe("isPrivateOrLocalIp properties", () => {
   test("arbitrary text never throws and non-IPs are not private", () => {
     assertHegel(settings, (tc) => {
       const text = tc.draw(textGen({ maxSize: 40 }), "text");
-      expect(isPrivateOrLocalIp(text)).toSatisfy(Schema.is(Schema.Boolean));
+      expect(typeof isPrivateOrLocalIp(text)).toBe("boolean");
       expect(isPrivateOrLocalIp(`x${text}`)).toBe(false);
     });
   });

@@ -77,8 +77,6 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   }
 }
 
-const isString = Schema.is(Schema.String);
-const isNumber = Schema.is(Schema.Number);
 const isObject = Schema.is(Schema.JsonObject);
 const isArray = Schema.is(Schema.Array(Schema.Json));
 const authoredFields = new Set(["content", "label", "locator"]);
@@ -92,7 +90,7 @@ function authoredBytes(value: Schema.Json): number {
 
   for (const [name, child] of Object.entries(value)) {
     total +=
-      authoredFields.has(name) && isString(child)
+      authoredFields.has(name) && typeof child === "string"
         ? Buffer.byteLength(child, "utf8")
         : authoredBytes(child);
   }
@@ -149,7 +147,7 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
       path[0] === "outcome" &&
       path[1] === "value" &&
       path[2] === "peers" &&
-      isNumber(path[3]) &&
+      typeof path[3] === "number" &&
       byteLength > MAX_DESCRIPTOR_BYTES
     ) {
       snapshotOverflow = true;

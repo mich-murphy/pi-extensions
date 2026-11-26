@@ -1,7 +1,6 @@
 import { Schema } from "effect";
 
 const decodeObject = Schema.decodeUnknownSync(Schema.JsonObject);
-const isString = Schema.is(Schema.String);
 
 export const MAX_BODY_BYTES = 32_764;
 export const MAX_ARRAY_ITEMS = 64;
@@ -51,7 +50,7 @@ class JsonEvidence {
       if (character === '"') {
         const value: unknown = JSON.parse(this.text.slice(start, this.position));
 
-        if (isString(value) && value.isWellFormed()) {
+        if (typeof value === "string" && value.isWellFormed()) {
           return value;
         }
 

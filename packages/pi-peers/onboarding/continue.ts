@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { Schema } from "effect";
+import type { Schema } from "effect";
 import { loadConfiguration, visibleText } from "../adapter/config.js";
 import type { Configuration } from "../adapter/config.js";
 import { readManaged, setupPaths } from "./backend.js";
@@ -44,13 +44,11 @@ const PUBLIC = [
   ["pairId", "Pair ID"],
 ] as const;
 
-const isString = Schema.is(Schema.String);
-
 function publicFacts(available: Schema.JsonObject): Array<[string, string]> {
   return PUBLIC.flatMap(([key, label]): Array<[string, string]> => {
     const value = available[key];
 
-    return isString(value) ? [[label, visibleText(value)]] : [];
+    return typeof value === "string" ? [[label, visibleText(value)]] : [];
   });
 }
 
@@ -585,7 +583,7 @@ function rePairForm(context: PairContext, progress: Progress): Screen {
 function oldRoot(pairing: Pairing): string | undefined {
   const root = pairing.output.rootSha256;
 
-  return isString(root)
+  return typeof root === "string"
     ? root
     : (pairing.intent.confirmedRootSha256 ?? pairing.intent.existing?.confirmedRootSha256);
 }

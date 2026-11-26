@@ -5,7 +5,7 @@ import {
   formatSize,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { Type } from "typebox";
 import { FetchPageBody } from "./fetch-page";
 import type { FetchPageResult } from "./fetch-page";
@@ -252,7 +252,7 @@ export function formatSearchResults(
       lines.push(`   Source: ${result.source}`);
     }
 
-    if (Schema.is(Schema.Number)(result.score)) {
+    if (typeof result.score === "number") {
       lines.push(`   Score: ${result.score}`);
     }
 

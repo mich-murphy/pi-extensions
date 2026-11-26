@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import { booleans, composite, integers, sampledFrom } from "@hegeldev/hegel/generators";
-import { Result, Schema } from "effect";
+import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { htmlToMarkdown, htmlToText } from "../html";
@@ -82,7 +82,7 @@ function assertAllowedOutcome(
     return;
   }
 
-  assert.ok(Schema.is(Schema.String)(result.success));
+  assert.ok(typeof result.success === "string");
   assert.ok(!result.success.includes(MARKER), "script text leaked into the output");
   assert.ok(!SCRIPT_URL.test(result.success), "a script URL survived link sanitising");
 
