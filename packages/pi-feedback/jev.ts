@@ -1,4 +1,4 @@
-import type { ClassifierBoolQuestion } from "@earendil-works/pi-ai";
+import type { ClassifierBoolQuestion, ClassifierChoiceQuestion } from "@earendil-works/pi-ai";
 
 export const JEV_PROVIDER = "typesafe";
 export const JEV_CATALOG_ID = "jev-latest";
@@ -8,6 +8,7 @@ export const JEV_MODEL = `${JEV_PROVIDER}/${JEV_MODEL_ID}`;
 export const INPUT_LIMIT = 400;
 export const ERROR_LIMIT = 600;
 export const MAX_MERGE_COMPARISONS = 12;
+export const CLASSIFY_TIMEOUT_MS = 30_000;
 
 export const THRESHOLDS = {
   harnessPath: 0.7,
@@ -15,6 +16,7 @@ export const THRESHOLDS = {
   piCoreOutsideBelow: 0.3,
   excludedOutsideFrom: 0.9,
   sameCause: 0.7,
+  owner: 0.9,
 } as const;
 
 export type RecordQuestion = "harnessPath" | "pathExisted" | "outsideService";
@@ -60,3 +62,52 @@ export const SAME_CAUSE_QUESTION: Readonly<Record<"sameCause", ClassifierBoolQue
     },
   },
 };
+
+const PACKAGE_DESCRIPTIONS = {
+  "pi-claude":
+    "Claude provider: runs claude/... models through the Claude Agent SDK and a Claude Code subscription. Turn failure categories (rate-limit, usage-limit, internal-continuation, stream-interrupted, authentication), Claude Code version and login, /claude status|usage, SDK tool validation (pi_claude_sdk_validation_error), Claude scratchpad paths, its bash cat/which guard and base64 output quarantine, the Extra Usage guard, thinking replay, publishing usage-limit reset times. Not Pi's own built-in providers (anthropic, openai, google and others) or their API keys and OAuth login",
+  "pi-coffee":
+    "Keeps the Mac awake while Pi works by running caffeinate (/coffee): system sleep, display, battery, leftover caffeinate processes",
+  "pi-feedback":
+    "The harness_feedback tool and the failed-tool-call ledger (/feedback): report limits and duplicates, the queue CLI, background Jev classification of records",
+  "pi-peers":
+    "Messages between live Pi sessions: peers_list, peers_send, peers_take, the gateway, its Unix socket, mTLS links between machines, pairing, the /peers menu and doctor",
+  "pi-retry":
+    "Continues a session automatically after a provider usage-limit reset or a transient provider failure (/retry): the wait, its widget, the resume marker, which failures are retried, maxAttempts, window, piRetry settings, print and JSON mode exits",
+  "pi-scrollback":
+    "A muted row pinned above the transcript that shows the current prompt while scrolling back in fullscreen mode (/scrollback)",
+  "pi-skills":
+    "The /skills menu that switches skills and instruction files (AGENTS.md, CLAUDE.md) on or off: saved choices (pi-skills.json, formerly pi-skill-toggle), blocking reads of disabled resources ('The user disabled ... in /skills'), subagents following the parent, toggle notes that keep the prompt cache",
+  "pi-vim":
+    "Vim-style Normal mode in the prompt editor (/vim): Esc and Ctrl+[, motions, dd, the mode label",
+  "pi-web":
+    "websearch (Exa, Parallel and Brave providers, free-tier rate limits, /login pi-web-*) and webfetch (fetch a URL as markdown/text, timeouts, 404s, offset and truncation, images, PDFs, fetch rescue)",
+} as const;
+
+export const OUTSIDE_OWNERS = {
+  "pi-core":
+    "Pi itself: built-in tools read, bash, edit, write, grep, find and ls; the codemode script runner and its models/tools API; the TUI, editor, themes and scrolling; sessions, tree, compaction, settings, Pi's built-in providers and their API keys and OAuth login, Pi's own provider retries, its own skill discovery and /skill:name commands, bug reports",
+  other: "A third-party extension or MCP server not listed here",
+} as const;
+
+const OWNER_INSTRUCTIONS =
+  "An AI coding agent filed a feedback report about a component of the Pi coding agent harness. Which package owns the component that actually failed? Judge from what happened, not only from the name given.";
+
+export type OwnerQuestion = Readonly<Record<"owner", ClassifierChoiceQuestion>>;
+
+export function ownerQuestion(ownPackages: ReadonlyArray<string>): OwnerQuestion | undefined {
+  const own = new Set(ownPackages);
+  const packages = Object.entries(PACKAGE_DESCRIPTIONS).filter(([name]) => own.has(name));
+
+  if (packages.length === 0) {
+    return undefined;
+  }
+
+  return {
+    owner: {
+      type: "choice",
+      instructions: OWNER_INSTRUCTIONS,
+      criteria: Object.fromEntries([...packages, ...Object.entries(OUTSIDE_OWNERS)]),
+    },
+  };
+}

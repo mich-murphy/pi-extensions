@@ -4,9 +4,28 @@ import type {
   ClassifierModel,
   ClassifierResult,
 } from "@earendil-works/pi-ai";
+import { Predicate } from "effect";
 import type { ClassifierRegistry } from "../classify.ts";
 
-export type FakeAnswer = (context: ClassifierContext) => Readonly<Record<string, number>> | "error";
+export type FakeChoice = {
+  readonly choice: string;
+  readonly probabilities: Readonly<Record<string, number>>;
+};
+
+export type FakeAnswer = (
+  context: ClassifierContext,
+) => Readonly<Record<string, number | FakeChoice>> | "error" | "hang";
+
+function answerOf(given: number | FakeChoice): ClassifierResult["answers"][string] {
+  return Predicate.isNumber(given)
+    ? { type: "bool", probability: given }
+    : {
+        type: "choice",
+        choice: given.choice,
+        probabilities: { ...given.probabilities },
+        confidence: given.probabilities[given.choice] ?? 0,
+      };
+}
 
 const jevLatest: ClassifierModel<ClassifierApi> = {
   type: "classifier",
@@ -21,15 +40,19 @@ const jevLatest: ClassifierModel<ClassifierApi> = {
 };
 
 export function fakeClassifier(answer: FakeAnswer, configured = true) {
-  const calls: Array<{ model: string; context: ClassifierContext }> = [];
+  const calls: Array<{ model: string; context: ClassifierContext; signal: AbortSignal }> = [];
 
   const registry: ClassifierRegistry = {
     getProviderAuthStatus: () => ({ configured }),
     getModelOfType: (_type, provider, modelId) =>
       provider === jevLatest.provider && modelId === jevLatest.id ? jevLatest : undefined,
-    classify: async (model, context) => {
-      calls.push({ model: model.id, context });
+    classify: async (model, context, { signal }) => {
+      calls.push({ model: model.id, context, signal });
       const given = answer(context);
+
+      if (given === "hang") {
+        return Promise.withResolvers<ClassifierResult>().promise;
+      }
 
       const base = {
         api: model.api,
@@ -44,10 +67,7 @@ export function fakeClassifier(answer: FakeAnswer, configured = true) {
           : {
               ...base,
               answers: Object.fromEntries(
-                Object.entries(given).map(([id, probability]) => [
-                  id,
-                  { type: "bool" as const, probability },
-                ]),
+                Object.entries(given).map(([id, value]) => [id, answerOf(value)]),
               ),
               stopReason: "stop",
             };

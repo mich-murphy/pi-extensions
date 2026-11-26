@@ -118,3 +118,20 @@ export function resolveEvent(n: number, group: string): LedgerEvent {
 export function reopenEvent(n: number, group: string): LedgerEvent {
   return { type: "reopen", id: eventId(n), at: eventAt(n), group, reason: "Seen again" };
 }
+
+export function ownerEvent(
+  n: number,
+  fingerprint: string,
+  owner: string,
+  probability: number,
+): LedgerEvent {
+  return {
+    type: "owner",
+    id: eventId(n),
+    at: eventAt(n),
+    fingerprint,
+    owner,
+    model: "typesafe/jev-1.14.0",
+    probability,
+  };
+}
