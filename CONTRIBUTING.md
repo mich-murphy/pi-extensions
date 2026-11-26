@@ -189,7 +189,11 @@ BOMBADIL_TIME_LIMIT=10m npm run test:bombadil
 
 To see every byte Pi writes, set `PI_TUI_WRITE_LOG` to a file path. The launcher passes it through to Pi.
 
-The run stops at the first violation and prints the trace directory. Replay it with `bombadil terminal test --reproduce <trace>` and the same command, or reduce it with `bombadil terminal shrink --trace <trace>`. Traces are large (150–300 MB per passing run) and are not deleted; they go to `bombadil_terminal_*` directories under `$TMPDIR`. Remove them with `rm -rf "$TMPDIR"/bombadil_terminal_*` when no run is active. Bombadil's terminal driver is experimental, so these runs are not part of `npm run check`. Run them when upgrading the pinned `@earendil-works/pi-coding-agent`, since they read Pi's on-screen text.
+The launcher also preloads `scripts/bombadil-synchronized-output.ts`, which removes the synchronized-output markers (`CSI ?2026h` and `CSI ?2026l`) from Pi's output. Bombadil 0.8 records a state as soon as one synchronized redraw ends, and Pi redraws asynchronously, so without the filter a state can show the screen from before the action it is paired with. Without the markers, Bombadil waits for `--quiescence-timeout-ms` of quiet output instead.
+
+Specifications run inside Bombadil's own JavaScript engine, which is not Node. It evaluates the bundle as a script and has no `TextEncoder`, so a specification and the helpers it imports can use `effect/Predicate` but not the root `effect` barrel or `effect/Schema`.
+
+The run stops at the first violation and prints the trace directory. Replay it with `bombadil terminal test --reproduce <trace>` and the same command, or reduce it with `bombadil terminal shrink --trace <trace>`. Traces are large (150–300 MB per passing run) and are not deleted; they go to `bombadil_terminal_*` directories under `$TMPDIR`. Remove them with `rm -rf "$TMPDIR"/bombadil_terminal_*` when no run is active. These runs are not part of `npm run check`. The [Bombadil workflow](.github/workflows/bombadil.yml) runs each suite as its own job on every pull request and uploads the log and trace when one fails. Run them locally when upgrading the pinned `@earendil-works/pi-coding-agent`, since they read Pi's on-screen text.
 
 Check a new property by breaking the code it guards and confirming the run fails.
 
