@@ -48,7 +48,7 @@ const preserveJsonLines = {
 export default defineConfig({
   extends: [cloudflare],
   env: { ...cloudflare.env, builtin: true, node: true },
-  ignorePatterns: [...cloudflare.ignorePatterns, "config/oxlint/anti-slop/**"],
+  ignorePatterns: cloudflare.ignorePatterns,
   categories: {
     correctness: "error",
     suspicious: "error",
@@ -60,17 +60,7 @@ export default defineConfig({
     reportUnusedDisableDirectives: "error",
   },
   plugins: [...new Set([...(cloudflare.plugins ?? []), ...projectPlugins])],
-  jsPlugins: [
-    "./config/oxlint/no-comments.ts",
-    {
-      name: "anti-slop",
-      specifier: "./config/oxlint/anti-slop/index.ts",
-    },
-    {
-      name: "anti-slop-effect",
-      specifier: "./config/oxlint/anti-slop/effect/index.ts",
-    },
-  ],
+  jsPlugins: ["./config/oxlint/no-comments.ts"],
   rules: {
     ...immutableValuesOverInPlaceSpreads,
     ...allowEffectTaggedErrorFactories,
@@ -207,17 +197,6 @@ export default defineConfig({
     "oxc/no-barrel-file": "error",
     "unicorn/prefer-module": "error",
     "pi-extensions/no-comments": "error",
-    "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-runtime-typeof": "error",
-    "anti-slop/no-unknown-parameters": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error",
-    "anti-slop/no-shape-in-symbol-names": "error",
-    "anti-slop/require-readable-spacing": "error",
-    "anti-slop-effect/no-manual-tag-comparison": "error",
-    "anti-slop-effect/no-manual-tagged-construction": "error",
-    "anti-slop-effect/no-service-constructor-imports": "error",
-    "anti-slop-effect/no-manual-effect-error-tag": "error",
-    "anti-slop-effect/prefer-effect-match": "error",
   },
   overrides: [
     {

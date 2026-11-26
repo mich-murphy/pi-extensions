@@ -26,7 +26,7 @@ tester.run("no-comments", plugin.rules["no-comments"], {
     "const answer = 42;",
     "const url = 'https://example.com'; const path = '//not-a-comment';",
     "// oxlint-disable-next-line eslint/no-await-in-loop -- sequential by protocol\nawait step();",
-    "// oxlint-disable-next-line typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion -- the producer emits only strings\nconst value = input as string;",
+    "// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the producer emits only strings\nconst value = input as string;",
     "/* oxlint-disable typescript/no-unsafe-type-assertion -- trusted fixture module */\nconst x = 1;",
     "// eslint-disable-next-line no-console -- CLI entry point owns stdout\nconsole.log(1);",
     "// oxlint-enable no-console\nconst x = 1;",
