@@ -63,7 +63,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/evidence"
           gzip -c "$RUNNER_TEMP/bombadil.log" > "$RUNNER_TEMP/evidence/bombadil.log.gz"
-          find /tmp -maxdepth 2 -name 'bombadil-*.bin' -exec cp {} "$RUNNER_TEMP/evidence/" \;
+          find "$RUNNER_TEMP" -maxdepth 2 -name 'bombadil-*.bin' -exec cp {} "$RUNNER_TEMP/evidence/" \;
       - name: Upload log and trace
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
