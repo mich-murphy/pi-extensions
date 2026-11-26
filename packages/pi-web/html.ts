@@ -909,7 +909,7 @@ function isTableElement(node: Element): node is HTMLTableElement {
 }
 
 function appendDominoChild(parent: Element, child: Node): void {
-  parent.appendChild(child);
+  parent.insertBefore(child, null);
 }
 
 function convertToMarkdown(html: string, sanitizedRoot: Element): string {

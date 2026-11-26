@@ -286,7 +286,7 @@ const output: ProbeReport = {
   turns,
 };
 
-let exitCode = 0;
+let exitCode: number;
 
 try {
   const sessionA = await runSession("A", 3, 0);

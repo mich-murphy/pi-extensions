@@ -469,9 +469,15 @@ async function installedPayload(
 
   const payload = path.join(plan.installRoot, target);
 
-  const payloadStat = await io.lstat(payload).catch((cause: unknown) => {
-    throw new Error("Unsafe existing installation: its gateway files are missing", { cause });
-  });
+  let payloadStat: Stats;
+
+  try {
+    payloadStat = await io.lstat(payload);
+  } catch (error) {
+    throw new Error("Unsafe existing installation: its gateway files are missing", {
+      cause: error,
+    });
+  }
 
   validatePrivateDirectory(payloadStat);
 
@@ -789,13 +795,13 @@ async function publicationCollision(
 
   try {
     own = await isOwnLink(destination, path.basename(installation.installDirectory), io.fs);
-  } catch (inspection) {
+  } catch (error) {
     installation.retained = true;
     throw new AggregateError(
-      [cause, inspection],
+      [cause, error],
       "The gateway install could not be confirmed; it was kept",
       {
-        cause: inspection,
+        cause: error,
       },
     );
   }

@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
 import { isPrivateOrLocalIp, parseContentType } from "../network";
 import { parsePublicHttpUrl } from "../types";
+import { UTF8 } from "./fakes";
 
 const settings = propertySettings(200);
 
@@ -245,7 +246,7 @@ describe("isPrivateOrLocalIp properties", () => {
 
 describe("parseContentType charset properties", () => {
   const NAMES = ["foo", "charset", "xcharset", "charsetx", "Charset", "a-charset", "q"];
-  const VALUES = ["utf-8", "ISO-8859-1", "x", "Shift_JIS"];
+  const VALUES = [UTF8, "ISO-8859-1", "x", "Shift_JIS"];
   test("only a parameter named exactly charset sets the charset", () => {
     assertHegel(settings, (tc) => {
       const params = tc.draw(

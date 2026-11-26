@@ -39,24 +39,29 @@ export async function waitFor<A>(
       reject(error);
     }
 
-    signal.addEventListener("abort", aborted, { once: true });
-    void shared.then(
-      (value) => {
-        if (settled) {
-          return undefined;
-        }
+    async function settleShared(): Promise<void> {
+      let value: A;
 
+      try {
+        value = await shared;
+      } catch (error) {
+        finish(
+          error instanceof Error
+            ? error
+            : new Error("Shared initialization failed", { cause: error }),
+        );
+
+        return;
+      }
+
+      if (!settled) {
         settled = true;
         cleanup();
         resolve(value);
+      }
+    }
 
-        return undefined;
-      },
-      (cause: unknown) => {
-        finish(
-          cause instanceof Error ? cause : new Error("Shared initialization failed", { cause }),
-        );
-      },
-    );
+    signal.addEventListener("abort", aborted, { once: true });
+    void settleShared();
   });
 }

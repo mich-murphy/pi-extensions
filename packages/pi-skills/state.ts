@@ -225,24 +225,24 @@ function fileSystem<A>(
 ): Result.Result<A, ToggleStateUnavailable> {
   try {
     return Result.succeed(run());
-  } catch (cause) {
-    if (cause instanceof Error && "syscall" in cause && "code" in cause) {
-      return Result.fail(new ToggleStateUnavailable(operation, path, String(cause.code), cause));
+  } catch (error) {
+    if (error instanceof Error && "syscall" in error && "code" in error) {
+      return Result.fail(new ToggleStateUnavailable(operation, path, String(error.code), error));
     }
 
-    throw cause;
+    throw error;
   }
 }
 
 function resourceExistsOrIsUnverifiable(path: ResourcePath): boolean {
   try {
     return statSync(path, { throwIfNoEntry: false }) !== undefined;
-  } catch (cause) {
-    if (cause instanceof Error && "syscall" in cause && "code" in cause) {
-      return cause.code !== "ENOENT" && cause.code !== "ENOTDIR";
+  } catch (error) {
+    if (error instanceof Error && "syscall" in error && "code" in error) {
+      return error.code !== "ENOENT" && error.code !== "ENOTDIR";
     }
 
-    throw cause;
+    throw error;
   }
 }
 
@@ -251,12 +251,12 @@ function parseState(path: string, content: string): ToggleStateResult {
 
   try {
     state = JSON.parse(content);
-  } catch (cause) {
-    if (cause instanceof SyntaxError) {
-      return Result.fail(new ToggleStateInvalidJson(path, cause));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return Result.fail(new ToggleStateInvalidJson(path, error));
     }
 
-    throw cause;
+    throw error;
   }
 
   if (!isStateDocument(state)) {

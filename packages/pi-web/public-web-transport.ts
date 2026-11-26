@@ -62,9 +62,9 @@ async function sendAddressBoundRequest(
       (incoming) => {
         try {
           resolve(toFetchResponse(incoming));
-        } catch (cause) {
+        } catch (error) {
           incoming.destroy();
-          reject(cause instanceof Error ? cause : new Error("Could not create HTTP response"));
+          reject(error instanceof Error ? error : new Error("Could not create HTTP response"));
         }
       },
     );
@@ -292,14 +292,14 @@ function webReadable(stream: Readable): ReadableStream<Uint8Array> {
 
             controller.enqueue(chunk.value);
           }
-        } catch (cause) {
+        } catch (error) {
           try {
-            await reader.cancel(cause).catch(ignoreAlreadyRejectedCancellation);
+            await reader.cancel(error).catch(ignoreAlreadyRejectedCancellation);
           } finally {
             reader.releaseLock();
           }
 
-          controller.error(cause);
+          controller.error(error);
         }
       },
       async cancel(reason) {

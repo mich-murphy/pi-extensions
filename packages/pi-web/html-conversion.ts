@@ -25,11 +25,11 @@ export type HtmlConversionError = EmptyHtmlDocument | HtmlConversionFailed;
 export function convertGuarded(convert: () => string): Result.Result<string, HtmlConversionFailed> {
   try {
     return Result.succeed(convert());
-  } catch (cause) {
-    if (cause instanceof RangeError) {
-      return Result.fail(new HtmlConversionFailed({ cause }));
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return Result.fail(new HtmlConversionFailed({ cause: error }));
     }
 
-    throw cause;
+    throw error;
   }
 }
