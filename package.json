@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@antithesishq/bombadil": "0.8.0",
+    "@cloudflare/oxlint-config": "0.2.0",
     "@earendil-works/pi-agent-core": "1.6.0",
     "@earendil-works/pi-ai": "1.6.0",
     "@earendil-works/pi-coding-agent": "1.6.0",
@@ -81,7 +82,7 @@
     "undici": "8.12.3"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.18.0 || >=24.0.0"
   },
   "allowScripts": {
     "@google/genai": false,

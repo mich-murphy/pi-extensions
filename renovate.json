@@ -39,8 +39,8 @@
       ]
     },
     {
-      "description": "Oxlint declares a minimum oxlint-tsgolint version for its type-aware rules, and Oxfmt ships from the same Oxc releases. Raise them as one PR so the linter and its type checker never drift apart",
-      "matchPackageNames": ["oxlint", "oxlint-tsgolint", "oxfmt"],
+      "description": "Keep the Cloudflare preset, Oxlint, its type-aware backend and Oxfmt compatible by upgrading them in one PR",
+      "matchPackageNames": ["@cloudflare/oxlint-config", "oxlint", "oxlint-tsgolint", "oxfmt"],
       "groupName": "oxc"
     }
   ]
