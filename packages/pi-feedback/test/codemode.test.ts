@@ -117,10 +117,9 @@ describe("harness feedback under codemode", () => {
     expect(events[0]).not.toHaveProperty("cause");
   });
 
-  test("records a script failure when none of its calls failed", async () => {
+  test("records a script failure that does not repeat a failed call's error", async () => {
     pi.nestedStart("cm-a", "cm-a/1", "read", READ);
     await pi.nestedEnd("cm-a", "cm-a/1", "read", true, MISSING);
-    await pi.end("codemode", true, "Script failed", "cm-a");
     pi.nestedStart("cm-b", "cm-b/1", "bash", WRITE);
     await pi.nestedEnd("cm-b", "cm-b/1", "bash", false, "done");
     await pi.end("codemode", true, "Script failed\nScript error:\nboom", "cm-b");
@@ -130,6 +129,20 @@ describe("harness feedback under codemode", () => {
       { tool: "codemode", error: "Script failed\nScript error:\nboom" },
       { tool: "codemode", error: "Script failed\nScript error:\nagain" },
     ]);
+    await expect(signals(ledger)).resolves.toHaveLength(3);
+  });
+
+  test("records a script failure once when it rethrows a failed call's error", async () => {
+    pi.nestedStart("cm", "cm/1", "read", READ);
+    await pi.nestedEnd("cm", "cm/1", "read", true, MISSING);
+    await pi.end(
+      "codemode",
+      true,
+      `Script failed\nScript error:\nError: ${MISSING}\n    at <eval>`,
+      "cm",
+    );
+    await expect(signals(ledger)).resolves.toMatchObject([{ tool: "read" }]);
+    await expect(signals(ledger)).resolves.toHaveLength(1);
   });
 
   test("records a script failure when its only failed call was harness_feedback", async () => {

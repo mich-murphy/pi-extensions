@@ -416,16 +416,17 @@ export function registerFeedback(
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    const ended = nested.end({
-      ...event,
-      isError: event.isError && event.toolName !== FEEDBACK_TOOL,
-    });
+    const error = errorText(event.result);
+
+    const ended = nested.end(
+      { ...event, isError: event.isError && event.toolName !== FEEDBACK_TOOL },
+      error,
+    );
 
     if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL || ended.suppressed) {
       return;
     }
 
-    const error = errorText(event.result);
     const attribution = owners.forSignal(event.toolName, error);
     const calls = ended.batch ?? batch;
     const failing = calls.find((call) => call.id === event.toolCallId);

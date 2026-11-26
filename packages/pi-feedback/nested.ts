@@ -10,7 +10,7 @@ const MAX_CALLS = 256;
 
 type Tracked = { readonly call: BatchCall; readonly started: number; ended: number | undefined };
 
-type Scope = { readonly calls: Map<string, Tracked>; failed: boolean };
+type Scope = { readonly calls: Map<string, Tracked>; readonly errors: Set<string> };
 
 export type NestedEnd = {
   readonly suppressed: boolean;
@@ -37,7 +37,7 @@ export function createNestedTracker() {
       return existing;
     }
 
-    const scope: Scope = { calls: new Map(), failed: false };
+    const scope: Scope = { calls: new Map(), errors: new Set() };
     scopes.set(parent, scope);
     const [oldest] = scopes.keys();
 
@@ -67,10 +67,12 @@ export function createNestedTracker() {
   };
 
   const end = (
-    event: Pick<ToolExecutionEndEvent, "toolCallId" | "isError" | "parentToolCallId">,
+    event: Pick<ToolExecutionEndEvent, "toolCallId" | "toolName" | "isError" | "parentToolCallId">,
+    error: string,
   ): NestedEnd => {
     tick += 1;
-    const suppressed = scopes.get(event.toolCallId)?.failed === true;
+    const errors = scopes.get(event.toolCallId)?.errors ?? new Set<string>();
+    const suppressed = event.isError && [...errors].some((child) => error.includes(child));
     scopes.delete(event.toolCallId);
 
     if (event.parentToolCallId === undefined) {
@@ -78,7 +80,9 @@ export function createNestedTracker() {
     }
 
     const scope = scopeOf(event.parentToolCallId);
-    scope.failed ||= event.isError;
+    if (event.isError && scope.errors.size < MAX_CALLS) {
+      scope.errors.add(error.trim() === "" ? `Tool "${event.toolName}" failed` : error.trim());
+    }
     const failing = scope.calls.get(event.toolCallId);
 
     if (failing === undefined) {

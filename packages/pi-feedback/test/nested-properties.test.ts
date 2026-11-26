@@ -38,6 +38,20 @@ function drawSteps(tc: TestCase): Array<Step> {
   return steps;
 }
 
+function childError(id: string): string {
+  return `ENOENT: no such file '${id}.txt'`;
+}
+
+function scriptError(rethrown: string | undefined): string {
+  return `Script failed\nScript error:\n${rethrown ?? "boom"}`;
+}
+
+function rethrownError(steps: ReadonlyArray<Step>, rethrow: boolean): string | undefined {
+  const failed = steps.find((step) => step.failed);
+
+  return rethrow && failed !== undefined ? childError(failed.id) : undefined;
+}
+
 function replay(steps: ReadonlyArray<Step>, tracker: ReturnType<typeof createNestedTracker>) {
   const batches = new Map<string, ReadonlyArray<string>>();
 
@@ -45,11 +59,10 @@ function replay(steps: ReadonlyArray<Step>, tracker: ReturnType<typeof createNes
     if (step.kind === "start") {
       tracker.start({ toolCallId: step.id, toolName: "read", args: {}, parentToolCallId: PARENT });
     } else {
-      const ended = tracker.end({
-        toolCallId: step.id,
-        isError: step.failed,
-        parentToolCallId: PARENT,
-      });
+      const ended = tracker.end(
+        { toolCallId: step.id, toolName: "read", isError: step.failed, parentToolCallId: PARENT },
+        childError(step.id),
+      );
 
       batches.set(
         step.id,
@@ -75,7 +88,7 @@ function expectedBatch(steps: ReadonlyArray<Step>, id: string): Array<string> {
 }
 
 describe("nested call tracking", () => {
-  test("a failed call's batch is exactly the siblings whose runs overlapped it", () => {
+  test("a failed call's batch is exactly the siblings whose runs overlapped it, and a script's error is hidden only when it repeats one", () => {
     assertHegel(settings, (tc) => {
       const steps = drawSteps(tc);
       const tracker = createNestedTracker();
@@ -84,9 +97,10 @@ describe("nested call tracking", () => {
         assert.deepEqual(batch, expectedBatch(steps, id));
       }
 
-      const failed = steps.some((step) => step.failed);
-      assert.equal(tracker.end({ toolCallId: PARENT, isError: true }).suppressed, failed);
-      assert.equal(tracker.end({ toolCallId: PARENT, isError: true }).suppressed, false);
+      const rethrown = rethrownError(steps, tc.draw(booleans(), "rethrow"));
+      const parent = { toolCallId: PARENT, toolName: "codemode", isError: true };
+      assert.equal(tracker.end(parent, scriptError(rethrown)).suppressed, rethrown !== undefined);
+      assert.equal(tracker.end(parent, scriptError(rethrown)).suppressed, false);
     });
   });
 });

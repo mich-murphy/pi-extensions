@@ -44,7 +44,7 @@ Pi runs the tool calls of one assistant message at the same time. When a call fa
 
 `harness_feedback` declares an output schema, so a codemode script that calls it gets `{ status, group, owner }` instead of text. `status` is `recorded`, `duplicate`, `limit`, `off` or `failed`, and `group` and `owner` are set when it is `recorded`. A call that fails still resolves to this value.
 
-Calls a script makes are checked the same way as calls in one message: a failed call's batch is the script's other calls that were running at the same time. When a call inside a script fails, that call is recorded once, and the script's own failure is not recorded again. A failed `harness_feedback` call is not recorded, so it does not stop the script's own failure from being recorded.
+Calls a script makes are checked the same way as calls in one message: a failed call's batch is the script's other calls that were running at the same time. When a call inside a script fails, that call is recorded once. The script's own failure is not recorded again when its error repeats the failed call's error text, for example when the script lets the rejection through or rethrows it. A script failure with a different error is recorded as well. A failed `harness_feedback` call is not recorded, so it does not stop the script's own failure from being recorded.
 
 ## Pi core
 
