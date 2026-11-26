@@ -138,6 +138,22 @@ describe("schema-faithful deferred tools", () => {
     ]);
   });
 
+  test.each([[[]], [["path"]], [null], ["file"], [1]])(
+    "rejects non-record tool input: %j",
+    async (input) => {
+      const capture = createDeferredCallCapture(compileToolCatalog([declaration]));
+
+      await deliverToolUse(capture.hook, { id: "bad", toolName: "mcp__pi__read", input });
+      expect(capture.calls).toStrictEqual([
+        {
+          id: "bad",
+          name: "pi_claude_sdk_validation_error",
+          arguments: { error: "invalid_tool_input" },
+        },
+      ]);
+    },
+  );
+
   test("maps punctuation, long and unicode names deterministically without collisions", () => {
     const names = ["read", "a.b", "a_b", "日本語", "x".repeat(100), "pi_reserved"];
     const tools = names.map((name) => ({ ...declaration, name }));

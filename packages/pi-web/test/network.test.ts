@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, test } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber, Result } from "effect";
+import { Brand, Cause, Effect, Exit, Fiber, Result } from "effect";
 import { TestClock } from "effect/testing";
 import type { PublicWebError, PublicWebRequest } from "../network";
 import {
@@ -19,6 +19,7 @@ import {
   ResponseTooLarge,
   UrlCredentialsUnsupported,
 } from "../network";
+import type { PublicHttpUrl } from "../types";
 import { UTF8, publicUrl, publicWebClientWith } from "./fakes";
 
 describe("isPrivateOrLocalIp", () => {
@@ -361,7 +362,8 @@ describe("fetchPublicWebClient hop checks", () => {
 
   test("rejects URL credentials before the private-host check", async () => {
     const { client, hops } = recordingClient(() => responseOf({ status: 200 }));
-    const request = { ...makeRequest(), url: "http://user:secret@127.0.0.1/" };
+    const uncheckedUrl = Brand.nominal<PublicHttpUrl>();
+    const request = makeRequest({ url: uncheckedUrl("http://user:secret@127.0.0.1/") });
     const result = await Effect.runPromise(Effect.result(client.get(request)));
     expect(result).toStrictEqual(Result.fail(new UrlCredentialsUnsupported()));
     expect(hops).toHaveLength(0);

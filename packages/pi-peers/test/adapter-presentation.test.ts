@@ -164,6 +164,22 @@ describe("presentation-only session tool rendering", () => {
       expect(JSON.stringify({ args: entry.args, payload })).toBe(before);
     },
   );
+  test("an undefined property does not hide the defined call and result fields", () => {
+    const callArgs: Schema.JsonObject = { to: "s-4f2a", kind: "request" };
+    const args = Object.defineProperty(callArgs, "content", { value: undefined, enumerable: true });
+    const shown: Schema.JsonObject = { outcome: admitted };
+    const payload = result(
+      Object.defineProperty(shown, "note", { value: undefined, enumerable: true }),
+    );
+
+    expect(render("peers_send", "call", args, payload).join("\n")).toContain(
+      "→ s-4f2a · request · …",
+    );
+    expect(render("peers_send", "result", args, payload).join("\n")).toContain(
+      "Added to peer inbox",
+    );
+  });
+
   test("all three public registrations hook up both renderers without changing unavailable model output", async () => {
     const fixture = toolRecorder();
     registerTools(fixture, () => undefined);

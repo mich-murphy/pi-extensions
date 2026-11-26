@@ -1,7 +1,6 @@
 import type { HookCallback, PreToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import type { Tool } from "@earendil-works/pi-ai";
-import { Schema, SchemaGetter } from "effect";
 import { z } from "zod";
 import type { DeferredCall } from "../bridge";
 import { VALIDATION_ERROR_TOOL } from "../validation-recovery";
@@ -19,15 +18,6 @@ const DEFERRED_PI_CALL_HANDLER = async () => ({
 
 const MAX_PARAMETERS_CHARS = 4000;
 const cleanToolArguments = z.record(z.string(), z.json());
-
-const readToolArguments = Schema.decodeUnknownSync(
-  Schema.JsonObject.pipe(
-    Schema.decode({
-      decode: SchemaGetter.transform((input) => cleanToolArguments.parse(input)),
-      encode: SchemaGetter.transform((input) => input),
-    }),
-  ),
-);
 
 type ToolInvocation = Pick<PreToolUseHookInput, "tool_use_id" | "tool_name" | "tool_input">;
 
@@ -102,12 +92,12 @@ export function createDeferredCallCapture(
 
     if (selected) {
       try {
-        const args = readToolArguments(
+        const args = cleanToolArguments.parse(
           validateToolArguments(selected.declaration, {
             type: "toolCall",
             id,
             name: selected.declaration.name,
-            arguments: readToolArguments(input),
+            arguments: cleanToolArguments.parse(input),
           }),
         );
 

@@ -39,7 +39,7 @@ export type ParsedContentType = {
 };
 
 export type PublicWebRequest = {
-  readonly url: string;
+  readonly url: PublicHttpUrl;
   readonly accept: string;
   readonly userAgent: string;
   readonly fallbackUserAgent: string;
@@ -51,7 +51,7 @@ export type PublicWebRequest = {
 };
 
 export type PublicWebResponse = {
-  readonly requestedUrl: string;
+  readonly requestedUrl: PublicHttpUrl;
   readonly finalUrl: PublicHttpUrl;
   readonly status: number;
   readonly headers: Headers;

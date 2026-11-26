@@ -14,13 +14,7 @@ import {
 import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import {
-  applyUsage,
-  contextWindowFor,
-  decodeSdkEvent,
-  maxOutputTokensFor,
-  parseSdkMessage,
-} from "../sdk/messages";
+import { applyUsage, contextWindowFor, maxOutputTokensFor, parseSdkMessage } from "../sdk/messages";
 import type { ReportedUsage } from "../sdk/messages";
 import { resultMessage } from "./fixtures";
 
@@ -107,16 +101,14 @@ function limitsFor(
   key: string,
 ) {
   const parsed = parseSdkMessage(
-    decodeSdkEvent(
-      resultMessage({
-        modelUsage: {
-          [key]: { canonicalModel: canonical, contextWindow: context },
-          decoy: { canonicalModel: "claude-decoy-9", maxOutputTokens: 1 },
-          alias: { canonicalModel: canonical, maxOutputTokens: output },
-          "claude-other-1-20250101": { maxOutputTokens: output },
-        },
-      }),
-    ),
+    resultMessage({
+      modelUsage: {
+        [key]: { canonicalModel: canonical, contextWindow: context },
+        decoy: { canonicalModel: "claude-decoy-9", maxOutputTokens: 1 },
+        alias: { canonicalModel: canonical, maxOutputTokens: output },
+        "claude-other-1-20250101": { maxOutputTokens: output },
+      },
+    }),
   );
 
   if (Result.isFailure(parsed)) {

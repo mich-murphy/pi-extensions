@@ -42,16 +42,7 @@ const decodeInit = Schema.decodeUnknownOption(
   }),
 );
 
-export function tooOldClaudeCode(
-  message:
-    | {
-        readonly type: string;
-        readonly subtype?: unknown;
-        readonly claude_code_version?: unknown;
-      }
-    | null
-    | undefined,
-): string | undefined {
+export function tooOldClaudeCode(message: unknown): string | undefined {
   const init = Option.getOrUndefined(decodeInit(message));
   const version = init?.claude_code_version;
 

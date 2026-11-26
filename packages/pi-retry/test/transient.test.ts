@@ -342,6 +342,31 @@ describe("piRetry.transient settings", () => {
     expect(readTransientSettings({ piRetry: {} })).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
   });
 
+  test.each([[[]], [null], [undefined], [false], ["settings"]])(
+    "uses defaults for a non-object root: %j",
+    (settings) => {
+      expect(readTransientSettings(settings)).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
+    },
+  );
+
+  test("missing own data values fall back to the legacy section or defaults", () => {
+    const transient = { enabled: null };
+    Object.setPrototypeOf(transient, { maxAttempts: 99 });
+    const settings = { piRetry: undefined, autoResume: { transient } };
+
+    expect(readTransientSettings(settings)).toStrictEqual(DEFAULT_TRANSIENT_SETTINGS);
+  });
+
+  test("positive delays may contain unoccupied array slots", () => {
+    const delaysMinutes = [1, 2];
+    delaysMinutes.length = 3;
+
+    expect(readTransientSettings({ piRetry: { transient: { delaysMinutes } } })).toStrictEqual({
+      ...DEFAULT_TRANSIENT_SETTINGS,
+      delaysMinutes,
+    });
+  });
+
   test("partial settings fill in from the defaults and allow fractional minutes", () => {
     expect(
       readTransientSettings({
@@ -352,6 +377,7 @@ describe("piRetry.transient settings", () => {
 
   test.each([
     ["piRetry is not an object", { piRetry: true }],
+    ["piRetry is a function", { piRetry: () => ({}) }],
     ["transient is not an object", { piRetry: { transient: [] } }],
     ["enabled is not a boolean", { piRetry: { transient: { enabled: "yes" } } }],
     ["delays are empty", { piRetry: { transient: { delaysMinutes: [] } } }],
