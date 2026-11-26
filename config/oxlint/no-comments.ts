@@ -20,7 +20,7 @@ const message =
   "Comments are banned: they go stale and agents copy them. Make the code say it instead: rename, extract a function, encode the constraint in a type, test or lint rule, fix the root cause of the workaround, or delete the comment. Allowed: lint/type/formatter directives, license headers, shebangs, triple-slash references, and a comment holding only an issue or RFC URL.";
 
 const assertionJustificationMessage =
-  "Assertion-justification comments are banned. Remove the type assertion with a Schema decode, `satisfies`, or a type annotation. If the assertion is unavoidable, put the checked invariant in this directive: `// oxlint-disable-next-line typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion -- <checked invariant>`.";
+  "Assertion-justification comments are banned. Remove the type assertion with a Schema decode, `satisfies`, or a type annotation. If the assertion is unavoidable, put the checked invariant in this directive: `// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- <checked invariant>`.";
 
 const missingReasonMessage =
   "Suppressions need a reason: append ` -- <why this rule is wrong here>`. If the rule guards correctness or safety, fix the code instead of suppressing it.";

@@ -54,7 +54,6 @@
     "@earendil-works/pi-tui": "1.6.0",
     "@effect/vitest": "4.1.5",
     "@hegeldev/hegel": "0.6.1",
-    "@oxlint/plugins": "1.94.0",
     "@types/node": "26.6.6",
     "@types/turndown": "5.0.6",
     "@vitest/coverage-v8": "5.1.1",

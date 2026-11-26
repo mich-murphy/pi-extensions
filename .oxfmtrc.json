@@ -1,5 +1,5 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["**/*.md", "config/oxlint/anti-slop/**"],
+  "ignorePatterns": ["**/*.md"],
   "sortImports": { "newlinesBetween": false }
 }
