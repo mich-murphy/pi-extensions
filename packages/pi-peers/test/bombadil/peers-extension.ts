@@ -33,7 +33,7 @@ function reply(model: Model<Api>, take: boolean): AssistantMessage {
 const decodeTaken = Schema.decodeUnknownOption(
   Schema.Struct({
     value: Schema.Struct({
-      messages: Schema.Array(Schema.Struct({ message: Schema.Struct({ content: Schema.String }) })),
+      messages: Schema.Array(Schema.Struct({ content: Schema.String })),
     }),
   }),
 );
@@ -60,9 +60,7 @@ function registerProbe(pi: ExtensionAPI): void {
       return;
     }
 
-    for (const {
-      message: { content },
-    } of taken.value.value.messages) {
+    for (const { content } of taken.value.value.messages) {
       for (const token of content.match(TOKEN) ?? []) {
         duplicate ??= seen.has(token) ? token : undefined;
         seen.add(token);
