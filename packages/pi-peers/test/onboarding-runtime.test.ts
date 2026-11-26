@@ -382,7 +382,7 @@ describe("actual setup plan/apply lifecycle", () => {
       const selected = plan();
       const setup = await applyLocal(agent, selected, backend(), () => undefined);
       const ensure = reloadManagedLauncher(agent, selected.adapter, setup);
-      await saveOwnedPlan(agent, setup, incompatiblePlan(selected, field), undefined, true);
+      await saveOwnedPlan(agent, setup, incompatiblePlan(selected, field), true);
       await expect(ensure(Date.now() + 2000, new AbortController().signal)).rejects.toThrow(
         "Start a new Pi session to use the saved settings.",
       );

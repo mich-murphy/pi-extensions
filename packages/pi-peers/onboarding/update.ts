@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { decodeConfiguration } from "../adapter/config.js";
 import { setupPaths } from "./backend.js";
-import { createPrivate, digest, regularBytes, withSetupLock, durableUnlink } from "./files.js";
+import { createPrivate, digest, durableUnlink, regularBytes, withSetupLock } from "./files.js";
 import type { ManagedSetup } from "./managed.js";
 import { replaceOwned } from "./owned-file.js";
 import type { LocalPlan } from "./plan.js";
@@ -13,7 +13,6 @@ export async function saveOwnedPlan(
   agentDir: string,
   previous: ManagedSetup,
   plan: LocalPlan,
-  pairingContent?: string,
   allowAdapterChange = false,
 ): Promise<void> {
   const paths = setupPaths(agentDir);
@@ -53,11 +52,6 @@ export async function saveOwnedPlan(
     }
 
     const next = { ...previous };
-
-    if (pairingContent !== undefined) {
-      next.pairingSha256 = digest(pairingContent);
-    }
-
     next.adapterSha256 = digest(nextAdapter);
     next.gatewaySha256 = digest(nextGateway);
     await createPrivate(
@@ -69,18 +63,6 @@ export async function saveOwnedPlan(
         previousGatewaySha256: previous.gatewaySha256,
       }),
     );
-
-    if (pairingContent !== undefined) {
-      if (previous.pairingSha256 === undefined) {
-        await createPrivate(join(paths.directory, "pairing.json"), pairingContent);
-      } else {
-        await replaceOwned(
-          join(paths.directory, "pairing.json"),
-          previous.pairingSha256,
-          pairingContent,
-        );
-      }
-    }
 
     await replaceOwned(paths.gateway, previous.gatewaySha256, nextGateway);
     await replaceOwned(paths.adapter, previous.adapterSha256, nextAdapter);

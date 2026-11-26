@@ -144,10 +144,10 @@ describe("approved gateway acquisition", () => {
     expect(s.exec).toHaveBeenCalledTimes(2);
     await expect(fileStat(installed.executable)).resolves.toBeDefined();
   });
-  test("requires the reviewed pairing capability rather than treating the old gateway as sufficient", async () => {
+  test("requires the reviewed pinned-keys capability rather than treating the old gateway as sufficient", async () => {
     const s = await setup();
     await expect(
-      acquireGateway({ ...s.plan, requiredCapabilities: ["pairing-helper-v1"] }, s.options),
+      acquireGateway({ ...s.plan, requiredCapabilities: ["pinned-keys-helper-v1"] }, s.options),
     ).rejects.toThrow("capability mismatch");
   });
   test("cancels before apply with zero filesystem or fetch effects", async () => {

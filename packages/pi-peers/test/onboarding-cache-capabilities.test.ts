@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdapterSession } from "../adapter/session.js";
 import { freshId } from "../adapter/transport.js";
@@ -18,61 +17,34 @@ import {
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
 } from "../onboarding/catalog.js";
+import { keyPaths } from "../onboarding/keys.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import type { LocalPlan } from "../onboarding/plan.js";
+import { linkedPlan } from "../onboarding/remote.js";
 import { repairRoute } from "../onboarding/repair.js";
-import {
-  decodeCached,
-  decodeManaged,
-  decodeGateway,
-  decodePairing,
-  parseJson,
-} from "../onboarding/schema.js";
+import { decodeCached, decodeManaged, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import {
-  consentOutcome,
-  dialog,
-  nativeFixture,
-  nativeUntil,
-  noPins,
-} from "./onboarding-fixtures.js";
+import { dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
 
-const remote = [
-  "Mode=One remote peer",
-  "Trust=Create new pair",
-  "Peer machine=remote-peer",
-  "Connection=Listen for peer",
-  "Address=127.0.0.1:7443",
-];
+const PEER_KEY = "ab".repeat(32);
+
+function linked(plan: LocalPlan, agent: string): LocalPlan {
+  return linkedPlan(
+    plan,
+    {
+      peerMachineId: "remote-peer",
+      endpoint: { mode: "listen", address: "127.0.0.1:7443" },
+      peerPublicKey: PEER_KEY,
+    },
+    keyPaths(setupPaths(agent).directory).privateKey,
+  );
+}
 
 const without = (capability: string) =>
   GATEWAY_LOCAL_SETUP_CAPABILITIES.filter((value) => value !== capability);
-
-async function requiredRepair(
-  agent: string,
-  acquisition: Parameters<typeof repairRoute>[1],
-): Promise<NonNullable<Awaited<ReturnType<typeof repairRoute>>>["screen"]> {
-  const found = await repairRoute(agent, acquisition);
-
-  if (found === undefined) {
-    throw new Error("Expected a repair route");
-  }
-
-  return found.screen;
-}
-
-function requiredField(output: Schema.JsonObject, key: string): string {
-  const value = output[key];
-
-  if (typeof value !== "string") {
-    throw new TypeError("Missing native pairing output");
-  }
-
-  return value;
-}
 
 describe("capability-incompatible orphan cache: simulated old VERSION only, actual NEW native flock", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
@@ -103,7 +75,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     }
 
     const executable = join(fixture.root, "SIMULATED-old-version-only");
-    const marker = join(fixture.root, "OLD-LOCK-PAIR-OR-SPAWN-INVOKED");
+    const marker = join(fixture.root, "OLD-LOCK-KEY-OR-SPAWN-INVOKED");
     const lockLog = join(fixture.root, "SIMULATED-old-delegated-native-locks");
 
     const lock = delegateLock
@@ -181,51 +153,35 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await expect(
       reusableExecutable(agent, GATEWAY_REMOTE_SETUP_CAPABILITIES),
     ).resolves.toBeUndefined();
-    const entries = await readdir(paths.directory);
-    const activate = vi.fn<ActivatePlan>();
-    const blocked = dialog([...remote, "APPLY"]);
-    await setupCommand(agent, blocked, activate, undefined, undefined, noPins);
-    expect(blocked.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Setup unavailable"),
-      "warning",
-    );
-    expect(activate).not.toHaveBeenCalled();
+    expect(GATEWAY_REMOTE_SETUP_CAPABILITIES).toContain("pinned-keys-v1");
+    expect(GATEWAY_REMOTE_SETUP_CAPABILITIES).not.toContain("pairing-v1");
     expect(existsSync(marker)).toBe(false);
-    await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
     await expect(readFile(paths.installed, "utf8")).resolves.toBe(installed);
   });
-  test("remote Apply bypasses LOCAL-only cached helper and uses actual NEW native lock/pairing", async () => {
+  test("a linked plan bypasses a LOCAL-only cached helper and uses the actual NEW native lock", async () => {
     const { paths, marker, installed } = await versionOnlyCache(GATEWAY_LOCAL_SETUP_CAPABILITIES);
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
-    const activate = vi.fn<ActivatePlan>();
-    const ctx = dialog([...remote, "APPLY"]);
-    await setupCommand(agent, ctx, activate, {
-      backend: { acquire },
-      description: "TEST full-capability native replacement",
-    });
+    await applyLocal(agent, linked(plan(), agent), { acquire }, () => undefined);
     expect(acquire).toHaveBeenCalledOnce();
-    expect(activate).toHaveBeenCalledOnce();
     expect(existsSync(marker)).toBe(false);
-    expect(existsSync(join(paths.directory, "pairing.json"))).toBe(true);
+    expect(existsSync(join(paths.directory, "pairing.json"))).toBe(false);
     const entries = await readdir(paths.directory);
     const backups = entries.filter((name) => name.startsWith("installed.json.previous-"));
     expect(backups).toHaveLength(1);
     await expect(readFile(join(paths.directory, ...backups), "utf8")).resolves.toBe(installed);
     await resetLocal(agent);
   });
-  test("remote NEW helper missing pairing is refused before native lock, journal or prepare effects", async () => {
+  test("a NEW helper without pinned keys is refused for a linked plan before native lock or journal", async () => {
     const { paths, executable, marker, installed } = await versionOnlyCache(
       GATEWAY_LOCAL_SETUP_CAPABILITIES,
     );
 
     const entries = await readdir(paths.directory);
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => executable);
-    const prepare = vi.fn<(executable: string, plan: LocalPlan) => Promise<LocalPlan>>();
-    await expect(applyLocal(agent, plan(), { acquire }, () => undefined, prepare)).rejects.toThrow(
-      "out of date",
-    );
+    await expect(
+      applyLocal(agent, linked(plan(), agent), { acquire }, () => undefined),
+    ).rejects.toThrow("out of date");
     expect(acquire).toHaveBeenCalledOnce();
-    expect(prepare).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
     await expect(readFile(paths.installed, "utf8")).resolves.toBe(installed);
@@ -457,70 +413,27 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(lockLog)).toBe(false);
   });
-  test("owned pending Join without gateway.remote still requires pairing capability for explicit repair", async () => {
-    const creator = join(fixture.root, "creator");
-    await setupCommand(creator, dialog([...remote, "APPLY"]), vi.fn<ActivatePlan>(), {
-      backend: { acquire: async () => fixture.executable },
-      description: "TEST actual native pair creation",
-    });
-
-    const pair = decodePairing(
-      parseJson(await readFile(join(setupPaths(creator).directory, "pairing.json"))),
-    );
-
-    const offer = requiredField(pair.output, "offerPath");
-    const root = requiredField(pair.output, "rootSha256");
-    await setupCommand(
-      agent,
-      dialog([
-        "Mode=One remote peer",
-        "Trust=Join a pair",
-        `Offer file=${offer}`,
-        `Root SHA256=${root}`,
-        "Connection=Connect to peer",
-        "Address=127.0.0.1:7443",
-        "APPLY",
-      ]),
-      vi.fn<ActivatePlan>(),
-      {
-        backend: { acquire: async () => fixture.executable },
-        description: "TEST actual native pending Join",
-      },
-    );
-
-    const { paths, executable, marker, lockLog } = await maskCommitted(
-      GATEWAY_LOCAL_SETUP_CAPABILITIES,
-    );
-
-    const gateway = decodeGateway(parseJson(await readFile(paths.gateway)));
-    expect(gateway.remote).toBeUndefined();
-    const owned = [paths.adapter, paths.gateway, join(paths.directory, "pairing.json")];
+  test("a local setup whose helper lacks pinned keys is healthy locally but needs an upgrade to link", async () => {
+    const { paths, marker, lockLog } = await committedMask(GATEWAY_LOCAL_SETUP_CAPABILITIES);
+    const owned = [paths.adapter, paths.gateway, paths.metadata];
     const before = await Promise.all(owned.map(async (path) => readFile(path)));
-    const metadata = await readFile(paths.metadata);
 
-    const acquire = vi
-      .fn<SetupBackend["acquire"]>()
-      .mockResolvedValueOnce(executable)
-      .mockResolvedValue(fixture.executable);
+    const acquire = vi.fn<SetupBackend["acquire"]>().mockResolvedValue(fixture.executable);
 
     const acquisition = vi.fn<Parameters<typeof repairRoute>[1]>(async () => ({
       backend: { acquire },
-      description: "TEST pending pairing repair",
+      description: "TEST upgrade for linking",
     }));
 
-    const route = async () => requiredRepair(agent, acquisition);
-    await expect(consentOutcome(await route(), "review")).resolves.toBeUndefined();
+    await expect(repairRoute(agent, acquisition)).resolves.toBeUndefined();
+    expect(acquisition).not.toHaveBeenCalled();
+    const found = await repairRoute(agent, acquisition, undefined, true);
     expect(acquisition).toHaveBeenCalledWith(true);
-    expect(acquire).not.toHaveBeenCalled();
-    const refused = await consentOutcome(await route());
-    expect(refused?.ok).toBe(false);
-    expect(refused?.headline).toContain("out of date");
-    await expect(readFile(paths.metadata)).resolves.toStrictEqual(metadata);
-    await expect(consentOutcome(await route())).resolves.toMatchObject({ ok: true });
-    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(found?.blocked).toBe(false);
     await expect(Promise.all(owned.map(async (path) => readFile(path)))).resolves.toStrictEqual(
       before,
     );
+    expect(acquire).not.toHaveBeenCalled();
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(lockLog)).toBe(false);
   });

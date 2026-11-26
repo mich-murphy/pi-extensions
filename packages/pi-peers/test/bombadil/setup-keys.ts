@@ -24,8 +24,9 @@ const CONSENT_ROWS = new Set([
   "Apply",
   "Restart and activate",
   "Repair installation",
-  "Add peer",
-  "Import bundle",
+  "Create key",
+  "Link",
+  "Remove link",
   "Turn off peers",
 ]);
 

@@ -70,7 +70,7 @@ export function activationScreen(
           "Nothing is written, and keys and settings are not changed.",
         ],
         [
-          `Saved configuration ${setup.gatewayPath}, expected SHA256 ${setup.gatewaySha256}. This checks the saved file, not whether remote links work. An unconfirmed restart is never retried. Other sessions may keep the old trust until the old gateway exits. An older gateway may refuse this Pi; it never connects without the check. Keys, revocation records and settings are unchanged; nothing is resent.`,
+          `Saved configuration ${setup.gatewayPath}, expected SHA256 ${setup.gatewaySha256}. This checks the saved file, not whether remote links work. An unconfirmed restart is never retried. Other sessions may keep the old trust until the old gateway exits. An older gateway may refuse this Pi; it never connects without the check. Keys and settings are unchanged; nothing is resent.`,
         ],
       ),
     detailsDescription: "What activating restarts and keeps.",

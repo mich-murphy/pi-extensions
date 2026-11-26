@@ -46,17 +46,15 @@ Choose **Setup** to open the `Peers › Setup` form. Nothing changes until you
 choose Apply. Each row shows its current or default value; press Enter to edit it
 in place:
 
-| Row | Default | Notes |
-| --- | --- | --- |
-| Mode | `Local only` | Switch to `One remote peer` to show the remote rows. |
-| Machine | Inferred from this host | Lowercase name for this machine. |
-| Scope | `local` | Group of sessions that can see each other. |
-| Label | The machine name | Name other sessions see. |
-| Permissions | e.g. `4 of 4 on` | Opens a toggle list. |
-| Socket | Default path | Shown only when the default path is too long. |
-| Remote rows | | Trust, peer machine, connection and address; see [Connect two machines](docs/remote-setup.md). |
-| Review details | | The full plan, including technical details. |
-| Apply | `Ready`, `Missing: <field>`, `Invalid: <check>` or `Blocked: <reason>` | Runs only when Ready. |
+| Row            | Default                                                                | Notes                                         |
+| -------------- | ---------------------------------------------------------------------- | --------------------------------------------- |
+| Machine        | Inferred from this host                                                | Lowercase name for this machine.              |
+| Scope          | `local`                                                                | Group of sessions that can see each other.    |
+| Label          | The machine name                                                       | Name other sessions see.                      |
+| Permissions    | e.g. `4 of 4 on`                                                       | Opens a toggle list.                          |
+| Socket         | Default path                                                           | Shown only when the default path is too long. |
+| Review details |                                                                        | The full plan, including technical details.   |
+| Apply          | `Ready`, `Missing: <field>`, `Invalid: <check>` or `Blocked: <reason>` | Runs only when Ready.                         |
 
 Invalid values show an error on the row and keep the form open. Esc always goes
 back one level, and Esc on the Peers menu closes it without changes. Esc on a
@@ -68,26 +66,54 @@ Apply shows `Peers › Setup › Applying`, with a row per step (`✓` done, `�
 running, `·` waiting). Esc hides this view while the work continues. When it
 finishes, `Peers › Setup › Result` says `✓ Peers set up — connected as <machine>`
 or `✗ Setup failed: <reason>` with one fix on the `Next:` line, then lists the machine, scope, permissions,
-config file, gateway, remote link and the next step. The same summary is kept in
+config file, gateway and the next step. The same summary is kept in
 the session transcript, not sent to the model.
 
 Once peers is set up, the Setup row reads `Manage`. Choosing it opens
 `Peers › Setup` filled in from the saved configuration:
 
-| Row | Notes |
-| --- | --- |
-| Machine, Scope, Label, Permissions | The saved values, edited as in the fresh form. When a pair exists, Machine and Scope are read-only (the pair's certificates name this machine and the paired computer uses this scope), and Permissions also changes what the paired computer may do with this Pi. |
-| Review details | What Apply will save and restart. |
-| Apply | `No changes` until you edit a row, then `Ready`, `Invalid: <check>` or `Blocked: <reason>`. Settings edited by hand read `Blocked: settings were edited by hand — change pi-peers.json by hand or Reset`. Apply saves only setup-owned files, restarts a running shared gateway once (the row says so) and reconnects this Pi while it is idle. |
-| Keep and reconnect | Reconnects with the saved settings; nothing is written. |
-| Activate saved configuration | Opens `Peers › Setup › Activate`: restarts the gateway once so it uses the saved settings. |
-| Add one remote peer | Local-only setups: opens `Peers › Setup › Add peer` with the remote rows. |
-| Pairing rows | Paired setups instead show View public exchange instructions, Import public bundle, Issuer actions (the pair's creator) or Request renewal instructions (the joiner), and Re-pair with new root. Each opens its own screen with one consent row. |
+| Row                                | Notes                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine, Scope, Label, Permissions | The saved values, edited as in the fresh form. When a remote computer is linked, Machine and Scope are read-only (the linked computer knows this machine by name and uses this scope), and Permissions also changes what the linked computer may do with this Pi.                                                                               |
+| Review details                     | What Apply will save and restart.                                                                                                                                                                                                                                                                                                               |
+| Apply                              | `No changes` until you edit a row, then `Ready`, `Invalid: <check>` or `Blocked: <reason>`. Settings edited by hand read `Blocked: settings were edited by hand — change pi-peers.json by hand or Reset`. Apply saves only setup-owned files, restarts a running shared gateway once (the row says so) and reconnects this Pi while it is idle. |
+| Keep and reconnect                 | Reconnects with the saved settings; nothing is written.                                                                                                                                                                                                                                                                                         |
+| Activate saved configuration       | Opens `Peers › Setup › Activate`: restarts the gateway once so it uses the saved settings.                                                                                                                                                                                                                                                      |
+| Link a remote computer             | Opens `Peers › Setup › Link`; see [Link a remote computer](#link-a-remote-computer).                                                                                                                                                                                                                                                            |
+| Remove the remote link             | Linked setups only: stops trusting the peer's key and removes its permissions.                                                                                                                                                                                                                                                                  |
 
 If the installed gateway needs repair, Setup reads `Repair needed` and opens the
 repair screen. An interrupted setup, a configuration written by hand
 (`Managed outside setup`) or unreadable setup files open a read-only report
 that points to Doctor and Reset.
+
+### Link a remote computer
+
+Peers can link this computer with one other computer. Each computer has one
+private key and trusts exactly the other computer's public key, like SSH
+`known_hosts`. Nothing expires and there is nothing to renew.
+
+1. On each computer, set up peers, then choose Setup › **Link a remote computer**.
+   The first time, `Create key` creates this computer's private key in
+   `pi-peers/keys/` (owner-only) and shows its public key.
+2. Open the link again. The note reads `This computer's public key: <64 hex>`.
+   Enter it on the other computer, and enter the other computer's key here.
+3. Fill in the peer's machine name, `Connection` (one computer listens, the other
+   connects) and the address, then choose `Link`. Review details says what the
+   link trusts and what restarts.
+
+The network only has to reach the peer. Use [Tailscale](https://tailscale.com):
+the listener uses its tailnet IP, like `100.101.102.103:7443`, and a tailnet
+policy allows only the other computer on that port. The alternative is an SSH
+`-L` forward: the listener uses `127.0.0.1:7443` and the connector dials its end
+of the forward. To revoke a link, link again with another key or choose
+`Remove the remote link`. Processes running as you are not isolated from the key
+file. See [Connect two machines](docs/remote-setup.md) for details.
+
+Setups made before keys used certificates. For those, Setup says `This link uses
+retired certificates. Link again with keys.` and Doctor reports the same.
+Linking again replaces the remote link. The old `pair-*` folders and
+`pairing.json` stay on disk and can be deleted; setup never deletes key files.
 
 Choose **Reset** to turn peers off for this agent directory. The review lists
 what changes and what is kept; nothing happens until you choose `Turn off peers`.
@@ -96,11 +122,11 @@ When there is nothing to turn off, Reset reads `Nothing to reset` and shows
 
 Every action shows its progress and result under its own breadcrumb:
 
-| Action | Progress | Result |
-| --- | --- | --- |
-| Setup Apply | `Peers › Setup › Applying` | `Peers › Setup › Result` |
-| Reconnect | `Peers › Reconnect › Reconnecting` | `Peers › Reconnect › Result` |
-| Reset | `Peers › Reset › Turning off` | `Peers › Reset › Result` |
+| Action      | Progress                           | Result                       |
+| ----------- | ---------------------------------- | ---------------------------- |
+| Setup Apply | `Peers › Setup › Applying`         | `Peers › Setup › Result`     |
+| Reconnect   | `Peers › Reconnect › Reconnecting` | `Peers › Reconnect › Result` |
+| Reset       | `Peers › Reset › Turning off`      | `Peers › Reset › Result`     |
 
 A result's first line starts with `✓` (done), `!` (settings saved but not active
 yet) or `✗` (failed), followed by the facts, a `Next:` step and any technical
@@ -111,16 +137,16 @@ details. While an action runs, Setup reads `Applying…`, Reconnect and Reset re
 The footer always shows how this session is doing while peers is set up,
 including when it is connected:
 
-| Footer | Meaning |
-| --- | --- |
-| `peers ⋯ setting up` | Apply is running. |
-| `peers ✓` | This session is connected and its inbox is empty. |
-| `peers ● 2` | Connected, with 2 unread peer messages. The agent is woken to read them. |
-| `peers ✓ waiting…` | `peers_take` is waiting for a message. |
-| `peers ✓ ! dev-01 down` | Connected locally, but the link to `dev-01` is down; the gateway keeps retrying. Sends to that machine fail fast with `link_down`. |
-| `peers ! activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them. |
-| `peers ✕ offline` | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`. |
-| `peers ✕ setup failed` | This session couldn't start peers. Run `/peers doctor`. |
+| Footer                       | Meaning                                                                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `peers ⋯ setting up`         | Apply is running.                                                                                                                  |
+| `peers ✓`                    | This session is connected and its inbox is empty.                                                                                  |
+| `peers ● 2`                  | Connected, with 2 unread peer messages. The agent is woken to read them.                                                           |
+| `peers ✓ waiting…`           | `peers_take` is waiting for a message.                                                                                             |
+| `peers ✓ ! dev-01 down`      | Connected locally, but the link to `dev-01` is down; the gateway keeps retrying. Sends to that machine fail fast with `link_down`. |
+| `peers ! activation pending` | Settings are saved but the gateway hasn't picked them up. Open Setup to activate them.                                             |
+| `peers ✕ offline`            | The gateway can't be reached. Run `/peers reconnect`, then `/peers doctor`.                                                        |
+| `peers ✕ setup failed`       | This session couldn't start peers. Run `/peers doctor`.                                                                            |
 
 The symbol is coloured from the theme (`success`, `accent`, `warning`, `error`) and the word `peers` is dimmed; every problem state also has a word, so colour is never the only signal.
 
@@ -147,18 +173,18 @@ Pi reads `pi-peers.json` from its agent directory, `~/.pi/agent` by default. If 
 }
 ```
 
-| Field | Required | Constraint | Purpose |
-| --- | --- | --- | --- |
-| `machineId` | yes | `^[a-z][a-z0-9-]{0,31}$` | Name of this machine. |
-| `socketPath` | yes | Absolute, 100 bytes or fewer (the gateway's limit), no control characters | The gateway's Unix socket. |
-| `scopeIds` | yes | 1–4 unique values matching `^[A-Za-z0-9_-]{1,64}$` | Groups this session joins. |
-| `label` | yes | 1–128 bytes, no control or bidirectional characters, some visible text | Display name for peers. Keep paths and transcript text out. |
-| `shareBranch` | no | `true` or `false` (default) | Adds the git branch checked out at connect to the label peers see. |
-| `maxWaitSeconds` | no | Integer 1–300 (default 300) | Longest `peers_take` wait this session allows. |
-| `policies` | yes | 256 or fewer entries | Which machines may do what in which scope. |
-| `policies[].machineId` | yes | Same pattern as `machineId` | Machine the grant applies to. |
-| `policies[].scopeId` | yes | Scope pattern | Scope the grant applies to. |
-| `policies[].permissions` | yes | Any of `discover`, `push` | Allowed actions. The retired `read` and `interest` are accepted and ignored, so older files still load; the next Apply writes them without. |
+| Field                    | Required | Constraint                                                                | Purpose                                                                                                                                     |
+| ------------------------ | -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `machineId`              | yes      | `^[a-z][a-z0-9-]{0,31}$`                                                  | Name of this machine.                                                                                                                       |
+| `socketPath`             | yes      | Absolute, 100 bytes or fewer (the gateway's limit), no control characters | The gateway's Unix socket.                                                                                                                  |
+| `scopeIds`               | yes      | 1–4 unique values matching `^[A-Za-z0-9_-]{1,64}$`                        | Groups this session joins.                                                                                                                  |
+| `label`                  | yes      | 1–128 bytes, no control or bidirectional characters, some visible text    | Display name for peers. Keep paths and transcript text out.                                                                                 |
+| `shareBranch`            | no       | `true` or `false` (default)                                               | Adds the git branch checked out at connect to the label peers see.                                                                          |
+| `maxWaitSeconds`         | no       | Integer 1–300 (default 300)                                               | Longest `peers_take` wait this session allows.                                                                                              |
+| `policies`               | yes      | 256 or fewer entries                                                      | Which machines may do what in which scope.                                                                                                  |
+| `policies[].machineId`   | yes      | Same pattern as `machineId`                                               | Machine the grant applies to.                                                                                                               |
+| `policies[].scopeId`     | yes      | Scope pattern                                                             | Scope the grant applies to.                                                                                                                 |
+| `policies[].permissions` | yes      | Any of `discover`, `push`                                                 | Allowed actions. The retired `read` and `interest` are accepted and ignored, so older files still load; the next Apply writes them without. |
 
 ## First call
 
@@ -166,11 +192,11 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 ## Tools
 
-| Tool | Parameters | Purpose |
-| --- | --- | --- |
-| `peers_list` | `scope?` | List sessions you can message, each with a handle and its label. |
-| `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (message id), `retryOf?` (message id), `status?`, `scope?` | Send a request, reply or update to one session. |
-| `peers_take` | `limit?` (1–8, default 4), `waitSeconds?` (0–300, default 0) | Move messages from your inbox into the conversation, waiting for the first one when asked. |
+| Tool         | Parameters                                                                                                                              | Purpose                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `peers_list` | `scope?`                                                                                                                                | List sessions you can message, each with a handle and its label.                           |
+| `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (message id), `retryOf?` (message id), `status?`, `scope?` | Send a request, reply or update to one session.                                            |
+| `peers_take` | `limit?` (1–8, default 4), `waitSeconds?` (0–300, default 0)                                                                            | Move messages from your inbox into the conversation, waiting for the first one when asked. |
 
 `peers_send` and `peers_take` are declared to the model only (`model-only`). `peers_list` also returns `structuredContent` for scripts.
 
@@ -219,29 +245,29 @@ A send passes the same scope, push permission, protocol and size checks as `peer
 
 ## Commands
 
-| Command | Behavior |
-| --- | --- |
-| `/peers` | Opens the Peers menu in the terminal UI; prints status elsewhere. |
-| `/peers status` | Plain status for this session: machine, scopes, inbox, one `Link to <machine>` row per remote link (`Up`, `Reconnecting` or `Down`, with since and next try) and the next step. Exact identifiers are under Technical details. It does not check remote credentials; `/peers doctor` does. |
-| `/peers setup` | Opens the Peers menu with Setup open; Esc returns to the menu. For an existing setup, the form is filled in from the saved configuration, with repair, pairing, adding a peer or activating saved settings where needed. |
-| `/peers doctor` | Read-only checks of the config file, gateway, permissions, remote credentials and pairing expiry, each with what to do next, ending with `Live: <status headline>`. When this session knows the remote link state, the remote row adds `Live link: <machine> <state>`. Never starts or connects to the gateway or writes files. |
-| `/peers reconnect` | Retries the connection without losing this session's inbox or state, and never resends uncertain messages. |
-| `/peers reset` | Opens the Peers menu with Reset open; `Turn off peers` disables setup-owned participation. Keeps the executable, keys and revocation state; never stops the shared gateway. |
+| Command            | Behavior                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/peers`           | Opens the Peers menu in the terminal UI; prints status elsewhere.                                                                                                                                                                                                                                                                                          |
+| `/peers status`    | Plain status for this session: machine, scopes, inbox, one `Link to <machine>` row per remote link (`Up`, `Reconnecting` or `Down`, with since and next try) and the next step. Exact identifiers are under Technical details. It does not check remote credentials; `/peers doctor` does.                                                                 |
+| `/peers setup`     | Opens the Peers menu with Setup open; Esc returns to the menu. For an existing setup, the form is filled in from the saved configuration, with repair, linking a remote computer or activating saved settings where needed.                                                                                                                                |
+| `/peers doctor`    | Read-only checks of the config file, gateway, permissions, the remote link (`Trust: pinned` and this computer's public key), each with what to do next, ending with `Live: <status headline>`. When this session knows the remote link state, the remote row adds `Live link: <machine> <state>`. Never starts or connects to the gateway or writes files. |
+| `/peers reconnect` | Retries the connection without losing this session's inbox or state, and never resends uncertain messages.                                                                                                                                                                                                                                                 |
+| `/peers reset`     | Opens the Peers menu with Reset open; `Turn off peers` disables setup-owned participation. Keeps the executable and keys; never stops the shared gateway.                                                                                                                                                                                                  |
 
 ## Limits
 
-| Limit | Value |
-| --- | --- |
-| Frame size | 32 KiB |
-| Message `content` | 24,576 characters, and 24 KiB of authored data per frame |
-| `refs` per message | 8 |
-| Inbox | 64 messages, 1 MiB |
-| Receipts kept | 1,024, for at least 10 minutes |
-| Relations | 256 |
-| Requesting peers per work item | 8 |
-| Sessions per gateway | 30 |
-| Send attempts | 3 within 15 seconds |
-| Remote link retries | 6 within 60 seconds, then a probe every 30 seconds to 5 minutes (jittered), forever |
+| Limit                          | Value                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| Frame size                     | 32 KiB                                                                              |
+| Message `content`              | 24,576 characters, and 24 KiB of authored data per frame                            |
+| `refs` per message             | 8                                                                                   |
+| Inbox                          | 64 messages, 1 MiB                                                                  |
+| Receipts kept                  | 1,024, for at least 10 minutes                                                      |
+| Relations                      | 256                                                                                 |
+| Requesting peers per work item | 8                                                                                   |
+| Sessions per gateway           | 30                                                                                  |
+| Send attempts                  | 3 within 15 seconds                                                                 |
+| Remote link retries            | 6 within 60 seconds, then a probe every 30 seconds to 5 minutes (jittered), forever |
 
 ## Delivery receipts
 
@@ -306,8 +332,7 @@ the gateway admits it only when those are the exact config bytes loaded by its
 managed process. A reachable socket alone is not activation proof. Manual clients
 without a managed ensure callback retain legacy registration without the field.
 There is no unguarded fallback if an older gateway rejects the field or closes.
-This fingerprint does **not** attest PKI-content freshness or remote link readiness;
-supported pairing updates select new immutable credential-generation paths.
+This fingerprint does **not** attest remote link readiness.
 
 Fresh Apply discloses an already-present shared socket using read-only inspection
 (no pre-Apply connect), saves the reviewed configuration, and sends at most one
@@ -346,20 +371,16 @@ If a setup-owned executable disappears (including Nix GC) or its bytes/type chan
 Inspection never executes the broken file: symlinks, FIFOs/devices and oversized
 files fail promptly. Cancel does not acquire or write. Reviewed Apply uses a fresh
 trusted acquisition route, then the verified new helper's native lock and CAS to
-update only installed/executable metadata. Configuration, keys, floors and old
+update only installed/executable metadata. Configuration, keys and old
 unknown files are retained; existing Pi runtimes keep nonce/state. An interrupted
 metadata update has a resumable repair ledger; finish it with setup before reset.
-Externally changed adapter/gateway/pairing bytes refuse repair. With no trusted
+Externally changed adapter/gateway bytes refuse repair. With no trusted
 catalog pin, repair is honestly blocked just like a fresh install; it never falls
 back to executing the broken file or choosing a project/PATH binary.
 
-For remote peers, use [guided pairing and maintenance](docs/remote-setup.md).
-Native existing-material import preserves a live existing floor and generates a
-public renewal request, but does not adopt external issuer custody. Its signer
-and update bundle must match the imported runtime's exact pair/offer binding;
-arbitrary external-CA renewal is not automated or proven by guided import.
-A local connected result does not claim a remote link. Expired/bad remote
-credentials degrade the remote side while leaving local communication available.
+A local connected result does not claim a remote link. An unusable key or a
+retired certificate link degrades the remote side while leaving local
+communication available.
 Unknown sends must never be resent as a new message ID.
 
 ## More

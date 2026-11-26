@@ -4,7 +4,6 @@ import { setKeybindings, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
 import type { MenuModel, Screen } from "../onboarding/menu/model.js";
-import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { peersMenu } from "../onboarding/menu/root.js";
 import { setupForm } from "../onboarding/menu/setup-form.js";
 import { PeersMenu } from "../onboarding/menu/tui.js";
@@ -24,12 +23,10 @@ function menu(rows: number, start?: "setup" | "reset") {
   let closed = false;
 
   const draft = {
-    mode: "local" as const,
     choices: defaultChoices("Render Host"),
     socket: "/private/owned/s",
     socketRequired: false,
     shared: false,
-    remote: remoteDraft(),
   };
 
   const holder: MenuHolder = {};
@@ -123,7 +120,7 @@ describe.each([
     expect(text[1]).toBe("Peers › Setup");
     expect(text).toContain("Nothing changes until you choose Apply.");
     expect(view.component.render(width).length).toBeLessThanOrEqual(budget);
-    view.press(DOWN, ENTER);
+    view.press(ENTER);
     text = contract(view.component.render(width), width, 0);
     expect([text[1], text.at(-2)]).toStrictEqual([
       "Peers › Setup › Machine",
@@ -151,7 +148,7 @@ describe.each([
   });
   test("apply shows progress, then the outcome", async () => {
     const view = menu(rows, "setup");
-    view.press(...Array.from({ length: 6 }, () => DOWN), ENTER);
+    view.press(...Array.from({ length: 5 }, () => DOWN), ENTER);
     let text = contract(view.component.render(width), width, 0);
     expect([text[1], text.at(-2)]).toStrictEqual([
       "Peers › Setup › Applying",

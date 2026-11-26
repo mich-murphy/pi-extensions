@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-import { join } from "node:path";
 import { loadConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { AcquisitionPlan } from "./acquire.js";
 import { acquireGateway, discoverNixExecutable } from "./acquire.js";
@@ -18,16 +16,13 @@ import {
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
 } from "./catalog.js";
-import { exchangeFacts, exchangeNext, readPairing } from "./continue.js";
 import { requireAttendedUI } from "./dialog.js";
-import { createPrivate, regularBytes } from "./files.js";
 import { requestManagedRestart } from "./managed.js";
 import type { ManagedSetup } from "./managed.js";
 import { report, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import { outcomeLevel, outcomeText } from "./menu/progress.js";
 import type { Outcome, Step } from "./menu/progress.js";
-import { remoteDraft } from "./menu/remote-form.js";
 import { peersMenu } from "./menu/root.js";
 import { runMenu } from "./menu/run.js";
 import type { MenuContext } from "./menu/run.js";
@@ -47,8 +42,6 @@ import {
 import { localReview } from "./plan.js";
 import type { LocalPlan } from "./plan.js";
 import { RefusalError, UnsafeFolderError } from "./refusal.js";
-import type { RemoteIntent } from "./remote.js";
-import { remoteReview, prepareRemote } from "./remote.js";
 import { repairRoute } from "./repair.js";
 import type { Acquisition, ActivatePlan, Notice, Reconnect, Restart, SetupRoute } from "./route.js";
 import { NO_CHANGES, SETUP_STEPS } from "./route.js";
@@ -274,11 +267,19 @@ async function existingRoute(
     };
   }
 
+  const upgrade = await repairRoute(
+    agentDir,
+    async (remote) => supplied ?? (await productionBackend(agentDir, remote, true, catalog)),
+    reconnect,
+    true,
+  );
+
   const screen = await manageRoute(
     agentDir,
     activate,
     reconnect,
     supplied?.restart ?? requestManagedRestart,
+    upgrade?.screen,
   );
 
   if (screen !== undefined) {
@@ -308,7 +309,6 @@ type Fresh = {
   readonly draft: SetupDraft;
   readonly activate: ActivatePlan;
   readonly restart: Restart;
-  readonly pairingDirectory: string;
 };
 
 async function applyChoice(
@@ -338,8 +338,6 @@ async function applyChoice(
       state: { ...state, sharedInstance: choice.shared },
       plan: choice.plan,
       backend,
-      remote: choice.remote,
-      pairingDirectory: fresh.pairingDirectory,
       activate: fresh.activate,
       restart: fresh.restart,
     },
@@ -350,12 +348,8 @@ async function applyChoice(
 function freshScreen(
   fresh: Fresh,
   local: Acquisition,
-  remote: Acquisition,
   progress: Progress,
 ): ReturnType<typeof setupForm> {
-  const acquisitionOf = (choice: SetupChoice): Acquisition =>
-    choice.remote === undefined ? local : remote;
-
   const options: SetupFormOptions = {
     draft: fresh.draft,
     probe: async (socket) => {
@@ -364,28 +358,19 @@ function freshScreen(
       return observed.sharedInstance;
     },
     details: (choice) =>
-      `${localReview(choice.plan, choice.remote !== undefined)}\n${effectReview(
+      `${localReview(choice.plan)}\n${effectReview(
         fresh.state,
         choice.shared,
-        acquisitionOf(choice),
+        local,
         choice.plan.adapter.socketPath,
-        choice.remote === undefined
-          ? undefined
-          : { intent: choice.remote, directory: fresh.pairingDirectory },
       )}`,
     apply: (choice) => {
-      progress("Applying", SETUP_STEPS, async (step) =>
-        applyChoice(fresh, choice, acquisitionOf(choice), step),
-      );
+      progress("Applying", SETUP_STEPS, async (step) => applyChoice(fresh, choice, local, step));
     },
   };
 
   if (local.backend === undefined) {
     options.blocked = BLOCKED;
-  }
-
-  if (remote.backend === undefined) {
-    options.remoteBlocked = BLOCKED;
   }
 
   return setupForm(options);
@@ -398,23 +383,15 @@ async function freshRoute(
   supplied: Supplied | undefined,
   catalog: GatewayCatalog,
 ): Promise<SetupRoute> {
-  const [local, remote] =
-    supplied === undefined
-      ? await Promise.all([
-          productionBackend(agentDir, false, false, catalog),
-          productionBackend(agentDir, true, false, catalog),
-        ])
-      : [supplied, supplied];
+  const local = supplied ?? (await productionBackend(agentDir, false, false, catalog));
 
   const required = Buffer.byteLength(state.paths.socket) > SOCKET_PATH_MAX_BYTES;
 
   const draft: SetupDraft = {
-    mode: "local",
     choices: state.choices,
     socket: required ? "" : state.paths.socket,
     socketRequired: required,
     shared: required ? false : state.sharedInstance,
-    remote: remoteDraft(),
   };
 
   const fresh: Fresh = {
@@ -423,21 +400,16 @@ async function freshRoute(
     draft,
     activate,
     restart: supplied?.restart ?? requestManagedRestart,
-    pairingDirectory: join(state.paths.directory, `pair-${randomBytes(12).toString("hex")}`),
   };
 
-  const screen = (progress: Progress) => freshScreen(fresh, local, remote, progress);
+  const screen = (progress: Progress) => freshScreen(fresh, local, progress);
 
   return {
     value: "Set up",
     description: "Connect this Pi to other sessions. Nothing changes until Apply.",
     configured: false,
     screen,
-    cancelled: () => {
-      const acquisition = draft.mode === "remote" ? remote : local;
-
-      return acquisition.backend === undefined ? blockedNotice(acquisition) : NO_CHANGES;
-    },
+    cancelled: () => (local.backend === undefined ? blockedNotice(local) : NO_CHANGES),
   };
 }
 
@@ -508,19 +480,17 @@ function effectReview(
   shared: boolean,
   acquisition: Acquisition,
   socketPath: string,
-  remote?: { readonly intent: RemoteIntent; readonly directory: string },
 ): string {
   return [
     `Platform: ${state.platform}; account UID ${process.getuid?.() ?? "unknown"} (not cross-user/root isolation).`,
     acquisition.description,
-    ...(remote === undefined ? [] : [remoteReview(remote.intent, remote.directory)]),
     `Private files: ${state.paths.gateway}; ${state.paths.metadata}; ${state.paths.adapter}; ${state.paths.journal}; ${state.paths.prepared}; ${state.paths.installed}; ${state.paths.lock}.`,
     `Owned directory ${state.paths.directory}: create-only install-* staging, startup-*.log (bounded native startup output), reset.json recovery ledger, reversible .previous-*/.disabled-* snapshots. No existing directory is chmodded; unknown artifacts are not removed.`,
     `Socket: ${socketPath}. Detached shared process, no OS service definition: the first participating Pi starts it and the last closes it.`,
     shared
       ? "A pre-existing shared socket is present (read-only observation, not live readiness). Apply saves configuration then sends exactly ONE machine-bound shared restart request. Other sessions may retain old trust until the old gateway exits. Uncertain restart or generation mismatch means configuration saved; activation pending. No control replay."
       : "No pre-existing shared socket observed. Admission still verifies the exact loaded configuration generation; a concurrent old gateway cannot silently serve this Pi.",
-    "Apply acquires a verified gateway into per-attempt staging, then takes its native lock, rechecks unchanged cache/state, preserves any unavailable orphan installation descriptor in a hash-checked .previous-* backup, and writes a recovery ledger/configuration before activating this Pi directly. Failed apply may retain owned files; reset never deletes credentials or revocation records.",
+    "Apply acquires a verified gateway into per-attempt staging, then takes its native lock, rechecks unchanged cache/state, preserves any unavailable orphan installation descriptor in a hash-checked .previous-* backup, and writes a recovery ledger/configuration before activating this Pi directly. Failed apply may retain owned files; reset never deletes keys.",
   ].join("\n");
 }
 
@@ -529,19 +499,11 @@ type ReviewedSetup = {
   state: SetupState;
   plan: LocalPlan;
   backend: SetupBackend;
-  remote: RemoteIntent | undefined;
-  pairingDirectory: string;
   activate: ActivatePlan;
   restart: Restart;
 };
 
-async function success(
-  agentDir: string,
-  plan: LocalPlan,
-  state: SetupState,
-  remote: RemoteIntent | undefined,
-): Promise<Outcome> {
-  const pairing = remote === undefined ? undefined : await readPairing(agentDir);
+function success(plan: LocalPlan, state: SetupState): Outcome {
   const machine = visibleText(plan.adapter.machineId);
 
   return {
@@ -553,18 +515,8 @@ async function success(
       ["Permissions", plan.choices.permissions.join(", ") || "none"],
       ["Config file", visibleText(state.paths.adapter)],
       ["Gateway socket", visibleText(plan.adapter.socketPath)],
-      [
-        "Remote",
-        remote === undefined
-          ? "Not configured"
-          : `${visibleText(remote.peerMachineId)} (${remote.endpoint.mode} ${remote.endpoint.address}), exchange pending`,
-      ],
-      ...(pairing === undefined ? [] : exchangeFacts(pairing)),
     ],
-    next:
-      pairing === undefined
-        ? "Open another Pi session to collaborate. No model request was made."
-        : `${exchangeNext(pairing)} Setup › View public exchange instructions shows this again.`,
+    next: "Open another Pi session to collaborate. To link another computer, choose Setup › Link a remote computer. No model request was made.",
   };
 }
 
@@ -583,35 +535,13 @@ function stepLabel(message: string): string {
 const SAVED = "The gateway did not accept this Pi yet. Nothing was sent twice.";
 
 async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outcome> {
-  const { agentDir, state, plan, backend, remote, pairingDirectory, activate, restart } = reviewed;
+  const { agentDir, state, plan, backend, activate, restart } = reviewed;
   let saved = false;
 
   try {
-    const setup = await applyLocal(
-      agentDir,
-      plan,
-      backend,
-      (message) => {
-        step(stepLabel(message));
-      },
-      remote === undefined
-        ? undefined
-        : async (executable, selected) => {
-            const prepared = await prepareRemote(executable, pairingDirectory, selected, remote);
-            const manifest = await regularBytes(join(pairingDirectory, "pairing.json"));
-
-            if (manifest === undefined) {
-              throw new Error("The pairing step did not write pairing.json");
-            }
-
-            await createPrivate(
-              join(state.paths.directory, "pairing.json"),
-              manifest.toString("utf8"),
-            );
-
-            return prepared;
-          },
-    );
+    const setup = await applyLocal(agentDir, plan, backend, (message) => {
+      step(stepLabel(message));
+    });
 
     saved = true;
     step(SETUP_STEPS[2]);
@@ -630,7 +560,7 @@ async function applyReviewed(reviewed: ReviewedSetup, step: Step): Promise<Outco
 
     await activate({ ...plan, adapter: actual }, setup);
 
-    return await success(agentDir, plan, state, remote);
+    return success(plan, state);
   } catch (error) {
     const failure = error instanceof Error ? error : undefined;
 
@@ -655,7 +585,7 @@ export async function resetOutcome(
       facts: path ? [["Saved copy", visibleText(backup)]] : [],
       next: "Other open Pi sessions stay connected until they close. Choose Setup to turn peers back on.",
       technical: [
-        "The gateway exits after the last session closes. Keys and revocation records were kept.",
+        "The gateway exits after the last session closes. Keys were kept.",
         ...(path ? [] : [backup]),
       ],
     };

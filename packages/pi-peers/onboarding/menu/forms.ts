@@ -1,5 +1,4 @@
 import { visibleText } from "../../adapter/config.js";
-import { pathError, sha256Error } from "../remote.js";
 import type { Row, Saved, Screen } from "./model.js";
 import type { Outcome, Step } from "./progress.js";
 
@@ -13,7 +12,10 @@ export type Progress = (
 
 export type Gate<T> =
   | { readonly kind: "ready"; readonly value: T }
-  | { readonly kind: "missing" | "invalid" | "blocked"; readonly reason: string }
+  | {
+      readonly kind: "missing" | "invalid" | "blocked";
+      readonly reason: string;
+    }
   | { readonly kind: "unchanged" };
 
 export const BLOCKED_HELP =
@@ -180,14 +182,6 @@ export function consentRow<T>(spec: ConsentSpec<T>): Row {
   };
 }
 
-export function missingField(
-  fields: ReadonlyArray<readonly [label: string, value: string]>,
-): Gate<never> | undefined {
-  const absent = fields.find(([, value]) => value === "")?.[0];
-
-  return absent === undefined ? undefined : { kind: "missing", reason: absent };
-}
-
 export type ActionForm<T> = {
   readonly title: string;
   readonly note?: string;
@@ -198,7 +192,9 @@ export type ActionForm<T> = {
 };
 
 export function actionForm<T>(form: ActionForm<T>): Screen {
-  type Heading = Pick<Extract<Screen, { kind: "list" }>, "kind" | "title"> & { note?: string };
+  type Heading = Pick<Extract<Screen, { kind: "list" }>, "kind" | "title"> & {
+    note?: string;
+  };
 
   const heading: Heading = { kind: "list", title: form.title };
 
@@ -223,37 +219,4 @@ export function withTechnical(
   return technical.length === 0
     ? [...lines]
     : [...lines, "Technical details:", ...technical.map((line) => `  ${line}`)];
-}
-
-export function pathField(
-  id: string,
-  label: string,
-  description: string,
-  value: { readonly get: () => string; readonly set: (value: string) => void },
-  placeholder = "/absolute/path",
-): Row {
-  return textField({
-    id,
-    label,
-    description,
-    placeholder,
-    get: value.get,
-    save: validated(pathError, value.set),
-  });
-}
-
-export function hashField(
-  id: string,
-  label: string,
-  description: string,
-  value: { readonly get: () => string; readonly set: (value: string) => void },
-): Row {
-  return textField({
-    id,
-    label,
-    description,
-    placeholder: "64 lowercase hex characters",
-    get: value.get,
-    save: validated(sha256Error, value.set),
-  });
 }

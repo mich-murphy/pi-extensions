@@ -112,15 +112,23 @@ async function localSetup(host: ReturnType<typeof extensionHost>) {
   return { peer: await connected(host) };
 }
 
+const PEER_KEY = "5a".repeat(32);
+
+async function ownKey(host: ReturnType<typeof extensionHost>) {
+  const key = await host.command("setup", ["Link a remote computer", "APPLY"]);
+  expect(key.join("\n")).toContain("This computer's key is ready");
+  expect(host.unusedAnswers()).toBe(0);
+}
+
 async function upgrade(host: ReturnType<typeof extensionHost>) {
   const address = await nativeAddress();
 
   return host.command("setup", [
-    "Add one remote peer",
-    "Trust=Create new pair",
+    "Link a remote computer",
     "Peer machine=upgrade-peer",
     "Connection=Listen for peer",
     `Address=${address}`,
+    `Peer public key=${PEER_KEY}`,
     "APPLY",
   ]);
 }
@@ -160,12 +168,13 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     expect(host.entries).toContain("peers-report");
     await host.command("setup", ["Keep and reconnect"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    await host.command("setup", ["Add one remote peer", "Cancel"]);
+    await ownKey(host);
+    await expect(connected(host)).resolves.toStrictEqual(before.peer);
+    await host.command("setup", ["Link a remote computer", "Cancel"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     const cancelledAddress = await nativeAddress();
     await host.command("setup", [
-      "Add one remote peer",
-      "Trust=Create new pair",
+      "Link a remote computer",
       "Peer machine=upgrade-peer",
       "Connection=Listen for peer",
       `Address=${cancelledAddress}`,
@@ -173,7 +182,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     ]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
     const messages = await upgrade(host);
-    expect(messages.join("\n")).toContain("Remote peer added — upgrade-peer");
+    expect(messages.join("\n")).toContain("Linked with upgrade-peer");
     const after = await connected(host);
     expect(after.runtimeNonce).not.toBe(before.peer.runtimeNonce);
     expect(after.machineId).toBe(before.peer.machineId);
@@ -181,6 +190,7 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
   });
   test("busy Pi refuses reviewed replacement after staging and retains its original nonce", async () => {
     const before = await localSetup(host);
+    await ownKey(host);
     host.setIdle(false);
     const messages = await upgrade(host);
     expect(messages.join("\n")).toContain("is busy and was not replaced");

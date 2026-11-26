@@ -69,6 +69,16 @@ function changedMetadata(
   return { ...previous, [field]: replacement[field] };
 }
 
+async function legacyPairing(agent: string, installed: ManagedSetup): Promise<ManagedSetup> {
+  const paths = setupPaths(agent);
+  const pairing = '{"public":"legacy certificate pairing"}';
+  await createPrivate(join(paths.directory, "pairing.json"), pairing);
+  const legacy = { ...installed, pairingSha256: digest(pairing) };
+  await writeFile(paths.metadata, `${JSON.stringify(legacy, null, 2)}\n`);
+
+  return legacy;
+}
+
 describe("reviewed maintenance refuses metadata/pairing drift before mutation", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let agent: string;
@@ -84,25 +94,14 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
 
   async function reviewed(withPairing: boolean) {
     const plan = localPlan(defaultChoices("Maintenance"), setupPaths(agent).socket);
-
-    const prepare = withPairing
-      ? async () => {
-          await createPrivate(
-            join(setupPaths(agent).directory, "pairing.json"),
-            '{"public":"reviewed fixture"}',
-          );
-
-          return plan;
-        }
-      : undefined;
-
-    const previous = await applyLocal(
+    const installed = await applyLocal(
       agent,
       plan,
       { acquire: async () => fixture.executable },
       () => undefined,
-      prepare,
     );
+
+    const previous = withPairing ? await legacyPairing(agent, installed) : installed;
 
     return { plan, previous };
   }
@@ -128,7 +127,7 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
       reviewed: false,
       mutation: "replace" as const,
     },
-  ])("$name is retained even when no pairingContent update was requested", async (entry) => {
+  ])("$name is retained and refuses the save", async (entry) => {
     const { plan, previous } = await reviewed(entry.reviewed);
     await changePair(join(setupPaths(agent).directory, "pairing.json"), entry.mutation);
     const before = await snapshot(agent);
@@ -159,13 +158,20 @@ describe("reviewed maintenance refuses metadata/pairing drift before mutation", 
     await saveOwnedPlan(agent, current, plan);
     expect(JSON.parse(await readFile(paths.adapter, "utf8"))).toStrictEqual(plan.adapter);
   });
-  test("pairing drift also refuses a reviewed pairing replacement before journal creation", async () => {
+  test("a legacy pairing record still saves a new plan and leaves pairing.json on disk", async () => {
+    const { plan, previous } = await reviewed(true);
+    const path = join(setupPaths(agent).directory, "pairing.json");
+    const kept = await readFile(path);
+    await saveOwnedPlan(agent, previous, plan, true);
+    await expect(readFile(path)).resolves.toStrictEqual(kept);
+  });
+  test("pairing drift on a legacy record refuses before journal creation", async () => {
     const { plan, previous } = await reviewed(true);
     await changePair(join(setupPaths(agent).directory, "pairing.json"), "replace");
     const before = await snapshot(agent);
-    await expect(
-      saveOwnedPlan(agent, previous, plan, '{"public":"approved replacement"}'),
-    ).rejects.toThrow("the saved settings changed");
+    await expect(saveOwnedPlan(agent, previous, plan, true)).rejects.toThrow(
+      "the saved settings changed",
+    );
     await expect(snapshot(agent)).resolves.toStrictEqual(before);
   });
 });

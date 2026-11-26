@@ -36,7 +36,7 @@ export const GATEWAY_LOCAL_SETUP_CAPABILITIES = [
 
 export const GATEWAY_REMOTE_SETUP_CAPABILITIES = [
   ...GATEWAY_LOCAL_SETUP_CAPABILITIES,
-  "pairing-v1",
+  "pinned-keys-v1",
 ] as const;
 
 export const gatewayCatalog: GatewayCatalog = {

@@ -7,7 +7,10 @@ import { runWithProgress } from "./progress.js";
 import type { Outcome, Step } from "./progress.js";
 
 export type RootState = {
-  readonly status: { readonly value: string; readonly lines: ReadonlyArray<string> };
+  readonly status: {
+    readonly value: string;
+    readonly lines: ReadonlyArray<string>;
+  };
   readonly doctor: ReadonlyArray<string>;
   readonly setup: SetupRoute;
   readonly resettable: boolean | undefined;
@@ -49,7 +52,7 @@ function resetScreen(state: RootState, progress: Progress, reset: RootOptions["r
   return {
     kind: "list",
     title: "Reset",
-    note: "Turns peers off for new sessions and closes this Pi's connection. Keys, revocation lists and the gateway install are kept.",
+    note: "Turns peers off for new sessions and closes this Pi's connection. Keys and the gateway install are kept.",
     rows: () => [
       {
         id: "disable",

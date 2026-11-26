@@ -1,42 +1,26 @@
 import { isAbsolute, normalize } from "node:path";
-import type { Types } from "effect";
 import { SOCKET_PATH_MAX_BYTES, visibleText } from "../../adapter/config.js";
 import { localPlan, permissions } from "../plan.js";
 import type { LocalChoices, LocalPlan } from "../plan.js";
-import type { RemoteIntent } from "../remote.js";
-import {
-  BLOCKED_HELP,
-  consentRow,
-  cycleField,
-  detailsRow,
-  gateText,
-  textField,
-  validated,
-} from "./forms.js";
+import { BLOCKED_HELP, consentRow, detailsRow, gateText, textField, validated } from "./forms.js";
 import type { Gate } from "./forms.js";
 import type { Row, Screen } from "./model.js";
-import { remoteGate, remoteRows } from "./remote-form.js";
-import type { RemoteDraft } from "./remote-form.js";
 
 export type SetupDraft = {
-  mode: "local" | "remote";
   choices: LocalChoices;
   socket: string;
   socketRequired: boolean;
   shared: boolean;
-  remote: RemoteDraft;
 };
 
 export type SetupChoice = {
   readonly plan: LocalPlan;
-  readonly remote?: RemoteIntent;
   readonly shared: boolean;
 };
 
 export type SetupFormOptions = {
   readonly draft: SetupDraft;
   blocked?: string;
-  remoteBlocked?: string;
   readonly details: (choice: SetupChoice) => string;
   readonly apply: (choice: SetupChoice) => void;
   readonly probe?: (socket: string) => Promise<boolean>;
@@ -119,48 +103,16 @@ function localGate(
   }
 }
 
-export function applyState(
-  draft: SetupDraft,
-  blocked?: string,
-  remoteBlocked?: string,
-): Gate<SetupChoice> {
-  const reason = draft.mode === "remote" ? remoteBlocked : blocked;
-
-  if (reason !== undefined) {
-    return { kind: "blocked", reason };
+export function applyState(draft: SetupDraft, blocked?: string): Gate<SetupChoice> {
+  if (blocked !== undefined) {
+    return { kind: "blocked", reason: blocked };
   }
 
   const local = localGate(draft.choices, draft.socket, draft.socketRequired);
 
-  const remote =
-    draft.mode === "remote" ? remoteGate(draft.remote, draft.choices.machineId) : undefined;
-
-  if (local.kind === "missing") {
-    return local;
-  }
-
-  if (remote?.kind === "missing") {
-    return remote;
-  }
-
-  if (local.kind !== "ready") {
-    return local;
-  }
-
-  if (remote !== undefined && remote.kind !== "ready") {
-    return remote;
-  }
-
-  const choice: Types.Mutable<SetupChoice> = {
-    plan: local.value,
-    shared: draft.shared,
-  };
-
-  if (remote?.kind === "ready") {
-    choice.remote = remote.value;
-  }
-
-  return { kind: "ready", value: choice };
+  return local.kind === "ready"
+    ? { kind: "ready", value: { plan: local.value, shared: draft.shared } }
+    : local;
 }
 
 function localRows(
@@ -266,7 +218,7 @@ function socketRow(draft: SetupDraft, probe: SetupFormOptions["probe"]): Array<R
 
 function applyRows(options: Readonly<SetupFormOptions>): Array<Row> {
   const { draft } = options;
-  const state = applyState(draft, options.blocked, options.remoteBlocked);
+  const state = applyState(draft, options.blocked);
 
   const details = (): Array<string> => {
     if (state.kind === "ready") {
@@ -313,30 +265,9 @@ export function setupForm(options: Readonly<SetupFormOptions>): Screen {
     title: "Setup",
     note: "Nothing changes until you choose Apply.",
     rows: () => [
-      cycleField({
-        id: "mode",
-        label: "Mode",
-        description:
-          "Local only: sessions on this computer. One remote peer: also link one other computer.",
-        options: [
-          ["local", "Local only"],
-          ["remote", "One remote peer"],
-        ],
-        get: () => draft.mode,
-        set: (value) => {
-          draft.mode = value;
-        },
-      }),
       ...localRows(choices, set),
       permissionsRow(choices, set),
       ...socketRow(draft, options.probe),
-      ...(draft.mode === "remote"
-        ? remoteRows(draft.remote, {
-            adopt: (machine) => {
-              set({ ...draft.choices, machineId: machine });
-            },
-          })
-        : []),
       ...applyRows(options),
     ],
   };
@@ -380,7 +311,8 @@ export function editState(
   }
 }
 
-const FIXED_SCOPE = "Can't change here: the paired computer uses this scope. Re-pair to change it.";
+const FIXED_SCOPE =
+  "Can't change here: the linked computer uses this scope. Remove the remote link to change it.";
 
 export type ManageFormOptions = {
   readonly saved: LocalChoices;
