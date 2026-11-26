@@ -87,9 +87,8 @@ The gateway writes coalesced JSON events to stderr, at most one per kind every 3
 ## Trust model
 
 - Gateways talk over TLS 1.3 only, with mutual authentication. Session resumption and early data are off.
-- Trust is one private CA you create. There are no system roots and no pinned leaves.
-- A leaf must have exactly one DNS SAN, `gateway.<machineId>.pi.internal`. The address you dial is not an identity.
-- Each issuer needs one complete CRL with a future `nextUpdate`. Delta, partitioned and indirect CRLs are rejected.
-- Each gateway stores the highest CRL number it has seen per issuer in a revocation floor file. It refuses older or conflicting CRLs, even after a restart.
-- Links need a correct clock. A link ends at the earliest certificate or CRL expiry, or after 24 hours. Every configured root must be currently valid, used or not.
+- Each gateway has one Ed25519 key and pins exactly one peer public key, like SSH `known_hosts`. Both sides present RFC 7250 raw public keys; there is no CA, certificate, CRL or revocation floor. The address you dial is not an identity.
+- Pinning your own key is refused, so a connection reflected back to its own gateway cannot pass.
+- Nothing expires and links need no clock. A link lasts until ping/close liveness or loss ends it. To revoke a peer, pin a different key or remove the remote.
+- Reachability is separate: run the link inside Tailscale (listener on its tailnet IP) or an SSH forward.
 - The local socket trusts the same user account, not individual processes.
