@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { assert, describe, expect, test, vi } from "vitest";
 import { buildAgentRequest } from "../agent-request";
 import type { AgentRequest } from "../agent-request";
@@ -1608,7 +1608,7 @@ describe("SDK isolation options", () => {
     expect(options.strictMcpConfig).toBe(true);
     expect(options.skills).toStrictEqual([]);
     expect(options.persistSession).toBe(false);
-    expect(Schema.is(Schema.String)(options.title)).toBe(true);
+    expect(typeof options.title).toBe("string");
     assert(options.mcpServers !== undefined);
     expect(Object.keys(options.mcpServers)).toStrictEqual(["pi"]);
   });

@@ -267,7 +267,7 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
           });
         }
 
-        if (Schema.is(Schema.String)(details?.fullOutputPath)) {
+        if (typeof details?.fullOutputPath === "string") {
           text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
         }
       }

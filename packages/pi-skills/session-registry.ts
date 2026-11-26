@@ -15,27 +15,23 @@ export type SessionPolicy = {
   readonly desiredVisible: (resource: SessionResource) => boolean | undefined;
 };
 
-const RegistryMap = Schema.instanceOf(Map<string, typeof Schema.Unknown.Type>);
+const RegistryMap = Schema.instanceOf(Map<string, SessionPolicy>);
 
 const decodeRegistry = Schema.decodeUnknownOption(
   Schema.Struct({ [REGISTRY]: Schema.optional(RegistryMap) }),
 );
 
-type PolicyMatch = (path: string) => typeof Schema.Unknown.Type;
-
-type PolicyVisibility = (resource: SessionResource) => typeof Schema.Unknown.Type;
-
 const Policy = Schema.Struct({
   version: Schema.Literal(1),
-  match: Schema.declare<PolicyMatch>((value): value is PolicyMatch => Predicate.isFunction(value)),
-  desiredVisible: Schema.declare<PolicyVisibility>((value): value is PolicyVisibility =>
+  match: Schema.declare<SessionPolicy["match"]>((value): value is SessionPolicy["match"] =>
     Predicate.isFunction(value),
+  ),
+  desiredVisible: Schema.declare<SessionPolicy["desiredVisible"]>(
+    (value): value is SessionPolicy["desiredVisible"] => Predicate.isFunction(value),
   ),
 });
 
 const decodePolicy = Schema.decodeUnknownOption(Policy);
-
-type RegisteredPolicy = typeof Policy.Type;
 
 function sessions(create: boolean): typeof RegistryMap.Type | undefined {
   const registry = decodeRegistry(globalThis);
@@ -50,7 +46,7 @@ function sessions(create: boolean): typeof RegistryMap.Type | undefined {
     return existing;
   }
 
-  const map = new Map<string, RegisteredPolicy>();
+  const map = new Map<string, SessionPolicy>();
 
   return Reflect.set(globalThis, REGISTRY, map) ? map : undefined;
 }
@@ -83,14 +79,14 @@ export function sessionPolicy(id: string): SessionPolicy | undefined {
   }
 }
 
-function safePolicy({ match, desiredVisible }: RegisteredPolicy): SessionPolicy {
+function safePolicy({ match, desiredVisible }: SessionPolicy): SessionPolicy {
   return {
     version: 1,
     match: (path) => {
       try {
         const result = match(path);
 
-        return Schema.is(Schema.String)(result) ? result : undefined;
+        return typeof result === "string" ? result : undefined;
       } catch {
         return path;
       }
@@ -99,7 +95,7 @@ function safePolicy({ match, desiredVisible }: RegisteredPolicy): SessionPolicy 
       try {
         const result = desiredVisible(resource);
 
-        return Schema.is(Schema.Boolean)(result) ? result : undefined;
+        return typeof result === "boolean" ? result : undefined;
       } catch {
         return undefined;
       }

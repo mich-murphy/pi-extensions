@@ -170,9 +170,7 @@ function attribute(value: string): string {
 }
 
 function bodyOf(content: MessageContent, images: Array<ImageAttachment>): string {
-  const blocks = Schema.is(Schema.String)(content)
-    ? [{ type: "text" as const, text: content }]
-    : content;
+  const blocks = typeof content === "string" ? [{ type: "text" as const, text: content }] : content;
 
   return blocks
     .map((block) => {

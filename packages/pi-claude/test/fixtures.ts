@@ -234,7 +234,7 @@ export function textDelta(text: string) {
 export function sdkPromptFixture(
   prompt: Parameters<RunSdkQuery>[0]["prompt"],
 ): AsyncIterable<SDKUserMessage> {
-  if (Schema.is(Schema.String)(prompt)) {
+  if (typeof prompt === "string") {
     throw new TypeError("test setup: expected an async SDK prompt");
   }
 

@@ -16,7 +16,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { Schema } from "effect";
+import type { Schema } from "effect";
 import { afterAll, afterEach, describe, expect, test } from "vitest";
 import { jsonObject, sha256 } from "../onboarding/artifact.js";
 import { gatewayTarget } from "../onboarding/catalog.js";
@@ -46,7 +46,7 @@ async function cli(args: Array<string>): Promise<Outcome> {
         if (error === null) {
           resolve({ code: 0, signal: null, stdout, stderr });
         } else {
-          const code = numericExit(error.code) ? error.code : null;
+          const code = typeof error.code === "number" ? error.code : null;
           resolve({ code, signal: error.signal ?? null, stdout, stderr });
         }
       },
@@ -107,8 +107,6 @@ async function ownedRun() {
 
   return { runnerTemp, root, marker, record, fixture, extracted, work, native, common };
 }
-
-const numericExit = Schema.is(Schema.Number);
 
 async function prepareRefusesExisting(plant: (out: string) => Promise<void>): Promise<string> {
   const target = gatewayTarget();

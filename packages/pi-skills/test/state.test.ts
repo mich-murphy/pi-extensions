@@ -11,7 +11,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Result, Schema } from "effect";
+import { Result } from "effect";
+import type { Schema } from "effect";
 import { afterEach, assert, describe, expect, test } from "vitest";
 import { resourcePathId } from "../resource-path";
 import type { ResourcePath } from "../resource-path";
@@ -36,7 +37,7 @@ function testContext() {
 
   const writeState = (state: StateDocument): void => {
     mkdirSync(dirname(statePath), { recursive: true });
-    writeFileSync(statePath, Schema.is(Schema.String)(state) ? state : JSON.stringify(state));
+    writeFileSync(statePath, typeof state === "string" ? state : JSON.stringify(state));
   };
 
   const resourceFile = (name: string): ResourcePath => {

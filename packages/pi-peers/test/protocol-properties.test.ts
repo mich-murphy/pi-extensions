@@ -99,14 +99,13 @@ function frameCases(content: string): Array<Case> {
   return cases;
 }
 
-const isOp = Schema.is(Schema.String);
 const routedOps = new Set(["send", "state.get", "state.list", "interest.add", "interest.remove"]);
 
 function assertRoundtrip({ role, frame }: Case): void {
   assert.deepStrictEqual(decodeFrame(encodeFrame(frame, role), role), frame);
   const op = frame.op;
 
-  if (isOp(op) && routedOps.has(op)) {
+  if (typeof op === "string" && routedOps.has(op)) {
     const { from, ...without } = frame;
 
     const flipped =

@@ -167,11 +167,7 @@ export function admit(store: Store, authored: AdmitInput, now: number): Admissio
 
   const classification = correlation(store, input);
 
-  if (
-    classification !== "none" &&
-    classification !== "unresolved" &&
-    classification !== "verified"
-  ) {
+  if (typeof classification !== "string") {
     return rejection(input, classification);
   }
 

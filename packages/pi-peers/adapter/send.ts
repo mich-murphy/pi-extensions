@@ -123,7 +123,7 @@ export async function sendWithRetries(options: {
     // eslint-disable-next-line eslint/no-await-in-loop -- Attempts must be sequential and share their original deadline.
     const result = await attempt(async () => options.request(freshId(), deadline));
 
-    if ("op" in result) {
+    if (!(result instanceof ConnectionFailureError)) {
       return terminalReply(result, messageId, possible);
     }
 

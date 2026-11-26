@@ -10,7 +10,7 @@ import {
   text as textGen,
   tuples,
 } from "@hegeldev/hegel/generators";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Result } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import {
@@ -118,7 +118,7 @@ function assertContentTypeTotal(header: string | null): void {
 
 function assertDecodeTotal(bytes: Uint8Array, charset: string | null, partial: boolean): void {
   const decoded = decodeTextBuffer(Buffer.from(bytes), charset ?? undefined, { partial });
-  assert.ok(Schema.is(Schema.String)(decoded.text));
+  assert.ok(typeof decoded.text === "string");
   assert.doesNotThrow(() => new TextDecoder(decoded.decoder));
 }
 

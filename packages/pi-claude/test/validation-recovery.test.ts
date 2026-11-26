@@ -322,6 +322,12 @@ async function runRecoveryScenario(path: RecoveryPath, inactive: boolean) {
   }
 }
 
+function findCorrection(messages: ReadonlyArray<AgentMessage>) {
+  return messages.find(
+    (message) => message.role === "toolResult" && message.toolCallId === "corrected",
+  );
+}
+
 function findRejectedCall(messages: ReadonlyArray<AgentMessage>) {
   return messages
     .flatMap((message) => (message.role === "assistant" ? message.content : []))
@@ -352,6 +358,7 @@ describe("Pi-owned validation recovery", () => {
         content: [{ type: "text", text: rejectionText(rejectionKind, inactive) }],
       });
       expect(run.persisted).toContainEqual(rejection);
+      expect(findCorrection(run.persisted)).toMatchObject({ isError: false });
       const call = findRejectedCall(run.persisted);
       expect(call).toStrictEqual({
         type: "toolCall",

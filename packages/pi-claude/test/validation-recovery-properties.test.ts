@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import { integers, sampledFrom } from "@hegeldev/hegel/generators";
-import { Option, Schema } from "effect";
+import { Option } from "effect";
+import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import {
@@ -53,7 +54,7 @@ function assertTotalBoundedValueFree(tc: TestCase): void {
     Option.getOrUndefined(decodeValidationInput(drawInput(tc, marker))),
   );
 
-  assert.ok(Schema.is(Schema.String)(reason));
+  assert.ok(typeof reason === "string");
   assert.ok(reason.length > 0 && reason.length <= MAX_REASON_LENGTH, reason);
   assert.ok(!reason.includes(marker), reason);
 }

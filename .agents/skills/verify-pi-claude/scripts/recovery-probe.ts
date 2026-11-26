@@ -138,7 +138,6 @@ type ProbeReport =
     >);
 
 const reports: Array<ProbeReport> = [];
-const isText = Schema.is(Schema.String);
 const isCorrectedInput = Schema.is(Schema.Struct({ value: Schema.Literal("corrected") }));
 
 function isTranscriptMessage(message: AgentMessage): message is Message {
@@ -270,7 +269,8 @@ async function journey() {
             for (const block of content) {
               if (block.type === "tool_result" && block.is_error === true) {
                 errorResults += 1;
-                const text = isText(block.content) ? block.content : JSON.stringify(block.content);
+                const text =
+                  typeof block.content === "string" ? block.content : JSON.stringify(block.content);
 
                 if (/JSON.*pars|pars.*JSON|invalid JSON/iu.test(text)) {
                   jsonParseErrors += 1;

@@ -36,7 +36,7 @@ function validateCredential(provider: SearchProviderName, value: string | undefi
     return Effect.succeed(undefined);
   }
 
-  if (!Schema.is(Schema.String)(value)) {
+  if (typeof value !== "string") {
     return Effect.fail(new CredentialFailure({ provider, reason: "invalid" }));
   }
 

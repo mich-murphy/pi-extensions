@@ -391,7 +391,7 @@ function matchesContentPin(plan: AcquisitionPlan, catalog: GatewayCatalog): bool
     return catalog.native?.manifestSha256 === plan.manifestSha256;
   }
 
-  return isString(plan.narHash) && catalog.nix?.narHash === plan.narHash;
+  return typeof plan.narHash === "string" && catalog.nix?.narHash === plan.narHash;
 }
 
 function acquisitionSignal(plan: AcquisitionPlan, externalSignal?: AbortSignal): AbortSignal {
@@ -520,7 +520,7 @@ async function verifyCompletionMarker(
     throw new Error("The installed gateway does not match its record; it was kept");
   }
 
-  if (!isString(marker.executable)) {
+  if (typeof marker.executable !== "string") {
     throw new TypeError("Invalid completion marker");
   }
 
@@ -669,7 +669,6 @@ async function probeGateway(
   }
 }
 
-const isString = Schema.is(Schema.String);
 const isExistingFile = Schema.is(Schema.Struct({ code: Schema.Literal("EEXIST") }));
 
 function validateAncestorStat(folder: string, stat: Stats): void {

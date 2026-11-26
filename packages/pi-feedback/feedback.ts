@@ -10,7 +10,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
-import { flow, Option, Schema } from "effect";
+import { Option, Schema } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { onOffCommand } from "../shared/on-off-command.ts";
@@ -169,13 +169,17 @@ function result(text: string, details: FeedbackDetails, isError = false): Feedba
 
 const isTextPart = Schema.is(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }));
 
-export const errorText = flow(
-  Schema.decodeUnknownOption(Schema.Struct({ content: Schema.Array(Schema.Unknown) })),
-  Option.map(({ content }) =>
-    content.flatMap((part) => (isTextPart(part) ? [part.text] : [])).join("\n"),
-  ),
-  Option.getOrElse(() => ""),
+const decodeToolResult = Schema.decodeUnknownOption(
+  Schema.Struct({ content: Schema.Array(Schema.Unknown) }),
 );
+
+export function errorText(toolResult: unknown): string {
+  const decoded = decodeToolResult(toolResult);
+
+  return Option.isSome(decoded)
+    ? decoded.value.content.flatMap((part) => (isTextPart(part) ? [part.text] : [])).join("\n")
+    : "";
+}
 
 function recordProvenance(ctx: FeedbackContext, piVersion: string, attribution: Attribution) {
   type RecordEvidence = { evidence?: NonNullable<Attribution["evidence"]> };

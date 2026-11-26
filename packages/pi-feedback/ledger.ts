@@ -137,10 +137,8 @@ type FieldValue<Event extends LedgerEvent> = Event extends LedgerEvent ? Event[k
 
 type LedgerField = FieldValue<LedgerEvent>;
 
-const isText = Schema.is(Schema.String);
-
 function clean(value: LedgerField): LedgerField {
-  return isText(value) ? clip(redact(value)) : value;
+  return typeof value === "string" ? clip(redact(value)) : value;
 }
 
 export async function appendEvent(

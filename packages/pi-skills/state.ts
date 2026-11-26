@@ -327,7 +327,7 @@ function migrateLegacyState(
 }
 
 function migrateEnabledResource(entry: StateValue): ToggleValue | undefined {
-  if (!isStateRecord(entry) || !Schema.is(Schema.Boolean)(entry.enabled)) {
+  if (!isStateRecord(entry) || typeof entry.enabled !== "boolean") {
     return undefined;
   }
 

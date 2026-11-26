@@ -56,7 +56,7 @@ function schemaChildren(key: string, value: Schema.Json): ReadonlyArray<Schema.J
     }
 
     case "additionalProperties": {
-      return Schema.is(Schema.Boolean)(value) ? [] : [value];
+      return typeof value === "boolean" ? [] : [value];
     }
 
     case "anyOf": {

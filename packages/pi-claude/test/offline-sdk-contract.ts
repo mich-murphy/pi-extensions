@@ -6,7 +6,8 @@ import { runAgentLoop } from "@earendil-works/pi-agent-core";
 import type { AgentEvent, AgentMessage, AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option } from "effect";
+import type { Schema } from "effect";
 import { Type } from "typebox";
 import { z } from "zod";
 import { createAgentSdkStream } from "../bridge";
@@ -216,7 +217,7 @@ async function startTransport(proof: Proof) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  assert(address !== null && !Schema.is(Schema.String)(address));
+  assert(address !== null && typeof address !== "string");
 
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,

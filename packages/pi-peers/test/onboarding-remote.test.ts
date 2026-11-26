@@ -27,13 +27,12 @@ type Profile = { agent: string; client?: GatewayClient };
 
 type Pairing = ReturnType<typeof decodePairing>;
 
-const isString = Schema.is(Schema.String);
 const isNumberPair = Schema.is(Schema.Tuple([Schema.Number]));
 
 const field = (pair: Pairing, key: string): string => {
   const value = pair.output[key];
 
-  if (!isString(value)) {
+  if (typeof value !== "string") {
     throw new TypeError(`Missing public ${key}`);
   }
 

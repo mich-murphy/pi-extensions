@@ -3,7 +3,7 @@ import type { BigIntStats } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
-import { Predicate, Schema } from "effect";
+import { Schema } from "effect";
 import {
   GATEWAY_MANAGED_CAPABILITY,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
@@ -209,9 +209,7 @@ export function verifyGatewayVersion(record: Schema.JsonObject, expected: string
   return { name, version, wireVersions, capabilities };
 }
 
-const isString = Schema.is(Schema.String);
 const isSymbol = Schema.is(Schema.Symbol);
-const isFunction = Schema.is(Schema.declare(Predicate.isFunction));
 const nestedErrors = Schema.decodeUnknownSync(Schema.Array(Schema.Unknown));
 
 export function describeFailure(cause: unknown, includeAggregates: boolean): string {
@@ -228,11 +226,11 @@ export function describeFailure(cause: unknown, includeAggregates: boolean): str
     if (item instanceof Error) {
       messages.push(item.message);
       pending.push(item.cause, ...aggregateMembers(item, includeAggregates));
-    } else if (includeAggregates && isString(item)) {
+    } else if (includeAggregates && typeof item === "string") {
       messages.push(item);
     } else {
       const json = JSON.stringify(item);
-      messages.push(json ?? (isSymbol(item) ? "symbol" : fallbackKind(isFunction(item))));
+      messages.push(json ?? (isSymbol(item) ? "symbol" : fallbackKind(typeof item === "function")));
     }
   }
 
