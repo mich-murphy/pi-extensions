@@ -29,8 +29,11 @@ class JsonEvidence {
   ) {}
 
   private whitespace(): void {
-    while (/[\t\n\r ]/u.test(this.text[this.position] ?? "!")) {
+    let code = this.text.codePointAt(this.position);
+
+    while (code === 32 || code === 10 || code === 13 || code === 9) {
       this.position++;
+      code = this.text.codePointAt(this.position);
     }
   }
 
