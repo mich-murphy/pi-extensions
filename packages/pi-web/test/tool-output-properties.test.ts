@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  just,
+  oneOf,
+  sampledFrom,
+  tuples,
+  weightedBooleans,
+} from "@hegeldev/hegel/generators";
 import { Effect, Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
@@ -36,18 +46,18 @@ function textResult(text: string): FetchPageResult {
 
 const PIECES = ["abc", "é", "😀", "日本語", "\r\n", "", "line with spaces"];
 
-const baseText = gs
-  .arrays(gs.sampledFrom(PIECES), { minSize: 1, maxSize: 6 })
-  .map((parts) => parts.join(""));
+const baseText = arrays(sampledFrom(PIECES), { minSize: 1, maxSize: 6 }).map((parts) =>
+  parts.join(""),
+);
 
 const LONG_LINE = "é".repeat(30_000);
 
-const pagedText = gs.composite((tc) => {
-  const lines = tc.draw(gs.arrays(baseText, { minSize: 1, maxSize: 20 }), "lines");
-  const repeat = tc.draw(gs.integers({ minValue: 1, maxValue: 150 }), "repeat");
-  const longLine = tc.draw(gs.booleans(), "longLine");
+const pagedText = composite((tc) => {
+  const lines = tc.draw(arrays(baseText, { minSize: 1, maxSize: 20 }), "lines");
+  const repeat = tc.draw(integers({ minValue: 1, maxValue: 150 }), "repeat");
+  const longLine = tc.draw(booleans(), "longLine");
   const body = Array.from({ length: repeat }, () => lines.join("\n")).join("\n");
-  const manyLines = tc.draw(gs.weightedBooleans(0.8), "manyLines");
+  const manyLines = tc.draw(weightedBooleans(0.8), "manyLines");
   const filler = manyLines ? "ab\n".repeat(2100) : "";
 
   return `${filler}${longLine ? `${LONG_LINE}\n${body}` : body}`;
@@ -145,10 +155,7 @@ describe("webfetch paging properties", () => {
       const text = tc.draw(pagedText, "text");
       const total = Buffer.byteLength(text);
 
-      const startAt = tc.draw(
-        gs.oneOf(gs.just(0), gs.integers({ minValue: 0, maxValue: total })),
-        "start",
-      );
+      const startAt = tc.draw(oneOf(just(0), integers({ minValue: 0, maxValue: total })), "start");
 
       checkPaging(text, startAt);
     });
@@ -158,7 +165,7 @@ describe("webfetch paging properties", () => {
     assertHegel(fastSettings, (tc) => {
       checkPastEnd(
         tc.draw(baseText, "text"),
-        tc.draw(gs.integers({ minValue: 0, maxValue: 50 }), "extra"),
+        tc.draw(integers({ minValue: 0, maxValue: 50 }), "extra"),
       );
     });
   });
@@ -200,8 +207,8 @@ describe("redactSecrets properties", () => {
   test("overlapping secrets are replaced whole regardless of order", () => {
     assertHegel(fastSettings, (tc) => {
       checkOverlap(
-        tc.draw(gs.booleans(), "reverse"),
-        tc.draw(gs.arrays(gs.sampledFrom(["k+", "k+k+", "a.b", "a.bb"]), { maxSize: 6 }), "parts"),
+        tc.draw(booleans(), "reverse"),
+        tc.draw(arrays(sampledFrom(["k+", "k+k+", "a.b", "a.bb"]), { maxSize: 6 }), "parts"),
       );
     });
   });
@@ -209,8 +216,8 @@ describe("redactSecrets properties", () => {
   test("no secret survives and nothing changes without secrets", () => {
     assertHegel(fastSettings, (tc) => {
       checkRedaction(
-        tc.draw(gs.arrays(gs.sampledFrom([...SECRETS, ...SAFE]), { maxSize: 8 }), "parts"),
-        tc.draw(gs.arrays(gs.sampledFrom(SECRETS), { maxSize: 3 }), "secrets"),
+        tc.draw(arrays(sampledFrom([...SECRETS, ...SAFE]), { maxSize: 8 }), "parts"),
+        tc.draw(arrays(sampledFrom(SECRETS), { maxSize: 3 }), "secrets"),
       );
     });
   });
@@ -218,9 +225,9 @@ describe("redactSecrets properties", () => {
   test("regex metacharacters match literally", () => {
     assertHegel(fastSettings, (tc) => {
       checkLiteral(
-        tc.draw(gs.arrays(gs.sampledFrom(SAFE), { maxSize: 8 }), "parts"),
+        tc.draw(arrays(sampledFrom(SAFE), { maxSize: 8 }), "parts"),
         tc.draw(
-          gs.arrays(gs.sampledFrom(["a.b", "a*b", "k+", "^s$"]), { minSize: 1, maxSize: 3 }),
+          arrays(sampledFrom(["a.b", "a*b", "k+", "^s$"]), { minSize: 1, maxSize: 3 }),
           "secrets",
         ),
       );
@@ -230,10 +237,10 @@ describe("redactSecrets properties", () => {
 
 const PASSWORD = "s3cretpw";
 
-const urlParts = gs.tuples(
-  gs.sampledFrom(["http", "https", "HTTPS", "ftp", "file"]),
-  gs.sampledFrom(["", `user:${PASSWORD}@`, "u@"]),
-  gs.sampledFrom([
+const urlParts = tuples(
+  sampledFrom(["http", "https", "HTTPS", "ftp", "file"]),
+  sampledFrom(["", `user:${PASSWORD}@`, "u@"]),
+  sampledFrom([
     "example.com",
     "EXAMPLE.com.",
     "a.b.c",
@@ -243,7 +250,7 @@ const urlParts = gs.tuples(
     "bad host",
     "[::",
   ]),
-  gs.sampledFrom(["", "/", "/a/../b?q=1#f", "/%41"]),
+  sampledFrom(["", "/", "/a/../b?q=1#f", "/%41"]),
 );
 
 function checkUrl([scheme, userinfo, host, path]: [string, string, string, string]): void {

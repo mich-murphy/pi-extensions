@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { initTheme, keyHint } from "@earendil-works/pi-coding-agent";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, sampledFrom, text } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { displayText } from "../render";
@@ -49,9 +49,9 @@ const FRAGMENTS = [
 const UNSAFE = /(?!\n)[\p{Cc}\p{Bidi_Control}]/u;
 
 function hostile(tc: TestCase, label: string): string {
-  const fragments = tc.draw(gs.arrays(gs.sampledFrom(FRAGMENTS), { maxSize: 8 }), label);
+  const fragments = tc.draw(arrays(sampledFrom(FRAGMENTS), { maxSize: 8 }), label);
 
-  return fragments.join("") + tc.draw(gs.text({ maxSize: 20 }), `${label}-text`);
+  return fragments.join("") + tc.draw(text({ maxSize: 20 }), `${label}-text`);
 }
 
 const EXPAND_HINT = keyHint("app.tools.expand", "for details");
@@ -77,7 +77,7 @@ describe("untrusted text reaches the terminal without control or bidi characters
   test("webfetch call and result rendering", () => {
     new Hegel((tc) => {
       const body = hostile(tc, "body");
-      const options = { expanded: tc.draw(gs.booleans(), "expanded"), isPartial: false };
+      const options = { expanded: tc.draw(booleans(), "expanded"), isPartial: false };
 
       const details = {
         requestedUrl: "https://example.com/",
@@ -87,7 +87,7 @@ describe("untrusted text reaches the terminal without control or bidi characters
         mime: hostile(tc, "mime"),
         contentType: "text/html",
         bytes: 10,
-        image: tc.draw(gs.booleans(), "image"),
+        image: tc.draw(booleans(), "image"),
       };
 
       const content = [{ type: "text", text: body }];
@@ -102,7 +102,7 @@ describe("untrusted text reaches the terminal without control or bidi characters
   test("websearch call and result rendering", () => {
     new Hegel((tc) => {
       const body = hostile(tc, "body");
-      const options = { expanded: tc.draw(gs.booleans(), "expanded"), isPartial: false };
+      const options = { expanded: tc.draw(booleans(), "expanded"), isPartial: false };
 
       const details = {
         query: "q",

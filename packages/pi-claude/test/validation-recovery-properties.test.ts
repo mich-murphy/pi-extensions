@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { Option, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -15,11 +15,11 @@ const settings = propertySettings(200);
 const MAX_REASON_LENGTH = 400;
 
 function drawMarker(tc: TestCase): string {
-  return `ZQ${tc.draw(gs.integers({ minValue: 1e9, maxValue: 9e15 }))}QZ`;
+  return `ZQ${tc.draw(integers({ minValue: 1e9, maxValue: 9e15 }))}QZ`;
 }
 
 function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
-  const reason = tc.draw(gs.sampledFrom([...VALIDATION_REASONS, marker, "", 7]));
+  const reason = tc.draw(sampledFrom([...VALIDATION_REASONS, marker, "", 7]));
 
   const inputs: (Schema.Json | undefined)[] = [
     marker,
@@ -32,10 +32,10 @@ function drawInput(tc: TestCase, marker: string): Schema.Json | undefined {
     { error: { toString: marker } },
     null,
     undefined,
-    tc.draw(gs.integers()),
+    tc.draw(integers()),
   ];
 
-  return inputs[tc.draw(gs.integers({ minValue: 0, maxValue: inputs.length - 1 }))];
+  return inputs[tc.draw(integers({ minValue: 0, maxValue: inputs.length - 1 }))];
 }
 
 function assertTotalBoundedValueFree(tc: TestCase): void {
@@ -60,7 +60,7 @@ function assertTotalBoundedValueFree(tc: TestCase): void {
 
 function assertReasonsDistinct(tc: TestCase): void {
   const marker = drawMarker(tc);
-  const noise = tc.draw(gs.sampledFrom([{}, { extra: marker }, { nested: { error: marker } }]));
+  const noise = tc.draw(sampledFrom([{}, { extra: marker }, { nested: { error: marker } }]));
 
   const messages = new Map(
     VALIDATION_REASONS.map((error) => [error, validationRecoveryReason({ ...noise, error })]),

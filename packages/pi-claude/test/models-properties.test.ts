@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { integers, sampledFrom, text } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { minimumCacheableTokensFor, undatedModelId } from "../models";
@@ -55,11 +55,11 @@ const PROTOTYPE_NAMES = [
 const FOREIGN_PREFIXES = ["anthropic/", "claude", "claude//", "openai/", "Claude-SDK/", " claude/"];
 
 function drawKnown(tc: TestCase): readonly [string, number] {
-  return tc.draw(gs.sampledFrom(KNOWN));
+  return tc.draw(sampledFrom(KNOWN));
 }
 
 function drawDate(tc: TestCase): string {
-  return String(tc.draw(gs.integers({ minValue: 0, maxValue: 99_999_999 }))).padStart(8, "0");
+  return String(tc.draw(integers({ minValue: 0, maxValue: 99_999_999 }))).padStart(8, "0");
 }
 
 function assertVariantsAgree(tc: TestCase): void {
@@ -82,10 +82,10 @@ function assertUndatedStrips(tc: TestCase): void {
 }
 
 function assertUnknownIsUndefined(tc: TestCase): void {
-  const name = tc.draw(gs.sampledFrom(PROTOTYPE_NAMES));
+  const name = tc.draw(sampledFrom(PROTOTYPE_NAMES));
   const [id] = drawKnown(tc);
-  const prefix = tc.draw(gs.sampledFrom(FOREIGN_PREFIXES));
-  const junk = `zz-${tc.draw(gs.text({ maxSize: 20 }))}`;
+  const prefix = tc.draw(sampledFrom(FOREIGN_PREFIXES));
+  const junk = `zz-${tc.draw(text({ maxSize: 20 }))}`;
   const date = drawDate(tc);
 
   for (const variant of [name, `claude/${name}`, `${name}-${date}`, `${prefix}${id}`, junk]) {

@@ -1,7 +1,7 @@
 import { Result, Schema } from "effect";
 import TurndownService from "turndown";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
-import * as Html from "../html";
+import { htmlToMarkdown } from "../html";
 import { convertGuarded, HtmlConversionFailed } from "../html-conversion";
 
 const OVERFLOW = new RangeError("Maximum call stack size exceeded");
@@ -34,7 +34,7 @@ describe("a library stack overflow", () => {
     vi.spyOn(TurndownService.prototype, "turndown").mockImplementation(() => {
       throw OVERFLOW;
     });
-    const converted = Html.htmlToMarkdown("<p>hello</p>", "https://example.com");
+    const converted = htmlToMarkdown("<p>hello</p>", "https://example.com");
     assert(Result.isFailure(converted));
     assert(Schema.is(HtmlConversionFailed)(converted.failure));
     expect(converted.failure.cause).toBe(OVERFLOW);

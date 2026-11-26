@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { integers, oneOf, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { MAX_BUDGET_MS } from "../protocol/schema.js";
@@ -228,9 +228,9 @@ function assertAdmissionTrace(steps: readonly Step[]): void {
   }
 }
 
-const sizeGenerator = gs.oneOf(
-  gs.integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
-  gs.sampledFrom(
+const sizeGenerator = oneOf(
+  integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
+  sampledFrom(
     [1, 2].flatMap((count) =>
       [-1, 0, 1].map((delta) => Math.max(0, Math.floor(INBOX_BYTES / count) - baseBytes + delta)),
     ),
@@ -266,9 +266,9 @@ function assertSingleDelivery(size: number, unit: string): void {
   }
 }
 
-const advanceGenerator = gs.oneOf(
-  gs.integers({ minValue: 0, maxValue: 700_000 }),
-  gs.sampledFrom([1, 299_999, 300_000, 300_001, 599_999, 600_000]),
+const advanceGenerator = oneOf(
+  integers({ minValue: 0, maxValue: 700_000 }),
+  sampledFrom([1, 299_999, 300_000, 300_001, 599_999, 600_000]),
 );
 
 describe("Hegel bounded state/fault traces against independent models", () => {
@@ -277,17 +277,17 @@ describe("Hegel bounded state/fault traces against independent models", () => {
     { timeout: propertyTimeout(30_000) },
     () => {
       new Hegel((tc) => {
-        const count = tc.draw(gs.integers({ minValue: 0, maxValue: 40 }), "length");
+        const count = tc.draw(integers({ minValue: 0, maxValue: 40 }), "length");
         const steps: Step[] = [];
 
         for (let index = 0; index < count; index++) {
           steps.push({
-            action: tc.draw(gs.integers({ minValue: 0, maxValue: 7 }), `action${index}`),
-            id: tc.draw(gs.integers({ minValue: 0, maxValue: 7 }), `id${index}`),
-            body: tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), `body${index}`),
+            action: tc.draw(integers({ minValue: 0, maxValue: 7 }), `action${index}`),
+            id: tc.draw(integers({ minValue: 0, maxValue: 7 }), `id${index}`),
+            body: tc.draw(integers({ minValue: 0, maxValue: 3 }), `body${index}`),
             advance: tc.draw(advanceGenerator, `advance${index}`),
             size: tc.draw(sizeGenerator, `size${index}`),
-            resend: tc.draw(gs.integers({ minValue: 0, maxValue: 2 }), `resend${index}`),
+            resend: tc.draw(integers({ minValue: 0, maxValue: 2 }), `resend${index}`),
           });
         }
 
@@ -300,14 +300,14 @@ describe("Hegel bounded state/fault traces against independent models", () => {
 
   test("single delivery admission flips exactly at the inbox byte limit", () => {
     new Hegel((tc) => {
-      const unit = tc.draw(gs.sampledFrom(["x", "é", "界", "😀"]), "unit");
+      const unit = tc.draw(sampledFrom(["x", "é", "界", "😀"]), "unit");
       const width = Buffer.byteLength(unit);
       const edge = Math.floor((INBOX_BYTES - baseBytes + 8) / width);
 
       const size = tc.draw(
-        gs.oneOf(
-          gs.sampledFrom([edge - 2, edge - 1, edge, edge + 1, edge + 2]),
-          gs.integers({ minValue: 1, maxValue: 2 * edge }),
+        oneOf(
+          sampledFrom([edge - 2, edge - 1, edge, edge + 1, edge + 2]),
+          integers({ minValue: 1, maxValue: 2 * edge }),
         ),
         "size",
       );

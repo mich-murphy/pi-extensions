@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, integers, oneOf, optional, sampledFrom, text } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import {
   assertHegel,
@@ -81,19 +81,19 @@ function senderStep(handles: Handles, model: Model, index: number): void {
 function assertHandleTrace(tc: TestCase): void {
   const handles = new Handles();
   const model: Model = { bound: new Map(), owner: new Map() };
-  const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 12 }), "steps");
+  const steps = tc.draw(integers({ minValue: 1, maxValue: 12 }), "steps");
 
   for (let step = 0; step < steps; step += 1) {
-    if (tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), `kind${step}`) === 3) {
+    if (tc.draw(integers({ minValue: 0, maxValue: 3 }), `kind${step}`) === 3) {
       const index = tc.draw(
-        gs.integers({ minValue: 0, maxValue: runtimes.length - 1 }),
+        integers({ minValue: 0, maxValue: runtimes.length - 1 }),
         `from${step}`,
       );
 
       senderStep(handles, model, index);
     } else {
       const indices = tc.draw(
-        gs.arrays(gs.integers({ minValue: 0, maxValue: runtimes.length - 1 }), {
+        arrays(integers({ minValue: 0, maxValue: runtimes.length - 1 }), {
           unique: true,
           maxSize: 5,
         }),
@@ -110,7 +110,7 @@ function assertHandleTrace(tc: TestCase): void {
 }
 
 const hostile = ["‮", "⁦⁩", " ", "\u001b[31m", "a\nb", "界😀é", "a/b", "n".repeat(130)];
-const piece = gs.oneOf(gs.text({ maxSize: 40 }), gs.sampledFrom(hostile));
+const piece = oneOf(text({ maxSize: 40 }), sampledFrom(hostile));
 
 function acceptsLabel(label: string): boolean {
   try {
@@ -142,10 +142,10 @@ function assertConfiguredFirst(label: string, configured: string, sessionName: s
 
 function assertLabel(tc: TestCase): void {
   const configured = tc.draw(piece, "configured");
-  const sessionName = tc.draw(gs.optional(piece), "sessionName");
+  const sessionName = tc.draw(optional(piece), "sessionName");
   const repo = tc.draw(piece, "repo");
-  const parent = tc.draw(gs.optional(piece), "parent");
-  const branch = tc.draw(gs.optional(piece), "branch");
+  const parent = tc.draw(optional(piece), "parent");
+  const branch = tc.draw(optional(piece), "branch");
 
   const label = composeLabel({
     configured,

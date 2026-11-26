@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { optional, sampledFrom } from "@hegeldev/hegel/generators";
 import type { Schema } from "effect";
 import { describe, test } from "vitest";
 import {
@@ -69,7 +69,7 @@ function assertDoctorMatchesAdapter(tc: TestCase): void {
   const expected: string[] = [];
 
   for (const [name, field] of Object.entries<Field>(fields)) {
-    const choice = tc.draw(gs.sampledFrom(["absent", "valid", "invalid"] as const), name);
+    const choice = tc.draw(sampledFrom(["absent", "valid", "invalid"] as const), name);
 
     if (choice === "absent") {
       expected.push(...(field.required ? [name] : []));
@@ -77,13 +77,13 @@ function assertDoctorMatchesAdapter(tc: TestCase): void {
     }
 
     value[name] = tc.draw(
-      gs.sampledFrom(choice === "valid" ? field.valid : field.invalid),
+      sampledFrom(choice === "valid" ? field.valid : field.invalid),
       `${name} value`,
     );
     expected.push(...(choice === "invalid" ? [name] : []));
   }
 
-  const stray = tc.draw(gs.optional(gs.sampledFrom(["watch", "publications", "extra"])), "stray");
+  const stray = tc.draw(optional(sampledFrom(["watch", "publications", "extra"])), "stray");
 
   if (stray !== null) {
     value[stray] = true;

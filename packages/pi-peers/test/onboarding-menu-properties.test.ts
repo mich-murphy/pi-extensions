@@ -1,5 +1,5 @@
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import { actionForm } from "../onboarding/menu/forms.js";
@@ -26,21 +26,21 @@ function unconsented(events: readonly string[]): number[] {
 }
 
 function press(model: MenuModel, tc: TestCase): void {
-  const key = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+  const key = tc.draw(integers({ minValue: 0, maxValue: 3 }));
 
   if (key === 0) {
     model.back();
   } else if (key === 1) {
-    model.activate(tc.draw(gs.sampledFrom(ids)));
+    model.activate(tc.draw(sampledFrom(ids)));
   } else if (key === 2) {
-    model.submit(tc.draw(gs.sampledFrom(texts))).catch(() => undefined);
+    model.submit(tc.draw(sampledFrom(texts))).catch(() => undefined);
   } else {
-    model.toggle(tc.draw(gs.sampledFrom(["discover", "push"])));
+    model.toggle(tc.draw(sampledFrom(["discover", "push"])));
   }
 }
 
 function run(tc: TestCase): Run {
-  const blocked = tc.draw(gs.booleans());
+  const blocked = tc.draw(booleans());
   const events: string[] = [];
   const depths: number[] = [];
 
@@ -74,7 +74,7 @@ function run(tc: TestCase): Run {
   };
 
   const model = new MenuModel(root, { consented: (action) => events.push(`consent:${action}`) });
-  const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 40 }));
+  const steps = tc.draw(integers({ minValue: 1, maxValue: 40 }));
 
   for (let index = 0; index < steps && !model.closed; index += 1) {
     press(model, tc);
@@ -181,7 +181,7 @@ function existingScreen(blockedRepair: boolean, events: string[]) {
 }
 
 function runExisting(tc: TestCase) {
-  const blockedRepair = tc.draw(gs.booleans());
+  const blockedRepair = tc.draw(booleans());
   const events: string[] = [];
   const depths: number[] = [];
 
@@ -216,17 +216,17 @@ function runExisting(tc: TestCase) {
     { consented: (action) => events.push(`consent:${action}`) },
   );
 
-  const steps = tc.draw(gs.integers({ minValue: 1, maxValue: 40 }));
+  const steps = tc.draw(integers({ minValue: 1, maxValue: 40 }));
 
   for (let index = 0; index < steps && !model.closed; index += 1) {
     const before = model.depth;
-    const back = tc.draw(gs.booleans());
+    const back = tc.draw(booleans());
 
     if (back) {
       model.back();
       depths.push(model.closed || model.depth === 0 ? 0 : before - model.depth - 1);
     } else {
-      model.activate(tc.draw(gs.sampledFrom(routeIds)));
+      model.activate(tc.draw(sampledFrom(routeIds)));
     }
   }
 

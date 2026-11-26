@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, composite, integers, oneOf, sampledFrom, text } from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
@@ -44,26 +44,26 @@ const FIXED = [
   "x".repeat(200),
 ];
 
-const nameGen = gs.oneOf(
-  gs.text({ minSize: 1, maxSize: 200 }),
-  gs.sampledFrom(FIXED),
-  gs.composite((tc) => {
-    const base = "x".repeat(tc.draw(gs.integers({ minValue: 50, maxValue: 70 })));
+const nameGen = oneOf(
+  text({ minSize: 1, maxSize: 200 }),
+  sampledFrom(FIXED),
+  composite((tc) => {
+    const base = "x".repeat(tc.draw(integers({ minValue: 50, maxValue: 70 })));
 
-    return base + tc.draw(gs.sampledFrom(SEPARATORS)) + tc.draw(gs.text({ maxSize: 5 }));
+    return base + tc.draw(sampledFrom(SEPARATORS)) + tc.draw(text({ maxSize: 5 }));
   }),
-  gs.arrays(gs.sampledFrom(COMPAT), { minSize: 1, maxSize: 4 }).map((parts) => parts.join("")),
-  gs.composite((tc) => {
-    const left = tc.draw(gs.text({ minSize: 1, maxSize: 4 }));
-    const right = tc.draw(gs.text({ minSize: 1, maxSize: 4 }));
+  arrays(sampledFrom(COMPAT), { minSize: 1, maxSize: 4 }).map((parts) => parts.join("")),
+  composite((tc) => {
+    const left = tc.draw(text({ minSize: 1, maxSize: 4 }));
+    const right = tc.draw(text({ minSize: 1, maxSize: 4 }));
 
-    return left + tc.draw(gs.sampledFrom(SEPARATORS)) + right;
+    return left + tc.draw(sampledFrom(SEPARATORS)) + right;
   }),
 );
 
 function drawNames(tc: TestCase): string[] {
-  const drawn = tc.draw(gs.arrays(nameGen, { minSize: 1, maxSize: 6 }));
-  const picks = tc.draw(gs.arrays(gs.integers({ minValue: 0, maxValue: 4 }), { maxSize: 4 }));
+  const drawn = tc.draw(arrays(nameGen, { minSize: 1, maxSize: 6 }));
+  const picks = tc.draw(arrays(integers({ minValue: 0, maxValue: 4 }), { maxSize: 4 }));
   const variants = picks.map((pick, index) => VARIANTS[pick]?.(drawn[index % drawn.length] ?? "x"));
 
   return [...new Set([...drawn, ...variants])].filter(

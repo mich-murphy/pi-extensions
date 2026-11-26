@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, composite, integers, just, oneOf, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { createAgentSdkStream } from "../bridge";
@@ -29,30 +29,30 @@ const TERMINALS: readonly BridgeEvent[] = [
 
 function tokens(tc: TestCase): number {
   return tc.draw(
-    gs.oneOf(
-      gs.just(0),
-      gs.integers({ minValue: 0, maxValue: 50 }),
-      gs.integers({ minValue: 0, maxValue: 2_000_000 }),
+    oneOf(
+      just(0),
+      integers({ minValue: 0, maxValue: 50 }),
+      integers({ minValue: 0, maxValue: 2_000_000 }),
     ),
   );
 }
 
 function drawUsage(tc: TestCase): TokenUsage {
   const cacheWrite = tokens(tc);
-  const split = tc.draw(gs.sampledFrom(["none", "all", "zero"] as const));
+  const split = tc.draw(sampledFrom(["none", "all", "zero"] as const));
   const base = { input: tokens(tc), output: tokens(tc), cacheRead: tokens(tc), cacheWrite };
 
   return split === "none" ? base : { ...base, cacheWrite1h: split === "all" ? cacheWrite : 0 };
 }
 
 function drawEvent(tc: TestCase): BridgeEvent {
-  const kind = tc.draw(gs.sampledFrom(["text_delta", "thinking_delta", "usage"] as const));
+  const kind = tc.draw(sampledFrom(["text_delta", "thinking_delta", "usage"] as const));
 
   if (kind === "usage") {
     return { type: "usage", usage: drawUsage(tc) };
   }
 
-  return { type: kind, text: tc.draw(gs.sampledFrom(["a", "b", "", "ab"])) };
+  return { type: kind, text: tc.draw(sampledFrom(["a", "b", "", "ab"])) };
 }
 
 function deltas(events: readonly BridgeEvent[], kind: "text_delta" | "thinking_delta"): string {
@@ -108,11 +108,11 @@ async function collect(events: readonly BridgeEvent[]) {
 describe("bridge writer properties", () => {
   test("one terminal event, deltas concatenate, stopReason and usage follow the last event", async () => {
     await new Hegel(async (tc) => {
-      const before = tc.draw(gs.arrays(gs.composite(drawEvent), { maxSize: 8 }));
+      const before = tc.draw(arrays(composite(drawEvent), { maxSize: 8 }));
       assert.ok(before.length <= 8);
-      const terminal = tc.draw(gs.sampledFrom(TERMINALS));
+      const terminal = tc.draw(sampledFrom(TERMINALS));
 
-      const after = Array.from({ length: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) }, () =>
+      const after = Array.from({ length: tc.draw(integers({ minValue: 0, maxValue: 3 })) }, () =>
         drawEvent(tc),
       );
 

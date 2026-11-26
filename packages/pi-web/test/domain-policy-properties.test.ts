@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, sampledFrom } from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings, assertHegel } from "../../../test-support/hegel-settings";
@@ -12,7 +12,7 @@ const settings = propertySettings(200);
 const LABELS = ["evil", "notevil", "com", "org", "a", "b", "EVIL", "Com"];
 
 const labelsGenerator = (minSize: number, maxSize: number) =>
-  gs.arrays(gs.sampledFrom(LABELS), { minSize, maxSize });
+  arrays(sampledFrom(LABELS), { minSize, maxSize });
 
 function toUrl(labels: readonly string[], trailingDot: boolean) {
   const parsed = parsePublicHttpUrl(`https://${labels.join(".")}${trailingDot ? "." : ""}/x`);
@@ -69,7 +69,7 @@ function checkMonotonic(host: string[], allow: Names, deny: Names, extra: string
   }
 }
 
-const listGenerator = gs.arrays(labelsGenerator(1, 3), { maxSize: 3 });
+const listGenerator = arrays(labelsGenerator(1, 3), { maxSize: 3 });
 
 describe("checkDomainPolicy properties", () => {
   test("verdict matches a label-suffix model, with or without a trailing dot", () => {
@@ -78,7 +78,7 @@ describe("checkDomainPolicy properties", () => {
         tc.draw(labelsGenerator(1, 4), "host"),
         tc.draw(listGenerator, "allow"),
         tc.draw(listGenerator, "deny"),
-        tc.draw(gs.booleans(), "trailingDot"),
+        tc.draw(booleans(), "trailingDot"),
       );
     });
   });

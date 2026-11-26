@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, composite, integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -37,10 +37,10 @@ const HREFS = [
 const SCRIPT_URL = /(?:java|vb)\s*script:/iu;
 
 function renderNode(tc: TestCase, depth: number): string {
-  const kind = tc.draw(gs.sampledFrom(NODE_KINDS), "kind");
+  const kind = tc.draw(sampledFrom(NODE_KINDS), "kind");
 
   if (kind === "text") {
-    return tc.draw(gs.sampledFrom(WORDS), "text");
+    return tc.draw(sampledFrom(WORDS), "text");
   }
 
   if (kind === "script") {
@@ -51,22 +51,22 @@ function renderNode(tc: TestCase, depth: number): string {
     return "<br>";
   }
 
-  const count = depth <= 1 ? 0 : tc.draw(gs.integers({ minValue: 0, maxValue: 2 }), "children");
+  const count = depth <= 1 ? 0 : tc.draw(integers({ minValue: 0, maxValue: 2 }), "children");
   const inner = Array.from({ length: count }, () => renderNode(tc, depth - 1)).join("");
-  const attributes = kind === "a" ? ` href="${tc.draw(gs.sampledFrom(HREFS), "href")}"` : "";
+  const attributes = kind === "a" ? ` href="${tc.draw(sampledFrom(HREFS), "href")}"` : "";
 
   return `<${kind}${attributes}>${inner}</${kind}>`;
 }
 
-const documentGen = gs.composite((tc) => {
+const documentGen = composite((tc) => {
   const lead = tc.draw(
-    gs.sampledFrom(["", `<script>${MARKER}</script>`, "<style>x{}</style>"]),
+    sampledFrom(["", `<script>${MARKER}</script>`, "<style>x{}</style>"]),
     "lead",
   );
 
   const content = `${lead}${renderNode(tc, 6)}<p>${VISIBLE}</p>`;
 
-  return tc.draw(gs.booleans(), "wrapped") ? `<html><body>${content}</body></html>` : content;
+  return tc.draw(booleans(), "wrapped") ? `<html><body>${content}</body></html>` : content;
 });
 
 function assertAllowedOutcome(

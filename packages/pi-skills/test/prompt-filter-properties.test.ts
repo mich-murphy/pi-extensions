@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { BuildSystemPromptOptions, Skill } from "@earendil-works/pi-coding-agent";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, text as textGen } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { hideResources, PromptFilterResult } from "../prompt-filter";
 import { assertProperty } from "./hegel-property";
 
 type ContextFile = { readonly path: string; readonly content: string };
 
-const text = gs.text({ alphabet: "ab \n<>&\"'", maxSize: 10 });
-const outside = gs.text({ alphabet: "xy \n", maxSize: 6 });
+const text = textGen({ alphabet: "ab \n<>&\"'", maxSize: 10 });
+const outside = textGen({ alphabet: "xy \n", maxSize: 6 });
 
 function skillAt(index: number, description: string): Skill {
   const filePath = `/s/${index}/SKILL.md`;
@@ -53,12 +53,12 @@ type Scenario = {
 };
 
 function drawScenario(tc: TestCase): Scenario {
-  const contents = tc.draw(gs.arrays(text, { maxSize: 4 }));
-  const descriptions = tc.draw(gs.arrays(text, { maxSize: 4 }));
+  const contents = tc.draw(arrays(text, { maxSize: 4 }));
+  const descriptions = tc.draw(arrays(text, { maxSize: 4 }));
   const files = contents.map((content, index) => ({ path: `/work/${index}/AGENTS.md`, content }));
   const skills = descriptions.map((description, index) => skillAt(index, description));
   const paths = [...files.map(({ path }) => path), ...skills.map(({ filePath }) => filePath)];
-  const subset = (): Set<string> => new Set(paths.filter(() => tc.draw(gs.booleans())));
+  const subset = (): Set<string> => new Set(paths.filter(() => tc.draw(booleans())));
 
   return {
     files,

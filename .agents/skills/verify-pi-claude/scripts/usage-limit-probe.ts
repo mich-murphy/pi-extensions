@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import * as sdk from "@anthropic-ai/claude-agent-sdk";
+import { AbortError, createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -13,7 +13,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { createJiti } from "jiti";
-import type * as Production from "../../../../packages/pi-claude/index";
+import type registerClaudeProvider from "../../../../packages/pi-claude/index";
 import { USAGE_LIMIT_CHANNEL } from "../../../../packages/shared/usage-limit";
 
 const { values } = parseArgs({
@@ -110,7 +110,7 @@ let current: (typeof cases)[number] | undefined;
 let queries = 0;
 
 globalThis.piUsageLimitBoundary = {
-  sdk,
+  sdk: { AbortError, createSdkMcpServer, tool },
   async *query() {
     assert(current, "unexpected query (metadata/background request)");
     queries++;
@@ -127,7 +127,9 @@ const jiti = createJiti(import.meta.url, {
   moduleCache: false,
 });
 
-const production = await jiti.import<typeof Production>(path.join(values.package, "index.ts"));
+const production = await jiti.import<{ default: typeof registerClaudeProvider }>(
+  path.join(values.package, "index.ts"),
+);
 
 const settings = SettingsManager.inMemory({
   retry: { enabled: false },

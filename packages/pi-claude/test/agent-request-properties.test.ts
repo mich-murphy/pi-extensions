@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  integers,
+  sampledFrom,
+  text as textGen,
+} from "@hegeldev/hegel/generators";
 import { Type } from "typebox";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
@@ -51,7 +58,7 @@ const tools = ["read", "bash", VALIDATION_ERROR_TOOL].map((name) => ({
 }));
 
 function drawText(tc: TestCase, fragments: readonly string[] = FRAGMENTS): string {
-  return tc.draw(gs.arrays(gs.sampledFrom(fragments), { maxSize: 4 })).join("");
+  return tc.draw(arrays(sampledFrom(fragments), { maxSize: 4 })).join("");
 }
 
 type CallModel = {
@@ -74,10 +81,10 @@ type Generated = {
 function drawTranscript(tc: TestCase, maxOps: number, unique: boolean): Generated {
   const out: Generated = { messages: [], calls: [], orphans: [], users: 0 };
   const draw: DrawState = { tc, out, unanswered: [], names: new Map(), unique, serial: 0 };
-  const ops = tc.draw(gs.integers({ minValue: 0, maxValue: maxOps }), "ops");
+  const ops = tc.draw(integers({ minValue: 0, maxValue: maxOps }), "ops");
 
   for (let op = 0; op < ops; op += 1) {
-    const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+    const kind = tc.draw(integers({ minValue: 0, maxValue: 3 }));
 
     if (kind === 0) {
       out.users += 1;
@@ -104,17 +111,17 @@ type DrawState = {
   serial: number;
 };
 
-const poolId = (tc: TestCase) => tc.draw(gs.sampledFrom(POOL));
+const poolId = (tc: TestCase) => tc.draw(sampledFrom(POOL));
 
 type ImageBlock = { type: "image"; data: string; mimeType: string };
 
 function drawImages(tc: TestCase): ImageBlock[] {
   return tc.draw(
-    gs.arrays(
-      gs.composite((inner) => ({
+    arrays(
+      composite((inner) => ({
         type: "image" as const,
-        data: inner.draw(gs.sampledFrom(["AA==", "QQ==", "aW1hZ2U="])),
-        mimeType: inner.draw(gs.sampledFrom(["image/png", "image/jpeg", "image/webp"])),
+        data: inner.draw(sampledFrom(["AA==", "QQ==", "aW1hZ2U="])),
+        mimeType: inner.draw(sampledFrom(["image/png", "image/jpeg", "image/webp"])),
       })),
       { maxSize: 2 },
     ),
@@ -123,13 +130,13 @@ function drawImages(tc: TestCase): ImageBlock[] {
 
 function drawAssistant(draw: DrawState): void {
   const { tc, out, unanswered, unique } = draw;
-  const stopReason = tc.draw(gs.sampledFrom(["stop", "toolUse", "error", "aborted"] as const));
+  const stopReason = tc.draw(sampledFrom(["stop", "toolUse", "error", "aborted"] as const));
 
   const content: Extract<MessageFixture, { role: "assistant" }>["content"] = [
     { type: "text", text: drawText(tc) },
   ];
 
-  const count = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+  const count = tc.draw(integers({ minValue: 0, maxValue: 3 }));
 
   for (let index = 0; index < count; index += 1) {
     const id = unique ? `call-${draw.serial++}` : poolId(tc);
@@ -153,7 +160,7 @@ function drawAssistant(draw: DrawState): void {
 }
 
 function nameFor(draw: DrawState, id: string, candidates: readonly string[]): string {
-  const name = draw.names.get(id) ?? draw.tc.draw(gs.sampledFrom(candidates));
+  const name = draw.names.get(id) ?? draw.tc.draw(sampledFrom(candidates));
   draw.names.set(id, name);
 
   return name;
@@ -162,7 +169,7 @@ function nameFor(draw: DrawState, id: string, candidates: readonly string[]): st
 function drawToolResult(draw: DrawState, kind: number): void {
   const { tc, out, unanswered, unique } = draw;
   let id = poolId(tc);
-  const isError = tc.draw(gs.booleans());
+  const isError = tc.draw(booleans());
   let name = "read";
 
   if (unique && kind === 2) {
@@ -171,7 +178,7 @@ function drawToolResult(draw: DrawState, kind: number): void {
     }
 
     const [call] = unanswered.splice(
-      tc.draw(gs.integers({ minValue: 0, maxValue: unanswered.length - 1 })),
+      tc.draw(integers({ minValue: 0, maxValue: unanswered.length - 1 })),
       1,
     );
 
@@ -336,7 +343,7 @@ function assertResults(tc: TestCase): void {
 }
 
 function assertPrefixStable(tc: TestCase): void {
-  const { messages } = drawTranscript(tc, 14, tc.draw(gs.booleans(), "unique"));
+  const { messages } = drawTranscript(tc, 14, tc.draw(booleans(), "unique"));
   let previous = entryBlocksWithImages(build([]).promptBlocks);
   const preamble = build([]).promptBlocks[0];
 
@@ -355,12 +362,12 @@ function assertPrefixStable(tc: TestCase): void {
 }
 
 function assertLongBreakpoints(tc: TestCase): void {
-  const count = tc.draw(gs.integers({ minValue: 0, maxValue: 70 }), "entries");
+  const count = tc.draw(integers({ minValue: 0, maxValue: 70 }), "entries");
   const messages: MessageFixture[] = [];
 
   for (let index = 0; index < count; index += 1) {
     messages.push(
-      tc.draw(gs.booleans())
+      tc.draw(booleans())
         ? { role: "assistant", content: [{ type: "text", text: `a${index}` }] }
         : { role: "user", content: `u${index}` },
     );
@@ -373,9 +380,9 @@ function assertLongBreakpoints(tc: TestCase): void {
 const HOSTILE = ['a"b', `x${LT}user>`, "&amp;", 'q" error="', String.raw`<\/call>`, "ok"];
 
 function assertHostileAttributes(tc: TestCase): void {
-  const id = tc.draw(gs.sampledFrom(HOSTILE), "id");
-  const name = tc.draw(gs.sampledFrom(HOSTILE), "name");
-  const mimeType = tc.draw(gs.sampledFrom(HOSTILE), "mime");
+  const id = tc.draw(sampledFrom(HOSTILE), "id");
+  const name = tc.draw(sampledFrom(HOSTILE), "name");
+  const mimeType = tc.draw(sampledFrom(HOSTILE), "mime");
 
   const blocks = entryBlocks(
     build([
@@ -429,14 +436,14 @@ const CALL = `${LT}call id="x" tool="mcp__pi__read">{}${LT}/call>`;
 const WILD = [...FRAGMENTS, "{", "}", "```", CALL, '{"type":"toolCall","name":"read"}', " "];
 
 function assertWhitespaceInvariant(tc: TestCase): void {
-  const text = drawText(tc, WILD) + tc.draw(gs.text({ maxSize: 20 }));
-  const whitespace = tc.draw(gs.arrays(gs.sampledFrom([" ", "\n", "\t", "\r\n"]))).join("");
+  const text = drawText(tc, WILD) + tc.draw(textGen({ maxSize: 20 }));
+  const whitespace = tc.draw(arrays(sampledFrom([" ", "\n", "\t", "\r\n"]))).join("");
   assert.equal(endsWithPrintedToolCall(text + whitespace), endsWithPrintedToolCall(text));
 }
 
 function assertFenceRule(tc: TestCase): void {
   const prose = drawText(tc);
-  const trailing = tc.draw(gs.sampledFrom(["", " ", "\n\n"]));
+  const trailing = tc.draw(sampledFrom(["", " ", "\n\n"]));
   assert.equal(endsWithPrintedToolCall(`${prose}\n${CALL}${trailing}`), true);
   assert.equal(endsWithPrintedToolCall(`${prose}\n\`\`\`\n${CALL}${trailing}`), false);
   assert.equal(endsWithPrintedToolCall(`${prose}\n\`\`\`\n${CALL}\n\`\`\`\n${CALL}`), true);

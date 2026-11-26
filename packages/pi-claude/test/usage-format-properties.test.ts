@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { floats } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { formatClaudeUsageStatus } from "../sdk-usage";
@@ -10,7 +10,7 @@ const settings = propertySettings(200);
 describe("formatClaudeUsageStatus properties", () => {
   test("remaining percentage has at most two decimals and is within rounding of 100 - used", () => {
     new Hegel((tc) => {
-      const used = tc.draw(gs.floats({ minValue: 0, maxValue: 100, allowNan: false }), "used");
+      const used = tc.draw(floats({ minValue: 0, maxValue: 100, allowNan: false }), "used");
 
       const text = formatClaudeUsageStatus({
         subscriptionType: null,

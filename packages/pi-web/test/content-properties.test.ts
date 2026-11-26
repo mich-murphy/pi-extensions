@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  binary,
+  booleans,
+  integers,
+  optional,
+  sampledFrom,
+  text as textGen,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { Effect, Result, Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -38,14 +47,14 @@ const TABLE_MIMES = new Set(KNOWN_KINDS.map(([mime]) => mime));
 const KINDS = new Set(["html", "raster-image", "svg", "text", "binary"]);
 const PADDING = ["", " ", "\t", " \r\n "];
 
-const TOKEN = gs.text({
+const TOKEN = textGen({
   alphabet: "abcdefghijklmnopqrstuvwxyz0123456789.-",
   minSize: 1,
   maxSize: 12,
 });
 
-const caseFlags = gs.arrays(gs.booleans(), { minSize: 40, maxSize: 40 });
-const padding = gs.tuples(gs.sampledFrom(PADDING), gs.sampledFrom(PADDING));
+const caseFlags = arrays(booleans(), { minSize: 40, maxSize: 40 });
+const padding = tuples(sampledFrom(PADDING), sampledFrom(PADDING));
 
 function mixCase(value: string, flags: readonly boolean[]): string {
   return value
@@ -141,7 +150,7 @@ function assertPartialCut(text: string, requestedCut: number, charset: string | 
 describe("content type properties", () => {
   test("classification ignores case and surrounding whitespace for known types", () => {
     new Hegel((tc) => {
-      const [mime, kind] = tc.draw(gs.sampledFrom(KNOWN_KINDS), "row");
+      const [mime, kind] = tc.draw(sampledFrom(KNOWN_KINDS), "row");
       assertKind(mime, kind, tc.draw(caseFlags, "case"), tc.draw(padding, "padding"));
     })
       .settings(settings)
@@ -151,7 +160,7 @@ describe("content type properties", () => {
   test("text/*, +xml and +json classify as text, whatever the casing", () => {
     new Hegel((tc) => {
       assertSuffixIsText(
-        tc.draw(gs.sampledFrom(SUFFIX_FAMILIES), "family"),
+        tc.draw(sampledFrom(SUFFIX_FAMILIES), "family"),
         tc.draw(TOKEN, "token"),
         tc.draw(caseFlags, "case"),
         tc.draw(padding, "padding"),
@@ -172,7 +181,7 @@ describe("content type properties", () => {
 
   test("parsing arbitrary headers never throws and stays normalized", () => {
     new Hegel((tc) => {
-      assertContentTypeTotal(tc.draw(gs.optional(gs.text({ maxSize: 60 })), "header"));
+      assertContentTypeTotal(tc.draw(optional(textGen({ maxSize: 60 })), "header"));
     })
       .settings(settings)
       .runSync();
@@ -181,9 +190,9 @@ describe("content type properties", () => {
   test("decoding arbitrary bytes with arbitrary labels never throws", () => {
     new Hegel((tc) => {
       assertDecodeTotal(
-        tc.draw(gs.binary({ maxSize: 64 }), "bytes"),
-        tc.draw(gs.optional(gs.text({ maxSize: 20 })), "charset"),
-        tc.draw(gs.booleans(), "partial"),
+        tc.draw(binary({ maxSize: 64 }), "bytes"),
+        tc.draw(optional(textGen({ maxSize: 20 })), "charset"),
+        tc.draw(booleans(), "partial"),
       );
     })
       .settings(settings)
@@ -193,9 +202,9 @@ describe("content type properties", () => {
   test("partial UTF-8 cut at any byte decodes to the whole-character prefix", () => {
     new Hegel((tc) => {
       assertPartialCut(
-        tc.draw(gs.text({ maxSize: 30, excludeCharacters: "�﻿" }), "text"),
-        tc.draw(gs.integers({ minValue: 0, maxValue: 130 }), "cut"),
-        tc.draw(gs.sampledFrom([undefined, "utf8", " UTF-8 ", "no-such-label"]), "charset"),
+        tc.draw(textGen({ maxSize: 30, excludeCharacters: "�﻿" }), "text"),
+        tc.draw(integers({ minValue: 0, maxValue: 130 }), "cut"),
+        tc.draw(sampledFrom([undefined, "utf8", " UTF-8 ", "no-such-label"]), "charset"),
       );
     })
       .settings(settings)
@@ -203,9 +212,9 @@ describe("content type properties", () => {
   });
 });
 
-const bodyBytes = gs.binary({ maxSize: 80 });
-const chunkSizes = gs.arrays(gs.integers({ minValue: 0, maxValue: 30 }), { maxSize: 12 });
-const cap = gs.integers({ minValue: 0, maxValue: 40 });
+const bodyBytes = binary({ maxSize: 80 });
+const chunkSizes = arrays(integers({ minValue: 0, maxValue: 30 }), { maxSize: 12 });
+const cap = integers({ minValue: 0, maxValue: 40 });
 
 function chunkViews(bytes: Uint8Array, sizes: readonly number[]): Uint8Array[] {
   const views: Uint8Array[] = [];

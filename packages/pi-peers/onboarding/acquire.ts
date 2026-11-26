@@ -1,7 +1,19 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import type { Stats } from "node:fs";
-import * as fs from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
@@ -53,13 +65,24 @@ export type AcquisitionResult = {
 };
 
 export type AcquisitionSeams = {
-  fs: Omit<typeof fs, "realpath"> & { realpath: (filename: string) => Promise<string> };
+  fs: {
+    lstat: typeof lstat;
+    mkdir: typeof mkdir;
+    mkdtemp: typeof mkdtemp;
+    open: typeof open;
+    readlink: typeof readlink;
+    realpath: (filename: string) => Promise<string>;
+    rename: typeof rename;
+    rm: typeof rm;
+    symlink: typeof symlink;
+    writeFile: typeof writeFile;
+  };
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   exec: (file: string, args: string[], signal: AbortSignal) => Promise<string>;
 };
 
 const production: AcquisitionSeams = {
-  fs,
+  fs: { lstat, mkdir, mkdtemp, open, readlink, realpath, rename, rm, symlink, writeFile },
   fetch: globalThis.fetch,
   exec: async (file, args, signal) =>
     new Promise((resolve, reject) => {
@@ -100,8 +123,8 @@ export async function discoverNixExecutable(): Promise<string | undefined> {
   const results = await Promise.all(
     candidates.map(async (candidate) => {
       try {
-        await fs.access(candidate, 1);
-        const absolute = await fs.realpath(candidate);
+        await access(candidate, 1);
+        const absolute = await realpath(candidate);
         const version = await production.exec(absolute, ["--version"], AbortSignal.timeout(3000));
 
         return /^nix \([^\n)]+\) \d/u.test(version) ? absolute : undefined;

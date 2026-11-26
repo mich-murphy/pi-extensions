@@ -3,7 +3,7 @@ import { formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { stateful } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertyTimeout } from "../../../test-support/hegel-settings";
 import { planPrompt, promptSnapshot } from "../prompt-epoch";
@@ -228,7 +228,7 @@ const machine: stateful.StateMachine<World> = {
   rules: {
     toggle: (tc, world) => {
       tc.assume(world.resources.length > 0);
-      const id = tc.draw(gs.sampledFrom(world.resources.map((resource) => resource.id)));
+      const id = tc.draw(sampledFrom(world.resources.map((resource) => resource.id)));
 
       if (!world.hidden.delete(id)) {
         world.hidden.add(id);
@@ -241,7 +241,7 @@ const machine: stateful.StateMachine<World> = {
       },
     },
     selectModel: (tc, world) => {
-      const index = tc.draw(gs.integers({ minValue: 0, maxValue: MODELS.length - 1 }));
+      const index = tc.draw(integers({ minValue: 0, maxValue: MODELS.length - 1 }));
       const model = MODELS[index] ?? MODELS[0];
       world.items.push({
         role: "model_change",
@@ -258,8 +258,8 @@ const machine: stateful.StateMachine<World> = {
 };
 
 function newWorld(tc: TestCase): World {
-  const count = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }));
-  const kinds = Array.from({ length: count }, () => tc.draw(gs.booleans()));
+  const count = tc.draw(integers({ minValue: 0, maxValue: 6 }));
+  const kinds = Array.from({ length: count }, () => tc.draw(booleans()));
 
   return {
     resources: kinds.map((isSkill, index) => resourceAt(index, isSkill)),

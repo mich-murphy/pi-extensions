@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, oneOf, sampledFrom, text as textGen } from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
 import {
   assertHegel,
@@ -41,21 +41,21 @@ function hasControl(value: string): boolean {
   return false;
 }
 
-const hostile = gs.oneOf(
-  gs.text({ maxSize: 40 }),
-  gs.sampledFrom(["\u001b[31mx", "\u009b1m", "‮evil", "nonce", "generation", "ledger"]),
+const hostile = oneOf(
+  textGen({ maxSize: 40 }),
+  sampledFrom(["\u001b[31mx", "\u009b1m", "‮evil", "nonce", "generation", "ledger"]),
 );
 
 function drawStatus(tc: TestCase) {
   const status = tc.draw(
-    gs.sampledFrom(["connected", "activation_pending", "activation_unconfirmed", "x"]),
+    sampledFrom(["connected", "activation_pending", "activation_unconfirmed", "x"]),
     "status",
   );
 
-  const machine = tc.draw(gs.sampledFrom(["dev-01", "alpha", "\u001b]0;t\u0007"]), "machine");
+  const machine = tc.draw(sampledFrom(["dev-01", "alpha", "\u001b]0;t\u0007"]), "machine");
   const scope = tc.draw(hostile, "scope");
-  const enabled = tc.draw(gs.booleans(), "enabled");
-  const present = tc.draw(gs.booleans(), "present");
+  const enabled = tc.draw(booleans(), "enabled");
+  const present = tc.draw(booleans(), "present");
 
   const value = present
     ? { enabled, status, peer: { ...peer, machineId: machine }, scopes: [scope] }

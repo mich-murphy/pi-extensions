@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, booleans, integers, oneOf, sampledFrom, text } from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -12,14 +12,14 @@ import { decodeFrame, encodeFrame, frameBodyLength } from "../protocol/wire.js";
 
 const settings = propertySettings(200);
 
-const adversarial = gs.oneOf(
-  gs.sampledFrom(["", ",", "][", '"', "\\", '","', String.raw`\"`, "[", "]", "a", "a,b"]),
-  gs.text({ maxSize: 4 }),
+const adversarial = oneOf(
+  sampledFrom(["", ",", "][", '"', "\\", '","', String.raw`\"`, "[", "]", "a", "a,b"]),
+  text({ maxSize: 4 }),
 );
 
-const codePoint = gs.oneOf(
-  gs.integers({ minValue: 0, maxValue: 0x10_ff_ff }),
-  gs.sampledFrom([0, 0x7f, 0xfe_ff, 0xff_ff, 0x1_00_00, 0x10_ff_ff]),
+const codePoint = oneOf(
+  integers({ minValue: 0, maxValue: 0x10_ff_ff }),
+  sampledFrom([0, 0x7f, 0xfe_ff, 0xff_ff, 0x1_00_00, 0x10_ff_ff]),
 );
 
 function toScalar(value: number): number {
@@ -195,11 +195,11 @@ describe("Hegel v16 bounded protocol properties", () => {
   test("every client-role frame variant roundtrips with astral and BOM content", () => {
     new Hegel((tc) => {
       const index = tc.draw(
-        gs.integers({ minValue: 0, maxValue: frameCases("x").length - 1 }),
+        integers({ minValue: 0, maxValue: frameCases("x").length - 1 }),
         "variant",
       );
 
-      const points = tc.draw(gs.arrays(codePoint, { maxSize: 64 }), "content");
+      const points = tc.draw(arrays(codePoint, { maxSize: 64 }), "content");
       const content = `content:${points.map((value) => String.fromCodePoint(toScalar(value))).join("")}`;
       assertRoundtrip(at(frameCases(content), index));
     })
@@ -209,10 +209,10 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("lone surrogates are rejected on encode and decode", () => {
     new Hegel((tc) => {
-      const surrogate = tc.draw(gs.integers({ minValue: 0xd8_00, maxValue: 0xdf_ff }), "surrogate");
+      const surrogate = tc.draw(integers({ minValue: 0xd8_00, maxValue: 0xdf_ff }), "surrogate");
 
       const prefix = tc.draw(
-        gs.text({ maxSize: 8, maxCodepoint: 0x7e, minCodepoint: 0x41, excludeCharacters: "\\" }),
+        text({ maxSize: 8, maxCodepoint: 0x7e, minCodepoint: 0x41, excludeCharacters: "\\" }),
         "prefix",
       );
 
@@ -224,7 +224,7 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("escaped duplicate keys are never accepted", () => {
     new Hegel((tc) => {
-      const code = tc.draw(gs.integers({ minValue: 97, maxValue: 122 }), "key");
+      const code = tc.draw(integers({ minValue: 97, maxValue: 122 }), "key");
       const key = String.fromCodePoint(code);
       const escaped = `\\u${code.toString(16).padStart(4, "0")}`;
       const body = Buffer.from(`{"${key}":0,"${escaped}":1}`, "utf8");
@@ -236,7 +236,7 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("integer decimal spellings are rejected even when numerically integral", () => {
     new Hegel((tc) => {
-      const value = tc.draw(gs.integers({ minValue: 0, maxValue: 1_000_000 }), "integer");
+      const value = tc.draw(integers({ minValue: 0, maxValue: 1_000_000 }), "integer");
       assert.throws(() => decodeJson(Buffer.from(`{"value":${value}.0}`)), ProtocolError);
       assert.throws(() => decodeJson(Buffer.from(`{"value":${value}e0}`)), ProtocolError);
       assert.deepStrictEqual(decodeJson(Buffer.from(`{"value":${value}}`)), { value });
@@ -248,7 +248,7 @@ describe("Hegel v16 bounded protocol properties", () => {
   test("equivalent escaping and key order preserve decoded immutable identity", () => {
     new Hegel((tc) => {
       const values = tc.draw(
-        gs.arrays(gs.integers({ minValue: 0, maxValue: 255 }), { maxSize: 64 }),
+        arrays(integers({ minValue: 0, maxValue: 255 }), { maxSize: 64 }),
         "content",
       );
 
@@ -283,7 +283,7 @@ describe("Hegel v16 bounded protocol properties", () => {
   test("invalid declarations are rejected before any body is supplied", () => {
     new Hegel((tc) => {
       const length = tc.draw(
-        gs.integers({ minValue: 32_765, maxValue: 0xff_ff_ff_ff }),
+        integers({ minValue: 32_765, maxValue: 0xff_ff_ff_ff }),
         "declared-length",
       );
 
@@ -297,7 +297,7 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("malformed UTF8 cannot be normalized into authored strings", () => {
     new Hegel((tc) => {
-      const byte = tc.draw(gs.integers({ minValue: 128, maxValue: 191 }), "continuation-byte");
+      const byte = tc.draw(integers({ minValue: 128, maxValue: 191 }), "continuation-byte");
 
       const body = Buffer.concat([
         Buffer.from('{"content":"'),
@@ -313,12 +313,12 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("scopedMessageKey is injective over adversarial tuples", () => {
     new Hegel((tc) => {
-      const first = tc.draw(gs.arrays(adversarial, { minSize: 8, maxSize: 8 }), "first");
-      const reuse = tc.draw(gs.arrays(gs.booleans(), { minSize: 8, maxSize: 8 }), "reuse");
-      const fresh = tc.draw(gs.arrays(adversarial, { minSize: 8, maxSize: 8 }), "fresh");
-      const field = tc.draw(gs.integers({ minValue: 0, maxValue: 6 }), "field");
-      const cut = tc.draw(gs.integers({ minValue: 0, maxValue: 12 }), "cut");
-      const shift = tc.draw(gs.booleans(), "shift-boundary");
+      const first = tc.draw(arrays(adversarial, { minSize: 8, maxSize: 8 }), "first");
+      const reuse = tc.draw(arrays(booleans(), { minSize: 8, maxSize: 8 }), "reuse");
+      const fresh = tc.draw(arrays(adversarial, { minSize: 8, maxSize: 8 }), "fresh");
+      const field = tc.draw(integers({ minValue: 0, maxValue: 6 }), "field");
+      const cut = tc.draw(integers({ minValue: 0, maxValue: 12 }), "cut");
+      const shift = tc.draw(booleans(), "shift-boundary");
       const second = deriveSecond(first, { reuse, fresh, shift, field, cut });
       assertKeyInjective(first, second);
     })

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import * as gs from "@hegeldev/hegel/generators";
+import { integers } from "@hegeldev/hegel/generators";
 import type { Schema } from "effect";
 import { describe, expect, test } from "vitest";
 import {
@@ -371,9 +371,9 @@ describe("presentation-only session tool rendering", () => {
     { timeout: propertyTimeout(60_000) },
     () => {
       assertHegel(propertySettings(200, 456n), (tc) => {
-        const code = tc.draw(gs.integers({ minValue: 0, maxValue: 159 }), "control");
-        const width = tc.draw(gs.integers({ minValue: 1, maxValue: 100 }), "width");
-        const repeats = tc.draw(gs.integers({ minValue: 1, maxValue: 50 }), "length");
+        const code = tc.draw(integers({ minValue: 0, maxValue: 159 }), "control");
+        const width = tc.draw(integers({ minValue: 1, maxValue: 100 }), "width");
+        const repeats = tc.draw(integers({ minValue: 1, maxValue: 50 }), "length");
 
         const body =
           `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(

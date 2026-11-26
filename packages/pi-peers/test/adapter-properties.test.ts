@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  integers,
+  just,
+  oneOf,
+  recursive,
+  sampledFrom,
+  text as textGen,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings, propertyTimeout } from "../../../test-support/hegel-settings";
 import { decodeConfiguration, permits, visibleText } from "../adapter/config.js";
@@ -179,27 +189,27 @@ function assertControlNamesRejected(allowed: boolean, code: number, kind: number
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-const jsonLeaf = gs.oneOf<Json>(
-  gs.just(null),
-  gs.booleans(),
-  gs.integers({ minValue: -5, maxValue: 5000 }),
-  gs.text({ maxSize: 40 }),
-  gs.sampledFrom(hostile),
+const jsonLeaf = oneOf<Json>(
+  just(null),
+  booleans(),
+  integers({ minValue: -5, maxValue: 5000 }),
+  textGen({ maxSize: 40 }),
+  sampledFrom(hostile),
 );
 
-const jsonValue = gs.recursive<Json>(
+const jsonValue = recursive<Json>(
   jsonLeaf,
   (children) =>
-    gs.oneOf<Json>(
-      gs.arrays(children, { maxSize: 5 }),
-      gs
-        .arrays(gs.tuples(gs.sampledFrom(fieldNames), children), { maxSize: 6 })
-        .map((entries) => Object.fromEntries(entries)),
+    oneOf<Json>(
+      arrays(children, { maxSize: 5 }),
+      arrays(tuples(sampledFrom(fieldNames), children), { maxSize: 6 }).map((entries) =>
+        Object.fromEntries(entries),
+      ),
     ),
   { maxDepth: 5, maxLeaves: 40 },
 );
 
-const hostileToolArguments = gs.sampledFrom(hostile).map((text): Json => ({
+const hostileToolArguments = sampledFrom(hostile).map((text): Json => ({
   to: { machineId: text, sessionId: text, runtimeNonce: text },
   publisher: { machineId: text, sessionId: text, runtimeNonce: text },
   message: { kind: text, content: text },
@@ -210,7 +220,7 @@ const hostileToolArguments = gs.sampledFrom(hostile).map((text): Json => ({
   tag: text,
 }));
 
-const argsValue = gs.oneOf<Json>(jsonValue, hostileToolArguments);
+const argsValue = oneOf<Json>(jsonValue, hostileToolArguments);
 
 function renderLines(
   name: string,
@@ -274,10 +284,10 @@ function assertRenderedBounds(
 describe("Hegel adapter policy and rendering properties", () => {
   test("permission decisions are exact whatever control content names carry", () => {
     new Hegel((tc) => {
-      const allowed = tc.draw(gs.booleans(), "allowed");
-      const code = tc.draw(gs.sampledFrom(controlCodes), "control");
-      const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "sequence");
-      const field = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "field");
+      const allowed = tc.draw(booleans(), "allowed");
+      const code = tc.draw(sampledFrom(controlCodes), "control");
+      const kind = tc.draw(integers({ minValue: 0, maxValue: 4 }), "sequence");
+      const field = tc.draw(integers({ minValue: 0, maxValue: 4 }), "field");
       assertPermissionDecision(allowed, code, kind);
       assertControlNamesRejected(allowed, code, kind, field);
     })
@@ -286,11 +296,11 @@ describe("Hegel adapter policy and rendering properties", () => {
   });
   test("visibleText escapes controls per table and never emits ESC or C1", () => {
     new Hegel((tc) => {
-      const drawn = tc.draw(gs.integers({ minValue: 0, maxValue: 12_287 }), "code");
-      const bidi = tc.draw(gs.sampledFrom(bidiCodes), "bidi");
+      const drawn = tc.draw(integers({ minValue: 0, maxValue: 12_287 }), "code");
+      const bidi = tc.draw(sampledFrom(bidiCodes), "bidi");
       const code = pickCode(drawn, bidi);
-      const kind = tc.draw(gs.integers({ minValue: 0, maxValue: 4 }), "sequence");
-      const prefix = tc.draw(gs.text({ maxSize: 12 }), "prefix");
+      const kind = tc.draw(integers({ minValue: 0, maxValue: 4 }), "sequence");
+      const prefix = tc.draw(textGen({ maxSize: 12 }), "prefix");
       assertVisibleTextTable(code);
       assertVisibleTextSequence(code % 160, kind, prefix);
       assertVisibleTextBidi(bidi, prefix);
@@ -303,11 +313,11 @@ describe("Hegel adapter policy and rendering properties", () => {
     { timeout: propertyTimeout(30_000) },
     () => {
       new Hegel((tc) => {
-        const name = tc.draw(gs.sampledFrom(toolNames), "tool");
+        const name = tc.draw(sampledFrom(toolNames), "tool");
         const args = tc.draw(argsValue, "args");
         const value = tc.draw(argsValue, "result");
-        const width = tc.draw(gs.integers({ minValue: 10, maxValue: 200 }), "width");
-        const isError = tc.draw(gs.booleans(), "isError");
+        const width = tc.draw(integers({ minValue: 10, maxValue: 200 }), "width");
+        const isError = tc.draw(booleans(), "isError");
         assertRenderedBounds(name, args, value, width, isError);
       })
         .settings(settings)

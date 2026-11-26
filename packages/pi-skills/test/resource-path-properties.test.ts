@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, just, oneOf, text as textGen } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { parseResourcePath, pathIsInsideOrEqual, resourcePathId } from "../resource-path";
 import { assertProperty } from "./hegel-property";
 
-const segment = gs.oneOf(
-  gs.text({ alphabet: "abc.", minSize: 1, maxSize: 3 }).map((text) => `s${text}`),
-  gs.just("..foo"),
+const segment = oneOf(
+  textGen({ alphabet: "abc.", minSize: 1, maxSize: 3 }).map((text) => `s${text}`),
+  just("..foo"),
 );
 
-const segments = gs.arrays(segment, { maxSize: 4 });
-const absolute = gs.text({ alphabet: "/.ab", maxSize: 12 }).map((text) => `/${text}`);
+const segments = arrays(segment, { maxSize: 4 });
+const absolute = textGen({ alphabet: "/.ab", maxSize: 12 }).map((text) => `/${text}`);
 
 function assertContainment(parent: string, first: string[], second: string[]): void {
   const middle = join(parent, ...first);
@@ -82,7 +82,7 @@ describe("resource path properties", () => {
 
   test("relative persisted paths are rejected", () => {
     assertProperty("resource-path", "relative persisted paths are rejected", (tc) => {
-      const raw = tc.draw(gs.text({ alphabet: "ab./", minSize: 1, maxSize: 8 }), "raw");
+      const raw = tc.draw(textGen({ alphabet: "ab./", minSize: 1, maxSize: 8 }), "raw");
       assert.equal(parseResourcePath(raw.replace(/^\/+/u, "x")), undefined);
     });
   });
@@ -92,7 +92,7 @@ describe("resource path properties", () => {
       "resource-path",
       "NUL bytes are rejected by the parser and thrown on by resourcePathId",
       (tc) => {
-        assertNul(tc.draw(absolute, "prefix"), tc.draw(gs.text({ alphabet: "ab/", maxSize: 4 })));
+        assertNul(tc.draw(absolute, "prefix"), tc.draw(textGen({ alphabet: "ab/", maxSize: 4 })));
       },
     );
   });

@@ -10,14 +10,24 @@ import type { Message } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Effect, Option, Schema } from "effect";
 import { Type } from "typebox";
-import type * as BridgeModule from "../../../../packages/pi-claude/bridge";
-import type { CacheDiagnostic } from "../../../../packages/pi-claude/cache-tracker";
-import type * as TrackerModule from "../../../../packages/pi-claude/cache-tracker";
-import type * as ModelsModule from "../../../../packages/pi-claude/models";
-import type * as FailureModule from "../../../../packages/pi-claude/sdk/result-failure";
-import type { RunnerOptions, RunSdkQuery } from "../../../../packages/pi-claude/sdk/runner";
-import type * as RunnerModule from "../../../../packages/pi-claude/sdk/runner";
-import type * as RecoveryModule from "../../../../packages/pi-claude/validation-recovery";
+import type { createAgentSdkStream as createAgentSdkStreamExport } from "../../../../packages/pi-claude/bridge";
+import type {
+  CacheDiagnostic,
+  createCacheDiagnosticTracker as createCacheDiagnosticTrackerExport,
+} from "../../../../packages/pi-claude/cache-tracker";
+import type { models as modelsExport } from "../../../../packages/pi-claude/models";
+import type { safeTerminalReason as safeTerminalReasonExport } from "../../../../packages/pi-claude/sdk/result-failure";
+import type {
+  RunnerOptions,
+  RunSdkQuery,
+  createClaudeAgentSdkRunner as createClaudeAgentSdkRunnerExport,
+} from "../../../../packages/pi-claude/sdk/runner";
+import type {
+  validationRecoveryTool as validationRecoveryToolExport,
+  blockValidationRecovery as blockValidationRecoveryExport,
+  decodeValidationInput as decodeValidationInputExport,
+  VALIDATION_ERROR_TOOL as validationErrorToolExport,
+} from "../../../../packages/pi-claude/validation-recovery";
 import { DUMMY_PARSER_KEY, startParserTransport } from "./parser-transport";
 import { snapshotLoader, snapshotModel } from "./snapshot";
 
@@ -49,19 +59,37 @@ assert(
 );
 
 const load = snapshotLoader(packageDir);
-const { createClaudeAgentSdkRunner } = await load<typeof RunnerModule>("sdk/runner.ts");
-const { createAgentSdkStream } = await load<typeof BridgeModule>("bridge.ts");
-const { createCacheDiagnosticTracker } = await load<typeof TrackerModule>("cache-tracker.ts");
-const { models } = await load<typeof ModelsModule>("models.ts");
+
+const { createClaudeAgentSdkRunner } = await load<{
+  createClaudeAgentSdkRunner: typeof createClaudeAgentSdkRunnerExport;
+}>("sdk/runner.ts");
+
+const { createAgentSdkStream } = await load<{
+  createAgentSdkStream: typeof createAgentSdkStreamExport;
+}>("bridge.ts");
+
+const { createCacheDiagnosticTracker } = await load<{
+  createCacheDiagnosticTracker: typeof createCacheDiagnosticTrackerExport;
+}>("cache-tracker.ts");
+
+const { models } = await load<{ models: typeof modelsExport }>("models.ts");
 
 const {
   validationRecoveryTool,
   blockValidationRecovery,
   decodeValidationInput,
   VALIDATION_ERROR_TOOL,
-} = await load<typeof RecoveryModule>("validation-recovery.ts");
+} = await load<{
+  validationRecoveryTool: typeof validationRecoveryToolExport;
+  blockValidationRecovery: typeof blockValidationRecoveryExport;
+  decodeValidationInput: typeof decodeValidationInputExport;
+  VALIDATION_ERROR_TOOL: typeof validationErrorToolExport;
+}>("validation-recovery.ts");
 
-const { safeTerminalReason } = await load<typeof FailureModule>("sdk/result-failure.ts");
+const { safeTerminalReason } = await load<{ safeTerminalReason: typeof safeTerminalReasonExport }>(
+  "sdk/result-failure.ts",
+);
+
 const entry = models.find((candidate) => candidate.id === "claude-4.5-haiku");
 
 assert(entry);

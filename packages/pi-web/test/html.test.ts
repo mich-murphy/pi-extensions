@@ -1,18 +1,23 @@
 import { Result } from "effect";
 import { assert, describe, expect, test } from "vitest";
-import * as Html from "../html";
+import {
+  htmlToMarkdown as convertHtmlToMarkdown,
+  htmlToMarkdownWithTextFallback,
+  htmlToText as convertHtmlToText,
+  sanitizeHtml as sanitizeHtmlDocument,
+} from "../html";
 import { EmptyHtmlDocument } from "../html-conversion";
 
 function htmlToMarkdown(rawHtml: string, baseUrl: string): string {
-  return Result.getOrThrow(Html.htmlToMarkdown(rawHtml, baseUrl));
+  return Result.getOrThrow(convertHtmlToMarkdown(rawHtml, baseUrl));
 }
 
 function htmlToText(rawHtml: string, baseUrl: string): string {
-  return Result.getOrThrow(Html.htmlToText(rawHtml, baseUrl));
+  return Result.getOrThrow(convertHtmlToText(rawHtml, baseUrl));
 }
 
 function sanitizeHtml(rawHtml: string, baseUrl: string): string {
-  return Result.getOrThrow(Html.sanitizeHtml(rawHtml, baseUrl));
+  return Result.getOrThrow(sanitizeHtmlDocument(rawHtml, baseUrl));
 }
 
 const DEEP_PARSE_IS_QUADRATIC_IN_DEPTH_TIMEOUT_MS = 60_000;
@@ -422,9 +427,9 @@ describe("conversion failures", () => {
     "a document without elements (%j) is EmptyHtmlDocument",
     (input) => {
       for (const converted of [
-        Html.htmlToMarkdown(input, "https://example.com"),
-        Html.htmlToText(input, "https://example.com"),
-        Html.htmlToMarkdownWithTextFallback(input, "https://example.com"),
+        convertHtmlToMarkdown(input, "https://example.com"),
+        convertHtmlToText(input, "https://example.com"),
+        htmlToMarkdownWithTextFallback(input, "https://example.com"),
       ]) {
         assert(Result.isFailure(converted));
         expect(converted.failure).toBeInstanceOf(EmptyHtmlDocument);
@@ -441,8 +446,8 @@ describe("conversion failures", () => {
       const deep = `${"<div>".repeat(3000)}x${"</div>".repeat(3000)}`;
 
       for (const converted of [
-        Html.htmlToMarkdown(deep, "https://example.com"),
-        Html.htmlToText(deep, "https://example.com"),
+        convertHtmlToMarkdown(deep, "https://example.com"),
+        convertHtmlToText(deep, "https://example.com"),
       ]) {
         const outcome = Result.match(converted, {
           onFailure: (failure) => failure._tag,

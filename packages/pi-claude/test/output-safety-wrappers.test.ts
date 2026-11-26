@@ -1,5 +1,5 @@
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, expect, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
 import { inspectBashCommand } from "../output-safety";
@@ -138,14 +138,14 @@ describe("explicit executable wrapper semantics", () => {
   test("bounded nested wrappers retain positive and negative oracles", () => {
     new Hegel((tc) => {
       const wrappers = tc.draw(
-        gs.arrays(gs.sampledFrom(["env -i", "/usr/bin/env --", "nohup --"]), {
+        arrays(sampledFrom(["env -i", "/usr/bin/env --", "nohup --"]), {
           minSize: 1,
           maxSize: 3,
         }),
       );
 
-      const prefix = wrappers.join(tc.draw(gs.sampledFrom([" ", "\t", "  "])));
-      const discovery = tc.draw(gs.sampledFrom(DISCOVERY));
+      const prefix = wrappers.join(tc.draw(sampledFrom([" ", "\t", "  "])));
+      const discovery = tc.draw(sampledFrom(DISCOVERY));
       expect(inspectBashCommand(`${prefix} cat ${discovery}`)).toBeDefined();
       expect(inspectBashCommand(`${prefix} cat notes.txt`)).toBeUndefined();
       expect(inspectBashCommand(`${prefix} printf '%s' ${discovery}`)).toBeUndefined();

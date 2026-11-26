@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
-import * as gs from "@hegeldev/hegel/generators";
+import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
 import {
   assertHegel,
@@ -244,14 +244,14 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
   test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
-        gs.arrays(gs.arrays(gs.sampledFrom(ALPHABET), { maxSize: 12 }), {
+        arrays(arrays(sampledFrom(ALPHABET), { maxSize: 12 }), {
           minSize: 1,
           maxSize: 5,
         }),
         "lines",
       );
 
-      const tokens = tc.draw(gs.arrays(gs.sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
+      const tokens = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
       runTrace(keyboard, lines, tokens);
     });
   });

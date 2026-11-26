@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, integers, oneOf } from "@hegeldev/hegel/generators";
 import { Effect } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -22,10 +22,7 @@ type Scenario = { readonly bundled: Triple; readonly installed: Triple; readonly
 
 function drawPart(tc: TestCase): number {
   return tc.draw(
-    gs.oneOf(
-      gs.integers({ minValue: 0, maxValue: 2 }),
-      gs.integers({ minValue: 0, maxValue: 3000 }),
-    ),
+    oneOf(integers({ minValue: 0, maxValue: 2 }), integers({ minValue: 0, maxValue: 3000 })),
   );
 }
 
@@ -76,9 +73,9 @@ async function assertScenario(scenario: Scenario): Promise<void> {
 
 function drawScenario(tc: TestCase): Scenario {
   const bundled = drawTriple(tc);
-  const installed = tc.draw(gs.booleans()) ? bundled : drawTriple(tc);
+  const installed = tc.draw(booleans()) ? bundled : drawTriple(tc);
 
-  return { bundled, installed, noise: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) };
+  return { bundled, installed, noise: tc.draw(integers({ minValue: 0, maxValue: 3 })) };
 }
 
 const UNSAFE = ["9007199254740992", "9007199254740993", "99999999999999999999"];

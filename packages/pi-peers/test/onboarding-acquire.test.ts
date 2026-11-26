@@ -1,5 +1,21 @@
 import { execFile } from "node:child_process";
-import * as fs from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open as openFile,
+  readFile,
+  readdir,
+  readlink,
+  realpath as resolveRealPath,
+  rename as renameFile,
+  rm,
+  stat as fileStat,
+  symlink as linkFile,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -17,6 +33,19 @@ import { gatewayTarget } from "../onboarding/catalog.js";
 import { UnsafeFolderError } from "../onboarding/refusal.js";
 import { fixture } from "./onboarding-artifact-fixture.js";
 
+const fs = {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open: openFile,
+  readlink,
+  realpath: resolveRealPath,
+  rename: renameFile,
+  rm,
+  symlink: linkFile,
+  writeFile,
+} satisfies AcquisitionSeams["fs"];
+
 const roots: string[] = [];
 const narHash = `sha256-${Buffer.alloc(32, 251).toString("base64")}`;
 
@@ -27,21 +56,21 @@ async function mockNixBuild(_file: string, args: string[]): Promise<string> {
     throw new Error("Missing build link");
   }
 
-  await fs.symlink("/nix/store/test-pi-gateway", link);
+  await linkFile("/nix/store/test-pi-gateway", link);
 
   return "";
 }
 
-const failCompletionWrite: typeof fs.writeFile = async (filename, content, options) => {
+const failCompletionWrite: typeof writeFile = async (filename, content, options) => {
   if (isString(filename) && filename.endsWith("installed.json")) {
     throw new Error("simulated completion failure");
   }
 
-  return fs.writeFile(filename, content, options);
+  return writeFile(filename, content, options);
 };
 
 async function setup() {
-  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "pi-acquire-test-"));
+  const root = await mkdtemp(path.join(await resolveRealPath(os.tmpdir()), "pi-acquire-test-"));
   roots.push(root);
   const f = fixture(gatewayTarget());
 
@@ -85,7 +114,7 @@ async function setup() {
 describe("approved gateway acquisition", () => {
   afterEach(async () => {
     for (const root of roots.splice(0)) {
-      await fs.rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -93,13 +122,13 @@ describe("approved gateway acquisition", () => {
     const s = await setup();
     const result = await acquireGateway(s.plan, s.options);
     expect(path.isAbsolute(result.executable)).toBe(true);
-    await expect(fs.readFile(result.executable)).resolves.toStrictEqual(s.f.binary);
+    await expect(readFile(result.executable)).resolves.toStrictEqual(s.f.binary);
     expect(s.exec).toHaveBeenCalledWith(
       expect.stringContaining(`/.gateway-${s.plan.version}-${s.plan.sourceRevision}-native-`),
       ["--version", "--json"],
       expect.any(AbortSignal),
     );
-    const stat = await fs.stat(result.executable);
+    const stat = await fileStat(result.executable);
     expect(stat.mode & 0o777).toBe(0o500);
   });
   test("reuses only integrity checked completed versions and repeats capability probe", async () => {
@@ -109,11 +138,11 @@ describe("approved gateway acquisition", () => {
     await expect(acquireGateway(s.plan, s.options)).resolves.toStrictEqual(installed);
     expect(s.fetcher).not.toHaveBeenCalled();
     expect(s.exec).toHaveBeenCalledTimes(2);
-    await fs.chmod(installed.executable, 0o700);
-    await fs.writeFile(installed.executable, "corrupt");
+    await chmod(installed.executable, 0o700);
+    await writeFile(installed.executable, "corrupt");
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("integrity mismatch");
     expect(s.exec).toHaveBeenCalledTimes(2);
-    await expect(fs.stat(installed.executable)).resolves.toBeDefined();
+    await expect(fileStat(installed.executable)).resolves.toBeDefined();
   });
   test("requires the reviewed pairing capability rather than treating the old gateway as sufficient", async () => {
     const s = await setup();
@@ -128,7 +157,7 @@ describe("approved gateway acquisition", () => {
     await expect(acquireGateway(s.plan, { ...s.options, signal: abort.signal })).rejects.toThrow(
       /.+/u,
     );
-    await expect(fs.stat(s.plan.installRoot)).rejects.toThrow(/.+/u);
+    await expect(fileStat(s.plan.installRoot)).rejects.toThrow(/.+/u);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("never trusts caller plan pin over shipped catalog", async () => {
@@ -156,7 +185,7 @@ describe("approved gateway acquisition", () => {
     s.fetcher.mockImplementation(async () => new Response("malicious"));
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("pin mismatch");
     expect(s.exec).not.toHaveBeenCalled();
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
   test("authenticates archive before any executable probe", async () => {
     const s = await setup();
@@ -164,29 +193,29 @@ describe("approved gateway acquisition", () => {
     s.fetcher.mockResolvedValueOnce(new Response(new Uint8Array(Buffer.alloc(s.f.archive.length))));
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("Archive integrity mismatch");
     expect(s.exec).not.toHaveBeenCalled();
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
   test("bounds manifest streaming and rejects expired deadlines without executing", async () => {
     const s = await setup();
     await expect(
       acquireGateway({ ...s.plan, deadlineMs: Date.now() - 1 }, s.options),
     ).rejects.toThrow("deadline");
-    await expect(fs.stat(s.plan.installRoot)).rejects.toThrow(/ENOENT/u);
+    await expect(fileStat(s.plan.installRoot)).rejects.toThrow(/ENOENT/u);
     s.fetcher.mockResolvedValue(new Response(new Uint8Array(Buffer.alloc(65_537))));
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("larger than expected");
     expect(s.exec).not.toHaveBeenCalled();
   });
   test("permits retry beside an interrupted private native attempt without sweeping unknown files", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
 
-    const abandoned = await fs.mkdtemp(
+    const abandoned = await mkdtemp(
       path.join(s.plan.installRoot, `.gateway-${s.plan.version}-${s.plan.sourceRevision}-native-`),
     );
 
-    await fs.writeFile(path.join(abandoned, "unknown"), "preserve");
+    await writeFile(path.join(abandoned, "unknown"), "preserve");
     await acquireGateway(s.plan, s.options);
-    await expect(fs.readFile(path.join(abandoned, "unknown"), "utf8")).resolves.toBe("preserve");
+    await expect(readFile(path.join(abandoned, "unknown"), "utf8")).resolves.toBe("preserve");
   });
   test("a gateway that does not speak this wire version is refused as too old, naming both versions", async () => {
     const s = await setup();
@@ -194,25 +223,25 @@ describe("approved gateway acquisition", () => {
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(
       `too old: The gateway ${s.plan.version} (pinned) speaks wire [1]; this adapter needs wire 2.`,
     );
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
   test("fails capability mismatch and cleans only owned version", async () => {
     const s = await setup();
     s.exec.mockResolvedValue("{}");
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("capability mismatch");
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
   test("cleans a failed Nix attempt and permits same-pin retry without adopting an interrupted root", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
 
     const stale = path.join(
       s.plan.installRoot,
       `${s.plan.version}-${s.plan.sourceRevision}-nix-abandoned`,
     );
 
-    await fs.mkdir(stale);
-    await fs.writeFile(path.join(stale, "unknown"), "preserve");
+    await mkdir(stale);
+    await writeFile(path.join(stale, "unknown"), "preserve");
     const exec = vi.fn<(file: string, args: string[], signal: AbortSignal) => Promise<string>>();
     exec.mockRejectedValueOnce(new Error("bounded build failure"));
 
@@ -232,12 +261,12 @@ describe("approved gateway acquisition", () => {
     };
 
     await expect(acquireGateway(plan, options)).rejects.toThrow("bounded build failure");
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([path.basename(stale)]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([path.basename(stale)]);
     exec.mockImplementationOnce(mockNixBuild);
     exec.mockResolvedValue(s.versionJson);
     const result = await acquireGateway(plan, options);
     expect(result.ownedPaths).not.toContain(stale);
-    await expect(fs.readFile(path.join(stale, "unknown"), "utf8")).resolves.toBe("preserve");
+    await expect(readFile(path.join(stale, "unknown"), "utf8")).resolves.toBe("preserve");
   });
   test.each([
     { narHash: `sha256-${Buffer.alloc(32).toString("base64")}` },
@@ -279,7 +308,7 @@ describe("approved gateway acquisition", () => {
     expect(s.fetcher).not.toHaveBeenCalled();
     expect(filesystemEffect).not.toHaveBeenCalled();
     expect(progress).not.toHaveBeenCalled();
-    await expect(fs.stat(s.plan.installRoot)).rejects.toThrow(/ENOENT/u);
+    await expect(fileStat(s.plan.installRoot)).rejects.toThrow(/ENOENT/u);
   });
   test("does not publish a native version when completion writing fails", async () => {
     const s = await setup();
@@ -289,20 +318,20 @@ describe("approved gateway acquisition", () => {
         seams: { ...s.options.seams, fs: { ...fs, writeFile: failCompletionWrite } },
       }),
     ).rejects.toThrow("simulated completion failure");
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
     await expect(acquireGateway(s.plan, s.options)).resolves.toHaveProperty("executable");
   });
   test("never adopts existing installations or follows symlink roots", async () => {
     const s = await setup();
-    await fs.symlink(s.root, s.plan.installRoot);
+    await linkFile(s.root, s.plan.installRoot);
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow(UnsafeFolderError);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("names a group-writable folder on the install path and how to fix it", async () => {
     const s = await setup();
     const shared = path.join(s.root, "shared");
-    await fs.mkdir(shared, { mode: 0o700 });
-    await fs.chmod(shared, 0o775);
+    await mkdir(shared, { mode: 0o700 });
+    await chmod(shared, 0o775);
 
     const error: unknown = await acquireGateway(
       { ...s.plan, installRoot: path.join(shared, "agent", "install") },
@@ -315,13 +344,13 @@ describe("approved gateway acquisition", () => {
       reason: `${shared} is writable by other users`,
       fix: `Run chmod go-w ${shared}, then try again`,
     });
-    await expect(fs.readdir(shared)).resolves.toStrictEqual([]);
+    await expect(readdir(shared)).resolves.toStrictEqual([]);
     expect(s.fetcher).not.toHaveBeenCalled();
   });
   test("names an install root that is not private", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
-    await fs.chmod(s.plan.installRoot, 0o750);
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
+    await chmod(s.plan.installRoot, 0o750);
     await expect(acquireGateway(s.plan, s.options)).rejects.toMatchObject({
       folder: s.plan.installRoot,
       reason: `${s.plan.installRoot} is readable by other users`,
@@ -396,18 +425,18 @@ function kindOf(stat: { isSymbolicLink: () => boolean; isDirectory: () => boolea
 }
 
 async function snapshot(filename: string): Promise<Snapshot> {
-  const stat = await fs.lstat(filename);
+  const stat = await lstat(filename);
   let content: string;
 
   if (stat.isSymbolicLink()) {
-    content = await fs.readlink(filename);
+    content = await readlink(filename);
   } else if (stat.isDirectory()) {
-    const names = await fs.readdir(filename);
+    const names = await readdir(filename);
 
     const parts = await Promise.all(
       names.toSorted().map(async (name) => {
-        const child = await fs.lstat(path.join(filename, name));
-        const body = child.isFile() ? await fs.readFile(path.join(filename, name), "utf8") : "";
+        const child = await lstat(path.join(filename, name));
+        const body = child.isFile() ? await readFile(path.join(filename, name), "utf8") : "";
 
         return `${name}:${child.ino}:${child.mode}:${body}`;
       }),
@@ -415,7 +444,7 @@ async function snapshot(filename: string): Promise<Snapshot> {
 
     content = parts.join("|");
   } else {
-    content = await fs.readFile(filename, "utf8");
+    content = await readFile(filename, "utf8");
   }
 
   return { ino: stat.ino, mode: stat.mode, kind: kindOf(stat), content };
@@ -445,20 +474,20 @@ async function mkfifo(filename: string): Promise<void> {
 
 const stagedReplacements: [string, (filename: string) => Promise<void>][] = [
   ["FIFO", mkfifo],
-  ["directory", async (filename) => fs.mkdir(filename, { mode: 0o700 })],
+  ["directory", async (filename) => mkdir(filename, { mode: 0o700 })],
 ];
 
-function replacingOpen(replace: (filename: string) => Promise<void>): typeof fs.open {
+function replacingOpen(replace: (filename: string) => Promise<void>): typeof openFile {
   let replaced = false;
 
   return async (filename, flags, mode) => {
     if (!replaced && String(filename).endsWith("/manifest.json")) {
       replaced = true;
-      await fs.unlink(filename);
+      await unlink(filename);
       await replace(String(filename));
     }
 
-    return fs.open(filename, flags, mode);
+    return openFile(filename, flags, mode);
   };
 }
 
@@ -469,12 +498,12 @@ function ioError(code: string): Error {
 }
 
 function commitSeam(before: (destination: string) => Promise<void>) {
-  const rename = vi.fn<typeof fs.rename>(fs.rename);
+  const rename = vi.fn<typeof renameFile>(renameFile);
 
-  const symlink: typeof fs.symlink = async (target, destination, type) => {
+  const symlink: typeof linkFile = async (target, destination, type) => {
     await before(String(destination));
 
-    return fs.symlink(target, destination, type);
+    return linkFile(target, destination, type);
   };
 
   return { rename, fs: { ...fs, rename, symlink } };
@@ -495,35 +524,35 @@ function barrier(count: number): () => Promise<void> {
   };
 }
 
-const symlinkThenFail: typeof fs.symlink = async (target, destination, type) => {
-  await fs.symlink(target, destination, type);
+const symlinkThenFail: typeof linkFile = async (target, destination, type) => {
+  await linkFile(target, destination, type);
   throw ioError("EIO");
 };
 
-function failingOpen(failing: string): typeof fs.open {
+function failingOpen(failing: string): typeof openFile {
   return async (filename, flags, mode) => {
     if (filename === failing) {
       throw ioError("EIO");
     }
 
-    return fs.open(filename, flags, mode);
+    return openFile(filename, flags, mode);
   };
 }
 
-function abortingOpen(abort: AbortController, suffix: string): typeof fs.open {
+function abortingOpen(abort: AbortController, suffix: string): typeof openFile {
   return async (filename, flags, mode) => {
     if (String(filename).endsWith(suffix)) {
       abort.abort();
     }
 
-    return fs.open(filename, flags, mode);
+    return openFile(filename, flags, mode);
   };
 }
 
 async function writeInstall(directory: string, s: Setup): Promise<void> {
-  await fs.writeFile(path.join(directory, "pi-gateway"), s.f.binary, { mode: 0o500 });
-  await fs.writeFile(path.join(directory, "manifest.json"), s.f.manifest, { mode: 0o400 });
-  await fs.writeFile(
+  await writeFile(path.join(directory, "pi-gateway"), s.f.binary, { mode: 0o500 });
+  await writeFile(path.join(directory, "manifest.json"), s.f.manifest, { mode: 0o400 });
+  await writeFile(
     path.join(directory, "installed.json"),
     JSON.stringify({
       sourceRevision: s.plan.sourceRevision,
@@ -535,22 +564,22 @@ async function writeInstall(directory: string, s: Setup): Promise<void> {
 }
 
 const foreignEntries: [string, (destination: string) => Promise<void>][] = [
-  ["empty directory", async (destination) => fs.mkdir(destination, { mode: 0o700 })],
-  ["regular file", async (destination) => fs.writeFile(destination, "foreign", { mode: 0o600 })],
-  ["symlink", async (destination) => fs.symlink("foreign-target", destination)],
+  ["empty directory", async (destination) => mkdir(destination, { mode: 0o700 })],
+  ["regular file", async (destination) => writeFile(destination, "foreign", { mode: 0o600 })],
+  ["symlink", async (destination) => linkFile("foreign-target", destination)],
   [
     "non-empty directory",
     async (destination) => {
-      await fs.mkdir(destination, { mode: 0o700 });
-      await fs.writeFile(path.join(destination, "installed.json"), "{not json", { mode: 0o600 });
-      await fs.writeFile(path.join(destination, "pi-gateway"), "foreign", { mode: 0o700 });
+      await mkdir(destination, { mode: 0o700 });
+      await writeFile(path.join(destination, "installed.json"), "{not json", { mode: 0o600 });
+      await writeFile(path.join(destination, "pi-gateway"), "foreign", { mode: 0o700 });
     },
   ],
 ];
 
 async function movedPayload(s: Setup, payload: string): Promise<string> {
   const name = `${attemptPrefix(s)}abcdef`;
-  await fs.rename(payload, path.join(s.plan.installRoot, name));
+  await renameFile(payload, path.join(s.plan.installRoot, name));
 
   return name;
 }
@@ -574,7 +603,7 @@ const unsafeLinks: [string, (s: Setup, payload: string) => Promise<string>][] = 
 describe("exclusive native publication", () => {
   afterEach(async () => {
     for (const root of roots.splice(0)) {
-      await fs.rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -582,13 +611,13 @@ describe("exclusive native publication", () => {
     "preserves a %s created at the publication boundary and removes only its own attempt",
     async (_kind, create) => {
       const s = await setup();
-      await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+      await mkdir(s.plan.installRoot, { mode: 0o700 });
       const seam = commitSeam(create);
       await expect(
         acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: seam.fs } }),
       ).rejects.toThrow("same name; nothing was replaced");
       const before = await snapshot(destinationOf(s));
-      await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([
+      await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([
         path.basename(destinationOf(s)),
       ]);
       expect(seam.rename).not.toHaveBeenCalled();
@@ -602,7 +631,7 @@ describe("exclusive native publication", () => {
 
   test("adopts only a reauthenticated concurrent winner when both writers reach the commit", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const seam = commitSeam(barrier(2));
     const options = { ...s.options, seams: { ...s.options.seams, fs: seam.fs } };
 
@@ -612,8 +641,8 @@ describe("exclusive native publication", () => {
     ]);
 
     expect(first).toStrictEqual(second);
-    const entries = await fs.readdir(s.plan.installRoot);
-    const target = await fs.readlink(destinationOf(s));
+    const entries = await readdir(s.plan.installRoot);
+    const target = await readlink(destinationOf(s));
     expect(entries.toSorted()).toStrictEqual([path.basename(destinationOf(s)), target].toSorted());
     expect(first.executable).toBe(path.join(s.plan.installRoot, target, "pi-gateway"));
     expect(first.ownedPaths).toStrictEqual([
@@ -628,32 +657,32 @@ describe("exclusive native publication", () => {
 
   test("rejects a concurrent winner whose binary fails reauthentication", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const winners: AcquisitionResult[] = [];
 
     const seam = commitSeam(async () => {
       const winner = await acquireGateway(s.plan, s.options);
       winners.push(winner);
-      await fs.chmod(winner.executable, 0o700);
-      await fs.writeFile(winner.executable, "tampered");
+      await chmod(winner.executable, 0o700);
+      await writeFile(winner.executable, "tampered");
     });
 
     await expect(
       acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: seam.fs } }),
     ).rejects.toThrow("same name; nothing was replaced");
     const winner = only(winners);
-    await expect(fs.readFile(winner.executable, "utf8")).resolves.toBe("tampered");
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(2);
+    await expect(readFile(winner.executable, "utf8")).resolves.toBe("tampered");
+    await expect(readdir(s.plan.installRoot)).resolves.toHaveLength(2);
     expect(s.exec).toHaveBeenCalledTimes(2);
   });
 
   test("retains a committed install when cancelled after the symlink and reuses it", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const abort = new AbortController();
 
-    const symlink: typeof fs.symlink = async (target, destination, type) => {
-      await fs.symlink(target, destination, type);
+    const symlink: typeof linkFile = async (target, destination, type) => {
+      await linkFile(target, destination, type);
       abort.abort();
     };
 
@@ -663,7 +692,7 @@ describe("exclusive native publication", () => {
       seams: { ...s.options.seams, fs: { ...fs, symlink } },
     });
 
-    await expect(fs.readFile(result.executable)).resolves.toStrictEqual(s.f.binary);
+    await expect(readFile(result.executable)).resolves.toStrictEqual(s.f.binary);
     s.fetcher.mockClear();
     await expect(acquireGateway(s.plan, s.options)).resolves.toStrictEqual(result);
     expect(s.fetcher).not.toHaveBeenCalled();
@@ -671,12 +700,12 @@ describe("exclusive native publication", () => {
 
   test("retains link and payload when the post-commit root fsync fails", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const open = failingOpen(s.plan.installRoot);
     await expect(
       acquireGateway(s.plan, { ...s.options, seams: { ...s.options.seams, fs: { ...fs, open } } }),
     ).rejects.toThrow("not confirmed on disk");
-    const target = await fs.readlink(destinationOf(s));
+    const target = await readlink(destinationOf(s));
     s.fetcher.mockClear();
     const reused = await acquireGateway(s.plan, s.options);
     expect(reused.executable).toBe(path.join(s.plan.installRoot, target, "pi-gateway"));
@@ -685,15 +714,15 @@ describe("exclusive native publication", () => {
 
   test("retains a possibly published attempt when symlink reports an error after creating it", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     await expect(
       acquireGateway(s.plan, {
         ...s.options,
         seams: { ...s.options.seams, fs: { ...fs, symlink: symlinkThenFail } },
       }),
     ).rejects.toThrow("could not be confirmed");
-    const target = await fs.readlink(destinationOf(s));
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(2);
+    const target = await readlink(destinationOf(s));
+    await expect(readdir(s.plan.installRoot)).resolves.toHaveLength(2);
     s.fetcher.mockClear();
     const reused = await acquireGateway(s.plan, s.options);
     expect(reused.executable).toBe(path.join(s.plan.installRoot, target, "pi-gateway"));
@@ -702,13 +731,13 @@ describe("exclusive native publication", () => {
 
   test("retains its own attempt when link inspection fails after a symlink error", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const held = path.join(s.root, "held-install");
     const sentinel = "owned sentinel";
 
-    const symlink: typeof fs.symlink = async () => {
-      await fs.rename(s.plan.installRoot, held);
-      await fs.writeFile(s.plan.installRoot, sentinel, { mode: 0o600, flag: "wx" });
+    const symlink: typeof linkFile = async () => {
+      await renameFile(s.plan.installRoot, held);
+      await writeFile(s.plan.installRoot, sentinel, { mode: 0o600, flag: "wx" });
       throw ioError("EIO");
     };
 
@@ -719,23 +748,23 @@ describe("exclusive native publication", () => {
           seams: { ...s.options.seams, fs: { ...fs, symlink } },
         }),
       ).rejects.toThrow("could not be confirmed; it was kept");
-      await expect(fs.readFile(s.plan.installRoot, "utf8")).resolves.toBe(sentinel);
-      const heldAttempt = only(await fs.readdir(held));
-      await expect(fs.readFile(path.join(held, heldAttempt, "pi-gateway"))).resolves.toStrictEqual(
+      await expect(readFile(s.plan.installRoot, "utf8")).resolves.toBe(sentinel);
+      const heldAttempt = only(await readdir(held));
+      await expect(readFile(path.join(held, heldAttempt, "pi-gateway"))).resolves.toStrictEqual(
         s.f.binary,
       );
     } finally {
-      await fs.rm(s.plan.installRoot, { force: true });
-      await fs.rename(held, s.plan.installRoot);
+      await rm(s.plan.installRoot, { force: true });
+      await renameFile(held, s.plan.installRoot);
     }
 
-    const attempt = only(await fs.readdir(s.plan.installRoot));
+    const attempt = only(await readdir(s.plan.installRoot));
     expect(attempt.startsWith(attemptPrefix(s))).toBe(true);
     await expect(
-      fs.readdir(path.join(s.plan.installRoot, attempt)).then((names) => names.toSorted()),
+      readdir(path.join(s.plan.installRoot, attempt)).then((names) => names.toSorted()),
     ).resolves.toStrictEqual(["installed.json", "manifest.json", "pi-gateway"]);
     await expect(
-      fs.readFile(path.join(s.plan.installRoot, attempt, "pi-gateway")),
+      readFile(path.join(s.plan.installRoot, attempt, "pi-gateway")),
     ).resolves.toStrictEqual(s.f.binary);
   });
 
@@ -744,8 +773,8 @@ describe("exclusive native publication", () => {
     const first = await acquireGateway(s.plan, s.options);
     const payload = path.dirname(first.executable);
     const marker = path.join(payload, "installed.json");
-    await fs.chmod(marker, 0o600);
-    await fs.writeFile(
+    await chmod(marker, 0o600);
+    await writeFile(
       marker,
       JSON.stringify({
         sourceRevision: s.plan.sourceRevision,
@@ -753,7 +782,7 @@ describe("exclusive native publication", () => {
         executable: path.join(destinationOf(s), "pi-gateway"),
       }),
     );
-    await fs.chmod(marker, 0o400);
+    await chmod(marker, 0o400);
     const before = await snapshot(payload);
     s.fetcher.mockClear();
     s.exec.mockClear();
@@ -768,7 +797,7 @@ describe("exclusive native publication", () => {
   test("removes its unpublished attempt when symlink fails without creating a link", async () => {
     const s = await setup();
 
-    const symlink = vi.fn<typeof fs.symlink>(async () => {
+    const symlink = vi.fn<typeof linkFile>(async () => {
       throw ioError("EACCES");
     });
 
@@ -779,13 +808,13 @@ describe("exclusive native publication", () => {
       }),
     ).rejects.toThrow("simulated EACCES");
     expect(symlink).toHaveBeenCalledTimes(1);
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
 
   test("cancellation during pre-commit fsync publishes nothing and removes only its attempt", async () => {
     const s = await setup();
     const abort = new AbortController();
-    const symlink = vi.fn<typeof fs.symlink>(fs.symlink);
+    const symlink = vi.fn<typeof linkFile>(linkFile);
     await expect(
       acquireGateway(s.plan, {
         ...s.options,
@@ -797,14 +826,14 @@ describe("exclusive native publication", () => {
       }),
     ).rejects.toThrow(/abort/iu);
     expect(symlink).not.toHaveBeenCalled();
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+    await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
   });
 
   test.each(stagedReplacements)(
     "fails closed when a staged file becomes a %s before its fsync open",
     async (_kind, replace) => {
       const s = await setup();
-      const symlink = vi.fn<typeof fs.symlink>(fs.symlink);
+      const symlink = vi.fn<typeof linkFile>(linkFile);
       await expect(
         acquireGateway(s.plan, {
           ...s.options,
@@ -813,28 +842,28 @@ describe("exclusive native publication", () => {
       ).rejects.toThrow("Unexpected staged file type or ownership");
       expect(symlink).not.toHaveBeenCalled();
       expect(s.exec).toHaveBeenCalledTimes(1);
-      await expect(fs.readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
+      await expect(readdir(s.plan.installRoot)).resolves.toStrictEqual([]);
     },
   );
 
   test("never adopts an unreferenced complete payload left by a crash before commit", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
-    const crashed = await fs.mkdtemp(path.join(s.plan.installRoot, attemptPrefix(s)));
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
+    const crashed = await mkdtemp(path.join(s.plan.installRoot, attemptPrefix(s)));
     await writeInstall(crashed, s);
     const before = await snapshot(crashed);
     const result = await acquireGateway(s.plan, s.options);
     expect(result.executable.startsWith(`${crashed}/`)).toBe(false);
     expect(result.ownedPaths).not.toContain(crashed);
     await expect(snapshot(crashed)).resolves.toStrictEqual(before);
-    await expect(fs.readdir(s.plan.installRoot)).resolves.toHaveLength(3);
+    await expect(readdir(s.plan.installRoot)).resolves.toHaveLength(3);
   });
 
   test("reuses a legacy directory installation without migration and runtime digest still works", async () => {
     const s = await setup();
-    await fs.mkdir(s.plan.installRoot, { mode: 0o700 });
+    await mkdir(s.plan.installRoot, { mode: 0o700 });
     const legacy = destinationOf(s);
-    await fs.mkdir(legacy, { mode: 0o700 });
+    await mkdir(legacy, { mode: 0o700 });
     await writeInstall(legacy, s);
     const before = await snapshot(legacy);
     const result = await acquireGateway(s.plan, s.options);
@@ -853,11 +882,11 @@ describe("exclusive native publication", () => {
   test("new installs return a regular payload executable usable by the runtime digest", async () => {
     const s = await setup();
     const result = await acquireGateway(s.plan, s.options);
-    const stat = await fs.lstat(result.executable);
+    const stat = await lstat(result.executable);
     expect(stat.isFile()).toBe(true);
     expect(path.basename(path.dirname(result.executable)).startsWith(attemptPrefix(s))).toBe(true);
     await expect(executableDigest(result.executable)).resolves.toBe(sha256(s.f.binary));
-    const link = await fs.lstat(destinationOf(s));
+    const link = await lstat(destinationOf(s));
     expect(link.isSymbolicLink()).toBe(true);
   });
 
@@ -866,9 +895,9 @@ describe("exclusive native publication", () => {
     async (_kind, targetOf) => {
       const s = await setup();
       const first = await acquireGateway(s.plan, s.options);
-      await fs.unlink(destinationOf(s));
+      await unlink(destinationOf(s));
       const target = await targetOf(s, path.dirname(first.executable));
-      await fs.symlink(target, destinationOf(s));
+      await linkFile(target, destinationOf(s));
       const before = await snapshot(s.plan.installRoot);
       s.fetcher.mockClear();
       s.exec.mockClear();
@@ -885,16 +914,16 @@ describe("exclusive native publication", () => {
     const s = await setup();
     const first = await acquireGateway(s.plan, s.options);
     const payload = path.dirname(first.executable);
-    await fs.chmod(payload, 0o750);
+    await chmod(payload, 0o750);
     s.exec.mockClear();
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("Unsafe existing installation");
-    await fs.chmod(payload, 0o700);
+    await chmod(payload, 0o700);
     const moved = path.join(s.root, "elsewhere");
-    await fs.rename(payload, moved);
-    await fs.symlink(moved, payload);
+    await renameFile(payload, moved);
+    await linkFile(moved, payload);
     await expect(acquireGateway(s.plan, s.options)).rejects.toThrow("Unsafe existing installation");
     expect(s.exec).not.toHaveBeenCalled();
-    const payloadStat = await fs.lstat(payload);
+    const payloadStat = await lstat(payload);
     expect(payloadStat.isSymbolicLink()).toBe(true);
   });
 });

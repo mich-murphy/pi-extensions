@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  composite,
+  optional,
+  sampledFrom,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { parseHTML } from "linkedom";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -16,17 +23,17 @@ const ATTRIBUTES = ["role", "type", "lang", "data-x", "dir", "hidden", "title"];
 const VALUES = ["main", "MAIN", "a", "A", "x-y", "true", "TRUE", ""];
 const BARE_VALUES = VALUES.filter((value) => value !== "");
 
-const attributePair = gs.tuples(gs.sampledFrom(ATTRIBUTES), gs.sampledFrom(VALUES));
+const attributePair = tuples(sampledFrom(ATTRIBUTES), sampledFrom(VALUES));
 
-const classValue = gs.tuples(
-  gs.arrays(gs.sampledFrom(TOKENS), { minSize: 0, maxSize: 4 }),
-  gs.sampledFrom([" ", "  ", "\t", "\n "]),
-  gs.sampledFrom(["", " "]),
+const classValue = tuples(
+  arrays(sampledFrom(TOKENS), { minSize: 0, maxSize: 4 }),
+  sampledFrom([" ", "  ", "\t", "\n "]),
+  sampledFrom(["", " "]),
 );
 
-const elementGen = gs.composite((tc) => {
-  const element = document.createElement(tc.draw(gs.sampledFrom(TAGS), "tag"));
-  const id = tc.draw(gs.optional(gs.sampledFrom(IDS)), "id");
+const elementGen = composite((tc) => {
+  const element = document.createElement(tc.draw(sampledFrom(TAGS), "tag"));
+  const id = tc.draw(optional(sampledFrom(IDS)), "id");
 
   if (id !== null) {
     element.setAttribute("id", id);
@@ -34,51 +41,51 @@ const elementGen = gs.composite((tc) => {
 
   const [tokens, separator, pad] = tc.draw(classValue, "classes");
 
-  if (tc.draw(gs.booleans(), "hasClass")) {
+  if (tc.draw(booleans(), "hasClass")) {
     element.setAttribute("class", `${pad}${tokens.join(separator)}${pad}`);
   }
 
-  for (const [name, value] of tc.draw(gs.arrays(attributePair, { maxSize: 4 }), "attributes")) {
+  for (const [name, value] of tc.draw(arrays(attributePair, { maxSize: 4 }), "attributes")) {
     element.setAttribute(name, value);
   }
 
   return element;
 });
 
-const partGen = gs.composite((tc) => {
-  const kind = tc.draw(gs.sampledFrom(["id", "class", "has", "equals"]), "part");
-  const name = tc.draw(gs.sampledFrom(ATTRIBUTES), "name");
+const partGen = composite((tc) => {
+  const kind = tc.draw(sampledFrom(["id", "class", "has", "equals"]), "part");
+  const name = tc.draw(sampledFrom(ATTRIBUTES), "name");
 
   if (kind === "id") {
-    return `#${tc.draw(gs.sampledFrom(IDS), "id")}`;
+    return `#${tc.draw(sampledFrom(IDS), "id")}`;
   }
 
   if (kind === "class") {
-    return `.${tc.draw(gs.sampledFrom(TOKENS), "token")}`;
+    return `.${tc.draw(sampledFrom(TOKENS), "token")}`;
   }
 
   if (kind === "has") {
-    return tc.draw(gs.booleans(), "class") ? "[class]" : `[${name}]`;
+    return tc.draw(booleans(), "class") ? "[class]" : `[${name}]`;
   }
 
-  const quote = tc.draw(gs.sampledFrom(["", "'", '"']), "quote");
-  const value = tc.draw(gs.sampledFrom(quote === "" ? BARE_VALUES : VALUES), "value");
+  const quote = tc.draw(sampledFrom(["", "'", '"']), "quote");
+  const value = tc.draw(sampledFrom(quote === "" ? BARE_VALUES : VALUES), "value");
 
   return `[${name}=${quote}${value}${quote}]`;
 });
 
-const compoundGen = gs.composite((tc) => {
-  const tag = tc.draw(gs.optional(gs.sampledFrom(TAGS)), "tag") ?? "";
-  const parts = tc.draw(gs.arrays(partGen, { maxSize: 3 }), "parts");
+const compoundGen = composite((tc) => {
+  const tag = tc.draw(optional(sampledFrom(TAGS)), "tag") ?? "";
+  const parts = tc.draw(arrays(partGen, { maxSize: 3 }), "parts");
   tc.assume(tag !== "" || parts.length > 0);
 
   return `${tag}${parts.join("")}`;
 });
 
-const listGen = gs.composite((tc) => {
-  const compounds = tc.draw(gs.arrays(compoundGen, { minSize: 1, maxSize: 3 }), "compounds");
+const listGen = composite((tc) => {
+  const compounds = tc.draw(arrays(compoundGen, { minSize: 1, maxSize: 3 }), "compounds");
 
-  return compounds.join(tc.draw(gs.sampledFrom([",", ", ", " ,  "]), "separator"));
+  return compounds.join(tc.draw(sampledFrom([",", ", ", " ,  "]), "separator"));
 });
 
 function assertListsAgree(element: Element, lists: readonly string[]): void {
@@ -102,7 +109,7 @@ function assertListsAgree(element: Element, lists: readonly string[]): void {
   );
 }
 
-const recaseFlags = gs.arrays(gs.booleans(), { minSize: 8, maxSize: 8 });
+const recaseFlags = arrays(booleans(), { minSize: 8, maxSize: 8 });
 
 function recase(value: string, flags: readonly boolean[]): string {
   return Array.from({ length: value.length }, (_, i) =>
@@ -121,9 +128,9 @@ describe("selector properties", () => {
   test("attribute equality case rules agree with linkedom", () => {
     new Hegel((tc) => {
       assertAttributeCase(
-        tc.draw(gs.sampledFrom(ATTRIBUTES), "name"),
-        recase(tc.draw(gs.sampledFrom(VALUES), "value"), tc.draw(recaseFlags, "elementCase")),
-        recase(tc.draw(gs.sampledFrom(VALUES), "value2"), tc.draw(recaseFlags, "selectorCase")),
+        tc.draw(sampledFrom(ATTRIBUTES), "name"),
+        recase(tc.draw(sampledFrom(VALUES), "value"), tc.draw(recaseFlags, "elementCase")),
+        recase(tc.draw(sampledFrom(VALUES), "value2"), tc.draw(recaseFlags, "selectorCase")),
       );
     })
       .settings(settings)
@@ -134,7 +141,7 @@ describe("selector properties", () => {
     new Hegel((tc) => {
       assertListsAgree(
         tc.draw(elementGen, "element"),
-        tc.draw(gs.arrays(listGen, { minSize: 1, maxSize: 4 }), "lists"),
+        tc.draw(arrays(listGen, { minSize: 1, maxSize: 4 }), "lists"),
       );
     })
       .settings(settings)

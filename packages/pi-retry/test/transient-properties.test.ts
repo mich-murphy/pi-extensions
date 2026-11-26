@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  floats,
+  integers,
+  just,
+  oneOf,
+  record,
+  sampledFrom,
+  text,
+} from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -109,10 +119,10 @@ function assertSchedule(plan: Plan, steps: readonly Step[]): void {
 function drawPlan(tc: TestCase): Plan {
   return {
     delaysMinutes: tc.draw(
-      gs.arrays(gs.integers({ minValue: 1, maxValue: 30 }), { minSize: 1, maxSize: 6 }),
+      arrays(integers({ minValue: 1, maxValue: 30 }), { minSize: 1, maxSize: 6 }),
     ),
-    maxAttempts: tc.draw(gs.integers({ minValue: 1, maxValue: 12 })),
-    windowMinutes: tc.draw(gs.integers({ minValue: 1, maxValue: 240 })),
+    maxAttempts: tc.draw(integers({ minValue: 1, maxValue: 12 })),
+    windowMinutes: tc.draw(integers({ minValue: 1, maxValue: 240 })),
   };
 }
 
@@ -124,15 +134,15 @@ type TestFields = Partial<Record<FieldName, SettingsLeaf>>;
 
 const fieldNames = ["enabled", "delaysMinutes", "maxAttempts", "windowMinutes"] as const;
 
-const leaf = gs.oneOf<SettingsLeaf>(
-  gs.integers({ minValue: -5, maxValue: 400 }),
-  gs.floats({ allowNan: true, allowInfinity: true }),
-  gs.floats({ minValue: 0.1, maxValue: 50 }),
-  gs.text({ maxSize: 5 }),
-  gs.booleans(),
-  gs.just(null),
-  gs.arrays(gs.integers({ minValue: -3, maxValue: 40 }), { maxSize: 4 }),
-  gs.arrays(gs.floats({ allowNan: true, allowInfinity: true }), { maxSize: 3 }),
+const leaf = oneOf<SettingsLeaf>(
+  integers({ minValue: -5, maxValue: 400 }),
+  floats({ allowNan: true, allowInfinity: true }),
+  floats({ minValue: 0.1, maxValue: 50 }),
+  text({ maxSize: 5 }),
+  booleans(),
+  just(null),
+  arrays(integers({ minValue: -3, maxValue: 40 }), { maxSize: 4 }),
+  arrays(floats({ allowNan: true, allowInfinity: true }), { maxSize: 3 }),
 );
 
 function checkValid(result: TransientSettings): void {
@@ -188,7 +198,7 @@ function drawFields(tc: TestCase): TestFields {
   const fields: TestFields = {};
 
   for (const name of fieldNames) {
-    if (tc.draw(gs.booleans())) {
+    if (tc.draw(booleans())) {
       fields[name] = tc.draw(leaf);
     }
   }
@@ -224,10 +234,10 @@ describe("transient backoff properties", () => {
       const plan = drawPlan(tc);
 
       const steps = tc.draw(
-        gs.arrays(
-          gs.record({
-            jump: gs.integers({ minValue: 0, maxValue: 20 }),
-            event: gs.sampledFrom(["none", "none", "none", "tree", "shutdown"] as const),
+        arrays(
+          record({
+            jump: integers({ minValue: 0, maxValue: 20 }),
+            event: sampledFrom(["none", "none", "none", "tree", "shutdown"] as const),
           }),
           { minSize: 1, maxSize: 15 },
         ),
@@ -242,10 +252,10 @@ describe("transient backoff properties", () => {
   test("reader never throws, only returns valid settings, ignores prototype keys", () => {
     new Hegel((tc) => {
       const fields = drawFields(tc);
-      const settingsCase = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }));
+      const settingsCase = tc.draw(integers({ minValue: 0, maxValue: 2 }));
 
       const junk = tc.draw(
-        gs.arrays(gs.sampledFrom(["__proto__", "constructor", "prototype", "toString"]), {
+        arrays(sampledFrom(["__proto__", "constructor", "prototype", "toString"]), {
           maxSize: 4,
         }),
       );

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import {
   assertHegel,
@@ -17,9 +17,9 @@ type Entry = { state: (typeof states)[number]; since: number; nextProbe?: number
 type World = { table: LinkTable; model: Map<string, Entry> };
 
 function drawEntry(tc: TestCase): Entry {
-  const state = tc.draw(gs.sampledFrom([...states]), "state");
-  const since = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }), "since");
-  const probe = tc.draw(gs.integers({ minValue: 0, maxValue: 2 }), "probe");
+  const state = tc.draw(sampledFrom([...states]), "state");
+  const since = tc.draw(integers({ minValue: 0, maxValue: 3 }), "since");
+  const probe = tc.draw(integers({ minValue: 0, maxValue: 2 }), "probe");
 
   return probe === 0 ? { state, since } : { state, since, nextProbe: probe };
 }
@@ -42,7 +42,7 @@ function clearStep(world: World): void {
 }
 
 function applyStep(tc: TestCase, world: World): void {
-  const machineId = tc.draw(gs.sampledFrom([...machines]), "machine");
+  const machineId = tc.draw(sampledFrom([...machines]), "machine");
   const entry = drawEntry(tc);
   const expected = changed(world.model.get(machineId), entry);
   assert.equal(world.table.apply({ machineId, ...entry }), expected, "change detection");
@@ -50,7 +50,7 @@ function applyStep(tc: TestCase, world: World): void {
 }
 
 function step(tc: TestCase, world: World): void {
-  const clear = tc.draw(gs.integers({ minValue: 0, maxValue: 9 }), "clear") === 0;
+  const clear = tc.draw(integers({ minValue: 0, maxValue: 9 }), "clear") === 0;
 
   if (clear) {
     clearStep(world);
@@ -74,7 +74,7 @@ function checkDown(world: World): void {
 
 function run(tc: TestCase): void {
   const world: World = { table: new LinkTable(), model: new Map() };
-  const steps = tc.draw(gs.integers({ minValue: 0, maxValue: 40 }), "steps");
+  const steps = tc.draw(integers({ minValue: 0, maxValue: 40 }), "steps");
 
   for (let index = 0; index < steps; index += 1) {
     step(tc, world);

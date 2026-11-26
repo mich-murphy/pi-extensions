@@ -36,10 +36,6 @@ const keepArrayTypeStyleForTheBaseline = {
   "typescript/array-type": "error",
 } satisfies Rules;
 
-const presetRulesPendingFixes = {
-  "import/no-namespace": "off",
-} satisfies Rules;
-
 const readlineImportMessage = String.raw`readline splits lines on U+2028 and U+2029, which are legal inside JSON strings, so it silently corrupts JSONL. Read the file and split on \n only.`;
 
 const preserveJsonLines = {
@@ -86,7 +82,6 @@ export default defineConfig({
     ...lintStrictTypedBoundariesAndUnusedBindings,
     ...keepArrayTypeStyleForTheBaseline,
     ...preserveJsonLines,
-    ...presetRulesPendingFixes,
     "typescript/only-throw-error": "error",
     "typescript/prefer-promise-reject-errors": "error",
     "typescript/restrict-plus-operands": "error",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import * as gs from "@hegeldev/hegel/generators";
+import { booleans, floats, integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
 import type { LedgerEvent } from "../ledger.ts";
@@ -20,26 +20,26 @@ type Drawn = {
 };
 
 function drawScore(tc: TestCase, label: string): number {
-  return tc.draw(gs.floats({ minValue: 0, maxValue: 1 }), label);
+  return tc.draw(floats({ minValue: 0, maxValue: 1 }), label);
 }
 
 function drawEvents(tc: TestCase): Drawn {
-  const count = tc.draw(gs.integers({ minValue: 0, maxValue: 12 }), "count");
+  const count = tc.draw(integers({ minValue: 0, maxValue: 12 }), "count");
   const records: Extract<LedgerEvent, { readonly type: "signal" }>[] = [];
   const verdicts: LedgerEvent[] = [];
 
   for (let n = 1; n <= count; n += 1) {
-    const fingerprint = tc.draw(gs.sampledFrom([...FINGERPRINTS]), "fingerprint");
-    const piPath = tc.draw(gs.booleans(), "piPath");
-    const batchOrdered = tc.draw(gs.booleans(), "batchOrdered");
+    const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
+    const piPath = tc.draw(booleans(), "piPath");
+    const batchOrdered = tc.draw(booleans(), "batchOrdered");
 
     const options: Omit<SignalOptions, "evidence" | "cause"> & {
       evidence?: NonNullable<SignalOptions["evidence"]>;
       cause?: NonNullable<SignalOptions["cause"]>;
     } = {
       n,
-      session: tc.draw(gs.sampledFrom([...SESSIONS]), "session"),
-      owner: tc.draw(gs.sampledFrom([...OWNERS]), "owner"),
+      session: tc.draw(sampledFrom([...SESSIONS]), "session"),
+      owner: tc.draw(sampledFrom([...OWNERS]), "owner"),
       fingerprint,
     };
 
@@ -55,7 +55,7 @@ function drawEvents(tc: TestCase): Drawn {
     assert.ok(made.type === "signal");
     records.push(made);
 
-    if (tc.draw(gs.booleans(), "verdict")) {
+    if (tc.draw(booleans(), "verdict")) {
       verdicts.push(
         verdictEvent(100 + n, fingerprint, {
           harnessPath: drawScore(tc, "harnessPath"),
