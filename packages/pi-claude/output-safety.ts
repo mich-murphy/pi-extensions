@@ -7,31 +7,45 @@ export type SuspiciousOutputKind = "binary" | "base64";
 const MIN_SUSPICIOUS_CHARACTERS = 4096;
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]+={0,2}$/u;
 
+const OUTSIDE_BASE64_TEXT = /[^A-Za-z0-9+/=\s]/u;
+const REPLACEMENT_CHARACTER = 65_533;
+const TAB = 9;
+const LINE_FEED = 10;
+const CARRIAGE_RETURN = 13;
+
+function isControlUnit(code: number): boolean {
+  if (code < 32) {
+    return code !== TAB && code !== LINE_FEED && code !== CARRIAGE_RETURN;
+  }
+
+  return code === REPLACEMENT_CHARACTER;
+}
+
+function controlCharacterCount(text: string): number {
+  let count = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (isControlUnit(text.codePointAt(index) ?? TAB)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 function suspiciousOutputKind(text: string): SuspiciousOutputKind | undefined {
   if (text.length < MIN_SUSPICIOUS_CHARACTERS) {
     return undefined;
   }
 
-  let controlCharacters = 0;
-
-  for (const character of text) {
-    const codePoint = character.codePointAt(0);
-
-    if (
-      character === "\uFFFD" ||
-      codePoint === 0 ||
-      (codePoint !== undefined &&
-        codePoint < 32 &&
-        character !== "\n" &&
-        character !== "\r" &&
-        character !== "\t")
-    ) {
-      controlCharacters += 1;
-    }
-  }
+  const controlCharacters = controlCharacterCount(text);
 
   if (controlCharacters >= 8 && controlCharacters / text.length >= 0.002) {
     return "binary";
+  }
+
+  if (OUTSIDE_BASE64_TEXT.test(text)) {
+    return undefined;
   }
 
   const compact = text.replaceAll(/\s/gu, "");
