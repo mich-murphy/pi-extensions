@@ -28,7 +28,7 @@ Each record carries the session ID, the model and Pi's version.
 Code decides which extension owns each record:
 
 - the extension in this repository that registered the failing tool, from Pi's `sourceInfo`;
-- for a report, the extension it names first, or the extension that registered the command or tool it names;
+- for a report, the extension it names first, the extension that registered the tool it names, or the extension that registered the slash command it names. A command counts only when the component starts with `/`, and only its first word is matched, so `/claude usage` belongs to pi-claude while a bare `retry` or `skills` stays `unattributed`, because Pi has a retry setting and skill loading of its own;
 - pi-claude, when the error names a Claude SDK scratch directory (`/tmp/claude-<uid>/…`) or a Claude project directory name;
 - otherwise `unattributed`, including Pi's built-in tools.
 

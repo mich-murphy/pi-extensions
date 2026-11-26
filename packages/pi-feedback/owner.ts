@@ -85,17 +85,22 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
   const forSignal = (toolName: string, error: string): Attribution =>
     attribute(toolNamed(toolName), error);
 
+  const commandNamed = (name: string): CommandSource | undefined =>
+    sources
+      .getCommands()
+      .find((candidate) => candidate.name === name || candidate.name === `skill:${name}`);
+
   const forReport = (component: string, actual: string): Attribution => {
-    const named = component.trim().replace(/^\//u, "");
+    const trimmed = component.trim();
+    const named = trimmed.replace(/^\//u, "");
     const first = named.toLowerCase().split(/[\s/:]+/u)[0] ?? "";
 
     if (own.has(first)) {
       return { owner: first };
     }
 
-    const command = sources
-      .getCommands()
-      .find((candidate) => candidate.name === named || candidate.name === `skill:${named}`);
+    const invoked = named.split(/\s+/u)[0] ?? "";
+    const command = trimmed.startsWith("/") ? commandNamed(invoked) : undefined;
 
     const commandOwner = command === undefined ? undefined : packageAt(command.sourceInfo.path);
 
