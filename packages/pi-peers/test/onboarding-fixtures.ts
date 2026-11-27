@@ -35,7 +35,24 @@ export const TAILNET = {
   self: ["100.64.0.1", "fd7a:115c:a1e0::1"],
   other: "dev-01",
   otherAddress: "100.64.0.2",
+  ipOnly: "build-box",
+  ipOnlyAddress: "100.64.0.3",
+  unknownAddress: "100.64.0.9",
 } as const;
+
+function whois(name: string, address: string, stableId: string): string {
+  return JSON.stringify({
+    Node: {
+      ID: 7,
+      StableID: stableId,
+      Name: `${name.toUpperCase()}.tail0000.ts.net.`,
+      Addresses: [`${address}/32`],
+      Tags: ["tag:dev"],
+    },
+    UserProfile: { LoginName: "tagged-devices" },
+    CapMap: {},
+  });
+}
 
 function gatewayWrapper(real: string, diagnose: string): string {
   return [
@@ -57,6 +74,9 @@ function fakeTailscale(machine: string, backend: string): string {
     "#!/bin/sh",
     `if [ "$1" = "status" ]; then echo '${status}'; exit 0; fi`,
     `if [ "$1" = "ip" ] && [ "$3" = "${TAILNET.other}" ]; then echo ${TAILNET.otherAddress}; exit 0; fi`,
+    `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.otherAddress}" ]; then echo '${whois(TAILNET.other, TAILNET.otherAddress, "nDev")}'; exit 0; fi`,
+    `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.ipOnlyAddress}" ]; then echo '${whois(TAILNET.ipOnly, TAILNET.ipOnlyAddress, "nBuild")}'; exit 0; fi`,
+    `if [ "$1" = "whois" ]; then echo 'peer not found' >&2; exit 1; fi`,
     "echo 'no such host' >&2",
     "exit 1",
     "",

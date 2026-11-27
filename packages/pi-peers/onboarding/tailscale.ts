@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { lstat, open, readlink, realpath, stat } from "node:fs/promises";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { Schema } from "effect";
@@ -71,6 +71,7 @@ export type TailscaleSelf = {
 };
 
 const isFailure = Schema.is(Schema.Struct({ stderr: Schema.String }));
+const isNotRunning = Schema.is(Schema.Struct({ code: Schema.Literal("tailscale-not-running") }));
 const decodeState = Schema.decodeUnknownSync(Schema.Struct({ BackendState: Schema.String }));
 
 const decodeSelf = Schema.decodeUnknownSync(
@@ -287,6 +288,51 @@ export async function resolveHost(command: string, host: string): Promise<string
   }
 
   return address;
+}
+
+const decodeWhois = Schema.decodeUnknownSync(
+  Schema.Struct({
+    Node: Schema.Struct({ Name: Schema.String, Addresses: Schema.Array(Schema.String) }),
+  }),
+);
+
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
+
+function sameAddress(prefix: string, address: string): boolean {
+  const [host = ""] = prefix.split("/");
+  const family = isIP(address) === 6 ? "ipv6" : "ipv4";
+  const list = new BlockList();
+  list.addAddress(address, family);
+
+  return isIP(host) === isIP(address) && list.check(host, family);
+}
+
+export async function whoisName(command: string, address: string): Promise<string> {
+  let output: string;
+
+  try {
+    output = await run(command, ["whois", "--json", address]);
+  } catch (error) {
+    throw isNotRunning(error)
+      ? new TailscaleRefusal("tailscale-not-running")
+      : new RefusalError(
+          `no tailnet computer has the address ${address}`,
+          "Check the address with tailscale status, or enter the other computer's MagicDNS name",
+        );
+  }
+
+  try {
+    const node = decodeWhois(parseJson(output)).Node;
+    const name = (node.Name.split(".")[0] ?? "").toLowerCase();
+
+    if (!LABEL.test(name) || !node.Addresses.some((prefix) => sameAddress(prefix, address))) {
+      throw new Error("Tailscale whois does not name this address");
+    }
+
+    return name;
+  } catch {
+    throw new TailscaleRefusal("tailscale-error");
+  }
 }
 
 export function listenAddress(self: TailscaleSelf): string {

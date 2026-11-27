@@ -27,7 +27,7 @@ const CONNECTION_HELP =
   "One computer listens and the other connects. Listen: this computer waits on its own tailnet IP. Connect: this computer dials the other one.";
 
 const HOST_HELP =
-  "The other computer's MagicDNS name, like dev-01, or its tailnet IP. Setup resolves a name to its tailnet IP once, when you link.";
+  "The other computer's MagicDNS name, like dev-01, or its tailnet IP. Required to connect; optional when listening. Setup asks Tailscale once, when you link, which computer it is and names it in the grant to add to your tailnet policy.";
 
 const PORT_HELP = `The TCP port the listening computer uses. The default is ${String(DEFAULT_PORT)}.`;
 
@@ -46,20 +46,20 @@ export function remoteRows(draft: RemoteDraft): Array<Row> {
         draft.mode = value;
       },
     }),
-    ...(draft.mode === "connect"
-      ? [
-          textField({
-            id: "host",
-            label: "Other computer",
-            description: HOST_HELP,
-            placeholder: "MagicDNS name or tailnet IP",
-            get: () => draft.host,
-            save: validated(hostError, (value) => {
-              draft.host = value.trim();
-            }),
-          }),
-        ]
-      : []),
+    textField({
+      id: "host",
+      label: "Other computer",
+      description: HOST_HELP,
+      placeholder: "MagicDNS name or tailnet IP",
+      empty: draft.mode === "connect" ? "Required" : "Optional",
+      get: () => draft.host,
+      save: validated(
+        (value) => (draft.mode === "listen" && value.trim() === "" ? undefined : hostError(value)),
+        (value) => {
+          draft.host = value.trim();
+        },
+      ),
+    }),
     textField({
       id: "port",
       label: "Port",
@@ -82,8 +82,7 @@ export function remoteGate(draft: RemoteDraft): Gate<RemoteIntent> {
     return { kind: "missing", reason: "Port" };
   }
 
-  const invalid =
-    (draft.mode === "connect" ? hostError(draft.host) : undefined) ?? portError(draft.port);
+  const invalid = (draft.host === "" ? undefined : hostError(draft.host)) ?? portError(draft.port);
 
   if (invalid !== undefined) {
     return { kind: "invalid", reason: invalid.replace(/\.$/u, "").toLowerCase() };

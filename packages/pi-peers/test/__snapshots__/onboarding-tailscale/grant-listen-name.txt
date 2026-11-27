@@ -1,0 +1,1 @@
+✓ Linked over Tailscale — listening on 100.64.0.1:7443. Add this grant to your tailnet policy so dev-01 may use sessions here: {"src":["dev-01"],"dst":["laptop"],"ip":["tcp:7443"],"app":{"github.com/mich-murphy/cap/pi-peers":[{"scopes":["local"],"allow":["discover","push"]}]}}. Then link the other computer the same way and choose Doctor (see docs/remote-setup.md).

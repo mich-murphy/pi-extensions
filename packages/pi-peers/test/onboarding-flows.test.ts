@@ -85,17 +85,29 @@ const openers = (model: MenuModel): Array<string> =>
 const rowLabels = (state: RemoteDraft): Array<string> => remoteRows(state).map((row) => row.label);
 
 describe("the Tailscale link form", () => {
-  test("a new link listens on port 7443 and asks for nothing else", () => {
+  test("a new link listens on port 7443; the other computer is optional when listening", () => {
     expect(remoteDraft()).toStrictEqual({ mode: "listen", host: "", port: "7443" });
-    expect(rowLabels(remoteDraft())).toStrictEqual(["Connection", "Port"]);
+    expect(rowLabels(remoteDraft())).toStrictEqual(["Connection", "Other computer", "Port"]);
+    expect(remoteRows(remoteDraft())[1]?.value).toBe("Optional");
+    expect(remoteRows(remoteDraft())[1]?.description).toContain("names it in the grant");
     expect(remoteGate(remoteDraft())).toStrictEqual({
       kind: "ready",
       value: { mode: "listen", host: "", port: 7443 },
     });
   });
+  test("a listener may name the other computer; a bad name is not ready", () => {
+    expect(remoteGate({ mode: "listen", host: "dev-01", port: "7443" })).toStrictEqual({
+      kind: "ready",
+      value: { mode: "listen", host: "dev-01", port: 7443 },
+    });
+    expect(remoteGate({ mode: "listen", host: "dev 01", port: "7443" })).toMatchObject({
+      kind: "invalid",
+    });
+  });
   test("connecting asks for the other computer, which is required", () => {
     const state = ready({ host: "" });
     expect(rowLabels(state)).toStrictEqual(["Connection", "Other computer", "Port"]);
+    expect(remoteRows(state)[1]?.value).toBe("Required");
     expect(remoteGate(state)).toStrictEqual({ kind: "missing", reason: "Other computer" });
     const { model, run, consented } = linkForm(state);
     model.activate("apply");

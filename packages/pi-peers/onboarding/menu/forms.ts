@@ -57,6 +57,7 @@ export type TextField = {
   readonly label: string;
   readonly description: string;
   readonly placeholder: string;
+  readonly empty?: string;
   readonly get: () => string;
   readonly save: (value: string) => Saved | Promise<Saved>;
 };
@@ -67,7 +68,7 @@ export function textField(field: TextField): Row {
   return {
     id: field.id,
     label: field.label,
-    value: current === "" ? "Required" : visibleText(current),
+    value: current === "" ? (field.empty ?? "Required") : visibleText(current),
     description: field.description,
     activation: {
       kind: "open",

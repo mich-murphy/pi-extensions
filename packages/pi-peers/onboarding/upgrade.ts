@@ -32,7 +32,7 @@ import {
   joinAddress,
   keptLink,
   linkedPlan,
-  otherName,
+  OTHER_COMPUTER,
   remoteReview,
   savedLink,
   savedTailscale,
@@ -46,6 +46,7 @@ import {
   resolveHost,
   TAILSCALE_PATHS,
   tailscaleSelf,
+  whoisName,
 } from "./tailscale.js";
 import type { TailscaleSelf } from "./tailscale.js";
 import { saveOwnedPlan } from "./update.js";
@@ -237,16 +238,8 @@ function tailnetName(self: TailscaleSelf, machine: string): void {
   }
 }
 
-async function linkEndpoint(
-  command: string,
-  self: TailscaleSelf,
-  intent: RemoteIntent,
-): Promise<Endpoint> {
-  if (intent.mode === "listen") {
-    return { mode: "listen", address: joinAddress(listenAddress(self), intent.port) };
-  }
-
-  const address = await resolveHost(command, intent.host);
+async function otherAddress(command: string, self: TailscaleSelf, host: string): Promise<string> {
+  const address = await resolveHost(command, host);
 
   if (self.addresses.includes(address)) {
     throw new RefusalError(
@@ -255,7 +248,44 @@ async function linkEndpoint(
     );
   }
 
-  return { mode: "connect", address: joinAddress(address, intent.port) };
+  return address;
+}
+
+type LinkTarget = { readonly endpoint: Endpoint; readonly other: string | undefined };
+
+async function linkEndpoint(
+  command: string,
+  self: TailscaleSelf,
+  intent: RemoteIntent,
+): Promise<LinkTarget> {
+  if (intent.mode === "listen") {
+    const endpoint: Endpoint = {
+      mode: "listen",
+      address: joinAddress(listenAddress(self), intent.port),
+    };
+
+    return intent.host === ""
+      ? { endpoint, other: undefined }
+      : {
+          endpoint,
+          other: await whoisName(command, await otherAddress(command, self, intent.host)),
+        };
+  }
+
+  const address = await otherAddress(command, self, intent.host);
+
+  return {
+    endpoint: { mode: "connect", address: joinAddress(address, intent.port) },
+    other: await whoisName(command, address),
+  };
+}
+
+function grantNext(other: string | undefined, grant: Schema.Json): string {
+  const json = JSON.stringify(grant);
+
+  return other === undefined
+    ? `Add this grant to your tailnet policy, with ${OTHER_COMPUTER} replaced by the other computer's tailnet name (the first label of its MagicDNS name), so it may use sessions here: ${json}`
+    : `Add this grant to your tailnet policy so ${visibleText(other)} may use sessions here: ${json}`;
 }
 
 async function linkWork(manage: Manage, intent: RemoteIntent, step: Step): Promise<Outcome> {
@@ -264,13 +294,12 @@ async function linkWork(manage: Manage, intent: RemoteIntent, step: Step): Promi
   const command = await findTailscale(configured === undefined ? TAILSCALE_PATHS : [configured]);
   const self = await tailscaleSelf(command);
   tailnetName(self, manage.config.machineId);
-  const endpoint = await linkEndpoint(command, self, intent);
+  const { endpoint, other } = await linkEndpoint(command, self, intent);
   const plan = linkedPlan(await freshPlan(manage), endpoint, configured);
-  const other = otherName(intent);
 
   const grant = grantInto(
     self.name,
-    other,
+    other ?? OTHER_COMPUTER,
     plan.choices.scopeId,
     intent.mode === "listen" ? intent.port : undefined,
   );
@@ -287,7 +316,7 @@ async function linkWork(manage: Manage, intent: RemoteIntent, step: Step): Promi
           ["This computer", visibleText(self.name)],
           ["Endpoint", endpointText(endpoint)],
         ],
-        next: `Add this grant to your tailnet policy so ${visibleText(other)} may use sessions here: ${JSON.stringify(grant)}. Then link the other computer the same way and choose Doctor (see docs/remote-setup.md).`,
+        next: `${grantNext(other, grant)}. Then link the other computer the same way and choose Doctor (see docs/remote-setup.md).`,
       },
     },
     step,

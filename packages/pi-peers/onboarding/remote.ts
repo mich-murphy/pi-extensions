@@ -48,10 +48,15 @@ export function savedTailscale(plan: LocalPlan | undefined): string | undefined 
 }
 
 export function remoteReview(intent: RemoteIntent, machine: string): Array<string> {
+  const named =
+    intent.host === ""
+      ? "The grant setup shows will say <other computer>; replace it with the other computer's tailnet name."
+      : `Tailscale is asked once, now, which computer ${visibleText(intent.host)} is; the grant setup shows names it.`;
+
   const where =
     intent.mode === "listen"
-      ? `Listen on this computer's tailnet IP, port ${String(intent.port)}.`
-      : `Connect to ${visibleText(intent.host)} on port ${String(intent.port)}; a name is resolved to its tailnet IP once, now.`;
+      ? `Listen on this computer's tailnet IP, port ${String(intent.port)}. ${named}`
+      : `Connect to ${visibleText(intent.host)} on port ${String(intent.port)}; a name is resolved to its tailnet IP once, now. ${named}`;
 
   return [
     where,
@@ -128,13 +133,7 @@ export function endpointText(endpoint: Endpoint): string {
     : `connecting to ${visibleText(endpoint.address)}`;
 }
 
-const OTHER_COMPUTER = "<other computer>";
-
-export function otherName(intent: RemoteIntent): string {
-  return intent.mode === "connect" && isIP(intent.host) === 0
-    ? (intent.host.toLowerCase().split(".")[0] ?? OTHER_COMPUTER)
-    : OTHER_COMPUTER;
-}
+export const OTHER_COMPUTER = "<other computer>";
 
 export function grantInto(
   self: string,

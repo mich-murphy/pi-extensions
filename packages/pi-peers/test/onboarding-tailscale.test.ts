@@ -9,7 +9,7 @@ import type { LocalPlan } from "../onboarding/plan.js";
 import { grantInto, linkedPlan, unlinkedPlan } from "../onboarding/remote.js";
 import { decodeGateway, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
-import { findTailscale, resolveHost, tailscaleSelf } from "../onboarding/tailscale.js";
+import { findTailscale, resolveHost, tailscaleSelf, whoisName } from "../onboarding/tailscale.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
 import { dialog, TAILNET, tailscaleFixture } from "./onboarding-fixtures.js";
 
@@ -53,6 +53,12 @@ function notices(ctx: ReturnType<typeof dialog>): string {
     .mocked(ctx.ui.notify)
     .mock.calls.map(([message]) => message)
     .join("\n");
+}
+
+async function grantSample(ctx: ReturnType<typeof dialog>, name: string): Promise<void> {
+  await expect(`${notices(ctx)}\n`).toMatchFileSnapshot(
+    `__snapshots__/onboarding-tailscale/grant-${name}.txt`,
+  );
 }
 
 function remoteRow(report: Awaited<ReturnType<typeof doctorReport>>) {
@@ -146,6 +152,13 @@ describe("the tailscale command", () => {
     );
     await rm(stopped.root, { recursive: true, force: true });
   });
+  test("whois names a tailnet IP by the first label of its MagicDNS name, lower case", async () => {
+    await expect(whoisName(fixture.tailscale, TAILNET.ipOnlyAddress)).resolves.toBe(TAILNET.ipOnly);
+    await expect(whoisName(fixture.tailscale, TAILNET.otherAddress)).resolves.toBe(TAILNET.other);
+    await expect(whoisName(fixture.tailscale, TAILNET.unknownAddress)).rejects.toThrow(
+      `no tailnet computer has the address ${TAILNET.unknownAddress}`,
+    );
+  });
   test("an IP is kept, a MagicDNS name is resolved once, an unknown name is refused", async () => {
     await expect(resolveHost(fixture.tailscale, "100.64.0.9")).resolves.toBe("100.64.0.9");
     await expect(resolveHost(fixture.tailscale, TAILNET.other)).resolves.toBe(TAILNET.otherAddress);
@@ -187,11 +200,14 @@ describe("linking through setup with a fake gateway and tailscale", () => {
     await rm(fixture.root, { recursive: true, force: true });
   });
 
-  test("listening uses this computer's tailnet IP and port 7443 and shows the grant once", async () => {
+  const REPLACE =
+    "Add this grant to your tailnet policy, with <other computer> replaced by the other computer's tailnet name (the first label of its MagicDNS name), so it may use sessions here:";
+
+  test("listening with the other computer left empty shows the placeholder and says to replace it", async () => {
     const linked = await command([LINK, "APPLY"]);
     expect(notices(linked)).toContain("Linked over Tailscale — listening on 100.64.0.1:7443");
     expect(notices(linked)).toContain(
-      `Add this grant to your tailnet policy so <other computer> may use sessions here: ${JSON.stringify(grantInto("laptop", "<other computer>", "local", 7443))}`,
+      `${REPLACE} ${JSON.stringify(grantInto("laptop", "<other computer>", "local", 7443))}`,
     );
     const saved = await gateway();
     expect(saved.remote).toStrictEqual({
@@ -202,6 +218,26 @@ describe("linking through setup with a fake gateway and tailscale", () => {
       { machineId: "laptop", scopeId: "local", permissions: ["discover", "push"] },
     ]);
     expect(activate).toHaveBeenCalledTimes(2);
+    await grantSample(linked, "listen-blank");
+  });
+  test("listening with a MagicDNS name names that computer in the grant", async () => {
+    const linked = await command([LINK, `Other computer=${TAILNET.other}`, "APPLY"]);
+    expect(notices(linked)).toContain(
+      `Add this grant to your tailnet policy so dev-01 may use sessions here: ${JSON.stringify(grantInto("laptop", TAILNET.other, "local", 7443))}`,
+    );
+    expect(notices(linked)).not.toContain("<other computer>");
+    await expect(gateway()).resolves.toMatchObject({
+      remote: { endpoint: { mode: "listen", address: "100.64.0.1:7443" } },
+    });
+    await grantSample(linked, "listen-name");
+  });
+  test("listening with a tailnet IP names the computer whois reports", async () => {
+    const linked = await command([LINK, `Other computer=${TAILNET.ipOnlyAddress}`, "APPLY"]);
+    expect(notices(linked)).toContain(
+      `so build-box may use sessions here: ${JSON.stringify(grantInto("laptop", TAILNET.ipOnly, "local", 7443))}`,
+    );
+    expect(notices(linked)).not.toContain("<other computer>");
+    await grantSample(linked, "listen-ip");
   });
   test("connecting resolves the MagicDNS name to its tailnet IP and names it in the grant", async () => {
     const linked = await command([
@@ -212,11 +248,44 @@ describe("linking through setup with a fake gateway and tailscale", () => {
       "APPLY",
     ]);
     expect(notices(linked)).toContain(
-      JSON.stringify(grantInto("laptop", TAILNET.other, "local", undefined)),
+      `so dev-01 may use sessions here: ${JSON.stringify(grantInto("laptop", TAILNET.other, "local", undefined))}`,
     );
     await expect(gateway()).resolves.toMatchObject({
       remote: { endpoint: { mode: "connect", address: `${TAILNET.otherAddress}:7500` } },
     });
+    await grantSample(linked, "connect-name");
+  });
+  test("connecting by tailnet IP names the computer whois reports", async () => {
+    const linked = await command([
+      LINK,
+      "Connection=Connect to another computer",
+      `Other computer=${TAILNET.ipOnlyAddress}`,
+      "APPLY",
+    ]);
+    expect(notices(linked)).toContain(
+      `so build-box may use sessions here: ${JSON.stringify(grantInto("laptop", TAILNET.ipOnly, "local", undefined))}`,
+    );
+    expect(notices(linked)).not.toContain("<other computer>");
+    await expect(gateway()).resolves.toMatchObject({
+      remote: { endpoint: { mode: "connect", address: `${TAILNET.ipOnlyAddress}:7443` } },
+    });
+    await grantSample(linked, "connect-ip");
+  });
+  test.each([
+    ["Connect to another computer", "connect"],
+    ["Listen on this computer", "listen"],
+  ])("an IP Tailscale does not know is refused (%s) before anything is saved", async (mode) => {
+    const before = await readFile(setupPaths(agent).gateway);
+    const linked = await command([
+      LINK,
+      `Connection=${mode}`,
+      `Other computer=${TAILNET.unknownAddress}`,
+      "APPLY",
+    ]);
+    expect(notices(linked)).toContain(
+      `Linking failed: no tailnet computer has the address ${TAILNET.unknownAddress}`,
+    );
+    await expect(readFile(setupPaths(agent).gateway)).resolves.toStrictEqual(before);
   });
   test("connecting to this computer's own address is refused before anything is saved", async () => {
     const before = await readFile(setupPaths(agent).gateway);
