@@ -7,10 +7,20 @@ import { groupId } from "../fingerprint.ts";
 import type { LedgerEvent } from "../ledger.ts";
 import { deriveGroups } from "../queue.ts";
 import type { Group } from "../queue.ts";
-import { ownerEvent, reopenEvent, report, resolveEvent, signal } from "./events.ts";
+import {
+  ownerEvent,
+  reopenEvent,
+  report,
+  resolveEvent,
+  sameCauseEvent,
+  signal,
+  verdictEvent,
+  withoutClassifierEvents,
+} from "./events.ts";
 
 const OWNERS = ["pi-claude", "pi-skills", "pi-core", "unattributed"] as const;
 const FINGERPRINTS = ["read: ENOENT", "bash: timeout"] as const;
+const SCORES = [0, 0.19, 0.7, 0.89, 0.9, 0.96, 1] as const;
 const SESSIONS = ["a", "b", "c"] as const;
 const settings = propertySettings(200);
 
@@ -22,8 +32,9 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
     const owner = tc.draw(sampledFrom([...OWNERS]), "owner");
     const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
     const session = tc.draw(sampledFrom([...SESSIONS]), "session");
-    const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 6 }), "shape");
-    const probability = tc.draw(sampledFrom([0.85, 0.9, 0.95]), "probability");
+    const fixtureIndex = tc.draw(integers({ minValue: 0, maxValue: 8 }), "shape");
+    const score = tc.draw(sampledFrom([...SCORES]), "score");
+    const other = tc.draw(sampledFrom([...FINGERPRINTS]), "other");
     const group = groupId(owner, fingerprint);
     const options = { n, session, owner, fingerprint };
 
@@ -34,7 +45,9 @@ function drawEvents(tc: TestCase): Array<LedgerEvent> {
       () => report({ ...options, impact: "blocked" }),
       () => resolveEvent(n, group),
       () => reopenEvent(n, group),
-      () => ownerEvent(n, fingerprint, owner, probability),
+      () => ownerEvent(n, fingerprint, owner, score),
+      () => verdictEvent(n, fingerprint, { harnessPath: score, outsideService: score }),
+      () => sameCauseEvent(n, owner, [fingerprint, other], score),
     ][fixtureIndex];
 
     assert.ok(make !== undefined);
@@ -88,6 +101,22 @@ describe("deriveGroups properties", () => {
     assertHegel(settings, (tc) => {
       for (const group of deriveGroups(drawEvents(tc))) {
         assertGroupInvariants(group);
+      }
+    });
+  });
+
+  test("reads older classifier events and ignores them", () => {
+    assertHegel(settings, (tc) => {
+      const events = drawEvents(tc);
+      assert.deepEqual(deriveGroups(events), deriveGroups(withoutClassifierEvents(events)));
+    });
+  });
+
+  test("names each group after its owner and fingerprint", () => {
+    assertHegel(settings, (tc) => {
+      for (const group of deriveGroups(drawEvents(tc))) {
+        assert.equal(group.id, groupId(group.owner, group.fingerprint));
+        assert.deepEqual(group.fingerprints, [group.fingerprint]);
       }
     });
   });

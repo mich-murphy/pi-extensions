@@ -7,11 +7,18 @@ import { assertHegel, propertySettings } from "../../../test-support/hegel-setti
 import type { LedgerEvent } from "../ledger.ts";
 import { deriveGroups } from "../queue.ts";
 import type { Group } from "../queue.ts";
-import { signal, verdictEvent } from "./events.ts";
+import { isOutsideService } from "../verdict.ts";
+import { signal, verdictEvent, withoutClassifierEvents } from "./events.ts";
 import type { SignalOptions } from "./events.ts";
 
 const OWNERS = ["pi-claude", "unattributed"] as const;
 const FINGERPRINTS = ["bash: ls: unrecognized option", "read: ENOENT"] as const;
+const TOOLS = ["bash", "read", "webfetch"] as const;
+const ERRORS = [
+  "ls: unrecognized option",
+  "Connection refused by learn.microsoft.com",
+  "Request failed (404 Not Found)",
+] as const;
 const SESSIONS = ["a", "b", "c"] as const;
 const settings = propertySettings(200);
 
@@ -39,6 +46,8 @@ function drawEvents(tc: TestCase): Drawn {
       session: tc.draw(sampledFrom([...SESSIONS]), "session"),
       owner: tc.draw(sampledFrom([...OWNERS]), "owner"),
       fingerprint,
+      tool: tc.draw(sampledFrom([...TOOLS]), "tool"),
+      error: tc.draw(sampledFrom([...ERRORS]), "error"),
     };
 
     if (piPath) {
@@ -97,10 +106,20 @@ describe("Pi core label properties", () => {
     });
   });
 
-  test("never labels a group Pi core without a verdict", () => {
+  test("never labels a group Pi core that holds an outside-service record", () => {
     assertHegel(settings, (tc) => {
-      const { records } = drawEvents(tc);
-      assert.ok(deriveGroups(records).every((group) => !group.piCore));
+      const { events, records } = drawEvents(tc);
+
+      for (const group of deriveGroups(events).filter((candidate) => candidate.piCore)) {
+        assert.ok(recordsOf(group, records).every((record) => !isOutsideService(record)));
+      }
+    });
+  });
+
+  test("ignores older verdicts", () => {
+    assertHegel(settings, (tc) => {
+      const { events } = drawEvents(tc);
+      assert.deepEqual(deriveGroups(events), deriveGroups(withoutClassifierEvents(events)));
     });
   });
 });

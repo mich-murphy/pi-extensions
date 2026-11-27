@@ -122,10 +122,6 @@ export type LedgerEvent = typeof LedgerEvent.Type;
 
 export type RecordEvent = Extract<LedgerEvent, { readonly type: "report" | "signal" }>;
 
-export type VerdictEvent = Extract<LedgerEvent, { readonly type: "verdict" }>;
-
-export type OwnerEvent = Extract<LedgerEvent, { readonly type: "owner" }>;
-
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 export type EventDraft = DistributiveOmit<LedgerEvent, "id" | "at">;

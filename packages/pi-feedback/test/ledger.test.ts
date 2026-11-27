@@ -1,11 +1,17 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { appendEvent, FIELD_LIMIT, ledgerPath, parseLedger, readLedger } from "../ledger.ts";
 import type { EventDraft } from "../ledger.ts";
+import { deriveGroups } from "../queue.ts";
 import { REDACTED } from "../redact.ts";
 import { fakeClock, signal } from "./events.ts";
+
+const CLASSIFIER_LEDGER = fileURLToPath(
+  new URL("fixtures/classifier-ledger.jsonl", import.meta.url),
+);
 
 const draft: EventDraft = {
   type: "signal",
@@ -119,6 +125,28 @@ describe("ledger", () => {
       ],
       skipped: 0,
     });
+  });
+
+  test("reads older classifier events without skipping them, and the queue ignores them", async () => {
+    const { events, skipped } = await readLedger(CLASSIFIER_LEDGER);
+    expect(skipped).toBe(0);
+    expect(events.map((event) => event.type)).toStrictEqual([
+      "signal",
+      "verdict",
+      "signal",
+      "signal",
+      "same_cause",
+      "report",
+      "owner",
+    ]);
+    expect(
+      deriveGroups(events).map((group) => [group.owner, group.fingerprint, group.excluded]),
+    ).toStrictEqual([
+      ["unattributed", "the search tool/tool_error", 0],
+      ["pi-claude", "read: other", 0],
+      ["pi-claude", "read: ENOENT", 0],
+      ["pi-web", "webfetch: Request failed (<n> Not Found).", 1],
+    ]);
   });
 
   test("skips JSON lines that are not ledger events", () => {

@@ -1,7 +1,5 @@
 import { groupId } from "./fingerprint.ts";
-import { THRESHOLDS } from "./jev.ts";
-import type { LedgerEvent, RecordEvent, VerdictEvent } from "./ledger.ts";
-import { withAnsweredOwners } from "./owner-answer.ts";
+import type { LedgerEvent, RecordEvent } from "./ledger.ts";
 import { PI_CORE, UNATTRIBUTED } from "./owner.ts";
 import { isExcluded, isPiCore } from "./verdict.ts";
 
@@ -41,12 +39,6 @@ type Builder = {
   resolution: Resolution | undefined;
 };
 
-type Merges = {
-  readonly idOf: (owner: string, fingerprint: string) => string;
-  readonly rootOf: (owner: string, fingerprint: string) => string;
-  readonly aliases: ReadonlyMap<string, string>;
-};
-
 const order = (a: string, b: string): number => Number(a > b) - Number(a < b);
 
 function canonical(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<LedgerEvent> {
@@ -67,112 +59,13 @@ function isRecord(event: LedgerEvent): event is RecordEvent {
   return event.type === "report" || event.type === "signal";
 }
 
-function memberKey(owner: string, fingerprint: string): string {
-  return JSON.stringify([owner, fingerprint]);
-}
-
-function groupIds(): (owner: string, fingerprint: string) => string {
-  const byOwner = new Map<string, Map<string, string>>();
-
-  return (owner, fingerprint) => {
-    const known = byOwner.get(owner) ?? new Map<string, string>();
-    byOwner.set(owner, known);
-    const cached = known.get(fingerprint);
-
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const id = groupId(owner, fingerprint);
-    known.set(fingerprint, id);
-
-    return id;
-  };
-}
-
-function mergesOf(events: ReadonlyArray<LedgerEvent>, moved: ReadonlyMap<string, string>): Merges {
-  const idOf = groupIds();
-  const firstAt = new Map<string, string>();
-  const fingerprintOf = new Map<string, readonly [string, string]>();
-
-  const remember = (owner: string, fingerprint: string): string => {
-    const key = memberKey(owner, fingerprint);
-    fingerprintOf.set(key, [owner, fingerprint]);
-
-    return key;
-  };
-
-  for (const event of events.filter((candidate) => isRecord(candidate))) {
-    const key = remember(event.owner, event.fingerprint);
-
-    if (!firstAt.has(key)) {
-      firstAt.set(key, event.at);
-    }
-  }
-
-  const parent = new Map<string, string>();
-
-  const find = (key: string): string => {
-    let current = key;
-
-    for (let next = parent.get(current); next !== undefined; next = parent.get(current)) {
-      current = next;
-    }
-
-    return current;
-  };
-
-  const precedence = (key: string): string => `${firstAt.get(key) ?? "~"}\n${key}`;
-
-  for (const event of events) {
-    if (event.type === "same_cause" && event.sameCause >= THRESHOLDS.sameCause) {
-      const a = find(remember(event.owner, event.a));
-      const b = find(remember(event.owner, event.b));
-      const [root, child] = precedence(a) <= precedence(b) ? [a, b] : [b, a];
-
-      if (root !== child) {
-        parent.set(child, root);
-      }
-    }
-  }
-
-  const rootOf = (owner: string, fingerprint: string): string =>
-    fingerprintOf.get(find(memberKey(owner, fingerprint)))?.[1] ?? fingerprint;
-
-  const aliases = new Map<string, string>();
-
-  for (const [owner, fingerprint] of fingerprintOf.values()) {
-    aliases.set(idOf(owner, fingerprint), idOf(owner, rootOf(owner, fingerprint)));
-  }
-
-  const members = new Set(fingerprintOf.keys());
-
-  return { idOf, rootOf, aliases: withMovedAliases(aliases, moved, members, rootOf) };
-}
-
-function withMovedAliases(
-  aliases: Map<string, string>,
-  moved: ReadonlyMap<string, string>,
-  members: ReadonlySet<string>,
-  rootOf: Merges["rootOf"],
-): Map<string, string> {
-  for (const [fingerprint, owner] of moved) {
-    if (!members.has(memberKey(UNATTRIBUTED, fingerprint))) {
-      aliases.set(groupId(UNATTRIBUTED, fingerprint), groupId(owner, rootOf(owner, fingerprint)));
-    }
-  }
-
-  return aliases;
-}
-
-function addRecord(builders: Map<string, Builder>, merges: Merges, event: RecordEvent): void {
-  const fingerprint = merges.rootOf(event.owner, event.fingerprint);
-  const id = merges.idOf(event.owner, fingerprint);
+function addRecord(builders: Map<string, Builder>, event: RecordEvent): void {
+  const id = groupId(event.owner, event.fingerprint);
 
   const builder = builders.get(id) ?? {
     id,
     owner: event.owner,
-    fingerprint,
+    fingerprint: event.fingerprint,
     fingerprints: new Set<string>(),
     status: "open",
     live: [],
@@ -188,29 +81,18 @@ function addRecord(builders: Map<string, Builder>, merges: Merges, event: Record
   builders.set(id, builder);
 }
 
-function apply(
-  builders: Map<string, Builder>,
-  verdicts: Map<string, VerdictEvent>,
-  merges: Merges,
-  event: LedgerEvent,
-): void {
+function apply(builders: Map<string, Builder>, event: LedgerEvent): void {
   if (isRecord(event)) {
-    addRecord(builders, merges, event);
+    addRecord(builders, event);
 
     return;
   }
 
-  if (event.type === "verdict") {
-    verdicts.set(event.fingerprint, event);
-
+  if (event.type !== "resolve" && event.type !== "reopen") {
     return;
   }
 
-  if (event.type === "same_cause" || event.type === "owner") {
-    return;
-  }
-
-  const builder = builders.get(merges.aliases.get(event.group) ?? event.group);
+  const builder = builders.get(event.group);
 
   if (builder === undefined) {
     return;
@@ -233,27 +115,17 @@ function exampleOf(event: RecordEvent): string {
   return text.length > EXAMPLE_LIMIT ? `${text.slice(0, EXAMPLE_LIMIT - 1)}…` : text;
 }
 
-function finish(builder: Builder, verdicts: ReadonlyMap<string, VerdictEvent>): Group {
+function finish(builder: Builder): Group {
   const { status } = builder;
-
-  const excludedHere = (event: RecordEvent): boolean =>
-    isExcluded(event, verdicts.get(event.fingerprint));
-
-  const live = builder.live.filter((event) => !excludedHere(event));
-  const excluded = builder.live.filter((event) => excludedHere(event));
+  const live = builder.live.filter((event) => !isExcluded(event));
+  const excluded = builder.live.filter((event) => isExcluded(event));
   const sessions = new Set(live.map((event) => event.session)).size;
   const blocked = live.some((event) => event.type === "report" && event.impact === "blocked");
   const latest = live.at(-1);
   const open = status !== "resolved";
   const fingerprints = [...builder.fingerprints].toSorted(order);
 
-  const piCore = isPiCore({
-    owner: builder.owner,
-    live,
-    excluded,
-    sessions,
-    verdicts: fingerprints.map((fingerprint) => verdicts.get(fingerprint)),
-  });
+  const piCore = isPiCore({ owner: builder.owner, live, excluded, sessions });
 
   return {
     id: builder.id,
@@ -284,15 +156,11 @@ function byPriority(a: Group, b: Group): number {
 }
 
 export function deriveGroups(events: ReadonlyArray<LedgerEvent>): ReadonlyArray<Group> {
-  const answered = withAnsweredOwners(canonical(events));
-  const ordered = answered.events;
-  const merges = mergesOf(ordered, answered.moved);
   const builders = new Map<string, Builder>();
-  const verdicts = new Map<string, VerdictEvent>();
 
-  for (const event of ordered) {
-    apply(builders, verdicts, merges, event);
+  for (const event of canonical(events)) {
+    apply(builders, event);
   }
 
-  return [...builders.values()].map((builder) => finish(builder, verdicts)).toSorted(byPriority);
+  return [...builders.values()].map((builder) => finish(builder)).toSorted(byPriority);
 }

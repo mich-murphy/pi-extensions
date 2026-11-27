@@ -37,7 +37,7 @@ export type Attribution = {
   readonly pathExisted?: boolean;
 };
 
-export function escapeRegExp(text: string): string {
+function escapeRegExp(text: string): string {
   return text.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`);
 }
 
