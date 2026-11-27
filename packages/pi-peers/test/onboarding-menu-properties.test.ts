@@ -224,7 +224,15 @@ function runExisting(tc: TestCase) {
       model.back();
       depths.push(model.closed ? 0 : model.depth - want);
     } else {
-      model.activate(tc.draw(sampledFrom(routeIds)));
+      const screen = model.top;
+      const here = screen.kind === "list" ? screen.rows().map((row) => row.id) : [];
+
+      const id =
+        here.length > 0 && tc.draw(booleans())
+          ? tc.draw(sampledFrom(here))
+          : tc.draw(sampledFrom(routeIds));
+
+      model.activate(id);
     }
   }
 
