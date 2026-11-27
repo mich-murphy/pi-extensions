@@ -15,7 +15,7 @@ import type { Delivery } from "../state/types.js";
 import { MessageAliases } from "./aliases.js";
 import type { ClientOptions, EnsureGateway, LinkState } from "./client.js";
 import { GatewayClient } from "./client.js";
-import { permits } from "./config.js";
+import { permits, plainText } from "./config.js";
 import type { Configuration } from "./config.js";
 import { Handles, TakenIndex } from "./handles.js";
 import { footerStatus } from "./presentation.js";
@@ -280,7 +280,15 @@ export class AdapterSession {
   }
   private noticeText(): string {
     const senders = [
-      ...new Set(this.inbox.map((entry) => this.handles.sender(entry.from, entry.scopeId))),
+      ...new Set(
+        this.inbox.map((entry) => {
+          const handle = this.handles.sender(entry.from, entry.scopeId);
+
+          return entry.from.machineId === this.peer.machineId
+            ? handle
+            : `${handle} on machine ${plainText(entry.from.machineId)}`;
+        }),
+      ),
     ];
 
     const named = `${senders.slice(0, 3).join(", ")}${senders.length > 3 ? ", …" : ""}`;
