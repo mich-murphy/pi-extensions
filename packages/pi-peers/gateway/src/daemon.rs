@@ -69,6 +69,8 @@ struct Remote {
     replies: crate::replies::Replies,
     /// Interning tables of this link generation; a new link starts empty.
     refs: crate::intern::Refs,
+    /// Whether this side accepted the link: only a listener requires the peer to hold caps.
+    listening: bool,
 }
 /// The periodic whois of a linked peer, run as a task so routing never waits on the CLI.
 #[derive(Debug)]
@@ -1359,6 +1361,7 @@ mod tests {
             refresh: Refresh::new(Instant::now()),
             replies: crate::replies::Replies::default(),
             refs: crate::intern::Refs::default(),
+            listening: true,
         });
         tokio::time::advance(Duration::from_secs(29)).await;
         daemon.liveness();
@@ -1453,6 +1456,7 @@ mod tests {
             refresh: Refresh::new(Instant::now()),
             replies: crate::replies::Replies::default(),
             refs: crate::intern::Refs::default(),
+            listening: true,
         });
         (daemon, directory, peer, tasks)
     }
@@ -1514,6 +1518,64 @@ mod tests {
             drop(tasks);
             std::fs::remove_dir_all(directory).expect("cleanup");
         }
+    }
+
+    #[tokio::test]
+    async fn a_connector_keeps_a_link_whose_listener_holds_no_caps_and_refuses_its_frames() {
+        let id = ConnectionId(1);
+        let peer = |caps: &Value| crate::tailscale::tests_support::peer("beta", caps);
+        let caps = json!([{"scopes":["team"],"allow":["discover","push"]}]);
+        let (mut daemon, directory, mut stream, tasks) = linked_fixture("connector", &caps);
+        daemon
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+            .expect("remote fixture")
+            .listening = false;
+        daemon.refreshed(id, Ok(peer(&json!([]))));
+        assert!(
+            !daemon.clients[&id].failed,
+            "empty caps keep a connector's link"
+        );
+        for verb in [Verb::Discover, Verb::Push, Verb::Reply] {
+            assert!(!daemon.remote_allows(id, "team", verb), "{verb:?}");
+        }
+        let local = json!({"machineId":"alpha","sessionId":"me","runtimeNonce":"00000000000000000000000000000001"});
+        let remote = json!({"machineId":"beta","sessionId":"you","runtimeNonce":"00000000000000000000000000000002"});
+        let push = json!({"v":2,"op":"send","rid":"00000000000000000000000000000004","from":remote,"to":local,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000b","kind":"request","content":"a","format":"text"}});
+        assert!(!daemon.remote_admits(id, &push, "team"), "push refused");
+        daemon.export(id, &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000005","scopeIds":["team","other"],"watch":false}));
+        assert_eq!(
+            read_frame(&mut stream).await["outcome"]["value"]["peers"],
+            json!([]),
+            "nothing exported"
+        );
+        for (case, result) in [
+            ("404", Err(crate::tailscale::Failure::NotFound)),
+            (
+                "expired",
+                Err(crate::tailscale::Failure::Refused("expired")),
+            ),
+        ] {
+            let (mut daemon, directory, _stream, tasks) = linked_fixture("connector", &caps);
+            daemon
+                .clients
+                .get_mut(&id)
+                .and_then(|client| client.remote.as_mut())
+                .expect("remote fixture")
+                .listening = false;
+            daemon.refreshed(id, result);
+            assert!(
+                daemon.clients[&id].failed,
+                "{case} still closes a connector"
+            );
+            drop(daemon);
+            drop(tasks);
+            std::fs::remove_dir_all(directory).expect("cleanup");
+        }
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
     }
 
     #[tokio::test]

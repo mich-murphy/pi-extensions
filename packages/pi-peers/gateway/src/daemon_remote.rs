@@ -314,6 +314,12 @@ impl Daemon {
         let snapshot_rid = random_id()?;
         // The remote exports only what its own caps for this node allow.
         let scopes = self.config.scope_ids.clone();
+        let listening = self.link.as_ref().is_some_and(|link| {
+            matches!(
+                link.prepared().endpoint(),
+                crate::remote::Endpoint::Listen { .. }
+            )
+        });
         self.clients.insert(
             id,
             Client {
@@ -334,6 +340,7 @@ impl Daemon {
                     refresh: Refresh::new(Instant::now()),
                     replies: crate::replies::Replies::default(),
                     refs: crate::intern::Refs::default(),
+                    listening,
                 }),
                 closing: false,
                 failed: false,
@@ -496,9 +503,10 @@ impl Daemon {
                 .spawn(async move { (id, prepared.identify(ip).await) });
         }
     }
-    /// Applies one refresh: a vanished, expired, renamed or re-keyed node, empty caps or two
-    /// failures in a row close the link; changed caps apply to the next frame, and losing
-    /// `discover` on a watched scope ends the remote's watch.
+    /// Applies one refresh: a vanished, expired, renamed or re-keyed node, two failures in a row
+    /// or, on the listening side, empty caps close the link; changed caps apply to the next
+    /// frame, and losing `discover` on a watched scope ends the remote's watch. A connector keeps
+    /// a link whose listener holds no caps: that remote may then do nothing here.
     pub(super) fn refreshed(&mut self, id: ConnectionId, result: Result<Peer, Failure>) {
         let Some(remote) = self
             .clients
@@ -514,7 +522,7 @@ impl Daemon {
         let verdict = match result {
             Ok(peer) if peer.stable_id != stable_id => Err("stable-id-changed"),
             Ok(peer) if peer.machine_id != remote.peer.machine_id => Err("name-changed"),
-            Ok(peer) if peer.caps.is_empty() => Err("no-caps"),
+            Ok(peer) if peer.caps.is_empty() && remote.listening => Err("no-caps"),
             Ok(peer) => Ok(peer),
             Err(failure @ (Failure::NotFound | Failure::Refused(_))) => Err(failure.detail()),
             Err(failure) => {

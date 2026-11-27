@@ -184,9 +184,8 @@ impl Prepared {
             if remote.ip().to_canonical() != peer.ip {
                 return Err(refused("address", &peer));
             }
-            if peer.caps.is_empty() {
-                return Err(refused("no-caps", &peer));
-            }
+            // A listener holding no caps here may do nothing here; the link still serves this
+            // node's sessions toward it, and every frame it sends is refused.
             Ok(Authenticated {
                 stream,
                 peer,

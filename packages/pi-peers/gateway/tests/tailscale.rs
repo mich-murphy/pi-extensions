@@ -837,6 +837,95 @@ mod linked {
         assert_eq!(refused["outcome"]["resource"], "operations");
     }
 
+    /// The next remote frame answering `rid`, skipping the gateway's own pings and events.
+    fn answer_to(stream: &mut TcpStream, rid: &str) -> Value {
+        loop {
+            let frame = remote_read(stream).expect("answered, link open");
+            if frame["rid"] == rid && frame["op"] == "result" {
+                return frame;
+            }
+        }
+    }
+    /// Accepts alpha's dial on `listener` within 5 s, as the test process playing beta.
+    fn accept(listener: &std::net::TcpListener, alpha: &Gateway) -> TcpStream {
+        listener.set_nonblocking(true).expect("nonblocking");
+        let end = Instant::now() + Duration::from_secs(5);
+        loop {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    stream.set_nonblocking(false).expect("blocking");
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(3)))
+                        .expect("timeout");
+                    return stream;
+                }
+                Err(_) if Instant::now() < end => std::thread::sleep(Duration::from_millis(50)),
+                Err(error) => panic!("alpha never dialed ({error}): {}", alpha.stderr()),
+            }
+        }
+    }
+
+    #[test]
+    fn a_connector_whose_listener_holds_no_caps_stays_linked_and_refuses_its_frames() {
+        // The test process is beta, listening on 127.0.0.2; alpha's whois says beta holds no caps.
+        let listener = std::net::TcpListener::bind(format!("{BETA}:0")).expect("listen as beta");
+        let alpha = alpha(&json!([]), listener.local_addr().expect("bound"));
+        let mut a = alpha.connect();
+        let alpha_peer = register(&mut a, "alpha-session", 1);
+        let mut stream = accept(&listener, &alpha);
+        let discover = remote_read(&mut stream).expect("roster watch");
+        assert_eq!(discover["op"], "discover", "the link is set up");
+        let beta_session = json!({"peer":{"machineId":"beta","sessionId":"beta-session","runtimeNonce":rid(2100)},"label":"remote fixture","scopeIds":["team"]});
+        write(
+            &mut stream,
+            &json!({"v":2,"op":"result","rid":discover["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[beta_session],"watching":true}}}),
+        );
+        let mut observer = alpha.connect();
+        register(&mut observer, "observer", 2);
+        await_peer(&mut observer, 3, &beta_session["peer"]);
+        write(
+            &mut stream,
+            &json!({"v":2,"op":"discover","rid":rid(10),"scopeIds":["team","private"],"watch":false}),
+        );
+        assert_eq!(
+            answer_to(&mut stream, &rid(10))["outcome"]["value"]["peers"],
+            json!([]),
+            "nothing is exported without discover"
+        );
+        let origin = beta_session["peer"].clone();
+        let push = |n: u32, message: Value| json!({"v":2,"op":"send","rid":rid(n),"from":origin,"to":alpha_peer,"scopeId":"team","budgetMs":15000,"message":message});
+        let forged = json!({"id":rid(1012),"kind":"reply","content":"answer","format":"text","replyTo":{"sender":alpha_peer,"messageId":rid(77)}});
+        for (n, message) in [(11, request(11)), (12, forged)] {
+            write(&mut stream, &push(n, message));
+            assert_eq!(
+                answer_to(&mut stream, &rid(n))["outcome"]["code"],
+                "forbidden",
+                "frame {n} is refused"
+            );
+        }
+        assert!(alive(&mut stream), "refusals keep the link");
+        assert!(alpha.logged("\"reason\":\"caps\""), "{}", alpha.stderr());
+        // Refreshes apply the caps as they change and never close the connector's link.
+        alpha.knows("beta", BETA, &json!([{"scopes":["team"],"allow":["push"]}]));
+        std::thread::sleep(Duration::from_secs(17));
+        write(&mut stream, &push(13, request(13)));
+        assert_eq!(read(&mut a)["message"]["id"], rid(1013), "push granted");
+        alpha.knows("beta", BETA, &json!([]));
+        std::thread::sleep(Duration::from_secs(17));
+        write(&mut stream, &push(14, request(14)));
+        assert_eq!(
+            answer_to(&mut stream, &rid(14))["outcome"]["code"],
+            "forbidden",
+            "push withdrawn"
+        );
+        assert!(alive(&mut stream), "empty caps on refresh keep the link");
+        let audit = alpha.stderr();
+        assert!(
+            audit.contains("\"caps_changed\"") && !audit.contains("link_revoked"),
+            "{audit}"
+        );
+    }
+
     #[test]
     fn revoking_the_caps_closes_the_link_at_the_next_refresh() {
         let caps = json!([{"scopes":["team"],"allow":["push"]}]);
