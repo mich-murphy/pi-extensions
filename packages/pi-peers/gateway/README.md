@@ -82,7 +82,10 @@ Before any byte is read or sent, both sides check that:
   this node (`StableID`);
 - its MagicDNS name ends in this tailnet's suffix and its first label is a valid
   `machineId` other than your own; that label is the peer's `machineId`;
-- it holds at least one `github.com/mich-murphy/cap/pi-peers` grant toward this node.
+- on the listening side only, it holds at least one `github.com/mich-murphy/cap/pi-peers`
+  grant toward this node. A connector keeps a link to a listener that holds no grant toward
+  it: that listener may do nothing here, and every frame it sends is refused `forbidden`.
+  This keeps one-way setups working.
 
 The grant value is a list of `{"scopes":[…],"allow":["discover"|"push"|"reply"…]}` entries.
 Each entry grants exactly its scopes × its verbs; entries never combine. `push` implies
@@ -94,13 +97,16 @@ in an entry or 16 KiB of JSON grants nothing and refuses the link.
 - `reply`: the peer delivers a `reply`, or an `update` with `replyTo`, only for a message one
   of your sessions sent it on this link: at most one reply and 8 updates within 600 s of the
   first send. The gateway keeps up to 4096 such entries per link; when they are full, new
-  sends to that peer fail with `overloaded`/`receipts`.
+  sends to that peer fail with `overloaded`/`receipts`. `reply` works without `discover`:
+  the peer never sees your sessions in a roster, but it may still answer the sessions that
+  sent it a message.
 
 Your gateway asks the peer to export every one of your scopes and the peer filters by what
 it grants you; local sessions see the exported entries without a local policy. Sends to
 another machine are not checked against local policy: the destination decides. The peer's
-whois is asked again every 15 s; a vanished, expired, renamed or re-keyed node, empty grants
-or two failed refreshes in a row close the link, and losing `discover` ends its watch.
+whois is asked again every 15 s; a vanished, expired, renamed or re-keyed node or two failed
+refreshes in a row close the link on either side, empty grants close it on the listening
+side, and losing `discover` ends its watch.
 Only one remote link is active at a time.
 
 `--diagnose` reports `{"state":"configured","trust":"tailscale","endpoint":…,"self":{"name":…,"stableId":…,"addresses":[…]}}`,
