@@ -238,7 +238,7 @@ jobs:
             cores = 2
       - name: Install locked Node dependencies
         run: nix develop -c npm ci
-      - name: Native-backed lifecycle, generation and key tests against release binary
+      - name: Native-backed lifecycle, generation and Tailscale setup tests against release binary
         shell: bash
         run: |
           set -euo pipefail
@@ -249,7 +249,7 @@ jobs:
             packages/pi-peers/test/adapter-native.test.ts \
             packages/pi-peers/test/onboarding-managed.test.ts \
             packages/pi-peers/test/onboarding-runtime.test.ts \
-            packages/pi-peers/test/onboarding-keys.test.ts \
+            packages/pi-peers/test/onboarding-tailscale.test.ts \
             packages/pi-peers/test/onboarding-generation.test.ts \
             packages/pi-peers/test/onboarding-repair.test.ts 2>&1 | tee consumer/vitest.log
           # Exactly the six files ran, nothing skipped, todo or failed, and the suite did not shrink.
@@ -258,7 +258,7 @@ jobs:
           report = json.loads(pathlib.Path("consumer/vitest.json").read_text())
           root = pathlib.Path.cwd().resolve()
           names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
-                   "onboarding-keys", "onboarding-generation", "onboarding-repair"}
+                   "onboarding-tailscale", "onboarding-generation", "onboarding-repair"}
           expected = {f"packages/pi-peers/test/{name}.test.ts" for name in names}
           files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
           assert len(files) == 6 and set(files) == expected, files
@@ -297,7 +297,7 @@ jobs:
             --record consumer-nix/record.json --runner-temp "$RUNNER_TEMP" \
             --extracted consumer/extracted.json --fixture "$CONSUMER_BINARY" > consumer-nix/fixture.json
           cat consumer-nix/fixture.json
-      - name: Native-backed lifecycle, generation and key tests against Nix-acquired binary
+      - name: Native-backed lifecycle, generation and Tailscale setup tests against Nix-acquired binary
         shell: bash
         run: |
           set -euo pipefail
@@ -307,7 +307,7 @@ jobs:
             packages/pi-peers/test/adapter-native.test.ts \
             packages/pi-peers/test/onboarding-managed.test.ts \
             packages/pi-peers/test/onboarding-runtime.test.ts \
-            packages/pi-peers/test/onboarding-keys.test.ts \
+            packages/pi-peers/test/onboarding-tailscale.test.ts \
             packages/pi-peers/test/onboarding-generation.test.ts \
             packages/pi-peers/test/onboarding-repair.test.ts 2>&1 | tee consumer-nix/vitest.log
           python3 - <<'PY'
@@ -315,7 +315,7 @@ jobs:
           report = json.loads(pathlib.Path("consumer-nix/vitest.json").read_text())
           root = pathlib.Path.cwd().resolve()
           names = {"adapter-native", "onboarding-managed", "onboarding-runtime",
-                   "onboarding-keys", "onboarding-generation", "onboarding-repair"}
+                   "onboarding-tailscale", "onboarding-generation", "onboarding-repair"}
           expected = {f"packages/pi-peers/test/{name}.test.ts" for name in names}
           files = [pathlib.Path(item["name"]).resolve().relative_to(root).as_posix() for item in report["testResults"]]
           assert len(files) == 6 and set(files) == expected, files
