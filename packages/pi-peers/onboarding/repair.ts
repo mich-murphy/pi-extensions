@@ -22,7 +22,7 @@ import {
   decodeCached,
   decodeManaged,
   decodeGateway,
-  isPinnedRemote,
+  isRetiredRemote,
   parseJson,
 } from "./schema.js";
 
@@ -98,8 +98,12 @@ async function inspectOwned(agentDir: string, requireRemote = false) {
     installed,
     record,
     ledger,
-    remote: requireRemote || isPinnedRemote(decodeGateway(parseJson(gateway)).remote),
+    remote: requireRemote || linked(decodeGateway(parseJson(gateway)).remote),
   };
+}
+
+function linked(remote: ReturnType<typeof decodeGateway>["remote"]): boolean {
+  return remote !== undefined && !isRetiredRemote(remote);
 }
 
 async function ownedDirectory(path: string): Promise<void> {
@@ -218,7 +222,7 @@ async function repairWork(
     ok: true,
     headline: "✓ Installation repaired",
     facts: [],
-    next: "Your settings, keys and this session were kept. Choose Status to check the connection.",
+    next: "Your settings and this session were kept. Choose Status to check the connection.",
     technical: [
       "Owned metadata committed. No runtime/nonce/state was replaced and no control request was sent. Remote readiness must be checked separately.",
     ],
@@ -258,13 +262,13 @@ export async function repairRoute(
       actionForm({
         title: "Setup",
         note: requireRemote
-          ? "Linking a remote computer needs a newer gateway program that supports keys. Repair installs a verified one first; your settings, keys and this session are kept."
-          : "The gateway program setup installed is missing, changed or too old. Repair replaces only that program; your settings, keys and this session are kept.",
+          ? "Linking a remote computer needs a newer gateway program that supports Tailscale. Repair installs a verified one first; your settings and this session are kept."
+          : "The gateway program setup installed is missing, changed or too old. Repair replaces only that program; your settings and this session are kept.",
         details: () =>
           withTechnical(
             [
               "Repair downloads a verified gateway and records it as this setup's program.",
-              "Settings, keys and this session are kept. Nothing is restarted.",
+              "Settings and this session are kept. Nothing is restarted.",
             ],
             [route.description, REPAIR_TECHNICAL(owned)],
           ),

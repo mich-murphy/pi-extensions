@@ -158,6 +158,7 @@ export default function registerCommunication(
     backend: SetupBackend;
     description: string;
     restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+    tailscale?: string;
     observe?: { consented: (action: string) => void };
     runtime?: typeof createAdapterRuntime;
   },

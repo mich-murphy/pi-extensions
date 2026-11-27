@@ -16,7 +16,7 @@ import { readManaged } from "./backend.js";
 import { regularBytes } from "./files.js";
 import { managedSnapshot } from "./managed.js";
 import type { ManagedSnapshot } from "./managed.js";
-import { decodeGateway, isPinnedRemote, parseJson } from "./schema.js";
+import { decodeGateway, isRetiredRemote, parseJson } from "./schema.js";
 
 type Inspection =
   | {
@@ -442,7 +442,7 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
     const remote = gateway === undefined ? undefined : decodeGateway(parseJson(gateway)).remote;
 
     const snapshot =
-      remote === undefined || isPinnedRemote(remote)
+      remote === undefined || !isRetiredRemote(remote)
         ? await managedSnapshot(setup)
         : {
             state: "retired-certificates",

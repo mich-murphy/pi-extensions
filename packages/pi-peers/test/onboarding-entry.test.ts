@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ToolArguments } from "../adapter/tools.js";
@@ -9,10 +10,19 @@ import type { PeersContext } from "../index.js";
 import { setupPaths } from "../onboarding/backend.js";
 import type { SetupBackend } from "../onboarding/backend.js";
 import { digest } from "../onboarding/files.js";
+import { defaultChoices } from "../onboarding/plan.js";
+import { decodeGateway, parseJson } from "../onboarding/schema.js";
 import { extensionFixture } from "./extension-fixture.js";
-import { dialog, nativeAddress, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
+import { dialog, nativeUntil, TAILNET, tailscaleFixture } from "./onboarding-fixtures.js";
 
-function extensionHost(testBackend?: { backend: SetupBackend; description: string }) {
+type TestBackend = {
+  backend: SetupBackend;
+  description: string;
+  tailscale?: string;
+  restart?: () => Promise<"acknowledged" | "uncertain">;
+};
+
+function extensionHost(testBackend?: TestBackend) {
   const notifications: Array<string> = [];
   const entries: Array<string> = [];
   const answers: Array<string | undefined> = [];
@@ -112,33 +122,16 @@ async function localSetup(host: ReturnType<typeof extensionHost>) {
   return { peer: await connected(host) };
 }
 
-const PEER_KEY = "5a".repeat(32);
-
-async function ownKey(host: ReturnType<typeof extensionHost>) {
-  const key = await host.command("setup", ["Link a remote computer", "APPLY"]);
-  expect(key.join("\n")).toContain("This computer's key is ready");
-  expect(host.unusedAnswers()).toBe(0);
-}
-
-async function upgrade(host: ReturnType<typeof extensionHost>) {
-  const address = await nativeAddress();
-
-  return host.command("setup", [
-    "Link a remote computer",
-    "Peer machine=upgrade-peer",
-    "Connection=Listen for peer",
-    `Address=${address}`,
-    `Peer public key=${PEER_KEY}`,
-    "APPLY",
-  ]);
+async function relabel(host: ReturnType<typeof extensionHost>) {
+  return host.command("setup", ["Label=Relabelled", "APPLY"]);
 }
 
 describe("default extension factory native setup/upgrade/reset wiring", () => {
-  let fixture: Awaited<ReturnType<typeof nativeFixture>>;
+  let fixture: Awaited<ReturnType<typeof tailscaleFixture>>;
   let agent: string;
   let host: ReturnType<typeof extensionHost>;
   beforeEach(async () => {
-    fixture = await nativeFixture();
+    fixture = await tailscaleFixture(defaultChoices(hostname()).machineId);
     agent = join(fixture.root, "agent");
     vi.stubEnv("HOME", fixture.root);
     vi.stubEnv("PI_CODING_AGENT_DIR", agent);
@@ -163,26 +156,15 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
     expect(existsSync(agent)).toBe(false);
     await production.event("session_shutdown");
   });
-  test("reviewed local-to-remote upgrade replaces THIS idle runtime and loses only its reviewed volatile state", async () => {
+  test("a reviewed edit replaces THIS idle runtime and loses only its reviewed volatile state", async () => {
     const before = await localSetup(host);
     expect(host.entries).toContain("peers-report");
     await host.command("setup", ["Keep and reconnect"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    await ownKey(host);
+    await host.command("setup", ["Link a remote computer", "Back", "Back"]);
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    await host.command("setup", ["Link a remote computer", "Cancel"]);
-    await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    const cancelledAddress = await nativeAddress();
-    await host.command("setup", [
-      "Link a remote computer",
-      "Peer machine=upgrade-peer",
-      "Connection=Listen for peer",
-      `Address=${cancelledAddress}`,
-      "Back",
-    ]);
-    await expect(connected(host)).resolves.toStrictEqual(before.peer);
-    const messages = await upgrade(host);
-    expect(messages.join("\n")).toContain("Linked with upgrade-peer");
+    const messages = await relabel(host);
+    expect(messages.join("\n")).toContain("Settings changed");
     const after = await connected(host);
     expect(after.runtimeNonce).not.toBe(before.peer.runtimeNonce);
     expect(after.machineId).toBe(before.peer.machineId);
@@ -190,11 +172,34 @@ describe("default extension factory native setup/upgrade/reset wiring", () => {
   });
   test("busy Pi refuses reviewed replacement after staging and retains its original nonce", async () => {
     const before = await localSetup(host);
-    await ownKey(host);
     host.setIdle(false);
-    const messages = await upgrade(host);
+    const messages = await relabel(host);
     expect(messages.join("\n")).toContain("is busy and was not replaced");
     await expect(connected(host)).resolves.toStrictEqual(before.peer);
+  });
+  test("linking saves the Tailscale endpoint and keeps this runtime until the gateway restarts", async () => {
+    const linking = extensionHost({
+      backend: { acquire: async () => fixture.executable },
+      description: "Explicit immutable native TEST fixture",
+      tailscale: fixture.tailscale,
+      restart: async () => "uncertain",
+    });
+    await linking.command("setup", ["Local only — no remote connections (recommended)", "APPLY"]);
+    const before = await connected(linking);
+    const messages = await linking.command("setup", [
+      "Link a remote computer",
+      "Connection=Connect to another computer",
+      `Other computer=${TAILNET.other}`,
+      "APPLY",
+    ]);
+    expect(messages.join("\n")).toContain("Settings saved but not active yet");
+    const gateway = decodeGateway(parseJson(await readFile(setupPaths(agent).gateway)));
+    expect(gateway.remote).toStrictEqual({
+      endpoint: { mode: "connect", address: `${TAILNET.otherAddress}:7443` },
+      tailscale: fixture.tailscale,
+    });
+    await expect(connected(linking)).resolves.toStrictEqual(before);
+    await linking.event("session_shutdown");
   });
   test("reset with nothing configured says so without asking for Apply or writing", async () => {
     const messages = await host.command("reset", ["APPLY"]);

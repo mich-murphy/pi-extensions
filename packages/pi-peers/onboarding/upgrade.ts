@@ -5,15 +5,14 @@ import { stableValue } from "../protocol/identity.js";
 import { activationScreen } from "./activation.js";
 import { inspectSetup, readManaged, setupPaths } from "./backend.js";
 import { regularBytes } from "./files.js";
-import { ensureKey, keyPaths, savedKey } from "./keys.js";
 import { requestManagedRestart } from "./managed.js";
 import type { ManagedSetup } from "./managed.js";
 import { actionForm, gateText, opener, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import type { Row, Screen } from "./menu/model.js";
 import type { Outcome, Step } from "./menu/progress.js";
-import { remoteDraft, remoteGate, remoteRows, remoteSummary } from "./menu/remote-form.js";
-import { manageForm, peerGrantText } from "./menu/setup-form.js";
+import { remoteDraft, remoteGate, remoteRows } from "./menu/remote-form.js";
+import { manageForm } from "./menu/setup-form.js";
 import type { ManageFormOptions } from "./menu/setup-form.js";
 import {
   afterSave,
@@ -27,16 +26,33 @@ import {
 import { currentPlan, localPlan, localReview, savedChoices } from "./plan.js";
 import type { LocalChoices, LocalPlan } from "./plan.js";
 import { RefusalError, SETTINGS_CHANGED } from "./refusal.js";
-import { keptLink, linkedPeer, linkedPlan, remoteReview, unlinkedPlan } from "./remote.js";
-import type { RemoteIntent } from "./remote.js";
+import {
+  endpointText,
+  grantInto,
+  joinAddress,
+  keptLink,
+  linkedPlan,
+  otherName,
+  remoteReview,
+  savedLink,
+  savedTailscale,
+  unlinkedPlan,
+} from "./remote.js";
+import type { Endpoint, RemoteIntent } from "./remote.js";
 import type { ActivatePlan, Reconnect, Restart } from "./route.js";
-import { isPinnedRemote } from "./schema.js";
+import {
+  findTailscale,
+  listenAddress,
+  resolveHost,
+  TAILSCALE_PATHS,
+  tailscaleSelf,
+} from "./tailscale.js";
+import type { TailscaleSelf } from "./tailscale.js";
 import { saveOwnedPlan } from "./update.js";
 
 export type { ActivatePlan } from "./route.js";
 
 const RECONNECT_STEPS = ["Reconnecting this Pi"] as const;
-const KEY_STEPS = ["Creating or reading this computer's key"] as const;
 
 const EDIT_STEPS = [
   "Saving the settings",
@@ -44,9 +60,9 @@ const EDIT_STEPS = [
   "Reconnecting this Pi",
 ] as const;
 
-const LINK_STEP = "Checking this computer's key";
+const LINK_STEP = "Checking Tailscale on this computer";
 
-export const RETIRED_NOTICE = "This link uses retired certificates. Link again with keys.";
+const RETIRED_NOTICE = "This link uses retired certificates or keys. Link again over Tailscale.";
 
 const LINK_LABEL = "Link a remote computer";
 
@@ -58,22 +74,19 @@ type Manage = {
   readonly reconnect: Reconnect | undefined;
   readonly restart: Restart;
   readonly saved: LocalPlan | undefined;
-  readonly ownKey: string | undefined;
+  readonly tailscale: string | undefined;
   readonly upgrade: ((progress: Progress) => Screen) | undefined;
   shared: boolean;
 };
 
-type Link = { readonly peer: string; readonly retired: boolean } | undefined;
+type Link = { readonly endpoint: Endpoint; readonly retired: boolean } | undefined;
 
 function linkOf(manage: Manage): Link {
-  const { saved } = manage;
-  const peer = saved === undefined ? undefined : linkedPeer(saved);
-
-  return peer === undefined ? undefined : { peer, retired: !isPinnedRemote(saved?.gateway.remote) };
+  return manage.saved === undefined ? undefined : savedLink(manage.saved);
 }
 
 function retiredFiles(manage: Manage): string {
-  return `Old certificate folders (pair-*) in ${visibleText(setupPaths(manage.agentDir).directory)} are no longer used and can be deleted. Setup never deletes key files.`;
+  return `Old certificate folders (pair-*) in ${visibleText(setupPaths(manage.agentDir).directory)} are no longer used and can be deleted. Setup never deletes them.`;
 }
 
 async function keepWork(reconnect: Reconnect | undefined, step: Step): Promise<Outcome> {
@@ -113,9 +126,10 @@ function rebuilder(manage: Manage): ((choices: LocalChoices) => LocalPlan) | und
       keptLink(localPlan(choices, config.socketPath), saved);
 
     const again = rebuild(saved.choices);
+    const normal = keptLink(saved, saved);
 
-    return canonical(again.adapter) === canonical(saved.adapter) &&
-      canonical(again.gateway) === canonical(saved.gateway)
+    return canonical(again.adapter) === canonical(normal.adapter) &&
+      canonical(again.gateway) === canonical(normal.gateway)
       ? rebuild
       : undefined;
   } catch {
@@ -212,69 +226,54 @@ const CHANGE_LINES = [
 ];
 
 const CHANGE_TECHNICAL =
-  "Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. No key file is replaced or deleted. No blanket /reload, process/PID killing or uncertain-send replay.";
+  "Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. No blanket /reload, process/PID killing or uncertain-send replay.";
 
-async function keyWork(manage: Manage, step: Step): Promise<Outcome> {
-  step(KEY_STEPS[0]);
-  const key = await ensureKey(manage.setup.executable, setupPaths(manage.agentDir).directory);
-
-  return {
-    ok: true,
-    headline: "✓ This computer's key is ready",
-    facts: [["Public key", key]],
-    next: `Choose Setup › ${LINK_LABEL} to see this key again and enter the other computer's key.`,
-  };
-}
-
-function keyScreen(manage: Manage, progress: Progress): Screen {
-  const { privateKey } = keyPaths(setupPaths(manage.agentDir).directory);
-
-  return actionForm({
-    title: "Link",
-    note: "Linking needs a key for this computer. Setup creates one private key file and shows its public key, which you enter on the other computer.",
-    details: () =>
-      withTechnical(
-        [
-          "Creates this computer's private key, or reads it if it already exists. The private key never leaves this computer.",
-          "Nothing else changes and nothing is restarted.",
-        ],
-        [
-          `Key file ${visibleText(privateKey)}: owner-only Ed25519 key in an owner-only folder, created by the gateway's key generate command and reused by key show.`,
-        ],
-      ),
-    detailsDescription: "What creating the key writes.",
-    consent: () => ({
-      label: "Create key",
-      action: "Create key",
-      gate: { kind: "ready", value: undefined },
-      description: "Create or read this computer's key and show its public key.",
-      run: () => {
-        progress("Creating the key", KEY_STEPS, async (step) =>
-          attempt("Creating the key failed", INCOMPLETE_NEXT, async () => keyWork(manage, step)),
-        );
-      },
-    }),
-  });
-}
-
-async function linkWork(
-  manage: Manage,
-  intent: RemoteIntent,
-  own: string,
-  step: Step,
-): Promise<Outcome> {
-  step(LINK_STEP);
-  const directory = setupPaths(manage.agentDir).directory;
-
-  if ((await ensureKey(manage.setup.executable, directory)) !== own) {
+function tailnetName(self: TailscaleSelf, machine: string): void {
+  if (self.name !== machine) {
     throw new RefusalError(
-      "this computer's key changed since it was shown",
-      "Open Setup again to see the current key",
+      `this computer's tailnet name is ${visibleText(self.name)} but its machine name is ${visibleText(machine)}`,
+      `Change Machine to ${visibleText(self.name)} in Setup, or rename this computer in Tailscale, then link again`,
+    );
+  }
+}
+
+async function linkEndpoint(
+  command: string,
+  self: TailscaleSelf,
+  intent: RemoteIntent,
+): Promise<Endpoint> {
+  if (intent.mode === "listen") {
+    return { mode: "listen", address: joinAddress(listenAddress(self), intent.port) };
+  }
+
+  const address = await resolveHost(command, intent.host);
+
+  if (self.addresses.includes(address)) {
+    throw new RefusalError(
+      "that address is this computer",
+      "Enter the other computer's MagicDNS name or tailnet IP",
     );
   }
 
-  const plan = linkedPlan(await freshPlan(manage), intent, keyPaths(directory).privateKey);
-  const peer = visibleText(intent.peerMachineId);
+  return { mode: "connect", address: joinAddress(address, intent.port) };
+}
+
+async function linkWork(manage: Manage, intent: RemoteIntent, step: Step): Promise<Outcome> {
+  step(LINK_STEP);
+  const configured = manage.tailscale ?? savedTailscale(manage.saved);
+  const command = await findTailscale(configured === undefined ? TAILSCALE_PATHS : [configured]);
+  const self = await tailscaleSelf(command);
+  tailnetName(self, manage.config.machineId);
+  const endpoint = await linkEndpoint(command, self, intent);
+  const plan = linkedPlan(await freshPlan(manage), endpoint, configured);
+  const other = otherName(intent);
+
+  const grant = grantInto(
+    self.name,
+    other,
+    plan.choices.scopeId,
+    intent.mode === "listen" ? intent.port : undefined,
+  );
 
   return changeWork(
     manage,
@@ -283,37 +282,37 @@ async function linkWork(
       failure: "Linking failed",
       done: {
         ok: true,
-        headline: `✓ Linked with ${peer}`,
+        headline: `✓ Linked over Tailscale — ${endpointText(endpoint)}`,
         facts: [
-          ["Peer", remoteSummary(intent)],
-          ["Peer public key", intent.peerPublicKey],
-          ["Public key", own],
+          ["This computer", visibleText(self.name)],
+          ["Endpoint", endpointText(endpoint)],
+          ["Tailnet policy grant", JSON.stringify(grant)],
         ],
-        next: `Enter this computer's public key on ${peer} if you have not yet. Choose Doctor to check the remote link.`,
+        next: `Add the grant to your tailnet policy so ${visibleText(other)} may discover and message sessions here (see the pi-peers remote setup guide), then link the other computer the same way. Choose Doctor to check the link.`,
       },
     },
     step,
   );
 }
 
-function linkForm(manage: Manage, own: string, progress: Progress): Screen {
+const LINK_NOTE = `Link this computer with one other computer over Tailscale. One computer listens on its tailnet IP and the other connects to it. Nothing changes until you choose Link.`;
+
+function linkForm(manage: Manage, progress: Progress): Screen {
   const link = linkOf(manage);
-  const draft = remoteDraft(manage.saved?.gateway.remote);
-  const machine = manage.config.machineId;
-  const { privateKey } = keyPaths(setupPaths(manage.agentDir).directory);
-  const gate = () => remoteGate(draft, machine, own);
+  const draft = remoteDraft(link?.retired === false ? link.endpoint : undefined);
+  const gate = () => remoteGate(draft);
 
   return actionForm({
     title: "Link",
-    note: `This computer's public key: ${own}\nEnter it on the other computer in Setup › ${LINK_LABEL}, and enter that computer's key below. Nothing changes until you choose Link.`,
-    rows: () => remoteRows(draft, own),
+    note: LINK_NOTE,
+    rows: () => remoteRows(draft),
     details: () => {
       const current = gate();
 
       return withTechnical(
         [
           ...(current.kind === "ready"
-            ? remoteReview(current.value, privateKey)
+            ? remoteReview(current.value, manage.config.machineId)
             : [`Link is not ready: ${gateText(current)}`]),
           ...CHANGE_LINES,
           ...(link?.retired === true ? [retiredFiles(manage)] : []),
@@ -321,24 +320,23 @@ function linkForm(manage: Manage, own: string, progress: Progress): Screen {
         [CHANGE_TECHNICAL],
       );
     },
-    detailsDescription: "What linking trusts, changes and restarts.",
+    detailsDescription: "What linking checks, changes and restarts.",
     consent: () => ({
       label: "Link",
       action: "Link",
       gate: gate(),
-      description: "Save the link, restart the gateway once and reconnect this Pi.",
+      description:
+        "Check Tailscale, save the link, restart the gateway once and reconnect this Pi.",
       run: (intent) => {
         progress("Linking", plannedSteps(manage, [LINK_STEP]), async (step) =>
-          attempt("Linking failed", INCOMPLETE_NEXT, async () =>
-            linkWork(manage, intent, own, step),
-          ),
+          attempt("Linking failed", INCOMPLETE_NEXT, async () => linkWork(manage, intent, step)),
         );
       },
     }),
   });
 }
 
-async function unlinkWork(manage: Manage, peer: string, step: Step): Promise<Outcome> {
+async function unlinkWork(manage: Manage, endpoint: Endpoint, step: Step): Promise<Outcome> {
   return changeWork(
     manage,
     {
@@ -346,23 +344,23 @@ async function unlinkWork(manage: Manage, peer: string, step: Step): Promise<Out
       failure: "Removing the link failed",
       done: {
         ok: true,
-        headline: `✓ Remote link removed — ${visibleText(peer)}`,
-        facts: [],
-        next: "This computer no longer trusts the other computer's key. Remove the link there too.",
+        headline: "✓ Remote link removed",
+        facts: [["Was", endpointText(endpoint)]],
+        next: "This computer no longer listens or connects. Remove the link on the other computer, and its grants from your tailnet policy.",
       },
     },
     step,
   );
 }
 
-function unlinkForm(manage: Manage, peer: string, progress: Progress): Screen {
+function unlinkForm(manage: Manage, endpoint: Endpoint, progress: Progress): Screen {
   return actionForm({
     title: "Remove link",
-    note: `Stop trusting ${visibleText(peer)} and stop listening for or dialling it. Nothing changes until you choose Remove link.`,
+    note: `Stop ${endpointText(endpoint)}. Nothing changes until you choose Remove link.`,
     details: () =>
       withTechnical(
         [
-          `Removes the remote link and ${visibleText(peer)}'s permissions. Local sessions keep working.`,
+          "Removes the remote link. Local sessions keep working. Your tailnet policy is not changed.",
           ...CHANGE_LINES,
         ],
         [CHANGE_TECHNICAL],
@@ -376,7 +374,7 @@ function unlinkForm(manage: Manage, peer: string, progress: Progress): Screen {
       run: () => {
         progress("Removing the link", plannedSteps(manage), async (step) =>
           attempt("Removing the link failed", INCOMPLETE_NEXT, async () =>
-            unlinkWork(manage, peer, step),
+            unlinkWork(manage, endpoint, step),
           ),
         );
       },
@@ -393,14 +391,16 @@ function editDetails(manage: Manage, plan: LocalPlan | undefined): Array<string>
       manage.shared
         ? "Apply saves the changes, restarts the shared gateway once and reconnects this Pi. Other sessions briefly disconnect and keep the old settings until they restart."
         : "Apply saves the changes and connects this Pi with them. Other sessions keep the old settings until they restart.",
-      "This Pi reconnects with a fresh identity, so its inbox is lost. Keys and the gateway install are kept.",
+      "This Pi reconnects with a fresh identity, so its inbox is lost. The gateway install is kept.",
       ...(link === undefined
         ? []
-        : [`${peerGrantText(link.peer)} Its connection details are kept.`]),
+        : [
+            "The remote link is kept. Your tailnet policy, not these permissions, decides what other computers may do here.",
+          ]),
     ],
     [
       ...(plan === undefined ? [] : [localReview(plan, link !== undefined)]),
-      `Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. Socket ${visibleText(manage.config.socketPath)} unchanged. ${manage.shared ? "Exactly ONE machine-bound shared restart request; an uncertain outcome is never replayed." : "No live shared socket observed; no restart request."} This Pi runtime is replaced only while idle, with a new nonce. No key deletion or send replay.`,
+      `Owned config/metadata replaced only by CAS under the setup lock; .previous-* snapshots kept. Socket ${visibleText(manage.config.socketPath)} unchanged. ${manage.shared ? "Exactly ONE machine-bound shared restart request; an uncertain outcome is never replayed." : "No live shared socket observed; no restart request."} This Pi runtime is replaced only while idle, with a new nonce. No send replay.`,
     ],
   );
 }
@@ -410,20 +410,18 @@ function linkScreen(manage: Manage, progress: Progress): Screen {
     return manage.upgrade(progress);
   }
 
-  return manage.ownKey === undefined
-    ? keyScreen(manage, progress)
-    : linkForm(manage, manage.ownKey, progress);
+  return linkForm(manage, progress);
 }
 
 function linkRows(manage: Manage, progress: Progress): Array<Row> {
   const link = linkOf(manage);
 
-  let description = "Link one other computer by exchanging public keys.";
+  let description = "Link one other computer over Tailscale.";
 
   if (link !== undefined) {
     description = link.retired
-      ? "Link again with keys. This replaces the retired certificates."
-      : `Change the link with ${visibleText(link.peer)}, or link another computer instead.`;
+      ? "Link again over Tailscale. This replaces the retired link."
+      : `Change the link (${endpointText(link.endpoint)}), or link another computer instead.`;
   }
 
   return [
@@ -431,11 +429,8 @@ function linkRows(manage: Manage, progress: Progress): Array<Row> {
     ...(link === undefined
       ? []
       : [
-          opener(
-            "unlink",
-            "Remove the remote link",
-            `Stop trusting ${visibleText(link.peer)}.`,
-            () => unlinkForm(manage, link.peer, progress),
+          opener("unlink", "Remove the remote link", `Stop ${endpointText(link.endpoint)}.`, () =>
+            unlinkForm(manage, link.endpoint, progress),
           ),
         ]),
   ];
@@ -490,6 +485,7 @@ export async function manageRoute(
   reconnect: Reconnect | undefined,
   restart: Restart = requestManagedRestart,
   upgrade?: (progress: Progress) => Screen,
+  tailscale?: string,
 ): Promise<((progress: Progress) => Screen) | undefined> {
   const config = await loadConfiguration(agentDir);
 
@@ -513,7 +509,7 @@ export async function manageRoute(
     reconnect,
     restart,
     saved: await savedPlan(agentDir, config),
-    ownKey: await savedKey(setupPaths(agentDir).directory).catch(() => undefined),
+    tailscale,
     upgrade,
     shared: observed.sharedInstance,
   };
@@ -533,7 +529,7 @@ function manageNote(manage: Manage): string {
 
   return link.retired
     ? `Set up as ${machine}. ${RETIRED_NOTICE} Choose ${LINK_LABEL}. ${retiredFiles(manage)}`
-    : `Set up as ${machine}, linked with ${visibleText(link.peer)} by its pinned key. Nothing changes until you choose Apply.`;
+    : `Set up as ${machine}, linked over Tailscale (${endpointText(link.endpoint)}). Nothing changes until you choose Apply.`;
 }
 
 function manageScreen(
@@ -573,8 +569,8 @@ function manageScreen(
 
   if (link !== undefined) {
     options.fixedMachine =
-      "Can't change here: the linked computer knows this machine by name. Remove the remote link to rename it.";
-    options.peer = link.peer;
+      "Can't change here: while linked it must match this computer's tailnet name. Remove the remote link to rename it.";
+    options.linked = true;
   }
 
   if (rebuild !== undefined) {

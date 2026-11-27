@@ -139,10 +139,6 @@ function localRows(
 
 const PERMISSIONS_HELP = "What other sessions on this account may do with this one.";
 
-export function peerGrantText(peer: string): string {
-  return `Also changes what ${visibleText(peer)} may do with this Pi.`;
-}
-
 function permissionsRow(
   choices: () => LocalChoices,
   set: (next: LocalChoices) => void,
@@ -312,13 +308,13 @@ export function editState(
 }
 
 const FIXED_SCOPE =
-  "Can't change here: the linked computer uses this scope. Remove the remote link to change it.";
+  "Can't change here: your tailnet policy grants name this scope. Remove the remote link to change it.";
 
 export type ManageFormOptions = {
   readonly saved: LocalChoices;
   readonly note: string;
   fixedMachine?: string;
-  peer?: string;
+  linked?: boolean;
   rebuild?: (choices: LocalChoices) => LocalPlan;
   readonly shared: () => boolean;
   readonly details: (plan: LocalPlan | undefined) => ReadonlyArray<string>;
@@ -334,7 +330,7 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
     draft.choices = next;
   };
 
-  const { fixedMachine, peer } = options;
+  const { fixedMachine, linked } = options;
 
   const fixed = (field: Field, reason: string | undefined): Array<Row> =>
     reason === undefined
@@ -349,8 +345,6 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
           },
         ];
 
-  const grants = peer === undefined ? "" : ` ${peerGrantText(peer)}`;
-
   return {
     kind: "list",
     title: "Setup",
@@ -360,9 +354,9 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
 
       return [
         ...fixed("machineId", fixedMachine),
-        ...fixed("scopeId", peer === undefined ? undefined : FIXED_SCOPE),
+        ...fixed("scopeId", linked === true ? FIXED_SCOPE : undefined),
         ...localRows(choices, set, ["label"]),
-        permissionsRow(choices, set, `${PERMISSIONS_HELP}${grants}`),
+        permissionsRow(choices, set),
         detailsRow(
           () => [
             ...(state.kind === "ready" ? [] : [`Apply is not ready: ${gateText(state)}`]),
@@ -374,11 +368,9 @@ export function manageForm(options: Readonly<ManageFormOptions>): Screen {
           label: "Apply",
           action: "Apply",
           gate: state,
-          description: `${
-            options.shared()
-              ? "Saves the changes, restarts the shared gateway once and reconnects this Pi with them."
-              : "Saves the changes and reconnects this Pi with them."
-          }${grants}`,
+          description: options.shared()
+            ? "Saves the changes, restarts the shared gateway once and reconnects this Pi with them."
+            : "Saves the changes and reconnects this Pi with them.",
           run: (plan) => {
             options.apply(plan);
           },

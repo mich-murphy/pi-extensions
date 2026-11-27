@@ -26,14 +26,10 @@ import { NO_CHANGES } from "../onboarding/route.js";
 import { setupCommand } from "../onboarding/setup.js";
 import { dialog, noPins } from "./onboarding-fixtures.js";
 
-const OWN = "1".repeat(64);
-const PEER = "2".repeat(64);
-
 const ready = (overrides: Partial<RemoteDraft> = {}): RemoteDraft => ({
   ...remoteDraft(),
-  peer: "other-host",
-  address: "127.0.0.1:7443",
-  peerKey: PEER,
+  mode: "connect",
+  host: "dev-01",
   ...overrides,
 });
 
@@ -43,12 +39,12 @@ function linkForm(state: RemoteDraft) {
 
   const screen = actionForm({
     title: "Link",
-    rows: () => remoteRows(state, OWN),
+    rows: () => remoteRows(state),
     details: () => ["details"],
     consent: () => ({
       label: "Link",
       action: "Link",
-      gate: remoteGate(state, "menu-host", OWN),
+      gate: remoteGate(state),
       description: "Link",
       run,
     }),
@@ -86,73 +82,78 @@ const openers = (model: MenuModel): Array<string> =>
         .map((row) => row.id)
     : [];
 
-describe("the key link form", () => {
-  test("a missing field is named first, in form order", () => {
-    expect(remoteGate(remoteDraft(), "menu-host", OWN)).toStrictEqual({
-      kind: "missing",
-      reason: "Peer machine",
-    });
-    expect(remoteGate(ready({ peerKey: "" }), "menu-host", OWN)).toStrictEqual({
-      kind: "missing",
-      reason: "Peer public key",
+const rowLabels = (state: RemoteDraft): Array<string> => remoteRows(state).map((row) => row.label);
+
+describe("the Tailscale link form", () => {
+  test("a new link listens on port 7443 and asks for nothing else", () => {
+    expect(remoteDraft()).toStrictEqual({ mode: "listen", host: "", port: "7443" });
+    expect(rowLabels(remoteDraft())).toStrictEqual(["Connection", "Port"]);
+    expect(remoteGate(remoteDraft())).toStrictEqual({
+      kind: "ready",
+      value: { mode: "listen", host: "", port: 7443 },
     });
   });
-  test("the same machine name is refused on the Link row before any consent", () => {
-    const { model, run, consented } = linkForm(ready({ peer: "menu-host" }));
-    expect(applyRow(model)?.value).toBe("Invalid: the peer must be another computer");
+  test("connecting asks for the other computer, which is required", () => {
+    const state = ready({ host: "" });
+    expect(rowLabels(state)).toStrictEqual(["Connection", "Other computer", "Port"]);
+    expect(remoteGate(state)).toStrictEqual({ kind: "missing", reason: "Other computer" });
+    const { model, run, consented } = linkForm(state);
     model.activate("apply");
     expect([run.mock.calls.length, consented.mock.calls.length]).toStrictEqual([0, 0]);
   });
-  test.each([
-    ["uppercase", "A".repeat(64)],
-    ["too short", "a".repeat(63)],
-    ["not hex", `g${"a".repeat(63)}`],
-  ])("a %s peer key stays in the editor with a plain error", async (_name, key) => {
-    const state = ready({ peerKey: "" });
-    const { model } = linkForm(state);
-    model.activate("peerKey");
-    await model.submit(key);
-    expect([model.title(), model.error, state.peerKey]).toStrictEqual([
-      "Peers › Link › Peer public key",
-      "Use the other computer's public key: 64 characters, only 0-9 and a-f.",
-      "",
-    ]);
-  });
-  test("this computer's own key is refused with a clear message", async () => {
-    const state = ready({ peerKey: "" });
-    const { model } = linkForm(state);
-    model.activate("peerKey");
-    await model.submit(OWN);
-    expect(model.error).toBe(
-      "That is this computer's own key. Enter the key the other computer shows.",
+  test("a saved connect endpoint is shown again, a saved listen endpoint keeps its port", () => {
+    expect(remoteDraft({ mode: "connect", address: "100.64.0.2:7500" })).toStrictEqual({
+      mode: "connect",
+      host: "100.64.0.2",
+      port: "7500",
+    });
+    expect(remoteDraft({ mode: "connect", address: "[fd7a:115c:a1e0::2]:7443" }).host).toBe(
+      "fd7a:115c:a1e0::2",
     );
-    expect(remoteGate(ready({ peerKey: OWN }), "menu-host", OWN)).toStrictEqual({
-      kind: "invalid",
-      reason: "that is this computer's own key. enter the key the other computer shows",
+    expect(remoteDraft({ mode: "listen", address: "100.64.0.1:7600" })).toStrictEqual({
+      mode: "listen",
+      host: "",
+      port: "7600",
     });
   });
-  test("surrounding whitespace is trimmed from a pasted key", async () => {
-    const state = ready({ peerKey: "" });
+  test.each([
+    ["host", "dev 01", "Use the other computer's MagicDNS name"],
+    ["host", "-dev", "Use the other computer's MagicDNS name"],
+    ["port", "0", "Use a port number from 1 to 65535"],
+    ["port", "65536", "Use a port number from 1 to 65535"],
+    ["port", "74a3", "Use a port number from 1 to 65535"],
+  ])("a bad %s %j stays in the editor with a plain error", async (id, value, error) => {
+    const state = ready();
+    const before = { ...state };
     const { model } = linkForm(state);
-    model.activate("peerKey");
-    await model.submit(`  ${PEER}\n`);
-    expect([model.title(), state.peerKey]).toStrictEqual(["Peers › Link", PEER]);
+    model.activate(id);
+    await model.submit(value);
+    expect(model.error).toContain(error);
+    expect(state).toStrictEqual(before);
   });
-  test("the address help tells the listener to use its Tailscale IP", () => {
-    const listen = remoteRows(ready({ mode: "listen" }), OWN).find((row) => row.id === "address");
-    const connect = remoteRows(ready(), OWN).find((row) => row.id === "address");
-    expect(listen?.description).toContain("Tailscale IP, like 100.101.102.103:7443");
-    expect(connect?.description).toContain("listening address");
+  test.each([
+    ["dev-01.tail1234.ts.net", "dev-01.tail1234.ts.net"],
+    ["  100.64.0.2 ", "100.64.0.2"],
+    ["fd7a:115c:a1e0::2", "fd7a:115c:a1e0::2"],
+  ])("the other computer %j is accepted as %j", async (value, saved) => {
+    const state = ready({ host: "" });
+    const { model } = linkForm(state);
+    model.activate("host");
+    await model.submit(value);
+    expect([model.title(), state.host]).toStrictEqual(["Peers › Link", saved]);
   });
-  test("a ready form consents once, with the pinned intent", () => {
-    const { model, run, consented } = linkForm(ready());
+  test("the help says one computer listens on its tailnet IP and the other connects", () => {
+    const [connection, host, port] = remoteRows(ready());
+    expect(connection?.description).toContain("its own tailnet IP");
+    expect(host?.description).toContain("MagicDNS name");
+    expect(port?.description).toContain("7443");
+  });
+  test("a ready form consents once, with the intent as entered", () => {
+    const { model, run, consented } = linkForm(ready({ port: "7500" }));
+    expect(applyRow(model)?.value).toBe("Ready");
     model.activate("apply");
     expect(consented).toHaveBeenCalledExactlyOnceWith("Link");
-    expect(run).toHaveBeenCalledExactlyOnceWith({
-      peerMachineId: "other-host",
-      endpoint: { mode: "connect", address: "127.0.0.1:7443" },
-      peerPublicKey: PEER,
-    });
+    expect(run).toHaveBeenCalledExactlyOnceWith({ mode: "connect", host: "dev-01", port: 7500 });
   });
   test("back pops exactly one level from every row of the link form", () => {
     const { model } = linkForm(ready());
@@ -165,8 +166,8 @@ describe("the key link form", () => {
     }
   });
   test("RPC: Esc on the first input goes back and never opens a second one", async () => {
-    const { model } = linkForm(remoteDraft());
-    const ctx = dialog(["Peer machine: Required", undefined, undefined, undefined]);
+    const { model } = linkForm(ready({ host: "" }));
+    const ctx = dialog(["Other computer: Required", undefined, undefined, undefined]);
     await driveRpc(model, ctx);
     expect(ctx.ui.input).toHaveBeenCalledOnce();
     expect(model.closed).toBe(true);

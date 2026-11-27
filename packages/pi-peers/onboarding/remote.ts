@@ -1,155 +1,150 @@
 import { isIP } from "node:net";
+import type { Schema } from "effect";
 import { visibleText } from "../adapter/config.js";
 import type { LocalPlan } from "./plan.js";
-import { RefusalError } from "./refusal.js";
+import { isRetiredRemote } from "./schema.js";
+import type { GatewayConfig } from "./schema.js";
 
-export type RemoteIntent = {
-  readonly peerMachineId: string;
-  readonly endpoint: {
-    readonly mode: "connect" | "listen";
-    readonly address: string;
-  };
-  readonly peerPublicKey: string;
+export const DEFAULT_PORT = 7443;
+const CAPABILITY = "github.com/mich-murphy/cap/pi-peers";
+
+export type Endpoint = {
+  readonly mode: "connect" | "listen";
+  readonly address: string;
 };
 
-const MACHINE = /^[a-z][a-z0-9-]{0,31}$/u;
-const ADDRESS = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u;
+export type RemoteIntent = {
+  readonly mode: "connect" | "listen";
+  readonly host: string;
+  readonly port: number;
+};
 
-export function machineError(value: string): string | undefined {
-  return MACHINE.test(value)
+const HOST = /^[a-z0-9](?:[a-z0-9-]{0,62})(?:\.[a-z0-9](?:[a-z0-9-]{0,62}))*\.?$/iu;
+
+export function hostError(value: string): string | undefined {
+  const host = value.trim();
+
+  return isIP(host) !== 0 || (host.length <= 253 && HOST.test(host))
     ? undefined
-    : "Use lowercase letters, digits and dashes, starting with a letter (at most 32).";
+    : "Use the other computer's MagicDNS name, like dev-01, or its tailnet IP, like 100.101.102.103.";
 }
 
-export function addressError(value: string): string | undefined {
-  const match = ADDRESS.exec(value);
-  const port = Number(match?.groups?.port);
+export function portError(value: string): string | undefined {
+  const port = Number(value.trim());
 
-  return match !== null &&
-    isIP(match.groups?.ipv6 ?? match.groups?.ipv4 ?? "") !== 0 &&
-    port >= 1 &&
-    port <= 65_535
+  return /^\d{1,5}$/u.test(value.trim()) && port >= 1 && port <= 65_535
     ? undefined
-    : "Use an IP address and port, like 100.101.102.103:7443 or [fd7a:115c:a1e0::1]:7443.";
+    : "Use a port number from 1 to 65535, like 7443.";
 }
 
-export function remoteReview(intent: RemoteIntent, privateKey: string): Array<string> {
+export function joinAddress(ip: string, port: number): string {
+  return isIP(ip) === 6 ? `[${ip}]:${String(port)}` : `${ip}:${String(port)}`;
+}
+
+export function savedTailscale(plan: LocalPlan | undefined): string | undefined {
+  const remote = plan?.gateway.remote;
+
+  return remote === undefined || isRetiredRemote(remote) ? undefined : remote.tailscale;
+}
+
+export function remoteReview(intent: RemoteIntent, machine: string): Array<string> {
+  const where =
+    intent.mode === "listen"
+      ? `Listen on this computer's tailnet IP, port ${String(intent.port)}.`
+      : `Connect to ${visibleText(intent.host)} on port ${String(intent.port)}; a name is resolved to its tailnet IP once, now.`;
+
   return [
-    `Link: ${visibleText(intent.peerMachineId)} (${intent.endpoint.mode} ${visibleText(intent.endpoint.address)}), trusted only by its public key ${intent.peerPublicKey}.`,
-    "This link trusts exactly this one key. Nothing expires. To revoke it, link again with another key or remove the remote link.",
-    "Remote discover/push grants apply in both directions for the reviewed scope; authorized remote pushes can wake models and incur provider usage.",
-    `This computer's private key: ${visibleText(privateKey)}. Same-account processes are not isolated: anything running as you can read it.`,
-    "The network only has to reach the peer: use Tailscale (listener on its tailnet IP, a tailnet policy that allows only the peer on that port) or an SSH -L forward. A local connection does not prove the remote link.",
+    where,
+    "Tailscale identifies the other computer. Your tailnet policy decides what it may do here, with the app capability github.com/mich-murphy/cap/pi-peers; the computer that receives a message enforces it.",
+    `This computer's tailnet name must be ${visibleText(machine)}, the machine name other computers know it by.`,
+    "Authorized remote messages can wake models and incur provider usage. Peer content is untrusted.",
   ];
 }
 
-function samePeer(plan: LocalPlan, peer: string): RefusalError | undefined {
-  return peer === plan.adapter.machineId
-    ? new RefusalError(
-        "this computer and the peer have the same machine name",
-        "Give one of them a different machine name",
-      )
-    : undefined;
+function ownPolicies<T extends { readonly machineId: string }>(
+  machine: string,
+  policies: ReadonlyArray<T>,
+): Array<T> {
+  return policies.filter((policy) => policy.machineId === machine);
 }
 
-function withoutPeers(plan: LocalPlan, peers: ReadonlyArray<string>): LocalPlan {
-  const { remote: _remote, ...gateway } = plan.gateway;
+function localGateway(gateway: GatewayConfig): GatewayConfig {
+  const { remote: _remote, ...rest } = gateway;
 
   return {
-    ...plan,
-    adapter: {
-      ...plan.adapter,
-      policies: plan.adapter.policies.filter((policy) => !peers.includes(policy.machineId)),
-    },
-    gateway: {
-      ...gateway,
-      policies: gateway.policies.filter((policy) => !peers.includes(policy.machineId)),
-    },
-  };
-}
-
-function grantedPlan(plan: LocalPlan, peer: string): LocalPlan {
-  const refused = samePeer(plan, peer);
-
-  if (refused !== undefined) {
-    throw refused;
-  }
-
-  const base = withoutPeers(plan, [peer]);
-  const permissions = [...plan.choices.permissions];
-
-  if (permissions.length === 0) {
-    return base;
-  }
-
-  const grant = { machineId: peer, scopeId: plan.choices.scopeId, permissions };
-
-  return {
-    ...base,
-    adapter: { ...base.adapter, policies: [...base.adapter.policies, grant] },
-    gateway: {
-      ...base.gateway,
-      policies: [
-        ...base.gateway.policies,
-        { ...grant, direction: "outgoing" as const },
-        { ...grant, direction: "incoming" as const },
-      ],
-    },
-  };
-}
-
-export function linkedPeer(plan: LocalPlan): string | undefined {
-  return (
-    plan.gateway.remote?.machineId ??
-    plan.adapter.policies.find((policy) => policy.machineId !== plan.adapter.machineId)?.machineId
-  );
-}
-
-function otherPeers(plan: LocalPlan): Array<string> {
-  return [
-    ...new Set(
-      [
-        ...plan.adapter.policies.map((policy) => policy.machineId),
-        ...plan.gateway.policies.map((policy) => policy.machineId),
-        ...(plan.gateway.remote === undefined ? [] : [plan.gateway.remote.machineId]),
-      ].filter((machine) => machine !== plan.adapter.machineId),
+    ...rest,
+    policies: ownPolicies(gateway.machineId, gateway.policies).map(
+      ({ direction: _direction, ...policy }) => policy,
     ),
-  ];
-}
-
-export function keptLink(plan: LocalPlan, saved: LocalPlan): LocalPlan {
-  const peer = linkedPeer(saved);
-  const remote = saved.gateway.remote;
-
-  if (peer === undefined) {
-    return plan;
-  }
-
-  const granted = grantedPlan(plan, peer);
-
-  return remote === undefined ? granted : { ...granted, gateway: { ...granted.gateway, remote } };
-}
-
-export function linkedPlan(plan: LocalPlan, intent: RemoteIntent, privateKey: string): LocalPlan {
-  const granted = grantedPlan(withoutPeers(plan, otherPeers(plan)), intent.peerMachineId);
-
-  return {
-    ...granted,
-    gateway: {
-      ...granted.gateway,
-      remote: {
-        machineId: intent.peerMachineId,
-        endpoint: {
-          mode: intent.endpoint.mode,
-          address: intent.endpoint.address,
-        },
-        privateKey,
-        peerPublicKey: intent.peerPublicKey,
-      },
-    },
   };
 }
 
 export function unlinkedPlan(plan: LocalPlan): LocalPlan {
-  return withoutPeers(plan, otherPeers(plan));
+  return {
+    ...plan,
+    adapter: {
+      ...plan.adapter,
+      policies: ownPolicies(plan.adapter.machineId, plan.adapter.policies),
+    },
+    gateway: localGateway(plan.gateway),
+  };
+}
+
+export function keptLink(plan: LocalPlan, saved: LocalPlan): LocalPlan {
+  const remote = saved.gateway.remote;
+  const base = unlinkedPlan(plan);
+
+  return remote === undefined ? base : { ...base, gateway: { ...base.gateway, remote } };
+}
+
+export function linkedPlan(plan: LocalPlan, endpoint: Endpoint, tailscale?: string): LocalPlan {
+  const base = unlinkedPlan(plan);
+
+  return {
+    ...base,
+    gateway: {
+      ...base.gateway,
+      remote:
+        tailscale === undefined
+          ? { endpoint: { ...endpoint } }
+          : { endpoint: { ...endpoint }, tailscale },
+    },
+  };
+}
+
+export function savedLink(
+  plan: LocalPlan,
+): { readonly endpoint: Endpoint; readonly retired: boolean } | undefined {
+  const remote = plan.gateway.remote;
+
+  return remote === undefined
+    ? undefined
+    : { endpoint: remote.endpoint, retired: isRetiredRemote(remote) };
+}
+
+export function endpointText(endpoint: Endpoint): string {
+  return endpoint.mode === "listen"
+    ? `listening on ${visibleText(endpoint.address)}`
+    : `connecting to ${visibleText(endpoint.address)}`;
+}
+
+const OTHER_COMPUTER = "<other computer>";
+
+export function otherName(intent: RemoteIntent): string {
+  return intent.mode === "connect" && isIP(intent.host) === 0
+    ? (intent.host.toLowerCase().split(".")[0] ?? OTHER_COMPUTER)
+    : OTHER_COMPUTER;
+}
+
+export function grantInto(
+  self: string,
+  other: string,
+  scope: string,
+  listenPort: number | undefined,
+): Schema.Json {
+  const app = { [CAPABILITY]: [{ scopes: [scope], allow: ["discover", "push"] }] };
+
+  return listenPort === undefined
+    ? { src: [other], dst: [self], app }
+    : { src: [other], dst: [self], ip: [`tcp:${String(listenPort)}`], app };
 }
