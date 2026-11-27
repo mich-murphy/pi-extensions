@@ -209,7 +209,7 @@ jobs:
           assert extracted["manifestSha256"] == os.environ["MANIFEST_SHA256"], extracted
           version = json.loads(pathlib.Path("consumer/version.json").read_text())
           cargo = tomllib.loads(pathlib.Path("packages/pi-peers/gateway/Cargo.toml").read_text())["package"]
-          required = {"managed-on-demand-v1", "pinned-keys-v1", "gateway-control-v1", "setup-lock-v1", "config-generation-v1"}
+          required = {"managed-on-demand-v1", "tailscale-identity-v1", "gateway-control-v1", "setup-lock-v1", "config-generation-v1"}
           assert version["name"] == "pi-gateway" and version["version"] == cargo["version"], version
           assert version["wireVersions"] == [2], version
           assert required <= set(version["capabilities"]), version
