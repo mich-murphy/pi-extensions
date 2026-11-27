@@ -40,26 +40,23 @@ export class ResourcePolicy {
       : this.overrides.repositories.get(location.repository)?.get(location.path);
   }
 
-  sameResource(left: string, right: ResourcePath, origin: ToggleResource["origin"]): boolean {
-    const a = this.location(left, origin);
-    const b = this.location(right, origin);
-
-    return a !== undefined && b !== undefined
-      ? a.repository === b.repository && a.path === b.path
-      : left === right;
-  }
-
   repositoryWide(resource: Pick<ToggleResource, "id" | "origin">): boolean {
     return this.location(resource.id, resource.origin) !== undefined;
   }
 
+  locationKey(path: string): string | undefined {
+    const location = this.location(path);
+
+    return location === undefined ? undefined : `${location.repository}\0${location.path}`;
+  }
+
   private location(path: string, origin?: ToggleResource["origin"]) {
-    if (origin === "global" || isGlobalResourcePath(path)) {
+    if (origin === "global") {
       return undefined;
     }
 
     if (!this.locations.has(path)) {
-      this.locations.set(path, this.locator.locate(path));
+      this.locations.set(path, isGlobalResourcePath(path) ? undefined : this.locator.locate(path));
     }
 
     return this.locations.get(path);
