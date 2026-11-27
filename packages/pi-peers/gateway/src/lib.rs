@@ -2,9 +2,12 @@
 
 pub mod breaker;
 pub mod budget;
-#[expect(
-    dead_code,
-    reason = "link setup reads caps once the Tailscale identity module lands"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "link setup and refresh enforce the caps in the next steps"
+    )
 )]
 mod caps;
 pub mod config;
@@ -14,6 +17,11 @@ mod events;
 pub mod intern;
 pub mod keys;
 pub mod managed;
+#[expect(
+    dead_code,
+    reason = "link setup and diagnosis call the CLI in the next steps"
+)]
+mod tailscale;
 mod transport;
 pub mod wire;
 
