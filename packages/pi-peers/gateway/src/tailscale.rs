@@ -520,6 +520,25 @@ exit 1
 }
 
 #[cfg(test)]
+pub(crate) mod tests_support {
+    use super::{IpAddr, Peer, fake, identify, parse_status};
+
+    /// A checked peer `machine` at 100.64.0.2 holding `caps` toward the node `alpha`.
+    pub(crate) fn peer(machine: &str, caps: &serde_json::Value) -> Peer {
+        let own = parse_status(fake::status("alpha", "nAlpha", "100.64.0.1").as_bytes())
+            .expect("fixture status");
+        let ip: IpAddr = "100.64.0.2".parse().expect("fixture IP");
+        identify(
+            fake::whois(machine, &format!("n-{machine}"), "100.64.0.2", caps).as_bytes(),
+            ip,
+            &own,
+            "alpha",
+        )
+        .expect("fixture peer")
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::fake::{Fake, SCRIPT};
     use super::*;

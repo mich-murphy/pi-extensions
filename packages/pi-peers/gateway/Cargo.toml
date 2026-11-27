@@ -23,9 +23,6 @@ tokio = { version = "1.54.1", features = [
 ] }
 
 ring = "0.17.14"
-rustls = { version = "0.23.46", default-features = false, features = ["std", "ring"] }
-
-tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"] }
 
 
 [dev-dependencies]

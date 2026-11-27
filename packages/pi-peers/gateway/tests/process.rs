@@ -496,7 +496,7 @@ fn subset(tc: &hegel::TestCase, items: &[&'static str], min: usize) -> Vec<&'sta
     )
 }
 
-/// A real gateway with generated grants for both machines, scopes and directions, and two
+/// A real gateway with generated local grants per scope, some with the legacy direction, and two
 /// registered sessions in generated scopes.
 struct World {
     policies: Value,
@@ -510,14 +510,15 @@ struct World {
 }
 fn draw_world(tc: &hegel::TestCase) -> World {
     let mut policies = Vec::new();
-    for machine in ["alpha", "beta"] {
-        for scope in SCOPES {
-            for direction in ["outgoing", "incoming"] {
-                let permissions = subset(tc, &PERMISSIONS, 0);
-                if !permissions.is_empty() {
-                    policies.push(json!({"machineId":machine,"scopeId":scope,"permissions":permissions,"direction":direction}));
-                }
+    for scope in SCOPES {
+        let permissions = subset(tc, &PERMISSIONS, 0);
+        if !permissions.is_empty() {
+            let mut policy = json!({"machineId":"alpha","scopeId":scope,"permissions":permissions});
+            // 0.3.0 onboarding wrote "outgoing" on every local grant; it is accepted and ignored.
+            if tc.draw(hegel::generators::booleans()) {
+                policy["direction"] = json!("outgoing");
             }
+            policies.push(policy);
         }
     }
     let policies = Value::from(policies);
@@ -548,12 +549,11 @@ fn draw_target(tc: &hegel::TestCase, receiver: &Value) -> Value {
         _ => json!({"machineId":"beta","sessionId":"receiver","runtimeNonce":rid(11)}),
     }
 }
-/// Oracle written from the policy text alone: only outgoing grants apply to local sessions.
+/// Oracle written from the policy text alone: local grants name only this machine.
 fn granted(policies: &Value, machine: &str, scope: &str, permission: &str) -> bool {
     policies.as_array().into_iter().flatten().any(|policy| {
         policy["machineId"] == machine
             && policy["scopeId"] == scope
-            && policy["direction"] == "outgoing"
             && policy["permissions"]
                 .as_array()
                 .is_some_and(|listed| listed.iter().any(|item| item == permission))
@@ -574,14 +574,15 @@ fn assert_nothing_queued(stream: &mut UnixStream, number: u64) {
 }
 
 #[hegel::test(support::property_settings(100, 56789))]
-fn send_and_discover_follow_the_outgoing_grants_exactly(tc: hegel::TestCase) {
+fn send_and_discover_follow_the_local_grants_exactly(tc: hegel::TestCase) {
     use hegel::generators as gs;
     let mut world = draw_world(&tc);
     let scope = tc.draw(gs::sampled_from(SCOPES.to_vec()));
     let target = draw_target(&tc, &world.receiver_peer);
     let machine = target["machineId"].as_str().unwrap_or("");
-    let authorized =
-        world.sender_scopes.contains(&scope) && granted(&world.policies, machine, scope, "push");
+    // Sends to another machine are left to its gateway; local ones need a local push grant.
+    let authorized = world.sender_scopes.contains(&scope)
+        && (machine != "alpha" || granted(&world.policies, machine, scope, "push"));
     let delivered =
         authorized && target == world.receiver_peer && world.receiver_scopes.contains(&scope);
     write(

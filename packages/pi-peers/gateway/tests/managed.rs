@@ -362,7 +362,7 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
             "gateway-control-v1",
             "setup-lock-v1",
             "config-generation-v1",
-            "pinned-keys-v1"
+            "tailscale-identity-v1"
         ]),
         "managed contract advertised"
     );
@@ -443,104 +443,6 @@ fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
         "live recorded socket must survive a saturated probe"
     );
     fixture.kill(owner);
-}
-
-/// Generates only isolated test keys, and returns beta's connecting key and alpha's public key.
-fn configure_remote(fixture: &Fixture) -> (PathBuf, String) {
-    let directory = fixture.directory.join("keys");
-    fs::create_dir(&directory).expect("key directory");
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).expect("private keys");
-    let alpha_key = directory.join("alpha.key");
-    let beta_key = directory.join("beta.key");
-    let alpha = pi_gateway::keys::generate(&alpha_key).expect("alpha key");
-    let beta = pi_gateway::keys::generate(&beta_key).expect("beta key");
-    let path = fixture.directory.join("config");
-    let mut config: Value =
-        serde_json::from_slice(&fs::read(&path).expect("fixture config")).expect("JSON");
-    config["remote"] = json!({"machineId":"beta","endpoint":{"mode":"listen","address":"127.0.0.1:0"},"privateKey":alpha_key,"peerPublicKey":beta});
-    config["policies"] = json!([{"machineId":"beta","scopeId":"team","permissions":["discover"]}]);
-    fs::write(path, serde_json::to_vec(&config).expect("updated JSON"))
-        .expect("remote fixture config");
-    (beta_key, alpha)
-}
-
-#[tokio::test]
-async fn authenticated_remote_link_does_not_sustain_last_local_disconnect() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let mut fixture = Fixture::new();
-    let (beta_key, alpha_public) = configure_remote(&fixture);
-    let index = fixture.spawn(&["--managed"]);
-    let stdout = fixture.children[index]
-        .stdout
-        .take()
-        .expect("readiness stream");
-    let (send, receive) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let mut line = String::new();
-        BufReader::new(stdout)
-            .read_line(&mut line)
-            .expect("remote readiness");
-        let _ = send.send(line);
-    });
-    let line = receive
-        .recv_timeout(Duration::from_secs(5))
-        .expect("bounded remote readiness");
-    if line.is_empty() {
-        let mut error = String::new();
-        fixture.children[index]
-            .stderr
-            .take()
-            .expect("stderr")
-            .read_to_string(&mut error)
-            .expect("startup error");
-        panic!("remote startup failed: {error}");
-    }
-    let ready: Value = serde_json::from_str(&line).expect("ready JSON");
-    let beta = json!({"machineId":"alpha","endpoint":{"mode":"connect","address":ready["remoteListenAddress"]},"privateKey":beta_key,"peerPublicKey":alpha_public});
-    let settings =
-        pi_gateway::remote::Settings::parse(&serde_json::to_vec(&beta).expect("beta settings"))
-            .expect("beta strict config");
-    let mut local = fixture.connect();
-    register(&mut local, "local");
-    let prepared = settings.prepare().expect("test-only remote preparation");
-    let mut remote = tokio::time::timeout(Duration::from_secs(3), prepared.connect())
-        .await
-        .expect("bounded mTLS")
-        .expect("authenticated remote")
-        .into_stream();
-    let mut header = [0; 4];
-    tokio::time::timeout(Duration::from_secs(3), remote.read_exact(&mut header))
-        .await
-        .expect("roster deadline")
-        .expect("remote roster request");
-    let mut body =
-        vec![0; usize::try_from(u32::from_be_bytes(header)).expect("small roster frame")];
-    remote.read_exact(&mut body).await.expect("roster body");
-    let roster: Value = serde_json::from_slice(&body).expect("roster JSON");
-    assert_eq!(roster["op"], "discover", "authenticated remote activated");
-    let reply = serde_json::to_vec(&json!({"v":2,"op":"result","rid":roster["rid"],"forOp":"discover","outcome":{"tag":"ok","value":{"peers":[],"watching":true}}})).expect("roster reply");
-    remote
-        .write_all(
-            &u32::try_from(reply.len())
-                .expect("small reply")
-                .to_be_bytes(),
-        )
-        .await
-        .expect("reply header");
-    remote.write_all(&reply).await.expect("reply body");
-    drop(local);
-    assert!(
-        fixture.exited(index, Duration::from_secs(3)),
-        "authenticated remote socket must not sustain an empty local roster"
-    );
-    assert!(
-        fixture.children[index].wait().expect("status").success(),
-        "remote-connected demand exit is clean"
-    );
-    assert!(
-        !fixture.directory.join("s").exists(),
-        "managed socket removed with remote still connected"
-    );
 }
 
 #[test]

@@ -1,5 +1,5 @@
 //! Operator configuration has no implicit grants or remote fallback.
-use pi_gateway::config::{Config, Direction, Permission};
+use pi_gateway::config::{Config, Permission};
 use serde_json::{Value, json};
 
 mod support;
@@ -58,23 +58,59 @@ fn unknown_duplicate_and_ambiguous_policy_is_rejected() {
 }
 
 #[test]
-fn directional_grants_are_independent_and_default_outgoing_remains_compatible() {
+fn local_grants_ignore_legacy_outgoing_and_refuse_remote_or_incoming_policies() {
     let mut config = valid();
-    let outgoing = config["policies"][0].clone();
-    let mut incoming = outgoing.clone();
-    incoming["direction"] = json!("incoming");
-    config["policies"] = json!([outgoing, incoming]);
-    assert!(Config::parse(&serde_json::to_vec(&config).unwrap()).is_ok());
-    config["policies"][1]["direction"] = json!("outgoing");
+    config["policies"][0]["direction"] = json!("outgoing");
+    assert!(
+        Config::parse(&serde_json::to_vec(&config).unwrap()).is_ok(),
+        "0.3.0 onboarding wrote outgoing on every local grant"
+    );
+    for (field, value) in [
+        ("direction", json!("incoming")),
+        ("direction", json!("both")),
+        ("machineId", json!("beta")),
+    ] {
+        let mut config = valid();
+        config["policies"][0][field] = value.clone();
+        assert!(
+            Config::parse(&serde_json::to_vec(&config).unwrap()).is_err(),
+            "{field}={value} is refused"
+        );
+    }
+    let mut config = valid();
+    let mut legacy = config["policies"][0].clone();
+    legacy["direction"] = json!("outgoing");
+    config["policies"] = json!([config["policies"][0], legacy]);
     assert!(
         Config::parse(&serde_json::to_vec(&config).unwrap()).is_err(),
-        "omitted outgoing and explicit outgoing are the same tuple"
+        "omitted outgoing and explicit outgoing are the same scope"
     );
-    config["policies"][1]["direction"] = json!("both");
-    assert!(
-        Config::parse(&serde_json::to_vec(&config).unwrap()).is_err(),
-        "no implicit bidirectional grant"
-    );
+}
+
+#[test]
+fn remote_takes_only_an_endpoint_and_an_absolute_tailscale_path() {
+    let parses = |remote: Value| {
+        let mut config = valid();
+        config["remote"] = remote;
+        Config::parse(&serde_json::to_vec(&config).unwrap()).is_ok()
+    };
+    assert!(parses(
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:7443"}})
+    ));
+    assert!(parses(
+        json!({"endpoint":{"mode":"listen","address":"100.64.0.1:0"},"tailscale":"/usr/local/bin/tailscale"})
+    ));
+    for remote in [
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:0"}}),
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:7443"},"tailscale":"tailscale"}),
+        json!({"endpoint":{"mode":"connect","address":"dev-01:7443"}}),
+        json!({"machineId":"beta","endpoint":{"mode":"connect","address":"100.64.0.2:7443"}}),
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:7443"},"privateKey":"/k"}),
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:7443"},"peerPublicKey":"00"}),
+        json!({"endpoint":{"mode":"connect","address":"100.64.0.2:7443"},"rootCertificates":[]}),
+    ] {
+        assert!(!parses(remote.clone()), "{remote}");
+    }
 }
 
 #[test]
@@ -104,15 +140,12 @@ fn permissions_grant_exactly_their_live_members(tc: hegel::TestCase) {
             .unique(true),
     );
     listed.sort_by_key(|_| tc.draw(gs::booleans()));
-    let incoming = tc.draw(gs::booleans());
-    let (direction, other, name) = if incoming {
-        (Direction::Incoming, Direction::Outgoing, "incoming")
-    } else {
-        (Direction::Outgoing, Direction::Incoming, "outgoing")
-    };
+    let mut policy = json!({"machineId":"alpha","scopeId":"team","permissions":listed});
+    if tc.draw(gs::booleans()) {
+        policy["direction"] = json!("outgoing");
+    }
     let mut value = valid();
-    value["policies"] =
-        json!([{"machineId":"beta","scopeId":"team","permissions":listed,"direction":name}]);
+    value["policies"] = json!([policy]);
     let config = Config::parse(&serde_json::to_vec(&value).unwrap())
         .expect("any non-empty unique set of known permissions parses, retired ones included");
     for (permission, granted) in [
@@ -120,11 +153,13 @@ fn permissions_grant_exactly_their_live_members(tc: hegel::TestCase) {
         (Permission::Push, "push"),
     ] {
         assert_eq!(
-            config.permits_direction("beta", "team", permission, direction),
+            config.permits("alpha", "team", permission),
             listed.contains(&granted),
             "{granted} is granted exactly when listed"
         );
-        assert!(!config.permits_direction("beta", "team", permission, other));
-        assert!(!config.permits_direction("alpha", "team", permission, direction));
+        assert!(
+            !config.permits("beta", "team", permission),
+            "local policy never grants another machine"
+        );
     }
 }
