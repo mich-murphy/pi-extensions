@@ -151,10 +151,18 @@ const STRUCTURAL_TAG =
   /<(?<gap>\s*\/?\s*)(?<name>user|assistant|call|results|result|past-call|past-result)(?=[\s>/]|$)/giu;
 
 function escapeText(text: string): string {
+  if (!text.includes("<")) {
+    return text;
+  }
+
   return text.replaceAll(STRUCTURAL_TAG, String.raw`<\$<gap>$<name>`);
 }
 
 function escapeJson(json: string): string {
+  if (!json.includes("<")) {
+    return json;
+  }
+
   return json.replaceAll(
     STRUCTURAL_TAG,
     (_match, gap: string, name: string) => `\\u003c${gap}${name}`,
