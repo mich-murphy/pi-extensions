@@ -148,17 +148,6 @@ function prefixOf(length: number): Uint8Array {
   return prefix;
 }
 
-function oncePerKey(): (key: string, check: () => void) => void {
-  const seen = new Set<string>();
-
-  return (key, check) => {
-    if (!seen.has(key)) {
-      seen.add(key);
-      check();
-    }
-  };
-}
-
 function property(
   name: string,
   body: (tc: Parameters<ConstructorParameters<typeof Hegel>[0]>[0]) => void,
@@ -168,12 +157,9 @@ function property(
 
 describe("Hegel size-bound edges", () => {
   test("authored content accepted iff <= MAX_AUTHORED_BYTES", () => {
-    const once = oncePerKey();
     property("authored", (tc) => {
       const offset = tc.draw(edge, "offset");
-      once(`${offset}`, () => {
-        assertFrameEdge(sendFrame(MAX_AUTHORED_BYTES + offset), "local-client", offset <= 0);
-      });
+      assertFrameEdge(sendFrame(MAX_AUTHORED_BYTES + offset), "local-client", offset <= 0);
     });
   });
 
@@ -193,16 +179,13 @@ describe("Hegel size-bound edges", () => {
   });
 
   test("descriptor accepted iff <= MAX_DESCRIPTOR_BYTES JSON bytes", () => {
-    const once = oncePerKey();
     property("descriptor", (tc) => {
       const offset = tc.draw(edge, "offset");
-      once(`${offset}`, () => {
-        assertFrameEdge(
-          upsertWithDescriptorBytes(MAX_DESCRIPTOR_BYTES + offset),
-          "gateway-forward",
-          offset <= 0,
-        );
-      });
+      assertFrameEdge(
+        upsertWithDescriptorBytes(MAX_DESCRIPTOR_BYTES + offset),
+        "gateway-forward",
+        offset <= 0,
+      );
     });
   });
 
@@ -227,24 +210,21 @@ describe("Hegel size-bound edges", () => {
   });
 
   test("body bytes accepted iff 1..32764 (prefix and decodeJson)", () => {
-    const once = oncePerKey();
     property("body", (tc) => {
       const offset = tc.draw(edge, "offset");
       const low = tc.draw(integers({ minValue: 0, maxValue: 4 }), "low");
-      once(`${offset}/${low}`, () => {
-        assert.equal(
-          accepts(() => decodeJson(paddedBody(MAX_BODY_BYTES + offset))),
-          offset <= 0,
-        );
-        assert.equal(
-          accepts(() => frameBodyLength(prefixOf(MAX_BODY_BYTES + offset))),
-          offset <= 0,
-        );
-        assert.equal(
-          accepts(() => frameBodyLength(prefixOf(low))),
-          low >= 1,
-        );
-      });
+      assert.equal(
+        accepts(() => decodeJson(paddedBody(MAX_BODY_BYTES + offset))),
+        offset <= 0,
+      );
+      assert.equal(
+        accepts(() => frameBodyLength(prefixOf(MAX_BODY_BYTES + offset))),
+        offset <= 0,
+      );
+      assert.equal(
+        accepts(() => frameBodyLength(prefixOf(low))),
+        low >= 1,
+      );
     });
   });
 });
