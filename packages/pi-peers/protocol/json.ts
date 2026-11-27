@@ -1,6 +1,10 @@
 import { Schema } from "effect";
 
-const decodeObject = Schema.decodeUnknownSync(Schema.JsonObject);
+const ScannedJson = Schema.JsonObject.pipe(Schema.brand("ScannedJson"));
+
+export type ScannedJson = typeof ScannedJson.Type;
+
+const decodeObject = Schema.decodeUnknownSync(ScannedJson);
 
 export const MAX_BODY_BYTES = 32_764;
 export const MAX_ARRAY_ITEMS = 64;
@@ -159,7 +163,7 @@ class JsonEvidence {
   }
 }
 
-export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): Schema.JsonObject {
+export function decodeJson(bytes: Uint8Array, onObject?: ObjectBytesVisitor): ScannedJson {
   try {
     requireValid(bytes.length > 0 && bytes.length <= MAX_BODY_BYTES);
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
