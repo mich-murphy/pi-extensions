@@ -77,12 +77,10 @@ function checkRole(frame: Frame, role: BoundaryRole): void {
   }
 }
 
-const isObject = Schema.is(Schema.JsonObject);
-const isArray = Schema.is(Schema.Array(Schema.Json));
 const authoredFields = new Set(["content", "label", "locator"]);
 
 function authoredBytes(value: Schema.Json): number {
-  if (!isObject(value) && !isArray(value)) {
+  if (typeof value !== "object" || value === null) {
     return 0;
   }
 

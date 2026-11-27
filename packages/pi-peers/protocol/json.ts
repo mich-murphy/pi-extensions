@@ -19,6 +19,26 @@ function requireValid(condition: boolean): void {
   }
 }
 
+function escapedQuote(text: string, quote: number): boolean {
+  let slashes = 0;
+
+  while (text[quote - slashes - 1] === "\\") {
+    slashes++;
+  }
+
+  return slashes % 2 === 1;
+}
+
+function closingQuote(text: string, from: number): number {
+  let end = text.indexOf('"', from);
+
+  while (end >= 0 && escapedQuote(text, end)) {
+    end = text.indexOf('"', end + 1);
+  }
+
+  return end;
+}
+
 export type ObjectBytesVisitor = (path: ReadonlyArray<string | number>, byteLength: number) => void;
 
 class JsonEvidence {
@@ -29,8 +49,11 @@ class JsonEvidence {
   ) {}
 
   private whitespace(): void {
-    while (/[\t\n\r ]/u.test(this.text[this.position] ?? "!")) {
+    let code = this.text.codePointAt(this.position);
+
+    while (code === 32 || code === 10 || code === 13 || code === 9) {
       this.position++;
+      code = this.text.codePointAt(this.position);
     }
   }
 
@@ -42,24 +65,14 @@ class JsonEvidence {
   private string(): string {
     this.whitespace();
     const start = this.position;
-    requireValid(this.text[this.position++] === '"');
+    requireValid(this.text[start] === '"');
+    const end = closingQuote(this.text, start + 1);
+    requireValid(end >= 0);
+    this.position = end + 1;
+    const value: unknown = JSON.parse(this.text.slice(start, this.position));
 
-    while (this.position < this.text.length) {
-      const character = this.text[this.position++];
-
-      if (character === '"') {
-        const value: unknown = JSON.parse(this.text.slice(start, this.position));
-
-        if (typeof value === "string" && value.isWellFormed()) {
-          return value;
-        }
-
-        throw new ProtocolError();
-      }
-
-      if (character === "\\") {
-        this.position++;
-      }
+    if (typeof value === "string" && value.isWellFormed()) {
+      return value;
     }
 
     throw new ProtocolError();
