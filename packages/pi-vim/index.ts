@@ -254,14 +254,20 @@ class VimEditor extends CustomEditor {
   }
 
   private passToPi(data: string): void {
-    const hadText = this.getText().length > 0;
+    const hadText = this.hasText();
     super.handleInput(data);
 
-    if (hadText && this.getText().length === 0) {
+    if (hadText && !this.hasText()) {
       this.vimState = INSERT;
     } else {
       this.perform("clamp");
     }
+  }
+
+  private hasText(): boolean {
+    const lines = this.getLines();
+
+    return lines.length > 1 || (lines[0] ?? "") !== "";
   }
 
   private perform(name: ActionName): void {
