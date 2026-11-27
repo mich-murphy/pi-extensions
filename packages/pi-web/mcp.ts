@@ -220,7 +220,11 @@ export function parseMcpMessage(
   body: string,
   contentType: string,
 ): Result.Result<ProviderJson, ProviderError> {
-  if (contentType.toLowerCase().includes("text/event-stream") || /^data:/mu.test(body)) {
+  if (
+    contentType.toLowerCase().includes("text/event-stream") ||
+    body.startsWith("data:") ||
+    body.includes("\ndata:")
+  ) {
     return parseSseResponse(body);
   }
 
