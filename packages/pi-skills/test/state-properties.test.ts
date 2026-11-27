@@ -119,7 +119,15 @@ const documentLike = composite((tc) => ({
   resources: tc.draw(fileish),
 }));
 
-const document = oneOf<unknown>(json, documentLike);
+const toggleValue = sampledFrom<unknown>(TOGGLES);
+
+const policyDocument = composite((tc) => ({
+  version: 7,
+  files: tc.draw(pairs(sampledFrom(PATHS), toggleValue)),
+  repositories: tc.draw(pairs(sampledFrom(PATHS), pairs(sampledFrom(RELATIVE), toggleValue))),
+}));
+
+const document = oneOf<unknown>(json, documentLike, policyDocument);
 
 const stats = { ok: 0, err: 0 };
 

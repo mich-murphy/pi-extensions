@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
-import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
+import { arrays, integers, sampledFrom } from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
 import {
   assertHegel,
@@ -251,8 +251,9 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
         "lines",
       );
 
+      const up = tc.draw(integers({ minValue: 0, maxValue: lines.length - 1 }), "up");
       const tokens = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
-      runTrace(keyboard, lines, tokens);
+      runTrace(keyboard, lines, [...Array.from({ length: up }, () => "k"), ...tokens]);
     });
   });
 });
