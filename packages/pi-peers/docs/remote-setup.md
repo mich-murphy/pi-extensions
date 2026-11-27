@@ -44,6 +44,10 @@ On each machine, type `/peers` and choose Setup › **Link a remote computer**.
 - **Connect**: enter the other computer's MagicDNS name or tailnet IP and its
   port. Setup resolves a name to an IP once, when you link.
 
+Each computer's pi-peers machine name must match its tailnet name, the first
+label of its MagicDNS name: the other gateway learns the name from Tailscale and
+accepts only sessions that carry it. Link checks this and names the fix.
+
 Setup then shows the grant to add to your tailnet policy, built from the two
 machine names. `/peers doctor` shows the Tailscale state, this machine's tailnet
 name and the endpoint. In connect mode it also shows the peer and what that peer
@@ -144,6 +148,7 @@ For `beta`, the connector, set `machineId` to `beta` and `endpoint` to
 IP and port: a listener must use one of its own tailnet IPs, and a connector must
 dial an IP that `tailscale whois` resolves.
 
+`machineId` must be the first label of this node's MagicDNS name.
 `policies` cover sessions on this machine only and may name only this
 machine's `machineId`. Remote permissions come from the tailnet policy.
 
