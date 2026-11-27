@@ -12,9 +12,13 @@
 #
 # .fallow/reports is mounted at /reports. The copy lives at /sandbox/repo, not /work: some tests
 # use /work/project as a fake project path.
+#
+# Runs share one volume and wait for each other. To run several checkouts at once, give each its
+# own volume: MUTATION_SANDBOX_VOLUME=pi-extensions-mutation-web scripts/mutation-sandbox.sh ...
 set -euo pipefail
 
 image=pi-extensions-mutation
+volume=${MUTATION_SANDBOX_VOLUME:-$image}
 
 if [[ "${1:-}" == "--inside" ]]; then
   shift
@@ -59,5 +63,5 @@ root=$(git rev-parse --show-toplevel)
 mkdir -p "$root/.fallow/reports"
 docker build -q -t "$image" -f "$root/config/mutation-sandbox.Dockerfile" "$root/config" >/dev/null
 # --init reaps the runner processes that exit while Fallow runs; without it they pile up as zombies.
-exec docker run --rm --init -v "$root:/src:ro" -v "$image:/sandbox" -v "$root/.fallow/reports:/reports" \
+exec docker run --rm --init -v "$root:/src:ro" -v "$volume:/sandbox" -v "$root/.fallow/reports:/reports" \
   "$image" bash /src/scripts/mutation-sandbox.sh --inside "$@"
