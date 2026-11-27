@@ -162,6 +162,12 @@ describe("the tailscale command", () => {
   test("an IP is kept, a MagicDNS name is resolved once, an unknown name is refused", async () => {
     await expect(resolveHost(fixture.tailscale, "100.64.0.9")).resolves.toBe("100.64.0.9");
     await expect(resolveHost(fixture.tailscale, TAILNET.other)).resolves.toBe(TAILNET.otherAddress);
+    await expect(resolveHost(fixture.tailscale, `${TAILNET.other}.tail0000.ts.net`)).resolves.toBe(
+      TAILNET.otherAddress,
+    );
+    await expect(resolveHost(fixture.tailscale, `${TAILNET.other}.tail0000.ts.net.`)).resolves.toBe(
+      TAILNET.otherAddress,
+    );
     await expect(resolveHost(fixture.tailscale, "nowhere")).rejects.toThrow(
       "no tailnet computer is called nowhere",
     );

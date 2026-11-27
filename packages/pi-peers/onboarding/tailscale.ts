@@ -270,10 +270,11 @@ export async function resolveHost(command: string, host: string): Promise<string
     return host;
   }
 
+  const query = host.includes(".") && !host.endsWith(".") ? `${host}.` : host;
   let output: string;
 
   try {
-    output = await run(command, ["ip", "-1", host]);
+    output = await run(command, ["ip", "-1", query]);
   } catch {
     throw new RefusalError(
       `no tailnet computer is called ${host}`,

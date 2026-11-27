@@ -74,6 +74,7 @@ function fakeTailscale(machine: string, backend: string): string {
     "#!/bin/sh",
     `if [ "$1" = "status" ]; then echo '${status}'; exit 0; fi`,
     `if [ "$1" = "ip" ] && [ "$3" = "${TAILNET.other}" ]; then echo ${TAILNET.otherAddress}; exit 0; fi`,
+    `if [ "$1" = "ip" ] && [ "$3" = "${TAILNET.other}.tail0000.ts.net." ]; then echo ${TAILNET.otherAddress}; exit 0; fi`,
     `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.otherAddress}" ]; then echo '${whois(TAILNET.other, TAILNET.otherAddress, "nDev")}'; exit 0; fi`,
     `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.ipOnlyAddress}" ]; then echo '${whois(TAILNET.ipOnly, TAILNET.ipOnlyAddress, "nBuild")}'; exit 0; fi`,
     `if [ "$1" = "whois" ]; then echo 'peer not found' >&2; exit 1; fi`,
