@@ -711,10 +711,9 @@ mod tests {
             trusted(&fake.path("link"), uid, 0).expect("own symlink"),
             fake.program()
         );
-        assert!(
-            trusted(&fake.program(), uid.wrapping_add(1), 0).is_err(),
-            "another user's file"
-        );
+        assert!(owner_ok(0, 1000), "root's file");
+        assert!(owner_ok(1000, 1000), "the caller's own file");
+        assert!(!owner_ok(1001, 1000), "another user's file");
         // A trusted wrapper whose target is writable by others is not trusted.
         fake.write("target", SCRIPT);
         fake.mode("target", 0o700);
