@@ -59,7 +59,7 @@ A verdict that an outside service failed (≥ 0.9) also stops its records from c
 
 ## Ledger
 
-Records are appended to `~/.pi/agent/harness-feedback/ledger.jsonl` (or under `PI_CODING_AGENT_DIR`). The directory is readable only by you. Common token formats and values assigned to key, token, secret or password names are replaced with `<secret>`, and each text field is cut to 2,000 characters. Only the classifier calls below leave the machine.
+Records are appended to `~/.pi/agent/harness-feedback/ledger.jsonl` (or under `PI_CODING_AGENT_DIR`). The directory is readable only by you. Secrets are replaced with `<secret>` whatever their length: common token formats (OpenAI, Anthropic, GitHub, GitLab, Slack, AWS, Google, npm, Stripe, Hugging Face, JWTs, private keys and Slack webhook URLs), the password in a URL such as `postgres://user:pass@host`, the credential after `Authorization:` or `Bearer`, `Cookie:` and `Set-Cookie:` values, the password in `curl -u user:pass`, and values given to names containing key, secret, password, pwd, token, credential, auth, session ID or cookie. A value counts when it follows `=`, `:=`, a quoted key with `:`, `--name` or `--name=`, or an unquoted `name:` that ends its line. The user name, host, label and scheme are kept. Placeholders such as `${API_KEY}`, `<your-key>`, `$TOKEN`, `***` and `process.env.X` are kept, and so are names such as `max_tokens`, `api_key_file` and `secret_name`. A password in plain prose, such as `the password is hunter2`, is not found. Each text field is cut to 2,000 characters. Only the classifier calls below leave the machine.
 
 ## Classification
 
