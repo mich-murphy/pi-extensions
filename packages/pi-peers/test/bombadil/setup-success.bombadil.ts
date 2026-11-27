@@ -106,13 +106,13 @@ function choose(selected: string | null, row: string): ActionTemplate {
   return key(selected === row ? ENTER : UP);
 }
 
-function successMenuKey(view: Screen | undefined): ActionTemplate {
+function successMenuKey(view: Screen | undefined, rootRow: string): ActionTemplate {
   if (view?.kind === "outcome") {
     return key(ENTER);
   }
 
   if (view?.kind === "root") {
-    return choose(view.selected, "Reset");
+    return choose(view.selected, rootRow);
   }
 
   return view?.kind === "list" && view.path?.[1] === "Reset"
@@ -131,7 +131,9 @@ const afterSuccess = actions((): Array<ActionTemplate> => {
     return [command(seen.statusSeen ? "" : " status"), key(ENTER)];
   }
 
-  return [successMenuKey(ui.current)];
+  const statusBeforeReset = seen.statusSeen ? "Reset" : "Status";
+
+  return [successMenuKey(ui.current, statusBeforeReset)];
 });
 
 export const successKeys = weighted([
