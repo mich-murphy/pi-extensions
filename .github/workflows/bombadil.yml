@@ -1,0 +1,74 @@
+name: Bombadil
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: Bombadil ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: vim
+            script: test:bombadil
+          - name: scrollback
+            script: test:bombadil:scrollback
+          - name: skills
+            script: test:bombadil:skills
+          - name: peers setup
+            script: test:bombadil:peers:setup
+          - name: peers success
+            script: test:bombadil:peers:success
+          - name: peers messages
+            script: test:bombadil:peers:messages
+    env:
+      CARGO_BUILD_JOBS: 2
+      UV_THREADPOOL_SIZE: 2
+      SCRIPT: ${{ matrix.script }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Nix
+        uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 2
+      - name: Install dependencies
+        run: nix develop -c npm ci
+      - name: Run suite
+        run: |
+          set +e
+          nix develop -c npm run "$SCRIPT" > "$RUNNER_TEMP/bombadil.log" 2>&1
+          status=$?
+          tail -c 6000 "$RUNNER_TEMP/bombadil.log" | sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g'
+          echo "npm run $SCRIPT exited with $status"
+          exit "$status"
+      - name: Collect log and trace
+        if: ${{ failure() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          gzip -c "$RUNNER_TEMP/bombadil.log" > "$RUNNER_TEMP/evidence/bombadil.log.gz"
+          find "$RUNNER_TEMP" -maxdepth 2 -name 'bombadil-*.bin' -exec cp {} "$RUNNER_TEMP/evidence/" \;
+      - name: Upload log and trace
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bombadil-${{ strategy.job-index }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: ignore
+          retention-days: 7

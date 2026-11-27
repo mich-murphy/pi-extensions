@@ -125,9 +125,15 @@ if (writeLog !== undefined && writeLog !== "") {
   childEnv.PI_TUI_WRITE_LOG = writeLog;
 }
 
+const BOMBADIL_0_8_SAMPLES_AT_EACH_SYNCHRONIZED_REDRAW_SO_PI_SENDS_NONE = pathToFileURL(
+  join(repo, "scripts/bombadil-synchronized-output.ts"),
+).href;
+
 const child = spawn(
   process.execPath,
   [
+    "--import",
+    BOMBADIL_0_8_SAMPLES_AT_EACH_SYNCHRONIZED_REDRAW_SO_PI_SENDS_NONE,
     resolve(host, bin.pi),
     ...defaults,
     ...(launch.session === undefined ? ["--no-session"] : ["--session", launch.session]),

@@ -1,4 +1,4 @@
-import { always, next } from "@antithesishq/bombadil";
+import { always, eventually, next } from "@antithesishq/bombadil";
 import type { Formula } from "@antithesishq/bombadil";
 import { CharSet } from "@antithesishq/bombadil/actions";
 import { actions, extract, weighted } from "@antithesishq/bombadil/terminal";
@@ -152,7 +152,9 @@ const RESIZE = {
   Resize: { columns: [60, 140], rows: [20, 50] },
 } satisfies ActionTemplate;
 
-export const vimKeys = weighted([
+const labelShown = (): boolean => editor.current !== null;
+
+const keys = weighted([
   [30, typeFromSet(VIM_KEYS)],
   [20, typeFromSet(ESCAPE)],
   [10, typeFromSet(PRINTABLE)],
@@ -168,6 +170,20 @@ export const vimKeys = weighted([
   [10, typeFromSet(CharSet.fromLiterals("0", "b", "h")).when(() => normalIdle())],
   [20, actions(towardWide).when(() => wideColumns().length > 0 && !onWide())],
   [60, typeFromSet(CharSet.fromLiterals("x")).when(() => onWide())],
+]).when(labelShown);
+
+const UNCHANGED_SIZE_WAITS_UNTIL_SESSION_START_INSTALLS_THE_VIM_EDITOR = {
+  Resize: { columns: 100, rows: 40 },
+} satisfies ActionTemplate;
+
+export const vimKeys = weighted([
+  [100, keys],
+  [
+    1,
+    actions(() => [UNCHANGED_SIZE_WAITS_UNTIL_SESSION_START_INSTALLS_THE_VIM_EDITOR]).when(
+      () => !labelShown(),
+    ),
+  ],
 ]);
 
 const graphemes = (cells: ReadonlyArray<string>): Array<string> =>
@@ -225,7 +241,11 @@ function towardWide() {
 
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
 
-export const modeLabelShown: Formula = always(() => editor.current !== null);
+export const modeLabelShown: Formula = eventually(labelShown).within(5, "seconds");
+
+export const modeLabelStaysShown: Formula = always(() =>
+  labelShown() ? always(labelShown) : true,
+);
 
 export const escapeEntersNormal: Formula = always(
   () => lastKey.current !== "\u001B" || normalIdle(),

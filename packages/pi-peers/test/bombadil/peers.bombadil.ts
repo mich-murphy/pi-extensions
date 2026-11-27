@@ -13,7 +13,7 @@ const PROBE = /peers-probe taken=(?<taken>\d+) dup=(?<dup>\S+) final=(?<final>ye
 
 const view = extract((state: State) => {
   const rows = screenRows(state);
-  const status = rows.find((row) => row.includes("Session communication:")) ?? null;
+  const status = rows.find((row) => row.trimStart().startsWith("Runtime status:")) ?? null;
 
   const nonce =
     rows.map((row) => /nonce=(?<nonce>[0-9a-f]{32})/u.exec(row)?.groups?.nonce).find(Boolean) ??
@@ -37,8 +37,7 @@ const view = extract((state: State) => {
 
 const exitStatus = extract((state: State) => state.exitStatus);
 
-const connectedShown = (): boolean =>
-  view.current?.status?.includes("enabled · connected") === true;
+const connectedShown = (): boolean => view.current?.status?.trim() === "Runtime status: connected";
 
 export const peerKeys = weighted([
   [10, actions(() => [{ TypeText: { Regexp: String.raw`\x15/peers (status|reconnect)` } }])],

@@ -152,17 +152,32 @@ function towardConsent(
 ): Array<ActionTemplate> {
   const target = readyConsent(rows);
 
-  if (target === undefined) {
-    return rows.some((row) => CONSENT_ROWS.has(row.label)) ? [] : [key(UP)];
+  if (target !== undefined) {
+    return [stepToward(rows, selected, target)];
   }
 
+  if (rows.some((row) => row.label === MODE && row.value === REMOTE_MODE)) {
+    return [stepToward(rows, selected, MODE)];
+  }
+
+  return rows.some((row) => CONSENT_ROWS.has(row.label)) ? [] : [key(UP)];
+}
+
+const MODE = "Mode";
+const REMOTE_MODE = "One remote peer";
+
+function stepToward(
+  rows: ReadonlyArray<ListRow>,
+  selected: string | null,
+  target: string,
+): ActionTemplate {
   if (selected === target) {
-    return [key(ENTER)];
+    return key(ENTER);
   }
 
   const labels = rows.map((row) => row.label);
 
-  return [key(labels.indexOf(target) < labels.indexOf(selected ?? "") ? UP : DOWN)];
+  return key(labels.indexOf(target) < labels.indexOf(selected ?? "") ? UP : DOWN);
 }
 
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
@@ -208,10 +223,22 @@ export const escapeGoesBack: Formula = escapeLandsOn(
   },
 );
 
+const LOADING = "Checking…";
+
+const SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT = [null, "Peers"];
+
 export const escapeClosesRoot: Formula = escapeLandsOn(
   () => ui.current,
   () => lastKey.current,
-  (before) => (before.kind === "root" ? [null] : undefined),
+  (before) => {
+    if (before.kind !== "root") {
+      return undefined;
+    }
+
+    return before.rows.some((row) => row.value === LOADING)
+      ? SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT
+      : [null];
+  },
 );
 
 export const hintMatchesDepth: Formula = always(() => {
