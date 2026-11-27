@@ -27,7 +27,7 @@ type DiagnosedRemote = {
   };
   readonly peer?: {
     readonly name: string;
-    readonly stableId: string;
+    readonly stableId?: string;
     readonly tags: ReadonlyArray<string>;
     readonly allow: ReadonlyArray<{
       readonly scope: string;
@@ -313,10 +313,54 @@ describe("doctor and status from the gateway's diagnosis", () => {
     expect(row).toStrictEqual({
       label: "Remote link",
       value:
-        "Tailscale: this computer is laptop. Connecting to 100.64.0.2:7443. dev-01 may discover, reply in local here. The live link is not checked here.",
+        "Tailscale: this computer is laptop. Connecting to 100.64.0.2:7443. Peer dev-01 (StableID n2, tags tag:dev) may discover, reply in local here. The live link is not checked here.",
       level: "ok",
     });
-    await expect(remoteStatus(agent)).resolves.toBe(`✓ Remote link: ${String(row?.value)}`);
+    const status = await remoteStatus(agent);
+    expect(status).toBe(`✓ Remote link: ${String(row?.value)}`);
+    await expect(`${String(status)}\n`).toMatchFileSnapshot(
+      "__snapshots__/onboarding-tailscale/doctor-peer-tagged.txt",
+    );
+  });
+  test("an untagged peer with several grants shows its StableID and no tags", async () => {
+    const row = await diagnosed({
+      ...configured,
+      peer: {
+        name: "desk",
+        stableId: "nDesk7CNTRL",
+        tags: [],
+        allow: [
+          { scope: "local", actions: ["discover"] },
+          { scope: "work", actions: ["push", "reply"] },
+        ],
+      },
+    });
+    expect(row?.value).toBe(
+      "Tailscale: this computer is laptop. Connecting to 100.64.0.2:7443. Peer desk (StableID nDesk7CNTRL, no tags) may discover in local; push, reply in work here. The live link is not checked here.",
+    );
+    await expect(`${String(await remoteStatus(agent))}\n`).toMatchFileSnapshot(
+      "__snapshots__/onboarding-tailscale/doctor-peer-untagged.txt",
+    );
+  });
+  test("a peer with several tags lists them all", async () => {
+    const row = await diagnosed({
+      ...configured,
+      peer: { name: "dev-01", stableId: "n2", tags: ["tag:dev", "tag:ci"], allow: [] },
+    });
+    expect(row?.value).toContain(
+      "Peer dev-01 (StableID n2, tags tag:dev, tag:ci) may do nothing here yet; add a grant for it to your tailnet policy",
+    );
+    await expect(`${String(await remoteStatus(agent))}\n`).toMatchFileSnapshot(
+      "__snapshots__/onboarding-tailscale/doctor-peer-ungranted.txt",
+    );
+  });
+  test("a diagnosis whose peer lacks a StableID is not trusted", async () => {
+    const row = await diagnosed({
+      ...configured,
+      peer: { name: "dev-01", tags: [], allow: [] },
+    });
+    expect(row?.level).toBe("warn");
+    expect(row?.value).toContain("Couldn't check the remote setup files");
   });
   test("a peer with no grant is a warning that names the tailnet policy", async () => {
     const row = await diagnosed({
@@ -324,7 +368,7 @@ describe("doctor and status from the gateway's diagnosis", () => {
       peer: { name: "dev-01", stableId: "n2", tags: [], allow: [] },
     });
     expect(row?.level).toBe("warn");
-    expect(row?.value).toContain("dev-01 may do nothing here yet; add a grant for it");
+    expect(row?.value).toContain("Peer dev-01 (StableID n2, no tags) may do nothing here yet");
   });
   test.each([
     ["tailscale-missing", "Tailscale is not installed on this computer. Install Tailscale"],

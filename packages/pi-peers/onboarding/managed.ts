@@ -33,13 +33,19 @@ export type ManagedSnapshot = {
   readonly reason?: string;
   readonly endpoint?: { readonly mode: string; readonly address: string };
   readonly self?: string;
-  readonly peer?: { readonly name: string; readonly allow: ReadonlyArray<RemoteGrant> };
+  readonly peer?: {
+    readonly name: string;
+    readonly stableId: string;
+    readonly tags: ReadonlyArray<string>;
+    readonly allow: ReadonlyArray<RemoteGrant>;
+  };
   readonly text: string;
 };
 
 const word = Schema.String.check(Schema.isPattern(/^[a-z-]{1,64}$/u));
 const name = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,253}$/u));
 const short = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_.:[\]-]{1,64}$/u));
+const tag = Schema.String.check(Schema.isPattern(/^tag:[A-Za-z0-9-]{1,64}$/u));
 
 const isNativeSnapshot = Schema.is(
   Schema.Struct({
@@ -53,6 +59,8 @@ const isNativeSnapshot = Schema.is(
       peer: Schema.optionalKey(
         Schema.Struct({
           name,
+          stableId: short,
+          tags: Schema.Array(tag),
           allow: Schema.Array(Schema.Struct({ scope: short, actions: Schema.Array(word) })),
         }),
       ),
@@ -96,7 +104,12 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
   }
 
   if (peer !== undefined) {
-    snapshot.peer = { name: peer.name, allow: peer.allow };
+    snapshot.peer = {
+      name: peer.name,
+      stableId: peer.stableId,
+      tags: peer.tags,
+      allow: peer.allow,
+    };
   }
 
   return snapshot;

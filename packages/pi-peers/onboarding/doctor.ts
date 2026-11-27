@@ -470,6 +470,15 @@ function grantText(allow: ReadonlyArray<RemoteGrant>): string {
     .join("; ");
 }
 
+function peerText(peer: NonNullable<ManagedSnapshot["peer"]>): string {
+  const tags =
+    peer.tags.length === 0
+      ? "no tags"
+      : `tags ${peer.tags.map((tag) => visibleText(tag)).join(", ")}`;
+
+  return `Peer ${visibleText(peer.name)} (StableID ${visibleText(peer.stableId)}, ${tags})`;
+}
+
 function configuredText(snapshot: ManagedSnapshot, options: DoctorOptions): string {
   const live = liveLinkText(options);
   const endpoint = snapshot.endpoint;
@@ -487,8 +496,8 @@ function configuredText(snapshot: ManagedSnapshot, options: DoctorOptions): stri
       ? []
       : [
           snapshot.peer.allow.length === 0
-            ? `${visibleText(snapshot.peer.name)} may do nothing here yet; add a grant for it to your tailnet policy`
-            : `${visibleText(snapshot.peer.name)} may ${grantText(snapshot.peer.allow)} here`,
+            ? `${peerText(snapshot.peer)} may do nothing here yet; add a grant for it to your tailnet policy`
+            : `${peerText(snapshot.peer)} may ${grantText(snapshot.peer.allow)} here`,
         ]),
     live ?? "The live link is not checked here",
   ].join(". ");
